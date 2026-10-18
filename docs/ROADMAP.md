@@ -72,7 +72,7 @@ M0 Fondamenta + spike ──► M1 Player ──► M2 Sottotitoli ──► M4 
 
   Se S1 fallisce, l'ADR sceglie un ripiego (B/C/D di SPECIFICHE §5.2.3) e si aggiorna questa roadmap prima di passare a M1.
 - [ ] S2: import ≤ 60 s e ≤ 1 GiB di RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). Se fallisce, l'ADR adotta il formato su misura (DIC-020).
-- [ ] D-1 (deroghe di classe B) e D-3 (GPL-3.0-only) approvate dal maintainer.
+- [x] D-1 (deroghe di classe B) e D-3 (GPL-3.0-only) approvate dal maintainer (2026-10-19).
 
 ---
 
@@ -194,7 +194,7 @@ M0 Fondamenta + spike ──► M1 Player ──► M2 Sottotitoli ──► M4 
 - `anikoto-library`: import di cartelle, parser dei nomi file (porting di `video_filename_parser.dart` con i suoi vettori), serie ed episodi, tombstone, preferenze per serie, avanzamento automatico.
 - Home: "Continua a guardare", griglia delle serie, dettaglio della serie, copertine generate.
 - Audio delle parole: template URL, risposta JSON Yomitan o audio diretto, seconda istanza libmpv solo audio, cache LRU.
-- **Spike S3**: lettura read-only di un `android.db` reale con `turso` (MIT). Criteri: query (expression, reading) p95 ≤ 20 ms; nessuna licenza fuori classe A/B nel grafo. L'ADR `0003-db-audio-locale.md` chiude D-2.
+- **Spike S3**: lettura read-only di un `android.db` reale con `turso` (MIT). Criteri: query (expression, reading) p95 ≤ 20 ms; nessuna licenza fuori classe A/B nel grafo. L'ADR `0003-db-audio-locale.md` conferma D-2, oppure la riapre se i criteri non sono rispettati.
 
 **Criteri di uscita**
 

@@ -2,7 +2,7 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | Bozza v0.1 — da approvare prima di scrivere codice |
+| Stato | v0.2 — decisioni D-1…D-6 approvate il 2026-10-19 (§10.1) |
 | Data | 2026-10-19 |
 | Riferimento | Fushi, commit `ac8034e8bbc25e877e6d419334a38951bc477105` (2026-10-18), <https://github.com/hajisensai/Fushi> |
 | Documenti collegati | [ROADMAP.md](ROADMAP.md) · [TEST.md](TEST.md) |
@@ -609,7 +609,7 @@ Tag bank importati (DIC-002) · frequenze stringa e `frequencyMode` (DIC-003) ·
 |---|---|---|
 | AUD-001 | Sorgenti audio in un elenco ordinato e configurabile; ognuna si può abilitare o disabilitare. | `audio_source_config.dart` |
 | AUD-002 | Sorgente **URL template** con `{term}` e `{reading}` codificati come URI. La risposta può essere JSON Yomitan `{type:"audioSourceList", audioSources:[{name,url}]}` oppure, a differenza di Fushi, audio diretto (`Content-Type: audio/*`). | `word_audio_resolver.dart` |
-| AUD-003 | Sorgente **database locale** nel formato "Local Audio Server for Yomichan" (`entries(expression, reading, file, source)`, `android(file, source, data)`): prima la coppia esatta, poi solo l'espressione, con priorità per sotto-sorgente (nhk16, forvo, jpod, …). Il formato è SQLite: la libreria per leggerlo è la **decisione aperta D-2**. | `local_audio_db.dart` |
+| AUD-003 | Sorgente **database locale** nel formato "Local Audio Server for Yomichan" (`entries(expression, reading, file, source)`, `android(file, source, data)`): prima la coppia esatta, poi solo l'espressione, con priorità per sotto-sorgente (nhk16, forvo, jpod, …). Il formato è SQLite: si legge con `turso` (MIT), da validare nello spike S3 (D-2). | `local_audio_db.dart` |
 | AUD-004 | Risoluzione: per la riproduzione basta il primo risultato valido in ordine; il menu (clic destro su ♪) interroga tutte le sorgenti in parallelo e le mostra tutte. Timeout: 8 s per la connessione, 10 s per la risposta. Una risposta 4xx = "nessun audio"; un errore di connessione mette l'host in pausa per 45 s. | |
 | AUD-005 | La riproduzione usa una **seconda istanza libmpv solo audio** (`vid=no`, `video=no`), indipendente dal player. Non si usa l'audio di WebKit/GStreamer. Volume configurabile. | |
 | AUD-006 | Opzione "riproduci automaticamente all'apertura del popup", predefinita sì: non si sovrappone al dialogo perché il lookup mette già in pausa il video (POP-001). Si può disattivare. | |
@@ -807,18 +807,20 @@ ffmpeg = ""                 # vuoto = cerca in PATH
 
 ---
 
-## 10. Decisioni aperte e rischi
+## 10. Decisioni e rischi
 
-### 10.1 Decisioni che spettano al maintainer
+### 10.1 Decisioni del maintainer
 
-| ID | Decisione | Proposta |
+Approvate dal maintainer il 2026-10-19. Una decisione si riapre solo con una modifica esplicita di questa tabella.
+
+| ID | Decisione | Esito |
 |---|---|---|
-| D-1 | Approvare le deroghe di classe B (§3.2), necessarie per usare Dioxus desktop | Approvare l'elenco chiuso; la CI blocca ogni aggiunta |
-| D-2 | Lettura del DB audio locale (SQLite, pubblico dominio) | (a) `turso` (MIT, riscrittura di SQLite in Rust), da validare nello spike S3; (b) deroga per la libreria SQLite di sistema; (c) rinunciare ad AUD-003 |
-| D-3 | GPL-3.0-only oppure GPL-3.0-or-later | GPL-3.0-only (§3.1) |
-| D-4 | Formato audio predefinito delle carte | AAC in M4A: compatibile con Anki desktop, AnkiDroid e AnkiMobile |
-| D-5 | Pacchetti per la 1.0 (PKGBUILD AUR, Flatpak, AppImage) | PKGBUILD + Flatpak (runtime GNOME, con libmpv e ffmpeg inclusi nel manifest) |
-| D-6 | Nome della cartella e del repository: la cartella attuale si chiama "Amikoto", l'app "Anikoto" | Rinominare la cartella e il repository in `anikoto` |
+| D-1 | Deroghe di classe B (§3.2), necessarie per usare Dioxus desktop | **Approvata**: elenco chiuso; la CI blocca ogni aggiunta |
+| D-2 | Lettura del DB audio locale (SQLite, pubblico dominio) | **Approvata** l'opzione (a): `turso` (MIT, riscrittura di SQLite in Rust), da validare nello spike S3. Se S3 fallisce, la decisione si riapre tra (b) deroga per la libreria SQLite di sistema e (c) rinuncia ad AUD-003 |
+| D-3 | GPL-3.0-only oppure GPL-3.0-or-later | **Approvata**: GPL-3.0-only (§3.1) |
+| D-4 | Formato audio predefinito delle carte | **Approvata**: AAC in M4A, compatibile con Anki desktop, AnkiDroid e AnkiMobile |
+| D-5 | Pacchetti per la 1.0 | **Approvata**: PKGBUILD (AUR) + Flatpak (runtime GNOME, con libmpv e ffmpeg inclusi nel manifest) |
+| D-6 | Nome dell'app, della cartella e del repository | **Approvata**: l'app si chiama **Anikoto**; la cartella locale (oggi "Amikoto") e il repository si rinominano in `anikoto` |
 
 ### 10.2 Rischi
 

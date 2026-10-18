@@ -10,7 +10,7 @@ Anikoto è una riscrittura in Rust, limitata al nucleo video + dizionario + Anki
 
 | Documento | Contenuto |
 |---|---|
-| [docs/SPECIFICHE.md](docs/SPECIFICHE.md) | Scopo, licenze, architettura, requisiti funzionali e non funzionali, decisioni aperte |
+| [docs/SPECIFICHE.md](docs/SPECIFICHE.md) | Scopo, licenze, architettura, requisiti funzionali e non funzionali, decisioni e rischi |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone M0–M8 fino alla 1.0, criteri di uscita, backlog dopo la 1.0 |
 | [docs/TEST.md](docs/TEST.md) | Strategia di test, fixture, conformità con Fushi, catalogo dei casi, CI |
 
