@@ -1,0 +1,2368 @@
+{
+  "provenance_commit": "ac8034e",
+  "conventions": "Each case is one subtitle file (\"input\") parsed as \"format\". expected.cue_count is the exact number of cues; expected.cues lists the checked cues by output \"index\"; a field absent from a cue is not checked. Times are in milliseconds. plain_text never contains tags, {...} override blocks or HTML tags; the lines of a cue are separated by a single \"\\n\" (SRT/VTT line breaks, ASS \\N and \\n); ASS \\h is U+00A0. SRT blocks without an index line are accepted. Cues are sorted by start time (stable); ASS cues by start, then layer, then file order; overlapping cues are kept. spans lists the styled runs a case checks: \"text\" is the exact substring of plain_text the run covers, with the style values checked over it (bold, italic, underline: booleans; color: \"#RRGGBB\"; size: the ASS \\fs value; font: name); an empty list means the cue has no styled runs; no \"spans\" means styling is not checked. anchor is the numpad code 1-9 from ASS \\an or the style Alignment. pos is \\pos divided by PlayResX/PlayResY. play_res is [PlayResX, PlayResY], default [384, 288] when absent. Post-1.0 ASS features (SUB-019) and overrides outside the SUB-003 list are ignored without error and the text is kept; drawing commands (\\p1...) never enter plain_text and a drawing-only event produces no cue. Audiobook-only fields are ignored. \"divergence\" marks an intentional difference from Fushi (fushi_expected is what Fushi expects); \"skip\" marks a case that checks only post-1.0, audiobook-only or non-parsing behaviour (the input and expected of a non-parsing case are placeholders). parseSubtitleMarkup inputs are wrapped into a minimal ASS file (see each case note). A span value of null means the property is not set inline (no colour, no font).",
+  "cases": [
+    {
+      "id": "srt-basic-three-cues",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "正常解析三条字幕",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01,000 --> 00:00:04,230\n吾輩は猫である。\n\n2\n00:00:04,500 --> 00:00:08,100\n名前はまだない。\n\n3\n00:00:08,200 --> 00:00:12,000\nどこで生れたかとんと見当がつかぬ。\n",
+      "expected": {
+        "cue_count": 3,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4230,
+            "plain_text": "吾輩は猫である。"
+          },
+          {
+            "index": 1,
+            "start_ms": 4500,
+            "end_ms": 8100,
+            "plain_text": "名前はまだない。"
+          },
+          {
+            "index": 2,
+            "start_ms": 8200,
+            "end_ms": 12000,
+            "plain_text": "どこで生れたかとんと見当がつかぬ。"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Audiobook-only assertions (sentenceIndex, textFragmentId, chapterHref, bookKey, audioFileIndex) ignored."
+    },
+    {
+      "id": "srt-multiline-text",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "多行文本合并为空格连接",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01,000 --> 00:00:05,000\nこれは一行目。\nこれは二行目。\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 5000,
+            "plain_text": "これは一行目。\nこれは二行目。"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-004",
+        "note": "lines are separated by \\n, Fushi joins them with a space",
+        "fushi_expected": "これは一行目。 これは二行目。"
+      },
+      "skip": false
+    },
+    {
+      "id": "srt-utf8-bom",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "带 UTF-8 BOM 的内容正常解析",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "﻿1\n00:00:01,000 --> 00:00:02,000\nBOM テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "BOM テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "srt-empty-text-block-skipped",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "空文本 block 被跳过",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01,000 --> 00:00:02,000\n正常テキスト\n\n2\n00:00:02,000 --> 00:00:03,000\n\n3\n00:00:03,500 --> 00:00:04,500\nもう一行\n",
+      "expected": {
+        "cue_count": 2,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "正常テキスト"
+          },
+          {
+            "index": 1,
+            "start_ms": 3500,
+            "end_ms": 4500,
+            "plain_text": "もう一行"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Block 2 has an index and a timing line but no text: it produces no cue. sentenceIndex assertions ignored."
+    },
+    {
+      "id": "srt-custom-chapter-href",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "chapterHref 自定义值正确写入",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:00,500 --> 00:00:02,000\nカスタム章節\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 500,
+            "end_ms": 2000,
+            "plain_text": "カスタム章節"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The chapterHref assertion (audiobook-only) is dropped; only the parse result is checked."
+    },
+    {
+      "id": "srt-dot-millisecond-separator",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "时间码点号分隔（HH:MM:SS.mmm）也能解析",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01.500 --> 00:00:03.750\nドット区切りテスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1500,
+            "end_ms": 3750,
+            "plain_text": "ドット区切りテスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "srt-empty-file",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "空文件返回空列表",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "srt-short-millisecond-padding",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "时间码毫秒补齐（1位→100ms，2位→120ms）",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01,1 --> 00:00:02,12\nミリ秒補完テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1100,
+            "end_ms": 2120,
+            "plain_text": "ミリ秒補完テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fractional digits are right-padded to milliseconds: \",1\" = 100 ms, \",12\" = 120 ms."
+    },
+    {
+      "id": "srt-ass-override-leak",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/srt_parser_test.dart",
+        "test": "strips ASS override tags leaked into SRT (BUG-105)",
+        "commit": "ac8034e"
+      },
+      "format": "srt",
+      "input": "1\n00:00:01,000 --> 00:00:04,000\n{\\an8}（カンナ）ふわぁ~\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "（カンナ）ふわぁ~",
+            "anchor": 8
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks only the vertical part of the anchor (top); \\an8 is top-center."
+    },
+    {
+      "id": "vtt-basic-three-cues",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "正常解析三条字幕",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\n1\n00:00:01.000 --> 00:00:04.230\n吾輩は猫である。\n\n2\n00:00:04.500 --> 00:00:08.100\n名前はまだない。\n\n3\n00:00:08.200 --> 00:00:12.000\nどこで生れたかとんと見当がつかぬ。\n",
+      "expected": {
+        "cue_count": 3,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4230,
+            "plain_text": "吾輩は猫である。"
+          },
+          {
+            "index": 1,
+            "start_ms": 4500,
+            "end_ms": 8100,
+            "plain_text": "名前はまだない。"
+          },
+          {
+            "index": 2,
+            "start_ms": 8200,
+            "end_ms": 12000,
+            "plain_text": "どこで生れたかとんと見当がつかぬ。"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Audiobook-only assertions (textFragmentId, chapterHref) ignored."
+    },
+    {
+      "id": "vtt-timestamp-without-hours",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "无小时时间码（MM:SS.mmm）正常解析",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\n01:30.500 --> 02:15.000\n短尺度タイムコード\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 90500,
+            "end_ms": 135000,
+            "plain_text": "短尺度タイムコード"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "vtt-cue-settings-ignored",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "时间行后位置指令被忽略",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\n00:00:01.000 --> 00:00:04.000 align:left position:20%\n位置指令テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "位置指令テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi drops the cue settings (align:left position:20%) and the test checks only that timing is unaffected. Nikomiru keeps them in the markup (SUB-002); Fushi asserts no anchor/pos, so none is checked here."
+    },
+    {
+      "id": "vtt-note-and-style-blocks-skipped",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "NOTE、STYLE 块被跳过",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\nNOTE これはコメント\n\nSTYLE\n::cue { color: white; }\n\n00:00:01.000 --> 00:00:03.000\n本文\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "本文"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "vtt-inline-tags-stripped",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "VTT 行内标签被剥离",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<b>太字</b>と<i>斜体</i>と<c.color>カラー</c.color>\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "太字と斜体とカラー"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Only plain_text is checked. Fushi strips <b>/<i>/<c> before markup parsing, so it produces no spans; styling is not asserted."
+    },
+    {
+      "id": "vtt-utf8-bom",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "带 UTF-8 BOM 的内容正常解析",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "﻿WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nBOM テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "BOM テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "vtt-header-only",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "空文件返回空列表",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "vtt-default-chapter-constant",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "defaultChapter 与 SrtParser 共用同一值",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-004",
+        "note": "Checks that VttParser.defaultChapter equals SrtParser.defaultChapter, an audiobook-only constant; Nikomiru cues have no chapter."
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "vtt-ass-override-leak",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/vtt_parser_test.dart",
+        "test": "strips ASS override tags leaked into VTT (BUG-105)",
+        "commit": "ac8034e"
+      },
+      "format": "vtt",
+      "input": "WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n{\\i1}hello{\\i0}\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "hello",
+            "spans": [
+              {
+                "text": "hello",
+                "italic": true
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi asserts exactly one span (italic) over the whole text."
+    },
+    {
+      "id": "ass-basic-three-cues",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "正常解析三条字幕",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.23,Default,,0,0,0,,吾輩は猫である。\nDialogue: 0,0:00:04.50,0:00:08.10,Default,,0,0,0,,名前はまだない。\nDialogue: 0,0:00:08.20,0:00:12.00,Default,,0,0,0,,どこで生れたかとんと見当がつかぬ。\n",
+      "expected": {
+        "cue_count": 3,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4230,
+            "plain_text": "吾輩は猫である。"
+          },
+          {
+            "index": 1,
+            "start_ms": 4500,
+            "end_ms": 8100,
+            "plain_text": "名前はまだない。"
+          },
+          {
+            "index": 2,
+            "start_ms": 8200,
+            "end_ms": 12000,
+            "plain_text": "どこで生れたかとんと見当がつかぬ。"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Audiobook-only assertions (textFragmentId, chapterHref) ignored."
+    },
+    {
+      "id": "ass-override-tags-stripped",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "ASS 覆盖标签被剥离",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\an8}{\\b1}強調テキスト{\\b0}\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "強調テキスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Only plain_text is checked (the anchor and bold run are not asserted by Fushi)."
+    },
+    {
+      "id": "ass-hard-line-break",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "软换行符 \\N 转为空格",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,一行目\\N二行目\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "一行目\n二行目"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-004",
+        "note": "ASS \\N separates lines with \\n; Fushi replaces \\N with a space in plainText (the break position is kept separately in lineBreakGraphemes for drawing)",
+        "fushi_expected": "一行目 二行目"
+      },
+      "skip": false
+    },
+    {
+      "id": "ass-text-with-comma",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "Text 列中含逗号的内容正确拼合",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,はい、そうです。\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "はい、そうです。"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The text contains the ideographic comma U+3001, not an ASCII comma, so this case does not exercise re-joining of ASCII commas in the Text field."
+    },
+    {
+      "id": "ass-sorted-by-start",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "按 startMs 排序（Dialogue 顺序不影响结果）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:05.00,0:00:07.00,Default,,0,0,0,,後の行\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,前の行\n",
+      "expected": {
+        "cue_count": 2,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "前の行"
+          },
+          {
+            "index": 1,
+            "start_ms": 5000,
+            "end_ms": 7000,
+            "plain_text": "後の行"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-centisecond-timestamp",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "时间码厘秒精度正确（.67 → 670ms）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.67,0:00:03.00,Default,,0,0,0,,厘秒テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1670,
+            "end_ms": 3000,
+            "plain_text": "厘秒テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-millisecond-timestamp",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "时间码 3 位毫秒精度正确（.000 → 0ms，外挂 .ass，TODO-870）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.000,0:00:04.500,Default,,0,0,0,,毫秒テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4500,
+            "plain_text": "毫秒テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-decisecond-timestamp",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "时间码 1 位十分之一秒精度正确（.1 → 100ms，TODO-870）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.1,0:00:03.0,Default,,0,0,0,,十分の一秒テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1100,
+            "end_ms": 3000,
+            "plain_text": "十分の一秒テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-utf8-bom",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "带 UTF-8 BOM 的内容正常解析",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "﻿[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,BOM テスト\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "BOM テスト"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-no-events-section",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "空文件（无 Events 段）返回空列表",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Empty\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-default-chapter-constant",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "defaultChapter 与 SrtParser 共用同一值",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-004",
+        "note": "Checks that AssParser.defaultChapter equals SrtParser.defaultChapter, an audiobook-only constant; Nikomiru cues have no chapter."
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "ass-playres-pos-normalized",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "reads PlayRes and normalizes \\pos; fills markup (BUG-105)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nPlayResX: 1920\nPlayResY: 1080\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,{\\pos(960,540)}やあ\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "やあ",
+            "pos": [
+              0.5,
+              0.5
+            ],
+            "play_res": [
+              1920,
+              1080
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "\\pos(960,540) / PlayRes 1920x1080; Fushi compares pos with a tolerance of 1e-9. The Dialogue references a style that is not defined (no [V4+ Styles] section)."
+    },
+    {
+      "id": "ass-playres-y-only",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "markup carries PlayResY for ASS font/shadow scaling (TODO-1246)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nPlayResY: 1080\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "x",
+            "play_res": [
+              1440,
+              1080
+            ]
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "a missing PlayResX is derived from PlayResY at 4:3, as libass does; Fushi defaults it to 384 on its own",
+        "fushi_expected": "play_res [384, 1080]"
+      },
+      "skip": false,
+      "note": "Fushi checks only PlayResY = 1080. PlayResX is absent: the 384 default is applied to it on its own (as Fushi does); libass would derive 1440 (= 1080 * 4/3) instead."
+    },
+    {
+      "id": "ass-playres-default",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "markup PlayResY falls back to ASS 288 default when absent (TODO-1246)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "x",
+            "play_res": [
+              384,
+              288
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "No [Script Info] section. Fushi checks only PlayResY = 288."
+    },
+    {
+      "id": "ass-an8-anchor",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "strips {\\an8} override into plain text + anchor (BUG-105)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,{\\an8}（カンナ）ふわぁ~\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "（カンナ）ふわぁ~",
+            "anchor": 8
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ass-style-row-alignment",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "Style font/color/outline/shadow/alignment parsed into cueStyle",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Yu Mincho,40,&H0000FFFF,&H000000FF,&H00FF0000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,10,10,20,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,konnichiwa\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "konnichiwa",
+            "anchor": 8
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks markup.cueStyle, the [V4+ Styles] row of the cue: font \"Yu Mincho\", size 40, primary colour #FFFF00, outline colour #0000FF, outline width 3, shadow depth 2, bold true (Bold=-1), Alignment 8 (top-center), MarginV 20, and that markup.anchor falls back to the style Alignment. The conventions have no field for the style table (these are not inline runs), so only the anchor 8 is kept; the other style assertions are dropped."
+    },
+    {
+      "id": "ass-no-styles-section",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "no [V4+ Styles] section -> cueStyle null (backward compatible)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,soko\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "soko"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi asserts markup.cueStyle is null (no [V4+ Styles] section, the Dialogue references an undefined style \"Default\"); not expressible in the conventions, dropped."
+    },
+    {
+      "id": "ass-inline-an-overrides-style-alignment",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_parser_test.dart",
+        "test": "inline \\an overrides cueStyle Alignment",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nTitle: Test\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Yu Mincho,40,&H0000FFFF,&H000000FF,&H00FF0000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,10,10,20,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\an2}shita\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "plain_text": "shita",
+            "anchor": 2
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Style Alignment is 8; the inline \\an2 wins. Fushi checks only the vertical part (bottom)."
+    },
+    {
+      "id": "markup-an8-anchor",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "strips {\\an8} and decodes top-center anchor",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an8}（カンナ）ふわぁ~\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "（カンナ）ふわぁ~",
+            "anchor": 8,
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-italic-span",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "italic span over correct grapheme range",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\i1}x{\\i0}y\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "xy",
+            "spans": [
+              {
+                "text": "x",
+                "italic": true
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Fushi asserts exactly one span, over \"x\" (graphemes 0..1); \"y\" after {\\i0} is not italic."
+    },
+    {
+      "id": "markup-playres-y-passthrough",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "playResY passthrough for ASS font/shadow scaling (TODO-1246)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,X\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "X",
+            "play_res": [
+              1440,
+              1080
+            ]
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "a missing PlayResX is derived from PlayResY at 4:3, as libass does; Fushi defaults it to 384 on its own",
+        "fushi_expected": "play_res [384, 1080]"
+      },
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes Y 1080 only). Only the first assertion (playResY: 1080 is carried) is kept; PlayResX is absent and defaults to 384 on its own (see ass-playres-y-only). The second assertion (no playResY passed to the bare markup parser gives null) has no file equivalent: an ASS file without PlayRes gets 384x288 (ass-playres-default)."
+    },
+    {
+      "id": "markup-bold-underline-color-size",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "bold+underline combined, color BGR->ARGB, font size",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\b1\\u1\\c&H0000FF&\\fs30}ab\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "ab",
+            "spans": [
+              {
+                "text": "ab",
+                "bold": true,
+                "underline": true,
+                "color": "#FF0000",
+                "size": 30
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). &H0000FF& is BGR, i.e. red. Fushi asserts exactly one span."
+    },
+    {
+      "id": "markup-line-break-and-hard-space",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\N and \\h become spaces; trims edges",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,a\\Nb\\hc\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "a\nb c",
+            "anchor": 2
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-004",
+        "note": "ASS \\N separates lines with \\n and ASS \\h is a non-breaking space U+00A0; Fushi turns both into a plain space (the \\N position is kept separately in lineBreakGraphemes for drawing)",
+        "fushi_expected": "a b c"
+      },
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Fushi also asserts a null anchor on the bare markup (no style); in the wrapped file the Default style's Alignment 2 applies."
+    },
+    {
+      "id": "markup-pos-normalized",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\pos normalized by playRes",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\pos(960,540)}hi\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "hi",
+            "pos": [
+              0.5,
+              0.5
+            ],
+            "play_res": [
+              1920,
+              1080
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes 1920x1080). Fushi compares pos with a tolerance of 1e-9."
+    },
+    {
+      "id": "markup-karaoke-and-trailing-drawing",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "karaoke syllables become spans; drawing tag drops with no style",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\k50}あ{\\t(0,500,\\fscx120)}い{\\p1}\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "あい"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped post-1.0 assertions (SUB-019): karaoke spans (kMode \"k\", kStartCs 0, kDurCs 50) and posFraction null. \\k and \\t(...) are ignored; the trailing {\\p1} has no drawing body."
+    },
+    {
+      "id": "markup-drawing-only-event",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\p1 drawing-mode body outside tag block is discarded",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an7\\pos(461.719,678.906)\\p1\\c&H7056F8&}m 0 0 l 8.475 0 l 0 16.0596{\\p0}\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Fushi asserts an empty plainText with no spans; the event has only a drawing, so the file produces no cue (Fushi's AssParser drops it too unless includeDrawings is set)."
+    },
+    {
+      "id": "markup-drawing-then-text",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\p0 ends drawing mode; later real text still renders",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p1}m 0 0 l 8.475 0{\\p0}本当のセリフ\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "本当のセリフ"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). \\p0 ends drawing mode; the drawing body contributes no text."
+    },
+    {
+      "id": "markup-drawing-without-p0",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "drawing mode persists to end of cue when no \\p0",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p1}m 0 0 l 100 0 b 1 2 3 4 5 6\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Drawing mode lasts to the end of the event; with only drawing commands the event produces no cue (Fushi asserts an empty plainText)."
+    },
+    {
+      "id": "markup-plain-dialogue-unchanged",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "plain dialogue without p is byte-for-byte unchanged",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,吾輩は猫である。\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "吾輩は猫である。",
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-plain-text-no-tags",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "plain text with no tags: empty spans, null anchor",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,こんにちは\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "こんにちは",
+            "anchor": 2,
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Fushi asserts a null anchor and a null pos on the bare markup (no style); in the wrapped file the Default style's Alignment 2 applies, and pos is not checked."
+    },
+    {
+      "id": "markup-fn-font-name",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\fn font name preserved on span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fnYu Mincho}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x",
+            "spans": [
+              {
+                "text": "x",
+                "font": "Yu Mincho"
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-3c-outline-color",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\3c outline color BGR->ARGB on span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\3c&HFF0000&}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Checks only the \\3c outline colour (#0000FF), which is not among the 1.0 overrides of SUB-003 (other overrides are ignored without error) and the conventions have no field for it; the test checks nothing else"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-4c-shadow-color",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\4c shadow color BGR->ARGB on span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\4c&H00FF00&}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Checks only the \\4c shadow colour (#00FF00), which is not among the 1.0 overrides of SUB-003 (other overrides are ignored without error) and the conventions have no field for it; the test checks nothing else"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-bord-shad",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\bord outline width and \\shad shadow depth on span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\bord4\\shad2}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Checks only \\bord4 (outline width) and \\shad2 (shadow depth); \\bord and \\shad are not among the 1.0 overrides of SUB-003 (ignored without error) and the conventions have no field for them"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-fn-3c-bord-combined",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "combined \\fn \\3c \\bord in one block",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fnArial\\3c&H0000FF&\\bord3}ab\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "ab",
+            "spans": [
+              {
+                "text": "ab",
+                "font": "Arial"
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertions: outline colour #FF0000 (\\3c) and outline width 3 (\\bord), not among the 1.0 overrides of SUB-003."
+    },
+    {
+      "id": "markup-plain-text-no-span-fields",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "plain text with no ASS tags keeps span fields null",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,hello\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "hello",
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). The cueStyle-null assertion is dropped: the wrapped file defines a Default style."
+    },
+    {
+      "id": "markup-reset-clears-color",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\r reverts inline colour so the reset region is not coloured",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\c&H0000FF&}akai{\\r}shiro\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "akaishiro",
+            "spans": [
+              {
+                "text": "akai",
+                "color": "#FF0000"
+              },
+              {
+                "text": "shiro",
+                "color": null
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). \\r resets the inline overrides (SUB-003). \"color\": null means no inline colour."
+    },
+    {
+      "id": "markup-reset-clears-bold-outline-font",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\r clears outline / bold / font overrides too",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\b1\\3c&H0000FF&\\fnArial\\bord5}A{\\r}B\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "AB",
+            "spans": [
+              {
+                "text": "A",
+                "bold": true,
+                "font": "Arial"
+              },
+              {
+                "text": "B",
+                "bold": false,
+                "font": null
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). \\r resets the inline overrides (SUB-003). Dropped: the outline colour (\\3c) and width (\\bord), not part of the 1.0 overrides."
+    },
+    {
+      "id": "markup-reset-with-style-name",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\r<StyleName> is treated as a reset (baseline approximation)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\c&H0000FF&}X{\\rDefault}Y\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "XY",
+            "spans": [
+              {
+                "text": "X",
+                "color": "#FF0000"
+              },
+              {
+                "text": "Y",
+                "color": null
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). \\rDefault resets the inline overrides (SUB-003)."
+    },
+    {
+      "id": "markup-reset-clears-blur",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\r clears \\blur too (reset region has no glow)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur5}A{\\r}B\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "AB"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertion: \"B\", after {\\r}, has no \\blur (\\blur and \\r are not among the 1.0 overrides of SUB-003)."
+    },
+    {
+      "id": "markup-blur-strength",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\blur strength on span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur5}まったく\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "まったく"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertion: blur 5 on the single span (\\blur and \\be are not among the 1.0 overrides of SUB-003)."
+    },
+    {
+      "id": "markup-blur-decimal",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\blur decimal strength",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur2.5}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Checks only the blur strength 2.5; \\blur and \\be are not among the 1.0 overrides of SUB-003 (ignored without error) and the conventions have no field for it"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-be-edge-blur",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\be edge-blur maps to the same blur field",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\be3}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Checks only that \\be3 maps to blur 3; \\blur and \\be are not among the 1.0 overrides of SUB-003 (ignored without error) and the conventions have no field for it"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-blur-zero",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\blur0 = no glow -> no style span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur0}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x",
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). \\blur0 produces no styled run (in Nikomiru \\blur is ignored altogether, SUB-003)."
+    },
+    {
+      "id": "markup-blur-with-color",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\blur combines with inline colour on same span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur5\\c&H0000FF&}あ\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "あ",
+            "spans": [
+              {
+                "text": "あ",
+                "color": "#FF0000"
+              }
+            ]
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertion: blur 5 on the same span (\\blur and \\be are not among the 1.0 overrides of SUB-003). Fushi asserts exactly one span."
+    },
+    {
+      "id": "markup-blur-span-scoped",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\blur is span-scoped; \\blur0 turns it off for later text",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\blur4}A{\\blur0}B\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "AB"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertions: blur 4 on \"A\" and none on \"B\" (\\blur and \\be are not among the 1.0 overrides of SUB-003)."
+    },
+    {
+      "id": "markup-plain-text-no-blur",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "plain text has no blur",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,hi\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "hi",
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-fad-simple",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\fad(t1,t2) parsed as simple fade, produces no span",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fad(160,160)}うた\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "うた",
+            "spans": []
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertions: fade in 160 ms / out 160 ms (\\fad/\\fade are post-1.0 (SUB-019)); the tag produces no span."
+    },
+    {
+      "id": "markup-fad-with-an7-and-blur",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\fad coexists with \\an and \\blur (real ED line shape)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fad(160,160)\\an7\\blur4}瞬き二つ\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "瞬き二つ",
+            "anchor": 7
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Dropped assertions: fade in 160 ms (\\fad/\\fade are post-1.0 (SUB-019)) and blur 4 on the single span (\\blur is not among the 1.0 overrides of SUB-003). \\an7 is top-left."
+    },
+    {
+      "id": "markup-fade-full-envelope",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "\\fade(a1,a2,a3,t1,t2,t3,t4) parsed as full envelope",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fade(255,0,255,0,300,2700,3000)}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Checks only the opacity envelope of \\fade(255,0,255,0,300,2700,3000) at several times; \\fade is post-1.0 and ignored"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00)."
+    },
+    {
+      "id": "markup-no-fade-tag",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "no fade tag -> markup.fade is null",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,こんにちは\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "こんにちは"
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Checks only that markup.fade is null for inputs without \\fad; Nikomiru 1.0 has no fade model"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). The test also checks the bare markup \"{\\an8}x\"; only the first input is used."
+    },
+    {
+      "id": "markup-malformed-fad-empty-args",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "malformed fad forms are ignored (no crash, no fade)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fad()}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Input 1 of 3 of the Fushi test. Fushi asserts markup.fade is null (no fade model in 1.0, SUB-019); kept as a robustness case: the malformed override is ignored without error and the text is kept."
+    },
+    {
+      "id": "markup-malformed-fad-one-arg",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "malformed fad forms are ignored (no crash, no fade)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fad(160)}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Input 2 of 3 of the Fushi test. Fushi asserts markup.fade is null (no fade model in 1.0, SUB-019); kept as a robustness case: the malformed override is ignored without error and the text is kept."
+    },
+    {
+      "id": "markup-malformed-fade-three-args",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "malformed fad forms are ignored (no crash, no fade)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\fade(1,2,3)}x\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "x"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Input 3 of 3 of the Fushi test. Fushi asserts markup.fade is null (no fade model in 1.0, SUB-019); kept as a robustness case: the malformed override is ignored without error and the text is kept."
+    },
+    {
+      "id": "markup-fade-opacity-simple",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "simple fad ramps 0->1 in, plateau, 1->0 out",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Pure helper test (SubtitleFade.simple(160,160).opacityAt ramps); fades are post-1.0 and no file is parsed"
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "markup-fade-opacity-clamp",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "clamps out-of-range elapsed to endpoints",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Pure helper test (SubtitleFade.opacityAt clamping outside the cue); fades are post-1.0 and no file is parsed"
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "markup-fade-opacity-zero",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "zero fade-in/out is a hard cut (no divide-by-zero)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Pure helper test (SubtitleFade.simple(0,0) is a hard cut); fades are post-1.0 and no file is parsed"
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "markup-fade-opacity-short-cue",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/subtitle_markup_test.dart",
+        "test": "overlapping fade-in/out on a short cue stays monotonic (no reorder)",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Pure helper test (SubtitleFade.simple(160,160) on a 200 ms cue stays monotonic); fades are post-1.0 and no file is parsed"
+      },
+      "skip": true,
+      "note": "Not a parsing test: input and expected are placeholders."
+    },
+    {
+      "id": "drawing-mask-geometry",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "绘图命令 → 归一化路径 + 包围盒；正文不进 plainText",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an7\\pos(100,50)\\1c&HFFFFFF&\\p1}m 0 0 l 200 0 200 100 0 100{\\p0}\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes 1280x720). Fushi asserts an empty plainText; the event has only a drawing, so it produces no cue. Dropped post-1.0 assertions (SUB-019): path segments, bounding box, drawing fill colour #FFFFFF and posFraction x = 100/1280."
+    },
+    {
+      "id": "drawing-p2-scale-and-pbo",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "\\p2 坐标除以 2^(n-1)；\\pbo 记为基线偏移",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p2\\pbo10}m 0 0 l 400 0 400 200 0 200\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Checks only drawing geometry (\\p2 scale, bounding box, \\pbo baseline offset); drawing geometry is post-1.0"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes 1280x720). Drawing-only event: no cue."
+    },
+    {
+      "id": "drawing-bezier-bounding-box",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "贝塞尔 b 命令进包围盒；包围盒偏离原点时 min 不为 0",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p1}m 100 100 b 150 50 250 50 300 100 l 300 200 100 200\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Checks only the bounding box of a drawing with a Bezier command; drawing geometry is post-1.0"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes 1280x720). Drawing-only event: no cue."
+    },
+    {
+      "id": "drawing-then-text",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "绘图后接文字：文字照常成 plainText，绘图也保留",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p1}m 0 0 l 10 0 10 10{\\p0}あ\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 2000,
+            "plain_text": "あ"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00, PlayRes 1280x720). Dropped assertion: markup.drawing is not null (drawing geometry is post-1.0, SUB-019)."
+    },
+    {
+      "id": "drawing-null-cases",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "无 PlayRes（srt/vtt）或空命令串 → drawing 为 null",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\p1}m 0 0 l 1 1\n",
+      "expected": {
+        "cue_count": 0,
+        "cues": []
+      },
+      "divergence": {
+        "requirement": "SUB-019",
+        "note": "Checks only that markup.drawing is null (no PlayRes, empty drawing, first command not \"m\"); drawing geometry is post-1.0"
+      },
+      "skip": true,
+      "note": "parseSubtitleMarkup input wrapped into a minimal ASS file (Default style, one Dialogue 0:00:01.00-0:00:02.00). Only the first of the three inputs is used; the others are \"{\\p1}{\\p0}あ\" and \"{\\p1}l 0 0 1 1\" with PlayRes 100x100."
+    },
+    {
+      "id": "drawing-event-excluded",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "默认不产出无正文的绘图事件（字幕列表 / 制卡 / 落库不见空行）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\nStyle: Sign,Arial,40,&H00000000,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.00,Sign,,0,0,0,,{\\an7\\pos(100,50)\\1c&HFFFFFF&\\p1}m 0 0 l 200 0 200 100 0 100{\\p0}\nDialogue: 1,0:00:01.00,0:00:04.00,Default,,0,0,0,,That is why.\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "That is why."
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The Sign event (layer 0) has only a drawing and produces no cue."
+    },
+    {
+      "id": "drawing-include-drawings-render-only",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "includeDrawings:true 产出绘图 cue：text 空、isRenderOnly、markup.drawing 非空",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\nStyle: Sign,Arial,40,&H00000000,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.00,Sign,,0,0,0,,{\\an7\\pos(100,50)\\1c&HFFFFFF&\\p1}m 0 0 l 200 0 200 100 0 100{\\p0}\nDialogue: 1,0:00:01.00,0:00:04.00,Default,,0,0,0,,That is why.\n",
+      "expected": {
+        "cue_count": 1,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "That is why."
+          }
+        ]
+      },
+      "divergence": {
+        "requirement": "SUB-003",
+        "note": "Nikomiru never produces render-only drawing cues; the test only makes sense with includeDrawings: true",
+        "fushi_expected": "2 cues with includeDrawings: true: a render-only drawing cue (empty text, isRenderOnly, markup.drawing set, layer 0) and \"That is why.\" (not render-only)"
+      },
+      "skip": true
+    },
+    {
+      "id": "drawing-stable-order-equal-start",
+      "provenance": {
+        "file": "fushi/test/media/audiobook/ass_drawing_parse_test.dart",
+        "test": "同一起始时间按文件序稳定排序（z 序依赖它，BUG-2539）",
+        "commit": "ac8034e"
+      },
+      "format": "ass",
+      "input": "[Script Info]\nPlayResX: 1280\nPlayResY: 720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\nStyle: Sign,Arial,40,&H00000000,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L0\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L1\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L2\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L3\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L4\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L5\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L6\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L7\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L8\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L9\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L10\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L11\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L12\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L13\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L14\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L15\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L16\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L17\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L18\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L19\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L20\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L21\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L22\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L23\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L24\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L25\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L26\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L27\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L28\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L29\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L30\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L31\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L32\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L33\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L34\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L35\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L36\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L37\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L38\nDialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,L39\n",
+      "expected": {
+        "cue_count": 40,
+        "cues": [
+          {
+            "index": 0,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L0"
+          },
+          {
+            "index": 1,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L1"
+          },
+          {
+            "index": 2,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L2"
+          },
+          {
+            "index": 3,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L3"
+          },
+          {
+            "index": 4,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L4"
+          },
+          {
+            "index": 5,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L5"
+          },
+          {
+            "index": 6,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L6"
+          },
+          {
+            "index": 7,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L7"
+          },
+          {
+            "index": 8,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L8"
+          },
+          {
+            "index": 9,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L9"
+          },
+          {
+            "index": 10,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L10"
+          },
+          {
+            "index": 11,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L11"
+          },
+          {
+            "index": 12,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L12"
+          },
+          {
+            "index": 13,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L13"
+          },
+          {
+            "index": 14,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L14"
+          },
+          {
+            "index": 15,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L15"
+          },
+          {
+            "index": 16,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L16"
+          },
+          {
+            "index": 17,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L17"
+          },
+          {
+            "index": 18,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L18"
+          },
+          {
+            "index": 19,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L19"
+          },
+          {
+            "index": 20,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L20"
+          },
+          {
+            "index": 21,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L21"
+          },
+          {
+            "index": 22,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L22"
+          },
+          {
+            "index": 23,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L23"
+          },
+          {
+            "index": 24,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L24"
+          },
+          {
+            "index": 25,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L25"
+          },
+          {
+            "index": 26,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L26"
+          },
+          {
+            "index": 27,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L27"
+          },
+          {
+            "index": 28,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L28"
+          },
+          {
+            "index": 29,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L29"
+          },
+          {
+            "index": 30,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L30"
+          },
+          {
+            "index": 31,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L31"
+          },
+          {
+            "index": 32,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L32"
+          },
+          {
+            "index": 33,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L33"
+          },
+          {
+            "index": 34,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L34"
+          },
+          {
+            "index": 35,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L35"
+          },
+          {
+            "index": 36,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L36"
+          },
+          {
+            "index": 37,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L37"
+          },
+          {
+            "index": 38,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L38"
+          },
+          {
+            "index": 39,
+            "start_ms": 1000,
+            "end_ms": 4000,
+            "plain_text": "L39"
+          }
+        ]
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "40 events with the same start and layer keep the file order. The sentenceIndex assertion is ignored."
+    }
+  ]
+}

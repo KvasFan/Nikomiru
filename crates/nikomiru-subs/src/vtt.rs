@@ -90,7 +90,7 @@ pub fn parse(text: &str) -> Track {
             if n > 0 {
                 b.newline();
             }
-            push_html_line(line.trim(), &mut b, &mut styles, &mut ruby, &mut rt, false);
+            push_html_line(line.trim(), &mut b, &mut styles, &mut ruby, &mut rt);
         }
         let (plain_text, mut markup) = b.finish(|p| p);
         if plain_text.is_empty() || end_ms < start_ms {

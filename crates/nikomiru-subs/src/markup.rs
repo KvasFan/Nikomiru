@@ -389,15 +389,15 @@ pub(crate) fn decode_entities(text: &str) -> String {
     out
 }
 
-/// One line of SRT or WebVTT text: HTML-like tags, entities and, for SRT, ASS
-/// override blocks. `styles` is the stack of the open tags, kept across lines.
+/// One line of SRT or WebVTT text: HTML-like tags, entities, and the ASS override
+/// blocks and escapes that files converted from ASS carry (BUG-105). `styles`
+/// is the stack of the open tags, kept across lines.
 pub(crate) fn push_html_line(
     line: &str,
     b: &mut TextBuilder,
     styles: &mut Vec<RunStyle>,
     ruby_start: &mut Option<usize>,
     in_rt: &mut Option<String>,
-    ass_blocks: bool,
 ) {
     let mut rest = line;
     while !rest.is_empty() {
@@ -417,11 +417,8 @@ pub(crate) fn push_html_line(
         let text = decode_entities(&rest[..next]);
         if let Some(reading) = in_rt.as_mut() {
             reading.push_str(&text);
-        } else if ass_blocks {
-            // SRT files converted from ASS carry `{\an8}` and `\N`
-            push_ass_text(&text, b, false);
         } else {
-            b.push(&text);
+            push_ass_text(&text, b, false);
         }
         rest = &rest[next..];
     }
@@ -539,7 +536,6 @@ mod tests {
             &mut styles,
             &mut ruby,
             &mut rt,
-            true,
         );
         let (text, m) = b.finish(|p| p);
         assert_eq!(text, "斜体 & 緑 漢");

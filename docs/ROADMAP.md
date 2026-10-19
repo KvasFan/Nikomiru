@@ -306,7 +306,7 @@ Every item requires a change to SPECIFICATION.md before work starts.
 | Automatic furigana on subtitles (LKP-051), highlighting of already mined words | Uses LKP-060 and `mined_cards` |
 | Lookup from the clipboard and WebSocket texthooker (visual novels with external Textractor/LunaTranslator) | `tokio-tungstenite` (MIT) |
 | MDict, StarDict, DSL import (DIC-004) | `ammonia` (MIT/Apache) for the HTML |
-| EPUB reader (with the ttu sync format) and audiobooks | Large; to be re-evaluated as a separate project |
+| Books (EPUB, with the ttu sync format), manga, audiobooks and online resources | Planned after 1.0 (D-12). Each is as large as the MVP; they reuse the text, dictionary and Anki crates, which know nothing about video |
 | Built-in SRS | `fsrs` is BSD-3-Clause: either an exception, or our own GPL implementation of FSRS from the published algorithm |
 | Backup/restore and WebDAV sync | |
 | Jellyfin and Plex browsing | |

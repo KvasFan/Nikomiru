@@ -57,7 +57,7 @@ pub fn parse(text: &str) -> Track {
                 b.newline();
             }
             first = false;
-            push_html_line(line, &mut b, &mut styles, &mut ruby, &mut rt, true);
+            push_html_line(line, &mut b, &mut styles, &mut ruby, &mut rt);
             i += 1;
         }
         // `\pos` in SRT uses the ASS default play area

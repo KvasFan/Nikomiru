@@ -2,7 +2,7 @@
 
 Video player for **learning languages by watching anime and TV series**. You click a word in the subtitles, look it up in your Yomitan dictionaries and create an Anki card with the sentence, a screenshot and the audio of the line.
 
-Nikomiru is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0), limited to the video + dictionary + Anki core. The interface is [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt); playback is [mpv](https://mpv.io/) through [libmpv2](https://crates.io/crates/libmpv2), rendered on Qt Quick's render thread ([ADR 0003](docs/adr/0003-qt-quick-ui.md)).
+Nikomiru is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0). It starts from the video + dictionary + Anki core: until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after. The interface is [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt); playback is [mpv](https://mpv.io/) through [libmpv2](https://crates.io/crates/libmpv2), rendered on Qt Quick's render thread ([ADR 0003](docs/adr/0003-qt-quick-ui.md)).
 
 > **Status: 0.0.0, a development snapshot.** M0 (foundations and spikes) is done; M1 (minimal player) has its automated exit criteria met and waits for the manual checklist. Subtitles, dictionaries and Anki come in M2–M4. See [ROADMAP](docs/ROADMAP.md#m1--minimal-player).
 >

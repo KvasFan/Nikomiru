@@ -24,11 +24,13 @@
 
 Nikomiru is a desktop video player for **learning languages by watching anime and series** (*immersion learning*). While you watch, you can click a word in the subtitles: Nikomiru looks it up in the dictionaries you imported (Yomitan format) and, with one click, creates an Anki card with the word, the sentence, a screenshot and the audio of the line.
 
-Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Nikomiru takes its "video + dictionary + Anki" core and reimplements it with:
+Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Nikomiru starts from its "video + dictionary + Anki" core and reimplements it with:
 
 - **UI**: [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt);
 - **playback**: libmpv through [libmpv2](https://crates.io/crates/libmpv2) 6.0 (core, commands, events), plus a small C++ Qt Quick video item that renders with the libmpv render API on Qt Quick's render thread;
 - **licenses**: only GNU (GPL/LGPL), Apache-2.0 and MIT, with the unavoidable exceptions documented in §3.
+
+**Direction (D-12).** Until 1.0 the focus is video with clickable subtitles: a click on a word, in the overlay or in the subtitle list, shows its dictionary explanation, and a second click makes the Anki card. After 1.0 Nikomiru will grow to books (EPUB), manga and online resources. That is why lookup, dictionaries and mining live in crates that know nothing about video (`nikomiru-text`, `nikomiru-dict`, `nikomiru-anki`, §5.1): a book or a manga page must be able to reuse them as they are.
 
 ### 1.2 Goals
 
@@ -43,7 +45,7 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 
 | Fushi feature | Decision | Reason |
 |---|---|---|
-| EPUB reader, manga + OCR, PDF, audiobooks (Sasayaki) | post-1.0, to be reassessed | Not video; each one is as large as the whole MVP |
+| EPUB reader, manga + OCR, PDF, audiobooks (Sasayaki), online resources | **planned after 1.0** (D-12) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
 | Text and voice hooks for galgames (Windows) | excluded | Windows only; depends on LunaHook and MinHook |
 | Torrent, Mihon/Aniyomi extensions, LNReader, download center | excluded | Out of scope; Kotlin/APK runtime |
 | AI/LLM, ASR (subtitle generation), TTS, ONNX models | excluded | Some models have CC BY-NC licenses; huge size |
@@ -451,8 +453,8 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 |---|---|---|
 | SUB-001 | **SRT** parser: BOM, CRLF/LF, missing or out-of-order indices, `{...}` removed (BUG-105), `<i> <b> <u> <font color>` tags converted to markup, timestamps with `,` or `.` | `srt_parser.dart` |
 | SUB-002 | **WebVTT** parser: header, cue settings (`line`, `position`, `align`), `<c>`, `<v>`, `<ruby>`, `<rt>` tags, cues with an identifier, `NOTE` and `STYLE` blocks ignored | `vtt_parser.dart` |
-| SUB-003 | **ASS/SSA** parser (basic for 1.0): `[Script Info]` (PlayResX/Y, default 384×288), `[V4+ Styles]`, `[Events]` (Dialogue with Layer, Start, End, Style, Text), overrides `\N \n \h \an1-9 \pos \b \i \u \s \c \1c \fs \fn`. Other overrides are ignored without error. Lines with `\p1` drawings are excluded from the clickable text | `ass_parser.dart`, `subtitle_markup.dart` |
-| SUB-004 | Every cue has `start_ms`, `end_ms`, `plain_text` (used for lookup, mining and counts) and a separate `markup`, used only for drawing | |
+| SUB-003 | **ASS/SSA** parser (basic for 1.0): `[Script Info]` (PlayResX/Y, default 384×288), `[V4+ Styles]`, `[Events]` (Dialogue with Layer, Start, End, Style, Text), overrides `\N \n \h \an1-9 \pos \b \i \u \s \c \1c \fs \fn \r` (`\n` is a line break only with `WrapStyle: 2`, a space otherwise, as in libass; a missing PlayResX or PlayResY is derived from the other at 4:3, as in libass). Other overrides are ignored without error. Lines with `\p1` drawings are excluded from the clickable text | `ass_parser.dart`, `subtitle_markup.dart` |
+| SUB-004 | Every cue has `start_ms`, `end_ms`, `plain_text` (used for lookup, mining and counts) and a separate `markup`, used only for drawing. In `plain_text` the lines of a cue are separated by `\n` (Fushi joins them with a space and keeps the break positions apart): lookup treats `\n` as a boundary, and mining (M4) joins the lines as the note type needs | |
 | SUB-005 | Encoding: UTF-8/UTF-16 BOM → otherwise UTF-8 validation → otherwise try Shift_JIS (CP932), EUC-JP, GB18030, Big5, CP1252 through `iconv`, choosing the first one that decodes without errors and with the highest score of plausible characters. The detected encoding is shown and can be forced | `text_file_io.dart` |
 | SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`). They are loaded automatically according to the preferred language (default `ja`) | |
 | SUB-007 | Embedded text tracks: extracted with `ffmpeg -y -i file:<video> -map 0:<ff-index> -c:s <srt\|ass\|webvtt> <cache>`. Several tracks are extracted in a single pass; if the pass fails, it is retried track by track. The cache key is (path, size, mtime, ff-index) | `video_subtitle_source.dart` |
@@ -824,7 +826,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 ### 10.1 Maintainer decisions
 
-Decisions D-1…D-10 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q). A decision is reopened only through an explicit change to this table.
+Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q). A decision is reopened only through an explicit change to this table.
 
 | ID | Decision | Outcome |
 |---|---|---|
@@ -839,6 +841,7 @@ Decisions D-1…D-10 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-9 | Language of documents and code comments | **Approved**: documents and code comments are in English (§0). For consistency, commit messages and developer-tool messages (`cargo xtask`) are in English too. The UI stays localized (SET-004) |
 | D-10 | UI toolkit | **Approved**: Qt 6 Quick (QML) through cxx-qt instead of Dioxus ([ADR 0003](adr/0003-qt-quick-ui.md)). On the developer's 4K, 120 Hz, fractional-scale session no frame was dropped, where the Dioxus design dropped 2456 in 60 s; the class B table shrinks to the ICU/Unicode family and `foldhash` |
 | D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
+| D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 
 ### 10.2 Risks
 
