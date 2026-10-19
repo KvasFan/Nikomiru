@@ -214,6 +214,11 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
         (time_pos(s) - 4.82).abs() < 0.05
     });
     assert!(visible_text(&s).is_empty(), "{s}");
+    // F enters fullscreen, Esc leaves it (M1 checklist, item 10)
+    h.key("KeyF");
+    h.state_until("fullscreen", |s| s["fullscreen"] == true);
+    h.key("Escape");
+    h.state_until("windowed again", |s| s["fullscreen"] == false);
     // V turns the subtitles off and on again, keeping the track
     h.key("KeyV");
     h.state_until("subtitles off", |s| subs(s)["disabled"] == true);

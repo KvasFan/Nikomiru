@@ -525,9 +525,16 @@ impl Session {
         let Some(chord) =
             crate::shortcuts::chord(native_scan_code, Modifiers::from_qt(qt_modifiers))
         else {
+            if pressed {
+                tracing::debug!("key: scan code {native_scan_code} has no name");
+            }
             return UiEffect::None;
         };
-        let Some(action) = self.bindings.action(Context::Player, &chord, text_focus) else {
+        let action = self.bindings.action(Context::Player, &chord, text_focus);
+        if pressed && !auto_repeat {
+            tracing::debug!("key {chord} → {}", action.map_or("nothing", Action::name));
+        }
+        let Some(action) = action else {
             return UiEffect::None;
         };
         if !pressed {

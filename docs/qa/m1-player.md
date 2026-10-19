@@ -7,9 +7,9 @@ Manual checklist at the end of M1. Each item is recorded with its result
 
 | | |
 |---|---|
-| Tester | — |
-| Date | — |
-| Commit | — |
+| Tester | maintainer |
+| Date | 2026-10-19 |
+| Commit | `594a882` |
 | Distribution | CachyOS, kernel 7.2.10-1-cachyos |
 | Desktop | KDE Plasma 6.8.0, KWin 6.8.0; Wayland session, X11 session for the X11 run |
 | Displays | 4K at 120 Hz, fractional scale 2.7 |
@@ -23,12 +23,12 @@ Manual checklist at the end of M1. Each item is recorded with its result
 
 | Item | Wayland | X11 | Notes |
 |---|---|---|---|
-| Opening from the dialog, from drag & drop and from the command line, with Unicode file names and spaces | | | Fixture: `target/fixtures/-weird: name & spaces ü 日本.mkv` |
-| Fullscreen on a secondary monitor; exit with Esc | | | |
-| HiDPI 200%: sharp video, sharp overlay, no misaligned edges | | | Also at the session's 270% |
-| hwdec active (check `hwdec-current`) on Intel, AMD and NVIDIA | | | Only AMD is available here: Intel and NVIDIA are n/a. `hwdec-current` is in the log with `--debug` (`[vd] Using hardware decoding (vaapi)`) |
-| System suspend and resume during playback | | | |
-| Audio on PipeWire with a device change during playback | | | |
+| Opening from the dialog, from drag & drop and from the command line, with Unicode file names and spaces | pass | | Fixture: `target/fixtures/-weird: name & spaces ü 日本.mkv` |
+| Fullscreen on a secondary monitor; exit with Esc | **fail** | | F enters fullscreen, Esc does not leave it. Through the GUI harness F → Esc works (L6 regression test added), so the real key does not reach the window: under investigation |
+| HiDPI 200%: sharp video, sharp overlay, no misaligned edges | pass | | Tested at the session's 270% |
+| hwdec active (check `hwdec-current`) on Intel, AMD and NVIDIA | pass | | Only AMD is available here: Intel and NVIDIA are n/a. `hwdec-current` is in the log with `--debug` (`[vd] Using hardware decoding (vaapi)`) |
+| System suspend and resume during playback | pending | | Not possible at the time of the test |
+| Audio on PipeWire with a device change during playback | pass | |  |
 
 ## Automated counterparts
 

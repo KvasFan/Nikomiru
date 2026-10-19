@@ -20,6 +20,7 @@ ApplicationWindow {
 
     PlayerController {
         id: ctl
+        window_fullscreen: win.visibility === Window.FullScreen
         onActivateRequested: {
             win.raise();
             win.requestActivate();

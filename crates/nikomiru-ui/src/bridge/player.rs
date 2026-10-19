@@ -40,6 +40,7 @@ pub mod qobject {
         #[qproperty(QString, toast)]
         #[qproperty(i32, toast_serial)]
         #[qproperty(bool, controls_visible)]
+        #[qproperty(bool, window_fullscreen)]
         #[qproperty(QString, subtitle_cues)]
         #[qproperty(QString, subtitle_list)]
         #[qproperty(i32, subtitle_list_row)]
@@ -191,6 +192,8 @@ pub struct PlayerControllerRust {
     toast: QString,
     toast_serial: i32,
     controls_visible: bool,
+    /// Written by QML: the window is fullscreen (for the harness).
+    window_fullscreen: bool,
     subtitle_cues: QString,
     subtitle_list: QString,
     subtitle_list_row: i32,

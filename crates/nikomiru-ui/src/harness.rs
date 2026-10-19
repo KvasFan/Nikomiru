@@ -141,6 +141,7 @@ pub fn state() -> Result<Value, String> {
             "error": c.error_text().to_string(),
             "toast": c.toast().to_string(),
             "controls_visible": *c.controls_visible(),
+            "fullscreen": *c.window_fullscreen(),
             "subtitles": c.rust().session.as_ref().map(|s| {
                 let visible: Vec<Value> = s
                     .subs
