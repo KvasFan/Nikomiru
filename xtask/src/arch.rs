@@ -17,12 +17,22 @@ pub const SPDX: &str = "// SPDX-License-Identifier: GPL-3.0-only";
 /// Directories that contain project sources.
 const SOURCE_DIRS: [&str; 4] = ["crates", "xtask", "spikes", "tests"];
 
-/// Crates in which `unsafe` is allowed, with the path prefix (relative to the crate)
-/// that may contain it (ARC-011).
-const UNSAFE_ALLOWED: [(&str, &str); 2] =
-    [("anikoto-player", "src/"), ("anikoto-app", "src/linux")];
+/// Source extensions that need the SPDX header: Rust, the C++ video item, QML.
+const SOURCE_EXTENSIONS: [&str; 5] = ["rs", "cpp", "h", "hpp", "qml"];
 
-/// Pure-logic crates: they do not depend, not even indirectly, on UI, GTK or mpv.
+/// C++ extensions: C++ is allowed only in `anikoto-player/cpp/` (ARC-011).
+const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
+
+/// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
+/// crate) that may contain it (ARC-011). `src/bridge` covers the cxx-qt bridge
+/// modules (`src/bridge.rs` or `src/bridge/`), which hold generated FFI declarations.
+const UNSAFE_ALLOWED: [(&str, &[&str]); 3] = [
+    ("anikoto-player", &["src/"]),
+    ("anikoto-app", &["src/linux", "src/bridge"]),
+    ("anikoto-ui", &["src/bridge"]),
+];
+
+/// Pure-logic crates: they do not depend, not even indirectly, on Qt or mpv.
 const LOGIC_CRATES: [&str; 5] = [
     "anikoto-text",
     "anikoto-subs",
@@ -36,6 +46,7 @@ pub fn check_all(root: &Path) -> Result<()> {
     let mut problems = check_headers(root)?;
     problems.extend(check_crate_attributes(root)?);
     problems.extend(check_unsafe(root)?);
+    problems.extend(check_cpp_location(root)?);
     let metadata = cargo_metadata()?;
     problems.extend(check_deps(&Graph::from_metadata(&metadata)?));
     report("architecture checks", &problems)
@@ -53,22 +64,25 @@ pub fn report(what: &str, problems: &[String]) -> Result<()> {
     bail!("{what}: {} problems", problems.len())
 }
 
-fn source_files(root: &Path) -> Result<Vec<PathBuf>> {
+fn source_files(root: &Path, extensions: &[&str]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     for dir in SOURCE_DIRS {
         let dir = root.join(dir);
         if dir.is_dir() {
-            walk(&dir, "rs", &mut files)?;
+            for ext in extensions {
+                walk(&dir, ext, &mut files)?;
+            }
         }
     }
+    files.sort();
     Ok(files)
 }
 
 // T-ARC-020
-/// Every `.rs` file starts with the SPDX header.
+/// Every `.rs`, `.cpp`, `.h` and `.qml` file starts with the SPDX header.
 pub fn check_headers(root: &Path) -> Result<Vec<String>> {
     let mut problems = Vec::new();
-    for file in source_files(root)? {
+    for file in source_files(root, &SOURCE_EXTENSIONS)? {
         let text = std::fs::read_to_string(&file)
             .with_context(|| format!("reading {}", file.display()))?;
         let first = text
@@ -101,8 +115,8 @@ fn crate_name(dir: &Path) -> String {
 
 // T-ARC-011
 // T-MAINT-001
-/// `#![forbid(unsafe_code)]` where required by ARC-011 and `#![deny(missing_docs)]` in
-/// every library crate (NFR-MAINT-01).
+/// `#![forbid(unsafe_code)]` or `#![deny(unsafe_code)]` as required by ARC-011, and
+/// `#![deny(missing_docs)]` in every library crate (NFR-MAINT-01).
 pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
     let mut problems = Vec::new();
     let mut roots: Vec<(String, PathBuf, bool)> = Vec::new();
@@ -120,11 +134,12 @@ pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
     roots.push(("xtask".into(), root.join("xtask/src/main.rs"), false));
     for (name, file, is_lib) in roots {
         let text = std::fs::read_to_string(&file)?;
-        // anikoto-app denies `unsafe` at crate level and allows it again only in the
-        // `linux` module; anikoto-player uses it for the GL callbacks.
+        // Crates with cxx-qt bridges deny `unsafe` at crate level and allow it again
+        // only in the modules of UNSAFE_ALLOWED; anikoto-player uses it for the mpv
+        // FFI and the video item.
         let required = match name.as_str() {
             "anikoto-player" => None,
-            "anikoto-app" => Some("#![deny(unsafe_code)]"),
+            "anikoto-app" | "anikoto-ui" => Some("#![deny(unsafe_code)]"),
             _ => Some("#![forbid(unsafe_code)]"),
         };
         if let Some(attr) = required
@@ -179,7 +194,7 @@ pub fn check_unsafe(root: &Path) -> Result<Vec<String>> {
     let mut problems = Vec::new();
     for dir in crate_dirs(root)? {
         let name = crate_name(&dir);
-        let allowed = UNSAFE_ALLOWED
+        let allowed: Option<&[&str]> = UNSAFE_ALLOWED
             .iter()
             .find(|(c, _)| *c == name)
             .map(|(_, p)| *p);
@@ -193,10 +208,11 @@ pub fn check_unsafe(root: &Path) -> Result<Vec<String>> {
                 .unwrap_or_default();
             for (line, documented) in unsafe_sites(&text) {
                 match allowed {
-                    Some(prefix) if in_crate.starts_with(prefix) => {}
-                    Some(prefix) => problems.push(format!(
-                        "{}:{line}: `unsafe` allowed only in {name}/{prefix}… (ARC-011)",
-                        rel(&file)
+                    Some(prefixes) if prefixes.iter().any(|p| in_crate.starts_with(p)) => {}
+                    Some(prefixes) => problems.push(format!(
+                        "{}:{line}: `unsafe` allowed in {name} only under {} (ARC-011)",
+                        rel(&file),
+                        prefixes.join(", ")
                     )),
                     None => problems.push(format!(
                         "{}:{line}: `unsafe` not allowed in {name} (ARC-011)",
@@ -213,6 +229,30 @@ pub fn check_unsafe(root: &Path) -> Result<Vec<String>> {
         }
     }
     Ok(problems)
+}
+
+// T-ARC-011
+/// C++ only for the Qt Quick video item, in `crates/anikoto-player/cpp/`.
+pub fn check_cpp_location(root: &Path) -> Result<Vec<String>> {
+    let crates = root.join("crates");
+    if !crates.is_dir() {
+        return Ok(Vec::new());
+    }
+    let allowed = crates.join("anikoto-player/cpp");
+    let mut files = Vec::new();
+    for ext in CPP_EXTENSIONS {
+        walk(&crates, ext, &mut files)?;
+    }
+    Ok(files
+        .into_iter()
+        .filter(|f| !f.starts_with(&allowed))
+        .map(|f| {
+            format!(
+                "{}: C++ is allowed only in crates/anikoto-player/cpp/ (ARC-011)",
+                rel(&f)
+            )
+        })
+        .collect())
 }
 
 /// `cargo metadata` of the workspace for the Linux platform.
@@ -301,20 +341,24 @@ impl Graph {
     }
 }
 
-fn is_dioxus(name: &str) -> bool {
-    name == "dioxus" || name.starts_with("dioxus-")
-}
-
-fn is_gtk(name: &str) -> bool {
-    matches!(
-        name,
-        "gtk" | "gtk-sys" | "gdk" | "gdk-sys" | "webkit2gtk" | "webkit2gtk-sys" | "tao" | "wry"
-    )
+/// Qt through cxx-qt (D-10): `cxx-qt`, `cxx-qt-lib`, `cxx-qt-build`, `cxx`, …
+fn is_qt(name: &str) -> bool {
+    name == "cxx" || name.starts_with("cxx-qt") || name == "qt-build-utils"
 }
 
 fn is_mpv(name: &str) -> bool {
     name == "libmpv2" || name == "libmpv2-sys"
 }
+
+/// The toolkit replaced by D-10: no workspace crate may depend on it again.
+fn is_retired_ui(name: &str) -> bool {
+    name == "dioxus"
+        || name.starts_with("dioxus-")
+        || matches!(name, "gtk" | "gdk" | "webkit2gtk" | "tao" | "wry")
+}
+
+/// Crates allowed to depend directly on Qt (cxx-qt).
+const QT_CRATES: [&str; 3] = ["anikoto-ui", "anikoto-player", "anikoto-app"];
 
 // T-ARC-010
 /// Dependency rules of SPECIFICATION §5.1.
@@ -336,7 +380,7 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
         if LOGIC_CRATES.contains(&name) {
             for d in g.closure(member) {
                 let dn = g.name(&d);
-                if is_dioxus(dn) || is_gtk(dn) || is_mpv(dn) {
+                if is_qt(dn) || is_mpv(dn) || is_retired_ui(dn) {
                     problems.push(format!(
                         "{name} depends (possibly indirectly) on {dn}: it is a pure-logic crate"
                     ));
@@ -346,18 +390,16 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
         for d in &direct {
             let dn = g.name(d);
             let rule = if is_mpv(dn) && name != "anikoto-player" {
-                Some("only anikoto-player")
-            } else if is_gtk(dn) && name != "anikoto-app" {
-                Some("only anikoto-app")
-            } else if is_dioxus(dn) && name != "anikoto-ui" && name != "anikoto-app" {
-                Some("only anikoto-ui and anikoto-app")
+                Some("only anikoto-player may depend on it")
+            } else if is_qt(dn) && !QT_CRATES.contains(&name) {
+                Some("only anikoto-ui, anikoto-player and anikoto-app may depend on it")
+            } else if is_retired_ui(dn) {
+                Some("the UI toolkit is Qt 6 (D-10)")
             } else {
                 None
             };
             if let Some(rule) = rule {
-                problems.push(format!(
-                    "{name} depends directly on {dn}: {rule} may depend on it"
-                ));
+                problems.push(format!("{name} depends directly on {dn}: {rule}"));
             }
         }
     }
@@ -396,8 +438,10 @@ mod tests {
                 "anikoto-app",
                 "redb",
                 "libmpv2",
-                "dioxus",
-                "gtk",
+                "cxx",
+                "cxx-qt",
+                "cxx-qt-lib",
+                "cxx-qt-build",
             ],
             &[
                 "anikoto-core",
@@ -410,37 +454,39 @@ mod tests {
                 ("anikoto-dict", "anikoto-core", false),
                 ("anikoto-dict", "redb", false),
                 ("anikoto-player", "libmpv2", false),
-                ("anikoto-ui", "dioxus", false),
+                ("anikoto-player", "cxx", false),
+                ("anikoto-player", "cxx-qt-build", false),
+                ("anikoto-ui", "cxx-qt", false),
+                ("anikoto-ui", "cxx-qt-lib", false),
                 ("anikoto-app", "anikoto-player", false),
                 ("anikoto-app", "anikoto-ui", false),
-                ("anikoto-app", "gtk", false),
-                ("anikoto-app", "dioxus", false),
+                ("anikoto-app", "cxx-qt-lib", false),
             ],
         );
         assert_eq!(check_deps(&g), Vec::<String>::new());
     }
 
     #[test]
-    fn deps_rules_reject_ui_in_logic_crates_even_indirectly() {
+    fn deps_rules_reject_qt_in_logic_crates_even_indirectly() {
         let g = graph(
             &[
                 "anikoto-subs",
                 "helper",
-                "dioxus-core",
+                "cxx-qt-lib",
                 "anikoto-core",
                 "anikoto-text",
             ],
             &["anikoto-subs", "anikoto-core", "anikoto-text"],
             &[
                 ("anikoto-subs", "helper", false),
-                ("helper", "dioxus-core", false),
+                ("helper", "cxx-qt-lib", false),
                 ("anikoto-core", "anikoto-text", false),
             ],
         );
         let p = check_deps(&g);
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-subs") && m.contains("dioxus-core")),
+                .any(|m| m.contains("anikoto-subs") && m.contains("cxx-qt-lib")),
             "{p:?}"
         );
         assert!(
@@ -456,17 +502,20 @@ mod tests {
             &[
                 "anikoto-text",
                 "proptest",
-                "dioxus",
+                "cxx",
                 "anikoto-ui",
+                "anikoto-media",
                 "libmpv2",
-                "gtk",
+                "cxx-qt",
+                "dioxus",
             ],
-            &["anikoto-text", "anikoto-ui"],
+            &["anikoto-text", "anikoto-ui", "anikoto-media"],
             &[
                 ("anikoto-text", "proptest", true),
-                ("proptest", "dioxus", false),
+                ("proptest", "cxx", false),
                 ("anikoto-ui", "libmpv2", false),
-                ("anikoto-ui", "gtk", false),
+                ("anikoto-ui", "dioxus", false),
+                ("anikoto-media", "cxx-qt", false),
             ],
         );
         let p = check_deps(&g);
@@ -478,7 +527,12 @@ mod tests {
         );
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-ui depends directly on gtk")),
+                .any(|m| m.contains("anikoto-ui depends directly on dioxus") && m.contains("D-10")),
+            "{p:?}"
+        );
+        assert!(
+            p.iter()
+                .any(|m| m.contains("anikoto-media depends directly on cxx-qt")),
             "{p:?}"
         );
     }

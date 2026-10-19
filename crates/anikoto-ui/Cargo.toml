@@ -1,6 +1,6 @@
 [package]
 name = "anikoto-ui"
-description = "Dioxus components: popup, subtitle overlay, controls and settings"
+description = "QML interface and Rust QObjects (cxx-qt): popup, subtitle overlay, controls and settings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

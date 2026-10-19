@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The Anikoto binary: Dioxus startup, GTK + mpv compositor and the wiring between
-//! the crates.
+//! The Anikoto binary: `QGuiApplication`, the QML engine, single instance and the
+//! wiring between the crates (D-10).
 //!
-//! `unsafe` is allowed only in the `linux` module (GTK/EGL and iconv FFI, ARC-011).
+//! `unsafe` is allowed only in the `linux` module (iconv, setlocale) and in the
+//! cxx-qt bridge modules (ARC-011).
 
 #![deny(unsafe_code)]
 

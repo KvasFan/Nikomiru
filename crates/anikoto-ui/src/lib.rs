@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Dioxus components of the interface: player, subtitle overlay, dictionary popup,
-//! library and settings.
+//! The QML interface and its Rust `QObject`s (cxx-qt): player, subtitle overlay,
+//! dictionary popup, library and settings (D-10).
+//!
+//! `unsafe` is denied; only the cxx-qt bridge modules (`src/bridge.rs` or
+//! `src/bridge/`), which hold generated FFI declarations, may allow it (ARC-011).
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![deny(missing_docs)]

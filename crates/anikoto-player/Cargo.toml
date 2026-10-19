@@ -1,6 +1,6 @@
 [package]
 name = "anikoto-player"
-description = "libmpv2 wrapper: initialization, properties, commands, events and OpenGL rendering"
+description = "mpv core (libmpv2) and the Qt Quick video item: properties, commands, events and rendering"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
