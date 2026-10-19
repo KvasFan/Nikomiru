@@ -167,10 +167,24 @@ impl Desktop {
 
     /// Starts `nikomiru --test-harness` and connects to it.
     pub fn launch(&mut self) -> (Child, Harness) {
+        self.launch_with(&[])
+    }
+
+    /// Writes `config.toml` in this desktop's settings folder.
+    pub fn write_config(&self, text: &str) {
+        let dir = self.path("config/nikomiru");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.toml"), text).unwrap();
+    }
+
+    /// Like [`Desktop::launch`], with more arguments.
+    pub fn launch_with(&mut self, args: &[&str]) -> (Child, Harness) {
         let socket = self.path(&format!("harness-{}.sock", self.launches + 1));
         let listener = UnixListener::bind(&socket).unwrap();
         let socket_arg = socket.to_string_lossy().into_owned();
-        let mut child = self.app(&["--test-harness", &socket_arg]).spawn().unwrap();
+        let mut all = vec!["--test-harness", socket_arg.as_str()];
+        all.extend_from_slice(args);
+        let mut child = self.app(&all).spawn().unwrap();
         listener.set_nonblocking(true).unwrap();
         let stream = until(Duration::from_secs(30), "the harness connection", || {
             if let Some(status) = child.try_wait().unwrap() {
@@ -253,6 +267,10 @@ impl Harness {
 
     pub fn wait(&mut self, event: &str) -> Value {
         self.cmd(json!({ "cmd": "wait", "event": event, "timeout_ms": 20_000 }))
+    }
+
+    pub fn drop_files(&mut self, paths: &[&str]) {
+        self.cmd(json!({ "cmd": "drop", "paths": paths }));
     }
 
     pub fn key(&mut self, code: &str) {

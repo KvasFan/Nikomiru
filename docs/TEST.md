@@ -37,7 +37,7 @@
 - Start: `nikomiru --test-harness <socket>`. The test listens on the socket and the application connects to it. Protocol: JSON lines on a Unix socket; each command `{"cmd": …}` gets one answer, `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
 - The L6 tests live in `tests/e2e/`, a test target of `nikomiru-app` with `required-features = ["test-harness"]`, so `CARGO_BIN_EXE_nikomiru` is the harness build. Each test starts its own `kwin_wayland --virtual` on a private D-Bus bus without service activation, with isolated XDG folders and a private `XDG_RUNTIME_DIR`: no real portal, audio server or user file is reached. `cargo xtask ci --full` runs them.
 - Commands:
-  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the same QML handler as a real one);
+  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the same QML handler as a real one), `drop {paths}` (percent-encoded `file://` URLs, through the window's drop handler);
   - `click_grapheme {layer, cue_index, grapheme_index}`, `hover_grapheme {…}`, `click {selector}`;
   - `state {}`: player state, open popups, visible cues, toasts;
   - `mpv_get {property}`: read-only, for metrics;

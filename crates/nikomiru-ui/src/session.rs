@@ -234,10 +234,10 @@ impl Session {
         self.services.translator.tr(id, args)
     }
 
-    /// An mpv property as text, read synchronously: for the GUI test harness
-    /// only (ARC-003).
-    pub fn property(&self, name: &str) -> Option<String> {
-        self.services.player.property_string(name)
+    /// The player, for the GUI test harness's `mpv_get`.
+    #[cfg(feature = "test_harness")]
+    pub fn player(&self) -> &nikomiru_player::PlayerHandle {
+        &self.services.player
     }
 
     /// The interface strings.

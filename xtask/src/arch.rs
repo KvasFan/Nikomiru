@@ -48,6 +48,8 @@ pub fn check_all(root: &Path) -> Result<()> {
     problems.extend(check_crate_attributes(root)?);
     problems.extend(check_unsafe(root)?);
     problems.extend(check_cpp_location(root)?);
+    problems.extend(check_sync_reads(root)?);
+    problems.extend(check_panic_lints(root)?);
     let metadata = cargo_metadata()?;
     problems.extend(check_deps(&Graph::from_metadata(&metadata)?));
     problems.extend(check_cxx_versions(&metadata));
@@ -258,6 +260,119 @@ pub fn check_cpp_location(root: &Path) -> Result<Vec<String>> {
             )
         })
         .collect())
+}
+
+// T-ARC-003
+/// ARC-003: the UI never reads mpv properties synchronously. `get_property` is
+/// called only inside nikomiru-player; `property_string` exists only with the
+/// player's `test-support` feature and is called only by the player's tests and
+/// by the GUI harness (`harness.rs`).
+pub fn check_sync_reads(root: &Path) -> Result<Vec<String>> {
+    let mut problems = Vec::new();
+    let player = root.join("crates/nikomiru-player");
+    for file in source_files(root, &["rs"])? {
+        // the spikes are standalone experiments, outside the product
+        if file.starts_with(root.join("spikes")) {
+            continue;
+        }
+        let in_player = file.starts_with(&player);
+        let is_harness = file.file_name().is_some_and(|n| n == "harness.rs");
+        let text = std::fs::read_to_string(&file)?;
+        let mut in_block = false;
+        for (i, line) in text.lines().enumerate() {
+            let (code, _) = split_comment(line, &mut in_block);
+            if !in_player && code.contains("get_property") {
+                problems.push(format!(
+                    "{}:{}: `get_property` outside nikomiru-player (ARC-003)",
+                    rel(&file),
+                    i + 1
+                ));
+            }
+            if !in_player && !is_harness && code.contains("property_string(") {
+                problems.push(format!(
+                    "{}:{}: synchronous mpv read outside the tests and the harness (ARC-003)",
+                    rel(&file),
+                    i + 1
+                ));
+            }
+        }
+    }
+    let api = std::fs::read_to_string(player.join("src/player.rs"))?;
+    let lines: Vec<&str> = api.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim_start().starts_with("pub fn property_string")
+            && !lines[..i]
+                .iter()
+                .rev()
+                .take_while(|l| {
+                    l.trim_start().starts_with("#[") || l.trim_start().starts_with("///")
+                })
+                .any(|l| l.contains(r#"#[cfg(feature = "test-support")]"#))
+        {
+            problems.push(format!(
+                "crates/nikomiru-player/src/player.rs:{}: `property_string` must need the \
+                 `test-support` feature (ARC-003)",
+                i + 1
+            ));
+        }
+    }
+    Ok(problems)
+}
+
+// T-ERR-002
+/// ERR-002: `unwrap_used` and `expect_used` are errors for the whole workspace,
+/// every crate inherits the workspace lints, and no source outside the tests
+/// turns them off.
+pub fn check_panic_lints(root: &Path) -> Result<Vec<String>> {
+    let mut problems = Vec::new();
+    let manifest: toml::Table = std::fs::read_to_string(root.join("Cargo.toml"))?.parse()?;
+    let clippy = &manifest["workspace"]["lints"]["clippy"];
+    for lint in ["unwrap_used", "expect_used"] {
+        if clippy.get(lint).and_then(|v| v.as_str()) != Some("deny") {
+            problems.push(format!(
+                "Cargo.toml: clippy `{lint}` must be \"deny\" (ERR-002)"
+            ));
+        }
+    }
+    let mut manifests: Vec<PathBuf> = crate_dirs(root)?
+        .into_iter()
+        .map(|d| d.join("Cargo.toml"))
+        .collect();
+    manifests.push(root.join("xtask/Cargo.toml"));
+    for m in manifests {
+        let table: toml::Table = std::fs::read_to_string(&m)?.parse()?;
+        let inherits = table
+            .get("lints")
+            .and_then(|l| l.get("workspace"))
+            .and_then(toml::Value::as_bool);
+        if inherits != Some(true) {
+            problems.push(format!(
+                "{}: missing `[lints] workspace = true` (ERR-002)",
+                rel(&m)
+            ));
+        }
+    }
+    for file in source_files(root, &["rs"])? {
+        let r = rel(&file);
+        // integration tests (`tests/` folders) may unwrap, like unit tests
+        if r.contains("/tests/") || r.starts_with("tests/") || r.starts_with("spikes/") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&file)?;
+        let mut in_block = false;
+        for (i, line) in text.lines().enumerate() {
+            let (code, _) = split_comment(line, &mut in_block);
+            if code.contains("allow(clippy::unwrap_used")
+                || code.contains("allow(clippy::expect_used")
+            {
+                problems.push(format!(
+                    "{r}:{}: unwrap/expect allowed outside the tests (ERR-002)",
+                    i + 1
+                ));
+            }
+        }
+    }
+    Ok(problems)
 }
 
 /// `cargo metadata` of the workspace for the Linux platform.

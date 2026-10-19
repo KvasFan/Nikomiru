@@ -6,7 +6,8 @@
 //! for answer: `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
 //!
 //! Commands: `{"cmd":"open","path":…}`, `{"cmd":"wait","event":…,"timeout_ms":…}`,
-//! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"state"}`,
+//! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
+//! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
 use std::io::{BufRead, BufReader, Write};
@@ -73,6 +74,15 @@ fn run(command: &Value) -> Result<Value, String> {
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
             harness::key(text(command, "code")?, &mods).map(|()| Value::Null)
+        }
+        Some("drop") => {
+            let paths: Vec<String> = command["paths"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|p| p.as_str().map(str::to_string))
+                .collect();
+            harness::drop(&paths).map(|()| Value::Null)
         }
         Some("state") => harness::state(),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),

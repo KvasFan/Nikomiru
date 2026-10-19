@@ -26,10 +26,17 @@ ApplicationWindow {
         }
         // closing the last window quits, through onClosing like the user
         onQuitRequested: win.close()
+        onDropRequested: (url) => win.openDropped([url])
         onKeyRequested: (scanCode, modifiers) => {
             win.handleKey(scanCode, modifiers, true, false);
             win.handleKey(scanCode, modifiers, false, false);
         }
+    }
+
+    // Drag & drop: the first URL is opened (LIB-001).
+    function openDropped(urls) {
+        if (urls.length > 0)
+            ctl.open_file(urls[0].toString());
     }
 
     // Keyboard: every key goes to Rust with its scan code (KEY-002).
@@ -136,7 +143,7 @@ ApplicationWindow {
         anchors.fill: parent
         onDropped: (drop) => {
             if (drop.hasUrls)
-                ctl.open_file(drop.urls[0].toString());
+                win.openDropped(drop.urls);
         }
     }
 

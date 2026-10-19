@@ -63,6 +63,28 @@ pub fn open(path: &str) -> Result<(), String> {
     harness_call(move |c| c.open_file(&QString::from(path.as_str())))
 }
 
+/// Drops files on the window, as `file://` URLs, through the QML drop handler.
+pub fn drop(paths: &[String]) -> Result<(), String> {
+    let url = paths
+        .first()
+        .map(|p| file_url(p))
+        .ok_or_else(|| "drop: no paths".to_string())?;
+    harness_call(move |c| c.drop_requested(&QString::from(url.as_str())))
+}
+
+/// A `file://` URL for an absolute path, percent-encoded like a desktop drop.
+fn file_url(path: &str) -> String {
+    let mut url = String::from("file://");
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            url.push(char::from(b));
+        } else {
+            url.push_str(&format!("%{b:02X}"));
+        }
+    }
+    url
+}
+
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
 /// (`Ctrl`, `Shift`, `Alt`).
 pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
@@ -107,7 +129,7 @@ pub fn mpv_get(property: &str) -> Result<Value, String> {
         c.rust()
             .session
             .as_ref()
-            .and_then(|s| s.property(&property))
+            .and_then(|s| s.player().property_string(&property))
             .map_or(Value::Null, Value::String)
     })
 }

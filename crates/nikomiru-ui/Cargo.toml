@@ -12,7 +12,7 @@ links = "nikomiru_ui"
 # GUI test harness (TEST §2.1), enabled by nikomiru-app's `test-harness`: never in
 # release builds (T-SEC-004). Underscore, not hyphen: cxx-qt-build 0.10 evaluates
 # `cfg(feature = …)` in bridges against CARGO_FEATURE_* without turning `-` into `_`.
-test_harness = []
+test_harness = ["nikomiru-player/test-support"]
 
 [dependencies]
 nikomiru-core.workspace = true

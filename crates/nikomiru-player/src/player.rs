@@ -5,7 +5,8 @@
 //! [`LoadToken`] of their load (ARC-002), with `time-pos` throttled (ARC-004).
 //!
 //! The UI never reads mpv properties synchronously (ARC-003): its state comes
-//! from the events. [`PlayerHandle::property_string`] exists for tests and the
+//! from the events. `PlayerHandle::property_string` exists, with the
+//! `test-support` feature, for tests and the
 //! GUI harness only.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -543,8 +544,9 @@ impl PlayerHandle {
         self.set(&format!("user-data/nikomiru/{key}"), value)
     }
 
-    /// Reads a property as a string. For tests and the GUI harness only: the UI
-    /// gets its state from events (ARC-003).
+    /// Reads a property as a string. Only with the `test-support` feature, for
+    /// the tests and the GUI harness: the UI gets its state from events (ARC-003).
+    #[cfg(feature = "test-support")]
     pub fn property_string(&self, name: &str) -> Option<String> {
         self.shared.mpv.get_property::<String>(name).ok()
     }

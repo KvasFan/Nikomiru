@@ -614,6 +614,7 @@ dependencies = [
  "cxx-qt-build",
  "libmpv2",
  "nikomiru-core",
+ "nikomiru-player",
  "thiserror 2.0.21",
  "tracing",
 ]

@@ -110,6 +110,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "keyRequested"]
         fn key_requested(self: Pin<&mut PlayerController>, native_scan_code: u32, modifiers: u32);
+
+        /// URLs dropped on the window, handled by QML like a real drop (GUI
+        /// test harness).
+        #[cfg(feature = "test_harness")]
+        #[qsignal]
+        #[cxx_name = "dropRequested"]
+        fn drop_requested(self: Pin<&mut PlayerController>, url: &QString);
     }
 
     impl cxx_qt::Threading for PlayerController {}

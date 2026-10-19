@@ -81,3 +81,51 @@ fn a_second_launch_opens_its_file_in_the_first() {
     h.quit();
     assert!(exit_status(&mut first, Duration::from_secs(15)).success());
 }
+
+// T-LIB-001
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn files_open_from_the_command_line_and_by_drag_and_drop() {
+    let basic = fixture("av_basic.mkv");
+    let weird = fixture("-weird: name & spaces ü 日本.mkv");
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch_with(&["--", &basic]);
+    h.wait("file-loaded");
+    assert_eq!(h.state()["title"], "av_basic.mkv");
+
+    // a drop arrives as percent-encoded file:// URLs
+    h.drop_files(&[&weird]);
+    h.wait("file-loaded");
+    assert_eq!(h.state()["title"], "-weird: name & spaces ü 日本.mkv");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-PRV-002
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_logs_never_hold_an_api_key() {
+    const SENTINEL: &str = "SENTINEL-4f2a9c";
+    let mut desk = Desktop::start();
+    // a key in its place and one in the wrong field, which makes the file invalid
+    desk.write_config(&format!(
+        "[anki]\napi_key = \"{SENTINEL}-key\"\n[player]\nseek_seconds = \"{SENTINEL}-misplaced\"\n"
+    ));
+    let (mut app, mut h) = desk.launch_with(&["--debug"]);
+    let error = h.state()["error"].as_str().unwrap_or_default().to_string();
+    assert!(
+        error.contains("config.toml"),
+        "the invalid settings are reported: {error:?}"
+    );
+    assert!(!error.contains(SENTINEL), "{error}");
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let logs = desk.log();
+    assert!(logs.contains("Nikomiru"), "the logs were written");
+    assert!(
+        !logs.contains(SENTINEL),
+        "a secret reached the logs:\n{logs}"
+    );
+}

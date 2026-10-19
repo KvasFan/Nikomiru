@@ -16,8 +16,17 @@ tracing.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 
+[features]
+# Synchronous property reads (`PlayerHandle::property_string`), for the tests and
+# the GUI harness only: the UI reads state from events (ARC-003, T-ARC-003).
+test-support = []
+
 [build-dependencies]
 cxx-qt-build.workspace = true
+
+[dev-dependencies]
+# the L5 tests read properties back
+nikomiru-player = { path = ".", features = ["test-support"] }
 
 [lints]
 workspace = true
