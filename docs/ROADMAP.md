@@ -80,7 +80,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
   - [x] Wayland and X11: the render size follows resizing and fullscreen, without dropped frames; HiDPI 2× verified on X11 (`GDK_SCALE=2`).
   - [x] X11, T-PERF-03: moved to M1. With nested XWayland, identical runs range from 0 to 5122 dropped frames, with CPU always below 21%; a measurement on a real X11 session is needed.
   - [ ] By hand, on the real session: clicks and keys on the webview, no artifacts, HiDPI 2× on Wayland.
-  - [ ] On REF (integrated GPU): repeat T-PERF-03 on Wayland.
+  - [ ] On REF (integrated GPU): repeat T-PERF-03 on Wayland. On the Radeon 610M (2 CUs, the weakest iGPU that fits REF) 1080p60 drops 9–22 frames in 30 s, even with the overlay frozen; a mid-range iGPU still has to be measured (ADR 0001).
 - [x] S2: import ≤ 60 s and ≤ 1 GiB of RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). If it fails, the ADR adopts the custom format (DIC-020). — Passed: import of 300k entries in 2.3 s with 86 MiB; lookup p95 2.4 ms warm and 4.7 ms cold. redb is adopted ([ADR 0002](adr/0002-dictionary-storage.md)).
 - [x] D-1 (Class B exceptions) and D-3 (GPL-3.0-only) approved by the maintainer (2026-10-19).
 - [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English).
@@ -191,6 +191,16 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - `anikoto-media`: sentence audio and image (mpv screenshot → ffmpeg).
 - UI: Anki settings (connection, deck, note type, mapping editor, "Create Lapis deck", connection test), button states + / ✓ / ✓↩, menu for the existing card.
 - `.desktop` with `x-scheme-handler/anikoto`.
+- **Repository page for the first release**: `README.md` restyled after [storytold/cadcraft](https://github.com/storytold/cadcraft), from top to bottom:
+  - centered logo with light and dark variants (`<picture>` with `prefers-color-scheme`), centered `<h1>` title, a bold one-line tagline and a short centered paragraph;
+  - one centered row of shields.io badges in `style=flat-square`: written in Rust, runs on Linux (Wayland · X11), license GPL-3.0-only, status alpha (accent colour for the status badge, two colours for the rest);
+  - a full-width hero screenshot (player with clickable subtitles and the dictionary popup open) with a `<sub>` caption, then one centered line of section links separated by `·`;
+  - "Screenshots": a two-column `<table>` (popup with pitch accent and frequencies, card created in Anki, subtitle list, settings) with `<sub>` captions;
+  - "Why Anikoto": a bullet list with bold lead-ins;
+  - "What works today": an honest `| Area | Status |` table that matches the ROADMAP;
+  - "Quick start" (build from source, AnkiConnect setup), "Architecture" (crates and SPECIFICATION §5), "Roadmap" (link), "Downloads" (per-format table; PKGBUILD and Flatpak arrive with 1.0, D-5), "License and credits" (GPL-3.0-only, derived from Fushi, Yomitan, hoshidicts and Lapis, `THIRD_PARTY_LICENSES.html`).
+
+  Constraints: the logo and icons are original GPL-3.0-only works in `assets/brand/` (SPECIFICATION §3.4). Screenshots show only project-made media and the project's test dictionaries (`mini-ja`): no anime frames (copyright), no Creative Commons media, no content from third-party dictionaries. They are taken with the GUI harness in an off-screen compositor, so they can be regenerated for every release.
 
 **Exit criteria**
 
@@ -198,7 +208,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
 - [ ] T-PERF-08 ≤ 3 s.
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
-- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions.
+- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
 
 ---
 
