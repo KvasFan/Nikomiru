@@ -221,7 +221,11 @@ impl Desktop {
         stream
             .set_read_timeout(Some(Duration::from_secs(60)))
             .unwrap();
-        (child, Harness::new(stream))
+        let logs = vec![
+            self.path(&format!("app-{}.log", self.launches)),
+            self.path("state/nikomiru/logs"),
+        ];
+        (child, Harness::new(stream, logs))
     }
 
     /// The application logs of this desktop, for failure messages.
@@ -256,14 +260,39 @@ impl Drop for Desktop {
 pub struct Harness {
     reader: BufReader<UnixStream>,
     writer: UnixStream,
+    /// The app's output and its log folder, shown when a command fails.
+    logs: Vec<PathBuf>,
 }
 
 impl Harness {
-    fn new(stream: UnixStream) -> Self {
+    fn new(stream: UnixStream, logs: Vec<PathBuf>) -> Self {
         Self {
             writer: stream.try_clone().unwrap(),
             reader: BufReader::new(stream),
+            logs,
         }
+    }
+
+    /// The end of the app's logs, for failure messages.
+    fn log_tail(&self) -> String {
+        let mut text = String::new();
+        for path in &self.logs {
+            let files: Vec<PathBuf> = if path.is_dir() {
+                std::fs::read_dir(path)
+                    .map(|r| r.flatten().map(|e| e.path()).collect())
+                    .unwrap_or_default()
+            } else {
+                vec![path.clone()]
+            };
+            for f in files {
+                if let Ok(t) = std::fs::read_to_string(&f) {
+                    let lines: Vec<&str> = t.lines().collect();
+                    let tail = &lines[lines.len().saturating_sub(60)..];
+                    text.push_str(&format!("--- {}\n{}\n", f.display(), tail.join("\n")));
+                }
+            }
+        }
+        text
     }
 
     /// Sends a command and returns its result, or the harness's error.
@@ -271,8 +300,8 @@ impl Harness {
         writeln!(self.writer, "{command}").unwrap();
         let mut line = String::new();
         self.reader.read_line(&mut line).unwrap();
-        let answer: Value =
-            serde_json::from_str(&line).unwrap_or_else(|e| panic!("bad answer {line:?}: {e}"));
+        let answer: Value = serde_json::from_str(&line)
+            .unwrap_or_else(|e| panic!("bad answer {line:?}: {e}\n{}", self.log_tail()));
         if answer["ok"] == true {
             Ok(answer["result"].clone())
         } else {
@@ -283,7 +312,7 @@ impl Harness {
     pub fn cmd(&mut self, command: Value) -> Value {
         let shown = command.to_string();
         self.try_cmd(command)
-            .unwrap_or_else(|e| panic!("{shown}: {e}"))
+            .unwrap_or_else(|e| panic!("{shown}: {e}\n{}", self.log_tail()))
     }
 
     pub fn open(&mut self, path: &str) {

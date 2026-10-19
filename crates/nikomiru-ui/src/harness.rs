@@ -25,6 +25,7 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FileLoaded => ("file-loaded", json!({})),
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
+        UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
         UiEvent::PopupRendered {
             level,
             query,
@@ -182,6 +183,7 @@ pub fn state() -> Result<Value, String> {
                     .collect::<Vec<_>>()
             }),
             "paused_for_lookup": c.rust().session.as_ref().map(|s| s.popups.paused_for_lookup()),
+            "dictionaries": c.rust().session.as_ref().map(|s| s.dict_page.json()),
         })
     })
 }

@@ -18,9 +18,9 @@ use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
 use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_player::{Player, VideoOutput};
 use nikomiru_ui::Services;
+use nikomiru_ui::dictionaries::{DictionaryService, Done};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::popup::Reply;
-use nikomiru_ui::session::LookupService;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -248,16 +248,47 @@ fn import_dictionaries(paths: &Paths, zips: &[std::path::PathBuf]) -> ExitCode {
     }
 }
 
-/// Lookups without a library: every popup says the dictionaries are not
-/// available.
-struct NoDictionaries;
+/// Without a library there are no dictionaries: popups are empty and the
+/// page says why.
+struct NoDictionaries(String);
 
-impl LookupService for NoDictionaries {
-    fn lookup(&self, _text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>) {
+impl DictionaryService for NoDictionaries {
+    fn lookup(&self, _text: String, done: Done<Reply>) {
         done(Ok(Reply {
             empty: true,
             ..Reply::default()
         }));
+    }
+    fn list(&self) -> Result<Vec<(String, nikomiru_library::DictionaryRecord)>, String> {
+        Ok(Vec::new())
+    }
+    fn check(&self, _zip: &std::path::Path) -> Result<nikomiru_library::Check, String> {
+        Err(self.0.clone())
+    }
+    fn import(
+        &self,
+        _zip: std::path::PathBuf,
+        _replace: Option<String>,
+        _cancel: nikomiru_core::Cancel,
+        _progress: Box<dyn Fn(nikomiru_dict::import::Progress) + Send>,
+        done: Done<String>,
+    ) {
+        done(Err(self.0.clone()));
+    }
+    fn set_enabled(&self, _id: &str, _enabled: bool) -> Result<(), String> {
+        Err(self.0.clone())
+    }
+    fn reorder(&self, _ids: &[String]) -> Result<(), String> {
+        Err(self.0.clone())
+    }
+    fn delete(&self, _id: &str) -> Result<(), String> {
+        Err(self.0.clone())
+    }
+    fn rename(&self, _id: &str, _name: Option<String>) -> Result<(), String> {
+        Err(self.0.clone())
+    }
+    fn set_collapse(&self, _id: &str, _collapse: nikomiru_library::Collapse) -> Result<(), String> {
+        Err(self.0.clone())
     }
 }
 
@@ -330,6 +361,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         paths.cache_dir.join("subtitles"),
     );
     let config_language = config.general.ui_language.clone();
+    let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     nikomiru_ui::install(Services {
         player: player.handle(),
         config,
@@ -339,12 +371,12 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         notices,
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
-        lookup: match dictionaries {
-            Some(manager) => Box::new(nikomiru_app::dictionaries::Lookups::start(
+        dictionaries: match dictionaries {
+            Some(manager) => Box::new(nikomiru_app::dictionaries::Dictionaries::start(
                 manager,
                 Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
             )),
-            None => Box::new(NoDictionaries),
+            None => Box::new(NoDictionaries(no_dictionaries)),
         },
     });
     let instance = server.map(|server| {

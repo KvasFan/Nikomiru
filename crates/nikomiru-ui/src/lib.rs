@@ -14,6 +14,7 @@ mod bridge {
     pub mod player;
 }
 pub mod controls;
+pub mod dictionaries;
 #[cfg(feature = "test_harness")]
 pub mod harness;
 pub mod i18n;

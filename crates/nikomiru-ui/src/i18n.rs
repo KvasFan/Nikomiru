@@ -29,6 +29,13 @@ impl std::fmt::Debug for Translator {
     }
 }
 
+impl Clone for Translator {
+    /// Another translator for the same language (the bundles are rebuilt).
+    fn clone(&self) -> Self {
+        Self::new(self.language)
+    }
+}
+
 fn bundle(language: &'static str) -> FluentBundle<FluentResource> {
     let source = SOURCES
         .iter()

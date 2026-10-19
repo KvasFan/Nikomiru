@@ -12,6 +12,8 @@ pub mod db;
 pub mod dictionaries;
 pub mod progress;
 pub mod uid;
+pub mod writer;
 
 pub use db::{Library, LibraryError, VideoRecord};
 pub use dictionaries::{Check, Collapse, DictionaryError, DictionaryManager, DictionaryRecord};
+pub use writer::Writer;

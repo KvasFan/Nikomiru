@@ -17,6 +17,7 @@ Rectangle {
     signal openRequested()
     signal subtitleFileRequested()
     signal subtitleListRequested()
+    signal dictionariesRequested()
 
     implicitHeight: layout.implicitHeight + 2 * layout.anchors.margins
     color: "#d9141418"
@@ -209,6 +210,15 @@ Rectangle {
                         onTriggered: bar.subtitleListRequested()
                     }
                 }
+            }
+
+            Button {
+                focusPolicy: Qt.NoFocus
+                text: "📚"
+                onClicked: bar.dictionariesRequested()
+                ToolTip.visible: hovered
+                ToolTip.text: controller.tr("dict-page-title")
+                Accessible.name: controller.tr("dict-page-title")
             }
 
             Button {

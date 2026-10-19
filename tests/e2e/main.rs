@@ -359,3 +359,38 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-DIC-001, T-DIC-032 from the page
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_dropped_dictionary_is_imported_and_used() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    // a zip dropped on the window goes to the dictionaries page
+    h.drop_files(&[&fixture("dicts/mini-ja.zip")]);
+    h.wait("dictionary-imported");
+    let s = h.state();
+    let rows = &s["dictionaries"]["rows"];
+    assert_eq!(rows[0]["name"], "Nikomiru mini-ja", "{s}");
+    assert_eq!(rows[0]["terms"], 76);
+    assert_eq!(s["dictionaries"]["import"]["state"], "idle");
+    // the same zip again: refused, nothing changes
+    h.drop_files(&[&fixture("dicts/mini-ja.zip")]);
+    let s = h.state_until("the refusal", |s| {
+        s["toast"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Nikomiru mini-ja")
+    });
+    assert_eq!(s["dictionaries"]["rows"].as_array().map(Vec::len), Some(1));
+    // the popup uses it
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    let rendered = h.wait("popup-rendered");
+    assert_eq!(rendered["headwords"][0], "食べる", "{rendered}");
+    h.key("Escape");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

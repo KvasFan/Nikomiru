@@ -18,6 +18,7 @@ fn main() {
         "qml/PopupEntry.qml",
         "qml/KanjiCard.qml",
         "qml/DictionaryPopups.qml",
+        "qml/DictionaryPage.qml",
     ]);
     CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")

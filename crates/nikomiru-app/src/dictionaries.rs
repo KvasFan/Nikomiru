@@ -2,37 +2,47 @@
 
 //! The dictionary service of the session: lookups run on a worker thread,
 //! with the dictionaries of the registry (DIC-021), and come back as popup
-//! content (POP-007).
+//! content (POP-007); imports run on their own thread; the page's other
+//! operations are quick registry writes.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
 
+use nikomiru_core::Cancel;
+use nikomiru_dict::import::Progress;
+
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::Options;
-use nikomiru_library::{Collapse as RecordCollapse, DictionaryError, DictionaryManager};
+use nikomiru_library::{
+    Check, Collapse as RecordCollapse, DictionaryError, DictionaryManager, DictionaryRecord,
+};
+use nikomiru_ui::dictionaries::{DictionaryService, Done};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::popup::Reply;
 use nikomiru_ui::popup_view::{self, Collapse, DictView};
-use nikomiru_ui::session::LookupService;
 
-type Done = Box<dyn FnOnce(Result<Reply, String>) + Send>;
-
-/// Runs lookups on its own thread, in order.
+/// The dictionaries of the registry: lookups on a worker thread, in order.
 #[derive(Debug)]
-pub struct Lookups {
-    jobs: mpsc::Sender<(String, Done)>,
+pub struct Dictionaries {
+    manager: Arc<DictionaryManager>,
+    translator: Translator,
+    jobs: mpsc::Sender<(String, Done<Reply>)>,
 }
 
-impl Lookups {
-    /// Starts the worker.
+impl Dictionaries {
+    /// Starts the lookup worker.
     pub fn start(manager: Arc<DictionaryManager>, translator: Translator) -> Self {
-        let (jobs, rx) = mpsc::channel::<(String, Done)>();
+        let (jobs, rx) = mpsc::channel::<(String, Done<Reply>)>();
+        let worker_manager = Arc::clone(&manager);
+        let worker_translator = translator.clone();
         let spawned = std::thread::Builder::new()
             .name("nikomiru-lookup".into())
             .spawn(move || {
                 for (text, done) in rx {
                     let started = std::time::Instant::now();
-                    let result = render(&manager, &text).map_err(|e| translator.error(&e));
+                    let result =
+                        render(&worker_manager, &text).map_err(|e| worker_translator.error(&e));
                     tracing::debug!(query = %text, elapsed = ?started.elapsed(), "lookup");
                     done(result);
                 }
@@ -40,15 +50,78 @@ impl Lookups {
         if let Err(e) = spawned {
             tracing::error!("cannot start the lookup thread: {e}");
         }
-        Self { jobs }
+        Self {
+            manager,
+            translator,
+            jobs,
+        }
+    }
+
+    fn tr<T>(&self, r: Result<T, DictionaryError>) -> Result<T, String> {
+        r.map_err(|e| self.translator.error(&e))
     }
 }
 
-impl LookupService for Lookups {
-    fn lookup(&self, text: String, done: Done) {
+impl DictionaryService for Dictionaries {
+    fn lookup(&self, text: String, done: Done<Reply>) {
         if let Err(mpsc::SendError((_, done))) = self.jobs.send((text, done)) {
-            done(Err("the dictionaries are not available".into()));
+            done(Err(self.translator.tr("error-dict-unavailable", &[])));
         }
+    }
+
+    fn list(&self) -> Result<Vec<(String, DictionaryRecord)>, String> {
+        self.tr(self.manager.list())
+    }
+
+    fn check(&self, zip: &Path) -> Result<Check, String> {
+        self.tr(self.manager.check(zip))
+    }
+
+    fn import(
+        &self,
+        zip: PathBuf,
+        replace: Option<String>,
+        cancel: Cancel,
+        progress: Box<dyn Fn(Progress) + Send>,
+        done: Done<String>,
+    ) {
+        let manager = Arc::clone(&self.manager);
+        let translator = self.translator.clone();
+        let spawned = std::thread::Builder::new()
+            .name("nikomiru-import".into())
+            .spawn(move || {
+                tracing::info!(zip = %zip.display(), "importing a dictionary");
+                let result = manager
+                    .import(&zip, replace.as_deref(), &cancel, progress)
+                    .map_err(|e| translator.error(&e));
+                if let Err(e) = &result {
+                    tracing::warn!(zip = %zip.display(), "import failed: {e}");
+                }
+                done(result);
+            });
+        if let Err(e) = spawned {
+            tracing::error!("cannot start the import thread: {e}");
+        }
+    }
+
+    fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), String> {
+        self.tr(self.manager.set_enabled(id, enabled))
+    }
+
+    fn reorder(&self, ids: &[String]) -> Result<(), String> {
+        self.tr(self.manager.reorder(ids))
+    }
+
+    fn delete(&self, id: &str) -> Result<(), String> {
+        self.tr(self.manager.delete(id))
+    }
+
+    fn rename(&self, id: &str, name: Option<String>) -> Result<(), String> {
+        self.tr(self.manager.rename(id, name))
+    }
+
+    fn set_collapse(&self, id: &str, collapse: RecordCollapse) -> Result<(), String> {
+        self.tr(self.manager.set_collapse(id, collapse))
     }
 }
 

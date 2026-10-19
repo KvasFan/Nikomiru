@@ -8,12 +8,14 @@ use std::path::{Path, PathBuf};
 
 use nikomiru_core::{Clock, Config};
 use nikomiru_library::progress::ProgressSaver;
-use nikomiru_library::{Library, VideoRecord};
+use nikomiru_library::{Library, VideoRecord, Writer};
 use nikomiru_player::control::{self, HoldToSpeed, LoadToken, Stamped};
 use nikomiru_player::player::{EndFile, Track};
 use nikomiru_player::{LoadRequest, PlayerEvent, PlayerHandle, options};
 
 use crate::controls::ControlsVisibility;
+pub use crate::dictionaries::DictionaryService;
+use crate::dictionaries::{DictionaryPage, Effect};
 use crate::i18n::Translator;
 use crate::popup::{Command, Origin, Popups, Rect, Reply};
 use crate::screensaver::ScreensaverPolicy;
@@ -69,6 +71,8 @@ pub enum UiEvent {
         /// Position in milliseconds when it appeared.
         time_pos_ms: i64,
     },
+    /// A dictionary import finished well.
+    DictionaryImported,
     /// A popup was drawn with its content (T-PERF-06).
     PopupRendered {
         /// Its level (0 = from the subtitles).
@@ -144,13 +148,6 @@ pub trait SubtitleSource: Send {
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 }
 
-/// Looks words up in the dictionaries away from the UI thread and renders
-/// the popup content (LKP-030…, POP-007). `done` may run on any thread.
-pub trait LookupService: Send {
-    /// Looks `text` up; `done` gets the popup content or a translated error.
-    fn lookup(&self, text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>);
-}
-
 /// Everything the session needs from the application.
 pub struct Services {
     /// The player.
@@ -171,7 +168,7 @@ pub struct Services {
     /// The subtitle loader.
     pub subtitle_source: Box<dyn SubtitleSource>,
     /// The dictionaries.
-    pub lookup: Box<dyn LookupService>,
+    pub dictionaries: Box<dyn DictionaryService>,
 }
 
 impl std::fmt::Debug for Services {
@@ -223,6 +220,24 @@ pub struct Session {
     lookups: Vec<(u64, String)>,
     /// Changes whenever a popup opens, closes or gets its content.
     pub popup_version: u64,
+    /// The dictionaries page.
+    pub dict_page: DictionaryPage,
+    dict_imports: Vec<DictImport>,
+    /// Library writes, off the UI thread (LIB-006 saves every second).
+    writer: Option<Writer>,
+}
+
+/// An import to start, taken by the UI layer.
+#[derive(Debug)]
+pub struct DictImport {
+    /// The zip.
+    pub zip: PathBuf,
+    /// The dictionary it updates.
+    pub replace: Option<String>,
+    /// Matches its progress and its end.
+    pub generation: u64,
+    /// Stops it.
+    pub cancel: nikomiru_core::Cancel,
 }
 
 impl std::fmt::Debug for Session {
@@ -275,6 +290,11 @@ impl Session {
             ..ViewState::default()
         };
         let services_obscure = services.config.subtitles.obscure.clone();
+        let writer = services
+            .library
+            .as_ref()
+            .filter(|l| !l.read_only())
+            .map(|l| Writer::start(std::sync::Arc::clone(l)));
         Self {
             services,
             bindings,
@@ -301,6 +321,9 @@ impl Session {
             popups: Popups::default(),
             lookups: Vec::new(),
             popup_version: 0,
+            dict_page: DictionaryPage::default(),
+            dict_imports: Vec::new(),
+            writer,
         }
     }
 
@@ -334,6 +357,11 @@ impl Session {
             return;
         }
         self.flush_position();
+        // the reads below must see the positions still queued (the same file
+        // reopened at once)
+        if let Some(w) = &self.writer {
+            w.wait();
+        }
         self.view.error = None;
         let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let meta = std::fs::metadata(&path).ok();
@@ -361,11 +389,16 @@ impl Session {
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map_or(0, |d| d.as_secs() as i64);
             }
-            lib.put_video(&uid, &record)
-                .inspect_err(|e| tracing::warn!("library: {e}"))
-                .ok()?;
             Some(uid)
         });
+        if let (Some(uid), Some(w)) = (&uid, &self.writer) {
+            let (uid, record) = (uid.clone(), record.clone());
+            w.run(move |lib| {
+                if let Err(e) = lib.put_video(&uid, &record) {
+                    tracing::warn!("library: {e}");
+                }
+            });
+        }
         let (options, report) = options::load_options(&self.services.config.player);
         // Names only: a raw option's value may hold a token (PRV-002).
         for line in report {
@@ -493,8 +526,8 @@ impl Session {
     }
 
     fn save_position(&self, ms: u64) {
-        let (Some(lib), Some(Current { uid: Some(uid), .. })) =
-            (self.services.library.as_ref(), self.current.as_ref())
+        let (Some(w), Some(Current { uid: Some(uid), .. })) =
+            (self.writer.as_ref(), self.current.as_ref())
         else {
             return;
         };
@@ -504,9 +537,12 @@ impl Session {
             .now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64);
-        if let Err(e) = lib.save_position(uid, ms, at) {
-            tracing::warn!("saving the position: {e}");
-        }
+        let uid = uid.clone();
+        w.run(move |lib| {
+            if let Err(e) = lib.save_position(&uid, ms, at) {
+                tracing::warn!("saving the position: {e}");
+            }
+        });
     }
 
     /// Exit or file change: write the last position and the per-file settings.
@@ -514,20 +550,29 @@ impl Session {
         if let Some(ms) = self.saver.flush() {
             self.save_position(ms);
         }
-        let (Some(lib), Some(Current { uid: Some(uid), .. })) =
-            (self.services.library.as_ref(), self.current.as_ref())
+        let (Some(w), Some(Current { uid: Some(uid), .. })) =
+            (self.writer.as_ref(), self.current.as_ref())
         else {
             return;
         };
-        if let Ok(Some(mut rec)) = lib.video(uid) {
-            rec.aid = self.view.aid;
-            rec.volume = Some(self.view.volume);
-            rec.speed = Some(self.view.speed);
-            if self.view.duration > 0.0 {
-                rec.duration_ms = Some((self.view.duration * 1000.0) as u64);
+        let (uid, aid, volume, speed, duration) = (
+            uid.clone(),
+            self.view.aid,
+            self.view.volume,
+            self.view.speed,
+            self.view.duration,
+        );
+        w.run(move |lib| {
+            if let Ok(Some(mut rec)) = lib.video(&uid) {
+                rec.aid = aid;
+                rec.volume = Some(volume);
+                rec.speed = Some(speed);
+                if duration > 0.0 {
+                    rec.duration_ms = Some((duration * 1000.0) as u64);
+                }
+                let _ = lib.put_video(&uid, &rec);
             }
-            let _ = lib.put_video(uid, &rec);
-        }
+        });
     }
 
     /// The mouse moved over the window (PLY-004).
@@ -1104,7 +1149,133 @@ impl Session {
 
     /// Starts a lookup on the dictionary service.
     pub fn start_lookup(&self, text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>) {
-        self.services.lookup.lookup(text, done);
+        self.services.dictionaries.lookup(text, done);
+    }
+
+    fn dict_effects(&mut self, effects: Vec<Effect>) {
+        for e in effects {
+            match e {
+                Effect::Message(id, args) => {
+                    let message = self.tr(id, &args);
+                    self.toasts.push(message);
+                }
+                Effect::Error(message) => self.toasts.push(message),
+                Effect::Start {
+                    zip,
+                    replace,
+                    generation,
+                    cancel,
+                } => self.dict_imports.push(DictImport {
+                    zip,
+                    replace,
+                    generation,
+                    cancel,
+                }),
+            }
+        }
+    }
+
+    /// Reads the dictionaries list again (the page opens).
+    pub fn dict_refresh(&mut self) {
+        let effects = self.dict_page.refresh(self.services.dictionaries.as_ref());
+        self.dict_effects(effects);
+    }
+
+    /// A zip chosen in the dialog or dropped on the window.
+    pub fn dict_choose(&mut self, zip: PathBuf) {
+        let effects = self
+            .dict_page
+            .choose(self.services.dictionaries.as_ref(), zip);
+        self.dict_effects(effects);
+    }
+
+    /// The answer to the update offer (DIC-016).
+    pub fn dict_confirm(&mut self, update: bool) {
+        let effects = self.dict_page.confirm(update);
+        self.dict_effects(effects);
+    }
+
+    /// Stops the running import.
+    pub fn dict_cancel(&mut self) {
+        self.dict_page.cancel();
+    }
+
+    /// The imports to start, taken by the UI layer.
+    pub fn take_dict_imports(&mut self) -> Vec<DictImport> {
+        std::mem::take(&mut self.dict_imports)
+    }
+
+    /// Starts an import on the dictionary service.
+    pub fn start_dict_import(
+        &self,
+        import: DictImport,
+        progress: Box<dyn Fn(nikomiru_dict::import::Progress) + Send>,
+        done: Box<dyn FnOnce(Result<String, String>) + Send>,
+    ) {
+        self.services.dictionaries.import(
+            import.zip,
+            import.replace,
+            import.cancel,
+            progress,
+            done,
+        );
+    }
+
+    /// Progress of an import.
+    pub fn dict_progress(&mut self, generation: u64, progress: nikomiru_dict::import::Progress) {
+        self.dict_page.progress(generation, progress);
+    }
+
+    /// An import ended.
+    pub fn dict_finished(&mut self, generation: u64, result: Result<String, String>) {
+        let ok = result.is_ok();
+        let effects =
+            self.dict_page
+                .finished(self.services.dictionaries.as_ref(), generation, result);
+        if ok {
+            self.events.push(UiEvent::DictionaryImported);
+        }
+        self.dict_effects(effects);
+    }
+
+    /// Moves a dictionary up or down (DIC-031).
+    pub fn dict_move(&mut self, id: &str, delta: i32) {
+        let effects = self
+            .dict_page
+            .move_by(self.services.dictionaries.as_ref(), id, delta);
+        self.dict_effects(effects);
+    }
+
+    /// Enables or disables a dictionary (DIC-032).
+    pub fn dict_set_enabled(&mut self, id: &str, enabled: bool) {
+        let effects = self
+            .dict_page
+            .set_enabled(self.services.dictionaries.as_ref(), id, enabled);
+        self.dict_effects(effects);
+    }
+
+    /// Deletes a dictionary (DIC-033).
+    pub fn dict_delete(&mut self, id: &str) {
+        let effects = self
+            .dict_page
+            .delete(self.services.dictionaries.as_ref(), id);
+        self.dict_effects(effects);
+    }
+
+    /// Renames a dictionary (DIC-033).
+    pub fn dict_rename(&mut self, id: &str, name: &str) {
+        let effects = self
+            .dict_page
+            .rename(self.services.dictionaries.as_ref(), id, name);
+        self.dict_effects(effects);
+    }
+
+    /// Sets a dictionary's block state (DIC-034).
+    pub fn dict_set_collapse(&mut self, id: &str, state: &str) {
+        let effects = self
+            .dict_page
+            .set_collapse(self.services.dictionaries.as_ref(), id, state);
+        self.dict_effects(effects);
     }
 
     /// A lookup answered.

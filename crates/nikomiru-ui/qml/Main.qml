@@ -49,7 +49,12 @@ ApplicationWindow {
             return;
         const url = urls[0].toString();
         const ext = url.split(".").pop().toLowerCase();
-        if (ctl.loaded && subtitleExtensions.indexOf(ext) >= 0)
+        if (ext === "zip") {
+            // a Yomitan dictionary (DIC-001)
+            if (!dictPage.visible)
+                dictPage.open();
+            ctl.dict_choose(url);
+        } else if (ctl.loaded && subtitleExtensions.indexOf(ext) >= 0)
             ctl.open_subtitle_file(url);
         else
             ctl.open_file(url);
@@ -84,6 +89,8 @@ ApplicationWindow {
             toggleSubList(true);
         else if (effect === "fullscreen")
             win.visibility = win.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen;
+        else if (effect === "back" && dictPage.visible)
+            dictPage.close();
         else if (effect === "back" && win.visibility === Window.FullScreen)
             win.visibility = Window.Windowed;
         else if (effect === "open_file")
@@ -186,12 +193,20 @@ ApplicationWindow {
         onOpenRequested: fileDialog.open()
         onSubtitleFileRequested: subtitleDialog.open()
         onSubtitleListRequested: win.toggleSubList(false)
+        onDictionariesRequested: dictPage.open()
     }
 
     DictionaryPopups {
         id: popups
         controller: ctl
         anchors.fill: parent
+    }
+
+    DictionaryPage {
+        id: dictPage
+        controller: ctl
+        anchors.fill: parent
+        onClosed: keys.forceActiveFocus()
     }
 
     Toast {

@@ -58,6 +58,7 @@ pub mod qobject {
         #[qproperty(i32, video_width)]
         #[qproperty(i32, video_height)]
         #[qproperty(QString, popups)]
+        #[qproperty(QString, dict_page)]
         type PlayerController = super::PlayerControllerRust;
 
         /// Opens a file (path or `file://` URL).
@@ -170,6 +171,42 @@ pub mod qobject {
         #[qinvokable]
         fn popup_rendered(self: Pin<&mut PlayerController>, level: i32);
 
+        /// The dictionaries page opens: the list is read again.
+        #[qinvokable]
+        fn dict_open(self: Pin<&mut PlayerController>);
+
+        /// A dictionary zip from the dialog or a drop (path or `file://` URL).
+        #[qinvokable]
+        fn dict_choose(self: Pin<&mut PlayerController>, url: &QString);
+
+        /// The answer to the update offer.
+        #[qinvokable]
+        fn dict_confirm(self: Pin<&mut PlayerController>, update: bool);
+
+        /// Stops the running import.
+        #[qinvokable]
+        fn dict_cancel(self: Pin<&mut PlayerController>);
+
+        /// Moves a dictionary up (-1) or down (+1).
+        #[qinvokable]
+        fn dict_move(self: Pin<&mut PlayerController>, id: &QString, delta: i32);
+
+        /// Enables or disables a dictionary.
+        #[qinvokable]
+        fn dict_set_enabled(self: Pin<&mut PlayerController>, id: &QString, enabled: bool);
+
+        /// Deletes a dictionary (the page asked for confirmation).
+        #[qinvokable]
+        fn dict_delete(self: Pin<&mut PlayerController>, id: &QString);
+
+        /// Renames a dictionary; empty restores the title.
+        #[qinvokable]
+        fn dict_rename(self: Pin<&mut PlayerController>, id: &QString, name: &QString);
+
+        /// Sets a dictionary's popup block state: automatic, expanded, collapsed.
+        #[qinvokable]
+        fn dict_set_collapse(self: Pin<&mut PlayerController>, id: &QString, state: &QString);
+
         /// Closes every popup (a click outside).
         #[qinvokable]
         fn popup_close_all(self: Pin<&mut PlayerController>);
@@ -276,6 +313,9 @@ pub struct PlayerControllerRust {
     list_version: Option<u64>,
     /// Version of the popups already sent to QML.
     popup_version: Option<u64>,
+    dict_page: QString,
+    /// Version of the dictionaries page already sent to QML.
+    dict_version: Option<u64>,
     pub(crate) session: Option<Session>,
 }
 
@@ -363,6 +403,32 @@ pub(crate) fn harness_call<T: Send + 'static>(
     }
     rx.recv_timeout(Duration::from_secs(10))
         .map_err(|_| "the UI did not answer".to_string())
+}
+
+/// Progress of a dictionary import, back on the Qt thread.
+fn deliver_import_progress(generation: u64, progress: nikomiru_dict::import::Progress) {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(move |mut c| {
+            c.as_mut()
+                .with_session(|s| s.dict_progress(generation, progress));
+            c.sync();
+        });
+    }
+}
+
+/// The end of a dictionary import, back on the Qt thread.
+fn deliver_import_done(generation: u64, result: Result<String, String>) {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(move |mut c| {
+            c.as_mut()
+                .with_session(|s| s.dict_finished(generation, result));
+            c.sync();
+        });
+    }
 }
 
 /// A finished lookup, back on the Qt thread.
@@ -502,7 +568,34 @@ impl qobject::PlayerController {
         }
         self.as_mut().sync_subtitles();
         self.as_mut().sync_popups();
+        self.as_mut().sync_dictionaries();
         self.as_mut().forward_events();
+    }
+
+    /// Starts the pending imports and copies the dictionaries page.
+    fn sync_dictionaries(mut self: Pin<&mut Self>) {
+        let imports = self
+            .as_mut()
+            .with_session(Session::take_dict_imports)
+            .unwrap_or_default();
+        for import in imports {
+            let generation = import.generation;
+            self.as_mut().with_session(|s| {
+                s.start_dict_import(
+                    import,
+                    Box::new(move |p| deliver_import_progress(generation, p)),
+                    Box::new(move |result| deliver_import_done(generation, result)),
+                )
+            });
+        }
+        let seen = self.rust().dict_version;
+        if let Some(Some((version, json))) = self.as_mut().with_session(|s| {
+            (Some(s.dict_page.version) != seen)
+                .then(|| (s.dict_page.version, s.dict_page.json().to_string()))
+        }) {
+            self.as_mut().rust_mut().dict_version = Some(version);
+            self.as_mut().set_dict_page(QString::from(json.as_str()));
+        }
     }
 
     /// Starts the pending lookups and copies the popups.
@@ -723,6 +816,59 @@ impl qobject::PlayerController {
         if let Ok(level) = usize::try_from(level) {
             self.as_mut().with_session(|s| s.popup_rendered(level));
         }
+        self.sync();
+    }
+
+    fn dict_open(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::dict_refresh);
+        self.sync();
+    }
+
+    fn dict_choose(mut self: Pin<&mut Self>, url: &QString) {
+        let path = url_to_path(&url.to_string());
+        self.as_mut().with_session(|s| s.dict_choose(path));
+        self.sync();
+    }
+
+    fn dict_confirm(mut self: Pin<&mut Self>, update: bool) {
+        self.as_mut().with_session(|s| s.dict_confirm(update));
+        self.sync();
+    }
+
+    fn dict_cancel(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::dict_cancel);
+        self.sync();
+    }
+
+    fn dict_move(mut self: Pin<&mut Self>, id: &QString, delta: i32) {
+        let id = id.to_string();
+        self.as_mut().with_session(|s| s.dict_move(&id, delta));
+        self.sync();
+    }
+
+    fn dict_set_enabled(mut self: Pin<&mut Self>, id: &QString, enabled: bool) {
+        let id = id.to_string();
+        self.as_mut()
+            .with_session(|s| s.dict_set_enabled(&id, enabled));
+        self.sync();
+    }
+
+    fn dict_delete(mut self: Pin<&mut Self>, id: &QString) {
+        let id = id.to_string();
+        self.as_mut().with_session(|s| s.dict_delete(&id));
+        self.sync();
+    }
+
+    fn dict_rename(mut self: Pin<&mut Self>, id: &QString, name: &QString) {
+        let (id, name) = (id.to_string(), name.to_string());
+        self.as_mut().with_session(|s| s.dict_rename(&id, &name));
+        self.sync();
+    }
+
+    fn dict_set_collapse(mut self: Pin<&mut Self>, id: &QString, state: &QString) {
+        let (id, state) = (id.to_string(), state.to_string());
+        self.as_mut()
+            .with_session(|s| s.dict_set_collapse(&id, &state));
         self.sync();
     }
 
