@@ -82,6 +82,32 @@ impl Translator {
         self.language
     }
 
+    /// The translated message of an error (ERR-001).
+    pub fn error(&self, e: &dyn nikomiru_core::Localized) -> String {
+        self.tr(e.message_id(), &e.message_args())
+    }
+
+    /// The message `id` in this language only, without the English fallback;
+    /// an error if it is missing or an argument it uses is not given (T-ERR-001).
+    pub fn try_tr(&self, id: &str, args: &[(&str, String)]) -> Result<String, String> {
+        let mut fa = FluentArgs::new();
+        for (k, v) in args {
+            fa.set(*k, v.clone());
+        }
+        let pattern = self
+            .bundle
+            .get_message(id)
+            .and_then(|m| m.value())
+            .ok_or_else(|| format!("{}: no message {id}", self.language))?;
+        let mut errors = Vec::new();
+        let text = self.bundle.format_pattern(pattern, Some(&fa), &mut errors);
+        if errors.is_empty() {
+            Ok(text.into_owned())
+        } else {
+            Err(format!("{}: {id}: {errors:?}", self.language))
+        }
+    }
+
     /// The message `id`, with `args` as `{ $name }` values.
     pub fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         let mut fa = FluentArgs::new();

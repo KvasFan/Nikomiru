@@ -28,12 +28,43 @@ toast-unmuted = Audio attivato
 toast-paused = In pausa
 toast-playing = In riproduzione
 
-error-file = Impossibile riprodurre «{ $file }»: { $reason }
-error-config = Il file delle impostazioni { $path } non è valido ({ $reason }). Sono in uso i valori predefiniti.
-error-library-read-only = La libreria è stata scritta da una versione più recente di Nikomiru: è aperta in sola lettura.
-error-library = Errore della libreria: { $reason }
-error-player = Errore del player: { $reason }
+error-file = Impossibile riprodurre “{ $file }”: { $reason }.
+
+# Settings (nikomiru-core ConfigError, PathsError)
+error-config = Il file delle impostazioni { $path } non è valido alla riga { $line } ({ $reason }). Finché non lo correggi si usano i valori predefiniti.
+error-config-read = Il file delle impostazioni { $path } non si può leggere ({ $reason }). Si usano i valori predefiniti.
+error-config-write = Le impostazioni non si possono salvare in { $path } ({ $reason }). Controlla che la cartella sia scrivibile.
+error-config-serialize = Le impostazioni non si possono salvare ({ $reason }).
 error-paths = HOME non è impostata: Nikomiru non trova le sue cartelle.
+
+# Library (nikomiru-library LibraryError)
+error-library = La libreria non si può usare ({ $reason }): posizioni e cronologia non vengono salvate.
+error-library-record = Un record della libreria è danneggiato ({ $reason }).
+error-library-io = Il file della libreria { $path } non si può usare ({ $reason }).
+error-library-read-only = La libreria è stata scritta da una versione più recente di Nikomiru: è aperta in sola lettura.
+error-library-schema = Il file della libreria è danneggiato: non ha una versione valida. Nikomiru lo lascia com'è.
+
+# Player (nikomiru-player PlayerError, PlaybackError)
+error-player = Il player non può farlo ({ $reason }).
+error-player-thread = Il player non riesce ad avviarsi ({ $reason }).
+playback-loading-failed = il file manca, non è leggibile o è danneggiato
+playback-audio-output = non c'è un'uscita audio disponibile
+playback-video-output = l'uscita video non riesce ad avviarsi
+playback-nothing-to-play = il file non ha né audio né video
+playback-unknown-format = il formato del file non è riconosciuto
+playback-unsupported = il file non è supportato
+playback-other = errore di mpv { $code }
+
+# FFmpeg (nikomiru-media ToolsError)
+error-ffmpeg-missing = FFmpeg non è stato trovato. Installalo o indica il suo percorso in Impostazioni → Avanzate: fino ad allora l'estrazione dei sottotitoli e i media delle carte sono disattivati.
+error-ffprobe-missing = FFmpeg è in { $path }, ma ffprobe non è accanto.
+error-ffmpeg-run = { $path } non si può eseguire ({ $reason }).
+error-ffmpeg-timeout = { $path } non ha risposto entro { $seconds } secondi.
+error-ffmpeg-old = FFmpeg { $version } è troppo vecchio: serve la versione { $minimum } o successiva.
+
+# Single instance (nikomiru-app InstanceError)
+error-instance-io = { $path } non si può usare ({ $reason }): potrebbero aprirsi più finestre di Nikomiru.
+error-instance-no-answer = Nikomiru è già aperto ma non risponde. Chiudilo e riprova.
 
 # Shown by the desktop while the screensaver is inhibited (PLY-013).
 inhibit-reason = Riproduzione di un video

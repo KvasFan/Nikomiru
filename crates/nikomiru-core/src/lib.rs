@@ -9,9 +9,11 @@
 
 pub mod clock;
 pub mod config;
+pub mod error;
 pub mod fs;
 pub mod paths;
 
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use config::{Config, ConfigError, PathsConfig};
+pub use error::Localized;
 pub use paths::{Paths, PathsError};

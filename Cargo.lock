@@ -583,6 +583,7 @@ version = "0.0.0"
 name = "nikomiru-library"
 version = "0.0.0"
 dependencies = [
+ "nikomiru-core",
  "postcard",
  "redb",
  "serde",
@@ -594,6 +595,7 @@ dependencies = [
 name = "nikomiru-media"
 version = "0.0.0"
 dependencies = [
+ "nikomiru-core",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",

@@ -40,6 +40,25 @@ pub enum InstanceError {
     NoAnswer(PathBuf),
 }
 
+impl nikomiru_core::Localized for InstanceError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            InstanceError::Io { .. } => "error-instance-io",
+            InstanceError::NoAnswer(_) => "error-instance-no-answer",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            InstanceError::Io { path, source } => vec![
+                ("path", path.display().to_string()),
+                ("reason", source.to_string()),
+            ],
+            InstanceError::NoAnswer(_) => Vec::new(),
+        }
+    }
+}
+
 /// What a launch sends to the running instance.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
@@ -286,5 +305,22 @@ mod tests {
             rx.recv_timeout(Duration::from_secs(5)).unwrap(),
             request(&["/v/ep2.mkv"])
         );
+    }
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_messages() {
+        use nikomiru_core::Localized;
+        let errors = [
+            InstanceError::Io {
+                path: PathBuf::from("/run/user/1000/nikomiru.lock"),
+                source: std::io::Error::other("x"),
+            },
+            InstanceError::NoAnswer(PathBuf::from("/run/user/1000/nikomiru.sock")),
+        ];
+        let all: Vec<&dyn Localized> = errors.iter().map(|e| e as _).collect();
+        let dir = Path::new(nikomiru_core::error::I18N_DIR);
+        let problems = nikomiru_core::error::message_problems(dir, &all);
+        assert!(problems.is_empty(), "{problems:#?}");
     }
 }

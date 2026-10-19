@@ -145,10 +145,9 @@ fn fatal(e: &dyn std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// The settings, or the defaults with a notice (ERR-001).
-fn load_config(paths: &Paths) -> (Config, Option<(String, String)>) {
-    let path = paths.config_file();
-    match Config::load(&path) {
+/// The settings, or the defaults and the error to show (ERR-001).
+fn load_config(paths: &Paths) -> (Config, Option<ConfigError>) {
+    match Config::load(&paths.config_file()) {
         Ok(config) => {
             let unknown = config.unknown_keys();
             if !unknown.is_empty() {
@@ -158,13 +157,7 @@ fn load_config(paths: &Paths) -> (Config, Option<(String, String)>) {
         }
         Err(e) => {
             tracing::warn!("{e}");
-            let reason = match &e {
-                ConfigError::Parse { line, message, .. } => format!("line {line}: {message}"),
-                ConfigError::Io { source, .. } => source.to_string(),
-                ConfigError::Serialize(s) => s.to_string(),
-            };
-            let notice = (path.display().to_string(), reason);
-            (Config::default(), Some(notice))
+            (Config::default(), Some(e))
         }
     }
 }
@@ -187,8 +180,8 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
     let translator =
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
     let mut notices = Vec::new();
-    if let Some((path, reason)) = config_notice {
-        notices.push(translator.tr("error-config", &[("path", path), ("reason", reason)]));
+    if let Some(e) = config_notice {
+        notices.push(translator.error(&e));
     }
     let library = match Library::open(&paths.library_db()) {
         Ok(library) => {
@@ -200,14 +193,18 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         }
         Err(e) => {
             tracing::error!("{e}");
-            notices.push(translator.tr("error-library", &[("reason", e.to_string())]));
+            notices.push(translator.error(&e));
             None
         }
     };
 
     let player = match Player::new(VideoOutput::RenderApi, nikomiru_ui::deliver) {
         Ok(player) => player,
-        Err(e) => return fatal(&e),
+        Err(e) => {
+            tracing::error!("{e}");
+            eprintln!("nikomiru: {}", translator.error(&e));
+            return ExitCode::FAILURE;
+        }
     };
     nikomiru_player::video::set_core(&player);
     let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));

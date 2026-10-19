@@ -310,7 +310,7 @@ impl Session {
             }
             Err(e) => {
                 tracing::error!("load failed: {e}");
-                self.view.error = Some(self.tr("error-player", &[("reason", e.to_string())]));
+                self.view.error = Some(self.services.translator.error(&e));
             }
         }
         self.current = Some(Current { uid, path });
@@ -347,9 +347,10 @@ impl Session {
             }
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c.len(),
-            PlayerEvent::EndFile(EndFile::Error(reason)) => {
-                tracing::warn!("playback error: {reason}");
+            PlayerEvent::EndFile(EndFile::Error(e)) => {
+                tracing::warn!("playback error: {e}");
                 let file = self.view.title.clone();
+                let reason = self.services.translator.error(&e);
                 self.view.loaded = false;
                 self.view.error =
                     Some(self.tr("error-file", &[("file", file), ("reason", reason)]));

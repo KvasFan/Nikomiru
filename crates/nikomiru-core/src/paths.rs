@@ -18,6 +18,20 @@ pub enum PathsError {
     NoHome,
 }
 
+impl crate::Localized for PathsError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            PathsError::NoHome => "error-paths",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            PathsError::NoHome => Vec::new(),
+        }
+    }
+}
+
 /// Nikomiru's directories. Each one already includes the `nikomiru` subdirectory,
 /// except [`Paths::pictures_dir`], which is the user's pictures folder.
 #[derive(Debug, Clone, PartialEq, Eq)]

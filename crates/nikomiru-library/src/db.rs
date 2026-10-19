@@ -45,6 +45,30 @@ pub enum LibraryError {
     BadSchema,
 }
 
+impl nikomiru_core::Localized for LibraryError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            LibraryError::Db(_) => "error-library",
+            LibraryError::Record(_) => "error-library-record",
+            LibraryError::Io { .. } => "error-library-io",
+            LibraryError::ReadOnly(_) => "error-library-read-only",
+            LibraryError::BadSchema => "error-library-schema",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            LibraryError::Db(e) => vec![("reason", e.to_string())],
+            LibraryError::Record(e) => vec![("reason", e.to_string())],
+            LibraryError::Io { path, source } => vec![
+                ("path", path.display().to_string()),
+                ("reason", source.to_string()),
+            ],
+            LibraryError::ReadOnly(_) | LibraryError::BadSchema => Vec::new(),
+        }
+    }
+}
+
 macro_rules! db_err {
     ($e:expr) => {
         $e.map_err(|e| LibraryError::Db(e.into()))
@@ -379,5 +403,25 @@ mod tests {
         ));
         drop(lib);
         assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_messages() {
+        use nikomiru_core::Localized;
+        let errors = [
+            LibraryError::Db(redb::Error::Corrupted("x".into())),
+            LibraryError::Record(postcard::Error::DeserializeUnexpectedEnd),
+            LibraryError::Io {
+                path: PathBuf::from("/l/library.redb"),
+                source: std::io::Error::other("x"),
+            },
+            LibraryError::ReadOnly(9),
+            LibraryError::BadSchema,
+        ];
+        let all: Vec<&dyn Localized> = errors.iter().map(|e| e as _).collect();
+        let dir = std::path::Path::new(nikomiru_core::error::I18N_DIR);
+        let problems = nikomiru_core::error::message_problems(dir, &all);
+        assert!(problems.is_empty(), "{problems:#?}");
     }
 }

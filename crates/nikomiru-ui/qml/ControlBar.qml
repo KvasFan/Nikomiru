@@ -15,7 +15,7 @@ Rectangle {
     signal fullscreenToggled()
     signal openRequested()
 
-    height: 84
+    implicitHeight: layout.implicitHeight + 2 * layout.anchors.margins
     color: "#d9141418"
 
     function clock(seconds) {
@@ -30,6 +30,7 @@ Rectangle {
     }
 
     ColumnLayout {
+        id: layout
         anchors.fill: parent
         anchors.margins: 10
         spacing: 4

@@ -12,9 +12,17 @@ use serde::{Deserialize, Serialize};
 /// Errors while reading or writing the configuration.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// The file could not be read or written.
-    #[error("{path}: {source}")]
-    Io {
+    /// The file exists but could not be read.
+    #[error("reading {path}: {source}")]
+    Read {
+        /// The configuration file.
+        path: PathBuf,
+        /// The I/O error.
+        source: std::io::Error,
+    },
+    /// The file could not be written.
+    #[error("writing {path}: {source}")]
+    Write {
         /// The configuration file.
         path: PathBuf,
         /// The I/O error.
@@ -162,7 +170,7 @@ impl Config {
                 message: mask_quoted(e.message().trim()),
             }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(source) => Err(ConfigError::Io {
+            Err(source) => Err(ConfigError::Read {
                 path: path.to_path_buf(),
                 source,
             }),
@@ -172,7 +180,7 @@ impl Config {
     /// Writes `path` atomically with permissions 0600.
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
         let text = toml::to_string_pretty(self)?;
-        crate::fs::write_atomic(path, text.as_bytes(), 0o600).map_err(|source| ConfigError::Io {
+        crate::fs::write_atomic(path, text.as_bytes(), 0o600).map_err(|source| ConfigError::Write {
             path: path.to_path_buf(),
             source,
         })
@@ -186,6 +194,36 @@ impl Config {
         out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
         out.sort();
         out
+    }
+}
+
+impl crate::Localized for ConfigError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            ConfigError::Read { .. } => "error-config-read",
+            ConfigError::Write { .. } => "error-config-write",
+            ConfigError::Parse { .. } => "error-config",
+            ConfigError::Serialize(_) => "error-config-serialize",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            ConfigError::Read { path, source } | ConfigError::Write { path, source } => vec![
+                ("path", path.display().to_string()),
+                ("reason", source.to_string()),
+            ],
+            ConfigError::Parse {
+                path,
+                line,
+                message,
+            } => vec![
+                ("path", path.display().to_string()),
+                ("line", line.to_string()),
+                ("reason", message.clone()),
+            ],
+            ConfigError::Serialize(e) => vec![("reason", e.to_string())],
+        }
     }
 }
 
@@ -306,5 +344,33 @@ play_pause = ["Space"]
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert_eq!(Config::load(&path).unwrap(), Config::default());
+    }
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_messages() {
+        use serde::ser::Error as _;
+        let io = || std::io::Error::other("x");
+        let path = || PathBuf::from("/c/config.toml");
+        let errors = [
+            ConfigError::Read {
+                path: path(),
+                source: io(),
+            },
+            ConfigError::Write {
+                path: path(),
+                source: io(),
+            },
+            ConfigError::Parse {
+                path: path(),
+                line: 3,
+                message: "x".into(),
+            },
+            ConfigError::Serialize(toml::ser::Error::custom("x")),
+        ];
+        let mut all: Vec<&dyn crate::Localized> = errors.iter().map(|e| e as _).collect();
+        all.push(&crate::PathsError::NoHome);
+        let problems = crate::error::message_problems(crate::error::I18N_DIR.as_ref(), &all);
+        assert!(problems.is_empty(), "{problems:#?}");
     }
 }

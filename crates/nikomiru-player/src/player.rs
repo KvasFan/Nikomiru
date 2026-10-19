@@ -32,11 +32,98 @@ pub fn instances_created() -> usize {
 #[derive(Debug, thiserror::Error)]
 pub enum PlayerError {
     /// mpv returned an error.
-    #[error("mpv: {0}")]
+    #[error("mpv: {}", mpv_reason(.0))]
     Mpv(#[from] libmpv2::Error),
     /// The events thread could not be started.
     #[error("starting the mpv events thread: {0}")]
     Thread(std::io::Error),
+}
+
+/// A libmpv2 error in words: mpv's error codes become [`PlaybackError`]s.
+fn mpv_reason(e: &libmpv2::Error) -> String {
+    match e {
+        libmpv2::Error::Raw(code) => PlaybackError::from_code(*code).to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+impl nikomiru_core::Localized for PlayerError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            PlayerError::Mpv(_) => "error-player",
+            PlayerError::Thread(_) => "error-player-thread",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            PlayerError::Mpv(e) => vec![("reason", mpv_reason(e))],
+            PlayerError::Thread(e) => vec![("reason", e.to_string())],
+        }
+    }
+}
+
+/// Why mpv could not play a file (PLY-012), from mpv's error codes
+/// (`mpv_error` in `<mpv/client.h>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum PlaybackError {
+    /// `MPV_ERROR_LOADING_FAILED`: missing, unreadable or broken file.
+    #[error("loading failed")]
+    LoadingFailed,
+    /// `MPV_ERROR_AO_INIT_FAILED`.
+    #[error("audio output initialization failed")]
+    AudioOutput,
+    /// `MPV_ERROR_VO_INIT_FAILED`.
+    #[error("video output initialization failed")]
+    VideoOutput,
+    /// `MPV_ERROR_NOTHING_TO_PLAY`: no audio or video stream.
+    #[error("nothing to play")]
+    NothingToPlay,
+    /// `MPV_ERROR_UNKNOWN_FORMAT`.
+    #[error("unrecognized file format")]
+    UnknownFormat,
+    /// `MPV_ERROR_UNSUPPORTED`.
+    #[error("not supported")]
+    Unsupported,
+    /// Any other code.
+    #[error("mpv error {0}")]
+    Other(i32),
+}
+
+impl PlaybackError {
+    /// From an `mpv_error` code.
+    pub fn from_code(code: i32) -> Self {
+        match code {
+            -13 => PlaybackError::LoadingFailed,
+            -14 => PlaybackError::AudioOutput,
+            -15 => PlaybackError::VideoOutput,
+            -16 => PlaybackError::NothingToPlay,
+            -17 => PlaybackError::UnknownFormat,
+            -18 => PlaybackError::Unsupported,
+            other => PlaybackError::Other(other),
+        }
+    }
+}
+
+impl nikomiru_core::Localized for PlaybackError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            PlaybackError::LoadingFailed => "playback-loading-failed",
+            PlaybackError::AudioOutput => "playback-audio-output",
+            PlaybackError::VideoOutput => "playback-video-output",
+            PlaybackError::NothingToPlay => "playback-nothing-to-play",
+            PlaybackError::UnknownFormat => "playback-unknown-format",
+            PlaybackError::Unsupported => "playback-unsupported",
+            PlaybackError::Other(_) => "playback-other",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            PlaybackError::Other(code) => vec![("code", code.to_string())],
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// Where the video goes.
@@ -88,7 +175,7 @@ pub enum EndFile {
     /// Stopped or replaced by another `loadfile`.
     Stopped,
     /// Could not be played (missing file, unsupported format…).
-    Error(String),
+    Error(PlaybackError),
 }
 
 /// An event of the player, for the UI.
@@ -584,9 +671,11 @@ fn event_loop(client: Mpv, shared: &Shared, sink: &Sink) {
                 };
                 emit(PlayerEvent::EndFile(end));
             }
-            Some(Err(e @ libmpv2::Error::Raw(_))) => {
+            Some(Err(libmpv2::Error::Raw(code))) => {
                 // libmpv2 reports an `end-file` with an error as an error event
-                emit(PlayerEvent::EndFile(EndFile::Error(e.to_string())));
+                emit(PlayerEvent::EndFile(EndFile::Error(
+                    PlaybackError::from_code(code),
+                )));
             }
             Some(Err(e)) => {
                 // a message or a property that is not valid UTF-8: not a playback error
@@ -638,5 +727,42 @@ fn event_loop(client: Mpv, shared: &Shared, sink: &Sink) {
             }
             Some(Ok(_)) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nikomiru_core::Localized;
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_messages() {
+        let players = [
+            PlayerError::Mpv(libmpv2::Error::Raw(-13)),
+            PlayerError::Mpv(libmpv2::Error::InvalidUtf8),
+            PlayerError::Thread(std::io::Error::other("x")),
+        ];
+        let playback: Vec<PlaybackError> = (-20..=0).map(PlaybackError::from_code).collect();
+        let mut all: Vec<&dyn Localized> = players.iter().map(|e| e as _).collect();
+        all.extend(playback.iter().map(|e| e as &dyn Localized));
+        let dir = std::path::Path::new(nikomiru_core::error::I18N_DIR);
+        let problems = nikomiru_core::error::message_problems(dir, &all);
+        assert!(problems.is_empty(), "{problems:#?}");
+        // every named code has its own variant
+        for (code, kind) in [
+            (-13, PlaybackError::LoadingFailed),
+            (-14, PlaybackError::AudioOutput),
+            (-15, PlaybackError::VideoOutput),
+            (-16, PlaybackError::NothingToPlay),
+            (-17, PlaybackError::UnknownFormat),
+            (-18, PlaybackError::Unsupported),
+        ] {
+            assert_eq!(PlaybackError::from_code(code), kind);
+        }
+        assert_eq!(
+            PlayerError::Mpv(libmpv2::Error::Raw(-17)).to_string(),
+            "mpv: unrecognized file format"
+        );
     }
 }

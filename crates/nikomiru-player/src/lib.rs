@@ -20,4 +20,6 @@ pub mod video {
     pub use crate::bridge::{init, set_core};
 }
 
-pub use player::{LoadRequest, Player, PlayerError, PlayerEvent, PlayerHandle, VideoOutput};
+pub use player::{
+    LoadRequest, PlaybackError, Player, PlayerError, PlayerEvent, PlayerHandle, VideoOutput,
+};

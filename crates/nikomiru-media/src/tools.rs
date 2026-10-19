@@ -65,6 +65,37 @@ pub enum ToolsError {
     },
 }
 
+impl nikomiru_core::Localized for ToolsError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            ToolsError::NotFound => "error-ffmpeg-missing",
+            ToolsError::NoFfprobe { .. } => "error-ffprobe-missing",
+            ToolsError::Run { .. } => "error-ffmpeg-run",
+            ToolsError::Timeout { .. } => "error-ffmpeg-timeout",
+            ToolsError::TooOld { .. } => "error-ffmpeg-old",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            ToolsError::NotFound => Vec::new(),
+            ToolsError::NoFfprobe { ffmpeg } => vec![("path", ffmpeg.display().to_string())],
+            ToolsError::Run { path, source } => vec![
+                ("path", path.display().to_string()),
+                ("reason", source.to_string()),
+            ],
+            ToolsError::Timeout { path } => vec![
+                ("path", path.display().to_string()),
+                ("seconds", PROBE_TIMEOUT.as_secs().to_string()),
+            ],
+            ToolsError::TooOld { version } => vec![
+                ("version", version.clone()),
+                ("minimum", format!("{MIN_MAJOR}.0")),
+            ],
+        }
+    }
+}
+
 /// Where to look for the executables.
 #[derive(Debug, Clone, Default)]
 pub struct Search {
@@ -420,5 +451,28 @@ mod tests {
             Some(AudioFormat::OpusOgg)
         );
         assert_eq!(ImageFormat::from_config("png"), None);
+    }
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_messages() {
+        use nikomiru_core::Localized;
+        let path = || PathBuf::from("/usr/bin/ffmpeg");
+        let errors = [
+            ToolsError::NotFound,
+            ToolsError::NoFfprobe { ffmpeg: path() },
+            ToolsError::Run {
+                path: path(),
+                source: io::Error::other("x"),
+            },
+            ToolsError::Timeout { path: path() },
+            ToolsError::TooOld {
+                version: "5.1".into(),
+            },
+        ];
+        let all: Vec<&dyn Localized> = errors.iter().map(|e| e as _).collect();
+        let dir = Path::new(nikomiru_core::error::I18N_DIR);
+        let problems = nikomiru_core::error::message_problems(dir, &all);
+        assert!(problems.is_empty(), "{problems:#?}");
     }
 }
