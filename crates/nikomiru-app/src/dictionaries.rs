@@ -32,7 +32,11 @@ pub struct Dictionaries {
 
 impl Dictionaries {
     /// Starts the lookup worker.
-    pub fn start(manager: Arc<DictionaryManager>, translator: Translator) -> Self {
+    pub fn start(
+        manager: Arc<DictionaryManager>,
+        translator: Translator,
+        max_results: usize,
+    ) -> Self {
         let (jobs, rx) = mpsc::channel::<(String, Done<Reply>)>();
         let worker_manager = Arc::clone(&manager);
         let worker_translator = translator.clone();
@@ -41,8 +45,8 @@ impl Dictionaries {
             .spawn(move || {
                 for (text, done) in rx {
                     let started = std::time::Instant::now();
-                    let result =
-                        render(&worker_manager, &text).map_err(|e| worker_translator.error(&e));
+                    let result = render(&worker_manager, &text, max_results)
+                        .map_err(|e| worker_translator.error(&e));
                     tracing::debug!(query = %text, elapsed = ?started.elapsed(), "lookup");
                     done(result);
                 }
@@ -129,9 +133,13 @@ fn is_han(c: char) -> bool {
     matches!(c as u32, 0x4E00..=0x9FFF | 0x3400..=0x4DBF | 0x20000..=0x2A6DF | 0xF900..=0xFAFF)
 }
 
-fn render(manager: &DictionaryManager, text: &str) -> Result<Reply, DictionaryError> {
+fn render(
+    manager: &DictionaryManager,
+    text: &str,
+    max_results: usize,
+) -> Result<Reply, DictionaryError> {
     let lookup = manager.lookup()?;
-    let entries = lookup.lookup(text, Options::default())?;
+    let entries = lookup.lookup(text, Options { max_results })?;
     // a single kanji also shows its kanji entries (LKP-037)
     let mut chars = text.chars();
     let kanji = match (chars.next(), chars.next()) {
@@ -174,5 +182,6 @@ fn render(manager: &DictionaryManager, text: &str) -> Result<Reply, DictionaryEr
         content: content.to_string(),
         best_length: nikomiru_dict::lookup::best_length(&entries),
         empty: entries.is_empty() && kanji.is_empty(),
+        entries: entries.len(),
     })
 }

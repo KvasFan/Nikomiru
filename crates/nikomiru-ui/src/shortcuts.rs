@@ -86,11 +86,15 @@ pub enum Action {
     SubAlignPrev,
     /// Align the next cue to the position (SUB-016).
     SubAlignNext,
+    /// The next entry of the popup (POP-014).
+    PopupNext,
+    /// The previous entry of the popup (POP-014).
+    PopupPrev,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 30] = [
+    pub const ALL: [Action; 32] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -121,6 +125,8 @@ impl Action {
         Action::SubDelayPlus,
         Action::SubAlignPrev,
         Action::SubAlignNext,
+        Action::PopupNext,
+        Action::PopupPrev,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the QML layer.
@@ -156,6 +162,8 @@ impl Action {
             Action::SubDelayPlus => "sub_delay_plus",
             Action::SubAlignPrev => "sub_align_prev",
             Action::SubAlignNext => "sub_align_next",
+            Action::PopupNext => "popup_next",
+            Action::PopupPrev => "popup_prev",
         }
     }
 
@@ -168,6 +176,7 @@ impl Action {
     pub fn context(self) -> Context {
         match self {
             Action::OpenFile => Context::Global,
+            Action::PopupNext | Action::PopupPrev => Context::Popup,
             _ => Context::Player,
         }
     }
@@ -205,6 +214,8 @@ impl Action {
             Action::SubDelayPlus => &["KeyX"],
             Action::SubAlignPrev => &["Ctrl+Shift+ArrowLeft"],
             Action::SubAlignNext => &["Ctrl+Shift+ArrowRight"],
+            Action::PopupNext => &["Tab"],
+            Action::PopupPrev => &["Shift+Tab"],
         }
     }
 }

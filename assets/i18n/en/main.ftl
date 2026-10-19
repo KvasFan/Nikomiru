@@ -127,6 +127,8 @@ inhibit-reason = Playing a video
 popup-loading = Looking up…
 popup-no-results = No dictionary has this word. Import dictionaries from the menu.
 popup-pitch-accent = pitch accent
+popup-replay = Replay
+popup-goto = Go to the sentence
 
 # Dictionaries page
 dict-page-title = Dictionaries

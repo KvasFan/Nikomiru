@@ -394,3 +394,56 @@ fn a_dropped_dictionary_is_imported_and_used() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-POP-014, T-POP-015
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_popup_keyboard_replay_and_go_to_sentence() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let cue_start = time_pos(&h.state());
+    // 食べました: 食べる, 食べ物?, 食… several entries
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    let s = h.state();
+    let entries = s["popups"][0]["entries"].as_u64().unwrap_or(0);
+    assert!(entries >= 2, "{s}");
+    h.key("Tab");
+    h.state_until("the second entry", |s| s["popups"][0]["entry"] == 1);
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Tab", "mods": ["Shift"] }));
+    h.state_until("back to the first", |s| s["popups"][0]["entry"] == 0);
+
+    // R with the popup open: the cue again, pausing at its end (SUB-013)
+    h.key("KeyR");
+    let s = h.state_until("replaying", |s| s["paused"] == false);
+    assert_eq!(
+        s["popups"].as_array().map(Vec::len),
+        Some(1),
+        "the popup stays"
+    );
+    // the cue is 2.0–2.5 s: mpv stops on its last frame
+    let s = h.state_until("paused at the end of the cue", |s| {
+        s["paused"] == true && time_pos(s) >= cue_start + 0.3
+    });
+    assert!(time_pos(&s) <= 2.5, "stopped at the end of the cue: {s}");
+    // closing resumes and the stop is gone: playback goes past the cue
+    h.key("Escape");
+    h.state_until("past the end of the cue", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty) && time_pos(s) > 5.2
+    });
+    // "go to the sentence": the popups close and playback is back at the cue
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 1, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.cmd(serde_json::json!({ "cmd": "popup_button", "button": "goto" }));
+    h.state_until("back at the second cue, playing", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty)
+            && s["paused"] == false
+            && (4.9..5.6).contains(&time_pos(s))
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

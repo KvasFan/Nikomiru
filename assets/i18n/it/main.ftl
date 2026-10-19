@@ -127,6 +127,8 @@ inhibit-reason = Riproduzione di un video
 popup-loading = Ricerca…
 popup-no-results = Nessun dizionario contiene questa parola. Importa i dizionari dal menu.
 popup-pitch-accent = accento tonale
+popup-replay = Riascolta
+popup-goto = Vai alla frase
 
 # Pagina dei dizionari
 dict-page-title = Dizionari

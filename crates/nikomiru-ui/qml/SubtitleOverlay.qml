@@ -121,6 +121,15 @@ Item {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
+                                // lookup on hover with Shift (POP-003)
+                                hoverEnabled: true
+                                onPositionChanged: (mouse) => {
+                                    const c = cueItem.mapToItem(null, 0, 0);
+                                    const g = glyph.mapToItem(null, mouse.x, mouse.y);
+                                    overlay.controller.grapheme_hovered(cueItem.cue.cue, glyph.modelData.o, g.x, g.y,
+                                                                        (mouse.modifiers & Qt.ShiftModifier) !== 0,
+                                                                        c.x, c.y, cueItem.width, cueItem.height);
+                                }
                                 onClicked: {
                                     // the popup must not cover the cue (POP-006)
                                     const p = cueItem.mapToItem(null, 0, 0);

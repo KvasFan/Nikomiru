@@ -75,6 +75,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: controller.paused ? "▶" : "⏸"
                 enabled: controller.loaded
                 onClicked: controller.action("play_pause")
@@ -93,6 +94,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: controller.muted ? "🔇" : "🔊"
                 onClicked: controller.action("mute")
                 ToolTip.visible: hovered
@@ -113,6 +115,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: "−"
                 onClicked: controller.action("speed_down")
                 Accessible.name: controller.tr("speed")
@@ -124,6 +127,7 @@ Rectangle {
             }
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: "+"
                 onClicked: controller.action("speed_up")
                 Accessible.name: controller.tr("speed")
@@ -146,6 +150,7 @@ Rectangle {
             Button {
                 id: subButton
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: "字"
                 onClicked: subMenu.popup(subButton, 0, -subMenu.implicitHeight)
                 ToolTip.visible: hovered
@@ -214,6 +219,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: "📚"
                 onClicked: bar.dictionariesRequested()
                 ToolTip.visible: hovered
@@ -223,6 +229,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: "📂"
                 onClicked: bar.openRequested()
                 ToolTip.visible: hovered
@@ -232,6 +239,7 @@ Rectangle {
 
             Button {
                 focusPolicy: Qt.NoFocus
+                implicitWidth: 52
                 text: bar.fullscreen ? "🗗" : "⛶"
                 onClicked: bar.fullscreenToggled()
                 ToolTip.visible: hovered

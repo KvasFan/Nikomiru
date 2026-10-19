@@ -17,6 +17,7 @@ pub mod controls;
 pub mod dictionaries;
 #[cfg(feature = "test_harness")]
 pub mod harness;
+pub mod hover;
 pub mod i18n;
 pub mod popup;
 pub mod popup_view;

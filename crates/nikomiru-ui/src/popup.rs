@@ -77,6 +77,8 @@ pub struct Reply {
     pub best_length: usize,
     /// No entry was found.
     pub empty: bool,
+    /// Entries shown, for the keyboard (POP-014).
+    pub entries: usize,
 }
 
 /// One popup.
@@ -92,6 +94,8 @@ pub struct Popup {
     pub generation: u64,
     /// Its content, once the lookup answers.
     pub reply: Option<Reply>,
+    /// The entry the keyboard is on (POP-014).
+    pub entry: usize,
 }
 
 /// The open popups, root first.
@@ -127,6 +131,7 @@ impl Popups {
             anchor,
             generation: self.generation,
             reply: None,
+            entry: 0,
         });
         Command::Lookup {
             generation: self.generation,
@@ -200,6 +205,30 @@ impl Popups {
     /// (BUG-072).
     pub fn playback_changed_by_user(&mut self) {
         self.paused_for_lookup = false;
+    }
+
+    /// Moves the keyboard to the next (`+1`) or previous (`-1`) entry of the
+    /// last popup (POP-014); true if it moved.
+    pub fn move_entry(&mut self, delta: i64) -> bool {
+        let Some(p) = self.stack.last_mut() else {
+            return false;
+        };
+        let count = p.reply.as_ref().map_or(0, |r| r.entries);
+        if count == 0 {
+            return false;
+        }
+        let to = (p.entry as i64 + delta).clamp(0, count as i64 - 1) as usize;
+        let moved = to != p.entry;
+        p.entry = to;
+        moved
+    }
+
+    /// The cue the root popup was opened from.
+    pub fn root_cue(&self) -> Option<usize> {
+        match self.stack.first()?.origin {
+            Origin::Subtitle { cue, .. } => Some(cue),
+            Origin::Glossary => None,
+        }
     }
 
     /// A lookup answered: true if its popup is still open.
@@ -295,6 +324,29 @@ mod tests {
         assert_eq!(p.close_all(), []);
     }
 
+    // T-POP-014
+    #[test]
+    fn the_keyboard_moves_between_entries() {
+        let mut p = Popups::default();
+        assert!(!p.move_entry(1));
+        p.open_from_subtitle(true, "x".into(), sub(0), word());
+        let g = p.stack()[0].generation;
+        assert!(!p.move_entry(1), "nothing to move before the reply");
+        p.deliver(
+            g,
+            Reply {
+                entries: 3,
+                ..Reply::default()
+            },
+        );
+        assert!(p.move_entry(1) && p.move_entry(1));
+        assert!(!p.move_entry(1), "stops at the last");
+        assert_eq!(p.stack()[0].entry, 2);
+        assert!(p.move_entry(-5));
+        assert_eq!(p.stack()[0].entry, 0);
+        assert_eq!(p.root_cue(), Some(0));
+    }
+
     // T-POP-012
     #[test]
     fn nesting() {
@@ -341,7 +393,8 @@ mod tests {
             Reply {
                 content: "{}".into(),
                 best_length: 2,
-                empty: false
+                empty: false,
+                entries: 1,
             }
         ));
         assert_eq!(p.highlight(), Some((0, 5, 2)));

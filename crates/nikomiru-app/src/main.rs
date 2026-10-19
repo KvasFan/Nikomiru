@@ -361,6 +361,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         paths.cache_dir.join("subtitles"),
     );
     let config_language = config.general.ui_language.clone();
+    let max_results = config.lookup.max_results;
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     nikomiru_ui::install(Services {
         player: player.handle(),
@@ -375,6 +376,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
             Some(manager) => Box::new(nikomiru_app::dictionaries::Dictionaries::start(
                 manager,
                 Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+                max_results,
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },

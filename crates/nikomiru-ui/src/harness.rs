@@ -177,6 +177,8 @@ pub fn state() -> Result<Value, String> {
                     .iter()
                     .map(|p| json!({
                         "query": p.query,
+                        "entry": p.entry,
+                        "entries": p.reply.as_ref().map_or(0, |r| r.entries),
                         "loading": p.reply.is_none(),
                         "empty": p.reply.as_ref().is_some_and(|r| r.empty),
                     }))
@@ -186,6 +188,15 @@ pub fn state() -> Result<Value, String> {
             "dictionaries": c.rust().session.as_ref().map(|s| s.dict_page.json()),
         })
     })
+}
+
+/// A button of the root popup, like the user's click (POP-015).
+pub fn popup_button(button: &str) -> Result<(), String> {
+    match button {
+        "replay" => harness_call(|c| c.popup_replay()),
+        "goto" => harness_call(|c| c.popup_goto()),
+        other => Err(format!("no popup button {other}")),
+    }
 }
 
 /// An mpv property, read-only, for metrics.

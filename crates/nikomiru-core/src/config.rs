@@ -55,6 +55,8 @@ pub struct Config {
     pub player: PlayerConfig,
     /// `[subtitles]`.
     pub subtitles: SubtitlesConfig,
+    /// `[lookup]`.
+    pub lookup: LookupConfig,
     /// `[paths]`.
     pub paths: PathsConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
@@ -132,6 +134,33 @@ impl Default for SubtitlesConfig {
     }
 }
 
+/// `[lookup]` (LKP-035, POP-003).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LookupConfig {
+    /// Headword groups in a popup (LKP-035), 1–50.
+    pub max_results: usize,
+    /// Look words up on hover without holding Shift (POP-003).
+    pub hover_without_modifier: bool,
+    /// Close a popup opened on hover, and resume, when the pointer leaves
+    /// the subtitles and the popup (POP-003).
+    pub resume_on_leave: bool,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for LookupConfig {
+    fn default() -> Self {
+        Self {
+            max_results: 10,
+            hover_without_modifier: false,
+            resume_on_leave: true,
+            other: toml::Table::new(),
+        }
+    }
+}
+
 /// `[paths]`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -176,6 +205,7 @@ impl Default for Config {
             general: General::default(),
             player: PlayerConfig::default(),
             subtitles: SubtitlesConfig::default(),
+            lookup: LookupConfig::default(),
             paths: PathsConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
@@ -188,6 +218,7 @@ impl Config {
     pub fn from_toml(text: &str) -> Result<Self, toml::de::Error> {
         let mut c: Config = toml::from_str(text)?;
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
         if !(8.0..=200.0).contains(&c.subtitles.font_size) {
             c.subtitles.font_size = 36.0;
         }
@@ -337,6 +368,15 @@ play_pause = ["Space"]
         );
         let again = Config::from_toml(&toml::to_string_pretty(&c).unwrap()).unwrap();
         assert_eq!(again, c);
+    }
+
+    #[test]
+    fn lookup_settings_have_defaults_and_limits() {
+        let c = Config::from_toml("[lookup]\nmax_results = 500\nhover_without_modifier = true")
+            .unwrap();
+        assert_eq!(c.lookup.max_results, 50);
+        assert!(c.lookup.hover_without_modifier && c.lookup.resume_on_leave);
+        assert_eq!(Config::default().lookup.max_results, 10);
     }
 
     #[test]

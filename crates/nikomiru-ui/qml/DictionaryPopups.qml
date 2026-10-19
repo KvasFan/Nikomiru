@@ -53,6 +53,27 @@ Item {
                 }
             }
 
+            // the pointer over a popup keeps a hover popup open (POP-003)
+            HoverHandler {
+                onHoveredChanged: popupLayer.controller.popup_hover(hovered)
+            }
+            // Alt+wheel: next or previous entry (POP-014)
+            WheelHandler {
+                acceptedModifiers: Qt.AltModifier
+                onWheel: (event) => {
+                    const d = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x;
+                    popupLayer.controller.popup_entry(d < 0 ? 1 : -1);
+                }
+            }
+
+            function scrollToEntry() {
+                const item = entryList.itemAt(popup.entry);
+                if (item && popup.entry > 0)
+                    flick.contentY = Math.max(0, Math.min(item.y, flick.contentHeight - flick.height));
+            }
+            onPopupChanged: Qt.callLater(scrollToEntry)
+            Component.onCompleted: Qt.callLater(scrollToEntry)
+
             // a click in the panel closes the popups above it (POP-012) and
             // never reaches the video
             MouseArea {
@@ -101,15 +122,47 @@ Item {
                             width: body.width
                         }
                     }
+                    // replay the cue, or go to it (POP-015)
+                    Row {
+                        visible: panel.popup.fromSubtitle && panel.popup.level === 0 && !panel.popup.loading
+                        spacing: 6
+                        Chip {
+                            text: "↻ " + popupLayer.controller.tr("popup-replay")
+                            fontSize: 13
+                            TapHandler { onTapped: popupLayer.controller.popup_replay() }
+                        }
+                        Chip {
+                            text: "⇥ " + popupLayer.controller.tr("popup-goto")
+                            fontSize: 13
+                            TapHandler { onTapped: Qt.callLater(() => popupLayer.controller.popup_goto()) }
+                        }
+                    }
                     Repeater {
+                        id: entryList
                         model: panel.popup.content ? panel.popup.content.entries : []
-                        PopupEntry {
+                        Item {
+                            id: entryItem
                             required property var modelData
-                            entry: modelData
+                            required property int index
                             width: body.width
-                            controller: popupLayer.controller
-                            level: panel.popup.level
-                            base: panel.base
+                            height: entryView.height
+                            // the entry the keyboard is on (POP-014)
+                            Rectangle {
+                                visible: entryItem.index === panel.popup.entry && panel.popup.content.entries.length > 1
+                                width: 3
+                                height: parent.height
+                                radius: 1.5
+                                color: "#6aa0ff"
+                            }
+                            PopupEntry {
+                                id: entryView
+                                x: 8
+                                width: parent.width - 8
+                                entry: entryItem.modelData
+                                controller: popupLayer.controller
+                                level: panel.popup.level
+                                base: panel.base
+                            }
                         }
                     }
                 }

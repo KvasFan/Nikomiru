@@ -171,6 +171,38 @@ pub mod qobject {
         #[qinvokable]
         fn popup_rendered(self: Pin<&mut PlayerController>, level: i32);
 
+        /// The pointer moved over a grapheme (POP-003): window position,
+        /// Shift, and the cue's rectangle.
+        #[qinvokable]
+        fn grapheme_hovered(
+            self: Pin<&mut PlayerController>,
+            cue: i32,
+            offset: i32,
+            x: f64,
+            y: f64,
+            shift: bool,
+            cue_x: f64,
+            cue_y: f64,
+            cue_w: f64,
+            cue_h: f64,
+        );
+
+        /// The pointer entered or left a popup.
+        #[qinvokable]
+        fn popup_hover(self: Pin<&mut PlayerController>, inside: bool);
+
+        /// "Replay sentence" from the popup (POP-015).
+        #[qinvokable]
+        fn popup_replay(self: Pin<&mut PlayerController>);
+
+        /// "Go to sentence" from the popup (POP-015).
+        #[qinvokable]
+        fn popup_goto(self: Pin<&mut PlayerController>);
+
+        /// Next (+1) or previous (-1) entry of the last popup (POP-014).
+        #[qinvokable]
+        fn popup_entry(self: Pin<&mut PlayerController>, delta: i32);
+
         /// The dictionaries page opens: the list is read again.
         #[qinvokable]
         fn dict_open(self: Pin<&mut PlayerController>);
@@ -812,6 +844,52 @@ impl qobject::PlayerController {
         self.sync();
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn grapheme_hovered(
+        mut self: Pin<&mut Self>,
+        cue: i32,
+        offset: i32,
+        x: f64,
+        y: f64,
+        shift: bool,
+        cue_x: f64,
+        cue_y: f64,
+        cue_w: f64,
+        cue_h: f64,
+    ) {
+        if let (Ok(cue), Ok(offset)) = (usize::try_from(cue), usize::try_from(offset)) {
+            let anchor = Rect {
+                x: cue_x,
+                y: cue_y,
+                w: cue_w,
+                h: cue_h,
+            };
+            self.as_mut()
+                .with_session(|s| s.grapheme_hovered(cue, offset, x, y, shift, anchor));
+        }
+        self.sync();
+    }
+
+    fn popup_hover(mut self: Pin<&mut Self>, inside: bool) {
+        self.as_mut().with_session(|s| s.popup_hover(inside));
+    }
+
+    pub(crate) fn popup_replay(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::popup_replay);
+        self.sync();
+    }
+
+    pub(crate) fn popup_goto(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::popup_goto);
+        self.sync();
+    }
+
+    fn popup_entry(mut self: Pin<&mut Self>, delta: i32) {
+        self.as_mut()
+            .with_session(|s| s.popup_entry(i64::from(delta)));
+        self.sync();
+    }
+
     fn popup_rendered(mut self: Pin<&mut Self>, level: i32) {
         if let Ok(level) = usize::try_from(level) {
             self.as_mut().with_session(|s| s.popup_rendered(level));
@@ -915,7 +993,7 @@ impl qobject::PlayerController {
     }
 
     fn subtitle_hover(mut self: Pin<&mut Self>, inside: bool) {
-        self.as_mut().with_session(|s| s.subs.hovered = inside);
+        self.as_mut().with_session(|s| s.subtitle_hover(inside));
         self.sync();
     }
 

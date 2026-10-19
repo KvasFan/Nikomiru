@@ -16,6 +16,7 @@ use nikomiru_player::{LoadRequest, PlayerEvent, PlayerHandle, options};
 use crate::controls::ControlsVisibility;
 pub use crate::dictionaries::DictionaryService;
 use crate::dictionaries::{DictionaryPage, Effect};
+use crate::hover::Hover;
 use crate::i18n::Translator;
 use crate::popup::{Command, Origin, Popups, Rect, Reply};
 use crate::screensaver::ScreensaverPolicy;
@@ -225,6 +226,12 @@ pub struct Session {
     dict_imports: Vec<DictImport>,
     /// Library writes, off the UI thread (LIB-006 saves every second).
     writer: Option<Writer>,
+    /// Lookup on hover (POP-003).
+    hover: Hover,
+    /// The pointer is over a popup.
+    popup_hovered: bool,
+    /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
+    replaying: bool,
 }
 
 /// An import to start, taken by the UI layer.
@@ -324,6 +331,9 @@ impl Session {
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
+            hover: Hover::default(),
+            popup_hovered: false,
+            replaying: false,
         }
     }
 
@@ -357,6 +367,7 @@ impl Session {
             return;
         }
         self.flush_position();
+        self.end_replay();
         // the reads below must see the positions still queued (the same file
         // reopened at once)
         if let Some(w) = &self.writer {
@@ -509,9 +520,61 @@ impl Session {
         true
     }
 
-    /// Periodic update (from the UI's timer): the screensaver policy.
+    /// Periodic update (from the UI's timer): the screensaver policy, and a
+    /// hover popup the pointer left (POP-003).
     pub fn tick(&mut self) {
         self.update_screensaver();
+        let now = self.services.clock.monotonic();
+        if self
+            .hover
+            .expired(now, self.services.config.lookup.resume_on_leave)
+        {
+            self.close_all_popups();
+        }
+    }
+
+    /// The end set by a replay from the popup no longer applies: the user
+    /// took control, a popup closed or another file opened.
+    fn end_replay(&mut self) {
+        if std::mem::take(&mut self.replaying) {
+            let _ = self.services.player.stop_at(None);
+        }
+    }
+
+    /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
+    /// pausing at its end.
+    pub fn popup_replay(&mut self) {
+        let Some(cue) = self.popups.root_cue() else {
+            return;
+        };
+        let t = self.subs.timeline();
+        let Some(c) = t.cues().get(cue) else {
+            return;
+        };
+        let (start, end) = (t.start_pos(cue), c.end_ms + t.delay_ms);
+        let p = &self.services.player;
+        let _ = p.stop_at(Some(end as f64 / 1000.0));
+        let _ = p.seek_absolute(start as f64 / 1000.0);
+        let _ = p.set_pause(false);
+        self.replaying = true;
+    }
+
+    /// "Go to sentence" (POP-015): the popups close and playback goes to the
+    /// start of the cue.
+    pub fn popup_goto(&mut self) {
+        let Some(cue) = self.popups.root_cue() else {
+            return;
+        };
+        let start = self.subs.timeline().start_pos(cue);
+        self.close_all_popups();
+        let _ = self.services.player.seek_absolute(start as f64 / 1000.0);
+    }
+
+    /// Tab, Shift+Tab, Alt+wheel in the popup (POP-014).
+    pub fn popup_entry(&mut self, delta: i64) {
+        if self.popups.move_entry(delta) {
+            self.popup_version += 1;
+        }
     }
 
     fn update_screensaver(&mut self) {
@@ -602,7 +665,14 @@ impl Session {
             }
             return UiEffect::None;
         };
-        let action = self.bindings.action(Context::Player, &chord, text_focus);
+        // a popup's keys first, then the player's (KEY-003)
+        let action = if self.popups.is_open() {
+            self.bindings
+                .action(Context::Popup, &chord, text_focus)
+                .or_else(|| self.bindings.action(Context::Player, &chord, text_focus))
+        } else {
+            self.bindings.action(Context::Player, &chord, text_focus)
+        };
         if pressed && !auto_repeat {
             tracing::debug!("key {chord} → {}", action.map_or("nothing", Action::name));
         }
@@ -633,7 +703,16 @@ impl Session {
         let result = match action {
             Action::PlayPause => {
                 self.popups.playback_changed_by_user();
-                p.toggle_pause()
+                self.end_replay();
+                self.services.player.toggle_pause()
+            }
+            Action::PopupNext | Action::PopupPrev => {
+                self.popup_entry(if action == Action::PopupNext { 1 } else { -1 });
+                Ok(())
+            }
+            Action::ReplayCue if self.popups.is_open() => {
+                self.popup_replay();
+                Ok(())
             }
             Action::SeekBack => p.seek_relative(-step),
             Action::SeekForward => p.seek_relative(step),
@@ -1025,6 +1104,44 @@ impl Session {
     /// text from there (LKP-001…LKP-003) is looked up in a popup next to
     /// `anchor`; playback pauses if it was going.
     pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        // a click: the popup does not close when the pointer leaves
+        self.hover.reset();
+        self.look_up_grapheme(cue, offset, anchor);
+    }
+
+    /// The pointer moved over a grapheme (POP-003): with Shift held, or
+    /// always if so configured, a movement of 8 px looks it up.
+    #[allow(clippy::too_many_arguments)]
+    pub fn grapheme_hovered(
+        &mut self,
+        cue: usize,
+        offset: usize,
+        x: f64,
+        y: f64,
+        shift: bool,
+        anchor: Rect,
+    ) {
+        let armed = shift || self.services.config.lookup.hover_without_modifier;
+        if self.hover.moved(x, y, armed, (cue, offset)) {
+            self.look_up_grapheme(cue, offset, anchor);
+        }
+    }
+
+    /// The pointer entered or left the subtitles.
+    pub fn subtitle_hover(&mut self, inside: bool) {
+        self.subs.hovered = inside;
+        let now = self.services.clock.monotonic();
+        self.hover.inside(inside || self.popup_hovered, now);
+    }
+
+    /// The pointer entered or left a popup.
+    pub fn popup_hover(&mut self, inside: bool) {
+        self.popup_hovered = inside;
+        let now = self.services.clock.monotonic();
+        self.hover.inside(inside || self.subs.hovered, now);
+    }
+
+    fn look_up_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
         let Some(text) = self.subs.cue(cue).map(|c| c.plain_text.clone()) else {
             return;
         };
@@ -1062,10 +1179,15 @@ impl Session {
                     let _ = self.services.player.set_pause(true);
                 }
                 Command::Resume => {
+                    self.end_replay();
                     let _ = self.services.player.set_pause(false);
                 }
                 Command::Lookup { generation, text } => self.lookups.push((generation, text)),
             }
+        }
+        if !self.popups.is_open() {
+            self.hover.reset();
+            self.end_replay();
         }
         self.sync_highlight();
         self.popup_version += 1;
@@ -1310,6 +1432,8 @@ impl Session {
                     .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok());
                 serde_json::json!({
                     "level": level,
+                    "entry": p.entry,
+                    "fromSubtitle": matches!(p.origin, Origin::Subtitle { .. }),
                     "query": p.query,
                     "anchor": {"x": p.anchor.x, "y": p.anchor.y, "w": p.anchor.w, "h": p.anchor.h},
                     "loading": p.reply.is_none(),
