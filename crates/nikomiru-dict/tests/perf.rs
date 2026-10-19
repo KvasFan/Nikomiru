@@ -227,11 +227,14 @@ fn l7_real_view_size() {
         }],
         "ja",
     );
+    // blocks (a plain paragraph is one block) and the inline runs of the
+    // other blocks, each one a QML item
     fn count(v: &serde_json::Value, blocks: &mut usize, runs: &mut usize) {
         match v {
             serde_json::Value::Object(o) => {
                 match o.get("k").and_then(|k| k.as_str()) {
                     Some("flow" | "box" | "list" | "table" | "details" | "pairs") => *blocks += 1,
+                    Some("text") if o.contains_key("html") => *blocks += 1,
                     Some(_) => *runs += 1,
                     None => {}
                 }
@@ -241,7 +244,13 @@ fn l7_real_view_size() {
             _ => {}
         }
     }
-    for q in ["今日は学校に行きたくない", "行きたくない", "猫が好きです"] {
+    for q in [
+        "今日は学校に行きたくない",
+        "行きたくない",
+        "猫が好きです",
+        "する",
+        "取る",
+    ] {
         let entries = lookup.lookup(q, Options::default()).unwrap();
         let (mut blocks, mut runs, mut glossaries) = (0, 0, 0);
         for e in entries.iter() {

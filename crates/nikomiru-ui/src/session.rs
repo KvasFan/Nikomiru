@@ -1438,28 +1438,17 @@ impl Session {
             anchor: Anchor,
             loading: bool,
             empty: bool,
-            content: Option<&'a serde_json::value::RawValue>,
+            /// The content as a JSON string: each panel parses its own
+            /// once. As an object it would make the panels' model heavy (a
+            /// Repeater turns an array of objects into variants, deeply).
+            content: Option<&'a str>,
         }
-        // the content goes as it is: parsing it again costs more than the
-        // lookup on a rich entry
-        let raw: Vec<Option<Box<serde_json::value::RawValue>>> = self
-            .popups
-            .stack()
-            .iter()
-            .map(|p| {
-                p.reply
-                    .as_ref()
-                    .filter(|r| !r.content.is_empty())
-                    .and_then(|r| serde_json::value::RawValue::from_string(r.content.clone()).ok())
-            })
-            .collect();
         let views: Vec<PopupView<'_>> = self
             .popups
             .stack()
             .iter()
-            .zip(&raw)
             .enumerate()
-            .map(|(level, (p, content))| PopupView {
+            .map(|(level, p)| PopupView {
                 level,
                 entry: p.entry,
                 from_subtitle: matches!(p.origin, Origin::Subtitle { .. }),
@@ -1472,7 +1461,11 @@ impl Session {
                 },
                 loading: p.reply.is_none(),
                 empty: p.reply.as_ref().is_some_and(|r| r.empty),
-                content: content.as_deref(),
+                content: p
+                    .reply
+                    .as_ref()
+                    .map(|r| r.content.as_str())
+                    .filter(|c| !c.is_empty()),
             })
             .collect();
         serde_json::to_string(&views).unwrap_or_else(|_| "[]".into())

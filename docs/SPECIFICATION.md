@@ -741,7 +741,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | NFR-PERF-09 | Idle RAM (RSS) with the library open ≤ 400 MB | T-PERF-09 |
 | NFR-REL-01 | No crash and no data loss if the app is closed during: import, config write, progress save, mining | T-REL-001, T-REL-002 |
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
-| NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: QML shows them only as plain text (`Text.PlainText`) or as allowlisted items (POP-009), never as raw HTML or with scripts; QML never receives a remote URL from them (images only as `data:` URLs made from the dictionary, POP-010) | T-SEC-* |
+| NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: QML shows them only as plain text (`Text.PlainText`), as allowlisted items (POP-009) or as `Text.StyledText` that Nikomiru generates itself from escaped text with a fixed set of tags (`b`, `i`, `u`, `s`, `font` colour/size, `br`, links by index; never `img`), never as raw HTML or with scripts; QML never receives a remote URL from them (images only as `data:` URLs made from the dictionary, POP-010) | T-SEC-* |
 | NFR-SEC-02 | No file written outside Nikomiru's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
 | NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; Qt `Accessible` properties (role, name) on the player controls | T-A11Y-* |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |

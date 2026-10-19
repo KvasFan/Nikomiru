@@ -33,7 +33,8 @@ pub struct Sides {
 /// Allowed style properties. `None` = not set (inherited for text properties).
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct Style {
-    /// Text colour (`#rrggbb`, `#rrggbbaa` or a CSS colour name).
+    /// Text colour (`#rrggbb`, `#aarrggbb` or a CSS colour name, see
+    /// [`color`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     /// Background colour.
@@ -123,12 +124,26 @@ const COLOR_NAMES: &[&str] = &[
 ];
 
 /// A checked colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`/`rgba()`
-/// with numbers, or a known name.
+/// with numbers, or a known name. Returned as Qt reads colours: `#rgb`,
+/// `#rrggbb`, `#aarrggbb` when not opaque (alpha first, unlike CSS), or the
+/// name.
 pub fn color(value: &str) -> Option<String> {
     let v = value.trim().to_ascii_lowercase();
     if let Some(hex) = v.strip_prefix('#') {
-        return (matches!(hex.len(), 3 | 4 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit()))
-            .then_some(v);
+        if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let double = |h: &str| h.chars().flat_map(|c| [c, c]).collect::<String>();
+        let full = match hex.len() {
+            3 => return Some(v),
+            4 => double(hex),
+            6 | 8 => hex.to_string(),
+            _ => return None,
+        };
+        return Some(match full.split_at(6) {
+            (rgb, "") | (rgb, "ff") => format!("#{rgb}"),
+            (rgb, alpha) => format!("#{alpha}{rgb}"),
+        });
     }
     if let Some(args) = v
         .strip_prefix("rgba(")
@@ -145,16 +160,16 @@ pub fn color(value: &str) -> Option<String> {
             return None;
         }
         let channel = |x: f32| x.clamp(0.0, 255.0).round() as u8;
-        let alpha = parts
-            .get(3)
-            .map_or(255, |a| (a.clamp(0.0, 1.0) * 255.0).round() as u8);
-        return Some(format!(
-            "#{:02x}{:02x}{:02x}{:02x}",
+        let rgb = format!(
+            "{:02x}{:02x}{:02x}",
             channel(parts[0]),
             channel(parts[1]),
-            channel(parts[2]),
-            alpha
-        ));
+            channel(parts[2])
+        );
+        return Some(match parts.get(3) {
+            Some(a) if *a < 1.0 => format!("#{:02x}{rgb}", (a.max(0.0) * 255.0).round() as u8),
+            _ => format!("#{rgb}"),
+        });
     }
     COLOR_NAMES.contains(&v.as_str()).then_some(v)
 }
@@ -453,8 +468,12 @@ mod tests {
     #[test]
     fn colours_are_checked() {
         assert_eq!(color("#FFF").as_deref(), Some("#fff"));
-        assert_eq!(color("rgb(255, 0, 0)").as_deref(), Some("#ff0000ff"));
-        assert_eq!(color("rgba(0 0 0 / 0.5)").as_deref(), Some("#00000080"));
+        assert_eq!(color("rgb(255, 0, 0)").as_deref(), Some("#ff0000"));
+        // Qt puts the alpha first
+        assert_eq!(color("rgba(0 0 0 / 0.5)").as_deref(), Some("#80000000"));
+        assert_eq!(color("#ff000080").as_deref(), Some("#80ff0000"));
+        assert_eq!(color("#f008").as_deref(), Some("#88ff0000"));
+        assert_eq!(color("#123456ff").as_deref(), Some("#123456"));
         assert_eq!(color("Red").as_deref(), Some("red"));
         for bad in [
             "url(http://x)",

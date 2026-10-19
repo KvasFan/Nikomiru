@@ -31,14 +31,16 @@ Flow {
         return length.u === "em" ? length.v * size : length.v;
     }
 
+    // a count, not the array: a Repeater turns an array of objects into
+    // variants, deeply, and each delegate back into JavaScript
     Repeater {
-        model: flow.runs
+        model: flow.runs.length
         Loader {
-            id: run
-            required property var modelData
+            required property int index
+            readonly property var run: flow.runs[index]
             asynchronous: flow.budget ? flow.budget.spend() : false
             sourceComponent: {
-                switch (modelData.k) {
+                switch (run.k) {
                 case "text": return textRun;
                 case "ruby": return rubyRun;
                 case "link": return linkRun;
@@ -53,7 +55,7 @@ Flow {
     Component {
         id: textRun
         Text {
-            readonly property var r: parent ? parent.modelData : ({})
+            readonly property var r: parent ? parent.run : ({})
             readonly property var s: r.s || ({})
             readonly property real size: flow.base * (s.font_scale || 1)
             text: r.t || ""
@@ -86,7 +88,7 @@ Flow {
     Component {
         id: rubyRun
         Column {
-            readonly property var r: parent ? parent.modelData : ({})
+            readonly property var r: parent ? parent.run : ({})
             readonly property var s: r.s || ({})
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -110,7 +112,7 @@ Flow {
         id: linkRun
         Text {
             id: link
-            readonly property var r: parent ? parent.modelData : ({})
+            readonly property var r: parent ? parent.run : ({})
             text: r.t || ""
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -143,7 +145,7 @@ Flow {
     Component {
         id: imageRun
         Item {
-            readonly property var im: parent && parent.modelData ? parent.modelData.image : ({})
+            readonly property var im: parent && parent.run ? parent.run.image : ({})
             readonly property real unit: im.units === "em" ? flow.base : 1
             implicitWidth: pic.visible ? pic.width : alt.implicitWidth
             implicitHeight: pic.visible ? pic.height : alt.implicitHeight

@@ -28,7 +28,7 @@ cxx-qt-lib.workspace = true
 fluent-bundle.workspace = true
 unic-langid.workspace = true
 serde.workspace = true
-serde_json = { workspace = true, features = ["raw_value"] }
+serde_json.workspace = true
 tracing.workspace = true
 
 [build-dependencies]
