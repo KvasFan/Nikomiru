@@ -10,8 +10,14 @@
 
 #![deny(missing_docs)]
 
+mod bridge;
 pub mod control;
 pub mod options;
 pub mod player;
+
+/// The Qt Quick video item (C++ in `cpp/`, ADR 0003).
+pub mod video {
+    pub use crate::bridge::{init, set_core};
+}
 
 pub use player::{LoadRequest, Player, PlayerError, PlayerEvent, PlayerHandle, VideoOutput};

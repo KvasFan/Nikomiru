@@ -33,10 +33,9 @@ allow = [
 confidence-threshold = 0.93
 # Class A is declared in full even though not all of its licenses are in the graph today.
 unused-allowed-license = "allow"
-# The class B exceptions apply to the complete graph (cxx-qt, reqwest). Until those
-# crates enter the workspace (M1) almost none of them is in use: the warning is
-# turned back on ("warn") in M1, to find exceptions that have become unnecessary.
-unused-license-exception = "allow"
+# The class B exceptions apply to the complete graph. cxx-qt entered the workspace in
+# M1: an exception that is no longer used is reported, so it can be removed.
+unused-license-exception = "warn"
 exceptions = [
     # Unicode-3.0 — url → idna (reqwest); icu_normalizer (direct, §4); proc-macro2
     # (every procedural macro: serde_derive, thiserror, cxx, cxx-qt)

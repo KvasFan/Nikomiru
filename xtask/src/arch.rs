@@ -25,9 +25,10 @@ const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
 
 /// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
 /// crate) that may contain it (ARC-011). `src/bridge` covers the cxx-qt bridge
-/// modules (`src/bridge.rs` or `src/bridge/`), which hold generated FFI declarations.
+/// modules (`src/bridge.rs` or `src/bridge/`), which hold generated FFI declarations;
+/// the player's `build.rs` uses the `unsafe` `cc_builder` hook of cxx-qt-build.
 const UNSAFE_ALLOWED: [(&str, &[&str]); 3] = [
-    ("nikomiru-player", &["src/"]),
+    ("nikomiru-player", &["src/", "build.rs"]),
     ("nikomiru-app", &["src/linux", "src/bridge"]),
     ("nikomiru-ui", &["src/bridge"]),
 ];
@@ -49,6 +50,7 @@ pub fn check_all(root: &Path) -> Result<()> {
     problems.extend(check_cpp_location(root)?);
     let metadata = cargo_metadata()?;
     problems.extend(check_deps(&Graph::from_metadata(&metadata)?));
+    problems.extend(check_cxx_versions(&metadata));
     report("architecture checks", &problems)
 }
 
@@ -406,9 +408,45 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
     problems
 }
 
+/// `cxx-gen` 0.7.N writes the C++ side of the bridges with symbols named after
+/// N, the `cxx` 1.0.N macro the Rust side: a lock file that resolves them to
+/// different patch levels links with undefined `cxxbridge1$N$…` symbols.
+pub fn check_cxx_versions(metadata: &Value) -> Vec<String> {
+    let patch = |name: &str| -> BTreeSet<String> {
+        metadata["packages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|p| p["name"] == name)
+            .filter_map(|p| p["version"].as_str()?.split('.').nth(2).map(str::to_string))
+            .collect()
+    };
+    let (cxx, generator) = (patch("cxx"), patch("cxx-gen"));
+    if generator.is_empty() || cxx == generator {
+        return Vec::new();
+    }
+    vec![format!(
+        "cxx 1.0.{cxx:?} and cxx-gen 0.7.{generator:?} differ: run \
+         `cargo update -p cxx-gen --precise 0.7.<cxx patch>`"
+    )]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cxx_and_cxx_gen_must_share_the_patch_level() {
+        let meta = |gen_version: &str| {
+            serde_json::json!({"packages": [
+                {"name": "cxx", "version": "1.0.205"},
+                {"name": "cxx-gen", "version": gen_version},
+            ]})
+        };
+        assert!(check_cxx_versions(&meta("0.7.205")).is_empty());
+        assert_eq!(check_cxx_versions(&meta("0.7.198")).len(), 1);
+        assert!(check_cxx_versions(&serde_json::json!({"packages": []})).is_empty());
+    }
 
     fn graph(pkgs: &[&str], members: &[&str], edges: &[(&str, &str, bool)]) -> Graph {
         let mut g = Graph::default();

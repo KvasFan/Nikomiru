@@ -8,3 +8,15 @@
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
+
+#[allow(unsafe_code, missing_docs)]
+mod bridge {
+    pub mod player;
+}
+pub mod controls;
+pub mod i18n;
+pub mod session;
+pub mod shortcuts;
+
+pub use bridge::player::{deliver, install, request_open};
+pub use session::Services;
