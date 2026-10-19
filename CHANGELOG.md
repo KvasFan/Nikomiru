@@ -22,3 +22,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - SPECIFICATION §10.1: decisions D-7 (5 Class B procedural macros found in the real graph), D-8 (CC0 exception for `base16`, needed by the Dioxus `router` feature) and D-9 (English for documents, comments and commit messages) approved; §3.2 table and `deny.toml` updated.
 - Documents and code comments translated to English (D-9); `docs/SPECIFICHE.md` renamed to `docs/SPECIFICATION.md`.
 - ROADMAP: the X11 T-PERF-03 measurement moved from M0 to M1; M4 (release 0.1.0) now includes restyling the repository page after storytold/cadcraft.
+- SPECIFICATION: new requirements PLY-016 (save and load mpv option presets in `mpv.conf` format, M6), PLY-017 (options that raw options and presets can never set, M1) and PLY-018 (render and audio settings in the UI, M6), with tests T-PLY-016…018.

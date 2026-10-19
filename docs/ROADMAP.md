@@ -96,11 +96,11 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Goal**: open a file and watch it with full keyboard and mouse controls.
 
-**Requirements**: LIB-001, LIB-006 (position saving per single file), PLY-001…PLY-010, PLY-012, PLY-013, ARC-001…ARC-004, KEY-001…KEY-004 (M1 shortcuts of SPECIFICATION §6.3), APP-001, EXT-001, ERR-001, ERR-002, PRV-001, PRV-002, DAT-001…DAT-003.
+**Requirements**: LIB-001, LIB-006 (position saving per single file), PLY-001…PLY-010, PLY-012, PLY-013, PLY-017, ARC-001…ARC-004, KEY-001…KEY-004 (M1 shortcuts of SPECIFICATION §6.3), APP-001, EXT-001, ERR-001, ERR-002, PRV-001, PRV-002, DAT-001…DAT-003.
 
 **Deliverables**
 
-- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options.
+- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017).
 - `anikoto-app`: final Linux compositor (from ADR 0001), single instance via socket, opening from an argument or drag & drop.
 - `anikoto-ui`: player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
 - Minimal `config.toml`, with atomic writes.
@@ -233,12 +233,13 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 ## M6 — Statistics, full settings, i18n, advanced mining → 0.3.0
 
-**Requirements**: STA-001…STA-005, SET-001…SET-007, ANK-040, ANK-041, NFR-A11Y-01.
+**Requirements**: STA-001…STA-005, SET-001…SET-007, PLY-016, PLY-018, ANK-040, ANK-041, NFR-A11Y-01.
 
 **Deliverables**
 
 - Watch tracker (interval coverage, per-cue credits), session clock, statistics page, CSV export.
 - Full settings page, shortcut editor with conflict checks, light/dark/system themes, interface scale.
+- Settings → Player: render and audio controls (PLY-018) and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch (PLY-016).
 - Fluent with complete `it` and `en`.
 - Advanced mining dialog; multiple sentences.
 

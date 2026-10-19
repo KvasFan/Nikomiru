@@ -411,6 +411,9 @@ The compositor MUST sit behind a trait (`VideoSurface`) in `anikoto-app`, with o
 | PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal, or through mpv's `stop-screensaver` if the portal is not available | |
 | PLY-014 | Thumbnails on the progress bar: post-1.0 | |
 | PLY-015 | Screenshot with the overlay subtitles (`Shift+S`): post-1.0, because it requires compositing the overlay onto the frame | |
+| PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/anikoto/mpv/<name>.conf`, or to any file chosen in the file dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`); (c) switch between saved presets. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as applied, ignored (with the reason) or invalid (with mpv's error); nothing changes until the user confirms. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Anikoto version, date) and only the options that differ from the defaults, so the file also works in mpv | |
+| PLY-017 | **Options that the raw options and the presets can never set** (PLY-006, PLY-016): they are rejected with a reason and never reach mpv. (1) The fixed options of PLY-005. (2) Options that run code, load other configuration, open sockets or write files outside the XDG folders (NFR-SEC-02): `script*`, `scripts`, `load-*`, `include`, `config-dir`, `use-filedir-conf`, `input-*`, `log-file`, `dump-stats`, `stream-dump`, `stream-record`, `record-file`, `watch-later-*`, `write-filename-in-watch-later-config`, `screenshot-*` (Anikoto owns screenshots, PLY-011), `ytdl*`. (3) Options with no effect under the libmpv render API (`gpu-api`, `gpu-context`, `vo-*`) are ignored with a warning, and so are `sub-*` options for text subtitles, which Anikoto draws itself (§6.4). The list is a single table in `anikoto-player`, covered by tests | |
+| PLY-018 | **Render and audio settings in the UI** (Settings → Player, groups Rendering, Audio and Advanced): profile (`default`, `fast`, `high-quality`), `scale`, `cscale`, `dscale`, `deband` (with `deband-iterations` and `deband-threshold`), `dither-depth`, `interpolation` (with `tscale` and `video-sync`), `tone-mapping`, `target-peak`, `hdr-compute-peak`, `deinterlace`, `brightness`, `contrast`, `saturation`, `gamma`, `hwdec`; audio: `audio-channels`, `audio-pitch-correction`, `volume-max`, `audio-normalize-downmix`. Each control writes the same mpv option that a preset contains (PLY-016). Options that mpv can change at runtime apply immediately (SET-002); the others apply from the next file, with a note next to the control. Each group has a reset to the defaults (SET-006) | |
 
 ### 6.3 Shortcuts (KEY)
 
@@ -780,6 +783,11 @@ quality_profile = "default" # "default" | "high-quality"
 seek_seconds = 3
 auto_next = true
 raw_mpv_options = ""
+mpv_preset = ""             # last loaded or saved preset, mpv/<name>.conf (PLY-016)
+
+[player.mpv_options]        # options set from the UI or loaded from a preset (PLY-016, PLY-018)
+# deband = "yes"
+# scale = "ewa_lanczos"
 
 [subtitles]
 preferred_languages = ["ja", "jpn"]
