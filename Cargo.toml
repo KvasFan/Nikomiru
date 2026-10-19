@@ -81,6 +81,19 @@ undocumented_unsafe_blocks = "deny"
 dbg_macro = "deny"
 todo = "deny"
 
+# Dictionary hot paths, optimized in development builds too: unoptimized redb
+# takes seconds to open a 350 MB dictionary (Jitendex), which hides real
+# timings in the GUI tests.
+[profile.dev.package.redb]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.lz4_flex]
+opt-level = 3
+
+[profile.dev.package.postcard]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

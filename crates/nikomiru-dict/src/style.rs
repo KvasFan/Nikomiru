@@ -75,6 +75,9 @@ pub struct Style {
     /// Corner radius.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_radius: Option<Length>,
+    /// Sides with a border: top, right, bottom, left (all when not set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_sides: Option<[bool; 4]>,
     /// List marker (`ol`/`ul`): `none`, `disc`, `decimal`…, or a quoted string.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list_marker: Option<String>,
@@ -313,7 +316,43 @@ impl Style {
             "border-radius" => length(v.split_whitespace().next().unwrap_or_default())
                 .map(|l| self.border_radius = Some(l))
                 .is_some(),
-            "border" | "border-style" => {
+            "border-style" => {
+                // `none none none solid`: the sides that have a border
+                let sides: Vec<bool> = v
+                    .split_whitespace()
+                    .map(|p| !matches!(p.to_ascii_lowercase().as_str(), "none" | "hidden"))
+                    .collect();
+                let sides = match sides.as_slice() {
+                    [a] => [*a; 4],
+                    [a, b] => [*a, *b, *a, *b],
+                    [a, b, c] => [*a, *b, *c, *b],
+                    [a, b, c, d] => [*a, *b, *c, *d],
+                    _ => return false,
+                };
+                self.border_sides = Some(sides);
+                true
+            }
+            side @ ("border-top" | "border-right" | "border-bottom" | "border-left") => {
+                // `border-left: 3px solid green`: that side only
+                let index = ["border-top", "border-right", "border-bottom", "border-left"]
+                    .iter()
+                    .position(|n| *n == side)
+                    .unwrap_or(3);
+                let mut sides = self.border_sides.unwrap_or([false; 4]);
+                sides[index] = !v.split_whitespace().any(|p| p == "none" || p == "hidden");
+                self.border_sides = Some(sides);
+                for part in v.split_whitespace() {
+                    if let Some(l) =
+                        length(part).filter(|_| part.chars().any(|c| c.is_ascii_digit()))
+                    {
+                        self.border_width = Some(l);
+                    } else if let Some(c) = color(part) {
+                        self.border_color = Some(c);
+                    }
+                }
+                true
+            }
+            "border" => {
                 // `border: 1px solid #ccc`: a width and a colour, the style is
                 // always solid
                 let mut any = false;
@@ -374,6 +413,7 @@ impl Style {
             border_color,
             border_width,
             border_radius,
+            border_sides,
             list_marker
         );
         for (mine, theirs) in [
@@ -458,6 +498,14 @@ mod tests {
         assert_eq!(s.padding.right, Some(Length::Em(0.3)));
         assert_eq!(s.border_color.as_deref(), Some("#ccc"));
         assert_eq!(s.list_marker.as_deref(), Some("\"◦\""));
+        assert!(s.set("border-style", "none none none solid"));
+        assert_eq!(s.border_sides, Some([false, false, false, true]));
+        let mut l = Style::default();
+        assert!(l.set("borderLeft", "3px solid green"));
+        assert_eq!(
+            (l.border_sides, l.border_color.as_deref()),
+            (Some([false, false, false, true]), Some("green"))
+        );
         let inherited = s.inherited();
         assert_eq!(
             (inherited.bold, inherited.margin),

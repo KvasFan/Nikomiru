@@ -76,6 +76,8 @@ The residual risk above was real: the engine made up to 3,000 queries per click 
 
 `cargo xtask bench` repeats T-PERF-04/05.
 
+**Disk space, real data.** Jitendex (39 MB zip, 544 MB of JSON) takes 356 MB as a redb file: lz4 on each glossary alone gains little on JSON whose keys repeat in every record. Block compression of the records (or a trained compression dictionary, as Fushi does with zstd) is the next step before 1.0.
+
 ## How to repeat the measurements
 
 ```sh

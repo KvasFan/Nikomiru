@@ -41,6 +41,15 @@ Item {
             border.color: "#40ffffff"
             border.width: 1
 
+            // blocks and inline runs created at once, about the first sense of
+            // a rich entry (Jitendex's 行く: ~800 items in all); the rest is
+            // created in the next frames (NFR-PERF-06). A plain JS counter:
+            // spending it must not re-evaluate bindings.
+            property var budget: ({
+                left: 30,
+                spend: function () { this.left -= 1; return this.left < 0; }
+            })
+
             // the first frame with the content on screen (T-PERF-06)
             property bool reported: false
             Connections {
@@ -154,14 +163,20 @@ Item {
                                 radius: 1.5
                                 color: "#6aa0ff"
                             }
-                            PopupEntry {
+                            // the first entry at once, the others in the next frames
+                            Loader {
                                 id: entryView
                                 x: 8
                                 width: parent.width - 8
-                                entry: entryItem.modelData
-                                controller: popupLayer.controller
-                                level: panel.popup.level
-                                base: panel.base
+                                asynchronous: entryItem.index > 0
+                                sourceComponent: PopupEntry {
+                                    width: entryView.width
+                                    entry: entryItem.modelData
+                                    controller: popupLayer.controller
+                                    level: panel.popup.level
+                                    base: panel.base
+                                    budget: panel.budget
+                                }
                             }
                         }
                     }

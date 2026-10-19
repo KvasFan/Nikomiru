@@ -653,7 +653,7 @@ impl qobject::PlayerController {
         }
         let seen = self.rust().popup_version;
         if let Some(Some((version, json))) = self.as_mut().with_session(|s| {
-            (Some(s.popup_version) != seen).then(|| (s.popup_version, s.popups_json().to_string()))
+            (Some(s.popup_version) != seen).then(|| (s.popup_version, s.popups_json()))
         }) {
             self.as_mut().rust_mut().popup_version = Some(version);
             self.as_mut().set_popups(QString::from(json.as_str()));

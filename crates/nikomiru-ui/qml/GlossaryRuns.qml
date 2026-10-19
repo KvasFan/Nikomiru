@@ -14,6 +14,16 @@ Flow {
     property int level: 0
     property real base: 15
     property color textColor: "#e8e8e8"
+    // the popup's budget of items created at once (see GlossaryBlocks)
+    property var budget: null
+
+    // text next to ruby starts lower, level with the base of the ruby
+    readonly property real rubyLift: {
+        for (let i = 0; i < runs.length; i++)
+            if (runs[i].k === "ruby")
+                return base * 0.55 * 1.35;
+        return 0;
+    }
 
     function px(length, size) {
         if (!length)
@@ -26,6 +36,7 @@ Flow {
         Loader {
             id: run
             required property var modelData
+            asynchronous: flow.budget ? flow.budget.spend() : false
             sourceComponent: {
                 switch (modelData.k) {
                 case "text": return textRun;
@@ -55,13 +66,14 @@ Flow {
             font.italic: s.italic === true
             font.underline: s.underline === true
             font.strikeout: s.strike === true
-            topPadding: flow.px(s.padding ? s.padding.top : null, size)
+            topPadding: flow.rubyLift + flow.px(s.padding ? s.padding.top : null, size)
             bottomPadding: flow.px(s.padding ? s.padding.bottom : null, size)
             leftPadding: flow.px(s.padding ? s.padding.left : null, size)
             rightPadding: flow.px(s.padding ? s.padding.right : null, size)
             Rectangle {
                 z: -1
                 anchors.fill: parent
+                anchors.topMargin: flow.rubyLift
                 visible: !!parent.s.background || !!parent.s.border_color
                 color: parent.s.background || "transparent"
                 radius: flow.px(parent.s.border_radius, parent.size)
@@ -106,6 +118,7 @@ Flow {
             color: "#8ab4ff"
             font.pixelSize: flow.base * ((r.s && r.s.font_scale) || 1)
             font.underline: true
+            topPadding: flow.rubyLift
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor

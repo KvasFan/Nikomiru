@@ -984,6 +984,7 @@ dependencies = [
  "nikomiru-subs",
  "nikomiru-text",
  "proptest",
+ "serde",
  "serde_json",
  "tempfile",
  "tracing",

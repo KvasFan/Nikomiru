@@ -1419,30 +1419,63 @@ impl Session {
     }
 
     /// The open popups for QML: level, query, anchor, content.
-    pub fn popups_json(&self) -> serde_json::Value {
-        let popups: Vec<serde_json::Value> = self
+    pub fn popups_json(&self) -> String {
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Anchor {
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+        }
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct PopupView<'a> {
+            level: usize,
+            entry: usize,
+            from_subtitle: bool,
+            query: &'a str,
+            anchor: Anchor,
+            loading: bool,
+            empty: bool,
+            content: Option<&'a serde_json::value::RawValue>,
+        }
+        // the content goes as it is: parsing it again costs more than the
+        // lookup on a rich entry
+        let raw: Vec<Option<Box<serde_json::value::RawValue>>> = self
             .popups
             .stack()
             .iter()
-            .enumerate()
-            .map(|(level, p)| {
-                let content = p
-                    .reply
+            .map(|p| {
+                p.reply
                     .as_ref()
-                    .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok());
-                serde_json::json!({
-                    "level": level,
-                    "entry": p.entry,
-                    "fromSubtitle": matches!(p.origin, Origin::Subtitle { .. }),
-                    "query": p.query,
-                    "anchor": {"x": p.anchor.x, "y": p.anchor.y, "w": p.anchor.w, "h": p.anchor.h},
-                    "loading": p.reply.is_none(),
-                    "empty": p.reply.as_ref().is_some_and(|r| r.empty),
-                    "content": content,
-                })
+                    .filter(|r| !r.content.is_empty())
+                    .and_then(|r| serde_json::value::RawValue::from_string(r.content.clone()).ok())
             })
             .collect();
-        serde_json::Value::Array(popups)
+        let views: Vec<PopupView<'_>> = self
+            .popups
+            .stack()
+            .iter()
+            .zip(&raw)
+            .enumerate()
+            .map(|(level, (p, content))| PopupView {
+                level,
+                entry: p.entry,
+                from_subtitle: matches!(p.origin, Origin::Subtitle { .. }),
+                query: &p.query,
+                anchor: Anchor {
+                    x: p.anchor.x,
+                    y: p.anchor.y,
+                    w: p.anchor.w,
+                    h: p.anchor.h,
+                },
+                loading: p.reply.is_none(),
+                empty: p.reply.as_ref().is_some_and(|r| r.empty),
+                content: content.as_deref(),
+            })
+            .collect();
+        serde_json::to_string(&views).unwrap_or_else(|_| "[]".into())
     }
 
     /// A click on the time of a list row: playback goes to the cue.

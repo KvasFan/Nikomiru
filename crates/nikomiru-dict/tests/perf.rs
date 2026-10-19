@@ -176,3 +176,87 @@ fn l7_perf_import_and_lookup() {
     );
     assert!(p95 <= P95 && p99 <= P99, "p95 {p95:?}, p99 {p99:?}");
 }
+
+/// Timing of the steps of a first lookup on a real dictionary
+/// (`NIKOMIRU_REAL_DICT=<folder with dict.redb>`).
+#[test]
+#[ignore = "manual: needs a real dictionary"]
+fn l7_real_first_lookup() {
+    let Ok(dir) = std::env::var("NIKOMIRU_REAL_DICT") else {
+        return;
+    };
+    let t = Instant::now();
+    let store = RedbStore::open(&Path::new(&dir).join("dict.redb")).unwrap();
+    eprintln!("open {:?}", t.elapsed());
+    let t = Instant::now();
+    let lookup = Lookup::new(
+        vec![Dictionary {
+            id: "x".into(),
+            name: "x".into(),
+            store: Arc::new(store),
+        }],
+        "ja",
+    );
+    eprintln!("new {:?}", t.elapsed());
+    for q in [
+        "今日は学校に行きたくない",
+        "学校に行きたくない",
+        "行きたくない",
+    ] {
+        let t = Instant::now();
+        let e = lookup.lookup(q, Options::default()).unwrap();
+        eprintln!("{q}: {:?} ({} entries)", t.elapsed(), e.len());
+    }
+}
+
+/// How many blocks and runs the popup of a query draws, on a real dictionary
+/// (`NIKOMIRU_REAL_DICT`): the cost of the QML side.
+#[test]
+#[ignore = "manual: needs a real dictionary"]
+fn l7_real_view_size() {
+    let Ok(dir) = std::env::var("NIKOMIRU_REAL_DICT") else {
+        return;
+    };
+    let store = RedbStore::open(&Path::new(&dir).join("dict.redb")).unwrap();
+    let sheet = nikomiru_dict::css::Sheet::parse(&store.info().styles);
+    let lookup = Lookup::new(
+        vec![Dictionary {
+            id: "x".into(),
+            name: "x".into(),
+            store: Arc::new(store),
+        }],
+        "ja",
+    );
+    fn count(v: &serde_json::Value, blocks: &mut usize, runs: &mut usize) {
+        match v {
+            serde_json::Value::Object(o) => {
+                match o.get("k").and_then(|k| k.as_str()) {
+                    Some("flow" | "box" | "list" | "table" | "details" | "pairs") => *blocks += 1,
+                    Some(_) => *runs += 1,
+                    None => {}
+                }
+                o.values().for_each(|x| count(x, blocks, runs));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| count(x, blocks, runs)),
+            _ => {}
+        }
+    }
+    for q in ["今日は学校に行きたくない", "行きたくない", "猫が好きです"] {
+        let entries = lookup.lookup(q, Options::default()).unwrap();
+        let (mut blocks, mut runs, mut glossaries) = (0, 0, 0);
+        for e in entries.iter() {
+            for g in &e.glossaries {
+                glossaries += 1;
+                let json: serde_json::Value =
+                    serde_json::from_str(&g.term.glossary().unwrap()).unwrap();
+                let v =
+                    serde_json::to_value(nikomiru_dict::structured::render(&json, &sheet)).unwrap();
+                count(&v, &mut blocks, &mut runs);
+            }
+        }
+        eprintln!(
+            "{q}: {} entries, {glossaries} glossaries, {blocks} blocks, {runs} runs",
+            entries.len()
+        );
+    }
+}

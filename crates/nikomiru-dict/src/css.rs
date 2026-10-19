@@ -1,19 +1,47 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The part of a dictionary's `styles.css` that Nikomiru applies (DIC-035):
-//! rules whose selectors are a single compound of a tag, `gloss-sc-<tag>`
-//! classes and `data-sc-*` attributes (what Yomitan dictionaries use to style
-//! their structured content), with the properties of [`Style`]. Combinators,
-//! pseudo-classes, at-rules and other properties are ignored.
+//! rules whose selectors are compounds of a tag, `gloss-sc-<tag>` classes and
+//! `data-sc-*` attributes (what Yomitan dictionaries use to style their
+//! structured content), joined by descendant (` `) or child (`>`)
+//! combinators, also when written as nested rules (`&`), with the properties
+//! of [`Style`]. Sibling combinators, pseudo-classes, pseudo-elements,
+//! at-rules and other properties are ignored.
 
 use crate::style::Style;
+
+/// Nested rules deeper than this are ignored.
+const MAX_NESTING: usize = 16;
+
+/// One compound selector: `span.gloss-sc-span[data-sc-class="tag"]`.
+#[derive(Debug, Clone, PartialEq)]
+struct Compound {
+    tag: Option<String>,
+    /// `data-sc-*` attributes (name without the prefix, required value);
+    /// `\0tag:<t>` for a `gloss-sc-<t>` class.
+    attrs: Vec<(String, Option<String>)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Combinator {
+    /// `a b`: any ancestor.
+    Descendant,
+    /// `a > b`: the parent.
+    Child,
+}
+
+/// A selector: compounds left to right, `combinators[i]` between `parts[i]`
+/// and `parts[i + 1]`.
+#[derive(Debug, Clone, PartialEq)]
+struct Selector {
+    parts: Vec<Compound>,
+    combinators: Vec<Combinator>,
+}
 
 /// One selector and its declarations.
 #[derive(Debug, Clone, PartialEq)]
 struct Rule {
-    tag: Option<String>,
-    /// `data-sc-*` attributes: name without the prefix, required value.
-    attrs: Vec<(String, Option<String>)>,
+    selector: Selector,
     /// (attributes and classes, tags), as CSS specificity.
     specificity: (usize, usize),
     order: usize,
@@ -25,6 +53,9 @@ struct Rule {
 pub struct Sheet {
     rules: Vec<Rule>,
 }
+
+/// An element as a selector sees it: its tag and its `data` entries.
+pub type Element<'a> = (&'a str, &'a [(String, String)]);
 
 fn strip_comments(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
@@ -46,17 +77,8 @@ fn is_ident(s: &str) -> bool {
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
-/// A parsed compound selector.
-struct Selector {
-    tag: Option<String>,
-    attrs: Vec<(String, Option<String>)>,
-    specificity: (usize, usize),
-}
-
-/// A compound selector such as `span.gloss-sc-span[data-sc-class="tag"]`.
-fn selector(text: &str) -> Option<Selector> {
-    let text = text.trim();
-    if text.is_empty() || text.contains([' ', '>', '+', '~', ':', '*', '#', '\t', '\n']) {
+fn compound(text: &str) -> Option<Compound> {
+    if text.is_empty() || text.contains([':', '*', '#', '+', '~']) {
         return None;
     }
     let end = text.find(['.', '[']).unwrap_or(text.len());
@@ -66,19 +88,16 @@ fn selector(text: &str) -> Option<Selector> {
     }
     let tag = (!tag.is_empty()).then(|| tag.to_ascii_lowercase());
     let mut attrs = Vec::new();
-    let mut classes = 0;
     let mut rest = &text[end..];
     while !rest.is_empty() {
         if let Some(after) = rest.strip_prefix('.') {
             let len = after.find(['.', '[']).unwrap_or(after.len());
-            let class = &after[..len];
             // structured content nodes only carry `gloss-sc-<their tag>`
-            let of = class.strip_prefix("gloss-sc-")?;
+            let of = after[..len].strip_prefix("gloss-sc-")?;
             if tag.as_deref().is_some_and(|t| t != of) {
                 return None;
             }
             attrs.push((format!("\0tag:{of}"), None));
-            classes += 1;
             rest = &after[len..];
         } else {
             let after = rest.strip_prefix('[')?;
@@ -104,14 +123,67 @@ fn selector(text: &str) -> Option<Selector> {
                 .strip_prefix("data-sc-")
                 .or_else(|| name.strip_prefix("data-sc"))?;
             attrs.push((key.to_string(), value));
-            classes += 1;
             rest = &after[close + 1..];
         }
     }
-    Some(Selector {
-        specificity: (classes, usize::from(tag.is_some())),
-        tag,
-        attrs,
+    Some(Compound { tag, attrs })
+}
+
+/// A full selector such as `li[data-sc-content="sense"] > ul`.
+fn selector(text: &str) -> Option<Selector> {
+    // split on combinators outside `[…]`
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_brackets = false;
+    for c in text.trim().chars() {
+        match c {
+            '[' => {
+                in_brackets = true;
+                current.push(c);
+            }
+            ']' => {
+                in_brackets = false;
+                current.push(c);
+            }
+            '>' if !in_brackets => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+                tokens.push(">".into());
+            }
+            c if c.is_whitespace() && !in_brackets => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            c => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    let mut parts = Vec::new();
+    let mut combinators = Vec::new();
+    let mut pending = None;
+    for t in tokens {
+        if t == ">" {
+            if parts.is_empty() || pending.is_some() {
+                return None;
+            }
+            pending = Some(Combinator::Child);
+            continue;
+        }
+        if !parts.is_empty() {
+            combinators.push(pending.take().unwrap_or(Combinator::Descendant));
+        }
+        parts.push(compound(&t)?);
+    }
+    (!parts.is_empty() && pending.is_none()).then_some(Selector { parts, combinators })
+}
+
+fn specificity(s: &Selector) -> (usize, usize) {
+    s.parts.iter().fold((0, 0), |(a, t), p| {
+        (a + p.attrs.len(), t + usize::from(p.tag.is_some()))
     })
 }
 
@@ -125,62 +197,140 @@ fn declarations(block: &str) -> Style {
     style
 }
 
+/// The child selectors of a nested rule inside `parents` (`&` is the parent;
+/// without it the child is a descendant).
+fn nested(prelude: &str, parents: &[String]) -> Vec<String> {
+    let children: Vec<&str> = prelude
+        .split(',')
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .collect();
+    if parents.is_empty() {
+        return children.into_iter().map(String::from).collect();
+    }
+    let mut out = Vec::new();
+    for p in parents {
+        for c in &children {
+            out.push(if c.contains('&') {
+                c.replace('&', p)
+            } else {
+                format!("{p} {c}")
+            });
+        }
+    }
+    out
+}
+
+/// Reads rules and declarations at one level; `parents` are the selectors of
+/// the enclosing rule (none at the top).
+fn parse_level(
+    css: &str,
+    parents: &[String],
+    depth: usize,
+    order: &mut usize,
+    rules: &mut Vec<Rule>,
+) {
+    let mut decls = String::new();
+    let mut start = 0;
+    let bytes = css.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b';' => {
+                decls.push_str(&css[start..=i]);
+                start = i + 1;
+            }
+            b'{' => {
+                // the block, braces balanced
+                let mut level = 0usize;
+                let mut close = None;
+                for (j, &b) in bytes.iter().enumerate().skip(i) {
+                    match b {
+                        b'{' => level += 1,
+                        b'}' => {
+                            level -= 1;
+                            if level == 0 {
+                                close = Some(j);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let Some(close) = close else { return };
+                let prelude = css[start..i].trim();
+                let body = &css[i + 1..close];
+                if !prelude.starts_with('@') && !prelude.is_empty() && depth < MAX_NESTING {
+                    let selectors = nested(prelude, parents);
+                    parse_level(body, &selectors, depth + 1, order, rules);
+                }
+                i = close + 1;
+                start = i;
+                continue;
+            }
+            b'}' => {
+                // a stray brace: skip it
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    decls.push_str(css.get(start..).unwrap_or_default());
+    if parents.is_empty() {
+        return;
+    }
+    let style = declarations(&decls);
+    if style.is_empty() {
+        return;
+    }
+    for text in parents {
+        if let Some(selector) = selector(text) {
+            rules.push(Rule {
+                specificity: specificity(&selector),
+                selector,
+                order: *order,
+                style: style.clone(),
+            });
+            *order += 1;
+        }
+    }
+}
+
+fn matches(c: &Compound, (tag, data): Element<'_>) -> bool {
+    c.tag.as_deref().is_none_or(|t| t == tag)
+        && c.attrs
+            .iter()
+            .all(|(name, value)| match name.strip_prefix("\0tag:") {
+                Some(of) => of == tag,
+                None => data
+                    .iter()
+                    .any(|(k, v)| kebab(k) == *name && value.as_ref().is_none_or(|want| want == v)),
+            })
+}
+
+/// Whether `parts[..=i]` matches the path up to `at`, `parts[i]` on `path[at]`.
+fn matches_from(s: &Selector, i: usize, path: &[Element<'_>], at: usize) -> bool {
+    if !matches(&s.parts[i], path[at]) {
+        return false;
+    }
+    if i == 0 {
+        return true;
+    }
+    match s.combinators[i - 1] {
+        Combinator::Child => at > 0 && matches_from(s, i - 1, path, at - 1),
+        Combinator::Descendant => (0..at).rev().any(|a| matches_from(s, i - 1, path, a)),
+    }
+}
+
 impl Sheet {
     /// The applicable part of a stylesheet. Never fails: what cannot be read
     /// is skipped.
     pub fn parse(css: &str) -> Self {
         let css = strip_comments(css);
         let mut rules = Vec::new();
-        let mut rest = css.as_str();
         let mut order = 0;
-        while let Some(open) = rest.find('{') {
-            let prelude = rest[..open].trim();
-            // the block, braces balanced (nested blocks of at-rules)
-            let mut depth = 0;
-            let mut close = None;
-            for (i, c) in rest[open..].char_indices() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            close = Some(open + i);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            let Some(close) = close else { break };
-            let body = &rest[open + 1..close];
-            rest = &rest[close + 1..];
-            // `@import url(…);` has no block: it ends at the `;` in the prelude
-            let prelude = prelude.rsplit(';').next().unwrap_or_default().trim();
-            if prelude.starts_with('@') || body.contains('{') {
-                continue;
-            }
-            let style = declarations(body);
-            if style.is_empty() {
-                continue;
-            }
-            for sel in prelude.split(',') {
-                if let Some(Selector {
-                    tag,
-                    attrs,
-                    specificity,
-                }) = selector(sel)
-                {
-                    rules.push(Rule {
-                        tag,
-                        attrs,
-                        specificity,
-                        order,
-                        style: style.clone(),
-                    });
-                    order += 1;
-                }
-            }
-        }
+        parse_level(&css, &[], 0, &mut order, &mut rules);
         rules.sort_by_key(|r| (r.specificity, r.order));
         Self { rules }
     }
@@ -190,21 +340,14 @@ impl Sheet {
         self.rules.is_empty()
     }
 
-    /// The style of an element with this tag and these `data` entries.
-    pub fn style_for(&self, tag: &str, data: &[(String, String)]) -> Style {
+    /// The style of the last element of `path` (the root first).
+    pub fn style_for(&self, path: &[Element<'_>]) -> Style {
         let mut out = Style::default();
+        let Some(last) = path.len().checked_sub(1) else {
+            return out;
+        };
         for r in &self.rules {
-            let tag_ok = r.tag.as_deref().is_none_or(|t| t == tag);
-            let attrs_ok = r
-                .attrs
-                .iter()
-                .all(|(name, value)| match name.strip_prefix("\0tag:") {
-                    Some(of) => of == tag,
-                    None => data.iter().any(|(k, v)| {
-                        kebab(k) == *name && value.as_ref().is_none_or(|want| want == v)
-                    }),
-                });
-            if tag_ok && attrs_ok {
+            if matches_from(&r.selector, r.selector.parts.len() - 1, path, last) {
                 out.merge(&r.style);
             }
         }
@@ -246,28 +389,93 @@ mod tests {
             span[data-sc-class="tag"] { font-weight: bold; color: #fff; background-color: #565656; border-radius: 0.3em; }
             [data-sc-class] { color: red; font-style: italic }
             .gloss-sc-li { margin-left: 1em }
-            div .gloss-sc-span { color: blue }
             a:hover { color: green }
             @media (prefers-color-scheme: dark) { span { color: white } }
             ul[data-sc-content='glossary'] { list-style-type: "◦" }
+            span + span { color: pink }
             "#,
         );
-        let tag = sheet.style_for("span", &data(&[("class", "tag")]));
+        let tag_data = data(&[("class", "tag")]);
+        let tag = sheet.style_for(&[("span", &tag_data)]);
         assert_eq!(
             tag.color.as_deref(),
             Some("#fff"),
             "the more specific rule wins"
         );
         assert_eq!((tag.bold, tag.italic), (Some(true), Some(true)));
-        let other = sheet.style_for("div", &data(&[("class", "x")]));
-        assert_eq!(other.color.as_deref(), Some("red"));
-        assert!(
-            sheet.style_for("span", &[]).is_empty(),
-            "combinators, pseudo-classes and @media are skipped"
+        let x = data(&[("class", "x")]);
+        assert_eq!(
+            sheet.style_for(&[("div", &x)]).color.as_deref(),
+            Some("red")
         );
-        assert!(sheet.style_for("li", &[]).margin.left.is_some());
-        let list = sheet.style_for("ul", &data(&[("content", "glossary")]));
-        assert_eq!(list.list_marker.as_deref(), Some("\"◦\""));
+        assert!(
+            sheet.style_for(&[("span", &[])]).is_empty(),
+            "pseudo-classes, siblings and @media are skipped"
+        );
+        assert!(sheet.style_for(&[("li", &[])]).margin.left.is_some());
+        let g = data(&[("content", "glossary")]);
+        assert_eq!(
+            sheet.style_for(&[("ul", &g)]).list_marker.as_deref(),
+            Some("\"◦\"")
+        );
+    }
+
+    // T-DIC-035
+    #[test]
+    fn nesting_descendants_and_children() {
+        // the shapes Jitendex uses
+        let sheet = Sheet::parse(
+            r#"
+            ul[data-sc-content="glossary"] { list-style-type: disc; }
+            li[data-sc-content="sense"] {
+                padding-left: 0.25em;
+                & ul[data-sc-content="glossary"] { list-style-type: none; }
+            }
+            div[data-sc-content="xref"] {
+                border-color: #1A73E8;
+                & span[data-sc-content="reference-label"] { color: #1A73E8; }
+            }
+            div > span { font-weight: bold }
+            td[data-sc-class="form-pri"] > span { color: white; &::before { content: "△"; } }
+            "#,
+        );
+        let sense = data(&[("content", "sense")]);
+        let gloss = data(&[("content", "glossary")]);
+        let outside = sheet.style_for(&[("ul", &gloss)]);
+        assert_eq!(outside.list_marker.as_deref(), Some("disc"));
+        let inside = sheet.style_for(&[("ol", &[]), ("li", &sense), ("div", &[]), ("ul", &gloss)]);
+        assert_eq!(
+            inside.list_marker.as_deref(),
+            Some("none"),
+            "the nested rule is more specific"
+        );
+        assert!(sheet.style_for(&[("li", &sense)]).padding.left.is_some());
+
+        let xref = data(&[("content", "xref")]);
+        let label = data(&[("content", "reference-label")]);
+        let in_xref = sheet.style_for(&[("div", &xref), ("div", &[]), ("span", &label)]);
+        assert_eq!(in_xref.color.as_deref(), Some("#1a73e8"));
+        assert!(sheet.style_for(&[("span", &label)]).color.is_none());
+
+        assert_eq!(
+            sheet.style_for(&[("div", &[]), ("span", &[])]).bold,
+            Some(true)
+        );
+        assert_eq!(
+            sheet
+                .style_for(&[("div", &[]), ("li", &[]), ("span", &[])])
+                .bold,
+            None,
+            "> is the parent only"
+        );
+        let pri = data(&[("class", "form-pri")]);
+        assert_eq!(
+            sheet
+                .style_for(&[("td", &pri), ("span", &[])])
+                .color
+                .as_deref(),
+            Some("white")
+        );
     }
 
     #[test]
@@ -277,5 +485,8 @@ mod tests {
         );
         assert!(sheet.is_empty());
         assert_eq!(kebab("subsenseNumber"), "subsense-number");
+        // a deep nest neither overflows nor takes long
+        let deep = "a {".repeat(5000) + &"}".repeat(5000);
+        let _ = Sheet::parse(&deep);
     }
 }

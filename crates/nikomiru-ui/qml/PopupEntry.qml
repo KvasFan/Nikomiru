@@ -12,6 +12,7 @@ Column {
     property var controller: null
     property int level: 0
     property real base: 15
+    property var budget: null
     spacing: 6
 
     // headword with furigana (LKP-050)
@@ -210,6 +211,7 @@ Column {
                         controller: view.controller
                         level: view.level
                         base: view.base
+                        budget: view.budget
                     }
                 }
             }

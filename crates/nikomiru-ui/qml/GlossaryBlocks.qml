@@ -15,6 +15,10 @@ Column {
     property var controller: null
     property int level: 0
     property real base: 15
+    // the popup's budget of items created at once (DictionaryPopups); the
+    // others are created in the next frames, so a long entry shows its
+    // start at once (NFR-PERF-06)
+    property var budget: null
     spacing: 3
 
     function px(length, size) {
@@ -45,7 +49,9 @@ Column {
         model: root.blocks
         Loader {
             required property var modelData
+            required property int index
             width: root.width
+            asynchronous: root.budget ? root.budget.spend() : index >= 3
             sourceComponent: {
                 switch (modelData.k) {
                 case "flow": return flowBlock;
@@ -68,6 +74,7 @@ Column {
             controller: root.controller,
             level: root.level,
             base: root.base,
+            budget: root.budget,
             width: Qt.binding(() => width)
         })
     }
@@ -80,6 +87,7 @@ Column {
             controller: root.controller
             level: root.level
             base: root.base
+            budget: root.budget
         }
     }
 
@@ -96,14 +104,31 @@ Column {
                 y: root.side(parent.s.margin, "top")
                 width: parent.width - x - root.side(parent.s.margin, "right")
                 height: inner.implicitHeight + root.side(parent.s.padding, "top") + root.side(parent.s.padding, "bottom")
+                // a border on some sides only (Jitendex's note boxes: left)
+                readonly property var sides: parent.s.border_sides || null
+                readonly property bool someSides: !!sides && !(sides[0] && sides[1] && sides[2] && sides[3])
+                readonly property real line: parent.s.border_width ? Math.max(1, root.px(parent.s.border_width)) : (someSides ? 3 : 1)
+                readonly property color lineColor: parent.s.border_color || (someSides ? "#80909aa8" : "transparent")
                 color: parent.s.background || "transparent"
-                radius: root.px(parent.s.border_radius)
-                border.color: parent.s.border_color || "transparent"
-                border.width: parent.s.border_color ? Math.max(1, root.px(parent.s.border_width)) : 0
+                radius: someSides ? 0 : root.px(parent.s.border_radius)
+                border.color: someSides ? "transparent" : (parent.s.border_color || "transparent")
+                border.width: !someSides && parent.s.border_color ? line : 0
+                Repeater {
+                    model: frame.someSides ? 4 : 0
+                    Rectangle {
+                        required property int index
+                        visible: frame.sides[index]
+                        color: frame.lineColor
+                        x: index === 1 ? frame.width - frame.line : 0
+                        y: index === 2 ? frame.height - frame.line : 0
+                        width: index === 0 || index === 2 ? frame.width : frame.line
+                        height: index === 0 || index === 2 ? frame.line : frame.height
+                    }
+                }
                 Nested {
                     id: inner
                     nested: parent.parent.b.blocks || []
-                    x: root.side(parent.parent.s.padding, "left")
+                    x: root.side(parent.parent.s.padding, "left") + (frame.someSides && frame.sides[3] ? frame.line + 4 : 0)
                     y: root.side(parent.parent.s.padding, "top")
                     width: parent.width - x - root.side(parent.parent.s.padding, "right")
                 }

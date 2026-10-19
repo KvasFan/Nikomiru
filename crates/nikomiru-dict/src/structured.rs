@@ -233,6 +233,23 @@ pub enum Block {
 struct Ctx<'a> {
     sheet: &'a Sheet,
     nodes: usize,
+    /// The elements above the current one, for descendant selectors.
+    path: Vec<(String, Vec<(String, String)>)>,
+}
+
+impl Ctx<'_> {
+    /// Runs `f` with `tag` (and its `data`) as the innermost ancestor.
+    fn inside<R>(
+        &mut self,
+        tag: &str,
+        o: &serde_json::Map<String, Value>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.path.push((tag.to_string(), data_of(o)));
+        let r = f(self);
+        self.path.pop();
+        r
+    }
 }
 
 #[derive(Default)]
@@ -263,7 +280,11 @@ impl Out {
 /// A glossary (the JSON array of a term) as blocks, styled by the
 /// dictionary's `sheet`.
 pub fn render(glossary: &Value, sheet: &Sheet) -> Vec<Block> {
-    let mut ctx = Ctx { sheet, nodes: 0 };
+    let mut ctx = Ctx {
+        sheet,
+        nodes: 0,
+        path: Vec::new(),
+    };
     let items = match glossary {
         Value::Array(items) => items.as_slice(),
         other => std::slice::from_ref(other),
@@ -624,7 +645,14 @@ fn data_of(o: &serde_json::Map<String, Value>) -> Vec<(String, String)> {
 
 /// The element's own style: the sheet's, then its `style` object.
 fn own_style(ctx: &Ctx<'_>, tag: &str, o: &serde_json::Map<String, Value>) -> Style {
-    let mut style = ctx.sheet.style_for(tag, &data_of(o));
+    let data = data_of(o);
+    let mut path: Vec<crate::css::Element<'_>> = ctx
+        .path
+        .iter()
+        .map(|(t, d)| (t.as_str(), d.as_slice()))
+        .collect();
+    path.push((tag, &data));
+    let mut style = ctx.sheet.style_for(&path);
     if let Some(inline) = o.get("style").and_then(Value::as_object) {
         let mut s = Style::default();
         for (k, v) in inline {
@@ -718,7 +746,25 @@ fn element_into(
     let mut text_style = inherited.clone();
     text_style.merge(&own);
     let inner_inherited = text_style.inherited();
-    match tag.as_str() {
+    ctx.path.push((tag.clone(), data_of(o)));
+    element_body(ctx, o, &tag, own, text_style, &inner_inherited, out, depth);
+    ctx.path.pop();
+}
+
+/// The rendering of an element, with the element on the path.
+#[allow(clippy::too_many_arguments)]
+fn element_body(
+    ctx: &mut Ctx<'_>,
+    o: &serde_json::Map<String, Value>,
+    tag: &str,
+    own: Style,
+    text_style: Style,
+    inner_inherited: &Style,
+    out: &mut Out,
+    depth: usize,
+) {
+    let inner_inherited = inner_inherited.clone();
+    match tag {
         "br" => out.runs.push(Run::Br),
         "img" => {
             if let Some(image) = image(o) {
@@ -779,7 +825,9 @@ fn element_into(
                             let li_style = own_style(ctx, "li", li);
                             let mut s = inner_inherited.clone();
                             s.merge(&li_style);
-                            let blocks = children(ctx, li, &s.inherited(), depth + 1);
+                            let blocks = ctx.inside("li", li, |ctx| {
+                                children(ctx, li, &s.inherited(), depth + 1)
+                            });
                             if li_style.is_empty() {
                                 return blocks;
                             }
@@ -861,8 +909,10 @@ fn collect_rows(
     for item in &items {
         let Value::Object(o) = item else { continue };
         match o.get("tag").and_then(Value::as_str) {
-            Some("thead" | "tbody" | "tfoot") if depth < MAX_DEPTH => {
-                collect_rows(ctx, o.get("content"), inherited, depth + 1, rows);
+            Some(t @ ("thead" | "tbody" | "tfoot")) if depth < MAX_DEPTH => {
+                ctx.inside(t, o, |ctx| {
+                    collect_rows(ctx, o.get("content"), inherited, depth + 1, rows)
+                });
             }
             Some("tr") => {
                 let cells = match o.get("content") {
@@ -870,35 +920,39 @@ fn collect_rows(
                     Some(single) => vec![single.clone()],
                     None => Vec::new(),
                 };
-                let row = cells
-                    .iter()
-                    .filter_map(|c| {
-                        let Value::Object(cell) = c else { return None };
-                        let tag = cell.get("tag").and_then(Value::as_str)?;
-                        if tag != "td" && tag != "th" {
-                            return None;
-                        }
-                        let s = own_style(ctx, tag, cell);
-                        let mut text = inherited.clone();
-                        text.merge(&s);
-                        let blocks = children(ctx, cell, &text.inherited(), depth + 1);
-                        let span = |k: &str| {
-                            cell.get(k)
-                                .and_then(Value::as_u64)
-                                .map_or(1, |n| n.clamp(1, 64) as u32)
-                        };
-                        Some(Cell {
-                            row: 0,
-                            col: 0,
-                            header: tag == "th",
-                            colspan: span("colSpan"),
-                            rowspan: span("rowSpan"),
-                            natural_em: natural_em(&blocks),
-                            blocks,
-                            s,
+                let row: Vec<Cell> = ctx.inside("tr", o, |ctx| {
+                    cells
+                        .iter()
+                        .filter_map(|c| {
+                            let Value::Object(cell) = c else { return None };
+                            let tag = cell.get("tag").and_then(Value::as_str)?;
+                            if tag != "td" && tag != "th" {
+                                return None;
+                            }
+                            let s = own_style(ctx, tag, cell);
+                            let mut text = inherited.clone();
+                            text.merge(&s);
+                            let blocks = ctx.inside(tag, cell, |ctx| {
+                                children(ctx, cell, &text.inherited(), depth + 1)
+                            });
+                            let span = |k: &str| {
+                                cell.get(k)
+                                    .and_then(Value::as_u64)
+                                    .map_or(1, |n| n.clamp(1, 64) as u32)
+                            };
+                            Some(Cell {
+                                row: 0,
+                                col: 0,
+                                header: tag == "th",
+                                colspan: span("colSpan"),
+                                rowspan: span("rowSpan"),
+                                natural_em: natural_em(&blocks),
+                                blocks,
+                                s,
+                            })
                         })
-                    })
-                    .collect();
+                        .collect()
+                });
                 rows.push(row);
             }
             _ => {}

@@ -24,6 +24,13 @@
 - **T-PERF-06**, L6 test `a_click_on_a_subtitle_word_opens_the_dictionary_popup` (off-screen KWin, `mini-ja` + `mini-freq` + `mini-pitch`, 30 clicks on the same cue): click → first frame with the popup **median 17 ms, p95 21 ms** (limit 100 ms). The lookup itself is under 2 ms (ADR 0002, M3 section).
 - The screenshots of the spike (headword with furigana, trace chips, frequency, pitch accent graph, collapsible dictionary blocks, ruby, a table, a redirect label kept next to its definition) look as intended at 1600×900.
 
+## With a real dictionary: Jitendex (2026-10-03)
+
+Imported from the maintainer's copy: 436,555 terms, 253 media files, 6.1 s and 522 MiB peak (release build).
+
+- **CSS**: Jitendex styles its structured content with nested rules (`li[data-sc-content="sense"] { & ul[…] { list-style-type: none } }`), descendant selectors and left-only borders (`border-style: none none none solid`). The subset now covers nesting (`&`), descendant and child combinators (matched against the chain of ancestors) and borders on some sides; sibling combinators, pseudo-classes and pseudo-elements stay out. Text next to ruby is lowered to the ruby's base line.
+- **Size of an entry**: a rich entry (行く) is ~800 blocks and runs, several thousand QML items; created at once they took 90–200 ms. The popup now creates a budget of 30 blocks and runs at once (about the first sense, with its example) and the rest in the next frames through asynchronous `Loader`s. Measured (debug build, machine under load): click → first frame 50–140 ms; the lookup and the view model take 1–12 ms in a release build. The popup content is handed to QML as it is (`RawValue`), not parsed again.
+
 ## Consequences
 
 - POP-010 is implemented with `data:` URLs instead of an image provider; the requirement's intent (images only from the dictionary, never from the network) holds. SPECIFICATION POP-010 is updated.
