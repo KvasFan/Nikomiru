@@ -1,0 +1,23 @@
+[package]
+name = "spike-s2-storage"
+description = "Spike S2 (ROADMAP M0): Yomitan import into redb and lookup with a minimal deinflector"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+# Standalone workspace: spike code does not go into crates/ (ROADMAP M0).
+[workspace]
+
+[dependencies]
+redb = "4.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["raw_value"] }
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+lz4_flex = "0.14"
+zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+anyhow = "1.0"
+
+[profile.release]
+debug = "line-tables-only"
