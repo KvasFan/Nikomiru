@@ -174,6 +174,13 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
    - pause/resume state machine (POP-001/004/005);
    - hover with Shift.
 
+**Status as of 2026-10-19**
+
+- Done: Yomitan import (safe, atomic, cancellable; T-DIC-001…003, 010…015, T-SEC-002), redb storage with term heads in the indexes and a Bloom filter per dictionary, deinflector on the `assets/transforms` tables, lookup (merging, sorting with dictionary priority, budget in groups, redirects, mixed orthography, Kansai exception, frequencies, pitch accent, kanji, LRU cache), registry in `library.redb` (order, enabled, update by revision, deletion, cleanup after a crash), the popup (spike S4, [ADR 0005](adr/0005-popup-qml.md)) with pause/resume, nesting, placement and highlighting, `--import-dictionary` on the command line.
+- Conformance: 168 text vectors and 233 lookup vectors from Fushi, all green.
+- Measured: T-PERF-04 p95 1.7 ms / p99 2.2 ms, T-PERF-05 ≤ 4.4 s and 261 MiB per 300k-entry dictionary, T-PERF-06 p95 21 ms.
+- Open: dictionary management page (import with progress, list, order, enable, delete, rename, collapse state, user CSS), hover with Shift (POP-003), keyboard navigation in the popup (POP-014), replay and go to sentence (POP-015), selection inside glossaries for nested popups (POP-012), the manual test with real dictionaries.
+
 **Exit criteria**
 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
