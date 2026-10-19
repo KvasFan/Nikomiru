@@ -313,13 +313,14 @@ fn output(program: &Path, args: &[&str]) -> Result<String, ToolsError> {
         path: program.to_path_buf(),
         source,
     };
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(run_err)?;
+    let mut child = crate::process::spawn(
+        Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null()),
+    )
+    .map_err(run_err)?;
     let mut stdout = child
         .stdout
         .take()

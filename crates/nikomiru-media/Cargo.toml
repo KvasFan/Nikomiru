@@ -12,8 +12,11 @@ workspace = true
 
 [dependencies]
 nikomiru-core.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
+nikomiru-subs.workspace = true
 tempfile.workspace = true

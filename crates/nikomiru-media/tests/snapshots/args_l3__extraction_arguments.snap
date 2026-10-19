@@ -1,0 +1,25 @@
+---
+source: crates/nikomiru-media/tests/args_l3.rs
+expression: "shown.join(\"\\n\")"
+---
+-nostdin
+-hide_banner
+-loglevel
+error
+-y
+-i
+file:/videos/-weird: name.mkv
+-map
+0:3
+-c:s
+srt
+-f
+srt
+file:/cache/a-3.srt.part
+-map
+0:4
+-c:s
+ass
+-f
+ass
+file:/cache/a-4.ass.part

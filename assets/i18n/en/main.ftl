@@ -62,6 +62,12 @@ error-ffmpeg-run = { $path } cannot be run ({ $reason }).
 error-ffmpeg-timeout = { $path } did not answer within { $seconds } seconds.
 error-ffmpeg-old = FFmpeg { $version } is too old: version { $minimum } or newer is needed.
 
+# External processes (nikomiru-media JobError)
+error-job-spawn = { $program } cannot be started ({ $reason }).
+error-job-timeout = { $program } did not finish within { $seconds } seconds and was stopped.
+error-job-cancelled = { $program } was cancelled.
+error-job-failed = { $program } failed: { $reason }
+
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
 error-instance-no-answer = Nikomiru is already running but does not answer. Close it and try again.
