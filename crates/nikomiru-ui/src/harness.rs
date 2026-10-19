@@ -25,6 +25,14 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FileLoaded => ("file-loaded", json!({})),
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
+        UiEvent::PopupRendered {
+            level,
+            query,
+            headwords,
+        } => (
+            "popup-rendered",
+            json!({ "level": level, "query": query, "headwords": headwords }),
+        ),
         UiEvent::CueShown { index, time_pos_ms } => (
             "cue-shown",
             json!({ "index": index, "time_pos": time_pos_ms as f64 / 1000.0 }),
@@ -120,7 +128,8 @@ pub fn click_grapheme(layer: &str, cue: usize, grapheme: usize) -> Result<(), St
             .and_then(|s| s.subs.cue(cue))
             .and_then(|q| q.graphemes().get(grapheme).map(|g| g.offset))
             .ok_or_else(|| format!("no grapheme {grapheme} in cue {cue}"))?;
-        c.as_mut().grapheme_clicked(cue as i32, offset as i32);
+        c.as_mut()
+            .grapheme_clicked(cue as i32, offset as i32, 0.0, 0.0, 0.0, 0.0);
         Ok(())
     })?
 }
@@ -158,8 +167,21 @@ pub fn state() -> Result<Value, String> {
                     "selected": s.subs.selection.map(|(c, o)| json!([c, o])),
                     "obscure": s.obscure_now().name(),
                     "disabled": s.subs.disabled,
+                    "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
                 })
             }),
+            "popups": c.rust().session.as_ref().map(|s| {
+                s.popups
+                    .stack()
+                    .iter()
+                    .map(|p| json!({
+                        "query": p.query,
+                        "loading": p.reply.is_none(),
+                        "empty": p.reply.as_ref().is_some_and(|r| r.empty),
+                    }))
+                    .collect::<Vec<_>>()
+            }),
+            "paused_for_lookup": c.rust().session.as_ref().map(|s| s.popups.paused_for_lookup()),
         })
     })
 }

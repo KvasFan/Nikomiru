@@ -12,6 +12,12 @@ fn main() {
         "qml/Toast.qml",
         "qml/SubtitleOverlay.qml",
         "qml/SubtitleList.qml",
+        "qml/Chip.qml",
+        "qml/GlossaryRuns.qml",
+        "qml/GlossaryBlocks.qml",
+        "qml/PopupEntry.qml",
+        "qml/KanjiCard.qml",
+        "qml/DictionaryPopups.qml",
     ]);
     CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")

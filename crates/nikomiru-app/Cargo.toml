@@ -26,6 +26,7 @@ test-harness = ["nikomiru-ui/test_harness"]
 
 [dependencies]
 nikomiru-core.workspace = true
+nikomiru-dict.workspace = true
 nikomiru-library.workspace = true
 nikomiru-media.workspace = true
 nikomiru-player.workspace = true

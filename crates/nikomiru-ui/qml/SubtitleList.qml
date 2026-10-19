@@ -133,8 +133,11 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: (mouse) => panel.controller.list_text_clicked(
-                            rowItem.modelData.i, body.positionAt(mouse.x, mouse.y))
+                        onClicked: (mouse) => {
+                            const p = rowItem.mapToItem(null, 0, 0);
+                            panel.controller.list_text_clicked(rowItem.modelData.i, body.positionAt(mouse.x, mouse.y),
+                                                               p.x, p.y, rowItem.width, rowItem.height);
+                        }
                     }
                 }
             }

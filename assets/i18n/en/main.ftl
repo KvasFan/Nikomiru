@@ -122,3 +122,8 @@ error-subtitle-bitmap = image subtitles are drawn by the player
 
 # Shown by the desktop while the screensaver is inhibited (PLY-013).
 inhibit-reason = Playing a video
+
+# Dictionary popup
+popup-loading = Looking up…
+popup-no-results = No dictionary has this word. Import dictionaries from the menu.
+popup-pitch-accent = pitch accent

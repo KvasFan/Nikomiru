@@ -12,6 +12,7 @@ use cxx_qt_lib::QString;
 use nikomiru_player::PlayerEvent;
 use nikomiru_player::control::Stamped;
 
+use crate::popup::Rect;
 use crate::session::{Services, Session, url_to_path};
 use crate::shortcuts::Action;
 
@@ -56,6 +57,7 @@ pub mod qobject {
         #[qproperty(i32, subtitle_play_res_y)]
         #[qproperty(i32, video_width)]
         #[qproperty(i32, video_height)]
+        #[qproperty(QString, popups)]
         type PlayerController = super::PlayerControllerRust;
 
         /// Opens a file (path or `file://` URL).
@@ -118,13 +120,73 @@ pub mod qobject {
         #[qinvokable]
         fn force_encoding(self: Pin<&mut PlayerController>, encoding: &QString);
 
-        /// A click on a grapheme of the overlay: cue index and byte offset.
+        /// A click on a grapheme of the overlay: cue index, byte offset and
+        /// the rectangle of the cue in the window (the popup must not cover it).
         #[qinvokable]
-        fn grapheme_clicked(self: Pin<&mut PlayerController>, cue: i32, offset: i32);
+        fn grapheme_clicked(
+            self: Pin<&mut PlayerController>,
+            cue: i32,
+            offset: i32,
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+        );
 
-        /// A click in the text of a list row, at a QML text position.
+        /// A click in the text of a list row, at a QML text position, with the
+        /// rectangle of the row.
         #[qinvokable]
-        fn list_text_clicked(self: Pin<&mut PlayerController>, cue: i32, position: i32);
+        fn list_text_clicked(
+            self: Pin<&mut PlayerController>,
+            cue: i32,
+            position: i32,
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+        );
+
+        /// A link or a selection in popup `level`: a nested lookup (POP-011/012).
+        #[qinvokable]
+        fn popup_lookup(
+            self: Pin<&mut PlayerController>,
+            level: i32,
+            text: &QString,
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+        );
+
+        /// A click inside popup `level` closes the popups above it.
+        #[qinvokable]
+        fn popup_focus(self: Pin<&mut PlayerController>, level: i32);
+
+        /// Closes the last popup.
+        #[qinvokable]
+        fn popup_close(self: Pin<&mut PlayerController>);
+
+        /// QML drew popup `level` with its content.
+        #[qinvokable]
+        fn popup_rendered(self: Pin<&mut PlayerController>, level: i32);
+
+        /// Closes every popup (a click outside).
+        #[qinvokable]
+        fn popup_close_all(self: Pin<&mut PlayerController>);
+
+        /// Where a popup of the preferred size goes (POP-006): JSON rectangle.
+        #[qinvokable]
+        fn place_popup(
+            self: &PlayerController,
+            anchor_x: f64,
+            anchor_y: f64,
+            anchor_w: f64,
+            anchor_h: f64,
+            width: f64,
+            height: f64,
+            window_w: f64,
+            window_h: f64,
+        ) -> QString;
 
         /// A click on the time of a list row.
         #[qinvokable]
@@ -209,8 +271,11 @@ pub struct PlayerControllerRust {
     subtitle_play_res_y: i32,
     video_width: i32,
     video_height: i32,
+    popups: QString,
     /// Version of the cue list already sent to QML.
     list_version: Option<u64>,
+    /// Version of the popups already sent to QML.
+    popup_version: Option<u64>,
     pub(crate) session: Option<Session>,
 }
 
@@ -298,6 +363,19 @@ pub(crate) fn harness_call<T: Send + 'static>(
     }
     rx.recv_timeout(Duration::from_secs(10))
         .map_err(|_| "the UI did not answer".to_string())
+}
+
+/// A finished lookup, back on the Qt thread.
+fn deliver_lookup(generation: u64, result: Result<crate::popup::Reply, String>) {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(move |mut c| {
+            c.as_mut()
+                .with_session(|s| s.lookup_done(generation, result));
+            c.sync();
+        });
+    }
 }
 
 /// A finished subtitle load, back on the Qt thread.
@@ -423,6 +501,31 @@ impl qobject::PlayerController {
             self.as_mut().set_controls_visible(controls);
         }
         self.as_mut().sync_subtitles();
+        self.as_mut().sync_popups();
+        self.as_mut().forward_events();
+    }
+
+    /// Starts the pending lookups and copies the popups.
+    fn sync_popups(mut self: Pin<&mut Self>) {
+        let lookups = self
+            .as_mut()
+            .with_session(Session::take_lookups)
+            .unwrap_or_default();
+        for (generation, text) in lookups {
+            self.as_mut().with_session(|s| {
+                s.start_lookup(
+                    text,
+                    Box::new(move |result| deliver_lookup(generation, result)),
+                )
+            });
+        }
+        let seen = self.rust().popup_version;
+        if let Some(Some((version, json))) = self.as_mut().with_session(|s| {
+            (Some(s.popup_version) != seen).then(|| (s.popup_version, s.popups_json().to_string()))
+        }) {
+            self.as_mut().rust_mut().popup_version = Some(version);
+            self.as_mut().set_popups(QString::from(json.as_str()));
+        }
     }
 
     /// Starts the pending subtitle loads and copies the subtitle state.
@@ -554,20 +657,109 @@ impl qobject::PlayerController {
         self.sync();
     }
 
-    pub(crate) fn grapheme_clicked(mut self: Pin<&mut Self>, cue: i32, offset: i32) {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn grapheme_clicked(
+        mut self: Pin<&mut Self>,
+        cue: i32,
+        offset: i32,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) {
         if let (Ok(cue), Ok(offset)) = (usize::try_from(cue), usize::try_from(offset)) {
+            let anchor = Rect { x, y, w, h };
             self.as_mut()
-                .with_session(|s| s.select_grapheme(cue, offset));
+                .with_session(|s| s.select_grapheme(cue, offset, anchor));
         }
         self.sync();
     }
 
-    fn list_text_clicked(mut self: Pin<&mut Self>, cue: i32, position: i32) {
+    #[allow(clippy::too_many_arguments)]
+    fn list_text_clicked(
+        mut self: Pin<&mut Self>,
+        cue: i32,
+        position: i32,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) {
         if let (Ok(cue), Ok(position)) = (usize::try_from(cue), usize::try_from(position)) {
+            let anchor = Rect { x, y, w, h };
             self.as_mut()
-                .with_session(|s| s.select_in_list(cue, position));
+                .with_session(|s| s.select_in_list(cue, position, anchor));
         }
         self.sync();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn popup_lookup(
+        mut self: Pin<&mut Self>,
+        level: i32,
+        text: &QString,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) {
+        if let Ok(level) = usize::try_from(level) {
+            let text = text.to_string();
+            let anchor = Rect { x, y, w, h };
+            self.as_mut()
+                .with_session(|s| s.popup_lookup(level, &text, anchor));
+        }
+        self.sync();
+    }
+
+    fn popup_focus(mut self: Pin<&mut Self>, level: i32) {
+        if let Ok(level) = usize::try_from(level) {
+            self.as_mut().with_session(|s| s.popup_focus(level));
+        }
+        self.sync();
+    }
+
+    fn popup_rendered(mut self: Pin<&mut Self>, level: i32) {
+        if let Ok(level) = usize::try_from(level) {
+            self.as_mut().with_session(|s| s.popup_rendered(level));
+        }
+        self.sync();
+    }
+
+    fn popup_close(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::close_popup);
+        self.sync();
+    }
+
+    fn popup_close_all(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::close_all_popups);
+        self.sync();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn place_popup(
+        &self,
+        anchor_x: f64,
+        anchor_y: f64,
+        anchor_w: f64,
+        anchor_h: f64,
+        width: f64,
+        height: f64,
+        window_w: f64,
+        window_h: f64,
+    ) -> QString {
+        let anchor = Rect {
+            x: anchor_x,
+            y: anchor_y,
+            w: anchor_w,
+            h: anchor_h,
+        };
+        let r = crate::popup::place(anchor, (width, height), (window_w, window_h), 8.0);
+        QString::from(
+            serde_json::json!({"x": r.x, "y": r.y, "w": r.w, "h": r.h})
+                .to_string()
+                .as_str(),
+        )
     }
 
     fn list_time_clicked(mut self: Pin<&mut Self>, cue: i32) {
@@ -603,6 +795,14 @@ impl qobject::PlayerController {
 
     fn on_event(mut self: Pin<&mut Self>, event: Stamped<PlayerEvent>) {
         let changed = self.as_mut().with_session(|s| s.on_event(event)) == Some(true);
+        self.as_mut().forward_events();
+        if changed {
+            self.sync();
+        }
+    }
+
+    /// Hands the session's milestones to the test harness (dropped otherwise).
+    fn forward_events(mut self: Pin<&mut Self>) {
         let events = self
             .as_mut()
             .with_session(|s| std::mem::take(&mut s.events))
@@ -613,9 +813,6 @@ impl qobject::PlayerController {
         }
         #[cfg(not(feature = "test_harness"))]
         drop(events);
-        if changed {
-            self.sync();
-        }
     }
 
     pub(crate) fn open_file(mut self: Pin<&mut Self>, path: &QString) {

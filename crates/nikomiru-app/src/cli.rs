@@ -13,6 +13,9 @@ Opens FILE (a video) or URL (file://, nikomiru://) in Nikomiru. If Nikomiru is
 already running, the running window opens it.
 
 Options:
+      --import-dictionary ZIP
+                  Imports a Yomitan dictionary (a .zip; repeatable) and exits.
+                  An older revision of the same dictionary is updated.
       --debug     Verbose log, libmpv's messages included
   -h, --help      Show this help
   -V, --version   Show the version
@@ -27,6 +30,8 @@ pub enum Command {
     Help,
     /// Print the version.
     Version,
+    /// Import these dictionaries and exit.
+    ImportDictionaries(Vec<std::path::PathBuf>),
 }
 
 /// Options of a normal start.
@@ -48,6 +53,7 @@ pub struct Options {
 pub fn parse(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Result<Command, String> {
     let mut options = Options::default();
     let mut only_targets = false;
+    let mut imports = Vec::new();
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         let Some(arg) = arg.to_str().map(str::to_string) else {
@@ -62,6 +68,15 @@ pub fn parse(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Result<Com
                 "-h" | "--help" => return Ok(Command::Help),
                 "-V" | "--version" => return Ok(Command::Version),
                 "--debug" => options.debug = true,
+                "--import-dictionary" => {
+                    let zip = args.next().ok_or("--import-dictionary needs a .zip file")?;
+                    let zip = std::path::PathBuf::from(zip);
+                    imports.push(if zip.is_absolute() {
+                        zip
+                    } else {
+                        cwd.join(zip)
+                    });
+                }
                 #[cfg(feature = "test-harness")]
                 "--test-harness" => {
                     let socket = args.next().ok_or("--test-harness needs a socket path")?;
@@ -72,6 +87,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Result<Com
             continue;
         }
         options.targets.push(target(&arg, cwd));
+    }
+    if !imports.is_empty() {
+        return Ok(Command::ImportDictionaries(imports));
     }
     Ok(Command::Run(options))
 }
@@ -128,6 +146,19 @@ mod tests {
         assert_eq!(run(&[]), Ok(Command::Run(Options::default())));
         assert_eq!(run(&["--version", "x.mkv"]), Ok(Command::Version));
         assert_eq!(run(&["-h"]), Ok(Command::Help));
+        assert_eq!(
+            run(&[
+                "--import-dictionary",
+                "jmdict.zip",
+                "--import-dictionary",
+                "/d/k.zip"
+            ]),
+            Ok(Command::ImportDictionaries(vec![
+                "/home/u/videos/jmdict.zip".into(),
+                "/d/k.zip".into()
+            ]))
+        );
+        assert!(run(&["--import-dictionary"]).is_err());
         assert!(run(&["--fullscreen"]).is_err());
         // after `--` a name starting with a dash is a file
         assert_eq!(

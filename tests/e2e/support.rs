@@ -140,6 +140,25 @@ impl Desktop {
         self.dir.path().join(sub)
     }
 
+    /// Imports dictionaries (zips of `target/fixtures/dicts`) into this
+    /// desktop's profile, before the app starts.
+    pub fn import_dictionaries(&self, names: &[&str]) {
+        use std::sync::Arc;
+        let data = self.path("data").join("nikomiru");
+        let library =
+            Arc::new(nikomiru_library::Library::open(&data.join("library.redb")).unwrap());
+        let clock: Arc<dyn nikomiru_core::Clock> = Arc::new(nikomiru_core::SystemClock::new());
+        let manager =
+            nikomiru_library::DictionaryManager::open(library, data.join("dicts"), clock, "ja")
+                .unwrap();
+        for name in names {
+            let zip = fixture(&format!("dicts/{name}.zip"));
+            manager
+                .import(Path::new(&zip), None, &nikomiru_core::Cancel::new(), |_| {})
+                .unwrap();
+        }
+    }
+
     /// `nikomiru` (the harness build) with `args`, in this desktop and with its
     /// folders.
     pub fn app(&mut self, args: &[&str]) -> Command {

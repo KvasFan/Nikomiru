@@ -15,6 +15,7 @@ use nikomiru_player::{LoadRequest, PlayerEvent, PlayerHandle, options};
 
 use crate::controls::ControlsVisibility;
 use crate::i18n::Translator;
+use crate::popup::{Command, Origin, Popups, Rect, Reply};
 use crate::screensaver::ScreensaverPolicy;
 use crate::shortcuts::{Action, Bindings, Context, Modifiers};
 use crate::subtitles::{Loaded, Obscure, Request, Source, Subtitles};
@@ -67,6 +68,15 @@ pub enum UiEvent {
         index: usize,
         /// Position in milliseconds when it appeared.
         time_pos_ms: i64,
+    },
+    /// A popup was drawn with its content (T-PERF-06).
+    PopupRendered {
+        /// Its level (0 = from the subtitles).
+        level: usize,
+        /// The query.
+        query: String,
+        /// Headwords shown, in order.
+        headwords: Vec<String>,
     },
 }
 
@@ -134,6 +144,13 @@ pub trait SubtitleSource: Send {
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 }
 
+/// Looks words up in the dictionaries away from the UI thread and renders
+/// the popup content (LKP-030…, POP-007). `done` may run on any thread.
+pub trait LookupService: Send {
+    /// Looks `text` up; `done` gets the popup content or a translated error.
+    fn lookup(&self, text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>);
+}
+
 /// Everything the session needs from the application.
 pub struct Services {
     /// The player.
@@ -141,7 +158,7 @@ pub struct Services {
     /// The configuration.
     pub config: Config,
     /// The library, if it could be opened.
-    pub library: Option<Library>,
+    pub library: Option<std::sync::Arc<Library>>,
     /// The interface strings.
     pub translator: Translator,
     /// Time source.
@@ -153,6 +170,8 @@ pub struct Services {
     pub inhibitor: Box<dyn IdleInhibitor>,
     /// The subtitle loader.
     pub subtitle_source: Box<dyn SubtitleSource>,
+    /// The dictionaries.
+    pub lookup: Box<dyn LookupService>,
 }
 
 impl std::fmt::Debug for Services {
@@ -199,6 +218,11 @@ pub struct Session {
     sub_auto_done: bool,
     /// Changes whenever the cue list changes, so the UI rebuilds it.
     pub sub_list_version: u64,
+    /// The dictionary popups.
+    pub popups: Popups,
+    lookups: Vec<(u64, String)>,
+    /// Changes whenever a popup opens, closes or gets its content.
+    pub popup_version: u64,
 }
 
 impl std::fmt::Debug for Session {
@@ -274,6 +298,9 @@ impl Session {
             sub_loads: Vec::new(),
             sub_auto_done: false,
             sub_list_version: 0,
+            popups: Popups::default(),
+            lookups: Vec::new(),
+            popup_version: 0,
         }
     }
 
@@ -559,7 +586,10 @@ impl Session {
         let p = &self.services.player;
         let step = control::seek_step(self.services.config.player.seek_seconds);
         let result = match action {
-            Action::PlayPause => p.toggle_pause(),
+            Action::PlayPause => {
+                self.popups.playback_changed_by_user();
+                p.toggle_pause()
+            }
             Action::SeekBack => p.seek_relative(-step),
             Action::SeekForward => p.seek_relative(step),
             Action::VolumeUp | Action::VolumeDown => {
@@ -675,6 +705,10 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
+            Action::Back if self.popups.is_open() => {
+                self.close_popup();
+                return UiEffect::None;
+            }
             Action::Back => return UiEffect::Back,
             Action::OpenFile => return UiEffect::OpenDialog,
             Action::HoldSpeed => Ok(()),
@@ -942,28 +976,178 @@ impl Session {
             .push(self.tr("toast-sub-delay", &[("value", format!("{delay_ms:+}"))]));
     }
 
-    /// A click on a grapheme of the overlay or of the list: playback pauses and
-    /// the grapheme is selected (M3 looks the word up from there).
-    pub fn select_grapheme(&mut self, cue: usize, offset: usize) {
-        if self
-            .subs
-            .cue(cue)
-            .is_none_or(|c| offset >= c.plain_text.len())
-        {
+    /// A click on a grapheme of the overlay or of the list (POP-001): the
+    /// text from there (LKP-001…LKP-003) is looked up in a popup next to
+    /// `anchor`; playback pauses if it was going.
+    pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        let Some(text) = self.subs.cue(cue).map(|c| c.plain_text.clone()) else {
+            return;
+        };
+        if offset >= text.len() {
             return;
         }
-        if !self.view.paused {
-            let _ = self.services.player.set_pause(true);
-        }
         self.subs.selection = Some((cue, offset));
+        self.subs.highlight = None;
+        let range = nikomiru_text::scan::query(&text, offset, nikomiru_text::scan::Context::Cue);
+        let query = nikomiru_text::scan::normalize(&text[range.clone()]);
+        if query.is_empty() {
+            return;
+        }
+        // where the normalized query starts in the cue
+        let start = range.start + text[range].find(query.as_str()).unwrap_or(0);
+        let playing = self.view.loaded && !self.view.paused;
+        let commands =
+            self.popups
+                .open_from_subtitle(playing, query, Origin::Subtitle { cue, start }, anchor);
+        self.run_popup_commands(commands);
     }
 
     /// A click in the text of a list row, at a QML (UTF-16) position.
-    pub fn select_in_list(&mut self, cue: usize, utf16_pos: usize) {
+    pub fn select_in_list(&mut self, cue: usize, utf16_pos: usize, anchor: Rect) {
         if let Some(c) = self.subs.cue(cue) {
             let offset = crate::subtitles::utf16_to_byte(&c.plain_text, utf16_pos);
-            self.select_grapheme(cue, offset);
+            self.select_grapheme(cue, offset, anchor);
         }
+    }
+
+    fn run_popup_commands(&mut self, commands: Vec<Command>) {
+        for c in commands {
+            match c {
+                Command::Pause => {
+                    let _ = self.services.player.set_pause(true);
+                }
+                Command::Resume => {
+                    let _ = self.services.player.set_pause(false);
+                }
+                Command::Lookup { generation, text } => self.lookups.push((generation, text)),
+            }
+        }
+        self.sync_highlight();
+        self.popup_version += 1;
+    }
+
+    fn sync_highlight(&mut self) {
+        self.subs.highlight = self.popups.highlight().and_then(|(cue, start, chars)| {
+            let text = &self.subs.cue(cue)?.plain_text;
+            let end = text
+                .get(start..)?
+                .char_indices()
+                .nth(chars)
+                .map_or(text.len(), |(i, _)| start + i);
+            Some((cue, start..end))
+        });
+        if !self.popups.is_open() {
+            self.subs.selection = None;
+        }
+    }
+
+    /// A link or a selection in popup `level` (POP-011, POP-012).
+    pub fn popup_lookup(&mut self, level: usize, text: &str, anchor: Rect) {
+        let query = nikomiru_text::scan::normalize(text);
+        if query.is_empty() {
+            return;
+        }
+        let commands = self.popups.open_nested(level, query, anchor);
+        self.run_popup_commands(commands);
+    }
+
+    /// A click inside popup `level`: the popups above it close.
+    pub fn popup_focus(&mut self, level: usize) {
+        if self.popups.stack().len() > level + 1 {
+            self.popups.focus(level);
+            self.popup_version += 1;
+        }
+    }
+
+    /// Esc or Back: the last popup closes (POP-012).
+    pub fn close_popup(&mut self) {
+        let commands = self.popups.close_last();
+        self.run_popup_commands(commands);
+    }
+
+    /// A click outside the popups: they all close.
+    pub fn close_all_popups(&mut self) {
+        if self.popups.is_open() {
+            let commands = self.popups.close_all();
+            self.run_popup_commands(commands);
+        }
+    }
+
+    /// QML drew popup `level` with its content.
+    pub fn popup_rendered(&mut self, level: usize) {
+        let Some(p) = self.popups.stack().get(level) else {
+            return;
+        };
+        let headwords = p
+            .reply
+            .as_ref()
+            .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok())
+            .and_then(|v| {
+                v["entries"].as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|e| e["expression"].as_str().map(String::from))
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        self.events.push(UiEvent::PopupRendered {
+            level,
+            query: p.query.clone(),
+            headwords,
+        });
+    }
+
+    /// The lookups to start, taken by the UI layer.
+    pub fn take_lookups(&mut self) -> Vec<(u64, String)> {
+        std::mem::take(&mut self.lookups)
+    }
+
+    /// Starts a lookup on the dictionary service.
+    pub fn start_lookup(&self, text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>) {
+        self.services.lookup.lookup(text, done);
+    }
+
+    /// A lookup answered.
+    pub fn lookup_done(&mut self, generation: u64, result: Result<Reply, String>) {
+        let reply = match result {
+            Ok(reply) => reply,
+            Err(message) => {
+                self.toasts.push(message);
+                Reply {
+                    empty: true,
+                    ..Reply::default()
+                }
+            }
+        };
+        if self.popups.deliver(generation, reply) {
+            self.sync_highlight();
+            self.popup_version += 1;
+        }
+    }
+
+    /// The open popups for QML: level, query, anchor, content.
+    pub fn popups_json(&self) -> serde_json::Value {
+        let popups: Vec<serde_json::Value> = self
+            .popups
+            .stack()
+            .iter()
+            .enumerate()
+            .map(|(level, p)| {
+                let content = p
+                    .reply
+                    .as_ref()
+                    .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok());
+                serde_json::json!({
+                    "level": level,
+                    "query": p.query,
+                    "anchor": {"x": p.anchor.x, "y": p.anchor.y, "w": p.anchor.w, "h": p.anchor.h},
+                    "loading": p.reply.is_none(),
+                    "empty": p.reply.as_ref().is_some_and(|r| r.empty),
+                    "content": content,
+                })
+            })
+            .collect();
+        serde_json::Value::Array(popups)
     }
 
     /// A click on the time of a list row: playback goes to the cue.
@@ -974,12 +1158,12 @@ impl Session {
         }
     }
 
-    /// The obscuring that applies now (SUB-014): no popup exists before M3.
+    /// The obscuring that applies now (SUB-014).
     pub fn obscure_now(&self) -> Obscure {
         crate::subtitles::obscured(
             self.subs.mode,
             self.view.loaded && !self.view.paused,
-            false,
+            self.popups.is_open(),
             self.subs.hovered,
         )
     }

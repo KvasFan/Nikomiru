@@ -61,7 +61,7 @@ fn vm_hwm_kib() -> u64 {
 /// Child process of the import measurement: its peak RSS is the import's.
 #[test]
 #[ignore = "child process of T-PERF-05"]
-fn perf_child_import() {
+fn l7_perf_child_import() {
     let (Ok(zip), Ok(out)) = (std::env::var(CHILD_ZIP), std::env::var(CHILD_OUT)) else {
         return;
     };
@@ -130,7 +130,7 @@ fn percentile(sorted: &[Duration], p: f64) -> Duration {
 // T-PERF-04
 #[test]
 #[ignore = "performance: cargo xtask bench"]
-fn perf_import_and_lookup() {
+fn l7_perf_import_and_lookup() {
     release_only();
     let queries =
         std::fs::read_to_string(synth("queries.txt")).expect("cargo xtask fixtures --large");

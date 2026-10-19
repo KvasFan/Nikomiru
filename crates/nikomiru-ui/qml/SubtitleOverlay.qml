@@ -82,7 +82,9 @@ Item {
                         Text {
                             id: glyph
                             required property var modelData
-                            readonly property bool selected: cueItem.cue.selected === modelData.o
+                            // the clicked grapheme, then the text the popup matched (POP-002)
+                            readonly property bool selected: !!cueItem.cue.hl && modelData.o >= cueItem.cue.hl[0]
+                                                             && modelData.o < cueItem.cue.hl[1]
                             text: modelData.t
                             textFormat: Text.PlainText
                             font.pixelSize: modelData.fs ? modelData.fs * overlay.assUnit
@@ -119,7 +121,12 @@ Item {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: overlay.controller.grapheme_clicked(cueItem.cue.cue, glyph.modelData.o)
+                                onClicked: {
+                                    // the popup must not cover the cue (POP-006)
+                                    const p = cueItem.mapToItem(null, 0, 0);
+                                    overlay.controller.grapheme_clicked(cueItem.cue.cue, glyph.modelData.o,
+                                                                        p.x, p.y, cueItem.width, cueItem.height);
+                                }
                             }
                         }
                     }

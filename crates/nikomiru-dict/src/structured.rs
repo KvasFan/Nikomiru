@@ -108,6 +108,10 @@ pub enum Run {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cell {
+    /// Grid row of its top-left corner.
+    pub row: u32,
+    /// Grid column of its top-left corner.
+    pub col: u32,
     /// `th`.
     pub header: bool,
     /// Columns spanned.
@@ -116,8 +120,64 @@ pub struct Cell {
     pub rowspan: u32,
     /// Box style.
     pub s: Style,
+    /// Width of its longest line, in `em`: what the column needs (CJK
+    /// characters count 1, others about half).
+    pub natural_em: f32,
     /// Content.
     pub blocks: Vec<Block>,
+}
+
+/// Width in `em` of the longest line of some blocks.
+fn natural_em(blocks: &[Block]) -> f32 {
+    let char_em = |c: char| if (c as u32) >= 0x1100 { 1.0 } else { 0.55 };
+    let mut widest: f32 = 0.0;
+    for b in blocks {
+        let w = match b {
+            Block::Flow { runs } => {
+                let mut line: f32 = 0.0;
+                let mut best: f32 = 0.0;
+                for r in runs {
+                    match r {
+                        Run::Br => {
+                            best = best.max(line);
+                            line = 0.0;
+                        }
+                        Run::Text { t, .. } | Run::Link { t, .. } | Run::Ruby { t, .. } => {
+                            line += t.chars().map(char_em).sum::<f32>();
+                        }
+                        Run::Image { image } => {
+                            line += image
+                                .width
+                                .map_or(2.0, |w| if image.units == "em" { w } else { w / 16.0 })
+                        }
+                    }
+                }
+                best.max(line)
+            }
+            Block::Box { blocks, .. } => natural_em(blocks),
+            Block::List { items, .. } => items
+                .iter()
+                .map(|i| natural_em(i) + 1.5)
+                .fold(0.0, f32::max),
+            Block::Table { rows, .. } => rows
+                .iter()
+                .map(|r| r.iter().map(|c| c.natural_em).sum::<f32>())
+                .fold(0.0, f32::max),
+            Block::Details { blocks, .. } => natural_em(blocks) + 1.0,
+            Block::Pairs { items } => items
+                .iter()
+                .map(|(t, tags)| {
+                    t.chars().map(char_em).sum::<f32>()
+                        + tags
+                            .iter()
+                            .map(|g| g.chars().count() as f32 * 0.6 + 0.8)
+                            .sum::<f32>()
+                })
+                .fold(0.0, f32::max),
+        };
+        widest = widest.max(w);
+    }
+    widest
 }
 
 /// Block content.
@@ -149,7 +209,9 @@ pub enum Block {
     Table {
         /// Box style.
         s: Style,
-        /// Rows of cells.
+        /// Grid columns.
+        columns: u32,
+        /// Rows of cells, each placed in the grid (`row`, `col`).
         rows: Vec<Vec<Cell>>,
     },
     /// `details` with its `summary`.
@@ -746,7 +808,12 @@ fn element_into(
                 depth + 1,
                 &mut rows,
             );
-            out.block(Block::Table { s: own, rows });
+            let columns = place_cells(&mut rows);
+            out.block(Block::Table {
+                s: own,
+                columns,
+                rows,
+            });
         }
         "details" => {
             let mut summary = Vec::new();
@@ -814,16 +881,20 @@ fn collect_rows(
                         let s = own_style(ctx, tag, cell);
                         let mut text = inherited.clone();
                         text.merge(&s);
+                        let blocks = children(ctx, cell, &text.inherited(), depth + 1);
                         let span = |k: &str| {
                             cell.get(k)
                                 .and_then(Value::as_u64)
                                 .map_or(1, |n| n.clamp(1, 64) as u32)
                         };
                         Some(Cell {
+                            row: 0,
+                            col: 0,
                             header: tag == "th",
                             colspan: span("colSpan"),
                             rowspan: span("rowSpan"),
-                            blocks: children(ctx, cell, &text.inherited(), depth + 1),
+                            natural_em: natural_em(&blocks),
+                            blocks,
                             s,
                         })
                     })
@@ -833,6 +904,38 @@ fn collect_rows(
             _ => {}
         }
     }
+}
+
+/// Places the cells in a grid, as HTML tables do: each cell takes the first
+/// free column of its row, and row spans keep their columns taken below.
+/// Returns the number of columns.
+fn place_cells(rows: &mut [Vec<Cell>]) -> u32 {
+    let mut taken: Vec<Vec<bool>> = vec![Vec::new(); rows.len()];
+    let mut columns = 0;
+    for (r, row) in rows.iter_mut().enumerate() {
+        let mut col = 0usize;
+        for cell in row.iter_mut() {
+            while taken[r].get(col).copied().unwrap_or(false) {
+                col += 1;
+            }
+            cell.row = r as u32;
+            cell.col = col as u32;
+            let span_rows = (cell.rowspan as usize).clamp(1, taken.len() - r);
+            cell.rowspan = span_rows as u32;
+            let end = col + cell.colspan as usize;
+            for line in taken.iter_mut().skip(r).take(span_rows) {
+                if line.len() < end {
+                    line.resize(end, false);
+                }
+                for slot in &mut line[col..end] {
+                    *slot = true;
+                }
+            }
+            col = end;
+            columns = columns.max(col as u32);
+        }
+    }
+    columns
 }
 
 fn percent_decode(s: &str) -> String {
@@ -932,10 +1035,11 @@ mod tests {
                 s: Style::default()
             }
         );
-        let Block::Table { rows, .. } = &b[1] else {
+        let Block::Table { rows, columns, .. } = &b[1] else {
             panic!()
         };
         assert!(rows[0][0].header && rows[0][1].colspan == 2);
+        assert_eq!((*columns, rows[0][1].col), (3, 1));
         assert!(matches!(&b[2], Block::List { ordered: true, items, .. } if items.len() == 2));
         assert!(
             matches!(&b[3], Block::Details { open: false, summary, blocks } if summary.len() == 1 && blocks.len() == 1)
@@ -1050,6 +1154,26 @@ mod tests {
         );
         assert!(matches!(&runs[2], Run::Text { t, s } if t == "bold" && s.bold == Some(true)));
         assert!(matches!(&runs[1], Run::Text { t, .. } if t == " & "));
+    }
+
+    #[test]
+    fn table_cells_are_placed_with_spans() {
+        let cell = |rowspan: u64, colspan: u64| json!({"tag": "td", "rowSpan": rowspan, "colSpan": colspan, "content": "c"});
+        let g = json!([{"type": "structured-content", "content": {"tag": "table", "content": [
+            {"tag": "tr", "content": [cell(2, 1), cell(1, 2)]},
+            {"tag": "tr", "content": [cell(1, 1), cell(1, 1)]}
+        ]}}]);
+        let b = blocks(g);
+        let Block::Table { rows, columns, .. } = &b[0] else {
+            panic!()
+        };
+        assert_eq!(*columns, 3);
+        let places: Vec<(u32, u32)> = rows.iter().flatten().map(|c| (c.row, c.col)).collect();
+        assert_eq!(
+            places,
+            [(0, 0), (0, 1), (1, 1), (1, 2)],
+            "the row span keeps column 0 taken"
+        );
     }
 
     #[test]

@@ -264,7 +264,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-007 | Header | QML item-tree snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
 | T-POP-008 | Per-dictionary blocks | QML item-tree snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
 | T-POP-009 | Structured content | QML item-tree snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
-| T-POP-010 | Images | The image provider `image://nikomiru-dict/<id>/img/a.png` returns the image (2×2 px); a nonexistent path → null image; `..` → rejected | L4 |
+| T-POP-010 | Images | `img/a.png` of `mini-ja` becomes a `data:image/png` URL; a nonexistent path or a non-image type → alternative text only; `..` → rejected | L1 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); an external link opens `xdg-open` (spy) | L1 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
 | T-POP-013 | Kanji entry | QML item-tree snapshot for `食` from `mini-kanji` | L3 |

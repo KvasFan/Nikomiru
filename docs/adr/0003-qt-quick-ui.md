@@ -61,4 +61,4 @@ The specification is revised accordingly (SPECIFICATION v0.5):
 
 - [x] The developer's real session (KDE Wayland, RX 7900 XTX, 4K at 120 Hz, fractional scale 2.7), where S1 dropped 2456 frames in 60 s: with S1q **no dropped frames** (`--measure 60`, reported by the developer on 2026-10-19).
 - [x] By hand on the same session: clicks and keys on the overlay, resizing and fullscreen without artifacts, sharpness at the fractional scale (confirmed by the developer). The `Cannot load libcuda.so.1` warning came from the CUDA hwdec interop, which mpv probes on every GPU: `gpu-hwdec-interop=vaapi` without NVIDIA's proprietary driver removes it (SPECIFICATION §5.2.2).
-- [ ] Spike S4 at the start of M3: the dictionary popup as QML items (structured content with ruby, a table and an image, the CSS subset of DIC-035), before implementing POP-009 and DIC-035.
+- [x] Spike S4 at the start of M3: the dictionary popup as QML items (structured content with ruby, a table and an image, the CSS subset of DIC-035), before implementing POP-009 and DIC-035 — [ADR 0005](0005-popup-qml.md).

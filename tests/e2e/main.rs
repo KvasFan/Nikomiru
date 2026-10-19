@@ -207,6 +207,13 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
     h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 1 }));
     let s = h.state_until("the pause after the click", |s| s["paused"] == true);
     assert_eq!(subs(&s)["selected"], serde_json::json!([0, 3]));
+    // no dictionary: the popup says so; Esc closes it and playback resumes
+    let s = h.state_until("the empty popup", |s| s["popups"][0]["empty"] == true);
+    assert_eq!(s["popups"][0]["query"], "べました", "{s}");
+    h.key("Escape");
+    h.state_until("the popup closed and playback resumed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
+    });
 
     // Ctrl+→ goes 180 ms before the next cue
     h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowRight", "mods": ["Ctrl"] }));
@@ -286,6 +293,68 @@ fn perf_cues_appear_within_50_ms_of_their_start() {
             (0.0..=0.050).contains(&(at - start)),
             "cue at {start} shown at {at}"
         );
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-POP-001, T-POP-002, T-POP-004 with real dictionaries
+// T-PERF-06
+// T-SEC-001
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    // 食べました: the lookup finds 食べる, the popup is drawn, the video pauses
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    let rendered = match h.try_cmd(
+        serde_json::json!({ "cmd": "wait", "event": "popup-rendered", "timeout_ms": 20000 }),
+    ) {
+        Ok(v) => v,
+        Err(e) => panic!("{e}\nstate: {}\nlog:\n{}", h.state(), desk.log()),
+    };
+    assert_eq!(rendered["query"], "食べました");
+    assert_eq!(rendered["headwords"][0], "食べる", "{rendered}");
+    let s = h.state_until("paused for the lookup", |s| s["paused"] == true);
+    assert_eq!(s["paused_for_lookup"], true);
+    // the matched text is highlighted: the whole 食べました (15 bytes)
+    assert_eq!(subs(&s)["highlight"], serde_json::json!([0, 0, 15]), "{s}");
+    // Esc closes it and playback resumes (POP-004)
+    h.key("Escape");
+    h.state_until("resumed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
+    });
+
+    // T-PERF-06: from the click to the drawn popup, p95 ≤ 100 ms
+    let mut times = Vec::new();
+    for i in 0..30 {
+        let started = std::time::Instant::now();
+        h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": i % 3 }));
+        h.wait("popup-rendered");
+        times.push(started.elapsed());
+    }
+    times.sort();
+    let p95 = times[times.len() * 95 / 100];
+    eprintln!(
+        "T-PERF-06 click → popup: median {:?}, p95 {p95:?}",
+        times[times.len() / 2]
+    );
+    assert!(p95 <= Duration::from_millis(100), "p95 {p95:?}");
+    // no QML warnings about the popup (bindings, missing properties)
+    let log = desk.log();
+    for bad in [
+        "GlossaryBlocks.qml",
+        "GlossaryRuns.qml",
+        "PopupEntry.qml",
+        "DictionaryPopups.qml",
+        "Chip.qml",
+    ] {
+        assert!(!log.contains(bad), "QML warnings:\n{log}");
     }
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The parts of the Nikomiru application that do not need Qt's event loop:
-//! command line, single instance, logs, signals and the desktop portal. The
+//! command line, single instance, logs, signals, the desktop portal and the
+//! dictionary and subtitle workers. The
 //! binary (`src/main.rs`) wires them to Qt; keeping them in a library lets the
 //! integration tests in `tests/` use them.
 //!
@@ -13,6 +14,7 @@
 
 pub mod cli;
 pub mod dbus;
+pub mod dictionaries;
 #[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod inhibit;

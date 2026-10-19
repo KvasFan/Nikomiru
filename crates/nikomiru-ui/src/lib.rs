@@ -9,7 +9,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
-#[allow(unsafe_code, missing_docs)]
+#[allow(unsafe_code, missing_docs, clippy::too_many_arguments)]
 mod bridge {
     pub mod player;
 }
@@ -17,6 +17,8 @@ pub mod controls;
 #[cfg(feature = "test_harness")]
 pub mod harness;
 pub mod i18n;
+pub mod popup;
+pub mod popup_view;
 pub mod screensaver;
 pub mod session;
 pub mod shortcuts;

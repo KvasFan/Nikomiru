@@ -133,8 +133,10 @@ pub struct Subtitles {
     /// the chosen track stays for when they are turned on again.
     pub disabled: bool,
     active: Vec<usize>,
-    /// The selected grapheme: cue and byte offset (M3 looks it up).
+    /// The selected grapheme: cue and byte offset.
     pub selection: Option<(usize, usize)>,
+    /// The text the open popup matched (POP-002): cue and byte range.
+    pub highlight: Option<(usize, std::ops::Range<usize>)>,
 }
 
 impl Subtitles {
@@ -168,6 +170,7 @@ impl Subtitles {
         self.encoding = loaded.encoding;
         self.active.clear();
         self.selection = None;
+        self.highlight = None;
     }
 
     /// No text subtitles (none chosen, or a graphic track drawn by mpv).
@@ -181,6 +184,7 @@ impl Subtitles {
         self.encoding = None;
         self.active.clear();
         self.selection = None;
+        self.highlight = None;
     }
 
     /// Updates the active cues; returns the cues that just appeared.
@@ -303,12 +307,22 @@ impl Subtitles {
                         "italic": s.italic,
                         "margin_v": s.margin_v,
                     })),
-                    "selected": self.selection.and_then(|(c, o)| (c == i).then_some(o)),
+                    "hl": self.highlight_range(i).map(|r| json!([r.start, r.end])),
                     "lines": lines,
                 })
             })
             .collect();
         Value::Array(cues)
+    }
+
+    /// The bytes of cue `i` to highlight: the matched text, or the clicked
+    /// grapheme while the lookup runs.
+    fn highlight_range(&self, i: usize) -> Option<std::ops::Range<usize>> {
+        match (&self.highlight, self.selection) {
+            (Some((c, range)), _) if *c == i => Some(range.clone()),
+            (_, Some((c, o))) if c == i => Some(o..o + 1),
+            _ => None,
+        }
     }
 
     /// The play area of ASS files (PlayResY scales sizes and positions).
@@ -408,7 +422,7 @@ mod tests {
         let overlay = s.overlay(false);
         let first = &overlay[0];
         assert_eq!(first["cue"], 0);
-        assert_eq!(first["selected"], 3);
+        assert_eq!(first["hl"], json!([3, 4]));
         assert_eq!(
             first["lines"][0][0],
             json!({ "t": "食", "o": 0, "b": true })

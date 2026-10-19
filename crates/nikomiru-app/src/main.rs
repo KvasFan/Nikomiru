@@ -15,10 +15,12 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 use nikomiru_app::inhibit::PortalInhibitor;
 use nikomiru_app::{cli, instance, linux, logging};
 use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
-use nikomiru_library::Library;
+use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_player::{Player, VideoOutput};
 use nikomiru_ui::Services;
 use nikomiru_ui::i18n::Translator;
+use nikomiru_ui::popup::Reply;
+use nikomiru_ui::session::LookupService;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -27,8 +29,13 @@ const MAIN_QML: &str = "qrc:/qt/qml/Nikomiru/UI/qml/Main.qml";
 
 fn main() -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_default();
+    let mut imports = Vec::new();
     let options = match cli::parse(std::env::args_os().skip(1), &cwd) {
         Ok(cli::Command::Run(o)) => o,
+        Ok(cli::Command::ImportDictionaries(zips)) => {
+            imports = zips;
+            cli::Options::default()
+        }
         Ok(cli::Command::Help) => {
             print!("{}", cli::USAGE);
             return ExitCode::SUCCESS;
@@ -53,6 +60,9 @@ fn main() -> ExitCode {
         Err(e) => return fatal(&e),
     };
     tracing::info!("Nikomiru {VERSION}");
+    if !imports.is_empty() {
+        return import_dictionaries(&paths, &imports);
+    }
 
     // APP-001
     let request = instance::Request {
@@ -162,6 +172,95 @@ fn load_config(paths: &Paths) -> (Config, Option<ConfigError>) {
     }
 }
 
+/// `--import-dictionary`: imports into the registry and the dictionaries
+/// folder, then exits (the running app must be closed: the library is locked).
+fn import_dictionaries(paths: &Paths, zips: &[std::path::PathBuf]) -> ExitCode {
+    let (config, _) = load_config(paths);
+    let translator =
+        Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
+    let library = match Library::open(&paths.library_db()) {
+        Ok(l) => Arc::new(l),
+        Err(e) => {
+            eprintln!("nikomiru: {}", translator.error(&e));
+            eprintln!("nikomiru: close Nikomiru before importing from the command line");
+            return ExitCode::FAILURE;
+        }
+    };
+    let clock: Arc<dyn nikomiru_core::Clock> = Arc::new(SystemClock::new());
+    let manager = match DictionaryManager::open(
+        library,
+        paths.dicts_dir(),
+        clock,
+        &config.general.study_language,
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("nikomiru: {}", translator.error(&e));
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut failed = false;
+    for zip in zips {
+        let name = zip.display();
+        let replace = match manager.check(zip) {
+            Ok(nikomiru_library::Check::Update { id, installed }) => {
+                eprintln!("{name}: updating revision {installed}");
+                Some(id)
+            }
+            Ok(_) => None,
+            Err(e) => {
+                eprintln!("{name}: {}", translator.error(&e));
+                failed = true;
+                continue;
+            }
+        };
+        let cancel = nikomiru_core::Cancel::new();
+        let result = manager.import(zip, replace.as_deref(), &cancel, |p| {
+            eprint!(
+                "\r{name}: {}/{} files, {} entries",
+                p.files_done, p.files_total, p.entries
+            );
+        });
+        eprintln!();
+        match result {
+            Ok(id) => {
+                let info = manager
+                    .list()
+                    .ok()
+                    .and_then(|l| l.into_iter().find(|(i, _)| *i == id));
+                if let Some((_, r)) = info {
+                    eprintln!(
+                        "{name}: {} (revision {}) imported: {} terms",
+                        r.title, r.revision, r.counts.terms
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("{name}: {}", translator.error(&e));
+                failed = true;
+            }
+        }
+    }
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Lookups without a library: every popup says the dictionaries are not
+/// available.
+struct NoDictionaries;
+
+impl LookupService for NoDictionaries {
+    fn lookup(&self, _text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>) {
+        done(Ok(Reply {
+            empty: true,
+            ..Reply::default()
+        }));
+    }
+}
+
 fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) -> ExitCode {
     let mut app = QGuiApplication::new();
     if let Some(mut app) = app.as_mut() {
@@ -189,7 +288,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
                 tracing::warn!("library schema {} is newer: read-only", library.schema());
                 notices.push(translator.tr("error-library-read-only", &[]));
             }
-            Some(library)
+            Some(Arc::new(library))
         }
         Err(e) => {
             tracing::error!("{e}");
@@ -197,6 +296,23 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
             None
         }
     };
+    // the dictionaries need the registry in the library (DIC-021)
+    let dictionaries = library.as_ref().and_then(|library| {
+        let clock: Arc<dyn nikomiru_core::Clock> = Arc::new(SystemClock::new());
+        match DictionaryManager::open(
+            Arc::clone(library),
+            paths.dicts_dir(),
+            clock,
+            &config.general.study_language,
+        ) {
+            Ok(m) => Some(Arc::new(m)),
+            Err(e) => {
+                tracing::error!("{e}");
+                notices.push(translator.error(&e));
+                None
+            }
+        }
+    });
 
     let player = match Player::new(VideoOutput::RenderApi, nikomiru_ui::deliver) {
         Ok(player) => player,
@@ -213,6 +329,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         config.paths.ffmpeg.clone(),
         paths.cache_dir.join("subtitles"),
     );
+    let config_language = config.general.ui_language.clone();
     nikomiru_ui::install(Services {
         player: player.handle(),
         config,
@@ -222,6 +339,13 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         notices,
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
+        lookup: match dictionaries {
+            Some(manager) => Box::new(nikomiru_app::dictionaries::Lookups::start(
+                manager,
+                Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+            )),
+            None => Box::new(NoDictionaries),
+        },
     });
     let instance = server.map(|server| {
         server.serve(|request| {

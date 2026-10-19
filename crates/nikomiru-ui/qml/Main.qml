@@ -121,7 +121,10 @@ ApplicationWindow {
         onDoubleClicked: win.apply("fullscreen")
         onClicked: {
             keys.forceActiveFocus();
-            if (ctl.loaded)
+            // a click outside the popups closes them, and only that
+            if (popups.open)
+                ctl.popup_close_all();
+            else if (ctl.loaded)
                 ctl.action("play_pause");
         }
     }
@@ -183,6 +186,12 @@ ApplicationWindow {
         onOpenRequested: fileDialog.open()
         onSubtitleFileRequested: subtitleDialog.open()
         onSubtitleListRequested: win.toggleSubList(false)
+    }
+
+    DictionaryPopups {
+        id: popups
+        controller: ctl
+        anchors.fill: parent
     }
 
     Toast {
