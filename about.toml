@@ -1,0 +1,42 @@
+# cargo-about: generates THIRD_PARTY_LICENSES.html (SPECIFICATION §3.5, T-LIC-003).
+# Used through `cargo xtask about`. The accepted licenses are class A plus the
+# class B licenses; deny.toml decides which crates may use them.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+    # Class B (exceptions of SPECIFICATION §3.2)
+    "Unicode-3.0",
+    "Zlib",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "CC0-1.0", # only base16 (D-8)
+]
+targets = ["x86_64-unknown-linux-gnu"]
+ignore-dev-dependencies = true
+ignore-build-dependencies = false
+ignore-transitive-dependencies = false
+
+# As in deny.toml: "LGPL-2.1" (deprecated) = LGPL-2.1-only.
+[libmpv2.clarify]
+license = "LGPL-2.1-only"
+[[libmpv2.clarify.files]]
+path = "LICENSE"
+license = "LGPL-2.1-only"
+checksum = "dcf7820ce143583db730de5354a36ade5e076ac9eeb8eadf4d028cba9e425a24"
+
+[libmpv2-sys.clarify]
+license = "LGPL-2.1-only"
+[[libmpv2-sys.clarify.files]]
+path = "LICENSE"
+license = "LGPL-2.1-only"
+checksum = "dcf7820ce143583db730de5354a36ade5e076ac9eeb8eadf4d028cba9e425a24"

@@ -1,0 +1,15 @@
+[package]
+name = "anikoto-app"
+description = "Anikoto: video player for language learning with subtitles, dictionaries and Anki"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "anikoto"
+path = "src/main.rs"

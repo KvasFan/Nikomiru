@@ -1,0 +1,11 @@
+[package]
+name = "anikoto-subs"
+description = "SRT/VTT/ASS parsers, cue index, offsets and encodings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

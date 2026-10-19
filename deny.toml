@@ -1,0 +1,132 @@
+# Anikoto license policy: SPECIFICATION §3.2 and §3.5.
+#
+# - [licenses].allow      = class A, always allowed.
+# - [licenses].exceptions = class B, exceptions forced by Dioxus desktop, ONLY for the
+#   listed crates. The list must match the table of SPECIFICATION §3.2:
+#   `cargo xtask ci` checks it (T-LIC-001). Every addition requires an updated
+#   table and the explicit approval of the maintainer (decisions D-1, D-7, D-8).
+
+[graph]
+targets = ["x86_64-unknown-linux-gnu"]
+all-features = true
+
+[output]
+feature-depth = 1
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+]
+confidence-threshold = 0.93
+# Class A is declared in full even though not all of its licenses are in the graph today.
+unused-allowed-license = "allow"
+# The class B exceptions apply to the complete graph (Dioxus desktop). Until Dioxus
+# enters the workspace (M1) almost none of them is in use: the warning is turned
+# back on ("warn") in M1, to find exceptions that have become unnecessary.
+unused-license-exception = "allow"
+exceptions = [
+    # Unicode-3.0 — url → idna (tao, wry, reqwest); proc-macro2 (every macro, `rsx!`)
+    { crate = "icu_collections", allow = ["Unicode-3.0"] },
+    { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
+    { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
+    { crate = "icu_normalizer_data", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties_data", allow = ["Unicode-3.0"] },
+    { crate = "icu_provider", allow = ["Unicode-3.0"] },
+    { crate = "litemap", allow = ["Unicode-3.0"] },
+    { crate = "tinystr", allow = ["Unicode-3.0"] },
+    { crate = "writeable", allow = ["Unicode-3.0"] },
+    { crate = "yoke", allow = ["Unicode-3.0"] },
+    { crate = "yoke-derive", allow = ["Unicode-3.0"] },
+    { crate = "zerofrom", allow = ["Unicode-3.0"] },
+    { crate = "zerofrom-derive", allow = ["Unicode-3.0"] },
+    { crate = "zerotrie", allow = ["Unicode-3.0"] },
+    { crate = "zerovec", allow = ["Unicode-3.0"] },
+    { crate = "zerovec-derive", allow = ["Unicode-3.0"] },
+    { crate = "potential_utf", allow = ["Unicode-3.0"] },
+    { crate = "unicode-ident", allow = ["Unicode-3.0"] },
+    # Zlib — dioxus-core
+    { crate = "slotmap", allow = ["Zlib"] },
+    { crate = "const_format", allow = ["Zlib"] },
+    { crate = "const_format_proc_macros", allow = ["Zlib"] },
+    { crate = "konst", allow = ["Zlib"] },
+    { crate = "konst_macro_rules", allow = ["Zlib"] },
+    # Zlib — hashbrown
+    { crate = "foldhash", allow = ["Zlib"] },
+    # Zlib — flate2 ← png/image ← dioxus-desktop, tray-icon
+    { crate = "zlib-rs", allow = ["Zlib"] },
+    # BSD-3-Clause — dioxus-desktop
+    { crate = "subtle", allow = ["BSD-3-Clause"] },
+    # BSD-2-Clause, BSD-3-Clause — image (default features) ← dioxus-desktop
+    { crate = "rav1e", allow = ["BSD-2-Clause"] },
+    { crate = "ravif", allow = ["BSD-3-Clause"] },
+    { crate = "av1-grain", allow = ["BSD-2-Clause"] },
+    { crate = "v_frame", allow = ["BSD-2-Clause"] },
+    { crate = "avif-serialize", allow = ["BSD-3-Clause"] },
+    { crate = "exr", allow = ["BSD-3-Clause"] },
+    { crate = "lebe", allow = ["BSD-3-Clause"] },
+    # ISC — subsecond (hot-patch Dioxus), libappindicator-sys
+    { crate = "libloading", allow = ["ISC"] },
+    # MPL-2.0 — dirs-sys ← dirs ← wry, tray-icon
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    # CC0-1.0 — dioxus-router-macro (proc-macro) ← dioxus-router (feature `router`), D-8.
+    # CC0 stays forbidden for every other crate.
+    { crate = "base16", allow = ["CC0-1.0"] },
+]
+
+# `libmpv2` and `libmpv2-sys` declare "LGPL-2.1", a deprecated SPDX identifier
+# equivalent to LGPL-2.1-only; the LICENSE file is the LGPL 2.1 text without the
+# "or later" clause. It is class A: it is clarified, not excepted.
+[[licenses.clarify]]
+crate = "libmpv2"
+expression = "LGPL-2.1-only"
+license-files = []
+
+[[licenses.clarify]]
+crate = "libmpv2-sys"
+expression = "LGPL-2.1-only"
+license-files = []
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+deny = [
+    # SPECIFICATION §3.6: alternatives chosen to stay within the policy.
+    { crate = "xxhash-rust", reason = "BSL-1.0: use twox-hash or the redb hasher" },
+    { crate = "encoding_rs", reason = "includes BSD-3-Clause: glibc iconv via FFI" },
+    { crate = "rustls", reason = "ring is ISC: TLS with native-tls → OpenSSL" },
+    { crate = "ring", reason = "ISC: TLS with native-tls → OpenSSL" },
+    { crate = "notify", reason = "CC0-1.0 (only base16 is excepted, D-8): manual rescan or inotify via libc" },
+    { crate = "subparse", reason = "MPL-2.0: own subtitle parsers" },
+    { crate = "anitomy", reason = "MPL-2.0: own file name parser" },
+    { crate = "zstd-sys", reason = "BSD-3 / GPL-2.0-only: use lz4_flex" },
+    { crate = "libsqlite3-sys", reason = "SQLite is public domain (not on the list): redb, turso" },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
