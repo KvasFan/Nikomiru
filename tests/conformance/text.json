@@ -1,0 +1,2891 @@
+{
+  "provenance_commit": "ac8034e",
+  "conventions": "All strings are real Unicode characters (the C++ \\x.. UTF-8 escapes are decoded). All indices and lengths count Unicode code points; every string here is in the BMP, so they equal the UTF-16 offsets of the Fushi tests. \"variants\": text_processor::process(input); languages \"all\" means every preprocessor chain is enabled, in Fushi's order Japanese (NFKC, kana conversion, emphatic collapse, ASCII to full width, kanji variants, iteration marks, full-width digits to kanji numerals), English (apostrophes, lowercase), diacritics (combining marks/harakat/Hebrew points, precomposed Latin-1 letters), Korean jamo disassembly last. Every string in \"present\" must be among the deduplicated variants and none in \"absent\"; \"steps\", when given, maps a variant to its minimal step count. \"candidates\": scan_candidates(input, scan_length) returns the prefixes of the first scan_length code points, longest first, never cutting between two letters of space-delimited scripts and dropping prefixes that end in whitespace; \"expected\" is the exact ordered list (\"present\"/\"absent\" when the test checks membership only). \"hangul\": disassemble turns precomposed syllables and complex compatibility jamo into simple compatibility jamo (ㅘ -> ㅗㅏ, ㄺ -> ㄹㄱ); reassemble composes them back, a consonant followed by a vowel starting a new syllable; other characters pass through. \"query\" (LKP-001/LKP-002): the string looked up after a click on code point \"click\" of \"text\". \"cue\": text is the whole cue and the query may run to its end; \"free\": at most 400 characters from the start point. If the clicked character belongs to a script written with spaces, the start point moves back while the preceding character is neither whitespace nor a delimiter, so the back-off stops at apostrophes (l’homme clicked in homme gives homme); Fushi backs off for every character outside its JAPANESE_RANGES (kana, CJK ideographs, U+3000-U+303F, half/full-width forms), and no case here depends on the difference. The scan then stops at the first delimiter of 。、！？…‥「」『』（）()【】〈〉《》〔〕｛｝{}［］[]・：；:;，,.─\\n\\r\"'“”‘’«»‹›, except an intra-word apostrophe: ' U+0027, ‘ U+2018, ’ U+2019 or ʼ U+02BC (not a delimiter anyway) with a letter of a space-delimited script immediately on both sides (the same letter set as candidates: Fushi word_scan.cpp is_space_delimited_letter; digits, tatweel, Thai and CJK are not letters). A whitespace character is crossed only if it is not at the start point and the next character exists and is neither whitespace nor a delimiter, so the query never ends in whitespace. \"sentence\" (T-TXT-007): Fushi extractSentenceAt over a flat string; click is the selection start and options.sel_len its length. The sentence starts after the nearest 。！？.!?\\n\\r before click and ends at the first one at or after click + sel_len, inclusive, plus any directly following closers 。、！？…‥」』）)】〉》〕｝}］], and is trimmed; out-of-range selections are clamped; sel_len 0 or 1 gives the same sentence in every case here. \"expected_selection\", when present, is the selection re-based into the trimmed sentence (start, length). \"divergence\" marks a case where Nikomiru's requirement differs from Fushi: \"expected\" follows the requirement and fushi_expected is Fushi's value. \"skip\" marks a test that cannot be expressed (source-level guards, dictionary lookups, DOM-only operations); its fields are placeholders unless the note says otherwise. Query and sentence cases translated from Fushi's JS harnesses name the Dart test, the harness file and the assertion marker; Fushi asserts every q2056-* case against both of its selection engines (popup/extension selection.js and the reader script), the q3453-* cases against the reader script only.",
+  "cases": [
+    {
+      "id": "tp-ar-harakat",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "ar-harakat",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "كَتَبَ",
+      "languages": "all",
+      "present": [
+        "كتب"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Arabic كَتَبَ without harakat."
+    },
+    {
+      "id": "tp-latin1-lower",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "latin1-lower",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Ü",
+      "languages": "all",
+      "present": [
+        "ü"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-greek-lower",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "greek-lower",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Λ",
+      "languages": "all",
+      "present": [
+        "λ"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-cyrillic-lower",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "cyrillic-lower",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Д",
+      "languages": "all",
+      "present": [
+        "д"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-latin-strip",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "latin-strip",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "café",
+      "languages": "all",
+      "present": [
+        "cafe"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-ascii-lower",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "ascii-lower",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Gehen",
+      "languages": "all",
+      "present": [
+        "gehen"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-latin-combining",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "latin-combining",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "café",
+      "languages": "all",
+      "present": [
+        "cafe"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Input is \"cafe\" + U+0301 COMBINING ACUTE ACCENT (decomposed)."
+    },
+    {
+      "id": "tp-hebrew-point",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "hebrew-point",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "בְ",
+      "languages": "all",
+      "present": [
+        "ב"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Input is ב + U+05B0 HEBREW POINT SHEVA."
+    },
+    {
+      "id": "tp-ja-identity",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "ja-identity",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "日本",
+      "languages": "all",
+      "present": [
+        "日本"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "The original text is always a variant."
+    },
+    {
+      "id": "tp-nfkc-fullwidth-A",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "nfkc-fullwidth-A",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Ａ",
+      "languages": "all",
+      "present": [
+        "A"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-nfkc-then-lower",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "nfkc-then-lower",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "Ａ",
+      "languages": "all",
+      "present": [
+        "a"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Needs NFKC before lowercasing: full-width Ａ -> A -> a."
+    },
+    {
+      "id": "tp-nfkc-fullwidth-abc",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "nfkc-fullwidth-abc",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "ＡＢＣ",
+      "languages": "all",
+      "present": [
+        "abc"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-ascii-to-fullwidth",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "ascii-to-fullwidth",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "abc",
+      "languages": "all",
+      "present": [
+        "ａｂｃ"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Result is full-width ａｂｃ (U+FF41..U+FF43)."
+    },
+    {
+      "id": "tp-kanji-kuni-itaiji",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "kanji-kuni-itaiji",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "國",
+      "languages": "all",
+      "present": [
+        "国"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Variant kanji (itaiji) to parent kanji: 國 -> 国."
+    },
+    {
+      "id": "tp-kanji-gaku-itaiji",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "kanji-gaku-itaiji",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "學",
+      "languages": "all",
+      "present": [
+        "学"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Variant kanji (itaiji) to parent kanji: 學 -> 学."
+    },
+    {
+      "id": "tp-kanji-tai-itaiji",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "kanji-tai-itaiji",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "體",
+      "languages": "all",
+      "present": [
+        "体"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Variant kanji (itaiji) to parent kanji: 體 -> 体."
+    },
+    {
+      "id": "tp-iter-kanji",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "iter-kanji",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "佐々木",
+      "languages": "all",
+      "present": [
+        "佐佐木"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-iter-hira",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "iter-hira",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "こゝ",
+      "languages": "all",
+      "present": [
+        "ここ"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-iter-hira-dakuten",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "iter-hira-dakuten",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "こゞ",
+      "languages": "all",
+      "present": [
+        "こご"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "ゞ repeats the previous kana with dakuten (NFC composed)."
+    },
+    {
+      "id": "tp-num-fullwidth",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "num-fullwidth",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "２",
+      "languages": "all",
+      "present": [
+        "二"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-num-ascii-chain",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "num-ascii-chain",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "2月",
+      "languages": "all",
+      "present": [
+        "二月"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "ASCII 2 -> full-width ２ -> 二 (two chained steps)."
+    },
+    {
+      "id": "tp-emphatic-collapse-1",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "emphatic-collapse-1",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "すっっごい",
+      "languages": "all",
+      "present": [
+        "すっごい"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-emphatic-prolonged",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "emphatic-prolonged",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "ラーーメン",
+      "languages": "all",
+      "present": [
+        "ラーメン"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "tp-emphatic-no-full-collapse-src",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "emphatic-no-full-collapse-src",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "ヒットで",
+      "languages": "all",
+      "present": [
+        "ひっとで"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "The small tsu survives (BUG-1777)."
+    },
+    {
+      "id": "tp-emphatic-no-full-collapse",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "emphatic-no-full-collapse",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "ヒットで",
+      "languages": "all",
+      "present": [],
+      "absent": [
+        "ひとで"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Full collapse of a single っ is never applied (BUG-1777): ひとで would match 海星."
+    },
+    {
+      "id": "tp-emphatic-no-full-collapse-run",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "emphatic-no-full-collapse-run",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "すっっごい",
+      "languages": "all",
+      "present": [],
+      "absent": [
+        "すごい"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Only repeated emphatics collapse (っっ -> っ); すごい must not appear (BUG-1777)."
+    },
+    {
+      "id": "tp-halfwidth-kana-chain",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "halfwidth-kana-chain",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "ﾒｶﾞﾈ",
+      "languages": "all",
+      "present": [
+        "めがね"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Half-width ﾒｶﾞﾈ: NFKC must run before katakana -> hiragana."
+    },
+    {
+      "id": "tp-apos-rsquo-to-ascii",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-rsquo-to-ascii",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "don’t",
+      "languages": "all",
+      "present": [
+        "don't"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "U+2019 -> ASCII apostrophe (BUG-2056)."
+    },
+    {
+      "id": "tp-apos-modifier-to-ascii",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-modifier-to-ascii",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "canʼt",
+      "languages": "all",
+      "present": [
+        "can't"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "U+02BC -> ASCII apostrophe (BUG-2056)."
+    },
+    {
+      "id": "tp-apos-lsquo-to-ascii",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-lsquo-to-ascii",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "don‘t",
+      "languages": "all",
+      "present": [
+        "don't"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "U+2018 -> ASCII apostrophe (BUG-2056)."
+    },
+    {
+      "id": "tp-apos-with-lowercase",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-with-lowercase",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "John’s",
+      "languages": "all",
+      "present": [
+        "john's"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Apostrophe normalization combined with lowercasing."
+    },
+    {
+      "id": "tp-apos-ascii-to-rsquo",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-ascii-to-rsquo",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "don't",
+      "languages": "all",
+      "present": [
+        "don’t"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "ASCII apostrophe -> U+2019 (the reverse direction)."
+    },
+    {
+      "id": "tp-apos-identity",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-identity",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "don’t",
+      "languages": "all",
+      "present": [
+        "don’t"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "The original U+2019 form is kept."
+    },
+    {
+      "id": "tp-apos-bare-rsquo-to-ascii",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-bare-rsquo-to-ascii",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "’",
+      "languages": "all",
+      "present": [
+        "'"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "A lone U+2019 -> ASCII apostrophe (NFKC alone cannot do it)."
+    },
+    {
+      "id": "tp-apos-no-phantom",
+      "provenance": {
+        "file": "native/fushidicts/tests/text_processor_test.cpp",
+        "test": "apos-no-phantom",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "don",
+      "languages": "all",
+      "present": [],
+      "absent": [
+        "don'"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Text without apostrophes gains no apostrophe variant."
+    },
+    {
+      "id": "scan-ar-phrase",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "ar-phrase",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "أمنيات العيد",
+      "scan_length": 16,
+      "expected": [
+        "أمنيات العيد",
+        "أمنيات"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Arabic phrase \"أمنيات العيد\": the whole string and the first whole word only."
+    },
+    {
+      "id": "scan-ar-no-midword-fragment",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "ar-no-midword-fragment",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "أمنيات العيد",
+      "scan_length": 16,
+      "present": [],
+      "absent": [
+        "أم"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Membership check only: the mid-word fragment \"أم\" (mother) must not be produced."
+    },
+    {
+      "id": "scan-ar-single-word",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "ar-single-word",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "أمنيات",
+      "scan_length": 16,
+      "expected": [
+        "أمنيات"
+      ],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "scan-latin-phrase",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "latin-phrase",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "running fast",
+      "scan_length": 16,
+      "expected": [
+        "running fast",
+        "running"
+      ],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "scan-ja-letter-resolution",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "ja-letter-resolution",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "母親",
+      "scan_length": 16,
+      "expected": [
+        "母親",
+        "母"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "CJK: every code point is a valid cut."
+    },
+    {
+      "id": "scan-mixed-cjk-latin",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "mixed-cjk-latin",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "猫dog",
+      "scan_length": 16,
+      "expected": [
+        "猫dog",
+        "猫"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "The CJK/Latin boundary is a valid cut; no cut inside \"dog\"."
+    },
+    {
+      "id": "scan-scan-length-window",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "scan-length-window",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "母親",
+      "scan_length": 1,
+      "expected": [
+        "母"
+      ],
+      "divergence": null,
+      "skip": false,
+      "note": "Only the first scan_length code points are considered."
+    },
+    {
+      "id": "scan-empty",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "empty",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "",
+      "scan_length": 16,
+      "expected": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "scan-spaces-only",
+      "provenance": {
+        "file": "native/fushidicts/tests/word_scan_test.cpp",
+        "test": "spaces-only",
+        "commit": "ac8034e"
+      },
+      "kind": "candidates",
+      "input": "   ",
+      "scan_length": 16,
+      "expected": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Prefixes ending in whitespace are dropped."
+    },
+    {
+      "id": "ko-roundtrip-dis-budeureoun",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"부드러운\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "부드러운",
+      "expected": "ㅂㅜㄷㅡㄹㅓㅇㅜㄴ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-budeureoun",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"부드러운\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅂㅜㄷㅡㄹㅓㅇㅜㄴ",
+      "expected": "부드러운",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-roundtrip-dis-budeureopda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"부드럽다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "부드럽다",
+      "expected": "ㅂㅜㄷㅡㄹㅓㅂㄷㅏ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-budeureopda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"부드럽다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅂㅜㄷㅡㄹㅓㅂㄷㅏ",
+      "expected": "부드럽다",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-roundtrip-dis-gopseulgeorineun",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"곱슬거리는\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "곱슬거리는",
+      "expected": "ㄱㅗㅂㅅㅡㄹㄱㅓㄹㅣㄴㅡㄴ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-gopseulgeorineun",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"곱슬거리는\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱㅗㅂㅅㅡㄹㄱㅓㄹㅣㄴㅡㄴ",
+      "expected": "곱슬거리는",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-roundtrip-dis-galsaek",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"갈색\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "갈색",
+      "expected": "ㄱㅏㄹㅅㅐㄱ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-galsaek",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"갈색\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱㅏㄹㅅㅐㄱ",
+      "expected": "갈색",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-roundtrip-dis-ikda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"읽다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "읽다",
+      "expected": "ㅇㅣㄹㄱㄷㅏ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex final ㄺ."
+    },
+    {
+      "id": "ko-roundtrip-rea-ikda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"읽다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅇㅣㄹㄱㄷㅏ",
+      "expected": "읽다",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex final ㄺ."
+    },
+    {
+      "id": "ko-roundtrip-dis-gap",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"값\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "값",
+      "expected": "ㄱㅏㅂㅅ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex final ㅄ."
+    },
+    {
+      "id": "ko-roundtrip-rea-gap",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"값\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱㅏㅂㅅ",
+      "expected": "값",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex final ㅄ."
+    },
+    {
+      "id": "ko-roundtrip-dis-gwaenchanayo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"괜찮아요\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "괜찮아요",
+      "expected": "ㄱㅗㅐㄴㅊㅏㄴㅎㅇㅏㅇㅛ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex vowel ㅙ and final ㄶ."
+    },
+    {
+      "id": "ko-roundtrip-rea-gwaenchanayo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"괜찮아요\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱㅗㅐㄴㅊㅏㄴㅎㅇㅏㅇㅛ",
+      "expected": "괜찮아요",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex vowel ㅙ and final ㄶ."
+    },
+    {
+      "id": "ko-roundtrip-dis-uisa",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"의사\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "의사",
+      "expected": "ㅇㅡㅣㅅㅏ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex vowel ㅢ."
+    },
+    {
+      "id": "ko-roundtrip-rea-uisa",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"의사\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅇㅡㅣㅅㅏ",
+      "expected": "의사",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex vowel ㅢ."
+    },
+    {
+      "id": "ko-roundtrip-dis-watda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"왔다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "왔다",
+      "expected": "ㅇㅗㅏㅆㄷㅏ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex vowel ㅘ."
+    },
+    {
+      "id": "ko-roundtrip-rea-watda",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"왔다\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅇㅗㅏㅆㄷㅏ",
+      "expected": "왔다",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex vowel ㅘ."
+    },
+    {
+      "id": "ko-roundtrip-dis-swiwosseo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"쉬웠어\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "쉬웠어",
+      "expected": "ㅅㅜㅣㅇㅜㅓㅆㅇㅓ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Complex vowels ㅟ and ㅝ."
+    },
+    {
+      "id": "ko-roundtrip-rea-swiwosseo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"쉬웠어\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅅㅜㅣㅇㅜㅓㅆㅇㅓ",
+      "expected": "쉬웠어",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Complex vowels ㅟ and ㅝ."
+    },
+    {
+      "id": "ko-roundtrip-dis-hago",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"하고\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "하고",
+      "expected": "ㅎㅏㄱㅗ",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-hago",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"하고\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅎㅏㄱㅗ",
+      "expected": "하고",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-roundtrip-dis-abc",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"abc\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "abc",
+      "expected": "abc",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Non-Hangul text passes through."
+    },
+    {
+      "id": "ko-roundtrip-rea-abc",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"abc\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "abc",
+      "expected": "abc",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Non-Hangul text passes through."
+    },
+    {
+      "id": "ko-roundtrip-dis-taberu",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"食べる\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "食べる",
+      "expected": "食べる",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e. Non-Hangul text passes through."
+    },
+    {
+      "id": "ko-roundtrip-rea-taberu",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"食べる\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "食べる",
+      "expected": "食べる",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip. Non-Hangul text passes through."
+    },
+    {
+      "id": "ko-roundtrip-dis-empty",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "",
+      "expected": "",
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks only the round trip reassemble(disassemble(w)) == w; the jamo string is the output of Fushi's disassemble_hangul at ac8034e."
+    },
+    {
+      "id": "ko-roundtrip-rea-empty",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "expect_round_trip(\"\")",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "",
+      "expected": "",
+      "divergence": null,
+      "skip": false,
+      "note": "Second half of the round trip."
+    },
+    {
+      "id": "ko-dis-identity-taberu",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "disassemble must be identity on non-Hangul",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "食べる",
+      "expected": "食べる",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-rea-identity-ascii",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "reassemble must be identity on ASCII",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "abc123",
+      "expected": "abc123",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-dis-ik-complex-final",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "읽 must disassemble to ㅇㅣㄹㄱ (complex final split)",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "읽",
+      "expected": "ㅇㅣㄹㄱ",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-dis-wat-complex-vowel",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "왔 must disassemble to ㅇㅗㅏㅆ (complex vowel split)",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "disassemble",
+      "input": "왔",
+      "expected": "ㅇㅗㅏㅆ",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-rea-trailing-jamo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "a consonant NOT followed by a vowel is a trailing jamo",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅂㅜㄷㅡㄹㅓㅂㄷㅏ",
+      "expected": "부드럽다",
+      "divergence": null,
+      "skip": false,
+      "note": "The second ㅂ is followed by ㄷ, so it closes 럽."
+    },
+    {
+      "id": "ko-rea-leading-jamo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "a consonant followed by a vowel starts the next syllable",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅎㅏㄱㅗ",
+      "expected": "하고",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-rea-lone-jamo",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "a lone leading jamo must pass through",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱ",
+      "expected": "ㄱ",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-rea-vowels-without-lead",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "ㅗㅏ with no leading consonant must pass through, not compose",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅗㅏ",
+      "expected": "ㅗㅏ",
+      "divergence": null,
+      "skip": false,
+      "note": "reassemble is not the inverse of disassemble on arbitrary input: disassemble(\"ㅘ\") is \"ㅗㅏ\"."
+    },
+    {
+      "id": "ko-rea-mixed-jamo-syllables",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "a jamo prefix + precomposed suffix must reassemble only the jamo half",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅈㅐㅁㅣ없다",
+      "expected": "재미없다",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-rea8-converts",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the utf8 wrapper must actually convert when compat jamo are present",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㅂㅜㄷㅡㄹㅓㅂㄷㅏ",
+      "expected": "부드럽다",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble."
+    },
+    {
+      "id": "ko-rea8-low-end",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the byte prefilter must catch the low end of the compat jamo block",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "ㄱㅏ",
+      "expected": "가",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble."
+    },
+    {
+      "id": "ko-rea8-identity-food",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the utf8 wrapper must be identity when there are no compat jamo",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "food",
+      "expected": "food",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble. Input: \"food\"."
+    },
+    {
+      "id": "ko-rea8-identity-taberu",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the utf8 wrapper must be identity when there are no compat jamo",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "食べる",
+      "expected": "食べる",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble. Input: \"食べる\"."
+    },
+    {
+      "id": "ko-rea8-identity-budeureoun",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the utf8 wrapper must be identity when there are no compat jamo",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "부드러운",
+      "expected": "부드러운",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble. Input: \"부드러운\"."
+    },
+    {
+      "id": "ko-rea8-identity-empty",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "the utf8 wrapper must be identity when there are no compat jamo",
+        "commit": "ac8034e"
+      },
+      "kind": "hangul",
+      "function": "reassemble",
+      "input": "",
+      "expected": "",
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi checks the UTF-8 wrapper reassemble_hangul_utf8, which adds a byte prefilter (skip the conversion when no compatibility jamo U+3130..U+318F is present); the result is the same as reassemble. Input: \"\"."
+    },
+    {
+      "id": "ko-chain-disassembled-variant",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "process() produced no disassembled variant for 부드러운 — the korean processor is not registered in the chain",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "부드러운",
+      "languages": "all",
+      "present": [
+        "ㅂㅜㄷㅡㄹㅓㅇㅜㄴ"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "The Korean disassembly processor is part of the chain."
+    },
+    {
+      "id": "ko-chain-keeps-original",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "process() dropped the original precomposed variant (exact hits need it)",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "부드러운",
+      "languages": "all",
+      "present": [
+        "부드러운"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "ko-chain-nfd-after-nfkc",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "NFD Korean produced no disassembled variant — the korean processor must run AFTER nfkc, which is what turns U+1100-block jamo into precomposed syllables",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "부드러운",
+      "languages": "all",
+      "present": [
+        "ㅂㅜㄷㅡㄹㅓㅇㅜㄴ"
+      ],
+      "absent": [],
+      "divergence": null,
+      "skip": false,
+      "note": "Input is NFD 부드러운 (conjoining jamo U+1107 U+116E U+1103 U+1173 U+1105 U+1165 U+110B U+116E U+11AB). Only works if the Korean disassembly runs after NFKC (Korean chain last)."
+    },
+    {
+      "id": "ko-e2e-budeureoun-lemma",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "looking up 부드러운 did not surface the 부드럽다 entry (deinflection never fired)",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "부드러운 갈색",
+      "languages": "all",
+      "present": [],
+      "absent": [],
+      "divergence": null,
+      "skip": true,
+      "note": "Needs a dictionary (부드럽다, 부) and ko.json transform rules: looking up \"부드러운 갈색\" must return 부드럽다 with matched == \"부드러운\" (the original precomposed prefix, not the jamo string) and a longest match of at least 4 code points. Also covers \"matched must be the original precomposed prefix\" and the longest-match-length check. present/absent are placeholders."
+    },
+    {
+      "id": "ko-e2e-exact-hit-steps",
+      "provenance": {
+        "file": "native/fushidicts/tests/korean_hangul_lookup_test.cpp",
+        "test": "an exact Korean hit reports preprocessor_steps=N; the disassembled variant won the tie",
+        "commit": "ac8034e"
+      },
+      "kind": "variants",
+      "input": "부",
+      "languages": "all",
+      "present": [],
+      "absent": [],
+      "divergence": null,
+      "skip": true,
+      "note": "Needs a dictionary: looking up 부 must report preprocessor_steps 0 for the exact hit (the original variant must win the tie with the disassembled one, which comes first in code-point order). Also covers \"looking up 부 did not surface the 부 entry at all\". present/absent are placeholders."
+    },
+    {
+      "id": "q2056-rsquo-click-0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ① offset 0",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "I don’t.",
+      "click": 2,
+      "context": "free",
+      "expected": "don’t",
+      "divergence": null,
+      "skip": false,
+      "note": "Click on the d of \"don’t\"; the U+2019 apostrophe between two letters is crossed, \".\" stops."
+    },
+    {
+      "id": "q2056-rsquo-click-1",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ① offset 1",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "I don’t.",
+      "click": 3,
+      "context": "free",
+      "expected": "don’t",
+      "divergence": null,
+      "skip": false,
+      "note": "Click on the o of \"don’t\"; the U+2019 apostrophe between two letters is crossed, \".\" stops."
+    },
+    {
+      "id": "q2056-rsquo-click-2",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ① offset 2",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "I don’t.",
+      "click": 4,
+      "context": "free",
+      "expected": "don’t",
+      "divergence": null,
+      "skip": false,
+      "note": "Click on the n of \"don’t\"; the U+2019 apostrophe between two letters is crossed, \".\" stops."
+    },
+    {
+      "id": "q2056-ascii-apostrophe",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ②",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "don't.",
+      "click": 0,
+      "context": "free",
+      "expected": "don't",
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "q2056-modifier-apostrophe",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ③",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "canʼt.",
+      "click": 0,
+      "context": "free",
+      "expected": "canʼt",
+      "divergence": null,
+      "skip": false,
+      "note": "U+02BC is not a delimiter at all, so it never stops the scan."
+    },
+    {
+      "id": "q2056-lsquo-apostrophe",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ③b",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "don‘t.",
+      "click": 0,
+      "context": "free",
+      "expected": "don‘t",
+      "divergence": null,
+      "skip": false,
+      "note": "U+2018 (an OCR misreading of ’) is a delimiter but is crossed inside a word."
+    },
+    {
+      "id": "q2056-possessive-and-space",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ④",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "John’s book.",
+      "click": 0,
+      "context": "free",
+      "expected": "John’s book",
+      "divergence": null,
+      "skip": false,
+      "note": "Intra-word apostrophe and single-space bridging (BUG-1773) combine."
+    },
+    {
+      "id": "q2056-closing-quote",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑤",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "’hello’ world",
+      "click": 1,
+      "context": "free",
+      "expected": "hello",
+      "divergence": null,
+      "skip": false,
+      "note": "A ’ followed by a space is a closing quote, not an intra-word apostrophe: it stops the scan."
+    },
+    {
+      "id": "q2056-elision-backoff",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑥",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "l’homme.",
+      "click": 3,
+      "context": "free",
+      "expected": "homme",
+      "divergence": null,
+      "skip": false,
+      "note": "Click on the \"o\" of homme. The back-off to the word start stops at the apostrophe (French/Italian elision keeps the anchor on homme); only the forward scan crosses intra-word apostrophes."
+    },
+    {
+      "id": "q2056-click-after-apostrophe",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑦",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "don’t.",
+      "click": 4,
+      "context": "free",
+      "expected": "t",
+      "divergence": null,
+      "skip": false,
+      "note": "Click on \"t\": same back-off rule as the elision case."
+    },
+    {
+      "id": "q2056-japanese-quote",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑧",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "私は’そう’言った",
+      "click": 0,
+      "context": "free",
+      "expected": "私は",
+      "divergence": null,
+      "skip": false,
+      "note": "Next to Japanese characters ’ is a quote, so it stops the scan."
+    },
+    {
+      "id": "q2056-cross-node-apostrophe",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑨",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "don’t",
+      "click": 0,
+      "context": "free",
+      "expected": "don’t",
+      "divergence": {
+        "requirement": "LKP-002",
+        "note": "In Fushi the text is two inline DOM text nodes (\"don\" and \"’t\") and the intra-word test only looks inside one node, so an apostrophe at the start of the next node stops the scan. Nikomiru scans the flat text (styled runs do not split it), where \"don’t\" has a letter on both sides of the apostrophe, so LKP-002 does not stop there.",
+        "fushi_expected": "don"
+      },
+      "skip": false
+    },
+    {
+      "id": "q2056-apostrophe-after-space",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑩",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "rock 'n' roll",
+      "click": 0,
+      "context": "free",
+      "expected": "rock",
+      "divergence": null,
+      "skip": false,
+      "note": "The space is followed by a delimiter (an apostrophe with a space on its left is not intra-word), so the scan stops before the space."
+    },
+    {
+      "id": "q2056-max-length",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑪ (maxLength 4)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "don’t ask",
+      "click": 0,
+      "context": "free",
+      "expected": "don’t ask",
+      "divergence": {
+        "requirement": "LKP-002",
+        "note": "The harness passes maxLength 4 to check that the length cap still cuts the query. Nikomiru has no such parameter: in free text the cap is 400 characters (LKP-002), so the scan crosses the apostrophe and the single space and reaches the end of the text.",
+        "fushi_expected": "don’"
+      },
+      "skip": false
+    },
+    {
+      "id": "q2056-letter-u0061",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0061)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "a’a.",
+      "click": 0,
+      "context": "free",
+      "expected": "a’a",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: ASCII (U+0061) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00aa",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00AA)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ª’ª.",
+      "click": 0,
+      "context": "free",
+      "expected": "ª’ª",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: U+00AA ª (U+00AA) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00b5",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00B5)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "µ’µ.",
+      "click": 0,
+      "context": "free",
+      "expected": "µ’µ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: U+00B5 µ (U+00B5) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00ba",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00BA)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "º’º.",
+      "click": 0,
+      "context": "free",
+      "expected": "º’º",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: U+00BA º (U+00BA) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00c0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00C0)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "À’À.",
+      "click": 0,
+      "context": "free",
+      "expected": "À’À",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Latin-1 U+00C0-U+00D6, first (U+00C0) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00d6",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00D6)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "Ö’Ö.",
+      "click": 0,
+      "context": "free",
+      "expected": "Ö’Ö",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Latin-1 U+00C0-U+00D6, last (U+00D6) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00d8",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00D8)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "Ø’Ø.",
+      "click": 0,
+      "context": "free",
+      "expected": "Ø’Ø",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Latin-1 U+00D8-U+00F6, first (U+00D8) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00e9",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00E9)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "é’é.",
+      "click": 0,
+      "context": "free",
+      "expected": "é’é",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: French é (U+00E9) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00f6",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00F6)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ö’ö.",
+      "click": 0,
+      "context": "free",
+      "expected": "ö’ö",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: German ö, last of U+00D8-U+00F6 (U+00F6) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u00f8",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+00F8)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ø’ø.",
+      "click": 0,
+      "context": "free",
+      "expected": "ø’ø",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Norwegian ø, first of U+00F8-U+02AF (U+00F8) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0101",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0101)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ā’ā.",
+      "click": 0,
+      "context": "free",
+      "expected": "ā’ā",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Latin Extended-A ā (U+0101) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0161",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0161)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "š’š.",
+      "click": 0,
+      "context": "free",
+      "expected": "š’š",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Czech š (U+0161) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u028c",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+028C)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ʌ’ʌ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ʌ’ʌ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: IPA ʌ (U+028C) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u03b1",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+03B1)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "α’α.",
+      "click": 0,
+      "context": "free",
+      "expected": "α’α",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Greek α (U+03B1) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u043f",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+043F)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "п’п.",
+      "click": 0,
+      "context": "free",
+      "expected": "п’п",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Cyrillic п (U+043F) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u04a5",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+04A5)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ҥ’ҥ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ҥ’ҥ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Cyrillic ҥ (U+04A5) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0531",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0531)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "Ա’Ա.",
+      "click": 0,
+      "context": "free",
+      "expected": "Ա’Ա",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Armenian capital Ա (U+0531) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0561",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0561)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ա’ա.",
+      "click": 0,
+      "context": "free",
+      "expected": "ա’ա",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Armenian small ա (U+0561) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u05d0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+05D0)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "א’א.",
+      "click": 0,
+      "context": "free",
+      "expected": "א’א",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Hebrew א (U+05D0) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u05f2",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+05F2)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ײ’ײ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ײ’ײ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Hebrew ײ (U+05F2) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0628",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0628)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ب’ب.",
+      "click": 0,
+      "context": "free",
+      "expected": "ب’ب",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ب (U+0628) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0641",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0641)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ف’ف.",
+      "click": 0,
+      "context": "free",
+      "expected": "ف’ف",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ف (U+0641) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u066e",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+066E)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ٮ’ٮ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ٮ’ٮ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic dotless beh ٮ (U+066E) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0671",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0671)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ٱ’ٱ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ٱ’ٱ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ٱ (U+0671) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u06d5",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+06D5)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ە’ە.",
+      "click": 0,
+      "context": "free",
+      "expected": "ە’ە",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ە (U+06D5) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u06ee",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+06EE)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ۮ’ۮ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ۮ’ۮ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ۮ (U+06EE) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u06fa",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+06FA)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ۺ’ۺ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ۺ’ۺ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ۺ (U+06FA) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u06ff",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+06FF)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ۿ’ۿ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ۿ’ۿ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic ۿ (U+06FF) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u0750",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+0750)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ݐ’ݐ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ݐ’ݐ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic Supplement ݐ (U+0750) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u08a0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+08A0)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ࢠ’ࢠ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ࢠ’ࢠ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Arabic Extended-A ࢠ (U+08A0) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u10a0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+10A0)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "Ⴀ’Ⴀ.",
+      "click": 0,
+      "context": "free",
+      "expected": "Ⴀ’Ⴀ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Georgian Asomtavruli Ⴀ (U+10A0) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u10d0",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+10D0)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ა’ა.",
+      "click": 0,
+      "context": "free",
+      "expected": "ა’ა",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Georgian Mkhedruli ა (U+10D0) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u1e00",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+1E00)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "Ḁ’Ḁ.",
+      "click": 0,
+      "context": "free",
+      "expected": "Ḁ’Ḁ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Latin Extended Additional Ḁ (U+1E00) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u1ec7",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+1EC7)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ệ’ệ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ệ’ệ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Vietnamese ệ (U+1EC7) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-letter-u1f00",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑬ (U+1F00)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ἀ’ἀ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ἀ’ἀ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set coverage: Greek Extended ἀ (U+1F00) is a letter of a space-delimited script, so ’ between two of them is crossed."
+    },
+    {
+      "id": "q2056-nonletter-u0035",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+0035)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "5’5.",
+      "click": 0,
+      "context": "free",
+      "expected": "5",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: ASCII digit (U+0035) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u00d7",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+00D7)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "×’×.",
+      "click": 0,
+      "context": "free",
+      "expected": "×",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: multiplication sign ×, the hole between U+00D6 and U+00D8 (U+00D7) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u00f7",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+00F7)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "÷’÷.",
+      "click": 0,
+      "context": "free",
+      "expected": "÷",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: division sign ÷, the hole between U+00F6 and U+00F8 (U+00F7) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u0530",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+0530)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "԰’԰.",
+      "click": 0,
+      "context": "free",
+      "expected": "԰",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: unassigned U+0530 before Armenian (U+0530) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u0640",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+0640)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ـ’ـ.",
+      "click": 0,
+      "context": "free",
+      "expected": "ـ",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: Arabic tatweel ـ, deliberately excluded (U+0640) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u0660",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+0660)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "٠’٠.",
+      "click": 0,
+      "context": "free",
+      "expected": "٠",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: Arabic-Indic digit zero ٠ (U+0660) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u10fb",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+10FB)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "჻’჻.",
+      "click": 0,
+      "context": "free",
+      "expected": "჻",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: Georgian paragraph separator ჻ (U+10FB) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-nonletter-u0e01",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑭ (U+0E01)",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "ก’ก.",
+      "click": 0,
+      "context": "free",
+      "expected": "ก",
+      "divergence": null,
+      "skip": false,
+      "note": "Letter-set gap: Thai ก, a script without spaces (U+0E01) is not a letter of the set, so ’ next to it stops the scan."
+    },
+    {
+      "id": "q2056-real-cafe-s",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑮",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "café’s.",
+      "click": 0,
+      "context": "free",
+      "expected": "café’s",
+      "divergence": null,
+      "skip": false,
+      "note": "Real-world shape: French/English possessive café’s is scanned as one word."
+    },
+    {
+      "id": "q2056-real-pyat",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑮",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "п’ять.",
+      "click": 0,
+      "context": "free",
+      "expected": "п’ять",
+      "divergence": null,
+      "skip": false,
+      "note": "Real-world shape: Ukrainian п’ять is scanned as one word."
+    },
+    {
+      "id": "q2056-real-alpha-beta",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑮",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "α’β.",
+      "click": 0,
+      "context": "free",
+      "expected": "α’β",
+      "divergence": null,
+      "skip": false,
+      "note": "Real-world shape: Greek α’β is scanned as one word."
+    },
+    {
+      "id": "q2056-real-alef-bet",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑮",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "א’ב.",
+      "click": 0,
+      "context": "free",
+      "expected": "א’ב",
+      "divergence": null,
+      "skip": false,
+      "note": "Real-world shape: Hebrew א’ב is scanned as one word."
+    },
+    {
+      "id": "q2056-japanese-unchanged",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "BUG-2056: forward scan bridges an intra-word apostrophe so English contractions stay reachable (executes both selection engines via node) › apostrophe_word_scan_bug2056_test.js ⑫",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "素晴らしい世界",
+      "click": 0,
+      "context": "free",
+      "expected": "素晴らしい世界",
+      "divergence": null,
+      "skip": false,
+      "note": "Japanese scanning is unchanged."
+    },
+    {
+      "id": "q3453-cue-last-word-us",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ① us",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "The lively voice that now greeted us",
+      "click": 34,
+      "context": "cue",
+      "expected": "us",
+      "divergence": null,
+      "skip": false,
+      "note": "The last word of a cue is not glued to the first word of the next cue (Fushi produced \"usbelonged\"). In Fushi the audiobook cues are wrapper spans in one paragraph, separated by whitespace-only text nodes; here each cue is its own cue text, whose end bounds the query (LKP-002)."
+    },
+    {
+      "id": "q3453-cue-last-word-with",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ① with",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "belonged to a good-looking boy with",
+      "click": 31,
+      "context": "cue",
+      "expected": "with",
+      "divergence": null,
+      "skip": false,
+      "note": "In Fushi the audiobook cues are wrapper spans in one paragraph, separated by whitespace-only text nodes; here each cue is its own cue text, whose end bounds the query (LKP-002)."
+    },
+    {
+      "id": "q3453-cue-internal-space",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ② belonged",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "belonged to a good-looking boy with",
+      "click": 0,
+      "context": "cue",
+      "expected": "belonged to a good-looking boy with",
+      "divergence": {
+        "requirement": "LKP-002",
+        "note": "Fushi caps the query at 24 UTF-16 code units (the reader maxLength, kLookupQueryMaxChars); the single spaces inside the cue are bridged until the cap. LKP-002 lets a query in a cue run to the end of the cue, and \"-\" is not a delimiter.",
+        "fushi_expected": "belonged to a good-looki"
+      },
+      "skip": false,
+      "note": "In Fushi the audiobook cues are wrapper spans in one paragraph, separated by whitespace-only text nodes; here each cue is its own cue text, whose end bounds the query (LKP-002)."
+    },
+    {
+      "id": "q3453-cue-ends-with-period",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ② spiky",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "spiky black hair.",
+      "click": 0,
+      "context": "cue",
+      "expected": "spiky black hair",
+      "divergence": null,
+      "skip": false,
+      "note": "In Fushi the audiobook cues are wrapper spans in one paragraph, separated by whitespace-only text nodes; here each cue is its own cue text, whose end bounds the query (LKP-002)."
+    },
+    {
+      "id": "q3453-japanese-layout-gap",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ③",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "日本語です。",
+      "click": 0,
+      "context": "free",
+      "expected": "日本語です",
+      "divergence": null,
+      "skip": false,
+      "note": "In Fushi \"日本\" and \"語です。\" are two spans separated by a whitespace-only \"\\n\" text node (HTML source formatting), which the reader ignores between Japanese characters. Nikomiru has no layout whitespace, so the text is the rendered \"日本語です。\"; a real \"\\n\" in cue text is a delimiter (LKP-002)."
+    },
+    {
+      "id": "q2056-source-guard-bridge-order",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "intra-word apostrophe is bridged before the scan-stop test, and the word-start back-off stays untouched",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "",
+      "click": 0,
+      "context": "free",
+      "expected": "",
+      "divergence": null,
+      "skip": true,
+      "note": "Source-level guard on the four JS copies of the scanner: the intra-word apostrophe check must come before isScanStop, must require a space-delimited letter on both sides, and the word-start back-off loop must be unchanged (no apostrophe bridging). The behaviour is covered by the q2056-* cases (q2056-elision-backoff, q2056-click-after-apostrophe). text/click/expected are placeholders."
+    },
+    {
+      "id": "q2056-source-guard-apostrophe-class",
+      "provenance": {
+        "file": "fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart",
+        "test": "apostropheClassInvariant: 撇号类字符集与 scanDelimiters 的耦合不得漂移",
+        "commit": "ac8034e"
+      },
+      "kind": "query",
+      "text": "",
+      "click": 0,
+      "context": "free",
+      "expected": "",
+      "divergence": null,
+      "skip": true,
+      "note": "Source-level guard: the intra-word apostrophe class must contain ' U+0027, ‘ U+2018, ’ U+2019 and ʼ U+02BC; the first three must stay in the delimiter list and U+02BC must not be in it. Reflected in the conventions; behaviour covered by q2056-ascii-apostrophe, q2056-lsquo-apostrophe, q2056-rsquo-click-*, q2056-modifier-apostrophe. text/click/expected are placeholders."
+    },
+    {
+      "id": "sent-ja-middle-sentence",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "isolates the sentence containing the selection (JA)",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "前の文です。こんにちは世界。次の文です。",
+      "click": 11,
+      "expected": "こんにちは世界。",
+      "options": {
+        "sel_len": 2
+      },
+      "expected_selection": {
+        "start": 5,
+        "length": 2
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks the sentence and that the re-based selection covers 世界."
+    },
+    {
+      "id": "sent-after-preceding-delimiter",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "sentence begins AFTER the preceding delimiter (delimiter excluded)",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "A。B",
+      "click": 2,
+      "expected": "B",
+      "options": {
+        "sel_len": 1
+      },
+      "expected_selection": {
+        "start": 0,
+        "length": 1
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "sent-trailing-closer",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "terminating delimiter is INCLUDED, with trailing closers",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "これはテストです。」あと",
+      "click": 3,
+      "expected": "これはテストです。」",
+      "options": {
+        "sel_len": 3
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The 」 after 。 is pulled into the sentence."
+    },
+    {
+      "id": "sent-no-delimiters",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "no delimiters — whole buffer is one sentence",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "ひとつの文だけ",
+      "click": 3,
+      "expected": "ひとつの文だけ",
+      "options": {
+        "sel_len": 2
+      },
+      "expected_selection": {
+        "start": 3,
+        "length": 2
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "sent-latin-period",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "latin sentence with . delimiter",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "First one. Second word here. Third.",
+      "click": 18,
+      "expected": "Second word here.",
+      "options": {
+        "sel_len": 4
+      },
+      "expected_selection": {
+        "start": 7,
+        "length": 4
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "The test checks the sentence and that the re-based selection covers \"word\"."
+    },
+    {
+      "id": "sent-leading-whitespace-trimmed",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "leading whitespace after delimiter is trimmed and offsets re-based",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "A。   BB world.",
+      "click": 5,
+      "expected": "BB world.",
+      "options": {
+        "sel_len": 2
+      },
+      "expected_selection": {
+        "start": 0,
+        "length": 2
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "sent-newline-boundary",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "newline is a sentence boundary",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "line one\nselected line\nlast",
+      "click": 9,
+      "expected": "selected line",
+      "options": {
+        "sel_len": 8
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "In this flat-text extractor \"\\n\" and \"\\r\" are sentence delimiters (Fushi's DOM reader deliberately does not treat them so, BUG-2196)."
+    },
+    {
+      "id": "sent-empty-buffer",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "empty buffer returns empty sentence",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "",
+      "click": 0,
+      "expected": "",
+      "options": {
+        "sel_len": 0
+      },
+      "expected_selection": {
+        "start": 0,
+        "length": 0
+      },
+      "divergence": null,
+      "skip": false
+    },
+    {
+      "id": "sent-out-of-range-clamped",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "out-of-range selection is clamped, never throws",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "short。text",
+      "click": 999,
+      "expected": "text",
+      "options": {
+        "sel_len": 999
+      },
+      "expected_selection": {
+        "start": 4,
+        "length": 0
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi calls extractSentenceAt(text, 999, 999): click and length past the end are clamped to the end of the text."
+    },
+    {
+      "id": "sent-3453-cue-gap-space",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ④",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "The lively voice that now greeted us belonged to a good-looking boy with spiky black hair.",
+      "click": 37,
+      "expected": "The lively voice that now greeted us belonged to a good-looking boy with spiky black hair.",
+      "options": {
+        "sel_len": 8
+      },
+      "expected_selection": {
+        "start": 37,
+        "length": 8
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi reader getSentenceContext on the three audiobook cue spans: the whitespace-only text nodes between cues are restored as one space and sentenceOffset points at \"belonged\". Translated to the flat text with those spaces; Fushi passes only the click position, sel_len is the length of \"belonged\"."
+    },
+    {
+      "id": "sent-3453-japanese-layout-gap",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ⑤",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "日本語です。",
+      "click": 2,
+      "expected": "日本語です。",
+      "options": {
+        "sel_len": 0
+      },
+      "divergence": null,
+      "skip": false,
+      "note": "Fushi reader getSentenceContext on the spans \"日本\" and \"語です。\" separated by a whitespace-only \"\\n\" text node (HTML formatting): no space is inserted between Japanese characters. Nikomiru has no layout whitespace, so the text is the rendered \"日本語です。\" (click on 語)."
+    },
+    {
+      "id": "sent-negative-start",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "negative selStart clamps to 0",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "abc def",
+      "click": 0,
+      "expected": "abc def",
+      "options": {
+        "sel_len": 3
+      },
+      "divergence": null,
+      "skip": true,
+      "note": "Fushi calls extractSentenceAt(\"abc def\", -5, 3) and expects \"abc def\" with selStart 0. A code-point click cannot be negative; the values shown are the clamped equivalent (click 0) and are correct for it."
+    },
+    {
+      "id": "sent-delimiter-tables-guard",
+      "provenance": {
+        "file": "fushi/test/lookup/sentence_extraction_test.dart",
+        "test": "delimiter tables are byte-identical to reader_selection_scripts.dart",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "",
+      "click": 0,
+      "expected": "",
+      "options": {
+        "sel_len": 0
+      },
+      "divergence": null,
+      "skip": true,
+      "note": "Source-level guard: the flat extractor's sentence delimiters (。！？.!?\\n\\r) must equal the DOM reader's (。！？.!?) plus exactly \"\\n\" and \"\\r\", and the trailing closers 。、！？…‥」』）)】〉》〕｝}］] must be identical. Reflected in the conventions. text/click/expected are placeholders."
+    },
+    {
+      "id": "sent-3453-text-between",
+      "provenance": {
+        "file": "fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart",
+        "test": "BUG-3453: whitespace gap between audiobook cue wrappers ends the word scan and survives in the sentence (executes reader selection script via node) › reader_cue_gap_word_scan_bug3453_test.js ⑥",
+        "commit": "ac8034e"
+      },
+      "kind": "sentence",
+      "text": "",
+      "click": 0,
+      "expected": "",
+      "options": {
+        "sel_len": 0
+      },
+      "divergence": null,
+      "skip": true,
+      "note": "Checks Fushi reader textBetween (the text of a drag selection merged across cues): from offset 4 of the first cue to offset 5 of the third it must give \"lively voice that now greeted us belonged to a good-looking boy with spiky\", restoring the spaces between cue spans. Nikomiru has no DOM drag selection across cue spans; text/click/expected are placeholders."
+    }
+  ]
+}

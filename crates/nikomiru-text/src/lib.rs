@@ -14,4 +14,5 @@ pub mod hangul;
 pub mod kana;
 mod kanji_variants;
 pub mod scan;
+pub mod sentence;
 pub mod variants;

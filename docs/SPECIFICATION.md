@@ -531,8 +531,8 @@ The algorithm is a port of Yomitan's, as implemented by fushidicts. Fushi: `nati
 
 | ID | Requirement |
 |---|---|
-| LKP-001 | Lookup starts from the clicked grapheme. For scripts with spaces (Latin, Cyrillic, etc.) it moves back to the start of the word. |
-| LKP-002 | The query text goes from the starting point to the end of the cue (in subtitles) or up to 400 characters (in free text), and stops at the delimiters ``。、！？…‥「」『』（）()【】〈〉《》〔〕｛｝{}［］[]・：；:;，,.─\n\r"'“”‘’«»‹›``. A single space does not stop the scan (BUG-1773); neither does an apostrophe inside a word (BUG-2056). |
+| LKP-001 | Lookup starts from the clicked grapheme. For scripts with spaces (Latin, Cyrillic, etc.) it moves back to the start of the word, without crossing an apostrophe (`l’homme` clicked in `homme` gives `homme`, as in Fushi). |
+| LKP-002 | The query text goes from the starting point to the end of the cue (in subtitles) or up to 400 characters (in free text), and stops at the delimiters ``。、！？…‥「」『』（）()【】〈〉《》〔〕｛｝{}［］[]・：；:;，,.─\n\r"'“”‘’«»‹›``. A single space does not stop the scan (BUG-1773) unless whitespace or a delimiter follows it, so the query never ends with a space (`rock 'n' roll` gives `rock`); an apostrophe inside a word does not stop it either (BUG-2056). |
 | LKP-003 | Normalization before the search: truncate to 2000 characters, `\n` → space, emoji → space, strip punctuation at the start and end, replace lone surrogates. |
 | LKP-004 | Candidates: prefixes of the first **16** code points, from longest to shortest. Never cut between two letters of scripts with spaces; discard prefixes that end with a space; for CJK every code point is a valid cut point. |
 

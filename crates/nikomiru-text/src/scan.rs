@@ -56,10 +56,12 @@ fn is_apostrophe(c: char) -> bool {
 
 /// The byte range of the text a click on byte `click` looks up (LKP-001,
 /// LKP-002). In scripts with spaces the query starts at the beginning of the
-/// clicked word; it ends at a delimiter, at two spaces, at the end of the cue
-/// or after [`FREE_TEXT_LIMIT`] characters. A single space and an apostrophe
-/// inside a word (`don't`, BUG-2056) do not end it. Empty if the click is on a
-/// delimiter or a space.
+/// clicked word, without crossing an apostrophe (`l’homme` clicked in `homme`
+/// gives `homme`, as in Fushi). It ends at a delimiter, at the end of the cue
+/// or after [`FREE_TEXT_LIMIT`] characters. An apostrophe inside a word
+/// (`don't`, BUG-2056) does not end it, nor does a single space followed by
+/// a character that could continue the query (BUG-1773), so the query never
+/// ends with a space. Empty if the click is on a delimiter or a space.
 pub fn query(text: &str, click: usize, context: Context) -> Range<usize> {
     let mut click = click.min(text.len());
     while !text.is_char_boundary(click) {
@@ -81,7 +83,7 @@ pub fn query(text: &str, click: usize, context: Context) -> Range<usize> {
     let inner_apostrophe =
         |i: usize| is_apostrophe(chars[i].1) && i > 0 && letter(i - 1) && letter(i + 1);
     if is_space_script_letter(first) {
-        while start > 0 && (letter(start - 1) || inner_apostrophe(start - 1)) {
+        while start > 0 && letter(start - 1) {
             start -= 1;
         }
     } else if is_apostrophe(first) {
@@ -97,8 +99,11 @@ pub fn query(text: &str, click: usize, context: Context) -> Range<usize> {
         let stop = if is_apostrophe(c) {
             !inner_apostrophe(end)
         } else if c == ' ' {
-            // a single space joins words (BUG-1773); two spaces end the query
-            chars.get(end + 1).is_none_or(|(_, n)| is_whitespace(*n))
+            // a single space joins words (BUG-1773); two spaces, or a space
+            // before a delimiter (`rock 'n' roll`), end the query
+            chars
+                .get(end + 1)
+                .is_none_or(|(_, n)| is_whitespace(*n) || DELIMITERS.contains(*n))
         } else {
             is_whitespace(c) || DELIMITERS.contains(c)
         };
@@ -194,6 +199,8 @@ mod tests {
         assert_eq!(q("彼は「こんにちは」", 0, Context::Cue), "彼は");
         assert_eq!(q("listen to me", 1, Context::Cue), "listen to me");
         assert_eq!(q("I don't know", 3, Context::Cue), "don't know");
+        assert_eq!(q("l’homme", 3, Context::Cue), "homme");
+        assert_eq!(q("rock 'n' roll", 0, Context::Cue), "rock");
         assert_eq!(q("say 'hi' now", 5, Context::Cue), "hi");
         assert_eq!(q("two  spaces", 0, Context::Cue), "two");
         let long = "あ".repeat(500);

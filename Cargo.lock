@@ -957,6 +957,7 @@ version = "0.0.0"
 dependencies = [
  "icu_normalizer",
  "proptest",
+ "serde_json",
  "unicode-segmentation",
 ]
 
