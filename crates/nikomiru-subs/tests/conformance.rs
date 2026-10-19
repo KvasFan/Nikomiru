@@ -19,10 +19,7 @@ fn cases() -> Vec<Value> {
 }
 
 /// The inline style at every character of `text[range]`.
-fn styles<'a>(
-    cue: &'a nikomiru_subs::Cue,
-    range: std::ops::Range<usize>,
-) -> Vec<Option<&'a RunStyle>> {
+fn styles(cue: &nikomiru_subs::Cue, range: std::ops::Range<usize>) -> Vec<Option<&RunStyle>> {
     cue.plain_text[range.clone()]
         .char_indices()
         .map(|(i, _)| {
