@@ -415,6 +415,29 @@ mod tests {
         assert_eq!(s.list()[1]["start"], 2000);
     }
 
+    // T-SUB-010
+    #[test]
+    fn ass_styles_only_when_respected() {
+        let ass = "[Script Info]\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Sign,Serif,48,&H0000D7FF,&H0,&H0,&H0,-1,0,0,0,100,100,0,0,1,2,0,8,10,10,30,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Sign,,0,0,0,,{\\c&HFF0000&}青{\\c}看板\n";
+        let mut s = Subtitles::default();
+        s.set_track(Source::File("a.ass".into()), loaded(ass, Format::Ass));
+        s.update(1500);
+        // default style: no ASS font, size, colour or alignment
+        let plain = s.overlay(false);
+        assert!(plain[0]["style"].is_null());
+        assert!(plain[0]["anchor"].is_null());
+        assert!(plain[0]["lines"][0][0].get("c").is_none());
+        // respected: the style's font, size, colour and top alignment, and inline colours
+        let styled = s.overlay(true);
+        assert_eq!(styled[0]["anchor"], 8);
+        assert_eq!(styled[0]["style"]["font"], "Serif");
+        assert_eq!(styled[0]["style"]["size"], 48.0);
+        assert_eq!(styled[0]["style"]["color"], "#FFD700");
+        assert_eq!(styled[0]["style"]["margin_v"], 30);
+        assert_eq!(styled[0]["lines"][0][0]["c"], "#0000FF");
+        assert_eq!(s.play_res(), Some((1440, 1080)));
+    }
+
     #[test]
     fn clocks_and_utf16_positions() {
         assert_eq!(clock(65_000), "1:05");

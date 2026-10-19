@@ -200,6 +200,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-006 | External files | `Ep01.mkv` ↔ `Ep01.ja.srt` yes, `Ep01.jpn.ass` yes, `Ep011.srt` no, `ep01.SRT` yes | L1 |
 | T-SUB-007 | Extraction of embedded tracks (`av_basic.mkv`) | 2 tracks extracted in a single invocation; 3 cues with the expected text; second request served from the cache (no ffmpeg process started) | L4 |
 | T-SUB-008 | Automatic selection | The 4 rules in the order given in SPECIFICATION | L1 |
+| T-SUB-009 | Clickable overlay | `av_basic.mkv` in L6: the Japanese embedded track is extracted and drawn; `click_grapheme` on the second grapheme selects byte offset 3 and pauses | L6 |
+| T-SUB-010 | Style | Without "respect ASS styles" no ASS font, size, colour or alignment reaches the overlay; with it, the style's values and the inline colours do | L1 |
 | T-SUB-011 | Offset | `delay_ms = +500`, cue [1000, 2000]: active at `pos` = 1600, not at 1400. Jumping to that cue takes the player to 1000 + 500 − 180 = **1320** | L1 |
 | T-SUB-012 | Navigation | Cues [1000–1100], [1150–2000], [5000–6000], `delay_ms = 0`. From `pos` = 5500 (inside the third), "previous" → max(1150 − 180, 1000) = **1000** (never before the start of the cue that precedes the target). From 1200, "next" → 5000 − 180 = **4820**. Without subtitles → seek of ±3 s. From the keyboard, with the previous cue more than 10 s away → time seek | L1 |
 | T-SUB-013 | Cue replay from the popup | Pause at the cue `end` (± one frame), with `av_basic.mkv` in L5 | L5 |
