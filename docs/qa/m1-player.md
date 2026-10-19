@@ -24,7 +24,7 @@ Manual checklist at the end of M1. Each item is recorded with its result
 | Item | Wayland | X11 | Notes |
 |---|---|---|---|
 | Opening from the dialog, from drag & drop and from the command line, with Unicode file names and spaces | pass | | Fixture: `target/fixtures/-weird: name & spaces ü 日本.mkv` |
-| Fullscreen on a secondary monitor; exit with Esc | **fail** | | F enters fullscreen, Esc does not leave it. Through the GUI harness F → Esc works (L6 regression test added), so the real key does not reach the window: under investigation |
+| Fullscreen on a secondary monitor; exit with Esc | pass | | First run: Esc did not leave fullscreen. Retest with commit `1e8a0a4` (and `--debug` key logging): Esc works. F → Esc is now also an L6 regression test |
 | HiDPI 200%: sharp video, sharp overlay, no misaligned edges | pass | | Tested at the session's 270% |
 | hwdec active (check `hwdec-current`) on Intel, AMD and NVIDIA | pass | | Only AMD is available here: Intel and NVIDIA are n/a. `hwdec-current` is in the log with `--debug` (`[vd] Using hardware decoding (vaapi)`) |
 | System suspend and resume during playback | pending | | Not possible at the time of the test |
