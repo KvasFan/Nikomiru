@@ -44,6 +44,12 @@ thread_local! {
     pub static RENDERS: Cell<u64> = const { Cell::new(0) };
     /// Last render size in physical pixels (to check HiDPI).
     pub static RENDER_SIZE: Cell<(i32, i32, i32)> = const { Cell::new((0, 0, 0)) };
+    /// Renders where mpv reported a new frame (`MPV_RENDER_UPDATE_FRAME`).
+    pub static NEW_FRAMES: Cell<u64> = const { Cell::new(0) };
+    /// CPU time of each `render()` call, in microseconds (cleared by the measurements).
+    pub static RENDER_US: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+    /// Refresh rate seen by the GLArea's GDK frame clock.
+    pub static FRAME_CLOCK_FPS: Cell<f64> = const { Cell::new(0.0) };
 }
 
 pub struct Player {
@@ -182,13 +188,28 @@ impl Player {
             area.allocated_width() * scale,
             area.allocated_height() * scale,
         );
-        let _ = render.update();
+        let started = std::time::Instant::now();
+        let update = render.update().unwrap_or(0);
+        if update & libmpv2::render::mpv_render_update::Frame != 0 {
+            NEW_FRAMES.set(NEW_FRAMES.get() + 1);
+        }
         if let Err(e) = render.render::<GlApi>(fbo, w, h, true) {
             eprintln!("[s1] render: {e}");
         }
-        render.report_swap();
+        // S1_NO_SWAP: variant without report_swap, to test mpv's frame timing.
+        if std::env::var_os("S1_NO_SWAP").is_none() {
+            render.report_swap();
+        }
+        RENDER_US.with_borrow_mut(|v| v.push(started.elapsed().as_micros() as u64));
         RENDERS.set(RENDERS.get() + 1);
         RENDER_SIZE.set((w, h, scale));
+        if let Some(clock) = area.frame_clock() {
+            // refresh interval estimated by GDK from the compositor's presentation feedback
+            let (interval_us, _) = clock.refresh_info(clock.frame_time());
+            if interval_us > 0 {
+                FRAME_CLOCK_FPS.set(1_000_000.0 / interval_us as f64);
+            }
+        }
     }
 }
 

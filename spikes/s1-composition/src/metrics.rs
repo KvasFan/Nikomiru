@@ -13,7 +13,9 @@ use futures_channel::mpsc::UnboundedSender;
 use serde_json::{Value, json};
 
 use crate::compositor;
-use crate::player::{self, Options, RENDER_SIZE, RENDERS, UiMsg};
+use crate::player::{
+    self, FRAME_CLOCK_FPS, NEW_FRAMES, Options, RENDER_SIZE, RENDER_US, RENDERS, UiMsg,
+};
 
 /// CPU ticks per second (`getconf CLK_TCK`, 100 on Linux x86_64).
 const CLK_TCK: f64 = 100.0;
@@ -88,6 +90,7 @@ struct Snapshot {
     delayed: i64,
     mistimed: i64,
     renders: u64,
+    new_frames: u64,
 }
 
 fn snapshot() -> Snapshot {
@@ -104,7 +107,38 @@ fn snapshot() -> Snapshot {
         delayed: player::get_i64("vo-delayed-frame-count").unwrap_or(-1),
         mistimed: player::get_i64("mistimed-frame-count").unwrap_or(-1),
         renders: RENDERS.get(),
+        new_frames: NEW_FRAMES.get(),
     }
+}
+
+/// PCI devices of the DRM file descriptors held by a process (`drm-pdev` in
+/// fdinfo): tells which GPU it really uses.
+fn drm_devices(pid: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Ok(dir) = std::fs::read_dir(format!("/proc/{pid}/fdinfo")) {
+        for e in dir.flatten() {
+            if let Ok(text) = std::fs::read_to_string(e.path()) {
+                for line in text.lines() {
+                    if let Some(dev) = line.strip_prefix("drm-pdev:") {
+                        let dev = dev.trim().to_string();
+                        if !out.contains(&dev) {
+                            out.push(dev);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn percentile(sorted: &[u64], q: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    sorted[((sorted.len() as f64 * q).ceil() as usize)
+        .saturating_sub(1)
+        .min(sorted.len() - 1)]
 }
 
 fn compare(a: &Snapshot, b: &Snapshot) -> Value {
@@ -120,6 +154,15 @@ fn compare(a: &Snapshot, b: &Snapshot) -> Value {
     }
     let own = b.own_ticks.saturating_sub(a.own_ticks);
     let (w, h, scale) = RENDER_SIZE.get();
+    let mut times = RENDER_US.with_borrow(Clone::clone);
+    times.sort_unstable();
+    let mut gpus = vec![json!({ "comm": "self", "drm_pdev": drm_devices("self") })];
+    for pid in b.desc_ticks.keys() {
+        let devs = drm_devices(&pid.to_string());
+        if !devs.is_empty() {
+            gpus.push(json!({ "comm": comm(*pid), "drm_pdev": devs }));
+        }
+    }
     json!({
         "seconds": secs,
         "frame_drop_count": b.drops - a.drops,
@@ -136,6 +179,12 @@ fn compare(a: &Snapshot, b: &Snapshot) -> Value {
         "display_fps": player::get_f64("display-fps"),
         "render_size": [w, h],
         "scale_factor": scale,
+        "new_frames_per_second": (b.new_frames - a.new_frames) as f64 / secs,
+        "render_cpu_us": { "p50": percentile(&times, 0.5), "p95": percentile(&times, 0.95),
+            "max": times.last().copied().unwrap_or(0) },
+        "frame_clock_fps": FRAME_CLOCK_FPS.get(),
+        "report_swap": std::env::var_os("S1_NO_SWAP").is_none(),
+        "gpus": gpus,
     })
 }
 
@@ -184,10 +233,23 @@ pub fn start(
             // 3 s to settle, then the measurement window.
             after(3000, move || {
                 let a = snapshot();
+                RENDER_US.with_borrow_mut(Vec::clear);
+                // Dropped frames second by second, to tell bursts from a steady rate.
+                let timeline = Rc::new(std::cell::RefCell::new(Vec::new()));
+                let last = Rc::new(std::cell::Cell::new(a.drops));
+                let (t, l) = (timeline.clone(), last.clone());
+                glib::timeout_add_local(Duration::from_secs(1), move || {
+                    let now = player::get_i64("frame-drop-count").unwrap_or(l.get());
+                    t.borrow_mut().push(now - l.get());
+                    l.set(now);
+                    glib::ControlFlow::Continue
+                });
                 after(seconds * 1000, move || {
                     let b = snapshot();
+                    let mut result = compare(&a, &b);
+                    result["drops_per_second_timeline"] = json!(timeline.borrow().clone());
                     finish(json!({ "mode": "measure", "env": env, "video": opts.video,
-                        "hwdec_requested": opts.hwdec, "result": compare(&a, &b) }));
+                        "hwdec_requested": opts.hwdec, "result": result }));
                 });
             });
         }),
