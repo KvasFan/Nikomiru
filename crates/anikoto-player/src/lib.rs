@@ -9,3 +9,6 @@
 //! video item, always with a `// SAFETY:` comment (ARC-011).
 
 #![deny(missing_docs)]
+
+pub mod control;
+pub mod options;
