@@ -14,6 +14,16 @@ workspace = true
 name = "nikomiru"
 path = "src/main.rs"
 
+# L6 (TEST §2): the real binary driven by the GUI test harness.
+[[test]]
+name = "e2e"
+path = "../../tests/e2e/main.rs"
+required-features = ["test-harness"]
+
+[features]
+# GUI test harness (TEST §2.1): never in release builds (T-SEC-004).
+test-harness = ["nikomiru-ui/test_harness"]
+
 [dependencies]
 nikomiru-core.workspace = true
 nikomiru-library.workspace = true

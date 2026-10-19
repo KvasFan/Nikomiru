@@ -13,6 +13,8 @@
 
 pub mod cli;
 pub mod dbus;
+#[cfg(feature = "test-harness")]
+pub mod harness;
 pub mod inhibit;
 pub mod instance;
 #[allow(unsafe_code)]

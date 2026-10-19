@@ -103,6 +103,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "quitRequested"]
         fn quit_requested(self: Pin<&mut PlayerController>);
+
+        /// A key press and release that QML handles like a real one (GUI test
+        /// harness, TEST §2.1).
+        #[cfg(feature = "test_harness")]
+        #[qsignal]
+        #[cxx_name = "keyRequested"]
+        fn key_requested(self: Pin<&mut PlayerController>, native_scan_code: u32, modifiers: u32);
     }
 
     impl cxx_qt::Threading for PlayerController {}
@@ -126,7 +133,7 @@ pub struct PlayerControllerRust {
     toast: QString,
     toast_serial: i32,
     controls_visible: bool,
-    session: Option<Session>,
+    pub(crate) session: Option<Session>,
 }
 
 static SERVICES: Mutex<Option<Services>> = Mutex::new(None);
@@ -181,6 +188,38 @@ pub fn request_quit() {
             c.quit_requested();
         });
     }
+}
+
+/// Runs `f` on the controller in the Qt thread and returns its result, waiting
+/// for the window to exist (GUI test harness).
+#[cfg(feature = "test_harness")]
+pub(crate) fn harness_call<T: Send + 'static>(
+    f: impl FnOnce(Pin<&mut qobject::PlayerController>) -> T + Send + 'static,
+) -> Result<T, String> {
+    use std::time::{Duration, Instant};
+    let (tx, rx) = std::sync::mpsc::channel();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut f = Some(f);
+    while f.is_some() {
+        if let Ok(relay) = RELAY.lock()
+            && let Some(thread) = relay.as_ref()
+            && let Some(f) = f.take()
+        {
+            let tx = tx.clone();
+            thread
+                .queue(move |c| {
+                    let _ = tx.send(f(c));
+                })
+                .map_err(|e| format!("queue: {e:?}"))?;
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("the window did not appear".into());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    rx.recv_timeout(Duration::from_secs(10))
+        .map_err(|_| "the UI did not answer".to_string())
 }
 
 fn audio_json(tracks: &[nikomiru_player::player::Track]) -> String {
@@ -286,12 +325,23 @@ impl qobject::PlayerController {
     }
 
     fn on_event(mut self: Pin<&mut Self>, event: Stamped<PlayerEvent>) {
-        if self.as_mut().with_session(|s| s.on_event(event)) == Some(true) {
+        let changed = self.as_mut().with_session(|s| s.on_event(event)) == Some(true);
+        let events = self
+            .as_mut()
+            .with_session(|s| std::mem::take(&mut s.events))
+            .unwrap_or_default();
+        #[cfg(feature = "test_harness")]
+        for e in events {
+            crate::harness::push(e);
+        }
+        #[cfg(not(feature = "test_harness"))]
+        drop(events);
+        if changed {
             self.sync();
         }
     }
 
-    fn open_file(mut self: Pin<&mut Self>, path: &QString) {
+    pub(crate) fn open_file(mut self: Pin<&mut Self>, path: &QString) {
         let path = url_to_path(&path.to_string());
         self.as_mut().with_session(|s| s.open(&path));
         self.sync();
@@ -363,7 +413,7 @@ impl qobject::PlayerController {
         QString::from(text.as_str())
     }
 
-    fn shutdown(mut self: Pin<&mut Self>) {
+    pub(crate) fn shutdown(mut self: Pin<&mut Self>) {
         self.as_mut().with_session(Session::flush_position);
         if let Ok(mut relay) = RELAY.lock() {
             *relay = None;

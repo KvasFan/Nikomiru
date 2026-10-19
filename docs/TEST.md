@@ -33,15 +33,16 @@
 
 ### 2.1 GUI test harness
 
-- Cargo feature `test-harness` of `nikomiru-app`, **never enabled in release builds** (verified by T-SEC-004).
-- Start: `nikomiru --test-harness <socket>`. Protocol: JSON lines on a Unix socket.
+- Cargo feature `test-harness` of `nikomiru-app`, **never enabled in release builds** (verified by T-SEC-004). It enables `nikomiru-ui/test_harness` (underscore: cxx-qt-build 0.10 does not match hyphenated features in `cfg` attributes of bridges).
+- Start: `nikomiru --test-harness <socket>`. The test listens on the socket and the application connects to it. Protocol: JSON lines on a Unix socket; each command `{"cmd": …}` gets one answer, `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
+- The L6 tests live in `tests/e2e/`, a test target of `nikomiru-app` with `required-features = ["test-harness"]`, so `CARGO_BIN_EXE_nikomiru` is the harness build. Each test starts its own `kwin_wayland --virtual` on a private D-Bus bus without service activation, with isolated XDG folders and a private `XDG_RUNTIME_DIR`: no real portal, audio server or user file is reached. `cargo xtask ci --full` runs them.
 - Commands:
-  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}`;
+  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the same QML handler as a real one);
   - `click_grapheme {layer, cue_index, grapheme_index}`, `hover_grapheme {…}`, `click {selector}`;
   - `state {}`: player state, open popups, visible cues, toasts;
   - `mpv_get {property}`: read-only, for metrics;
   - `quit {}`.
-- Events: `library-ready`, `file-loaded`, `first-frame`, `cue-shown {index, time_pos}`, `popup-rendered {depth}`, `card-created {note_id}`, `error {code}`.
+- Events: `library-ready`, `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {depth}`, `card-created {note_id}`, `error {code}` (`code` is the Fluent id of the error, ERR-001). `wait` drops the events before the one it waits for and fails on an `error`.
 - The harness interacts through the same QML handlers as the UI, not through internal shortcuts that skip the logic under test.
 
 ---

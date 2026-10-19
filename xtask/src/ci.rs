@@ -41,6 +41,19 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             "--",
             "-D",
             "warnings",
+        ]))?;
+        // the GUI test harness and the L6 tests exist only with this feature
+        util::run(cargo().args([
+            "clippy",
+            "-p",
+            "nikomiru-app",
+            "--features",
+            "test-harness",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
         ]))
     })?;
     step("architecture and headers", || arch::check_all(root))?;
@@ -50,6 +63,9 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         step("fixtures", || fixtures::run(root, &[]))?;
     }
     step("test", || tests(full))?;
+    if full {
+        step("GUI end-to-end (L6)", gui_tests)?;
+    }
     if full {
         step("THIRD_PARTY_LICENSES.html", || {
             licenses::about(root).map(|_| ())
@@ -61,6 +77,32 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         started.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// L6: `tests/e2e/`, a test target of nikomiru-app that exists only with the
+/// `test-harness` feature. Each test starts its own off-screen KWin and private
+/// D-Bus bus (TEST §2.1).
+fn gui_tests() -> Result<()> {
+    for program in ["kwin_wayland", "dbus-daemon"] {
+        if !util::have_program(program) {
+            eprintln!("  skipped: {program} is not installed");
+            return Ok(());
+        }
+    }
+    util::run(cargo().args([
+        "test",
+        "-p",
+        "nikomiru-app",
+        "--features",
+        "test-harness",
+        "--locked",
+        "--test",
+        "e2e",
+        "--",
+        "--include-ignored",
+        "--test-threads",
+        "1",
+    ]))
 }
 
 /// L1–L3 always; with `full` also the `#[ignore]` tests that use the generated

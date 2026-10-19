@@ -24,7 +24,20 @@ ApplicationWindow {
             win.raise();
             win.requestActivate();
         }
-        onQuitRequested: Qt.quit()
+        // closing the last window quits, through onClosing like the user
+        onQuitRequested: win.close()
+        onKeyRequested: (scanCode, modifiers) => {
+            win.handleKey(scanCode, modifiers, true, false);
+            win.handleKey(scanCode, modifiers, false, false);
+        }
+    }
+
+    // Keyboard: every key goes to Rust with its scan code (KEY-002).
+    function handleKey(scanCode, modifiers, pressed, autoRepeat) {
+        if (pressed)
+            win.apply(ctl.key_event(scanCode, modifiers, true, autoRepeat, false));
+        else if (!autoRepeat)
+            ctl.key_event(scanCode, modifiers, false, false, false);
     }
 
     function apply(effect) {
@@ -44,19 +57,16 @@ ApplicationWindow {
         onRendererReadyChanged: if (rendererReady) ctl.renderer_ready()
     }
 
-    // Keyboard: every key goes to Rust with its scan code (KEY-002).
     Item {
         id: keys
         anchors.fill: parent
         focus: true
         Keys.onPressed: (e) => {
-            const effect = ctl.key_event(e.nativeScanCode, e.modifiers, true, e.isAutoRepeat, false);
-            win.apply(effect);
+            win.handleKey(e.nativeScanCode, e.modifiers, true, e.isAutoRepeat);
             e.accepted = true;
         }
         Keys.onReleased: (e) => {
-            if (!e.isAutoRepeat)
-                ctl.key_event(e.nativeScanCode, e.modifiers, false, false, false);
+            win.handleKey(e.nativeScanCode, e.modifiers, false, e.isAutoRepeat);
             e.accepted = true;
         }
     }

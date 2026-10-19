@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::arch::{self, Graph, report};
+use crate::arch::report;
 use crate::util::{self, rel};
 
 /// An exception: a crate (or a `prefix_*` group in the table) and the allowed licenses.
@@ -222,37 +222,37 @@ pub fn about(root: &Path) -> Result<PathBuf> {
         "about.hbs",
     ]))?;
     let html = std::fs::read_to_string(&out)?;
-    let metadata = arch::cargo_metadata()?;
-    let graph = Graph::from_metadata(&metadata)?;
-    let versions: Vec<(String, String)> = metadata["packages"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|p| {
-            Some((
-                p["id"].as_str()?.to_string(),
-                p["version"].as_str()?.to_string(),
-            ))
-        })
-        .collect();
-    let app = graph
-        .members
-        .iter()
-        .find(|m| graph.names.get(*m).is_some_and(|n| n == "nikomiru-app"))
-        .context("nikomiru-app is not in the workspace")?;
+    // The packages really built for the target: `cargo metadata` would also list
+    // optional dependencies enabled only by dev-dependencies, which resolver 2
+    // leaves out of the build (and cargo-about with it).
+    let tree = util::output(util::cargo().args([
+        "tree",
+        "--locked",
+        "-p",
+        "nikomiru-app",
+        "-e",
+        "normal,build",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--prefix",
+        "none",
+        "-f",
+        "{p}",
+    ]))?;
     let mut missing = Vec::new();
-    for dep in graph.closure(app) {
-        if graph.members.contains(&dep) {
+    let mut seen = std::collections::BTreeSet::new();
+    for line in tree.lines() {
+        // `name vX.Y.Z`, plus ` (/path)` for workspace crates and ` (*)` for repeats
+        let mut parts = line.split_whitespace();
+        let (Some(name), Some(version)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if parts.next().is_some_and(|p| p.starts_with("(/")) {
             continue;
         }
-        let name = graph.names.get(&dep).cloned().unwrap_or_default();
-        let version = versions
-            .iter()
-            .find(|(id, _)| *id == dep)
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
-        if !html.contains(&format!("{name} {version}")) {
-            missing.push(format!("{name} {version} does not appear in {}", rel(&out)));
+        let entry = format!("{name} {}", version.trim_start_matches('v'));
+        if seen.insert(entry.clone()) && !html.contains(&entry) {
+            missing.push(format!("{entry} does not appear in {}", rel(&out)));
         }
     }
     report("THIRD_PARTY_LICENSES.html complete", &missing)?;

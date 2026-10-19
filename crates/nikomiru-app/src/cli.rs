@@ -36,14 +36,20 @@ pub struct Options {
     pub targets: Vec<String>,
     /// Verbose log.
     pub debug: bool,
+    /// Socket of the GUI test harness (TEST §2.1).
+    #[cfg(feature = "test-harness")]
+    pub harness: Option<std::path::PathBuf>,
 }
 
 /// Parses the arguments (without the program name). Relative paths are made
 /// absolute against `cwd`, so another instance can open them.
+// `--test-harness` takes the next argument from inside the loop
+#[cfg_attr(not(feature = "test-harness"), allow(clippy::while_let_on_iterator))]
 pub fn parse(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Result<Command, String> {
     let mut options = Options::default();
     let mut only_targets = false;
-    for arg in args {
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
         let Some(arg) = arg.to_str().map(str::to_string) else {
             return Err(format!(
                 "{}: the path is not valid UTF-8",
@@ -56,6 +62,11 @@ pub fn parse(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Result<Com
                 "-h" | "--help" => return Ok(Command::Help),
                 "-V" | "--version" => return Ok(Command::Version),
                 "--debug" => options.debug = true,
+                #[cfg(feature = "test-harness")]
+                "--test-harness" => {
+                    let socket = args.next().ok_or("--test-harness needs a socket path")?;
+                    options.harness = Some(socket.into());
+                }
                 _ => return Err(format!("unknown option {arg}")),
             }
             continue;
@@ -80,6 +91,8 @@ fn target(arg: &str, cwd: &Path) -> String {
 }
 
 #[cfg(test)]
+// `..Options::default()` fills the harness field, which exists only with the feature
+#[cfg_attr(not(feature = "test-harness"), allow(clippy::needless_update))]
 mod tests {
     use super::*;
 
@@ -105,6 +118,7 @@ mod tests {
                     "nikomiru://open?uid=x".into(),
                 ],
                 debug: true,
+                ..Options::default()
             }))
         );
     }
@@ -120,7 +134,7 @@ mod tests {
             run(&["--", "-strange.mkv"]),
             Ok(Command::Run(Options {
                 targets: vec!["/home/u/videos/-strange.mkv".into()],
-                debug: false,
+                ..Options::default()
             }))
         );
     }

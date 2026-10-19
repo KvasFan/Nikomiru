@@ -43,6 +43,17 @@ impl UiEffect {
     }
 }
 
+/// Milestones of a load, for the GUI test harness (TEST §2.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiEvent {
+    /// The file is open.
+    FileLoaded,
+    /// The first position after the load: the video is moving.
+    FirstFrame,
+    /// The file could not be played: the message id of the error.
+    Error(&'static str),
+}
+
 /// State shown by the player page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewState {
@@ -146,6 +157,9 @@ pub struct Session {
     pub view: ViewState,
     /// Toasts waiting to be shown (translated).
     pub toasts: Vec<String>,
+    /// Load milestones not yet taken by the UI layer.
+    pub events: Vec<UiEvent>,
+    first_frame: bool,
 }
 
 impl std::fmt::Debug for Session {
@@ -211,11 +225,19 @@ impl Session {
             current: None,
             view,
             toasts: Vec::new(),
+            events: Vec::new(),
+            first_frame: false,
         }
     }
 
     fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         self.services.translator.tr(id, args)
+    }
+
+    /// An mpv property as text, read synchronously: for the GUI test harness
+    /// only (ARC-003).
+    pub fn property(&self, name: &str) -> Option<String> {
+        self.services.player.property_string(name)
     }
 
     /// The interface strings.
@@ -291,6 +313,7 @@ impl Session {
             speed: record.speed,
         };
         self.saver.reset();
+        self.first_frame = false;
         self.view.loaded = false;
         self.view.title = path
             .file_name()
@@ -325,10 +348,15 @@ impl Session {
         match event {
             PlayerEvent::FileLoaded => {
                 tracing::info!("file loaded");
+                self.events.push(UiEvent::FileLoaded);
                 self.view.loaded = true;
                 self.saver.ready();
             }
             PlayerEvent::TimePos(t) => {
+                if self.view.loaded && !self.first_frame {
+                    self.first_frame = true;
+                    self.events.push(UiEvent::FirstFrame);
+                }
                 self.view.time_pos = t;
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
@@ -350,6 +378,8 @@ impl Session {
             PlayerEvent::EndFile(EndFile::Error(e)) => {
                 tracing::warn!("playback error: {e}");
                 let file = self.view.title.clone();
+                self.events
+                    .push(UiEvent::Error(nikomiru_core::Localized::message_id(&e)));
                 let reason = self.services.translator.error(&e);
                 self.view.loaded = false;
                 self.view.error =

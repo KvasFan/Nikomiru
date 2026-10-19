@@ -14,6 +14,8 @@ mod bridge {
     pub mod player;
 }
 pub mod controls;
+#[cfg(feature = "test_harness")]
+pub mod harness;
 pub mod i18n;
 pub mod screensaver;
 pub mod session;

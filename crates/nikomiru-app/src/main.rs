@@ -229,6 +229,10 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         nikomiru_ui::request_open(target.clone());
     }
     watch_termination_signals();
+    #[cfg(feature = "test-harness")]
+    if let Some(socket) = &options.harness {
+        nikomiru_app::harness::start(socket);
+    }
 
     let failed = Arc::new(AtomicBool::new(false));
     let mut engine = QQmlApplicationEngine::new();

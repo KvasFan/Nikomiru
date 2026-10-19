@@ -8,6 +8,12 @@ license.workspace = true
 publish.workspace = true
 links = "nikomiru_ui"
 
+[features]
+# GUI test harness (TEST §2.1), enabled by nikomiru-app's `test-harness`: never in
+# release builds (T-SEC-004). Underscore, not hyphen: cxx-qt-build 0.10 evaluates
+# `cfg(feature = …)` in bridges against CARGO_FEATURE_* without turning `-` into `_`.
+test_harness = []
+
 [dependencies]
 nikomiru-core.workspace = true
 nikomiru-library.workspace = true
