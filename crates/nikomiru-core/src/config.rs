@@ -20,13 +20,17 @@ pub enum ConfigError {
         /// The I/O error.
         source: std::io::Error,
     },
-    /// The file is not valid TOML or has values of the wrong type.
-    #[error("{path}: {source}")]
+    /// The file is not valid TOML or has values of the wrong type. Only the
+    /// parser's message and the line are kept: the parser's own text quotes the
+    /// line, which may hold an API key (PRV-002).
+    #[error("{path}, line {line}: {message}")]
     Parse {
         /// The configuration file.
         path: PathBuf,
-        /// The parser's error, with line and column.
-        source: toml::de::Error,
+        /// 1-based line of the error (0 if unknown).
+        line: usize,
+        /// The parser's message, without the quoted line.
+        message: String,
     },
     /// The configuration could not be serialized (should not happen).
     #[error("serializing the configuration: {0}")]
@@ -135,9 +139,12 @@ impl Config {
     /// Reads `path`; a missing file gives the defaults.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         match std::fs::read_to_string(path) {
-            Ok(text) => Self::from_toml(&text).map_err(|source| ConfigError::Parse {
+            Ok(text) => Self::from_toml(&text).map_err(|e| ConfigError::Parse {
                 path: path.to_path_buf(),
-                source,
+                line: e.span().map_or(0, |s| {
+                    text[..s.start.min(text.len())].lines().count().max(1)
+                }),
+                message: mask_quoted(e.message().trim()),
             }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(source) => Err(ConfigError::Io {
@@ -164,6 +171,30 @@ impl Config {
         out.sort();
         out
     }
+}
+
+/// Replaces what serde quotes in its messages (`string "value"`, `` `value` ``)
+/// with `…`: the value may be a secret typed into the wrong field.
+fn mask_quoted(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut open: Option<char> = None;
+    for c in message.chars() {
+        match open {
+            Some(q) if c == q => {
+                out.push('…');
+                out.push(c);
+                open = None;
+            }
+            Some(_) => {}
+            None => {
+                out.push(c);
+                if c == '"' || c == '`' {
+                    open = Some(c);
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -235,10 +266,19 @@ play_pause = ["Space"]
     fn invalid_file_is_a_parse_error_with_the_path() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        std::fs::write(&path, "[player]\nseek_seconds = \"three\"\n").unwrap();
+        std::fs::write(
+            &path,
+            "[anki]\napi_key = \"secret\"\n[player]\nseek_seconds = \"three\"\n",
+        )
+        .unwrap();
         let err = Config::load(&path).unwrap_err();
-        assert!(matches!(err, ConfigError::Parse { .. }), "{err}");
-        assert!(err.to_string().contains("config.toml"));
+        assert!(matches!(err, ConfigError::Parse { line: 4, .. }), "{err}");
+        let text = err.to_string();
+        assert!(text.contains("config.toml"), "{text}");
+        assert!(
+            !text.contains("secret") && !text.contains("three"),
+            "{text}"
+        );
     }
 
     // T-SEC-008

@@ -13,3 +13,22 @@ workspace = true
 [[bin]]
 name = "nikomiru"
 path = "src/main.rs"
+
+[dependencies]
+nikomiru-core.workspace = true
+nikomiru-library.workspace = true
+nikomiru-player.workspace = true
+nikomiru-ui.workspace = true
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

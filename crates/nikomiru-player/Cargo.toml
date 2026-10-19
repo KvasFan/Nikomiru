@@ -12,6 +12,7 @@ links = "nikomiru_player"
 nikomiru-core.workspace = true
 libmpv2.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 

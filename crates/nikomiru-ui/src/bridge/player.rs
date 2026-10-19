@@ -93,6 +93,16 @@ pub mod qobject {
         /// The window is closing: save the position.
         #[qinvokable]
         fn shutdown(self: Pin<&mut PlayerController>);
+
+        /// Another launch asked for the window (APP-001).
+        #[qsignal]
+        #[cxx_name = "activateRequested"]
+        fn activate_requested(self: Pin<&mut PlayerController>);
+
+        /// The process was asked to quit (a signal): the position is already saved.
+        #[qsignal]
+        #[cxx_name = "quitRequested"]
+        fn quit_requested(self: Pin<&mut PlayerController>);
     }
 
     impl cxx_qt::Threading for PlayerController {}
@@ -149,6 +159,27 @@ pub fn request_open(path: String) {
     }
     if let Ok(mut p) = PENDING_OPEN.lock() {
         p.push(path);
+    }
+}
+
+/// Brings the window forward, for a second launch (APP-001).
+pub fn request_activate() {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(|c| c.activate_requested());
+    }
+}
+
+/// Saves the position and quits the application, from any thread.
+pub fn request_quit() {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(|mut c| {
+            c.as_mut().shutdown();
+            c.quit_requested();
+        });
     }
 }
 

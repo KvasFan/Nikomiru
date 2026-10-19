@@ -293,7 +293,7 @@ pub fn generate(dir: &Path) -> Result<()> {
                 break;
             }
             // ~75% of the lexicon, different for each dictionary
-            if mix(i as u64, d) % 4 == 0 {
+            if mix(i as u64, d).is_multiple_of(4) {
                 continue;
             }
             json.clear();
@@ -365,7 +365,7 @@ pub fn generate(dir: &Path) -> Result<()> {
         let mut rng = SplitMix64::new(300);
         let mut json = String::new();
         for (i, word) in lexicon.iter().enumerate() {
-            if mix(i as u64, 77) % 2 == 0 {
+            if mix(i as u64, 77).is_multiple_of(2) {
                 continue;
             }
             json.clear();

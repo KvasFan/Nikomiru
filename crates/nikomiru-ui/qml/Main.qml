@@ -20,6 +20,11 @@ ApplicationWindow {
 
     PlayerController {
         id: ctl
+        onActivateRequested: {
+            win.raise();
+            win.requestActivate();
+        }
+        onQuitRequested: Qt.quit()
     }
 
     function apply(effect) {

@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use libmpv2::events::{Event, PropertyData};
 use libmpv2::{Format, Mpv};
+use tracing::Level;
 
 use crate::control::{self, LoadToken, Stamped, Throttle};
 use crate::options::{FIXED, MpvOption};
@@ -196,6 +197,45 @@ impl std::fmt::Debug for Player {
     }
 }
 
+// SAFETY: the signature matches `<mpv/client.h>`: `int mpv_request_log_messages(
+// mpv_handle *ctx, const char *min_level)`.
+unsafe extern "C" {
+    /// `mpv_request_log_messages` from `<mpv/client.h>`: libmpv2 6.0 does not
+    /// expose it. libmpv itself is linked by `libmpv2-sys`.
+    fn mpv_request_log_messages(
+        ctx: *mut std::ffi::c_void,
+        min_level: *const std::ffi::c_char,
+    ) -> std::ffi::c_int;
+}
+
+/// Sends libmpv's messages to the events thread, which writes them to the log
+/// (SPECIFICATION §5.2.2 #11): `warn` and above, `v` when debug logging is on.
+fn request_log_messages(client: &Mpv) {
+    let level = if tracing::enabled!(target: "mpv", Level::DEBUG) {
+        c"v"
+    } else {
+        c"warn"
+    };
+    // SAFETY: `client.ctx` is a live mpv handle owned by `client`, and `level` is a
+    // NUL-terminated string that mpv copies before returning.
+    let rc = unsafe { mpv_request_log_messages(client.ctx.as_ptr().cast(), level.as_ptr()) };
+    if rc < 0 {
+        tracing::warn!(target: "mpv", "mpv_request_log_messages failed: {rc}");
+    }
+}
+
+/// Writes one libmpv message to the log.
+fn log_message(prefix: &str, level: &str, text: &str) {
+    let text = text.trim_end();
+    match level {
+        "fatal" | "error" => tracing::error!(target: "mpv", "[{prefix}] {text}"),
+        "warn" => tracing::warn!(target: "mpv", "[{prefix}] {text}"),
+        "info" => tracing::info!(target: "mpv", "[{prefix}] {text}"),
+        "v" | "debug" => tracing::debug!(target: "mpv", "[{prefix}] {text}"),
+        _ => tracing::trace!(target: "mpv", "[{prefix}] {text}"),
+    }
+}
+
 /// Properties observed by the events thread (ARC-001; node properties through
 /// their sub-properties, because libmpv2 6.0 has no node support).
 const OBSERVED: [(&str, Format); 14] = [
@@ -232,6 +272,10 @@ impl Player {
             }
             if output == VideoOutput::Null {
                 init.set_property("ao", "null")?;
+            } else {
+                for o in crate::options::core_options(crate::options::nvidia_driver_loaded()) {
+                    init.set_property(&o.key, o.value.as_str())?;
+                }
             }
             Ok(())
         })?;
@@ -239,6 +283,7 @@ impl Player {
         // `create_client(None)`: with a name, libmpv2 6.0 passes mpv a dangling
         // pointer (ADR 0001).
         let client = mpv.create_client(None)?;
+        request_log_messages(&client);
         for (name, format) in OBSERVED {
             client.observe_property(name, format, 0)?;
         }
@@ -539,10 +584,20 @@ fn event_loop(client: Mpv, shared: &Shared, sink: &Sink) {
                 };
                 emit(PlayerEvent::EndFile(end));
             }
-            Some(Err(e)) => {
+            Some(Err(e @ libmpv2::Error::Raw(_))) => {
                 // libmpv2 reports an `end-file` with an error as an error event
                 emit(PlayerEvent::EndFile(EndFile::Error(e.to_string())));
             }
+            Some(Err(e)) => {
+                // a message or a property that is not valid UTF-8: not a playback error
+                tracing::debug!(target: "mpv", "unreadable event: {e}");
+            }
+            Some(Ok(Event::LogMessage {
+                prefix,
+                level,
+                text,
+                ..
+            })) => log_message(prefix, level, text),
             Some(Ok(Event::PropertyChange { name, change, .. })) => {
                 let ev = match (name, change) {
                     ("time-pos", PropertyData::Double(t)) => {

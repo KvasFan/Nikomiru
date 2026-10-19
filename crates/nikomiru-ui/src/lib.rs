@@ -18,5 +18,5 @@ pub mod i18n;
 pub mod session;
 pub mod shortcuts;
 
-pub use bridge::player::{deliver, install, request_open};
+pub use bridge::player::{deliver, install, request_activate, request_open, request_quit};
 pub use session::Services;

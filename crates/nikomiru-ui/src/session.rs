@@ -102,8 +102,9 @@ pub struct Services {
     pub translator: Translator,
     /// Time source.
     pub clock: Box<dyn Clock>,
-    /// NVIDIA's proprietary driver is loaded (hwdec interop, §5.2.2).
-    pub nvidia: bool,
+    /// Startup problems, already translated (invalid settings, read-only
+    /// library…): shown until the first file opens (ERR-001).
+    pub notices: Vec<String>,
 }
 
 impl std::fmt::Debug for Services {
@@ -166,11 +167,22 @@ pub fn url_to_path(url: &str) -> PathBuf {
     PathBuf::from(std::ffi::OsString::from_vec(out))
 }
 
+impl Drop for Session {
+    /// Every way out (window closed, quit, signal) saves the position (LIB-006).
+    fn drop(&mut self) {
+        self.flush_position();
+    }
+}
+
 impl Session {
     /// A new session.
     pub fn new(services: Services) -> Self {
         let bindings = Bindings::with_overrides(&services.config.shortcuts)
             .unwrap_or_else(|_| Bindings::defaults());
+        let view = ViewState {
+            error: (!services.notices.is_empty()).then(|| services.notices.join("\n")),
+            ..ViewState::default()
+        };
         Self {
             services,
             bindings,
@@ -181,7 +193,7 @@ impl Session {
             renderer_ready: false,
             pending: None,
             current: None,
-            view: ViewState::default(),
+            view,
             toasts: Vec::new(),
         }
     }
@@ -216,9 +228,13 @@ impl Session {
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = VideoRecord::default();
         let uid = library.and_then(|lib| {
-            let uid = lib.uid_for_path(&path).ok()?;
+            let uid = lib
+                .uid_for_path(&path)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .ok()?;
             record = lib
                 .video(&uid)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| VideoRecord {
@@ -233,11 +249,24 @@ impl Session {
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map_or(0, |d| d.as_secs() as i64);
             }
-            lib.put_video(&uid, &record).ok()?;
+            lib.put_video(&uid, &record)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .ok()?;
             Some(uid)
         });
-        let (options, _report) =
-            options::load_options(&self.services.config.player, self.services.nvidia);
+        let (options, report) = options::load_options(&self.services.config.player);
+        // Names only: a raw option's value may hold a token (PRV-002).
+        for line in report {
+            match line {
+                options::Line::Apply { .. } => {}
+                options::Line::Ignore { line, name, reason } => {
+                    tracing::warn!("mpv option {name} (line {line}) ignored: {reason:?}");
+                }
+                options::Line::Invalid { line, error } => {
+                    tracing::warn!("mpv options, line {line}: {error}");
+                }
+            }
+        }
         let request = LoadRequest {
             start: (record.last_position_ms > 0).then(|| record.last_position_ms as f64 / 1000.0),
             options,
@@ -251,9 +280,22 @@ impl Session {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
+        tracing::info!(
+            "opening {} (resume at {:?} s)",
+            path.display(),
+            request.start
+        );
         match self.services.player.load(&path.to_string_lossy(), request) {
-            Ok((token, _)) => self.token = token,
-            Err(e) => self.view.error = Some(self.tr("error-player", &[("reason", e.to_string())])),
+            Ok((token, rejected)) => {
+                self.token = token;
+                for e in rejected {
+                    tracing::warn!("mpv rejected option {}: {}", e.option.key, e.message);
+                }
+            }
+            Err(e) => {
+                tracing::error!("load failed: {e}");
+                self.view.error = Some(self.tr("error-player", &[("reason", e.to_string())]));
+            }
         }
         self.current = Some(Current { uid, path });
     }
@@ -266,6 +308,7 @@ impl Session {
         let now = self.services.clock.monotonic();
         match event {
             PlayerEvent::FileLoaded => {
+                tracing::info!("file loaded");
                 self.view.loaded = true;
                 self.saver.ready();
             }
@@ -289,6 +332,7 @@ impl Session {
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c.len(),
             PlayerEvent::EndFile(EndFile::Error(reason)) => {
+                tracing::warn!("playback error: {reason}");
                 let file = self.view.title.clone();
                 self.view.loaded = false;
                 self.view.error =
@@ -311,7 +355,9 @@ impl Session {
             .now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64);
-        let _ = lib.save_position(uid, ms, at);
+        if let Err(e) = lib.save_position(uid, ms, at) {
+            tracing::warn!("saving the position: {e}");
+        }
     }
 
     /// Exit or file change: write the last position and the per-file settings.

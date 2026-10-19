@@ -217,10 +217,23 @@ pub fn parse_mpv_conf(text: &str) -> Vec<Line> {
     out
 }
 
+/// Options set on the core before `mpv_initialize`, after the fixed ones. The
+/// render context probes the hwdec interops when it is created, so the interop
+/// cannot wait for the first `loadfile` (SPECIFICATION §5.2.2 #10): the CUDA
+/// interop only with NVIDIA's proprietary driver, otherwise probing it prints
+/// `Cannot load libcuda.so.1` on stderr.
+pub fn core_options(nvidia_driver: bool) -> Vec<MpvOption> {
+    if nvidia_driver {
+        Vec::new()
+    } else {
+        vec![MpvOption::new("gpu-hwdec-interop", "vaapi")]
+    }
+}
+
 /// The options applied before each `loadfile`, in order (PLY-006): the settings,
 /// then the UI/preset options, then the raw options, which win. Returns the
 /// options and the report of the raw lines.
-pub fn load_options(cfg: &PlayerConfig, nvidia_driver: bool) -> (Vec<MpvOption>, Vec<Line>) {
+pub fn load_options(cfg: &PlayerConfig) -> (Vec<MpvOption>, Vec<Line>) {
     let mut out = vec![
         MpvOption::new("hwdec", &cfg.hwdec),
         MpvOption::new("audio-pitch-correction", "yes"),
@@ -229,10 +242,6 @@ pub fn load_options(cfg: &PlayerConfig, nvidia_driver: bool) -> (Vec<MpvOption>,
     ];
     if cfg.quality_profile == "high-quality" {
         out.push(MpvOption::new("profile", "high-quality"));
-    }
-    // §5.2.2: the CUDA interop only with NVIDIA's proprietary driver.
-    if !nvidia_driver {
-        out.push(MpvOption::new("gpu-hwdec-interop", "vaapi"));
     }
     for (k, v) in &cfg.mpv_options {
         if classify(k).is_some() {
@@ -371,7 +380,7 @@ profile=high-quality
             raw_mpv_options: "deband=yes\nhwdec=no\n".into(),
             ..PlayerConfig::default()
         };
-        let (opts, report) = load_options(&cfg, false);
+        let (opts, report) = load_options(&cfg);
         let keys: Vec<&str> = opts.iter().map(|o| o.key.as_str()).collect();
         assert_eq!(
             keys,
@@ -381,7 +390,6 @@ profile=high-quality
                 "tone-mapping",
                 "audio-channels",
                 "profile",
-                "gpu-hwdec-interop",
                 "interpolation",
                 "video-sync",
                 "tscale",
@@ -393,7 +401,10 @@ profile=high-quality
         assert_eq!(opts.last(), Some(&MpvOption::new("hwdec", "no")));
         assert_eq!(report.len(), 2);
         // with NVIDIA's driver the CUDA interop stays available
-        let (opts, _) = load_options(&PlayerConfig::default(), true);
-        assert!(!opts.iter().any(|o| o.key == "gpu-hwdec-interop"));
+        assert_eq!(
+            core_options(false),
+            [MpvOption::new("gpu-hwdec-interop", "vaapi")]
+        );
+        assert!(core_options(true).is_empty());
     }
 }
