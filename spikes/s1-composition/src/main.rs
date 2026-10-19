@@ -11,6 +11,9 @@
 //!
 //! The backend is chosen through the environment: `GDK_BACKEND=wayland` (native)
 //! or `x11` (XWayland or X11), and optionally `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+//! `DRI_PRIME` selects the GPU. Diagnostics: `S1_DEBUG=1` prints the widget tree and
+//! the render calls, `S1_STATIC_SUB=1` freezes the fake subtitle, `S1_NO_INSTALL=1`
+//! skips the composition and only dumps the plain Dioxus window.
 
 mod compositor;
 mod metrics;
@@ -186,7 +189,12 @@ fn App() -> Element {
         spawn(async move {
             while let Some(msg) = rx.next().await {
                 match msg {
-                    UiMsg::Time(t) => time.set(t),
+                    UiMsg::Time(t) => {
+                        // S1_STATIC_SUB: keep the overlay still, to measure its cost.
+                        if std::env::var_os("S1_STATIC_SUB").is_none() {
+                            time.set(t);
+                        }
+                    }
                     UiMsg::Paused(p) => paused.set(p),
                     UiMsg::Info(s) => info.set(s),
                     UiMsg::Error(e) => {

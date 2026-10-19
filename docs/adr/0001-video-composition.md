@@ -60,6 +60,7 @@ Values in the measurement window, after 3 s of settling. "Process CPU" is the An
 | Wayland with `WEBKIT_DISABLE_DMABUF_RENDERER=1` (the environment that Dioxus sets on its own), H.264, 60 s | 0 dropped, but WebKit CPU goes from 9% to **15%** (process 11.9%, total 28.2%): the DMA-BUF renderer must stay on |
 | 4K output (3840×2160) on Wayland, H.264, 30 s | 0 dropped, 60 renders/s, process CPU **23.3%** (total 32.8%): within the threshold, but with little margin |
 | HiDPI 2× on X11 (`GDK_SCALE=2`), H.264, 30 s | scale factor 2, 960×540 logical window rendered at 1920×1080 physical; 1 frame dropped at startup, then 60 renders/s |
+| Integrated GPU: Radeon 610M (Ryzen 7 7800X3D, RDNA2 with 2 CUs, 2022) through `DRI_PRIME`, Wayland, H.264 1080p60, 30 s | VA-API active, but **20 dropped frames** with the default profile and **9 with `profile=fast`**; **22** with the subtitle overlay frozen (`S1_STATIC_SUB=1`, WebKit at 0.4% CPU). The iGPU reaches 100% load in bursts. The cost is in the GLArea + mpv + compositing chain, not in the webview. In this setup the virtual KWin may also composite on the iGPU |
 | HiDPI 2× on Wayland | **not verifiable in the virtual KWin**: GTK 3 always receives scale factor 1 (even with `--scale 2` or `GDK_SCALE=2`). Left to manual verification; the developer's real session reports scale factor 2 |
 
 ### Resize and fullscreen (`--exercise`)
@@ -111,7 +112,7 @@ The spike cannot automate them. They are done by hand with the interactive windo
 - [ ] Wayland: manual resizing, fullscreen and back without artifacts (misaligned black borders, flicker, unscaled video).
 - [ ] Wayland on a HiDPI 2× screen: sharp video and text. The developer's session reports scale factor 2.
 - [ ] Real X11 session (Xorg): the same points, plus the `--measure 290` run on H.264 and HEVC 10-bit.
-- [ ] On REF (integrated GPU): the `--measure 290` run on Wayland. This machine has a dedicated GPU.
+- [ ] On REF (integrated GPU): the `--measure 290` run on Wayland. The weakest iGPU that fits the REF definition (Radeon 610M, 2 CUs) drops frames at 1080p60 even with the overlay frozen (table above). Next steps: measure on a mid-range iGPU (Intel Iris Xe, Radeon 680M/780M) on a real session; if it also drops frames, profile the GTK 3 GLArea path in M1 (GDK compositing of the GL texture, `profile=fast`, `video-sync`). The maintainer may also want to make the REF GPU class explicit (SPECIFICATION §7).
 
 ## How to repeat the measurements
 
