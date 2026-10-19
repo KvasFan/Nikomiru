@@ -4,7 +4,7 @@ Video player for **learning languages by watching anime and TV series**. You cli
 
 Nikomiru is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0), limited to the video + dictionary + Anki core. The interface is [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt); playback is [mpv](https://mpv.io/) through [libmpv2](https://crates.io/crates/libmpv2), rendered on Qt Quick's render thread ([ADR 0003](docs/adr/0003-qt-quick-ui.md)).
 
-> **Status: milestone M1 in progress** (minimal player). M0 (foundations and spikes) is done. See [ROADMAP](docs/ROADMAP.md#m1--minimal-player).
+> **Status: 0.0.0, a development snapshot.** M0 (foundations and spikes) is done; M1 (minimal player) has its automated exit criteria met and waits for the manual checklist. Subtitles, dictionaries and Anki come in M2–M4. See [ROADMAP](docs/ROADMAP.md#m1--minimal-player).
 >
 > Nikomiru was called Anikoto until 2026-10-19 (decision D-11).
 
@@ -16,6 +16,14 @@ Nikomiru is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones M0–M8 up to 1.0, exit criteria, post-1.0 backlog |
 | [docs/TEST.md](docs/TEST.md) | Test strategy, fixtures, conformance with Fushi, case catalog, CI |
 | [docs/adr/](docs/adr/) | Architecture decisions with the spike measurements |
+
+## Trying it
+
+```sh
+cargo run --release -p nikomiru-app -- path/to/video.mkv
+```
+
+What works in 0.0.0: opening a file (argument, drag & drop, `Ctrl+O`), playback with keyboard and mouse controls (seek, speed, volume, audio track, chapters, frame step, fullscreen), resume from the last position, single instance, screensaver inhibition, translated messages (English, Italian). Logs are in `~/.local/state/nikomiru/logs/`.
 
 ## Development
 
@@ -31,7 +39,7 @@ Tasks run with `cargo xtask`:
 | Command | What it does |
 |---|---|
 | `cargo xtask ci` | fmt, clippy `-D warnings`, architecture checks, licenses (`cargo deny`), traceability, tests |
-| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests and `THIRD_PARTY_LICENSES.html` |
+| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests, the release build, the GUI end-to-end tests (L6, in an off-screen `kwin_wayland` on a private `dbus-daemon`) and `THIRD_PARTY_LICENSES.html` |
 | `cargo xtask fixtures [--large] [--perf]` | generates test media and dictionaries in `target/fixtures/` (requires `ffmpeg`) |
 | `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
 | `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |
