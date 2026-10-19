@@ -140,11 +140,17 @@ impl Desktop {
         self.dir.path().join(sub)
     }
 
-    /// `nikomiru` with `args`, in this desktop and with its folders.
+    /// `nikomiru` (the harness build) with `args`, in this desktop and with its
+    /// folders.
     pub fn app(&mut self, args: &[&str]) -> Command {
+        self.command(Path::new(env!("CARGO_BIN_EXE_nikomiru")), args)
+    }
+
+    /// Another build of `nikomiru` (the release one) in this desktop.
+    pub fn command(&mut self, binary: &Path, args: &[&str]) -> Command {
         self.launches += 1;
         let log = std::fs::File::create(self.path(&format!("app-{}.log", self.launches))).unwrap();
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_nikomiru"));
+        let mut cmd = Command::new(binary);
         cmd.args(args)
             .env_clear()
             .env("HOME", self.dir.path())

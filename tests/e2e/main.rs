@@ -129,3 +129,40 @@ fn the_logs_never_hold_an_api_key() {
         "a secret reached the logs:\n{logs}"
     );
 }
+
+// T-SEC-004
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, `cargo xtask fixtures` and the release build"]
+fn the_release_build_starts_and_quits() {
+    // `cargo xtask ci --full` builds it just before; by hand:
+    // `cargo build --release -p nikomiru-app`
+    let release =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/release/nikomiru");
+    assert!(
+        release.exists(),
+        "{} is missing: cargo build --release -p nikomiru-app",
+        release.display()
+    );
+    let mut desk = Desktop::start();
+    let mut app = desk
+        .command(&release, &[&fixture("av_basic.mkv")])
+        .spawn()
+        .unwrap();
+    support::until(
+        Duration::from_secs(20),
+        "the release build loads a file",
+        || {
+            if let Some(status) = app.try_wait().unwrap() {
+                panic!("the release build exited: {status}\n{}", desk.log());
+            }
+            desk.log().contains("file loaded").then_some(())
+        },
+    );
+    let kill = std::process::Command::new("kill")
+        .args(["-TERM", &app.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(kill.success());
+    let status = exit_status(&mut app, Duration::from_secs(15));
+    assert!(status.success(), "{status}\n{}", desk.log());
+}

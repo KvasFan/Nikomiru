@@ -64,6 +64,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     step("test", || tests(full))?;
     if full {
+        step("release build (T-SEC-004)", release_build)?;
         step("GUI end-to-end (L6)", gui_tests)?;
     }
     if full {
@@ -76,6 +77,34 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         if full { " --full" } else { "" },
         started.elapsed().as_secs_f64()
     );
+    Ok(())
+}
+
+// T-SEC-004
+/// The release build: it compiles, its feature tree has no test-only feature and
+/// the binary holds none of the harness's strings. The L6 suite then starts it.
+fn release_build() -> Result<()> {
+    util::run(cargo().args(["build", "--release", "--locked", "-p", "nikomiru-app"]))?;
+    let tree = util::output(cargo().args([
+        "tree",
+        "--locked",
+        "-e",
+        "normal,build,features",
+        "-p",
+        "nikomiru-app",
+    ]))?;
+    for feature in ["test-harness", "test_harness", "test-support"] {
+        if tree.contains(feature) {
+            bail!("the release feature tree enables `{feature}`");
+        }
+    }
+    let binary = std::fs::read(util::root().join("target/release/nikomiru"))?;
+    // the QML sources are in the binary too: they name only `onKeyRequested`…
+    for needle in ["test harness connected", "keyRequested", "dropRequested"] {
+        if binary.windows(needle.len()).any(|w| w == needle.as_bytes()) {
+            bail!("the release binary contains the harness string {needle:?}");
+        }
+    }
     Ok(())
 }
 

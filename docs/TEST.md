@@ -276,7 +276,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted QML items are produced; no network request (spy proxy) | L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
 | T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
-| T-SEC-004 | Release build | `cargo tree -e features --release -p nikomiru-app` without `test-harness`; the binary does not contain the harness symbol | L4 |
+| T-SEC-004 | Release build | `cargo tree -e normal,build,features -p nikomiru-app` without `test-harness`, `test_harness` or `test-support`; the release binary contains none of the harness's strings and starts, opens a file and quits on SIGTERM (L6) | L4 |
 | T-SEC-005 | Argument injection into ffmpeg | `-weird: name & spaces ü 日本.mkv` and `http:fake.mkv` are treated as local files; argv captured with a snapshot | L4 |
 | T-SEC-006 | QML network isolation | The QML engine's network access refuses every remote URL; a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
 | T-SEC-007 | Hostile `nikomiru://` links | Absolute paths, `file:`, duplicate or unknown parameters, > 16 KiB → rejected without effects (see T-ANK-051) | L1 |

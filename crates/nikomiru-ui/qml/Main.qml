@@ -26,8 +26,17 @@ ApplicationWindow {
         }
         // closing the last window quits, through onClosing like the user
         onQuitRequested: win.close()
-        onDropRequested: (url) => win.openDropped([url])
-        onKeyRequested: (scanCode, modifiers) => {
+    }
+
+    // GUI test harness (TEST §2.1): these signals exist only in builds with the
+    // `test-harness` feature, so the release build must load without them.
+    Connections {
+        target: ctl
+        ignoreUnknownSignals: true
+        function onDropRequested(url) {
+            win.openDropped([url]);
+        }
+        function onKeyRequested(scanCode, modifiers) {
             win.handleKey(scanCode, modifiers, true, false);
             win.handleKey(scanCode, modifiers, false, false);
         }
