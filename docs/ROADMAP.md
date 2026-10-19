@@ -57,16 +57,16 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
    - `trace`: requirements ↔ tests matrix;
    - `about`.
 6. CI pipeline (service to be chosen when the repository is published) that only calls `cargo xtask ci` and `cargo xtask ci --full`.
-7. **Spike S1 — video composition** (SPECIFICATION §5.2): Dioxus window with GtkOverlay(mpv GLArea + transparent webview), an HTML button over the video, a fake HTML subtitle that updates on every `time-pos`.
+7. **Spike S1 — video composition** (SPECIFICATION §5.2): Dioxus window with GtkOverlay(mpv GLArea + transparent webview), an HTML button over the video, a fake HTML subtitle that updates on every `time-pos`. After the 4K revision of ADR 0001, **spike S1q** repeats it with Qt 6 Quick: mpv rendered on Qt Quick's render thread, QML overlay, Rust through cxx-qt (D-10).
 8. **Spike S2 — dictionary storage**: import of a synthetic 300k-entry dictionary into redb and lookup with a minimal deinflector.
-9. For each spike, an ADR in `docs/adr/` (`0001-video-composition.md`, `0002-dictionary-storage.md`) with measurements, decision and chosen fallback. The spike code does not go into `crates/`: it is rewritten cleanly in later milestones.
+9. For each spike, an ADR in `docs/adr/` (`0001-video-composition.md`, `0002-dictionary-storage.md`, `0003-qt-quick-ui.md`) with measurements, decision and chosen fallback. The spike code does not go into `crates/`: it is rewritten cleanly in later milestones.
 
 **Exit criteria**
 
 - [x] `cargo xtask ci` green on the empty workspace (T-LIC-001, T-ARC-010, T-ARC-011, T-ARC-020); the canary T-LIC-002 (`cargo xtask check-licenses --canary`) confirms that a forbidden license makes CI fail.
 - [ ] S1 meets **all** of these points on REF, both with Wayland (GNOME or KDE) and with X11:
   - 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and CPU ≤ 25% of one core (T-PERF-03);
-  - clicks and keys reach the webview over the video;
+  - clicks and keys reach the UI over the video (with D-10: the QML overlay);
   - resizing, fullscreen and HiDPI 2× without artifacts;
   - 50 player opens and closes without RSS growth above 10%.
 
@@ -74,22 +74,22 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
   On 2026-10-19 the maintainer moved the X11 T-PERF-03 measurement to the M1 exit criteria, because it cannot be measured reliably with nested XWayland.
 
-  Status as of 2026-10-19 ([ADR 0001](adr/0001-video-composition.md)), automatic measurements in a virtual KWin on a machine with a dedicated GPU:
-  - [x] Wayland, T-PERF-03: 0 dropped frames in 5 minutes with H.264 and HEVC 10-bit (VA-API without copies); process CPU 9.8% and 9.6%.
-  - [x] Wayland and X11: 50 opens and closes with RSS −0.2% and +0.9%.
-  - [x] Wayland and X11: the render size follows resizing and fullscreen, without dropped frames; HiDPI 2× verified on X11 (`GDK_SCALE=2`).
-  - [x] X11, T-PERF-03: moved to M1. With nested XWayland, identical runs range from 0 to 5122 dropped frames, with CPU always below 21%; a measurement on a real X11 session is needed.
-  - [ ] By hand, on the real session: clicks and keys on the webview, no artifacts, HiDPI 2× on Wayland.
-  - [ ] On REF (integrated GPU): repeat T-PERF-03 on Wayland. On the Radeon 610M (2 CUs, the weakest iGPU that fits REF) 1080p60 drops 9–22 frames in 30 s, even with the overlay frozen; a mid-range iGPU still has to be measured (ADR 0001).
-  - [ ] **Spike S1q (Qt 6 Quick)**, proposed by the maintainer after the 4K revision of ADR 0001: at 4K under heavy CPU load it holds 60 renders/s with 0–2 dropped frames, like mpv alone (Dioxus: 14 renders/s, 912 dropped), and 0 dropped on the integrated GPU. [ADR 0003](adr/0003-qt-quick-ui.md) is proposed; it needs the check on the real session and the maintainer's approval, then a revision of SPECIFICATION.
+  Status as of 2026-10-19: S1 (Dioxus/GTK) met the criteria at 1080p on an idle machine but failed at 4K under CPU load: 14 renders/s and 912 dropped frames in 20 s ([ADR 0001](adr/0001-video-composition.md)). The maintainer chose Qt 6 Quick (D-10), and spike S1q meets the criteria ([ADR 0003](adr/0003-qt-quick-ui.md), accepted). Automatic measurements in a virtual KWin, unless stated otherwise:
+  - [x] Wayland, T-PERF-03: at 1080p and at 4K under heavy CPU load, 0–2 dropped frames with H.264 and HEVC 10-bit (VA-API without copies); process CPU 14–15%.
+  - [x] The developer's real session (KDE Wayland, 4K, 120 Hz, fractional scale 2.7): no dropped frames (2026-10-19).
+  - [x] 50 opens and closes without RSS growth.
+  - [x] REF, integrated GPU (Radeon 610M) at 1080p: 0 dropped frames with H.264 and HEVC 10-bit.
+  - [x] X11 in the virtual KWin with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, zero-copy VA-API): 0 dropped frames. The measurement on a real Xorg session stays in M1.
+  - [ ] By hand, on the real session: clicks and keys on the overlay, resizing and fullscreen without artifacts, sharpness at fractional scale (so far the developer has only reported the dropped frames).
 - [x] S2: import ≤ 60 s and ≤ 1 GiB of RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). If it fails, the ADR adopts the custom format (DIC-020). — Passed: import of 300k entries in 2.3 s with 86 MiB; lookup p95 2.4 ms warm and 4.7 ms cold. redb is adopted ([ADR 0002](adr/0002-dictionary-storage.md)).
 - [x] D-1 (Class B exceptions) and D-3 (GPL-3.0-only) approved by the maintainer (2026-10-19).
-- [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English).
+- [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English). D-10 (Qt 6 Quick, driven from Rust through cxx-qt, instead of Dioxus; [ADR 0003](adr/0003-qt-quick-ui.md)) approved by the maintainer (2026-10-19): it supersedes D-7 and D-8.
 
 **Progress notes** (2026-10-19)
 
 - Deliverable 6 (CI pipeline) waits for the repository to be published: for now CI runs locally with `cargo xtask ci`.
-- The automatic S1 measurements run in an off-screen virtual KWin (`spikes/s1-composition/run-virtual.sh`): on the session in use, the window opened behind the others and, being covered, did not draw (see ADR 0001).
+- The automatic S1 and S1q measurements run in an off-screen virtual KWin (`spikes/s1-composition/run-virtual.sh`, `spikes/s1q-qt/run-virtual.sh`): on the session in use, the window opened behind the others and, being covered, did not draw (see ADR 0001).
+- D-10 replaced Dioxus with Qt 6 Quick ([ADR 0003](adr/0003-qt-quick-ui.md)). The code of spike S1 stays in `spikes/s1-composition/` for reference.
 
 ---
 
@@ -101,18 +101,19 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017).
-- `anikoto-app`: final Linux compositor (from ADR 0001), single instance via socket, opening from an argument or drag & drop.
-- `anikoto-ui`: player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
+- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017), the Qt Quick video item (C++, [ADR 0003](adr/0003-qt-quick-ui.md)) and its cxx-qt bridge.
+- `anikoto-app`: Qt application (`QGuiApplication`, QML engine) instead of the GTK compositor of ADR 0001, single instance via socket, opening from an argument or drag & drop.
+- `anikoto-ui`: QML player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
 - Minimal `config.toml`, with atomic writes.
 - `library.redb` with only the `videos` table.
+- cxx-qt enters the workspace: `deny.toml` turns `unused-license-exception` back to `warn`.
 
 **Exit criteria**
 
 - [ ] T-PLY-001…T-PLY-013, T-KEY-001…T-KEY-004, T-APP-001 green.
 - [ ] GUI harness: opens a fixture, play/pause/seek from the keyboard, closes, reopens and resumes from the saved position (T-E2E-001).
 - [ ] Manual checklist TEST §9, "Player" section, completed on Wayland and X11.
-- [ ] T-PERF-03 on a real X11 session (Xorg): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer picks one of the X11 options listed in the ADR decision.
+- [ ] T-PERF-03 on a real X11 session (Xorg), with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, [ADR 0003](adr/0003-qt-quick-ui.md)): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer decides between a documented tolerance on X11 and moving X11 support after 1.0.
 
 ---
 
@@ -132,9 +133,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
   - encoding detection via iconv (FFI in `anikoto-app::linux` or in a small dedicated `unsafe` module, ARC-011).
 - `anikoto-media`: ffmpeg and ffprobe runner with timeout and cancellation (EXT-002/003); extraction of embedded tracks with a cache.
 - `anikoto-ui`:
-  - grapheme overlay;
+  - grapheme overlay as QML items;
   - default style and "respect ASS";
-  - blur and hide;
+  - blur (with `MultiEffect`) and hide;
   - list panel with search;
   - prev/next/replay navigation;
   - Z/X and alignment to the playhead.
@@ -156,17 +157,18 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Work tracks** (`anikoto-text` and `anikoto-dict` do not depend on the UI and can start in parallel with M1):
 
-1. `anikoto-text`: preprocessors (LKP-010…012), kana conversion, iteration marks, kanji variants (table from Fushi), sentence extraction, furigana (LKP-050), character count (STA-003, needed in M6).
-2. `anikoto-dict`:
+1. **Spike S4 — dictionary popup in QML**: Yomitan structured content (ruby, table, list, details, image, links) rendered as QML items from the tag allowlist, the CSS subset of DIC-035, and the click-to-popup time (NFR-PERF-06); ADR `0005-popup-qml.md`.
+2. `anikoto-text`: preprocessors (LKP-010…012), kana conversion, iteration marks, kanji variants (table from Fushi), sentence extraction, furigana (LKP-050), character count (STA-003, needed in M6).
+3. `anikoto-dict`:
    - safe (DIC-011), atomic (DIC-013) and cancellable Yomitan import;
    - `DictStore` on redb;
    - deinflector on the `assets/transforms` tables;
    - scanning, merging, sorting and grouping;
    - frequencies, pitch accent, kanji;
    - LRU cache.
-3. `anikoto-ui`:
+4. `anikoto-ui`:
    - dictionary management;
-   - popup (structured content with an allowlist of tags, CSS with `@scope`, images via `anikoto-dict://`);
+   - popup (structured content rendered as QML items from an allowlist of tags, the style subset of DIC-035, images through the `image://anikoto-dict` provider);
    - nested popups;
    - pause/resume state machine (POP-001/004/005);
    - hover with Shift.
@@ -175,7 +177,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
 - [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
-- [ ] T-SEC-001 (no script executed from dictionary content) and T-SEC-002 (malicious ZIPs) green.
+- [ ] T-SEC-001 (dictionary content produces only allowlisted QML items) and T-SEC-002 (malicious ZIPs) green.
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Anikoto and in Fushi.
 
 ---
@@ -276,7 +278,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- Packages: PKGBUILD (AUR) and Flatpak (manifest with libmpv and ffmpeg, GNOME runtime), as decided in D-5.
+- Packages: PKGBUILD (AUR) and Flatpak (manifest with libmpv and ffmpeg, KDE runtime with Qt 6), as decided in D-5 (runtime updated by D-10).
 - User guide in `docs/guide/` (Italian and English): installation, first start, dictionary import, Anki setup with AnkiConnect (code 2055492159).
 - Security review (TEST §6.7) and accessibility review.
 - Optimization until all T-PERF pass on REF.

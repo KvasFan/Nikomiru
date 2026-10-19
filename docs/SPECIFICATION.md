@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | v0.4 — decisions D-1…D-9 approved on 2026-10-19 (§10.1) |
+| Status | v0.5 — decisions D-1…D-10 approved on 2026-10-19 (§10.1); D-10 replaces Dioxus with Qt 6 Quick |
 | Date | 2026-10-19 |
 | Reference | Fushi, commit `ac8034e8bbc25e877e6d419334a38951bc477105` (2026-10-18), <https://github.com/hajisensai/Fushi> |
 | Related documents | [ROADMAP.md](ROADMAP.md) · [TEST.md](TEST.md) |
@@ -26,8 +26,8 @@ Anikoto is a desktop video player for **learning languages by watching anime and
 
 Anikoto is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Anikoto takes its "video + dictionary + Anki" core and reimplements it with:
 
-- **UI**: [Dioxus](https://github.com/DioxusLabs/dioxus) 0.7 (desktop, WebKitGTK webview on Linux);
-- **playback**: [libmpv2](https://crates.io/crates/libmpv2) 6.0 (Rust bindings for libmpv, OpenGL render API);
+- **UI**: [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt);
+- **playback**: libmpv through [libmpv2](https://crates.io/crates/libmpv2) 6.0 (core, commands, events), plus a small C++ Qt Quick video item that renders with the libmpv render API on Qt Quick's render thread;
 - **licenses**: only GNU (GPL/LGPL), Apache-2.0 and MIT, with the unavoidable exceptions documented in §3.
 
 ### 1.2 Goals
@@ -51,12 +51,12 @@ Anikoto is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/D
 | Cloud sync, Interconnect, iroh P2P, headless server, CLI | post-1.0 (WebDAV backup/sync only) | Complexity; not needed for the MVP |
 | Built-in SRS (FSRS) | post-1.0 | `fsrs` is BSD-3-Clause: it would need an exception (§3) |
 | Leaderboard, in-app feedback, usage telemetry | excluded | Privacy; no service to run |
-| Android, iOS | excluded | Dioxus mobile + libmpv are not a goal |
+| Android, iOS | excluded | Qt for mobile + libmpv are not a goal |
 | Windows, macOS | post-1.0 | Linux first; the architecture must not rule them out (§5.2.4) |
 
 ### 1.4 Platforms
 
-- **Primary**: Linux x86_64, both **Wayland** and **X11**, with GTK 3.24 and WebKitGTK 4.1 (≥ 2.44) installed.
+- **Primary**: Linux x86_64, both **Wayland** and **X11**, with Qt ≥ 6.5 (Base, Declarative/Quick, Wayland platform plugin; fractional scaling on Wayland) and OpenGL drivers with EGL installed. On X11 Qt uses its xcb platform with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, §5.2.2).
 - **libmpv**: API ≥ 2.2 (mpv ≥ 0.37). Development reference: mpv 0.41 (API 2.5).
 - **FFmpeg**: ≥ 6.0 as a system executable (`ffmpeg`, `ffprobe`). Development reference: 9.0.
 - Secondary (post-1.0): Windows 10+, macOS 13+ on Apple Silicon.
@@ -92,10 +92,10 @@ Anikoto is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/D
 | Fushi area | Reference | Anikoto crate | Milestone |
 |---|---|---|---|
 | Video player, mpv config | `fushi/lib/src/media/video/video_player_controller.dart`, `video_mpv_config.dart` | `anikoto-player` | M1 |
-| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `anikoto-subs`, `anikoto-ui` | M2 |
+| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `anikoto-subs`, `anikoto-ui` (QML) | M2 |
 | Dictionary engine | `native/fushidicts/fushidicts_src/` | `anikoto-dict` | M3 |
 | Preprocessors and kana | `native/fushidicts/fushidicts_src/text_processor/` | `anikoto-text` | M3 |
-| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `anikoto-ui` | M3 |
+| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `anikoto-ui` (QML) | M3 |
 | Anki / Lapis / composer | `packages/fushi_anki/lib/src/` | `anikoto-anki` | M4 |
 | Video mining (ffmpeg) | `fushi/lib/src/mining/immersion_mining_engine.dart`, `packages/fushi_engine/lib/utils/misc/desktop_audio_clipper.dart` | `anikoto-media` | M4 |
 | Library, file name parser | `packages/fushi_engine/lib/media/video/video_library_import.dart`, `video_filename_parser.dart` | `anikoto-library` | M5 |
@@ -131,31 +131,24 @@ Expressions with `OR` (e.g. `MIT OR Apache-2.0`, `Unlicense OR MIT`, `MIT OR Zli
 
 **Class B — unavoidable exceptions, allowed only for the listed crates.**
 
-A real check (`cargo tree` on Linux with `dioxus` 0.7.10 desktop, `libmpv2` 6.0.0, `reqwest` with native-tls, confirmed with `cargo deny` on the whole §4 stack in M0, decisions D-7 and D-8) shows that **Dioxus desktop itself** requires crates with licenses outside class A. They cannot be avoided without giving up Dioxus, which is a project constraint. All of them are permissive licenses compatible with GPL-3.0.
+A real check with `cargo deny` on the whole §4 stack (D-10: `cxx-qt` 0.10, `libmpv2` 6.0.0, `reqwest` with native-tls) shows a few unavoidable crates outside class A: the Unicode-3.0 ICU family (`url` → `idna`, needed by reqwest, and the direct `icu_normalizer`), `unicode-ident` (every procedural macro) and `foldhash` (Zlib, required by `cxx`). All of them are permissive licenses compatible with GPL-3.0. The longer list forced by Dioxus desktop (D-1, D-7, D-8) is gone with D-10.
 
 | License | Crate (verified version) | Required by |
 |---|---|---|
-| `Unicode-3.0` | `icu_*` 2.3, `litemap`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`, `potential_utf`; `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`) | `url` → `idna` (tao, wry, reqwest); `proc-macro2` (every macro, including `rsx!`) |
-| `Zlib` | `slotmap`, `const_format`, `const_format_proc_macros`, `konst`, `konst_macro_rules` | `dioxus-core` |
-| `Zlib` | `foldhash` | `hashbrown` (used almost everywhere) |
-| `Zlib` | `zlib-rs` | `flate2` ← `png`/`image` ← `dioxus-desktop`, `tray-icon` |
-| `BSD-3-Clause` | `subtle` | `dioxus-desktop` |
-| `BSD-2-Clause`, `BSD-3-Clause` | `rav1e`, `ravif`, `av1-grain`, `v_frame`, `avif-serialize`, `exr`, `lebe` | `image` with default features ← `dioxus-desktop` |
-| `ISC` | `libloading` 0.7 / 0.8 | `subsecond` (Dioxus hot-patching), `libappindicator-sys` |
-| `MPL-2.0` | `option-ext` | `dirs-sys` ← `dirs` ← `wry`, `tray-icon` |
-| `CC0-1.0` | `base16` 0.2.1 | `dioxus-router-macro` (procedural macro, not in the binary) ← `dioxus-router` (feature `router`), D-8 |
+| `Unicode-3.0` | `icu_*` 2.3, `litemap`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`, `potential_utf`; `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`) | `url` → `idna` (reqwest); `icu_normalizer` (direct, §4); `proc-macro2` (every procedural macro: serde_derive, thiserror, cxx, cxx-qt) |
+| `Zlib` | `foldhash` | `cxx` (through cxx-qt) |
 
 Rules for class B:
 
 1. The exceptions apply **only** to the listed crates, through `[[licenses.exceptions]]` in `deny.toml`. A new crate with one of these licenses makes CI fail.
 2. Every new exception requires: a justification ("what requires it and why it cannot be avoided"), a row in this table and explicit approval from the maintainer.
 3. No **direct** dependency of Anikoto may be class B, except `icu_normalizer` (see §4): it is already in the graph through `idna`, so it adds no new license.
-4. On every Dioxus update we MUST try to shrink class B, for example with an upstream PR that makes the `image` features optional.
+4. On every update of cxx-qt, cxx or reqwest we MUST try to shrink class B.
 
 **Forbidden** (CI fails):
 
 - All licenses not listed above.
-- In particular: `AGPL-*` (Anki rslib), `CC-BY-NC-*`, `CC0-1.0` (e.g. `notify`; the only exception is `base16`, D-8), `BSL-1.0` (e.g. `xxhash-rust`), `GPL-2.0-only`, `OpenSSL`, `CECILL-*`, and any crate without a declared license.
+- In particular: `AGPL-*` (Anki rslib), `CC-BY-NC-*`, `CC0-1.0` (e.g. `notify`; forbidden with no exception, D-8 is obsolete), `BSL-1.0` (e.g. `xxhash-rust`), `GPL-2.0-only`, `OpenSSL`, `CECILL-*`, and any crate without a declared license.
 
 ### 3.3 System libraries and external programs
 
@@ -165,10 +158,10 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 |---|---|---|
 | libmpv (mpv) | GPL-2.0-or-later (or LGPL-2.1-or-later, depending on the build) | Playback |
 | FFmpeg / FFprobe (executables) | LGPL-2.1-or-later or GPL-2.0-or-later | Subtitle extraction, audio clips, images |
-| GTK 3, GLib, WebKitGTK | LGPL-2.1-or-later (WebKit: also BSD-2 for some parts) | UI through tao/wry |
+| Qt 6 (Base, Declarative, Wayland) | LGPL-3.0-only (or GPL-2.0/GPL-3.0) | UI (Qt Quick, QML) |
 | glibc (`iconv`) | LGPL-2.1-or-later | Subtitle encoding conversion (§6.4) |
 | OpenSSL 3 | Apache-2.0 | TLS through `native-tls` |
-| Mesa / libEGL / libGL | MIT | OpenGL context for mpv rendering |
+| Mesa / libEGL / libGL | MIT | OpenGL context for the Qt Quick scene graph and mpv rendering |
 
 ### 3.4 Data and resources
 
@@ -201,6 +194,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | File system watching | `notify` (CC0-1.0) | Manual or periodic rescan; inotify via `libc` if ever needed |
 | Task runner | `just` (CC0-1.0) | `cargo xtask` |
 | Unicode normalization | `unicode-normalization` (adds an AND Unicode-3.0) | `icu_normalizer` (already in the graph) |
+| XDG paths | `directories` (pulls `option-ext`, MPL-2.0) | Own implementation in `anikoto-core` (XDG Base Directory variables and `user-dirs.dirs`) |
 
 ---
 
@@ -211,9 +205,8 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Area | Crate | Version | License |
 |---|---|---|---|
 | Toolchain | Rust stable, edition 2024, pinned in `rust-toolchain.toml` | ≥ 1.85 (development: 1.99) | — |
-| UI | `dioxus` (features `desktop`, `router`; see D-8) | 0.7.10 | MIT OR Apache-2.0 |
-| GTK composition | `gtk`, `glib`, `gdk` (the same version used by `tao`/`wry`) | 0.18 | MIT |
-| Video | `libmpv2` (feature `render`) | 6.0.0 | LGPL-2.1 |
+| UI | Qt 6 Quick (system library, §3.3) through `cxx-qt`, `cxx-qt-lib` (features `qt_gui`, `qt_qml`), `cxx-qt-build`, `cxx` | 0.10 / 1.0 | MIT OR Apache-2.0 (Qt: LGPL-3.0, system) |
+| Video | `libmpv2` (feature `render`) for the core, plus the C++ video item (`QQuickFramebufferObject`, own code, §5.2) | 6.0.0 | LGPL-2.1 |
 | Async | `tokio` | 1.x | MIT |
 | Storage | `redb` | 4.x | MIT OR Apache-2.0 |
 | Serialization | `serde`, `serde_json`, `toml`, `postcard` | 1.x | MIT OR Apache-2.0 |
@@ -223,11 +216,11 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Unicode | `icu_normalizer`, `unicode-segmentation` | 2.3 / 1.13 | Unicode-3.0 (class B) / MIT OR Apache-2.0 |
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
-| XDG paths | `directories` | 6.x | MIT OR Apache-2.0 |
-| File dialogs | `rfd` (XDG portal) | 0.17 | MIT |
+| XDG paths | Own implementation in `anikoto-core` (§3.6), no crate | — | — |
+| File dialogs | Qt Quick Dialogs `FileDialog` (XDG portal through Qt), no crate | — | (Qt: LGPL-3.0, system) |
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
-| Dictionary HTML (post-1.0 only, MDict) | `ammonia` | 4.x | MIT OR Apache-2.0 |
+| Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to QML items | `ammonia` | 4.x | MIT OR Apache-2.0 |
 | Tests | `proptest`, `insta`, `criterion`, `wiremock`, `tempfile` | — | MIT/Apache |
 
 Every new crate requires, in the PR: the license (verified by `cargo deny`), a justification and an assessment of the "write the code ourselves" alternative.
@@ -250,12 +243,13 @@ anikoto/
 │   ├── anikoto-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
 │   ├── anikoto-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── anikoto-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
-│   ├── anikoto-player/     # libmpv2 wrapper: init, properties, commands, events, GL render
+│   ├── anikoto-player/     # libmpv core (libmpv2): init, properties, commands, events;
+│   │                       # Qt Quick video item (C++ in cpp/, renders on the scene-graph thread)
 │   ├── anikoto-anki/       # AnkiConnect client, note composer, Lapis, return link
 │   ├── anikoto-library/    # library, file names, progress, statistics
 │   ├── anikoto-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
-│   ├── anikoto-ui/         # Dioxus components (popup, subtitle overlay, controls, settings)
-│   └── anikoto-app/        # binary: Dioxus startup, GTK+mpv compositor, wiring
+│   ├── anikoto-ui/         # QML UI and Rust QObjects (cxx-qt): popup, subtitle overlay, controls, settings
+│   └── anikoto-app/        # binary: QGuiApplication, QML engine, wiring, single instance
 ├── assets/                 # transforms/, anki/lapis/, i18n/*.ftl, icons
 ├── tests/fixtures/         # small committed files; media are generated with xtask
 └── docs/
@@ -264,79 +258,77 @@ anikoto/
 **ARC-010 — Dependency rules** (verified by T-ARC-010 with `cargo metadata`):
 
 - `anikoto-core` depends on no workspace crate.
-- `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` and `anikoto-library` **MUST NOT** depend on `dioxus`, `gtk` or `libmpv2`. They stay pure logic, testable without a display.
-- Only `anikoto-player` depends on `libmpv2`. Only `anikoto-app` depends on `gtk`. Only `anikoto-ui` and `anikoto-app` depend on `dioxus`.
-- **ARC-011**: `unsafe` is allowed only in `anikoto-player` (GL callbacks) and in `anikoto-app::linux` (GTK/EGL FFI and iconv). Every block MUST have a `// SAFETY:` comment. The other crates declare `#![forbid(unsafe_code)]`.
+- `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` and `anikoto-library` **MUST NOT** depend on `cxx-qt`, `cxx` or `libmpv2`. They stay pure logic, testable without a display.
+- Only `anikoto-player` depends on `libmpv2`. Only `anikoto-ui`, `anikoto-player` and `anikoto-app` depend on `cxx-qt` / `cxx` (and on `cxx-qt-lib`, `cxx-qt-build`).
+- **ARC-011**: `unsafe` is allowed only in `anikoto-player` (mpv FFI, bridge to the video item), in `anikoto-app::linux` (iconv, `setlocale`) and in the cxx-qt bridge modules (files `src/bridge.rs` or under `src/bridge/`, which contain generated FFI declarations). C++ is allowed only for the video item, in `anikoto-player/cpp/`. Every `unsafe` block MUST have a `// SAFETY:` comment. Crates without bridges declare `#![forbid(unsafe_code)]`; crates with bridges declare `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on the modules listed above.
 
-### 5.2 Video and UI in the same window (Linux)
+### 5.2 Video and UI in the same window (Qt Quick)
 
-This is the **main technical risk** (R-1). Dioxus desktop draws the whole UI in a webview (WebKitGTK), while mpv must draw the video with OpenGL. The two layers must be composited in the same window.
+This was the **main technical risk** (R-1). The Dioxus design (a transparent WebKitGTK webview over a `GtkGLArea`) recomposed the whole window on the GTK main thread for every video frame and dropped frames at 4K under CPU load ([ADR 0001](adr/0001-video-composition.md)). With D-10 the UI is a Qt Quick scene graph, and mpv renders into one of its items ([ADR 0003](adr/0003-qt-quick-ui.md)).
 
-#### 5.2.1 Chosen solution: GtkOverlay
+#### 5.2.1 Composition
 
 ```
-GtkWindow (created by tao)
-└── GtkBox "default_vbox" (tao)
-    └── GtkOverlay                      ← inserted by Anikoto
-        ├── GtkGLArea                   (main child: video, libmpv render API)
-        └── WebKitWebView (wry/Dioxus)  (overlay: the whole UI, transparent background)
+QQuickWindow (OpenGL scene graph)
+└── player page (QML)
+    ├── video item           (C++, QQuickFramebufferObject: libmpv render API)
+    └── overlay items (QML)  (controls, subtitles, popups)
 ```
 
-- The webview sits **on top** and receives all mouse and keyboard events. The GLArea receives no input: events do not need to pass from one layer to the other.
-- On pages without video (library, settings) the GLArea is hidden and the webview has an opaque background.
-- In the player the webview `body` is transparent (`Config::with_background_color((0,0,0,0))` plus CSS). Only the controls, subtitles and popups are opaque.
+- The window uses the OpenGL scene graph: `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)` MUST be called before the first window is created.
+- The video item fills the player page. The QML overlay items (controls, subtitles, popups) are above it.
+- Qt Quick composites everything on the GPU, on its render thread. The GUI thread does no per-frame video work: it only updates QML items when the UI state changes.
+- Mouse and keyboard input goes to the QML items; the video item accepts none.
+- Pages without video (library, settings) do not create the video item.
 
-**Insertion into the widget tree.** Dioxus 0.7.10 on Linux creates the webview with `webview.build_gtk(window.default_vbox())` (see `dioxus-desktop/src/webview.rs`). Spike S1 validated strategy **(a)** ([ADR 0001](adr/0001-video-composition.md)); (b) remains as a fallback if a Dioxus update breaks (a).
-
-- **(a) Runtime reparenting** (adopted): on the first render, get the `WebKitWebView` from the vbox, remove it, create the `GtkOverlay` with the GLArea and re-insert the webview as an overlay. wry's `WebViewExtUnix::reparent` is not enough: on a `GtkOverlay` it would call `add`, i.e. it would make the webview the main child.
-- **(b) Minimal patch of `dioxus-desktop`**: a `Config::with_gtk_container(...)` hook that returns the container in which to build the webview. The patch is kept in `third_party/dioxus-desktop` (MIT/Apache) and proposed upstream.
-
-Constraints found by S1 (ADR 0001):
-
-- `Config::with_disable_dma_buf_on_wayland(false)` is mandatory. With the default value (`true`) Dioxus 0.7.10 **always** sets `GDK_BACKEND=x11`, so on Wayland the app would run under XWayland.
-- `Config::with_menu(None)`: the default Dioxus menu would go into the same vbox.
+Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–2 dropped frames, on both Wayland and X11; on the developer's session (4K, 120 Hz, fractional scale 2.7) no frame was dropped.
 
 #### 5.2.2 mpv rendering
 
-1. On the GLArea `realize`: `make_current()`, then `mpv.create_render_context([ApiType(OpenGl), InitParams{get_proc_address}, WaylandDisplay | X11Display])`.
-   - `get_proc_address` uses `eglGetProcAddress` on Wayland and EGL, or `glXGetProcAddressARB` on X11/GLX, through direct FFI to Mesa (MIT). No loader crates are used.
-   - mpv needs the native display (`gdk_wayland_display_get_wl_display` or `gdk_x11_display_get_xdisplay`) for zero-copy hwdec interop (VA-API on EGL). On X11, GTK 3 uses GLX, which mpv does not support for VA-API interop: there `hwdec=auto-safe` falls back to a copy mode (`vulkan-copy` or `vaapi-copy`).
-   - Before creating mpv, `LC_NUMERIC` MUST be `"C"`: `gtk_init` sets the locale from the environment and libmpv refuses to start (`mpv_create` returns NULL).
-2. The mpv update callback (called from any thread) **MUST NOT** call mpv APIs. It only runs `glib::MainContext::default().invoke(|| gl_area.queue_render())`.
-3. On the `render` signal:
-   - read `GL_DRAW_FRAMEBUFFER_BINDING`;
-   - call `render_context.render(fbo, w·scale, h·scale, flip=true)`, where `scale` is the HiDPI scale factor;
-   - call `report_swap()`.
-4. On `unrealize`, in this order: the render context is destroyed while the GL context is still current; then the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of that thread; finally the main `Mpv` handle. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001).
+1. The mpv core is owned by `anikoto-player` (Rust, `libmpv2`): options (PLY-005), properties, commands and events. Its handle is passed to the video item, which only renders.
+2. The render context is created on the render thread when the item's first FBO is created: `mpv_render_context_create` with the OpenGL API, `get_proc_address` taken from the current `QOpenGLContext`, and the native Wayland or X11 display, which mpv needs for zero-copy hwdec interop (VA-API on EGL).
+3. `loadfile` MUST wait until the render context exists: with `vo=libmpv`, a file loaded earlier has no video output and the item renders nothing. The item reports "renderer ready" with a queued signal.
+4. The mpv update callback (called from any thread) **MUST NOT** call mpv APIs. It only schedules a queued `update()` of the item.
+5. `render()` (render thread) calls `mpv_render_context_render` on the item's FBO, at its physical size.
+6. The item and its renderer share a mutex-protected link, which the item clears in its destructor: Qt destroys the renderer on the render thread after the item, and the update callback may still arrive.
+7. Shutdown, in this order: the render context is freed on the render thread, with the GL context current; then the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of the `mpv-events` thread; finally the core is destroyed. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001).
+8. `LC_NUMERIC` MUST be `"C"` before mpv is created: `QGuiApplication` sets the locale from the environment, and libmpv then refuses to start (`mpv_create` returns NULL). `anikoto-app` calls `setlocale(LC_NUMERIC, "C")` right after creating `QGuiApplication`.
+9. On X11, `anikoto-app` sets `QT_XCB_GL_INTEGRATION=xcb_egl` before creating `QGuiApplication`, so that the GL context is EGL and mpv gets zero-copy VA-API. If EGL is not available, the app falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
 
-#### 5.2.3 Fallback strategies (if S1 fails the criteria)
+#### 5.2.3 Fallback
 
-- **B**: X11/XWayland only. mpv draws with `wid` into a native child window; the Dioxus UI goes into a separate transparent window that follows the player geometry.
-- **C**: `dioxus-native` (Blitz renderer on wgpu), once it is mature. The mpv texture would be composited directly into the scene.
-- **D**: player in a separate window, with mpv drawing on its own. Accepted only as a temporary fallback, because it loses the clickable subtitles over the video.
+- If the OpenGL scene graph is not available, the player falls back to **option D**: mpv in its own window, drawing on its own. It is accepted only as a temporary fallback, because it loses the clickable subtitles over the video.
+- The GtkOverlay design of ADR 0001 and its fallbacks B (separate transparent window over a `wid` child window) and C (`dioxus-native`) are withdrawn (D-10).
 
 #### 5.2.4 Other platforms (post-1.0)
 
-The compositor MUST sit behind a trait (`VideoSurface`) in `anikoto-app`, with one implementation per platform:
-
-- Windows: transparent WebView2 with `build_as_child` above a child HWND window with `wid`;
-- macOS: NSView with an OpenGL or Metal context.
+- Windows: the same video item with the OpenGL scene graph.
+- macOS: Qt Quick uses Metal by default and OpenGL is deprecated; a Metal path (for example a `QQuickRhiItem`) may be needed, to be evaluated.
 
 ### 5.3 Threads and events
 
 ```
- ┌───────────── GTK UI thread (main) ─────────────┐        ┌──── mpv-events thread ────┐
- │ Dioxus VirtualDom + Signals                    │        │ loop: mpv.wait_event(-1)  │
- │ GLArea.render → render_context.render()        │◄───────┤ PropertyChange / EndFile  │
- │ UI commands → PlayerHandle (mpsc)              ├───────►│ → PlayerEvent (channel)   │
- └────────────────────────────────────────────────┘        └───────────────────────────┘
-          ▲                    │ tokio runtime (I/O, ffmpeg, HTTP, dictionary import)
-          └────────────────────┘
+ ┌──────────────── GUI thread (main) ─────────────────┐        ┌──── mpv-events thread ────┐
+ │ QGuiApplication event loop, QML engine             │        │ loop: mpv.wait_event(-1)  │
+ │ Rust QObjects (cxx-qt): state and commands for QML │◄───────┤ PropertyChange / EndFile  │
+ │ UI commands → PlayerHandle (mpsc)                  ├───────►│ → PlayerEvent (channel)   │
+ └───────┬───────────────────────────┬─────────▲──────┘        └───────────────────────────┘
+         │ sync, update()            │ tasks   │ results
+ ┌───────▼───────────────────┐ ┌─────▼─────────┴─────────────────────────────┐
+ │ Qt Quick render thread    │ │ tokio runtime                               │
+ │ scene graph → GPU         │ │ I/O, ffmpeg, HTTP, dictionary import        │
+ │ video item → mpv render   │ └─────────────────────────────────────────────┘
+ └───────────────────────────┘
 ```
+
+- The **GUI thread** runs the Qt event loop, the QML engine and the Rust `QObject`s that expose state to QML and receive the UI commands.
+- The **Qt Quick render thread** renders the scene graph; inside it, the video item calls the mpv render API (§5.2.2). The mpv update callback only schedules a queued `update()` of the item.
+- The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s for the GUI thread.
+- The **tokio runtime** runs I/O, ffmpeg, HTTP and dictionary import; results reach the GUI thread through queued calls.
 
 - **ARC-001**: `anikoto-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
 - **ARC-002**: every load has an increasing `LoadToken`. Events and asynchronous results with an old token are discarded. This is the equivalent of the Fushi bugs "re-check player and loadToken after every await".
-- **ARC-003**: no synchronous read of mpv properties on the UI thread during playback (Fushi BUG-3507). State is read from events.
+- **ARC-003**: no synchronous read of mpv properties on the GUI thread during playback (Fushi BUG-3507). State is read from events.
 - **ARC-004**: `time-pos` updates to the UI are limited to ≤ 30 Hz. Cue synchronization uses the most recent value with a binary search. Fushi's 125 ms timer is not needed.
 
 ### 5.4 Persistence
@@ -420,7 +412,7 @@ The compositor MUST sit behind a trait (`VideoSurface`) in `anikoto-app`, with o
 | ID | Requirement |
 |---|---|
 | KEY-001 | All actions can be remapped; the bindings are saved in `config.toml` (`[shortcuts]`). |
-| KEY-002 | Keys are recognized by their **physical code** (`KeyboardEvent.code`), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
+| KEY-002 | Keys are recognized by their **physical key**, i.e. the scan code (`QKeyEvent::nativeScanCode`, mapped to the evdev code), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
 | KEY-003 | Two actions in the same context (`global`, `library`, `player`, `popup`) cannot have the same key: the editor reports the conflict and does not save. |
 | KEY-004 | While a text field is focused, single-key shortcuts are disabled. |
 
@@ -449,7 +441,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 
 ### 6.4 Subtitles (SUB)
 
-**Principle (from Fushi):** mpv does **not** draw text subtitles. Anikoto parses them into cues and draws them in the Dioxus overlay. This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
+**Principle (from Fushi):** mpv does **not** draw text subtitles. Anikoto parses them into cues and draws them in the QML overlay. This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
 
 | ID | Requirement | Fushi |
 |---|---|---|
@@ -461,12 +453,12 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`). They are loaded automatically according to the preferred language (default `ja`) | |
 | SUB-007 | Embedded text tracks: extracted with `ffmpeg -y -i file:<video> -map 0:<ff-index> -c:s <srt\|ass\|webvtt> <cache>`. Several tracks are extracted in a single pass; if the pass fails, it is retried track by track. The cache key is (path, size, mtime, ff-index) | `video_subtitle_source.dart` |
 | SUB-008 | Automatic subtitle selection: (1) the choice saved for the series; (2) an external file in the preferred language; (3) an embedded track in the preferred language (`lang` = ja/jpn, or a title that contains "Japanese" or "日本語"); (4) none | |
-| SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a `span` with the character offset in `plain_text` | `video_subtitle_overlay.dart` |
+| SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a QML `Text` item carrying its character offset in `plain_text` | `video_subtitle_overlay.dart` |
 | SUB-010 | Default style: white text, weight 400, soft shadow, no box, 36 px relative to a video height of 1080 (scales proportionally), 75 px from the bottom; it moves up when the control bar is visible. The style options (font, size, outline, shadow, box, position) can be changed. "Respect ASS styles" (default no) uses the ASS colors, font and position | `video_subtitle_style.dart` |
 | SUB-011 | Offset: positive `delay_ms` = the subtitle appears later. The compared cue time is `pos − delay_ms`; seek and mining apply the inverse. Z/X = ∓100 ms; the offset is shown in a toast | |
 | SUB-012 | Navigation: "previous/next" goes to `cue.start − 180 ms`, never before the start of the previous cue, taking `delay_ms` into account (BUG-259). The target is computed from the current position with a *floor* search, not from the cached index. Without subtitles it falls back to the ±N s seek. With the keyboard, if the previous cue is more than 10 s away, a time seek is done (BUG-3339) | `video_player_controller.dart` |
 | SUB-013 | "Replay cue" goes to the start of the current cue and, if triggered from the popup, pauses at the end of the cue | `replayCue` |
-| SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235) | |
+| SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur is drawn with Qt Quick's `MultiEffect`, with sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235) | |
 | SUB-015 | Subtitle list panel (`L`): list of all cues with time, text search (`Ctrl+F`), automatic scrolling that follows playback (in gaps between cues it stays on the previous cue), click on the time to jump, click on a word for lookup | `video_subtitle_jump_panel.dart` |
 | SUB-016 | Align the start of the previous or next cue to the current position (Ctrl+Shift+←/→), updating `delay_ms` | |
 | SUB-017 | **Secondary** subtitle (e.g. a translation): second layer with its own offset (default: follows the main one), its own blur mode and position. Milestone M7 | |
@@ -522,7 +514,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | DIC-032 | Every dictionary can be enabled or disabled. A disabled one is **not queried** (Fushi BUG-3454/2997: exclude it before truncation, not at render time). |
 | DIC-033 | Deletion with confirmation; renaming for display only (`display_name`). |
 | DIC-034 | Collapse/expand state of the dictionary in the popup: `expanded` / `collapsed` / `automatic` (only the first N are expanded). |
-| DIC-035 | Per-dictionary CSS: the dictionary's own (`styles.css`) plus the user's, both scoped with `@scope ([data-dictionary="<id>"])` (WebKitGTK ≥ 2.44). |
+| DIC-035 | Per-dictionary styling: a safe subset of CSS properties taken from the dictionary's `styles.css` and from the user's CSS (color, font size, weight and style, margins, padding, borders, background), applied only to that dictionary's QML items. The exact subset is fixed by spike S4 at the start of M3 ([ADR 0003](adr/0003-qt-quick-ui.md)). |
 
 ### 6.6 Lookup (LKP)
 
@@ -606,10 +598,10 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-005 | With a popup open, a click on another character of the subtitle or the list replaces the entry and stays paused. | |
 | POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size; resizable by dragging the border. | `dictionary_popup_layer.dart` |
 | POP-007 | Header of each entry: headword with furigana (LKP-050), ♪ audio button (AUD), create-card button (+ / ✓ / ✓↩, ANK-030), deinflection trace chips with a description on hover, frequency row, pitch accent row, term tag chips. | `popup.js` |
-| POP-008 | One `<details>` block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
-| POP-009 | Yomitan **structured content**: converted into Dioxus elements from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`), with class `gloss-sc-<tag>`, attributes `data-sc-*`, `lang`, and an allowlist of `style` properties. **No raw HTML** from Yomitan dictionaries and no scripts. Tables with a scrollable container. | `renderStructuredContent` |
-| POP-010 | Dictionary images: custom protocol `anikoto-dict://<id>/<path>` served from the `media` table; respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`. | |
-| POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links → system browser (`xdg-open`). | |
+| POP-008 | One collapsible block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
+| POP-009 | Yomitan **structured content**: converted into QML items from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
+| POP-010 | Dictionary images: QML image provider `image://anikoto-dict/<id>/<path>` (a `QQuickImageProvider`) served from the `media` table; respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`. | |
+| POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links → system browser with `Qt.openUrlExternally` (`xdg-open`). | |
 | POP-012 | Nested popups: select text inside a glossary and a child popup opens. Esc or Back closes the last one; a click on the parent closes the children; a click outside closes everything. Maximum depth 8. | |
 | POP-013 | Kanji entries (LKP-037) shown with a dedicated card. | |
 | POP-014 | Keyboard navigation: Tab/Shift+Tab between entries, Enter = audio, Ctrl+Enter = create card, Esc = close. Alt+wheel = next or previous entry. | |
@@ -623,7 +615,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded. The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` or, unlike Fushi, direct audio (`Content-Type: audio/*`). | `word_audio_resolver.dart` |
 | AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (nhk16, forvo, jpod, …). The format is SQLite: it is read with `turso` (MIT), to be validated in spike S3 (D-2). | `local_audio_db.dart` |
 | AUD-004 | Resolution: for playback the first valid result in order is enough; the menu (right click on ♪) queries all sources in parallel and shows them all. Timeouts: 8 s for the connection, 10 s for the response. A 4xx response = "no audio"; a connection error pauses the host for 45 s. | |
-| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. WebKit/GStreamer audio is not used. Configurable volume. | |
+| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. Qt Multimedia is not used. Configurable volume. | |
 | AUD-006 | Option "play automatically when the popup opens", default yes: it does not overlap the dialogue because the lookup already pauses the video (POP-001). It can be disabled. | |
 | AUD-007 | There are no default JapanesePod101 or Forvo URLs (terms of service). The user adds their own templates. | |
 | AUD-008 | On-disk cache of downloaded audio (key = URL), limited to 500 MiB with an LRU policy. | |
@@ -706,9 +698,9 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 |---|---|
 | SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). |
 | SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file). |
-| SET-003 | Light / dark / system theme (`prefers-color-scheme` and GTK setting), with a configurable accent color. Design tokens as CSS variables in a single stylesheet. |
-| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`). No visible string hard-coded. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
-| SET-005 | UI scale 75–200% (webview zoom), independent of the subtitle size. |
+| SET-003 | Light / dark / system theme (the system theme follows the desktop through Qt's `styleHints().colorScheme`), with a configurable accent color. Design tokens in a single QML singleton (`Theme`). |
+| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`), which stays in Rust: QML gets the strings through a Rust object. No user-visible string literal in QML, and no visible string hard-coded elsewhere. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
+| SET-005 | UI scale 75–200% of the QML UI, independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
 | SET-007 | Configurable HTTP(S) proxy; used for all network requests except AnkiConnect on loopback. |
 
@@ -739,12 +731,12 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | NFR-PERF-06 | From the click on the character to the drawn popup ≤ 100 ms p95 | T-PERF-06 |
 | NFR-PERF-07 | A cue appears within ≤ 50 ms of its actual `start` | T-PERF-07 |
 | NFR-PERF-08 | Card created (5 s audio + image) ≤ 3 s from the click, with a local Anki | T-PERF-08 |
-| NFR-PERF-09 | Idle RAM (RSS) with the library open ≤ 400 MB, WebKit included | T-PERF-09 |
+| NFR-PERF-09 | Idle RAM (RSS) with the library open ≤ 400 MB | T-PERF-09 |
 | NFR-REL-01 | No crash and no data loss if the app is closed during: import, config write, progress save, mining | T-REL-001, T-REL-002 |
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
-| NFR-SEC-01 | Dictionary contents and subtitle extracts treated as untrusted data: no script execution, no raw HTML (POP-009), restrictive webview CSP compatible with Dioxus | T-SEC-* |
+| NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: QML shows them only as plain text (`Text.PlainText`) or as allowlisted items (POP-009), never as raw HTML or with scripts; the QML engine refuses remote URLs (images only through the app's image providers, POP-010) | T-SEC-* |
 | NFR-SEC-02 | No file written outside Anikoto's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
-| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; ARIA attributes on the player controls | T-A11Y-* |
+| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; Qt `Accessible` properties (role, name) on the player controls | T-A11Y-* |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |
 | NFR-MAINT-01 | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; `///` documentation on every `pub` item of the library crates | T-MAINT-001 |
 | NFR-MAINT-02 | Line coverage ≥ 80% for `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |
@@ -828,31 +820,33 @@ ffmpeg = ""                 # empty = search in PATH
 
 ### 10.1 Maintainer decisions
 
-Approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes). A decision is reopened only through an explicit change to this table.
+Decisions D-1…D-10 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q). A decision is reopened only through an explicit change to this table.
 
 | ID | Decision | Outcome |
 |---|---|---|
-| D-1 | Class B exceptions (§3.2), needed to use Dioxus desktop | **Approved**: closed list; CI blocks any addition |
+| D-1 | Class B exceptions (§3.2), needed to use Dioxus desktop | **Approved**: closed list; CI blocks any addition. Superseded by D-10: the exceptions forced by Dioxus are gone (§3.2) |
 | D-2 | Reading the local audio DB (SQLite, public domain) | **Approved** option (a): `turso` (MIT, a Rust rewrite of SQLite), to be validated in spike S3. If S3 fails, the decision is reopened between (b) an exception for the system SQLite library and (c) dropping AUD-003 |
 | D-3 | GPL-3.0-only or GPL-3.0-or-later | **Approved**: GPL-3.0-only (§3.1) |
 | D-4 | Default audio format for cards | **Approved**: AAC in M4A, compatible with Anki desktop, AnkiDroid and AnkiMobile |
-| D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (GNOME runtime, with libmpv and ffmpeg included in the manifest) |
+| D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**KDE runtime**, Qt 6, with libmpv and ffmpeg included in the manifest; runtime updated by D-10) |
 | D-6 | Name of the app, the folder and the repository | **Approved**: the app is called **Anikoto**; the local folder (currently "Amikoto") and the repository are renamed to `anikoto` |
-| D-7 | The `cargo deny` check on the real graph (M0, 2026-10-19) finds 5 class B crates missing from the §3.2 table: `yoke-derive`, `zerofrom-derive`, `zerovec-derive` (Unicode-3.0) and `const_format_proc_macros`, `konst_macro_rules` (Zlib). They are procedural macros of the already approved families (`yoke`, `zerofrom`, `zerovec`, `const_format`, `konst`), with the same license and the same requester. `foldhash` and `zlib-rs`, on the other hand, do not appear in the Linux graph | **Approved**: the 5 crates are in the §3.2 table and in `deny.toml`; `foldhash` and `zlib-rs` stay, since they may reappear with other versions or platforms |
-| D-8 | The `router` feature of `dioxus` (§4) brings in `base16` 0.2.1, which is **CC0-1.0** (forbidden, §3.2), through `dioxus-router-macro` | **Approved**: a CC0-1.0 exception for `base16` alone (§3.2), which is used only by a procedural macro and does not end up in the binary; the `router` feature is used. CC0 stays forbidden for every other crate |
+| D-7 | The `cargo deny` check on the real graph (M0, 2026-10-19) finds 5 class B crates missing from the §3.2 table: `yoke-derive`, `zerofrom-derive`, `zerovec-derive` (Unicode-3.0) and `const_format_proc_macros`, `konst_macro_rules` (Zlib). They are procedural macros of the already approved families (`yoke`, `zerofrom`, `zerovec`, `const_format`, `konst`), with the same license and the same requester. `foldhash` and `zlib-rs`, on the other hand, do not appear in the Linux graph | **Approved**: the 5 crates are in the §3.2 table and in `deny.toml`; `foldhash` and `zlib-rs` stay, since they may reappear with other versions or platforms. Superseded by D-10: only the Unicode-3.0 macro crates remain |
+| D-8 | The `router` feature of `dioxus` (§4) brings in `base16` 0.2.1, which is **CC0-1.0** (forbidden, §3.2), through `dioxus-router-macro` | **Obsolete (D-10)**: no Dioxus, no `base16`. CC0-1.0 is forbidden with no exception (§3.2) |
 | D-9 | Language of documents and code comments | **Approved**: documents and code comments are in English (§0). For consistency, commit messages and developer-tool messages (`cargo xtask`) are in English too. The UI stays localized (SET-004) |
+| D-10 | UI toolkit | **Approved**: Qt 6 Quick (QML) through cxx-qt instead of Dioxus ([ADR 0003](adr/0003-qt-quick-ui.md)). On the developer's 4K, 120 Hz, fractional-scale session no frame was dropped, where the Dioxus design dropped 2456 in 60 s; the class B table shrinks to the ICU/Unicode family and `foldhash` |
 
 ### 10.2 Risks
 
 | ID | Risk | Prob. | Impact | Mitigation |
 |---|---|---|---|---|
-| R-1 | The transparent webview + GLArea composition (§5.2) does not render smoothly, especially on Wayland with DMA-BUF disabled in WebKit (`with_disable_dma_buf_on_wayland`, the Dioxus default) | Low on Wayland; to be measured on X11 | High | Spike S1 in M0 ([ADR 0001](adr/0001-video-composition.md)): on Wayland 0 dropped frames in 5 minutes at 1080p60, with WebKit DMA-BUF enabled. X11 still to be measured on a real session; fallbacks B/C/D |
-| R-2 | tao/wry/Dioxus stay on GTK3 (gtk-rs for GTK3 is no longer maintained) or migrate to GTK4 and break the reparenting | Medium | Medium | Isolate in `anikoto-app::linux::compositor`; pin versions; smoke test on every update |
-| R-3 | A new Dioxus version adds dependencies with new licenses | Medium | Medium | `cargo deny` in CI; updates only through a dedicated PR |
+| R-1 | Video and UI composition in the same window (§5.2) does not render smoothly | Low (D-10) | High | Qt Quick composition measured in [ADR 0003](adr/0003-qt-quick-ui.md): at 4K under load 60 renders/s and 0–2 dropped frames, none on the developer's 4K/120 Hz session (the Dioxus design of [ADR 0001](adr/0001-video-composition.md) dropped frames at 4K). Residual: the OpenGL scene graph is required; without it, fallback D (§5.2.3) |
+| R-2 | cxx-qt is still 0.x: API changes between versions | Medium | Medium | Pinned versions; bridges isolated in `anikoto-ui`/`anikoto-player`; upgrades only through a dedicated PR |
+| R-3 | A new version of cxx-qt, cxx or reqwest adds dependencies with new licenses | Medium | Medium | `cargo deny` in CI; updates only through a dedicated PR |
 | R-4 | System ffmpeg without encoders (e.g. `aac` missing in reduced builds) | Low | Medium | EXT-001: check at startup, fallback to Opus/MP3, clear message |
 | R-5 | redb performance not sufficient for lookup | Low | Medium | Spike S2; `DictStore` trait and a custom format as plan B |
 | R-6 | AnkiConnect changes or removes `canAddNotesWithErrorDetail` | Low | Low | Fallback to `findNotes` (ANK-030) |
 | R-7 | The size of Fushi pushes toward widening the scope | High | High | §1.3 is binding; every new feature goes through a change to this document |
+| R-8 | Distributions ship Qt older than 6.5 | Medium | Medium | Flatpak with the KDE runtime (D-5); the AUR package depends on the distribution's Qt 6 |
 
 ---
 

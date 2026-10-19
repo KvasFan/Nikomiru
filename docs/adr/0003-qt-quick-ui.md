@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Status | **Proposed** — awaiting the check on the developer's real session and the maintainer's approval |
+| Status | **Accepted** (decision D-10, 2026-10-19): proposed by the maintainer and confirmed on the developer's real session |
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §1.1, §1.2 (objective 1: "the quality of mpv"), §4, §5 |
-| Supersedes (if accepted) | The UI part of SPECIFICATION §1.1/§4/§5 and the composition of [ADR 0001](0001-video-composition.md) |
+| Supersedes | The UI part of SPECIFICATION §1.1/§4/§5 and the composition of [ADR 0001](0001-video-composition.md) |
 | Spike | S1q — code in [`spikes/s1q-qt/`](../../spikes/s1q-qt/) |
 
 ## Context
@@ -46,9 +46,9 @@ Virtual KWin, RX 7900 XTX, **under the same heavy CPU load as the ADR 0001 revis
 4. cxx-qt does not cover `QQuickFramebufferObject` renderers. The video item stays in C++: one small file, our own code (GPL-3.0-only), with `unsafe` limited to the Rust side of the FFI (ARC-011).
 5. Without a terminal, Qt 6 logs to journald. The tests set `QT_FORCE_STDERR_LOGGING=1`.
 
-## Consequences if accepted
+## Consequences
 
-The specification changes in these places, in a dedicated revision approved by the maintainer:
+The specification is revised accordingly (SPECIFICATION v0.5):
 
 - **Stack (§1.1, §4)**: Qt ≥ 6.5 (Quick, QML; fractional scaling on Wayland) and cxx-qt replace `dioxus`, `gtk`/`glib`/`gdk` and WebKitGTK. The class B table (§3.2) is checked again: the exceptions forced by Dioxus desktop (`slotmap`, `const_format`, `konst`, `subtle`, the `image` crates, `base16`/D-8, probably `libloading`) disappear; the `icu_*` family stays through `url`/`idna` (reqwest).
 - **Architecture (§5)**: `anikoto-ui` becomes QML plus Rust `QObject`s; the video item lives in `anikoto-player` (C++ plus the Rust bridge). The composition of §5.2 (GtkOverlay) and its fallbacks are replaced by Qt Quick on both Wayland and X11.
@@ -57,7 +57,8 @@ The specification changes in these places, in a dedicated revision approved by t
 - **Packaging (D-5)**: the Flatpak runtime becomes KDE instead of GNOME.
 - **i18n (SET-004)**: Fluent stays in Rust; the strings reach QML through a Rust `QObject`.
 
-## Still to verify
+## Real session and open points
 
-- [ ] The developer's real session (KDE Wayland, 4K at 120 Hz, fractional scale 2.7, where S1 dropped 2456 frames in 60 s): `spike-s1q-qt target/fixtures/av_hd60_h264.mkv --measure 60`, plus clicks, keys, resizing, fullscreen and sharpness.
-- [ ] A short popup spike (structured content with ruby, a table and an image as QML items) before rewriting POP-009 and DIC-035.
+- [x] The developer's real session (KDE Wayland, RX 7900 XTX, 4K at 120 Hz, fractional scale 2.7), where S1 dropped 2456 frames in 60 s: with S1q **no dropped frames** (`--measure 60`, reported by the developer on 2026-10-19).
+- [ ] By hand on the same session: clicks and keys on the overlay, resizing and fullscreen without artifacts, sharpness at the fractional scale.
+- [ ] Spike S4 at the start of M3: the dictionary popup as QML items (structured content with ruby, a table and an image, the CSS subset of DIC-035), before implementing POP-009 and DIC-035.

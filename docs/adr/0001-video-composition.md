@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Under review** (revision of 2026-10-19, see "4K and CPU contention"): the GtkOverlay composition holds at 1080p on an idle machine, but not at 4K under load; spike S1b proposed |
+| Status | **Superseded** by [ADR 0003](0003-qt-quick-ui.md) (decision D-10, Qt 6 Quick). The GtkOverlay composition held at 1080p on an idle machine but not at 4K under load; the findings on mpv (LC_NUMERIC, render context, shutdown order, libmpv2) still apply |
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §5.2, ARC-001…ARC-004, PLY-005, PLY-009 |
 | Risk | R-1 (transparent webview + GLArea composition not smooth) |
@@ -102,7 +102,7 @@ Control runs in the virtual KWin at 3840×2160, during the same load, 20 s each:
 - **mpv alone does not drop a frame under the same load.** It renders on its own thread and lets the compositor present its surface. Our design puts video presentation on the GTK main thread, which also runs Dioxus, the webview and the window composition; any contention or extra work there costs frames.
 - At idle and 1080p the design works (results above). But SPECIFICATION §1.2 asks for "the quality of mpv", 4K HiDPI monitors are common, and a laptop under load is normal. **The GtkOverlay composition is therefore not adequate as the final design.**
 
-**Proposed next step: spike S1b (Wayland subsurface).** The video goes to a `wl_subsurface` placed *below* the window's main surface, with its own EGL surface. mpv renders on a dedicated thread (render API with its own EGL context, presentation driven by the compositor's frame callbacks), and its size follows the content area through `wp_viewporter`, at the exact physical resolution even with fractional scaling. The window background is transparent, and the webview stays on top in the main surface, receiving all input (the subsurface has an empty input region). KWin or Mutter then composite video and UI, as for any other surface. The main thread does no per-frame video work: it only repaints the webview when the UI changes.
+**Proposed next step (not pursued): spike S1b (Wayland subsurface).** The maintainer chose Qt 6 Quick instead (D-10, [ADR 0003](0003-qt-quick-ui.md)). The video goes to a `wl_subsurface` placed *below* the window's main surface, with its own EGL surface. mpv renders on a dedicated thread (render API with its own EGL context, presentation driven by the compositor's frame callbacks), and its size follows the content area through `wp_viewporter`, at the exact physical resolution even with fractional scaling. The window background is transparent, and the webview stays on top in the main surface, receiving all input (the subsurface has an empty input region). KWin or Mutter then composite video and UI, as for any other surface. The main thread does no per-frame video work: it only repaints the webview when the UI changes.
 
 - X11 has no subsurfaces. There it keeps the GtkOverlay composition, which holds at 1080p, or fallback B (SPECIFICATION §5.2.3). It is measured in M1 together with the X11 T-PERF-03 criterion.
 - S1b uses `libwayland-client` and `libwayland-egl` (MIT) through FFI or the `wayland-client`/`wayland-sys` crates (MIT), and `gdk_wayland_window_get_wl_surface`.

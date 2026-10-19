@@ -9,7 +9,7 @@
 ## 1. Principles
 
 1. **Every requirement has at least one test.** The test carries the requirement ID (`T-SUB-012` verifies `SUB-012`). Coverage is checked by `cargo xtask trace` (§8).
-2. **Pure logic without a display.** Text, subtitles, dictionaries, Anki and library are tested without GTK, webview or mpv (SPECIFICATION ARC-010). Most of the tests are concentrated here.
+2. **Pure logic without a display.** Text, subtitles, dictionaries, Anki and library are tested without Qt, QML or mpv (SPECIFICATION ARC-010). Most of the tests are concentrated here.
 3. **Deterministic and offline.** The default suite does not use the network, does not depend on the real clock (injectable clock in `anikoto-core`) and does not depend on files outside the repository. Tests with network, real data or real Anki are separate and optional (§2, levels L5–L7).
 4. **Fushi is the oracle.** Where a Fushi test exists, its input and output vectors are ported as conformance tests (§5). Every Fushi bug cited in SPECIFICATION becomes a regression test.
 5. **Every Anikoto bug produces a test** before the fix (§7).
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | L1 Unit | Functions and types, specific cases | `#[cfg(test)]` in the crate | Every push |
 | L2 Property | Invariants with generated inputs (`proptest`) | `#[cfg(test)]`, `tests/` | Every push (256 cases); nightly 100k cases |
-| L3 Snapshot | Structured outputs compared with approved files (`insta`): popup JSON, Anki field HTML, ffmpeg argv, Dioxus components rendered with `dioxus-ssr` | `tests/snapshots/` | Every push |
+| L3 Snapshot | Structured outputs compared with approved files (`insta`): popup JSON, Anki field HTML, ffmpeg argv, QML item trees (item types and key properties, dumped by a test helper), outputs of the Rust `QObject`s | `tests/snapshots/` | Every push |
 | L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`wiremock`) | `crates/*/tests/` | Every PR |
 | L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/anikoto-player/tests/` | Every PR |
 | L6 GUI end-to-end | Real app driven by the **test harness** (§2.1), under Xvfb (X11) and headless Weston or virtual KWin (Wayland), with Mesa llvmpipe | `tests/e2e/` | Every PR (smoke); nightly (full) |
@@ -42,7 +42,7 @@
   - `mpv_get {property}`: read-only, for metrics;
   - `quit {}`.
 - Events: `library-ready`, `file-loaded`, `first-frame`, `cue-shown {index, time_pos}`, `popup-rendered {depth}`, `card-created {note_id}`, `error {code}`.
-- The harness interacts through the same event handlers as the UI, not through internal shortcuts that skip the logic under test.
+- The harness interacts through the same QML handlers as the UI, not through internal shortcuts that skip the logic under test.
 
 ---
 
@@ -53,14 +53,14 @@
 | `cargo test`, `cargo-nextest` | MIT/Apache · Apache-2.0 OR MIT | Running the tests |
 | `proptest` | MIT OR Apache-2.0 | L2 and structured fuzzing |
 | `insta`, `cargo-insta` | Apache-2.0 | L3 |
-| `dioxus-ssr` | MIT OR Apache-2.0 | HTML snapshots of components |
+| Qt Quick Test (`qmltestrunner`) | LGPL-3.0 / GPL (part of Qt, external tool) | QML unit tests |
 | `wiremock` | MIT/Apache-2.0 | Fake AnkiConnect, fake online services |
 | `tempfile` | MIT OR Apache-2.0 | Isolated XDG directories for each test |
 | `criterion` | Apache-2.0 OR MIT | L8 |
 | `cargo-llvm-cov` | Apache-2.0 OR MIT | Coverage (NFR-MAINT-02) |
 | `cargo-deny`, `cargo-about` | MIT OR Apache-2.0 | Licenses (T-LIC-*) |
 | Xvfb, Weston, Mesa llvmpipe | MIT/X11 | Headless display for L6 |
-| KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1 measurements (ADR 0001); **only as an external program** |
+| KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1 and S1q measurements (ADR 0001, ADR 0003); **only as an external program** |
 | ffmpeg, ffprobe, libmpv | LGPL/GPL | Generating and checking the fixtures |
 | Anki desktop + AnkiConnect | AGPL-3.0 / GPL | **Only as external programs** in L7: they are neither linked nor distributed |
 
@@ -95,7 +95,7 @@ They are generated with ffmpeg `lavfi` in `target/fixtures/`, with the `+bitexac
 
 - `tests/fixtures/dicts/mini-ja/` (handwritten JSON source; the zip is created by `xtask`):
   - about 80 terms chosen for the cases of §5 and §6.5: verbs of all classes (v1, v5k/k-s/g/s/t/n/b/m/r/u, vk, vs-i), i-adjectives and na-adjectives, compound nouns (食べ物, 日本語), ため, 取り扱い/取扱い, kana variants;
-  - `tag_bank`, structured content (table, ruby, 2×2 px image `img/a.png`, `?query=` link), a `formOf` redirect, a term with `<script>` and `on*` attributes (for T-SEC-001).
+  - `tag_bank`, structured content (table, ruby, 2×2 px image `img/a.png`, `?query=` link), a `formOf` redirect, a term with `<script>`, `on*` attributes and a remote `<img>` (for T-SEC-001).
 - `mini-freq` (rank-based) · `mini-freq-occ` (`frequencyMode: occurrence-based`, string values) · `mini-pitch` (pitch with `nasal`/`devoice` + ipa) · `mini-kanji` · `mini-norules` (no rules in any entry).
 - Malicious ZIPs, generated: `evil-traversal.zip` (`../x`) · `evil-absolute.zip` (`/etc/x`) · `evil-symlink.zip` · `evil-bomb.zip` (ratio > 1000:1) · `evil-huge-entry.zip` (declared size > 512 MiB) · `evil-badjson.zip` · `wrapped-dir.zip` (legitimate, inside a folder: accepted) · `unicode-path.zip` (extra field 0x7075) · `zip64.zip`.
 - Large synthetic dictionary (`xtask fixtures --large`): 300k terms, about 150 MB of JSON, PRNG with a fixed seed. Variants: 5 term + 3 freq + 1 pitch for T-PERF-04, plus `queries.txt` with 10k inflected sentences for the lookup benchmark (ADR 0002).
@@ -152,9 +152,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIC-001 | `cargo deny check licenses bans sources advisories` | Exit code 0. The Class B exceptions match SPECIFICATION §3.2 **exactly**: `xtask` compares the markdown table with `deny.toml` | L4 |
 | T-LIC-002 | Canary: temporary crate that depends on `xxhash-rust` (BSL-1.0) | `cargo deny` fails | nightly |
 | T-LIC-003 | `cargo about generate` | `THIRD_PARTY_LICENSES.html` generated, with all the crates in the graph | L4 |
-| T-ARC-010 | Crate dependency rules (`cargo metadata`) | No logic crate depends on `dioxus`, `gtk` or `libmpv2` | L4 |
-| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:` | `xtask` check | L4 |
-| T-ARC-020 | `SPDX-License-Identifier: GPL-3.0-only` header in every `.rs` | `xtask check-headers` | L4 |
+| T-ARC-010 | Crate dependency rules (`cargo metadata`) | No logic crate depends on `cxx-qt`, `cxx` or `libmpv2` | L4 |
+| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:`; no `unsafe` outside the allowed modules (the cxx-qt bridge modules `src/bridge.rs` and `src/bridge/` are allowed); C++ sources exist only in `crates/anikoto-player/cpp/` | `xtask` check | L4 |
+| T-ARC-020 | `SPDX-License-Identifier: GPL-3.0-only` header in every `.rs`, `.cpp`, `.h` and `.qml` file | `xtask check-headers` | L4 |
 | T-ARC-001 | Player API | After `file-loaded`, at least one event arrives for each observed property of ARC-001 | L5 |
 | T-ARC-002 | LoadToken: events from a previous load | They are discarded and do not change the state (fake event source) | L1 |
 | T-ARC-003 | No synchronous reads from the UI thread | `PlayerHandle` exposes no synchronous getters (compile-time check with a `trybuild`-like test in `xtask`); lint: no call to `get_property` outside `anikoto-player` | L4 |
@@ -223,7 +223,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement | L4 |
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
-| T-DIC-035 | CSS with `@scope` | The CSS of dictionary A does not change the style of B (L3 snapshot and L6 check) | L3/L6 |
+| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (QML snapshot and L6 check) | L3/L6 |
 
 ### 6.5 Lookup
 
@@ -255,16 +255,16 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | ID | Check | Expected | L |
 |---|---|---|---|
 | T-POP-001/004/005 | Pause/resume state machine | (playing) click → pause and `paused_for_lookup`; close → resume. (paused) click → no change; close → stays paused. Click on another word with the popup open → replacement, stays paused. Nested: resume only when the stack is empty | L1 |
-| T-POP-002 | Highlighting | Snapshot: exactly `best_length` graphemes marked starting from the clicked one, even with composite graphemes (emoji, combining marks) | L3 |
+| T-POP-002 | Highlighting | QML item-tree snapshot: exactly `best_length` graphemes marked starting from the clicked one, even with composite graphemes (emoji, combining marks) | L3 |
 | T-POP-003 | Hover | Shift + movement ≥ 8 px → lookup; no new lookup on the same character; leaving for 320 ms → close and resume (fake clock) | L1 |
 | T-POP-006 | Positioning | Property: for every word rectangle and every window ≥ 320×240, the popup does not cover the word and fits inside the window | L2 |
-| T-POP-007 | Header | Snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
-| T-POP-008 | Per-dictionary blocks | Numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
-| T-POP-009 | Structured content | `dioxus-ssr` snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed `style` properties removed | L3 |
-| T-POP-010 | Images | `anikoto-dict://<id>/img/a.png` → correct bytes and `Content-Type: image/png`; a nonexistent path → 404; `..` → 400 | L4 |
+| T-POP-007 | Header | QML item-tree snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
+| T-POP-008 | Per-dictionary blocks | QML item-tree snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
+| T-POP-009 | Structured content | QML item-tree snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
+| T-POP-010 | Images | The image provider `image://anikoto-dict/<id>/img/a.png` returns the image (2×2 px); a nonexistent path → null image; `..` → rejected | L4 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); an external link opens `xdg-open` (spy) | L1 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
-| T-POP-013 | Kanji entry | Snapshot for `食` from `mini-kanji` | L3 |
+| T-POP-013 | Kanji entry | QML item-tree snapshot for `食` from `mini-kanji` | L3 |
 | T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness) | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
@@ -272,12 +272,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-SEC-001 | `mini-ja` entry with `<script>` and `onerror=` | No script executed: the sentinel global variable stays undefined (harness) | L6 |
+| T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted QML items are produced; no network request (spy proxy) | L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
 | T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
 | T-SEC-004 | Release build | `cargo tree -e features --release -p anikoto-app` without `test-harness`; the binary does not contain the harness symbol | L4 |
 | T-SEC-005 | Argument injection into ffmpeg | `-weird: name & spaces ü 日本.mkv` and `http:fake.mkv` are treated as local files; argv captured with a snapshot | L4 |
-| T-SEC-006 | Webview CSP | The CSP header or meta tag is present; an `<img src="https://…">` injected into a glossary generates no network requests (spy proxy) | L6 |
+| T-SEC-006 | QML network isolation | The QML engine's network access refuses every remote URL; a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
 | T-SEC-007 | Hostile `anikoto://` links | Absolute paths, `file:`, duplicate or unknown parameters, > 16 KiB → rejected without effects (see T-ANK-051) | L1 |
 | T-SEC-008 | Config permissions | `config.toml` created with permissions 0600 | L4 |
 
@@ -303,7 +303,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-016 | `mpv.conf` presets | Round trip: option set from the UI → saved preset → loaded → identical option set, with UI controls and raw options filled as before. A sample `mpv.conf` with comments, a flag (`deband`), `no-` prefix, `--key=value`, quoted values, `profile=high-quality`, a `[section]` and `include=` → preview with applied / ignored / invalid for each line, and no option reaches mpv before confirmation (spy on the option setter). A saved preset is accepted by a real mpv (`mpv --no-config --include=<file> --idle=once` exits with 0) | L1/L5 |
 | T-PLY-017 | Blocked options | Every entry of the blocked table, in the raw options and in a preset, is rejected with its reason and never reaches mpv (spy). `script=x.lua`, `input-ipc-server=<tmp>/s`, `log-file=<tmp>/l`, `include=<tmp>/i.conf` → no file created and no socket opened (inotify on the temporary folder, see T-SEC-003); `sub-font=…` and `gpu-api=…` → ignored with a warning | L1/L5 |
 | T-PLY-018 | Render and audio settings | Each control sets the expected mpv option (`mpv_get`); runtime options (`deband`, `scale`, `brightness`…) change during playback without reloading the file; `hwdec` shows the "from the next file" note and takes effect on the next `loadfile`; reset of a group restores only that group | L5/L6 |
-| T-KEY-001…004 | Shortcuts | Remapping saved and reloaded; binding by `code` (with a simulated AZERTY layout, `KeyQ` stays "physical Q"); conflict in the same context rejected; single-key shortcuts disabled in a text field | L1/L6 |
+| T-KEY-001…004 | Shortcuts | Remapping saved and reloaded; binding by scan code (with a simulated AZERTY layout, the physical key of evdev `KEY_Q` still triggers the action bound to it); conflict in the same context rejected; single-key shortcuts disabled in a text field | L1/L6 |
 | T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/anikoto` and the video types; `Exec=anikoto %U` | L4 |
 | T-APP-001 | Single instance | Second start with a file → the file opens in the first instance; the second process exits with 0 | L6 |
 | T-E2E-001 | M1 flow | open → play → seek → close → reopen → resumes from the saved position | L6 |
@@ -374,14 +374,14 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-SET-001 | Config | An unknown key is preserved and reported; an invalid value → default plus a warning; writing is atomic (SIGKILL during the write → the previous file stays intact) | L4 |
 | T-SET-002 | Immediate application | Change of theme or subtitle size without restart (harness) | L6 |
-| T-SET-003 | Contrast | For every text/background pair of the light and dark theme tokens, ratio ≥ 4.5:1 (computed in a unit test from the CSS values) | L1 |
+| T-SET-003 | Contrast | For every text/background pair of the light and dark theme tokens, ratio ≥ 4.5:1 (computed in a unit test from the `Theme` tokens) | L1 |
 | T-SET-004 | Language | `LANG=it_IT.UTF-8` → Italian; `LANG=de_DE.UTF-8` → fallback to English; the choice in the settings wins | L1 |
-| T-SET-005 | Interface scale | 75% and 200%: the webview zoom changes, the subtitle size does not (harness) | L6 |
+| T-SET-005 | Interface scale | 75% and 200%: the UI scale changes, the subtitle size does not (harness) | L6 |
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values | L1 |
 | T-SET-007 | Proxy | HTTP requests go through the proxy (wiremock as proxy); AnkiConnect on loopback does not | L4 |
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en`; no unused key; same `{ $var }` arguments in all languages | L1 |
-| T-I18N-002 | No strings in code | `xtask` lint: no string literal used as text in `rsx!` components (explicit exception list) | L4 |
-| T-A11Y-001 | Focus and ARIA | Snapshot of the player controls with `aria-label`; visible focus (class and style) | L3 |
+| T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in `.qml` files (explicit exception list) | L4 |
+| T-A11Y-001 | Focus and accessibility | QML item-tree snapshot of the player controls with `Accessible.name` and `Accessible.role`; visible focus | L3 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup → mining → settings → back, without a mouse (harness) | L6 |
 
 ### 6.13 Online (M7)
@@ -402,7 +402,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered | L4 |
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
-| T-FUZZ-006 | Structured content → elements | No panic; the output contains only tags from the allowlist | L2 |
+| T-FUZZ-006 | Structured content → QML items | No panic; the output contains only items from the allowlist | L2 |
 | T-FUZZ-007 | Parser for `anikoto://` links and for the TOML config | No panic | L2 |
 
 ### 6.15 Performance
@@ -445,7 +445,7 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 
 ## 9. Manual tests
 
-They are recorded in `docs/qa/<version>.md`: who, date, environment (distribution, compositor, GPU, driver, mpv/ffmpeg/WebKitGTK versions), result of each item.
+They are recorded in `docs/qa/<version>.md`: who, date, environment (distribution, compositor, GPU, driver, mpv/ffmpeg/Qt versions), result of each item.
 
 ### 9.1 Player (end of M1)
 
@@ -525,6 +525,8 @@ Sections 9.1–9.4, plus:
 | Nightly | Every night | L2 with 100k cases, fuzzing (T-FUZZ-*) for 10 minutes each, full L6, L8 with baseline, T-LIC-002, L7 where secrets or data are available | Opens an issue if it fails |
 | Release | Tag `v*` | Full + nightly + checklist §9.5 + `THIRD_PARTY_LICENSES.html` | Yes |
 
-The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libmpv-dev` ≥ 0.37, `ffmpeg` ≥ 6 with `libx264`/`libx265` (only to generate the performance fixtures), GTK 3, WebKitGTK 4.1, Xvfb, Weston (or KWin), Mesa, `cargo-deny`, `cargo-about`.
+The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libmpv-dev` ≥ 0.37, `ffmpeg` ≥ 6 with `libx264`/`libx265` (only to generate the performance fixtures), Qt 6 (base, declarative, wayland, Qt Quick Test, with development files), `qmake6`, a C++ compiler, Xvfb, Weston (or KWin), Mesa, `cargo-deny`, `cargo-about`.
 
-**L6 tests never run on the developer's graphical session.** A covered window does not receive the compositor's frame callbacks, so GTK does not run layout and the GLArea does not draw (ADR 0001). An off-screen compositor is always used: headless Weston, virtual KWin or Xvfb.
+Without a terminal, Qt logs to journald: the test runners set `QT_FORCE_STDERR_LOGGING=1`, so that Qt's warnings appear in the test output.
+
+**L6 tests never run on the developer's graphical session.** A covered window does not receive the compositor's frame callbacks and does not render (ADR 0001). An off-screen compositor is always used: headless Weston, virtual KWin or Xvfb.

@@ -1,10 +1,10 @@
 # Anikoto license policy: SPECIFICATION §3.2 and §3.5.
 #
 # - [licenses].allow      = class A, always allowed.
-# - [licenses].exceptions = class B, exceptions forced by Dioxus desktop, ONLY for the
-#   listed crates. The list must match the table of SPECIFICATION §3.2:
+# - [licenses].exceptions = class B, unavoidable exceptions (ICU family, foldhash), ONLY
+#   for the listed crates. The list must match the table of SPECIFICATION §3.2:
 #   `cargo xtask ci` checks it (T-LIC-001). Every addition requires an updated
-#   table and the explicit approval of the maintainer (decisions D-1, D-7, D-8).
+#   table and the explicit approval of the maintainer (decisions D-1, D-10).
 
 [graph]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -33,12 +33,13 @@ allow = [
 confidence-threshold = 0.93
 # Class A is declared in full even though not all of its licenses are in the graph today.
 unused-allowed-license = "allow"
-# The class B exceptions apply to the complete graph (Dioxus desktop). Until Dioxus
-# enters the workspace (M1) almost none of them is in use: the warning is turned
-# back on ("warn") in M1, to find exceptions that have become unnecessary.
+# The class B exceptions apply to the complete graph (cxx-qt, reqwest). Until those
+# crates enter the workspace (M1) almost none of them is in use: the warning is
+# turned back on ("warn") in M1, to find exceptions that have become unnecessary.
 unused-license-exception = "allow"
 exceptions = [
-    # Unicode-3.0 — url → idna (tao, wry, reqwest); proc-macro2 (every macro, `rsx!`)
+    # Unicode-3.0 — url → idna (reqwest); icu_normalizer (direct, §4); proc-macro2
+    # (every procedural macro: serde_derive, thiserror, cxx, cxx-qt)
     { crate = "icu_collections", allow = ["Unicode-3.0"] },
     { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
     { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
@@ -58,33 +59,8 @@ exceptions = [
     { crate = "zerovec-derive", allow = ["Unicode-3.0"] },
     { crate = "potential_utf", allow = ["Unicode-3.0"] },
     { crate = "unicode-ident", allow = ["Unicode-3.0"] },
-    # Zlib — dioxus-core
-    { crate = "slotmap", allow = ["Zlib"] },
-    { crate = "const_format", allow = ["Zlib"] },
-    { crate = "const_format_proc_macros", allow = ["Zlib"] },
-    { crate = "konst", allow = ["Zlib"] },
-    { crate = "konst_macro_rules", allow = ["Zlib"] },
-    # Zlib — hashbrown
+    # Zlib — cxx (through cxx-qt)
     { crate = "foldhash", allow = ["Zlib"] },
-    # Zlib — flate2 ← png/image ← dioxus-desktop, tray-icon
-    { crate = "zlib-rs", allow = ["Zlib"] },
-    # BSD-3-Clause — dioxus-desktop
-    { crate = "subtle", allow = ["BSD-3-Clause"] },
-    # BSD-2-Clause, BSD-3-Clause — image (default features) ← dioxus-desktop
-    { crate = "rav1e", allow = ["BSD-2-Clause"] },
-    { crate = "ravif", allow = ["BSD-3-Clause"] },
-    { crate = "av1-grain", allow = ["BSD-2-Clause"] },
-    { crate = "v_frame", allow = ["BSD-2-Clause"] },
-    { crate = "avif-serialize", allow = ["BSD-3-Clause"] },
-    { crate = "exr", allow = ["BSD-3-Clause"] },
-    { crate = "lebe", allow = ["BSD-3-Clause"] },
-    # ISC — subsecond (hot-patch Dioxus), libappindicator-sys
-    { crate = "libloading", allow = ["ISC"] },
-    # MPL-2.0 — dirs-sys ← dirs ← wry, tray-icon
-    { crate = "option-ext", allow = ["MPL-2.0"] },
-    # CC0-1.0 — dioxus-router-macro (proc-macro) ← dioxus-router (feature `router`), D-8.
-    # CC0 stays forbidden for every other crate.
-    { crate = "base16", allow = ["CC0-1.0"] },
 ]
 
 # `libmpv2` and `libmpv2-sys` declare "LGPL-2.1", a deprecated SPDX identifier
@@ -116,7 +92,8 @@ deny = [
     { crate = "encoding_rs", reason = "includes BSD-3-Clause: glibc iconv via FFI" },
     { crate = "rustls", reason = "ring is ISC: TLS with native-tls → OpenSSL" },
     { crate = "ring", reason = "ISC: TLS with native-tls → OpenSSL" },
-    { crate = "notify", reason = "CC0-1.0 (only base16 is excepted, D-8): manual rescan or inotify via libc" },
+    { crate = "notify", reason = "CC0-1.0: manual rescan or inotify via libc" },
+    { crate = "directories", reason = "pulls option-ext (MPL-2.0): own XDG code in anikoto-core (§3.6)" },
     { crate = "subparse", reason = "MPL-2.0: own subtitle parsers" },
     { crate = "anitomy", reason = "MPL-2.0: own file name parser" },
     { crate = "zstd-sys", reason = "BSD-3 / GPL-2.0-only: use lz4_flex" },

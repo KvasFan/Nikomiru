@@ -4,8 +4,8 @@ Time-boxed prototypes that reduce technical risks before the features are writte
 
 | Spike | Question | Outcome |
 |---|---|---|
-| [`s1-composition/`](s1-composition/) | mpv video (GtkGLArea) and Dioxus UI (transparent webview) in the same window, with a `GtkOverlay` | [ADR 0001](../docs/adr/0001-video-composition.md) |
-| [`s1q-qt/`](s1q-qt/) | The same, with Qt 6 Quick instead of Dioxus: mpv in a `QQuickFramebufferObject` rendered on Qt Quick's render thread, QML overlay, Rust through cxx-qt | [ADR 0003](../docs/adr/0003-qt-quick-ui.md) (proposed) |
+| [`s1-composition/`](s1-composition/) | mpv video (GtkGLArea) and Dioxus UI (transparent webview) in the same window, with a `GtkOverlay` | [ADR 0001](../docs/adr/0001-video-composition.md) — superseded by S1q (D-10) |
+| [`s1q-qt/`](s1q-qt/) | The same, with Qt 6 Quick instead of Dioxus: mpv in a `QQuickFramebufferObject` rendered on Qt Quick's render thread, QML overlay, Rust through cxx-qt | [ADR 0003](../docs/adr/0003-qt-quick-ui.md) (accepted, D-10) |
 | [`s2-storage/`](s2-storage/) | Can redb handle dictionary import and lookup within NFR-PERF-04/05? | [ADR 0002](../docs/adr/0002-dictionary-storage.md) |
 
 ## How to run them

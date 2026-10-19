@@ -15,11 +15,6 @@ accepted = [
     # Class B (exceptions of SPECIFICATION §3.2)
     "Unicode-3.0",
     "Zlib",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "MPL-2.0",
-    "CC0-1.0", # only base16 (D-8)
 ]
 targets = ["x86_64-unknown-linux-gnu"]
 ignore-dev-dependencies = true
