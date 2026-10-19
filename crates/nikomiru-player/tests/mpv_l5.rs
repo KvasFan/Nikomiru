@@ -318,3 +318,25 @@ fn errors_are_reported_and_the_player_stays_usable() {
     t.load("av_basic.mkv", LoadRequest::default());
     t.loaded();
 }
+
+// T-SUB-013
+#[test]
+#[ignore = "L5: needs libmpv and `cargo xtask fixtures`"]
+fn replaying_a_cue_pauses_at_its_end() {
+    let mut t = Harness::new();
+    t.load("av_basic.mkv", LoadRequest::default());
+    t.loaded();
+    // the second cue of av_basic.mkv is [5.0, 5.5]
+    t.h.stop_at(Some(5.5)).unwrap();
+    t.h.seek_absolute(5.0).unwrap();
+    t.h.set_pause(false).unwrap();
+    t.until("pause", |v| v == "yes");
+    let at = t.time_pos();
+    let frame = 1.0 / 30.0;
+    assert!((at - 5.5).abs() <= frame + 1e-3, "paused at {at}");
+    // without the limit playback goes on
+    t.h.stop_at(None).unwrap();
+    t.h.set_pause(false).unwrap();
+    t.until("time-pos", |v| v.parse::<f64>().is_ok_and(|p| p > 5.8));
+    assert!(t.time_pos() > 5.8, "{}", t.time_pos());
+}

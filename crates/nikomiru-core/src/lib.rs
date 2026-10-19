@@ -14,6 +14,6 @@ pub mod fs;
 pub mod paths;
 
 pub use clock::{Clock, ManualClock, SystemClock};
-pub use config::{Config, ConfigError, PathsConfig};
+pub use config::{Config, ConfigError, PathsConfig, SubtitlesConfig};
 pub use error::Localized;
 pub use paths::{Paths, PathsError};

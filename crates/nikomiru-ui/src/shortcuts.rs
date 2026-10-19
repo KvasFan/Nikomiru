@@ -60,11 +60,35 @@ pub enum Action {
     Back,
     /// Open a file.
     OpenFile,
+    /// Previous subtitle cue (SUB-012).
+    SubPrev,
+    /// Next subtitle cue (SUB-012).
+    SubNext,
+    /// Replay the current cue (SUB-013).
+    ReplayCue,
+    /// Replay the previous cue.
+    ReplayPrevCue,
+    /// Subtitle list panel (SUB-015).
+    SubList,
+    /// Search in the subtitle list (SUB-015).
+    SubSearch,
+    /// Blur the subtitle on/off (SUB-014).
+    SubBlur,
+    /// Hide the subtitle on/off (SUB-014).
+    SubHide,
+    /// Subtitle offset −100 ms (SUB-011).
+    SubDelayMinus,
+    /// Subtitle offset +100 ms (SUB-011).
+    SubDelayPlus,
+    /// Align the previous cue to the position (SUB-016).
+    SubAlignPrev,
+    /// Align the next cue to the position (SUB-016).
+    SubAlignNext,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 17] = [
+    pub const ALL: [Action; 29] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -82,6 +106,18 @@ impl Action {
         Action::ChapterNext,
         Action::Back,
         Action::OpenFile,
+        Action::SubPrev,
+        Action::SubNext,
+        Action::ReplayCue,
+        Action::ReplayPrevCue,
+        Action::SubList,
+        Action::SubSearch,
+        Action::SubBlur,
+        Action::SubHide,
+        Action::SubDelayMinus,
+        Action::SubDelayPlus,
+        Action::SubAlignPrev,
+        Action::SubAlignNext,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the QML layer.
@@ -104,6 +140,18 @@ impl Action {
             Action::ChapterNext => "chapter_next",
             Action::Back => "back",
             Action::OpenFile => "open_file",
+            Action::SubPrev => "sub_prev",
+            Action::SubNext => "sub_next",
+            Action::ReplayCue => "replay_cue",
+            Action::ReplayPrevCue => "replay_prev_cue",
+            Action::SubList => "sub_list",
+            Action::SubSearch => "sub_search",
+            Action::SubBlur => "sub_blur",
+            Action::SubHide => "sub_hide",
+            Action::SubDelayMinus => "sub_delay_minus",
+            Action::SubDelayPlus => "sub_delay_plus",
+            Action::SubAlignPrev => "sub_align_prev",
+            Action::SubAlignNext => "sub_align_next",
         }
     }
 
@@ -120,7 +168,7 @@ impl Action {
         }
     }
 
-    /// Default keys (SPECIFICATION §6.3, M1 rows).
+    /// Default keys (SPECIFICATION §6.3, M1 and M2 rows).
     pub fn default_keys(self) -> &'static [&'static str] {
         match self {
             Action::PlayPause => &["Space", "KeyP", "MediaPlayPause"],
@@ -140,6 +188,18 @@ impl Action {
             Action::ChapterNext => &["PageDown"],
             Action::Back => &["Escape", "Alt+ArrowLeft"],
             Action::OpenFile => &["Ctrl+KeyO"],
+            Action::SubPrev => &["Ctrl+ArrowLeft"],
+            Action::SubNext => &["Ctrl+ArrowRight"],
+            Action::ReplayCue => &["KeyR"],
+            Action::ReplayPrevCue => &["Shift+KeyR"],
+            Action::SubList => &["KeyL"],
+            Action::SubSearch => &["Ctrl+KeyF"],
+            Action::SubBlur => &["KeyB"],
+            Action::SubHide => &["KeyH"],
+            Action::SubDelayMinus => &["KeyZ"],
+            Action::SubDelayPlus => &["KeyX"],
+            Action::SubAlignPrev => &["Ctrl+Shift+ArrowLeft"],
+            Action::SubAlignNext => &["Ctrl+Shift+ArrowRight"],
         }
     }
 }

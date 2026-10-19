@@ -40,6 +40,18 @@ pub mod qobject {
         #[qproperty(QString, toast)]
         #[qproperty(i32, toast_serial)]
         #[qproperty(bool, controls_visible)]
+        #[qproperty(QString, subtitle_cues)]
+        #[qproperty(QString, subtitle_list)]
+        #[qproperty(i32, subtitle_list_row)]
+        #[qproperty(QString, subtitle_menu)]
+        #[qproperty(QString, subtitle_key)]
+        #[qproperty(QString, subtitle_encoding)]
+        #[qproperty(QString, subtitle_obscure)]
+        #[qproperty(f64, subtitle_font_size)]
+        #[qproperty(bool, respect_ass)]
+        #[qproperty(i32, subtitle_play_res_y)]
+        #[qproperty(i32, video_width)]
+        #[qproperty(i32, video_height)]
         type PlayerController = super::PlayerControllerRust;
 
         /// Opens a file (path or `file://` URL).
@@ -89,6 +101,38 @@ pub mod qobject {
         /// Translated interface string.
         #[qinvokable]
         fn tr(self: &PlayerController, id: &QString) -> QString;
+
+        /// Subtitle menu: a source key, or "off".
+        #[qinvokable]
+        fn select_subtitles(self: Pin<&mut PlayerController>, key: &QString);
+
+        /// A subtitle file from the dialog or a drop (path or `file://` URL).
+        #[qinvokable]
+        fn open_subtitle_file(self: Pin<&mut PlayerController>, url: &QString);
+
+        /// Forces a subtitle encoding ("" = automatic, SUB-005).
+        #[qinvokable]
+        fn force_encoding(self: Pin<&mut PlayerController>, encoding: &QString);
+
+        /// A click on a grapheme of the overlay: cue index and byte offset.
+        #[qinvokable]
+        fn grapheme_clicked(self: Pin<&mut PlayerController>, cue: i32, offset: i32);
+
+        /// A click in the text of a list row, at a QML text position.
+        #[qinvokable]
+        fn list_text_clicked(self: Pin<&mut PlayerController>, cue: i32, position: i32);
+
+        /// A click on the time of a list row.
+        #[qinvokable]
+        fn list_time_clicked(self: Pin<&mut PlayerController>, cue: i32);
+
+        /// The mouse entered or left the subtitles (SUB-014).
+        #[qinvokable]
+        fn subtitle_hover(self: Pin<&mut PlayerController>, inside: bool);
+
+        /// Cue indices whose text contains `query` (JSON array).
+        #[qinvokable]
+        fn search_subtitles(self: &PlayerController, query: &QString) -> QString;
 
         /// The window is closing: save the position.
         #[qinvokable]
@@ -140,6 +184,20 @@ pub struct PlayerControllerRust {
     toast: QString,
     toast_serial: i32,
     controls_visible: bool,
+    subtitle_cues: QString,
+    subtitle_list: QString,
+    subtitle_list_row: i32,
+    subtitle_menu: QString,
+    subtitle_key: QString,
+    subtitle_encoding: QString,
+    subtitle_obscure: QString,
+    subtitle_font_size: f64,
+    respect_ass: bool,
+    subtitle_play_res_y: i32,
+    video_width: i32,
+    video_height: i32,
+    /// Version of the cue list already sent to QML.
+    list_version: Option<u64>,
     pub(crate) session: Option<Session>,
 }
 
@@ -227,6 +285,28 @@ pub(crate) fn harness_call<T: Send + 'static>(
     }
     rx.recv_timeout(Duration::from_secs(10))
         .map_err(|_| "the UI did not answer".to_string())
+}
+
+/// A finished subtitle load, back on the Qt thread.
+fn deliver_subtitles(
+    generation: u64,
+    source: crate::subtitles::Source,
+    result: Result<crate::subtitles::Loaded, String>,
+) {
+    if let Ok(relay) = RELAY.lock()
+        && let Some(thread) = relay.as_ref()
+    {
+        let _ = thread.queue(move |mut c| {
+            c.as_mut()
+                .with_session(|s| s.subtitles_loaded(generation, source, result));
+            c.sync();
+        });
+    }
+}
+
+fn set_text(current: &QString, new: &str) -> Option<QString> {
+    let new = QString::from(new);
+    (current != &new).then_some(new)
 }
 
 fn audio_json(tracks: &[nikomiru_player::player::Track]) -> String {
@@ -329,6 +409,143 @@ impl qobject::PlayerController {
         if *self.controls_visible() != controls {
             self.as_mut().set_controls_visible(controls);
         }
+        self.as_mut().sync_subtitles();
+    }
+
+    /// Starts the pending subtitle loads and copies the subtitle state.
+    fn sync_subtitles(mut self: Pin<&mut Self>) {
+        let loads = self
+            .as_mut()
+            .with_session(Session::take_subtitle_loads)
+            .unwrap_or_default();
+        for (generation, request) in loads {
+            let source = request.source.clone();
+            self.as_mut().with_session(|s| {
+                s.start_subtitle_load(
+                    request,
+                    Box::new(move |result| deliver_subtitles(generation, source, result)),
+                )
+            });
+        }
+        let seen = self.rust().list_version;
+        let Some(state) = self.as_mut().with_session(|s| {
+            let (font_size, respect) = s.subtitle_style();
+            let pos_ms = (s.view.time_pos * 1000.0) as i64;
+            (
+                s.subs.overlay(respect).to_string(),
+                (Some(s.sub_list_version) != seen)
+                    .then(|| (s.sub_list_version, s.subs.list().to_string())),
+                s.subs
+                    .timeline()
+                    .list_position(pos_ms)
+                    .map_or(-1, |i| i as i32),
+                s.subtitle_menu().to_string(),
+                s.subs.source.as_ref().map(|x| x.key()).unwrap_or_default(),
+                s.subs.encoding.clone().unwrap_or_default(),
+                s.obscure_now().name(),
+                font_size,
+                respect,
+                s.subs.play_res().map_or(0, |(_, y)| y as i32),
+                s.view.video_size,
+            )
+        }) else {
+            return;
+        };
+        let (cues, list, row, menu, key, encoding, obscure, font_size, respect, res_y, (vw, vh)) =
+            state;
+        if let Some(v) = set_text(self.subtitle_cues(), &cues) {
+            self.as_mut().set_subtitle_cues(v);
+        }
+        if let Some((version, list)) = list {
+            self.as_mut().rust_mut().list_version = Some(version);
+            self.as_mut()
+                .set_subtitle_list(QString::from(list.as_str()));
+        }
+        if *self.subtitle_list_row() != row {
+            self.as_mut().set_subtitle_list_row(row);
+        }
+        if let Some(v) = set_text(self.subtitle_menu(), &menu) {
+            self.as_mut().set_subtitle_menu(v);
+        }
+        if let Some(v) = set_text(self.subtitle_key(), &key) {
+            self.as_mut().set_subtitle_key(v);
+        }
+        if let Some(v) = set_text(self.subtitle_encoding(), &encoding) {
+            self.as_mut().set_subtitle_encoding(v);
+        }
+        if let Some(v) = set_text(self.subtitle_obscure(), obscure) {
+            self.as_mut().set_subtitle_obscure(v);
+        }
+        if *self.subtitle_font_size() != font_size {
+            self.as_mut().set_subtitle_font_size(font_size);
+        }
+        if *self.respect_ass() != respect {
+            self.as_mut().set_respect_ass(respect);
+        }
+        if *self.subtitle_play_res_y() != res_y {
+            self.as_mut().set_subtitle_play_res_y(res_y);
+        }
+        if *self.video_width() != vw as i32 {
+            self.as_mut().set_video_width(vw as i32);
+        }
+        if *self.video_height() != vh as i32 {
+            self.as_mut().set_video_height(vh as i32);
+        }
+    }
+
+    fn select_subtitles(mut self: Pin<&mut Self>, key: &QString) {
+        let key = key.to_string();
+        self.as_mut().with_session(|s| s.select_subtitles(&key));
+        self.sync();
+    }
+
+    fn open_subtitle_file(mut self: Pin<&mut Self>, url: &QString) {
+        let path = url_to_path(&url.to_string());
+        self.as_mut().with_session(|s| s.open_subtitle_file(&path));
+        self.sync();
+    }
+
+    fn force_encoding(mut self: Pin<&mut Self>, encoding: &QString) {
+        let encoding = encoding.to_string();
+        self.as_mut().with_session(|s| s.force_encoding(&encoding));
+        self.sync();
+    }
+
+    pub(crate) fn grapheme_clicked(mut self: Pin<&mut Self>, cue: i32, offset: i32) {
+        if let (Ok(cue), Ok(offset)) = (usize::try_from(cue), usize::try_from(offset)) {
+            self.as_mut()
+                .with_session(|s| s.select_grapheme(cue, offset));
+        }
+        self.sync();
+    }
+
+    fn list_text_clicked(mut self: Pin<&mut Self>, cue: i32, position: i32) {
+        if let (Ok(cue), Ok(position)) = (usize::try_from(cue), usize::try_from(position)) {
+            self.as_mut()
+                .with_session(|s| s.select_in_list(cue, position));
+        }
+        self.sync();
+    }
+
+    fn list_time_clicked(mut self: Pin<&mut Self>, cue: i32) {
+        if let Ok(cue) = usize::try_from(cue) {
+            self.as_mut().with_session(|s| s.seek_to_cue(cue));
+        }
+    }
+
+    fn subtitle_hover(mut self: Pin<&mut Self>, inside: bool) {
+        self.as_mut().with_session(|s| s.subs.hovered = inside);
+        self.sync();
+    }
+
+    fn search_subtitles(&self, query: &QString) -> QString {
+        let hits = self
+            .rust()
+            .session
+            .as_ref()
+            .map(|s| s.subs.timeline().search(&query.to_string()))
+            .unwrap_or_default();
+        QString::from(serde_json::json!(hits).to_string().as_str())
     }
 
     fn on_event(mut self: Pin<&mut Self>, event: Stamped<PlayerEvent>) {

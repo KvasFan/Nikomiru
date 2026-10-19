@@ -72,5 +72,26 @@ error-job-failed = { $program } non è riuscito: { $reason }
 error-instance-io = { $path } non si può usare ({ $reason }): potrebbero aprirsi più finestre di Nikomiru.
 error-instance-no-answer = Nikomiru è già aperto ma non risponde. Chiudilo e riprova.
 
+# Subtitles (M2)
+subtitles = Sottotitoli
+subtitles-off = Nessuno
+subtitle-open-file = Apri file di sottotitoli…
+subtitle-encoding = Codifica
+encoding-auto = Automatica
+subtitle-list = Elenco dei sottotitoli
+subtitle-search = Cerca nei sottotitoli
+file-filter-subtitles = File di sottotitoli
+toast-sub-loaded = Sottotitoli: { $name }
+toast-sub-loaded-encoding = Sottotitoli: { $name } ({ $encoding })
+toast-sub-delay = Ritardo dei sottotitoli { $value } ms
+toast-sub-blurred = Sottotitoli sfocati
+toast-sub-hidden = Sottotitoli nascosti
+toast-sub-visible = Sottotitoli visibili
+error-subtitles = I sottotitoli non si possono mostrare: { $reason }
+error-subtitle-read = { $path } non si può leggere ({ $reason })
+error-subtitle-encoding = la codifica di { $path } non è riconosciuta: sceglila in Sottotitoli → Codifica
+error-subtitle-empty = il file non ha righe di sottotitoli
+error-subtitle-bitmap = i sottotitoli a immagini li disegna il player
+
 # Shown by the desktop while the screensaver is inhibited (PLY-013).
 inhibit-reason = Riproduzione di un video

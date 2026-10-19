@@ -17,6 +17,9 @@ use crate::controls::ControlsVisibility;
 use crate::i18n::Translator;
 use crate::screensaver::ScreensaverPolicy;
 use crate::shortcuts::{Action, Bindings, Context, Modifiers};
+use crate::subtitles::{Loaded, Obscure, Request, Source, Subtitles};
+use nikomiru_subs::select::{self, Choice, EmbeddedTrack};
+use nikomiru_subs::timeline::Jump;
 
 /// What the QML layer must do after an action (things Rust cannot do itself).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +32,10 @@ pub enum UiEffect {
     Back,
     /// Show the file dialog.
     OpenDialog,
+    /// Show or hide the subtitle list (SUB-015).
+    ToggleSubList,
+    /// Open the subtitle list with the search field focused.
+    SubSearch,
 }
 
 impl UiEffect {
@@ -39,6 +46,8 @@ impl UiEffect {
             UiEffect::ToggleFullscreen => "fullscreen",
             UiEffect::Back => "back",
             UiEffect::OpenDialog => "open_file",
+            UiEffect::ToggleSubList => "sub_list",
+            UiEffect::SubSearch => "sub_search",
         }
     }
 }
@@ -52,6 +61,13 @@ pub enum UiEvent {
     FirstFrame,
     /// The file could not be played: the message id of the error.
     Error(&'static str),
+    /// A cue became visible (T-PERF-07): its index and the position.
+    CueShown {
+        /// Index of the cue.
+        index: usize,
+        /// Position in milliseconds when it appeared.
+        time_pos_ms: i64,
+    },
 }
 
 /// State shown by the player page.
@@ -81,6 +97,8 @@ pub struct ViewState {
     pub chapters: usize,
     /// Error to show, already translated (PLY-012, ERR-001).
     pub error: Option<String>,
+    /// Display size of the video (anamorphic pixels applied), 0 if unknown.
+    pub video_size: (i64, i64),
 }
 
 impl Default for ViewState {
@@ -98,6 +116,7 @@ impl Default for ViewState {
             aid: None,
             chapters: 0,
             error: None,
+            video_size: (0, 0),
         }
     }
 }
@@ -106,6 +125,13 @@ impl Default for ViewState {
 pub trait IdleInhibitor: Send {
     /// Inhibits the screensaver, or releases the inhibition.
     fn set(&self, inhibit: bool);
+}
+
+/// Loads subtitles away from the UI thread: decoding (SUB-005) and the
+/// extraction of embedded tracks (SUB-007). `done` may run on any thread.
+pub trait SubtitleSource: Send {
+    /// Loads `request` and calls `done` with the result or a translated error.
+    fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 }
 
 /// Everything the session needs from the application.
@@ -125,6 +151,8 @@ pub struct Services {
     pub notices: Vec<String>,
     /// The screensaver inhibition.
     pub inhibitor: Box<dyn IdleInhibitor>,
+    /// The subtitle loader.
+    pub subtitle_source: Box<dyn SubtitleSource>,
 }
 
 impl std::fmt::Debug for Services {
@@ -160,6 +188,17 @@ pub struct Session {
     /// Load milestones not yet taken by the UI layer.
     pub events: Vec<UiEvent>,
     first_frame: bool,
+    /// The subtitles of the current file.
+    pub subs: Subtitles,
+    /// The subtitle sources of the current file, for the menu.
+    sub_sources: Vec<Source>,
+    /// Languages of embedded tracks, for the menu labels.
+    sub_tracks: Vec<Track>,
+    sub_generation: u64,
+    sub_loads: Vec<(u64, Request)>,
+    sub_auto_done: bool,
+    /// Changes whenever the cue list changes, so the UI rebuilds it.
+    pub sub_list_version: u64,
 }
 
 impl std::fmt::Debug for Session {
@@ -211,6 +250,7 @@ impl Session {
             error: (!services.notices.is_empty()).then(|| services.notices.join("\n")),
             ..ViewState::default()
         };
+        let services_obscure = services.config.subtitles.obscure.clone();
         Self {
             services,
             bindings,
@@ -227,6 +267,13 @@ impl Session {
             toasts: Vec::new(),
             events: Vec::new(),
             first_frame: false,
+            subs: Subtitles::with_mode(Obscure::from_config(&services_obscure)),
+            sub_sources: Vec::new(),
+            sub_tracks: Vec::new(),
+            sub_generation: 0,
+            sub_loads: Vec::new(),
+            sub_auto_done: false,
+            sub_list_version: 0,
         }
     }
 
@@ -314,6 +361,7 @@ impl Session {
         };
         self.saver.reset();
         self.first_frame = false;
+        self.reset_subtitles();
         self.view.loaded = false;
         self.view.title = path
             .file_name()
@@ -358,6 +406,13 @@ impl Session {
                     self.events.push(UiEvent::FirstFrame);
                 }
                 self.view.time_pos = t;
+                let pos_ms = (t * 1000.0).round() as i64;
+                for index in self.subs.update(pos_ms) {
+                    self.events.push(UiEvent::CueShown {
+                        index,
+                        time_pos_ms: pos_ms,
+                    });
+                }
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
                 }
@@ -371,8 +426,11 @@ impl Session {
             PlayerEvent::Volume(v) => self.view.volume = v,
             PlayerEvent::Mute(m) => self.view.muted = m,
             PlayerEvent::Tracks(t) => {
+                self.sub_tracks = t.iter().filter(|t| t.kind == "sub").cloned().collect();
                 self.view.audio_tracks = t.into_iter().filter(|t| t.kind == "audio").collect();
+                self.discover_subtitles();
             }
+            PlayerEvent::VideoSize(w, h) => self.view.video_size = (w, h),
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c.len(),
             PlayerEvent::EndFile(EndFile::Error(e)) => {
@@ -527,6 +585,78 @@ impl Session {
             Action::FrameNext => p.frame_step(true),
             Action::ChapterPrev => p.chapter(-1),
             Action::ChapterNext => p.chapter(1),
+            Action::SubPrev | Action::SubNext => {
+                let pos = (self.view.time_pos * 1000.0) as i64;
+                let secs = i64::from(self.services.config.player.seek_seconds.max(1));
+                let t = self.subs.timeline();
+                let jump = if action == Action::SubPrev {
+                    t.previous(pos, true, secs)
+                } else {
+                    t.next(pos, secs)
+                };
+                match jump {
+                    Jump::To(ms) => p.seek_absolute(ms as f64 / 1000.0),
+                    Jump::Seek(s) => p.seek_relative(s as f64),
+                }
+            }
+            Action::ReplayCue | Action::ReplayPrevCue => {
+                let pos = (self.view.time_pos * 1000.0) as i64;
+                let t = self.subs.timeline();
+                let target = if action == Action::ReplayCue {
+                    t.replay(pos).map(|(start, _)| start)
+                } else {
+                    match t.previous(pos, false, 0) {
+                        Jump::To(ms) => Some(ms),
+                        Jump::Seek(_) => None,
+                    }
+                };
+                match target {
+                    Some(ms) => p.seek_absolute(ms as f64 / 1000.0),
+                    None => Ok(()),
+                }
+            }
+            Action::SubDelayMinus | Action::SubDelayPlus => {
+                let steps = if action == Action::SubDelayPlus {
+                    1
+                } else {
+                    -1
+                };
+                let d = self.subs.timeline_mut().nudge(steps);
+                self.after_delay_change(d);
+                Ok(())
+            }
+            Action::SubAlignPrev | Action::SubAlignNext => {
+                let pos = (self.view.time_pos * 1000.0) as i64;
+                if let Some(d) = self
+                    .subs
+                    .timeline_mut()
+                    .align(pos, action == Action::SubAlignNext)
+                {
+                    self.after_delay_change(d);
+                }
+                Ok(())
+            }
+            Action::SubBlur | Action::SubHide => {
+                let wanted = if action == Action::SubBlur {
+                    Obscure::Blur
+                } else {
+                    Obscure::Hidden
+                };
+                self.subs.mode = if self.subs.mode == wanted {
+                    Obscure::None
+                } else {
+                    wanted
+                };
+                let key = match self.subs.mode {
+                    Obscure::None => "toast-sub-visible",
+                    Obscure::Blur => "toast-sub-blurred",
+                    Obscure::Hidden => "toast-sub-hidden",
+                };
+                self.toasts.push(self.tr(key, &[]));
+                Ok(())
+            }
+            Action::SubList => return UiEffect::ToggleSubList,
+            Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
             Action::Back => return UiEffect::Back,
             Action::OpenFile => return UiEffect::OpenDialog,
@@ -557,6 +687,292 @@ impl Session {
     /// Current file, if any.
     pub fn current_path(&self) -> Option<&Path> {
         self.current.as_ref().map(|c| c.path.as_path())
+    }
+}
+
+/// Subtitles (SUB-005…SUB-016).
+impl Session {
+    fn reset_subtitles(&mut self) {
+        self.subs.clear(None);
+        self.sub_sources.clear();
+        self.sub_tracks.clear();
+        self.sub_generation += 1;
+        self.sub_loads.clear();
+        self.sub_auto_done = false;
+        self.sub_list_version += 1;
+    }
+
+    /// The subtitle sources of the current file: external files next to it
+    /// (SUB-006) and the embedded tracks; the first time, the automatic choice
+    /// (SUB-008).
+    fn discover_subtitles(&mut self) {
+        let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
+            return;
+        };
+        let entries: Vec<PathBuf> = video
+            .parent()
+            .and_then(|dir| std::fs::read_dir(dir).ok())
+            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        let externals = select::external_files(&video, &entries);
+        let mut sources: Vec<Source> = externals
+            .iter()
+            .map(|e| Source::File(e.path.clone()))
+            .collect();
+        // a file the user opened stays in the menu
+        if let Some(Source::File(p)) = &self.subs.source
+            && !sources.contains(&Source::File(p.clone()))
+        {
+            sources.push(Source::File(p.clone()));
+        }
+        let mut embedded = Vec::new();
+        for t in &self.sub_tracks {
+            if t.external {
+                continue;
+            }
+            let codec = t.codec.clone().unwrap_or_default();
+            let text = nikomiru_media::extract::is_text_codec(&codec);
+            sources.push(match (text, t.ff_index) {
+                (true, Some(ff_index)) => Source::Embedded {
+                    id: t.id,
+                    ff_index,
+                    codec,
+                },
+                _ => Source::Bitmap(t.id),
+            });
+            embedded.push(EmbeddedTrack {
+                id: t.id,
+                language: t.lang.clone(),
+                title: t.title.clone(),
+                text,
+            });
+        }
+        self.sub_sources = sources;
+        if self.sub_auto_done || !self.view.loaded {
+            return;
+        }
+        self.sub_auto_done = true;
+        let preferred = self.services.config.subtitles.preferred_languages.clone();
+        let choice = preferred
+            .iter()
+            .find_map(|lang| select::choose(None, &externals, &embedded, lang));
+        let source = match choice {
+            Some(Choice::External(p)) => Some(Source::File(p)),
+            Some(Choice::Embedded(id)) => self
+                .sub_sources
+                .iter()
+                .find(
+                    |s| matches!(s, Source::Embedded { id: i, .. } | Source::Bitmap(i) if *i == id),
+                )
+                .cloned(),
+            None => None,
+        };
+        if let Some(source) = source {
+            self.use_subtitles(source);
+        }
+    }
+
+    /// Shows `source`: mpv draws graphic tracks; text ones are loaded in the
+    /// background and drawn by the overlay.
+    fn use_subtitles(&mut self, source: Source) {
+        self.sub_generation += 1;
+        self.sub_loads.clear();
+        match &source {
+            Source::Bitmap(id) => {
+                let _ = self.services.player.show_bitmap_subtitles(Some(*id));
+                self.subs.clear(Some(source));
+                self.sub_list_version += 1;
+            }
+            Source::File(_) | Source::Embedded { .. } => {
+                let _ = self.services.player.show_bitmap_subtitles(None);
+                let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
+                    return;
+                };
+                self.sub_loads.push((
+                    self.sub_generation,
+                    Request {
+                        video,
+                        source,
+                        encoding: self.subs.forced_encoding.clone(),
+                        duration_ms: (self.view.duration * 1000.0) as i64,
+                    },
+                ));
+            }
+        }
+    }
+
+    /// Loads waiting to be started by the UI layer, with their generation.
+    pub fn take_subtitle_loads(&mut self) -> Vec<(u64, Request)> {
+        std::mem::take(&mut self.sub_loads)
+    }
+
+    /// Starts `request` on the loader; `done` gets the result.
+    pub fn start_subtitle_load(
+        &self,
+        request: Request,
+        done: Box<dyn FnOnce(Result<Loaded, String>) + Send>,
+    ) {
+        self.services.subtitle_source.load(request, done);
+    }
+
+    /// A load finished. A result for an older request is dropped.
+    pub fn subtitles_loaded(
+        &mut self,
+        generation: u64,
+        source: Source,
+        result: Result<Loaded, String>,
+    ) {
+        if generation != self.sub_generation {
+            return;
+        }
+        match result {
+            Ok(loaded) => {
+                let name = source_name(&source);
+                let encoding = loaded.encoding.clone();
+                self.subs.set_track(source, loaded);
+                self.subs.update((self.view.time_pos * 1000.0) as i64);
+                self.sub_list_version += 1;
+                let text = match encoding {
+                    Some(e) => self.tr(
+                        "toast-sub-loaded-encoding",
+                        &[("name", name), ("encoding", e)],
+                    ),
+                    None => self.tr("toast-sub-loaded", &[("name", name)]),
+                };
+                self.toasts.push(text);
+            }
+            Err(reason) => {
+                tracing::warn!("subtitles: {reason}");
+                self.subs.clear(None);
+                self.sub_list_version += 1;
+                self.toasts
+                    .push(self.tr("error-subtitles", &[("reason", reason)]));
+            }
+        }
+    }
+
+    /// Menu choice: a source key, or `"off"`.
+    pub fn select_subtitles(&mut self, key: &str) {
+        if key == "off" {
+            self.sub_generation += 1;
+            let _ = self.services.player.show_bitmap_subtitles(None);
+            self.subs.clear(None);
+            self.sub_list_version += 1;
+            return;
+        }
+        if let Some(source) = self.sub_sources.iter().find(|s| s.key() == key).cloned() {
+            self.use_subtitles(source);
+        }
+    }
+
+    /// A subtitle file chosen by the user.
+    pub fn open_subtitle_file(&mut self, path: &Path) {
+        let source = Source::File(path.to_path_buf());
+        if !self.sub_sources.contains(&source) {
+            self.sub_sources.push(source.clone());
+        }
+        self.use_subtitles(source);
+    }
+
+    /// Forces an encoding (`""` = automatic) and reloads the file (SUB-005).
+    pub fn force_encoding(&mut self, encoding: &str) {
+        self.subs.forced_encoding = (!encoding.is_empty()).then(|| encoding.to_string());
+        if let Some(source @ Source::File(_)) = self.subs.source.clone() {
+            self.use_subtitles(source);
+        }
+    }
+
+    /// The subtitle menu: `{key, kind, name, lang, title, codec}`.
+    pub fn subtitle_menu(&self) -> serde_json::Value {
+        let items = self.sub_sources.iter().map(|s| {
+            let track = |id: i64| self.sub_tracks.iter().find(|t| t.id == id);
+            match s {
+                Source::File(p) => serde_json::json!({
+                    "key": s.key(), "kind": "file", "name": source_name(s),
+                    "path": p.display().to_string(),
+                }),
+                Source::Embedded { id, codec, .. } => serde_json::json!({
+                    "key": s.key(), "kind": "text", "name": format!("#{id}"),
+                    "lang": track(*id).and_then(|t| t.lang.clone()),
+                    "title": track(*id).and_then(|t| t.title.clone()),
+                    "codec": codec,
+                }),
+                Source::Bitmap(id) => serde_json::json!({
+                    "key": s.key(), "kind": "bitmap", "name": format!("#{id}"),
+                    "lang": track(*id).and_then(|t| t.lang.clone()),
+                    "title": track(*id).and_then(|t| t.title.clone()),
+                    "codec": track(*id).and_then(|t| t.codec.clone()),
+                }),
+            }
+        });
+        serde_json::Value::Array(items.collect())
+    }
+
+    fn after_delay_change(&mut self, delay_ms: i64) {
+        self.subs.update((self.view.time_pos * 1000.0) as i64);
+        self.sub_list_version += 1;
+        self.toasts
+            .push(self.tr("toast-sub-delay", &[("value", format!("{delay_ms:+}"))]));
+    }
+
+    /// A click on a grapheme of the overlay or of the list: playback pauses and
+    /// the grapheme is selected (M3 looks the word up from there).
+    pub fn select_grapheme(&mut self, cue: usize, offset: usize) {
+        if self
+            .subs
+            .cue(cue)
+            .is_none_or(|c| offset >= c.plain_text.len())
+        {
+            return;
+        }
+        if !self.view.paused {
+            let _ = self.services.player.set_pause(true);
+        }
+        self.subs.selection = Some((cue, offset));
+    }
+
+    /// A click in the text of a list row, at a QML (UTF-16) position.
+    pub fn select_in_list(&mut self, cue: usize, utf16_pos: usize) {
+        if let Some(c) = self.subs.cue(cue) {
+            let offset = crate::subtitles::utf16_to_byte(&c.plain_text, utf16_pos);
+            self.select_grapheme(cue, offset);
+        }
+    }
+
+    /// A click on the time of a list row: playback goes to the cue.
+    pub fn seek_to_cue(&self, cue: usize) {
+        if cue < self.subs.timeline().cues().len() {
+            let ms = self.subs.timeline().start_pos(cue);
+            let _ = self.services.player.seek_absolute(ms as f64 / 1000.0);
+        }
+    }
+
+    /// The obscuring that applies now (SUB-014): no popup exists before M3.
+    pub fn obscure_now(&self) -> Obscure {
+        crate::subtitles::obscured(
+            self.subs.mode,
+            self.view.loaded && !self.view.paused,
+            false,
+            self.subs.hovered,
+        )
+    }
+
+    /// The configured subtitle font size (1080p reference) and whether ASS
+    /// styles are respected.
+    pub fn subtitle_style(&self) -> (f64, bool) {
+        let c = &self.services.config.subtitles;
+        (c.font_size, c.respect_ass_styles)
+    }
+}
+
+/// A short name for a subtitle source.
+fn source_name(source: &Source) -> String {
+    match source {
+        Source::File(p) => p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        Source::Embedded { id, .. } | Source::Bitmap(id) => format!("#{id}"),
     }
 }
 

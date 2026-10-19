@@ -339,7 +339,7 @@ const OBSERVED: [(&str, Format); 14] = [
     ("eof-reached", Format::Flag),
     ("seeking", Format::Flag),
     ("paused-for-cache", Format::Flag),
-    ("video-params/w", Format::Int64),
+    ("video-params/dw", Format::Int64),
     ("demuxer-cache-duration", Format::Double),
 ];
 
@@ -538,6 +538,31 @@ impl PlayerHandle {
         )
     }
 
+    /// Stops playback at `seconds` (or no longer): mpv pauses on that frame,
+    /// because `keep-open` turns the end into a pause (SUB-013, cue replay).
+    pub fn stop_at(&self, seconds: Option<f64>) -> Result<(), PlayerError> {
+        self.set(
+            "end",
+            &seconds.map_or_else(|| "none".to_string(), |s| format!("{s:.3}")),
+        )
+    }
+
+    /// Lets mpv draw an embedded graphic subtitle track (PGS, VobSub, DVB), or
+    /// none. Text subtitles are never drawn by mpv: Nikomiru draws them
+    /// (SPECIFICATION §6.4).
+    pub fn show_bitmap_subtitles(&self, id: Option<i64>) -> Result<(), PlayerError> {
+        match id {
+            Some(id) => {
+                self.set("sid", &id.to_string())?;
+                self.set("sub-visibility", "yes")
+            }
+            None => {
+                self.set("sid", "no")?;
+                self.set("sub-visibility", "no")
+            }
+        }
+    }
+
     /// Stores a string in the core under `user-data/nikomiru/<key>` (for the GUI
     /// harness and the tests, e.g. to check that the core is reused, PLY-009).
     pub fn set_user_data(&self, key: &str, value: &str) -> Result<(), PlayerError> {
@@ -714,9 +739,9 @@ fn event_loop(client: Mpv, shared: &Shared, sink: &Sink) {
                     ("paused-for-cache", PropertyData::Flag(p)) => {
                         Some(PlayerEvent::PausedForCache(p))
                     }
-                    ("video-params/w", PropertyData::Int64(w)) => Some(PlayerEvent::VideoSize(
+                    ("video-params/dw", PropertyData::Int64(w)) => Some(PlayerEvent::VideoSize(
                         w,
-                        client.get_property::<i64>("video-params/h").unwrap_or(0),
+                        client.get_property::<i64>("video-params/dh").unwrap_or(0),
                     )),
                     ("demuxer-cache-duration", PropertyData::Double(c)) => {
                         Some(PlayerEvent::CacheAhead(c))

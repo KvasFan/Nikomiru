@@ -44,8 +44,14 @@ ApplicationWindow {
 
     // Drag & drop: the first URL is opened (LIB-001).
     function openDropped(urls) {
-        if (urls.length > 0)
-            ctl.open_file(urls[0].toString());
+        if (urls.length === 0)
+            return;
+        const url = urls[0].toString();
+        const ext = url.split(".").pop().toLowerCase();
+        if (ctl.loaded && subtitleExtensions.indexOf(ext) >= 0)
+            ctl.open_subtitle_file(url);
+        else
+            ctl.open_file(url);
     }
 
     // Keyboard: every key goes to Rust with its scan code (KEY-002).
@@ -56,8 +62,26 @@ ApplicationWindow {
             ctl.key_event(scanCode, modifiers, false, false, false);
     }
 
+    property bool subListVisible: false
+    readonly property var subtitleExtensions: ["srt", "ass", "ssa", "vtt"]
+
+    function toggleSubList(searching) {
+        if (searching) {
+            subListVisible = true;
+            subList.focusSearch();
+        } else {
+            subListVisible = !subListVisible;
+            if (!subListVisible)
+                keys.forceActiveFocus();
+        }
+    }
+
     function apply(effect) {
-        if (effect === "fullscreen")
+        if (effect === "sub_list")
+            toggleSubList(false);
+        else if (effect === "sub_search")
+            toggleSubList(true);
+        else if (effect === "fullscreen")
             win.visibility = win.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen;
         else if (effect === "back" && win.visibility === Window.FullScreen)
             win.visibility = Window.Windowed;
@@ -127,7 +151,25 @@ ApplicationWindow {
         }
     }
 
+    SubtitleOverlay {
+        controller: ctl
+        anchors.fill: parent
+        barHeight: ctl.controls_visible ? controlBar.height : 0
+    }
+
+    SubtitleList {
+        id: subList
+        controller: ctl
+        visible: win.subListVisible
+        width: Math.min(420, win.width * 0.4)
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: controlBar.visible ? controlBar.top : parent.bottom
+        onCloseRequested: win.toggleSubList(false)
+    }
+
     ControlBar {
+        id: controlBar
         controller: ctl
         anchors.left: parent.left
         anchors.right: parent.right
@@ -138,6 +180,8 @@ ApplicationWindow {
         fullscreen: win.visibility === Window.FullScreen
         onFullscreenToggled: win.apply("fullscreen")
         onOpenRequested: fileDialog.open()
+        onSubtitleFileRequested: subtitleDialog.open()
+        onSubtitleListRequested: win.toggleSubList(false)
     }
 
     Toast {
@@ -165,6 +209,19 @@ ApplicationWindow {
         ]
         onAccepted: {
             ctl.open_file(selectedFile.toString());
+            keys.forceActiveFocus();
+        }
+    }
+
+    FileDialog {
+        id: subtitleDialog
+        title: ctl.tr("subtitle-open-file")
+        nameFilters: [
+            ctl.tr("file-filter-subtitles") + " (*.srt *.ass *.ssa *.vtt)",
+            ctl.tr("file-filter-all") + " (*)"
+        ]
+        onAccepted: {
+            ctl.open_subtitle_file(selectedFile.toString());
             keys.forceActiveFocus();
         }
     }

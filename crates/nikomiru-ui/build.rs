@@ -10,6 +10,8 @@ fn main() {
         "qml/Main.qml",
         "qml/ControlBar.qml",
         "qml/Toast.qml",
+        "qml/SubtitleOverlay.qml",
+        "qml/SubtitleList.qml",
     ]);
     CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")

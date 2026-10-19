@@ -208,6 +208,11 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
     };
     nikomiru_player::video::set_core(&player);
     let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));
+    let subtitle_source = nikomiru_app::subtitles::Loader::start(
+        Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok()),
+        config.paths.ffmpeg.clone(),
+        paths.cache_dir.join("subtitles"),
+    );
     nikomiru_ui::install(Services {
         player: player.handle(),
         config,
@@ -216,6 +221,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         clock: Box::new(SystemClock::new()),
         notices,
         inhibitor: Box::new(inhibitor),
+        subtitle_source: Box::new(subtitle_source),
     });
     let instance = server.map(|server| {
         server.serve(|request| {

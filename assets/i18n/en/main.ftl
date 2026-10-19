@@ -72,5 +72,26 @@ error-job-failed = { $program } failed: { $reason }
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
 error-instance-no-answer = Nikomiru is already running but does not answer. Close it and try again.
 
+# Subtitles (M2)
+subtitles = Subtitles
+subtitles-off = Off
+subtitle-open-file = Open subtitle file…
+subtitle-encoding = Encoding
+encoding-auto = Automatic
+subtitle-list = Subtitle list
+subtitle-search = Search the subtitles
+file-filter-subtitles = Subtitle files
+toast-sub-loaded = Subtitles: { $name }
+toast-sub-loaded-encoding = Subtitles: { $name } ({ $encoding })
+toast-sub-delay = Subtitle offset { $value } ms
+toast-sub-blurred = Subtitles blurred
+toast-sub-hidden = Subtitles hidden
+toast-sub-visible = Subtitles visible
+error-subtitles = The subtitles cannot be shown: { $reason }
+error-subtitle-read = { $path } cannot be read ({ $reason })
+error-subtitle-encoding = the encoding of { $path } is not recognized: choose it in Subtitles → Encoding
+error-subtitle-empty = the file has no subtitle lines
+error-subtitle-bitmap = image subtitles are drawn by the player
+
 # Shown by the desktop while the screensaver is inhibited (PLY-013).
 inhibit-reason = Playing a video

@@ -53,6 +53,8 @@ pub struct Config {
     pub general: General,
     /// `[player]`.
     pub player: PlayerConfig,
+    /// `[subtitles]`.
+    pub subtitles: SubtitlesConfig,
     /// `[paths]`.
     pub paths: PathsConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
@@ -101,6 +103,35 @@ pub struct PlayerConfig {
     pub other: toml::Table,
 }
 
+/// `[subtitles]` (SUB-008, SUB-010, SUB-014).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SubtitlesConfig {
+    /// Languages of the subtitles chosen automatically, in order (SUB-008).
+    pub preferred_languages: Vec<String>,
+    /// Font size in pixels for a video 1080 px high (SUB-010).
+    pub font_size: f64,
+    /// Use the colours, fonts and positions of ASS files (SUB-010).
+    pub respect_ass_styles: bool,
+    /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
+    pub obscure: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for SubtitlesConfig {
+    fn default() -> Self {
+        Self {
+            preferred_languages: vec!["ja".into(), "jpn".into()],
+            font_size: 36.0,
+            respect_ass_styles: false,
+            obscure: "none".into(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
 /// `[paths]`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -144,6 +175,7 @@ impl Default for Config {
         Self {
             general: General::default(),
             player: PlayerConfig::default(),
+            subtitles: SubtitlesConfig::default(),
             paths: PathsConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
@@ -156,6 +188,9 @@ impl Config {
     pub fn from_toml(text: &str) -> Result<Self, toml::de::Error> {
         let mut c: Config = toml::from_str(text)?;
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        if !(8.0..=200.0).contains(&c.subtitles.font_size) {
+            c.subtitles.font_size = 36.0;
+        }
         Ok(c)
     }
 
@@ -192,6 +227,12 @@ impl Config {
         out.extend(self.general.other.keys().map(|k| format!("general.{k}")));
         out.extend(self.player.other.keys().map(|k| format!("player.{k}")));
         out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
+        out.extend(
+            self.subtitles
+                .other
+                .keys()
+                .map(|k| format!("subtitles.{k}")),
+        );
         out.sort();
         out
     }

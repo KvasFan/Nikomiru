@@ -7,6 +7,7 @@
 //!
 //! Commands: `{"cmd":"open","path":…}`, `{"cmd":"wait","event":…,"timeout_ms":…}`,
 //! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
+//! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
 //! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
@@ -83,6 +84,17 @@ fn run(command: &Value) -> Result<Value, String> {
                 .filter_map(|p| p.as_str().map(str::to_string))
                 .collect();
             harness::drop(&paths).map(|()| Value::Null)
+        }
+        Some("click_grapheme") => {
+            let index = |name: &str| {
+                command[name]
+                    .as_u64()
+                    .map(|v| v as usize)
+                    .ok_or_else(|| format!("missing \"{name}\""))
+            };
+            let layer = command["layer"].as_str().unwrap_or("main");
+            harness::click_grapheme(layer, index("cue_index")?, index("grapheme_index")?)
+                .map(|()| Value::Null)
         }
         Some("state") => harness::state(),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),

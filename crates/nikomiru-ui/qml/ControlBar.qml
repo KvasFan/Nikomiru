@@ -5,6 +5,7 @@
 // working.
 
 import QtQuick
+import QtQml
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 
@@ -14,6 +15,8 @@ Rectangle {
     property bool fullscreen: false
     signal fullscreenToggled()
     signal openRequested()
+    signal subtitleFileRequested()
+    signal subtitleListRequested()
 
     implicitHeight: layout.implicitHeight + 2 * layout.anchors.margins
     color: "#d9141418"
@@ -23,6 +26,24 @@ Rectangle {
         const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = s % 60;
         const two = (n) => (n < 10 ? "0" : "") + n;
         return (h > 0 ? h + ":" + two(m) : m) + ":" + two(r);
+    }
+
+    readonly property var subtitleSources: {
+        try { return JSON.parse(controller.subtitle_menu); } catch (e) { return []; }
+    }
+    readonly property var encodings: ["", "UTF-8", "CP932", "EUC-JP", "GB18030", "BIG5", "CP1252"]
+
+    function sourceLabel(s) {
+        if (s.kind === "file")
+            return s.name;
+        let parts = [s.name];
+        if (s.lang)
+            parts.push(s.lang);
+        if (s.title)
+            parts.push(s.title);
+        if (s.codec)
+            parts.push("(" + s.codec + ")");
+        return (s.kind === "bitmap" ? "🖼 " : "") + parts.join(" · ");
     }
 
     readonly property var audioTracks: {
@@ -119,6 +140,62 @@ Rectangle {
                 currentIndex: bar.audioTracks.findIndex(t => t.id === controller.aid)
                 onActivated: (index) => controller.select_audio(bar.audioTracks[index].id)
                 Accessible.name: controller.tr("audio-track")
+            }
+
+            Button {
+                id: subButton
+                focusPolicy: Qt.NoFocus
+                text: "字"
+                onClicked: subMenu.popup(subButton, 0, -subMenu.implicitHeight)
+                ToolTip.visible: hovered
+                ToolTip.text: controller.tr("subtitles")
+                Accessible.name: controller.tr("subtitles")
+
+                Menu {
+                    id: subMenu
+                    MenuItem {
+                        text: controller.tr("subtitles-off")
+                        checkable: true
+                        checked: controller.subtitle_key === ""
+                        onTriggered: controller.select_subtitles("off")
+                    }
+                    Instantiator {
+                        model: bar.subtitleSources
+                        delegate: MenuItem {
+                            required property var modelData
+                            text: bar.sourceLabel(modelData)
+                            checkable: true
+                            checked: controller.subtitle_key === modelData.key
+                            onTriggered: controller.select_subtitles(modelData.key)
+                        }
+                        onObjectAdded: (index, object) => subMenu.insertItem(index + 1, object)
+                        onObjectRemoved: (index, object) => subMenu.removeItem(object)
+                    }
+                    MenuSeparator {}
+                    MenuItem {
+                        text: controller.tr("subtitle-open-file")
+                        onTriggered: bar.subtitleFileRequested()
+                    }
+                    Menu {
+                        id: encodingMenu
+                        title: controller.tr("subtitle-encoding")
+                               + (controller.subtitle_encoding !== "" ? " (" + controller.subtitle_encoding + ")" : "")
+                        Instantiator {
+                            model: bar.encodings
+                            delegate: MenuItem {
+                                required property var modelData
+                                text: modelData === "" ? controller.tr("encoding-auto") : modelData
+                                onTriggered: controller.force_encoding(modelData)
+                            }
+                            onObjectAdded: (index, object) => encodingMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => encodingMenu.removeItem(object)
+                        }
+                    }
+                    MenuItem {
+                        text: controller.tr("subtitle-list")
+                        onTriggered: bar.subtitleListRequested()
+                    }
+                }
             }
 
             Button {

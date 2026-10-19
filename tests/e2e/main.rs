@@ -166,3 +166,110 @@ fn the_release_build_starts_and_quits() {
     let status = exit_status(&mut app, Duration::from_secs(15));
     assert!(status.success(), "{status}\n{}", desk.log());
 }
+
+fn subs(state: &serde_json::Value) -> &serde_json::Value {
+    &state["subtitles"]
+}
+
+fn visible_text(state: &serde_json::Value) -> Vec<String> {
+    subs(state)["visible"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["text"].as_str().map(str::to_string))
+        .collect()
+}
+
+// T-SUB-009
+// T-SUB-012
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn embedded_subtitles_are_drawn_clickable_and_navigable() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    let shown = h.wait("cue-shown");
+    assert_eq!(shown["index"], 0);
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["食べました"]);
+    // the Japanese SRT track, extracted and drawn by Nikomiru (SUB-007, SUB-008)
+    assert!(
+        subs(&s)["source"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("track:"),
+        "{s}"
+    );
+    assert_eq!(subs(&s)["cues"], 3);
+
+    // a click on the second grapheme selects it and pauses (byte offset 3: べ)
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 1 }));
+    let s = h.state_until("the pause after the click", |s| s["paused"] == true);
+    assert_eq!(subs(&s)["selected"], serde_json::json!([0, 3]));
+
+    // Ctrl+→ goes 180 ms before the next cue
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowRight", "mods": ["Ctrl"] }));
+    let s = h.state_until("the jump to the next cue", |s| {
+        (time_pos(s) - 4.82).abs() < 0.05
+    });
+    assert!(visible_text(&s).is_empty(), "{s}");
+    // X moves the subtitles 100 ms later
+    h.key("KeyX");
+    let s = h.state_until("the offset", |s| subs(s)["delay_ms"] == 100);
+    assert!(s["toast"].as_str().unwrap_or("").contains("+100"), "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-006
+// T-SUB-008
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_subtitle_file_next_to_the_video_wins_over_embedded_tracks() {
+    let dir = tempfile::tempdir().unwrap();
+    let video = dir.path().join("Ep01.mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &video).unwrap();
+    std::fs::write(
+        dir.path().join("Ep01.ja.srt"),
+        "1\n00:00:01,000 --> 00:00:03,000\n<i>外部</i>の字幕ファイル\n",
+    )
+    .unwrap();
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&video.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["外部の字幕ファイル"]);
+    assert!(
+        subs(&s)["source"]
+            .as_str()
+            .unwrap_or("")
+            .ends_with("Ep01.ja.srt"),
+        "{s}"
+    );
+    assert_eq!(subs(&s)["encoding"], "UTF-8");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-PERF-07
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn perf_cues_appear_within_50_ms_of_their_start() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    for start in [2.0, 5.0, 8.0] {
+        let shown = h.wait("cue-shown");
+        let at = shown["time_pos"].as_f64().unwrap();
+        assert!(
+            (0.0..=0.050).contains(&(at - start)),
+            "cue at {start} shown at {at}"
+        );
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

@@ -25,6 +25,10 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FileLoaded => ("file-loaded", json!({})),
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
+        UiEvent::CueShown { index, time_pos_ms } => (
+            "cue-shown",
+            json!({ "index": index, "time_pos": time_pos_ms as f64 / 1000.0 }),
+        ),
     };
     if let Ok(mut q) = EVENTS.lock() {
         q.push_back(entry);
@@ -102,6 +106,25 @@ pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
     harness_call(move |c| c.key_requested(evdev + 8, bits))
 }
 
+/// Clicks grapheme `grapheme` of cue `cue` (layer `main`, the only one before
+/// M7), through the overlay's click invokable.
+pub fn click_grapheme(layer: &str, cue: usize, grapheme: usize) -> Result<(), String> {
+    if layer != "main" {
+        return Err(format!("no subtitle layer {layer}"));
+    }
+    harness_call(move |mut c| {
+        let offset = c
+            .rust()
+            .session
+            .as_ref()
+            .and_then(|s| s.subs.cue(cue))
+            .and_then(|q| q.graphemes().get(grapheme).map(|g| g.offset))
+            .ok_or_else(|| format!("no grapheme {grapheme} in cue {cue}"))?;
+        c.as_mut().grapheme_clicked(cue as i32, offset as i32);
+        Ok(())
+    })?
+}
+
 /// The player state as the page shows it.
 pub fn state() -> Result<Value, String> {
     harness_call(|c| {
@@ -118,6 +141,23 @@ pub fn state() -> Result<Value, String> {
             "error": c.error_text().to_string(),
             "toast": c.toast().to_string(),
             "controls_visible": *c.controls_visible(),
+            "subtitles": c.rust().session.as_ref().map(|s| {
+                let visible: Vec<Value> = s
+                    .subs
+                    .active()
+                    .iter()
+                    .filter_map(|&i| s.subs.cue(i).map(|q| json!({ "index": i, "text": q.plain_text })))
+                    .collect();
+                json!({
+                    "source": s.subs.source.as_ref().map(|x| x.key()),
+                    "encoding": s.subs.encoding,
+                    "delay_ms": s.subs.timeline().delay_ms,
+                    "cues": s.subs.timeline().cues().len(),
+                    "visible": visible,
+                    "selected": s.subs.selection.map(|(c, o)| json!([c, o])),
+                    "obscure": s.obscure_now().name(),
+                })
+            }),
         })
     })
 }

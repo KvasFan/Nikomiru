@@ -20,3 +20,4 @@ pub mod instance;
 #[allow(unsafe_code)]
 pub mod linux;
 pub mod logging;
+pub mod subtitles;
