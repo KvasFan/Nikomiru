@@ -140,6 +140,11 @@ impl Desktop {
         self.dir.path().join(sub)
     }
 
+    /// A file of the app's data folder (`$XDG_DATA_HOME/nikomiru`).
+    pub fn data_file(&self, name: &str) -> PathBuf {
+        self.path("data").join("nikomiru").join(name)
+    }
+
     /// Imports dictionaries (zips of `target/fixtures/dicts`) into this
     /// desktop's profile, before the app starts.
     pub fn import_dictionaries(&self, names: &[&str]) {

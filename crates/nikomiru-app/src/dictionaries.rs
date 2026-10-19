@@ -27,7 +27,19 @@ use nikomiru_ui::popup_view::{self, Collapse, DictView};
 pub struct Dictionaries {
     manager: Arc<DictionaryManager>,
     translator: Translator,
-    jobs: mpsc::Sender<(String, Done<Reply>)>,
+    jobs: Option<mpsc::Sender<(String, Done<Reply>)>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for Dictionaries {
+    /// The worker holds the library (through the manager): it must end
+    /// before the process does, or the library is left to be repaired.
+    fn drop(&mut self) {
+        drop(self.jobs.take());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
 }
 
 impl Dictionaries {
@@ -51,13 +63,18 @@ impl Dictionaries {
                     done(result);
                 }
             });
-        if let Err(e) = spawned {
-            tracing::error!("cannot start the lookup thread: {e}");
-        }
+        let worker = match spawned {
+            Ok(worker) => Some(worker),
+            Err(e) => {
+                tracing::error!("cannot start the lookup thread: {e}");
+                None
+            }
+        };
         Self {
             manager,
             translator,
-            jobs,
+            jobs: Some(jobs),
+            worker,
         }
     }
 
@@ -68,7 +85,14 @@ impl Dictionaries {
 
 impl DictionaryService for Dictionaries {
     fn lookup(&self, text: String, done: Done<Reply>) {
-        if let Err(mpsc::SendError((_, done))) = self.jobs.send((text, done)) {
+        let unsent = match &self.jobs {
+            Some(jobs) => jobs
+                .send((text, done))
+                .err()
+                .map(|mpsc::SendError((_, done))| done),
+            None => Some(done),
+        };
+        if let Some(done) = unsent {
             done(Err(self.translator.tr("error-dict-unavailable", &[])));
         }
     }

@@ -393,6 +393,22 @@ fn a_dropped_dictionary_is_imported_and_used() {
     h.key("Escape");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+
+    // T-REL-001: the exit closed the library (the lookup worker holds it
+    // too): the next start needs no repair and still has the dictionary
+    let (mut app, mut h) = desk.launch();
+    let s = h.state();
+    assert!(
+        !desk.data_file("library.redb.bak-repair").exists(),
+        "the library was left open at exit"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert_eq!(
+        s["dictionaries"]["rows"].as_array().map(Vec::len),
+        Some(0),
+        "the page is read when it opens"
+    );
 }
 
 // T-POP-014, T-POP-015

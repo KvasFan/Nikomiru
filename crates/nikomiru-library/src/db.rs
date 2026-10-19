@@ -148,6 +148,29 @@ fn write_schema(tx: &redb::WriteTransaction, version: u32) -> Result<(), Library
     Ok(())
 }
 
+/// Repairs a library that was not closed: a copy first
+/// (`library.redb.bak-repair`), then a read-write open, which repairs, and a
+/// clean close.
+fn repair(path: &Path) -> Result<(), LibraryError> {
+    tracing::warn!("{} was not closed cleanly: repairing it", path.display());
+    let backup = path.with_file_name(format!(
+        "{}.bak-repair",
+        path.file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+    ));
+    std::fs::copy(path, &backup).map_err(|source| LibraryError::Io {
+        path: backup.clone(),
+        source,
+    })?;
+    drop(db_err!(redb::Database::open(path))?);
+    tracing::info!(
+        "library repaired; the copy before the repair is {}",
+        backup.display()
+    );
+    Ok(())
+}
+
 impl Library {
     /// Opens or creates the library at `path`.
     pub fn open(path: &Path) -> Result<Self, LibraryError> {
@@ -161,9 +184,17 @@ impl Library {
         migrations: &[(u32, Migration)],
     ) -> Result<Self, LibraryError> {
         if path.exists() {
-            let found = {
-                let ro = db_err!(redb::Builder::new().open_read_only(path))?;
-                read_schema(&ro)?
+            let found = match redb::Builder::new().open_read_only(path) {
+                Ok(ro) => read_schema(&ro)?,
+                // A process that ended without closing the file (crash,
+                // SIGKILL, an exit that skipped the drop) leaves it to be
+                // repaired, and a read-only open cannot repair (REL-001).
+                Err(redb::DatabaseError::RepairAborted) => {
+                    repair(path)?;
+                    let ro = db_err!(redb::Builder::new().open_read_only(path))?;
+                    read_schema(&ro)?
+                }
+                Err(e) => return Err(LibraryError::Db(e.into())),
             };
             if let Some(v) = found
                 && v > current
@@ -327,6 +358,45 @@ mod tests {
             mtime: 20,
             ..VideoRecord::default()
         }
+    }
+
+    const CHILD_PATH: &str = "NIKOMIRU_TEST_LIBRARY_LEFT_OPEN";
+
+    /// Runs only as the child of the next test: writes and exits without
+    /// closing the library, as the app did when its QML failed to load.
+    #[test]
+    fn child_leaves_the_library_open() {
+        let Ok(path) = std::env::var(CHILD_PATH) else {
+            return;
+        };
+        let lib = Library::open(Path::new(&path)).unwrap();
+        lib.put_video("a", &record("/v/a.mkv")).unwrap();
+        std::mem::forget(lib);
+        std::process::exit(0);
+    }
+
+    // T-REL-001
+    #[test]
+    fn a_library_left_open_is_repaired_with_its_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.redb");
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["db::tests::child_leaves_the_library_open", "--exact"])
+            .env(CHILD_PATH, &path)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert!(
+            matches!(
+                redb::Builder::new().open_read_only(&path),
+                Err(redb::DatabaseError::RepairAborted)
+            ),
+            "the child left the file to be repaired"
+        );
+        let lib = Library::open(&path).unwrap();
+        assert!(!lib.read_only());
+        assert_eq!(lib.video("a").unwrap().unwrap().path, "/v/a.mkv");
+        assert!(dir.path().join("library.redb.bak-repair").exists());
     }
 
     #[test]

@@ -362,6 +362,13 @@ pub fn install(services: Services) {
     }
 }
 
+/// Drops the services QML never took (the window failed to load): the library
+/// must be closed, or the next start finds it to be repaired.
+pub fn uninstall() {
+    let services = SERVICES.lock().ok().and_then(|mut s| s.take());
+    drop(services);
+}
+
 /// Player event sink: forwards to the controller on the Qt thread.
 pub fn deliver(event: Stamped<PlayerEvent>) {
     if let Ok(relay) = RELAY.lock()

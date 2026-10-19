@@ -418,6 +418,9 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
     // video item's render context go first, then the mpv core.
     drop(connection);
     drop(engine);
+    // if the window never loaded, the services (library included) are still
+    // waiting for it: they must be closed too
+    nikomiru_ui::uninstall();
     player.shutdown();
     drop(instance);
     tracing::info!("exit {code}");

@@ -26,5 +26,7 @@ pub mod session;
 pub mod shortcuts;
 pub mod subtitles;
 
-pub use bridge::player::{deliver, install, request_activate, request_open, request_quit};
+pub use bridge::player::{
+    deliver, install, request_activate, request_open, request_quit, uninstall,
+};
 pub use session::Services;
