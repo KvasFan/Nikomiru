@@ -3,22 +3,17 @@
 //! The Nikomiru binary: `QGuiApplication`, the QML engine, single instance and the
 //! wiring between the crates (D-10).
 //!
-//! `unsafe` is allowed only in the `linux` module (environment, `setlocale`) and
-//! in the cxx-qt bridge modules (ARC-011).
+//! The pieces that do not need Qt live in the library half of this crate.
 
 #![deny(unsafe_code)]
-
-mod cli;
-mod instance;
-#[allow(unsafe_code)]
-mod linux;
-mod logging;
 
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
+use nikomiru_app::inhibit::PortalInhibitor;
+use nikomiru_app::{cli, instance, linux, logging};
 use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
 use nikomiru_library::Library;
 use nikomiru_player::{Player, VideoOutput};
@@ -184,6 +179,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         Err(e) => return fatal(&e),
     };
     nikomiru_player::video::set_core(&player);
+    let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));
     nikomiru_ui::install(Services {
         player: player.handle(),
         config,
@@ -191,6 +187,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         translator,
         clock: Box::new(SystemClock::new()),
         notices,
+        inhibitor: Box::new(inhibitor),
     });
     let instance = server.map(|server| {
         server.serve(|request| {

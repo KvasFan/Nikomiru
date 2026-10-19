@@ -350,7 +350,8 @@ impl qobject::PlayerController {
         self.sync();
     }
 
-    fn tick(self: Pin<&mut Self>) {
+    fn tick(mut self: Pin<&mut Self>) {
+        self.as_mut().with_session(Session::tick);
         self.sync();
     }
 

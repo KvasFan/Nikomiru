@@ -217,6 +217,8 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
 | XDG paths | Own implementation in `nikomiru-core` (§3.6), no crate | — | — |
+| System calls | `libc`, only in `nikomiru-app::linux` (`setlocale` for libmpv, termination signals) | 0.2 | MIT OR Apache-2.0 |
+| D-Bus (portals) | Own minimal client in `nikomiru-app::dbus` (PLY-013), no crate | — | — |
 | File dialogs | Qt Quick Dialogs `FileDialog` (XDG portal through Qt), no crate | — | (Qt: LGPL-3.0, system) |
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
@@ -402,7 +404,7 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 | PLY-010 | Speed uses only the `speed` property, never the `scaletempo` filter | TODO-116 |
 | PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) | |
 | PLY-012 | Playback errors (missing file, unsupported codec, `end-file` with an error) MUST show an understandable message and must not block the app | |
-| PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal, or through mpv's `stop-screensaver` if the portal is not available | |
+| PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal (flag *idle*), kept for one minute after a pause. Nikomiru talks to the portal with its own minimal D-Bus client (`nikomiru-app::dbus`): `zbus` would add about 45 crates for three fixed calls. If the portal is not available, a warning is logged: mpv's `stop-screensaver` has no effect under the render API, because mpv owns no window | |
 | PLY-014 | Thumbnails on the progress bar: post-1.0 | |
 | PLY-015 | Screenshot with the overlay subtitles (`Shift+S`): post-1.0, because it requires compositing the overlay onto the frame | |
 | PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/nikomiru/mpv/<name>.conf`, or to any file chosen in the file dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`); (c) switch between saved presets. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as applied, ignored (with the reason) or invalid (with mpv's error); nothing changes until the user confirms. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Nikomiru version, date) and only the options that differ from the defaults, so the file also works in mpv | |

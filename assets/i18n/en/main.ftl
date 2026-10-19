@@ -34,3 +34,6 @@ error-library-read-only = The library was written by a newer version of Nikomiru
 error-library = Library error: { $reason }
 error-player = Player error: { $reason }
 error-paths = HOME is not set: Nikomiru cannot find its folders.
+
+# Shown by the desktop while the screensaver is inhibited (PLY-013).
+inhibit-reason = Playing a video

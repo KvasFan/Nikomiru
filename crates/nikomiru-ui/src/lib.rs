@@ -15,6 +15,7 @@ mod bridge {
 }
 pub mod controls;
 pub mod i18n;
+pub mod screensaver;
 pub mod session;
 pub mod shortcuts;
 

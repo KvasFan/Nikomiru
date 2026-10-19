@@ -125,12 +125,15 @@ pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
     for dir in crate_dirs(root)? {
         let lib = dir.join("src/lib.rs");
         let main = dir.join("src/main.rs");
+        if !lib.is_file() && !main.is_file() {
+            problems.push(format!("{}: neither src/lib.rs nor src/main.rs", rel(&dir)));
+        }
+        // a crate with both targets (nikomiru-app) has both roots checked
         if lib.is_file() {
             roots.push((crate_name(&dir), lib, true));
-        } else if main.is_file() {
+        }
+        if main.is_file() {
             roots.push((crate_name(&dir), main, false));
-        } else {
-            problems.push(format!("{}: neither src/lib.rs nor src/main.rs", rel(&dir)));
         }
     }
     roots.push(("xtask".into(), root.join("xtask/src/main.rs"), false));

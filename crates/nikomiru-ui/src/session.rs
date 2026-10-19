@@ -15,6 +15,7 @@ use nikomiru_player::{LoadRequest, PlayerEvent, PlayerHandle, options};
 
 use crate::controls::ControlsVisibility;
 use crate::i18n::Translator;
+use crate::screensaver::ScreensaverPolicy;
 use crate::shortcuts::{Action, Bindings, Context, Modifiers};
 
 /// What the QML layer must do after an action (things Rust cannot do itself).
@@ -90,6 +91,12 @@ impl Default for ViewState {
     }
 }
 
+/// Keeps the screen on (PLY-013); the application talks to the desktop.
+pub trait IdleInhibitor: Send {
+    /// Inhibits the screensaver, or releases the inhibition.
+    fn set(&self, inhibit: bool);
+}
+
 /// Everything the session needs from the application.
 pub struct Services {
     /// The player.
@@ -105,6 +112,8 @@ pub struct Services {
     /// Startup problems, already translated (invalid settings, read-only
     /// library…): shown until the first file opens (ERR-001).
     pub notices: Vec<String>,
+    /// The screensaver inhibition.
+    pub inhibitor: Box<dyn IdleInhibitor>,
 }
 
 impl std::fmt::Debug for Services {
@@ -128,6 +137,8 @@ pub struct Session {
     saver: ProgressSaver,
     hold: HoldToSpeed,
     controls: ControlsVisibility,
+    screensaver: ScreensaverPolicy,
+    inhibited: bool,
     renderer_ready: bool,
     pending: Option<PathBuf>,
     current: Option<Current>,
@@ -171,6 +182,9 @@ impl Drop for Session {
     /// Every way out (window closed, quit, signal) saves the position (LIB-006).
     fn drop(&mut self) {
         self.flush_position();
+        if self.inhibited {
+            self.services.inhibitor.set(false);
+        }
     }
 }
 
@@ -190,6 +204,8 @@ impl Session {
             saver: ProgressSaver::default(),
             hold: HoldToSpeed::default(),
             controls: ControlsVisibility::default(),
+            screensaver: ScreensaverPolicy::default(),
+            inhibited: false,
             renderer_ready: false,
             pending: None,
             current: None,
@@ -340,7 +356,24 @@ impl Session {
             }
             _ => return false,
         }
+        self.update_screensaver();
         true
+    }
+
+    /// Periodic update (from the UI's timer): the screensaver policy.
+    pub fn tick(&mut self) {
+        self.update_screensaver();
+    }
+
+    fn update_screensaver(&mut self) {
+        let now = self.services.clock.monotonic();
+        let playing = self.view.loaded && !self.view.paused;
+        self.screensaver.set_playing(playing, now);
+        let want = self.screensaver.inhibit(now);
+        if want != self.inhibited {
+            self.services.inhibitor.set(want);
+            self.inhibited = want;
+        }
     }
 
     fn save_position(&self, ms: u64) {

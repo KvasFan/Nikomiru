@@ -34,3 +34,6 @@ error-library-read-only = La libreria è stata scritta da una versione più rece
 error-library = Errore della libreria: { $reason }
 error-player = Errore del player: { $reason }
 error-paths = HOME non è impostata: Nikomiru non trova le sue cartelle.
+
+# Shown by the desktop while the screensaver is inhibited (PLY-013).
+inhibit-reason = Riproduzione di un video
