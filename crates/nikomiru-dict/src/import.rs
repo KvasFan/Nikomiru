@@ -411,8 +411,6 @@ fn write(
             media.push(e);
         }
     }
-    let term_banks = banks.keys().filter(|(b, _)| *b == Bank::Terms).count();
-    let kanji_banks = banks.keys().filter(|(b, _)| *b == Bank::Kanji).count();
     let mut state = Progress {
         files_done: 0,
         files_total: banks.len() + media.len(),
@@ -421,7 +419,6 @@ fn write(
     progress(state);
 
     let mut writer = StoreWriter::create(&staging.join(DB_FILE))?;
-    let mut first_meta: Option<&'static str> = None;
     let format = |file: &str| {
         let file = file.to_string();
         move |error| ImportError::Format { file, error }
@@ -446,9 +443,6 @@ fn write(
             }
             Bank::TermMeta | Bank::KanjiMeta => {
                 let meta = yomitan::parse_meta_bank(&bytes).map_err(format(&entry.name))?;
-                if first_meta.is_none() {
-                    first_meta = meta.first().map(|(_, m)| m.mode());
-                }
                 let n = meta.len();
                 writer.add_meta(meta, *bank == Bank::KanjiMeta)?;
                 n
@@ -483,7 +477,14 @@ fn write(
         state.files_done += 1;
         progress(state);
     }
-    let kinds = yomitan::detect_kinds(term_banks, kanji_banks, first_meta);
+    let counts = writer.counts();
+    let kinds = yomitan::detect_kinds(yomitan::Rows {
+        terms: counts.terms,
+        kanji: counts.kanji,
+        // kanji meta is only frequencies
+        frequencies: counts.frequencies + counts.kanji_meta,
+        pitches: counts.pitches,
+    });
     if kinds == yomitan::Kinds::default() {
         return Err(ImportError::Empty);
     }

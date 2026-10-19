@@ -115,7 +115,7 @@ pub struct Pitches {
 pub struct Entry {
     /// Headword.
     pub expression: String,
-    /// Reading (may be empty: then the headword is its own reading).
+    /// Reading (the headword itself when the dictionary leaves it empty).
     pub reading: String,
     /// The prefix of the query that found it.
     pub matched: String,
@@ -435,11 +435,13 @@ impl Lookup {
                 } else {
                     term.rules.as_str()
                 };
+                let key = key_of(&term.expression, &term.reading);
                 let raw = merged
-                    .entry(key_of(&term.expression, &term.reading))
-                    .or_insert_with(|| Raw {
-                        expression: term.expression.clone(),
-                        reading: term.reading.clone(),
+                    .entry(key)
+                    .or_insert_with_key(|(expression, reading)| Raw {
+                        // an empty reading is the headword itself (LKP-036)
+                        expression: expression.clone(),
+                        reading: reading.clone(),
                         rules: String::new(),
                         score: term.score,
                         hits: Vec::new(),
@@ -451,9 +453,6 @@ impl Lookup {
                     raw.rules.push_str(rules);
                 }
                 raw.score = raw.score.max(term.score);
-                if raw.reading.is_empty() {
-                    raw.reading.clone_from(&term.reading);
-                }
                 raw.hits.push(Hit {
                     dictionary: i,
                     id: term.id,
@@ -517,7 +516,7 @@ impl Lookup {
                     Meta::Pitch {
                         reading: r,
                         pitches,
-                    } if r == reading => {
+                    } if r.is_empty() || r == reading => {
                         for p in pitches {
                             // the same accent listed by two records of the dictionary (BUG-2152)
                             let same = |s: &Pitch| {
@@ -532,7 +531,7 @@ impl Lookup {
                     Meta::Ipa {
                         reading: r,
                         transcriptions,
-                    } if r == reading => {
+                    } if r.is_empty() || r == reading => {
                         for t in transcriptions {
                             if !group.ipa.iter().any(|s| s.ipa == t.ipa) {
                                 group.ipa.push(t);

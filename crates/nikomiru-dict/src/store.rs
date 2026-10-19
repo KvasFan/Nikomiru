@@ -87,6 +87,10 @@ pub struct Counts {
     /// Terms with deinflection rules: with none, empty rules mean `*`
     /// (LKP-023, BUG-2543).
     pub with_rules: u64,
+    /// Term meta rows with frequencies.
+    pub frequencies: u64,
+    /// Term meta rows with pitch accents or IPA.
+    pub pitches: u64,
 }
 
 /// What a dictionary file says about itself.
@@ -382,7 +386,9 @@ fn meta(
 ) -> Result<Vec<Meta>, StoreError> {
     let mut out = Vec::new();
     for v in db!(table.get(key))? {
-        out.push(decode(db!(v)?.value())?);
+        let v = db!(v)?;
+        // after the sequence number that keeps the bank order
+        out.push(decode(v.value().get(4..).unwrap_or_default())?);
     }
     Ok(out)
 }
@@ -397,6 +403,9 @@ pub struct StoreWriter {
     db: Database,
     txn: Option<WriteTransaction>,
     next_id: u64,
+    /// Meta values start with it: multimap values sort by bytes, and the
+    /// records of one headword must keep their bank order.
+    next_meta: u32,
     by_expression: Vec<(String, Vec<u8>)>,
     by_reading: Vec<(String, Vec<u8>)>,
     counts: Counts,
@@ -419,6 +428,7 @@ impl StoreWriter {
             db,
             txn: Some(txn),
             next_id: 0,
+            next_meta: 0,
             by_expression: Vec::new(),
             by_reading: Vec::new(),
             counts: Counts::default(),
@@ -461,19 +471,30 @@ impl StoreWriter {
     /// Adds term meta (`kanji = false`) or kanji meta.
     pub fn add_meta(&mut self, meta: Vec<(String, Meta)>, kanji: bool) -> Result<(), StoreError> {
         let n = meta.len() as u64;
+        let mut seq = self.next_meta;
         {
             let mut table =
                 db!(self
                     .txn()?
                     .open_multimap_table(if kanji { KANJI_META } else { TERM_META }))?;
-            for (key, m) in meta {
-                db!(table.insert(key.as_str(), encode(&m)?.as_slice()))?;
+            for (key, m) in &meta {
+                let mut value = seq.to_be_bytes().to_vec();
+                seq = seq.wrapping_add(1);
+                value.extend(encode(m)?);
+                db!(table.insert(key.as_str(), value.as_slice()))?;
             }
         }
+        self.next_meta = seq;
         if kanji {
             self.counts.kanji_meta += n;
         } else {
             self.counts.term_meta += n;
+            for (_, m) in &meta {
+                match m {
+                    Meta::Frequency(_) => self.counts.frequencies += 1,
+                    Meta::Pitch { .. } | Meta::Ipa { .. } => self.counts.pitches += 1,
+                }
+            }
         }
         Ok(())
     }

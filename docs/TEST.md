@@ -138,7 +138,7 @@ Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_eng
 1. For each file in the table, the cases (input, configuration, expected output) are extracted into `tests/conformance/<area>.json`. Each case has a `provenance` field: Fushi file, test name, commit.
 2. One Rust test per area reads the JSON and runs all the cases. A failing case shows its `provenance` in the message.
 3. Cases that depend on **intentionally different** behaviors (SPECIFICATION §6.6.8) have `"divergence": "<requirement ID>"` and an updated expected output.
-4. The dictionaries of Fushi's C++ tests are built in code: they are rewritten as JSON fixtures in `tests/fixtures/dicts/conformance/`.
+4. The dictionaries of Fushi's C++ tests are built in code: they are rewritten as Yomitan dictionaries in the `dictionaries` section of `tests/conformance/lookup.json`, which the runner zips and imports like any other dictionary.
 
 ---
 

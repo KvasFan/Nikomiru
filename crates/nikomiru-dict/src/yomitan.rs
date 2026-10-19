@@ -333,7 +333,11 @@ fn parse_meta(mode: &str, data: &Value) -> Option<Meta> {
     match mode {
         "freq" => frequency(data).map(Meta::Frequency),
         "pitch" => {
-            let reading = data.get("reading")?.as_str()?.to_string();
+            let reading = data
+                .get("reading")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             let pitches = data
                 .get("pitches")?
                 .as_array()?
@@ -355,7 +359,11 @@ fn parse_meta(mode: &str, data: &Value) -> Option<Meta> {
             Some(Meta::Pitch { reading, pitches })
         }
         "ipa" => {
-            let reading = data.get("reading")?.as_str()?.to_string();
+            let reading = data
+                .get("reading")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             let transcriptions = data
                 .get("transcriptions")?
                 .as_array()?
@@ -502,45 +510,40 @@ pub fn parse_tags(bytes: &[u8]) -> Result<Vec<Tag>, FormatError> {
         .collect())
 }
 
-/// What a dictionary contains (DIC-015).
+/// What a dictionary contains (DIC-015): every role its banks give it. A
+/// term dictionary with a frequency bank also gives frequencies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Kinds {
     /// Term entries.
     pub terms: bool,
     /// Kanji entries.
     pub kanji: bool,
-    /// Frequencies only.
+    /// Frequencies (of terms or of kanji).
     pub frequency: bool,
-    /// Pitch accent or IPA only.
+    /// Pitch accent or IPA.
     pub pitch: bool,
 }
 
-/// DIC-015: terms if there are term banks (and kanji too if it has kanji
-/// banks); otherwise kanji; otherwise the mode of the first meta.
-pub fn detect_kinds(term_banks: usize, kanji_banks: usize, first_meta: Option<&str>) -> Kinds {
-    if term_banks > 0 {
-        return Kinds {
-            terms: true,
-            kanji: kanji_banks > 0,
-            ..Kinds::default()
-        };
-    }
-    if kanji_banks > 0 {
-        return Kinds {
-            kanji: true,
-            ..Kinds::default()
-        };
-    }
-    match first_meta {
-        Some("freq") => Kinds {
-            frequency: true,
-            ..Kinds::default()
-        },
-        Some("pitch" | "ipa") => Kinds {
-            pitch: true,
-            ..Kinds::default()
-        },
-        _ => Kinds::default(),
+/// Rows of each kind written by an import.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Rows {
+    /// Term rows.
+    pub terms: u64,
+    /// Kanji rows.
+    pub kanji: u64,
+    /// Frequency rows of terms and kanji.
+    pub frequencies: u64,
+    /// Pitch and IPA rows.
+    pub pitches: u64,
+}
+
+/// DIC-015: the roles of a dictionary from what it contains.
+pub fn detect_kinds(rows: Rows) -> Kinds {
+    Kinds {
+        terms: rows.terms > 0,
+        kanji: rows.kanji > 0,
+        frequency: rows.frequencies > 0,
+        pitch: rows.pitches > 0,
     }
 }
 
@@ -650,42 +653,44 @@ mod tests {
     // T-DIC-015
     #[test]
     fn kinds_are_detected() {
+        let rows = |terms, kanji, frequencies, pitches| Rows {
+            terms,
+            kanji,
+            frequencies,
+            pitches,
+        };
+        let kinds = |terms, kanji, frequency, pitch| Kinds {
+            terms,
+            kanji,
+            frequency,
+            pitch,
+        };
         assert_eq!(
-            detect_kinds(3, 0, None),
-            Kinds {
-                terms: true,
-                ..Kinds::default()
-            }
+            detect_kinds(rows(3, 0, 0, 0)),
+            kinds(true, false, false, false)
         );
         assert_eq!(
-            detect_kinds(3, 1, None),
-            Kinds {
-                terms: true,
-                kanji: true,
-                ..Kinds::default()
-            }
+            detect_kinds(rows(3, 1, 0, 0)),
+            kinds(true, true, false, false)
         );
         assert_eq!(
-            detect_kinds(0, 2, Some("freq")),
-            Kinds {
-                kanji: true,
-                ..Kinds::default()
-            }
+            detect_kinds(rows(0, 0, 5, 0)),
+            kinds(false, false, true, false)
         );
         assert_eq!(
-            detect_kinds(0, 0, Some("freq")),
-            Kinds {
-                frequency: true,
-                ..Kinds::default()
-            }
+            detect_kinds(rows(0, 0, 0, 2)),
+            kinds(false, false, false, true)
         );
         assert_eq!(
-            detect_kinds(0, 0, Some("ipa")),
-            Kinds {
-                pitch: true,
-                ..Kinds::default()
-            }
+            detect_kinds(rows(0, 4, 4, 0)),
+            kinds(false, true, true, false),
+            "kanji with their frequencies"
         );
-        assert_eq!(detect_kinds(0, 0, None), Kinds::default());
+        assert_eq!(
+            detect_kinds(rows(9, 0, 1, 1)),
+            kinds(true, false, true, true),
+            "terms with meta"
+        );
+        assert_eq!(detect_kinds(Rows::default()), Kinds::default());
     }
 }

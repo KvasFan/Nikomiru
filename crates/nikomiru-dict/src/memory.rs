@@ -71,8 +71,14 @@ impl MemStore {
     pub fn with_meta(mut self, meta: Vec<(String, Meta)>) -> Self {
         for (_, m) in &meta {
             match m {
-                Meta::Frequency(_) => self.info.kinds.frequency = true,
-                Meta::Pitch { .. } | Meta::Ipa { .. } => self.info.kinds.pitch = true,
+                Meta::Frequency(_) => {
+                    self.info.kinds.frequency = true;
+                    self.info.counts.frequencies += 1;
+                }
+                Meta::Pitch { .. } | Meta::Ipa { .. } => {
+                    self.info.kinds.pitch = true;
+                    self.info.counts.pitches += 1;
+                }
             }
         }
         self.meta.extend(meta);
