@@ -10,6 +10,7 @@
 #![deny(missing_docs)]
 
 mod bloom;
+pub mod css;
 pub mod deinflect;
 pub mod frequency;
 pub mod import;
@@ -20,4 +21,6 @@ pub mod mixed;
 pub mod pitch;
 pub mod present;
 pub mod store;
+pub mod structured;
+pub mod style;
 pub mod yomitan;
