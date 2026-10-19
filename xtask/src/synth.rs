@@ -19,7 +19,7 @@ use crate::fixtures::{fresh, stamp, zip_options};
 use crate::util::SplitMix64;
 
 /// Changing it forces regeneration.
-const VERSION: &str = "synth-v4";
+const VERSION: &str = "synth-v5";
 /// Term dictionaries (T-PERF-04: 5 term + 3 freq + 1 pitch).
 pub const TERM_DICTS: u64 = 5;
 /// Frequency dictionaries.
@@ -259,7 +259,7 @@ impl DictWriter {
 
 fn index(title: &str, extra: &str) -> String {
     format!(
-        r#"{{"title":"{title}","revision":"{VERSION}","format":3,"sequenced":true,"author":"Anikoto xtask","description":"Synthetic dictionary generated for tests"{extra}}}"#
+        r#"{{"title":"{title}","revision":"{VERSION}","format":3,"sequenced":true,"author":"Nikomiru xtask","description":"Synthetic dictionary generated for tests"{extra}}}"#
     )
 }
 

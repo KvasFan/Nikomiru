@@ -28,7 +28,7 @@ The automatic measurements run in an **off-screen virtual KWin** (`kwin_wayland 
 
 ## Results
 
-Values in the measurement window, after 3 s of settling. "Process CPU" is the Anikoto process (mpv included); "total" adds the WebKit processes (mainly `WebKitWebProcess`, which here redraws the fake subtitle 30 times per second). The NFR-PERF-03 threshold applies to the process CPU: ≤ 25% of one core.
+Values in the measurement window, after 3 s of settling. "Process CPU" is the Nikomiru process (mpv included); "total" adds the WebKit processes (mainly `WebKitWebProcess`, which here redraws the fake subtitle 30 times per second). The NFR-PERF-03 threshold applies to the process CPU: ≤ 25% of one core.
 
 ### 1080p60 fullscreen playback (T-PERF-03)
 
@@ -111,11 +111,11 @@ Control runs in the virtual KWin at 3840×2160, during the same load, 20 s each:
 ## Findings that change the M1 implementation
 
 1. **Dioxus forces XWayland.** With the default value of `with_disable_dma_buf_on_wayland(true)`, `dioxus-desktop` 0.7.10 always sets `GDK_BACKEND=x11` (in addition to `WEBKIT_DISABLE_DMABUF_RENDERER=1` on Wayland sessions). Native Wayland requires `with_disable_dma_buf_on_wayland(false)`. SPECIFICATION §5.2.1 updated.
-2. **`LC_NUMERIC` must be "C".** `gtk_init` sets the locale from the environment (`it_IT.UTF-8`) and `mpv_create` returns NULL with the message "Non-C locale detected". `anikoto-app::linux` must call `setlocale(LC_NUMERIC, "C")` after GTK init and before creating mpv. The UI is not affected, because Rust formats the numbers. SPECIFICATION §5.2.2 updated.
+2. **`LC_NUMERIC` must be "C".** `gtk_init` sets the locale from the environment (`it_IT.UTF-8`) and `mpv_create` returns NULL with the message "Non-C locale detected". `nikomiru-app::linux` must call `setlocale(LC_NUMERIC, "C")` after GTK init and before creating mpv. The UI is not affected, because Rust formats the numbers. SPECIFICATION §5.2.2 updated.
 3. **On X11 there is no zero-copy hwdec.** GTK 3 on X11 creates the GL context with GLX, and mpv supports VA-API interop only with EGL. `hwdec=auto-safe` therefore falls back to `vulkan-copy`: hardware decoding, but with a copy of the frame in memory. On Wayland you get zero-copy `vaapi`, as long as the native display is passed to the render context. SPECIFICATION §5.2.2 updated.
-4. **libmpv2 6.0 has two fragile spots** to avoid or encapsulate in `anikoto-player`:
+4. **libmpv2 6.0 has two fragile spots** to avoid or encapsulate in `nikomiru-player`:
    - `create_client(Some(name))` passes mpv the pointer of a temporary `CString` that has already been freed, and `NonNull::new_unchecked` does not check for NULL. We use `create_client(None)`.
-   - The `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (the event thread stays blocked in `wait_event`). The shutdown order must be: render context (with the GL context current) → `quit` command → join of the event thread → main handle. The `'a` lifetime of `RenderContext<'a>` is only a `PhantomData`, so keeping `Mpv` and `RenderContext` in the same struct requires a small documented `unsafe` (allowed in `anikoto-player`, ARC-011).
+   - The `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (the event thread stays blocked in `wait_event`). The shutdown order must be: render context (with the GL context current) → `quit` command → join of the event thread → main handle. The `'a` lifetime of `RenderContext<'a>` is only a `PhantomData`, so keeping `Mpv` and `RenderContext` in the same struct requires a small documented `unsafe` (allowed in `nikomiru-player`, ARC-011).
 5. **wry's `WebViewExtUnix::reparent` does not help**: on a `GtkOverlay` it would call `add`, i.e. it would make the webview the main child. Reparenting is done with the GTK APIs.
 6. **The Dioxus default menu** ends up in the same vbox: `with_menu(None)` is needed.
 

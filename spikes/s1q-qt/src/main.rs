@@ -26,7 +26,7 @@ fn main() {
     unsafe { s1q_register() };
     let mut engine = QQmlApplicationEngine::new();
     if let Some(engine) = engine.as_mut() {
-        engine.load(&QUrl::from("qrc:/qt/qml/Anikoto/Spike/qml/main.qml"));
+        engine.load(&QUrl::from("qrc:/qt/qml/Nikomiru/Spike/qml/main.qml"));
     }
     if let Some(app) = app.as_mut() {
         app.exec();

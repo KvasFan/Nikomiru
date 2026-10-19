@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! `cargo xtask`: Anikoto's development tasks (ROADMAP M0, TEST §10).
+//! `cargo xtask`: Nikomiru's development tasks (ROADMAP M0, TEST §10).
 //!
 //! They are written in Rust rather than with `just`, which is CC0 and therefore
 //! outside the license policy (SPECIFICATION §3.5).

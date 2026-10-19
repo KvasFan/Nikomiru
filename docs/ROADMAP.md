@@ -1,4 +1,4 @@
-# Anikoto — Roadmap
+# Nikomiru — Roadmap
 
 | Field | Value |
 |---|---|
@@ -101,9 +101,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017), the Qt Quick video item (C++, [ADR 0003](adr/0003-qt-quick-ui.md)) and its cxx-qt bridge.
-- `anikoto-app`: Qt application (`QGuiApplication`, QML engine) instead of the GTK compositor of ADR 0001, single instance via socket, opening from an argument or drag & drop.
-- `anikoto-ui`: QML player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
+- `nikomiru-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017), the Qt Quick video item (C++, [ADR 0003](adr/0003-qt-quick-ui.md)) and its cxx-qt bridge.
+- `nikomiru-app`: Qt application (`QGuiApplication`, QML engine) instead of the GTK compositor of ADR 0001, single instance via socket, opening from an argument or drag & drop.
+- `nikomiru-ui`: QML player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
 - Minimal `config.toml`, with atomic writes.
 - `library.redb` with only the `videos` table.
 - cxx-qt enters the workspace: `deny.toml` turns `unused-license-exception` back to `warn`.
@@ -119,20 +119,20 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 ## M2 — Own subtitle rendering
 
-**Goal**: text subtitles drawn by Anikoto, clickable per grapheme, synchronized and navigable.
+**Goal**: text subtitles drawn by Nikomiru, clickable per grapheme, synchronized and navigable.
 
 **Requirements**: SUB-001…SUB-016, EXT-002, EXT-003, M2 shortcuts.
 
 **Deliverables**
 
-- `anikoto-subs`:
+- `nikomiru-subs`:
   - basic SRT, VTT and ASS parsers;
   - model `Cue { start_ms, end_ms, plain_text, markup }`;
   - index for binary search;
   - offset;
-  - encoding detection via iconv (FFI in `anikoto-app::linux` or in a small dedicated `unsafe` module, ARC-011).
-- `anikoto-media`: ffmpeg and ffprobe runner with timeout and cancellation (EXT-002/003); extraction of embedded tracks with a cache.
-- `anikoto-ui`:
+  - encoding detection via iconv (FFI in `nikomiru-app::linux` or in a small dedicated `unsafe` module, ARC-011).
+- `nikomiru-media`: ffmpeg and ffprobe runner with timeout and cancellation (EXT-002/003); extraction of embedded tracks with a cache.
+- `nikomiru-ui`:
   - grapheme overlay as QML items;
   - default style and "respect ASS";
   - blur (with `MultiEffect`) and hide;
@@ -155,20 +155,20 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Requirements**: DIC-001…DIC-003, DIC-010…DIC-016, DIC-020, DIC-021, DIC-030…DIC-035, LKP-001…LKP-050, LKP-060, POP-001…POP-015, NFR-SEC-01.
 
-**Work tracks** (`anikoto-text` and `anikoto-dict` do not depend on the UI and can start in parallel with M1):
+**Work tracks** (`nikomiru-text` and `nikomiru-dict` do not depend on the UI and can start in parallel with M1):
 
 1. **Spike S4 — dictionary popup in QML**: Yomitan structured content (ruby, table, list, details, image, links) rendered as QML items from the tag allowlist, the CSS subset of DIC-035, and the click-to-popup time (NFR-PERF-06); ADR `0005-popup-qml.md`.
-2. `anikoto-text`: preprocessors (LKP-010…012), kana conversion, iteration marks, kanji variants (table from Fushi), sentence extraction, furigana (LKP-050), character count (STA-003, needed in M6).
-3. `anikoto-dict`:
+2. `nikomiru-text`: preprocessors (LKP-010…012), kana conversion, iteration marks, kanji variants (table from Fushi), sentence extraction, furigana (LKP-050), character count (STA-003, needed in M6).
+3. `nikomiru-dict`:
    - safe (DIC-011), atomic (DIC-013) and cancellable Yomitan import;
    - `DictStore` on redb;
    - deinflector on the `assets/transforms` tables;
    - scanning, merging, sorting and grouping;
    - frequencies, pitch accent, kanji;
    - LRU cache.
-4. `anikoto-ui`:
+4. `nikomiru-ui`:
    - dictionary management;
-   - popup (structured content rendered as QML items from an allowlist of tags, the style subset of DIC-035, images through the `image://anikoto-dict` provider);
+   - popup (structured content rendered as QML items from an allowlist of tags, the style subset of DIC-035, images through the `image://nikomiru-dict` provider);
    - nested popups;
    - pause/resume state machine (POP-001/004/005);
    - hover with Shift.
@@ -178,7 +178,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
 - [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
 - [ ] T-SEC-001 (dictionary content produces only allowlisted QML items) and T-SEC-002 (malicious ZIPs) green.
-- [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Anikoto and in Fushi.
+- [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
 ---
 
@@ -190,16 +190,16 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- `anikoto-anki`: AnkiConnect client (retry and duplicates as in the specification), field composer, vendored Lapis templates (`assets/anki/lapis/` with `PROVENANCE.md`), `anikoto://` links.
-- `anikoto-media`: sentence audio and image (mpv screenshot → ffmpeg).
+- `nikomiru-anki`: AnkiConnect client (retry and duplicates as in the specification), field composer, vendored Lapis templates (`assets/anki/lapis/` with `PROVENANCE.md`), `nikomiru://` links.
+- `nikomiru-media`: sentence audio and image (mpv screenshot → ffmpeg).
 - UI: Anki settings (connection, deck, note type, mapping editor, "Create Lapis deck", connection test), button states + / ✓ / ✓↩, menu for the existing card.
-- `.desktop` with `x-scheme-handler/anikoto`.
+- `.desktop` with `x-scheme-handler/nikomiru`.
 - **Repository page for the first release**: `README.md` restyled after [storytold/cadcraft](https://github.com/storytold/cadcraft), from top to bottom:
   - centered logo with light and dark variants (`<picture>` with `prefers-color-scheme`), centered `<h1>` title, a bold one-line tagline and a short centered paragraph;
   - one centered row of shields.io badges in `style=flat-square`: written in Rust, runs on Linux (Wayland · X11), license GPL-3.0-only, status alpha (accent colour for the status badge, two colours for the rest);
   - a full-width hero screenshot (player with clickable subtitles and the dictionary popup open) with a `<sub>` caption, then one centered line of section links separated by `·`;
   - "Screenshots": a two-column `<table>` (popup with pitch accent and frequencies, card created in Anki, subtitle list, settings) with `<sub>` captions;
-  - "Why Anikoto": a bullet list with bold lead-ins;
+  - "Why Nikomiru": a bullet list with bold lead-ins;
   - "What works today": an honest `| Area | Status |` table that matches the ROADMAP;
   - "Quick start" (build from source, AnkiConnect setup), "Architecture" (crates and SPECIFICATION §5), "Roadmap" (link), "Downloads" (per-format table; PKGBUILD and Flatpak arrive with 1.0, D-5), "License and credits" (GPL-3.0-only, derived from Fushi, Yomitan, hoshidicts and Lapis, `THIRD_PARTY_LICENSES.html`).
 
@@ -221,7 +221,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- `anikoto-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
+- `nikomiru-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
 - Home: "Continue watching", series grid, series detail, generated covers.
 - Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
 - **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
@@ -260,7 +260,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- Crate `anikoto-online`: AniList client (GraphQL), Jikan with rate limiting, Jimaku, OpenSubtitles. All behind a trait and with tests against a fake server.
+- Crate `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, Jimaku, OpenSubtitles. All behind a trait and with tests against a fake server.
 - UI: series identification (automatic if unique, otherwise chosen by the user), subtitle search and download per episode.
 - Secondary subtitle; automatic alignment with the waveform.
 

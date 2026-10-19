@@ -1,4 +1,4 @@
-# Anikoto license policy: SPECIFICATION §3.2 and §3.5.
+# Nikomiru license policy: SPECIFICATION §3.2 and §3.5.
 #
 # - [licenses].allow      = class A, always allowed.
 # - [licenses].exceptions = class B, unavoidable exceptions (ICU family, foldhash), ONLY
@@ -93,7 +93,7 @@ deny = [
     { crate = "rustls", reason = "ring is ISC: TLS with native-tls → OpenSSL" },
     { crate = "ring", reason = "ISC: TLS with native-tls → OpenSSL" },
     { crate = "notify", reason = "CC0-1.0: manual rescan or inotify via libc" },
-    { crate = "directories", reason = "pulls option-ext (MPL-2.0): own XDG code in anikoto-core (§3.6)" },
+    { crate = "directories", reason = "pulls option-ext (MPL-2.0): own XDG code in nikomiru-core (§3.6)" },
     { crate = "subparse", reason = "MPL-2.0: own subtitle parsers" },
     { crate = "anitomy", reason = "MPL-2.0: own file name parser" },
     { crate = "zstd-sys", reason = "BSD-3 / GPL-2.0-only: use lz4_flex" },

@@ -1,0 +1,11 @@
+[package]
+name = "nikomiru-online"
+description = "Online metadata and subtitles: AniList, Jikan, Jimaku, OpenSubtitles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,8 +1,8 @@
-# Anikoto — Specification
+# Nikomiru — Specification
 
 | Field | Value |
 |---|---|
-| Status | v0.5 — decisions D-1…D-10 approved on 2026-10-19 (§10.1); D-10 replaces Dioxus with Qt 6 Quick |
+| Status | v0.6 — decisions D-1…D-11 approved on 2026-10-19 (§10.1); D-10 replaces Dioxus with Qt 6 Quick; D-11 renames the project to Nikomiru |
 | Date | 2026-10-19 |
 | Reference | Fushi, commit `ac8034e8bbc25e877e6d419334a38951bc477105` (2026-10-18), <https://github.com/hajisensai/Fushi> |
 | Related documents | [ROADMAP.md](ROADMAP.md) · [TEST.md](TEST.md) |
@@ -20,11 +20,11 @@
 
 ## 1. Purpose
 
-### 1.1 What Anikoto is
+### 1.1 What Nikomiru is
 
-Anikoto is a desktop video player for **learning languages by watching anime and series** (*immersion learning*). While you watch, you can click a word in the subtitles: Anikoto looks it up in the dictionaries you imported (Yomitan format) and, with one click, creates an Anki card with the word, the sentence, a screenshot and the audio of the line.
+Nikomiru is a desktop video player for **learning languages by watching anime and series** (*immersion learning*). While you watch, you can click a word in the subtitles: Nikomiru looks it up in the dictionaries you imported (Yomitan format) and, with one click, creates an Anki card with the word, the sentence, a screenshot and the audio of the line.
 
-Anikoto is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Anikoto takes its "video + dictionary + Anki" core and reimplements it with:
+Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Nikomiru takes its "video + dictionary + Anki" core and reimplements it with:
 
 - **UI**: [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt);
 - **playback**: libmpv through [libmpv2](https://crates.io/crates/libmpv2) 6.0 (core, commands, events), plus a small C++ Qt Quick video item that renders with the libmpv render API on Qt Quick's render thread;
@@ -78,41 +78,41 @@ Anikoto is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/D
 - Native dictionary engine in C++23 (`native/fushidicts`, a fork of hoshidicts).
 - 17 UI languages, about 8,400 keys.
 
-**Consequence**: Anikoto is not a 1:1 port. It is a **selective, requirement-driven** port based on this document. Fushi is the reference implementation for behaviors, algorithms, edge cases and known bugs.
+**Consequence**: Nikomiru is not a 1:1 port. It is a **selective, requirement-driven** port based on this document. Fushi is the reference implementation for behaviors, algorithms, edge cases and known bugs.
 
 ### 2.2 Porting rules
 
-1. Before implementing a requirement that cites a Fushi file, read that file and its tests. Every cited Fushi bug (`BUG-xxxx`) becomes a regression test in Anikoto.
+1. Before implementing a requirement that cites a Fushi file, read that file and its tests. Every cited Fushi bug (`BUG-xxxx`) becomes a regression test in Nikomiru.
 2. Code translated from Fushi, Yomitan, hoshidicts, Lapis or Tsubasa is a **GPL-3.0 derivative work**. The Rust module that contains it MUST have a header comment that names the project and the source files, with the commit.
 3. Port **behaviors, not structures**. Do not replicate workarounds tied to Flutter, Dart or Windows (isolates, FFI, Windows IME).
-4. Where Fushi has known gaps (see §6.6.8), Anikoto MAY improve, but MUST document the difference here and cover it with a test.
+4. Where Fushi has known gaps (see §6.6.8), Nikomiru MAY improve, but MUST document the difference here and cover it with a test.
 
 ### 2.3 Module map
 
-| Fushi area | Reference | Anikoto crate | Milestone |
+| Fushi area | Reference | Nikomiru crate | Milestone |
 |---|---|---|---|
-| Video player, mpv config | `fushi/lib/src/media/video/video_player_controller.dart`, `video_mpv_config.dart` | `anikoto-player` | M1 |
-| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `anikoto-subs`, `anikoto-ui` (QML) | M2 |
-| Dictionary engine | `native/fushidicts/fushidicts_src/` | `anikoto-dict` | M3 |
-| Preprocessors and kana | `native/fushidicts/fushidicts_src/text_processor/` | `anikoto-text` | M3 |
-| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `anikoto-ui` (QML) | M3 |
-| Anki / Lapis / composer | `packages/fushi_anki/lib/src/` | `anikoto-anki` | M4 |
-| Video mining (ffmpeg) | `fushi/lib/src/mining/immersion_mining_engine.dart`, `packages/fushi_engine/lib/utils/misc/desktop_audio_clipper.dart` | `anikoto-media` | M4 |
-| Library, file name parser | `packages/fushi_engine/lib/media/video/video_library_import.dart`, `video_filename_parser.dart` | `anikoto-library` | M5 |
-| Word audio | `fushi/lib/src/utils/misc/word_audio_resolver.dart`, `local_audio_db.dart` | `anikoto-dict` (`audio` module) | M5 |
-| Statistics | `fushi/lib/src/media/video/video_watch_tracker.dart`, `fushi/lib/src/stats/` | `anikoto-library` (`stats` module) | M6 |
-| Shortcuts | `fushi/lib/src/shortcuts/shortcut_defaults.dart` | `anikoto-ui` | M1–M6 |
-| Online subtitles, metadata | `packages/fushi_engine/lib/media/video/jimaku_client.dart`, `metadata/` | `anikoto-online` | M7 |
+| Video player, mpv config | `fushi/lib/src/media/video/video_player_controller.dart`, `video_mpv_config.dart` | `nikomiru-player` | M1 |
+| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `nikomiru-subs`, `nikomiru-ui` (QML) | M2 |
+| Dictionary engine | `native/fushidicts/fushidicts_src/` | `nikomiru-dict` | M3 |
+| Preprocessors and kana | `native/fushidicts/fushidicts_src/text_processor/` | `nikomiru-text` | M3 |
+| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `nikomiru-ui` (QML) | M3 |
+| Anki / Lapis / composer | `packages/fushi_anki/lib/src/` | `nikomiru-anki` | M4 |
+| Video mining (ffmpeg) | `fushi/lib/src/mining/immersion_mining_engine.dart`, `packages/fushi_engine/lib/utils/misc/desktop_audio_clipper.dart` | `nikomiru-media` | M4 |
+| Library, file name parser | `packages/fushi_engine/lib/media/video/video_library_import.dart`, `video_filename_parser.dart` | `nikomiru-library` | M5 |
+| Word audio | `fushi/lib/src/utils/misc/word_audio_resolver.dart`, `local_audio_db.dart` | `nikomiru-dict` (`audio` module) | M5 |
+| Statistics | `fushi/lib/src/media/video/video_watch_tracker.dart`, `fushi/lib/src/stats/` | `nikomiru-library` (`stats` module) | M6 |
+| Shortcuts | `fushi/lib/src/shortcuts/shortcut_defaults.dart` | `nikomiru-ui` | M1–M6 |
+| Online subtitles, metadata | `packages/fushi_engine/lib/media/video/jimaku_client.dart`, `metadata/` | `nikomiru-online` | M7 |
 
 ---
 
 ## 3. Licenses
 
-### 3.1 Anikoto license
+### 3.1 Nikomiru license
 
-Anikoto is distributed under **GPL-3.0-only** (`LICENSE` file).
+Nikomiru is distributed under **GPL-3.0-only** (`LICENSE` file).
 
-- This is mandatory: Anikoto derives from Fushi (GPL-3.0), the Yomitan tables (GPL-3.0), hoshidicts (GPL-3.0) and the Lapis templates (GPL-3.0).
+- This is mandatory: Nikomiru derives from Fushi (GPL-3.0), the Yomitan tables (GPL-3.0), hoshidicts (GPL-3.0) and the Lapis templates (GPL-3.0).
 - "only" is used instead of "or-later" because Fushi does not explicitly grant later versions. A move to "or-later" is possible only if all derived sources allow it.
 - Every source file MUST start with the SPDX header `// SPDX-License-Identifier: GPL-3.0-only`.
 
@@ -127,7 +127,7 @@ Anikoto is distributed under **GPL-3.0-only** (`LICENSE` file).
 | `GPL-2.0-or-later`, `GPL-3.0-only`, `GPL-3.0-or-later` | `GPL-2.0-only` is **not** allowed: it is incompatible with GPL-3.0 |
 | `LGPL-2.1-only`, `LGPL-2.1-or-later`, `LGPL-3.0-only`, `LGPL-3.0-or-later` | E.g. `libmpv2` (LGPL-2.1) |
 
-Expressions with `OR` (e.g. `MIT OR Apache-2.0`, `Unlicense OR MIT`, `MIT OR Zlib OR Apache-2.0`) are allowed if at least one branch is class A: Anikoto picks that branch.
+Expressions with `OR` (e.g. `MIT OR Apache-2.0`, `Unlicense OR MIT`, `MIT OR Zlib OR Apache-2.0`) are allowed if at least one branch is class A: Nikomiru picks that branch.
 
 **Class B — unavoidable exceptions, allowed only for the listed crates.**
 
@@ -142,7 +142,7 @@ Rules for class B:
 
 1. The exceptions apply **only** to the listed crates, through `[[licenses.exceptions]]` in `deny.toml`. A new crate with one of these licenses makes CI fail.
 2. Every new exception requires: a justification ("what requires it and why it cannot be avoided"), a row in this table and explicit approval from the maintainer.
-3. No **direct** dependency of Anikoto may be class B, except `icu_normalizer` (see §4): it is already in the graph through `idna`, so it adds no new license.
+3. No **direct** dependency of Nikomiru may be class B, except `icu_normalizer` (see §4): it is already in the graph through `idna`, so it adds no new license.
 4. On every update of cxx-qt, cxx or reqwest we MUST try to shrink class B.
 
 **Forbidden** (CI fails):
@@ -152,7 +152,7 @@ Rules for class B:
 
 ### 3.3 System libraries and external programs
 
-They are loaded at runtime or invoked as processes. They are not distributed with Anikoto, except in the post-1.0 packages.
+They are loaded at runtime or invoked as processes. They are not distributed with Nikomiru, except in the post-1.0 packages.
 
 | Component | License | Use |
 |---|---|---|
@@ -194,7 +194,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | File system watching | `notify` (CC0-1.0) | Manual or periodic rescan; inotify via `libc` if ever needed |
 | Task runner | `just` (CC0-1.0) | `cargo xtask` |
 | Unicode normalization | `unicode-normalization` (adds an AND Unicode-3.0) | `icu_normalizer` (already in the graph) |
-| XDG paths | `directories` (pulls `option-ext`, MPL-2.0) | Own implementation in `anikoto-core` (XDG Base Directory variables and `user-dirs.dirs`) |
+| XDG paths | `directories` (pulls `option-ext`, MPL-2.0) | Own implementation in `nikomiru-core` (XDG Base Directory variables and `user-dirs.dirs`) |
 
 ---
 
@@ -216,7 +216,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Unicode | `icu_normalizer`, `unicode-segmentation` | 2.3 / 1.13 | Unicode-3.0 (class B) / MIT OR Apache-2.0 |
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
-| XDG paths | Own implementation in `anikoto-core` (§3.6), no crate | — | — |
+| XDG paths | Own implementation in `nikomiru-core` (§3.6), no crate | — | — |
 | File dialogs | Qt Quick Dialogs `FileDialog` (XDG portal through Qt), no crate | — | (Qt: LGPL-3.0, system) |
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
@@ -232,24 +232,24 @@ Every new crate requires, in the PR: the license (verified by `cargo deny`), a j
 ### 5.1 Workspace
 
 ```
-anikoto/
+nikomiru/
 ├── Cargo.toml              # workspace, centralized [workspace.dependencies]
 ├── rust-toolchain.toml
 ├── deny.toml  about.toml
 ├── xtask/                  # cargo xtask: ci, fixtures, about, bench
 ├── crates/
-│   ├── anikoto-core/       # shared types, config, paths, errors, clock
-│   ├── anikoto-text/       # normalization, kana, preprocessors, sentences, furigana, character count
-│   ├── anikoto-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
-│   ├── anikoto-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
-│   ├── anikoto-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
-│   ├── anikoto-player/     # libmpv core (libmpv2): init, properties, commands, events;
+│   ├── nikomiru-core/       # shared types, config, paths, errors, clock
+│   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count
+│   ├── nikomiru-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
+│   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
+│   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
+│   ├── nikomiru-player/     # libmpv core (libmpv2): init, properties, commands, events;
 │   │                       # Qt Quick video item (C++ in cpp/, renders on the scene-graph thread)
-│   ├── anikoto-anki/       # AnkiConnect client, note composer, Lapis, return link
-│   ├── anikoto-library/    # library, file names, progress, statistics
-│   ├── anikoto-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
-│   ├── anikoto-ui/         # QML UI and Rust QObjects (cxx-qt): popup, subtitle overlay, controls, settings
-│   └── anikoto-app/        # binary: QGuiApplication, QML engine, wiring, single instance
+│   ├── nikomiru-anki/       # AnkiConnect client, note composer, Lapis, return link
+│   ├── nikomiru-library/    # library, file names, progress, statistics
+│   ├── nikomiru-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
+│   ├── nikomiru-ui/         # QML UI and Rust QObjects (cxx-qt): popup, subtitle overlay, controls, settings
+│   └── nikomiru-app/        # binary: QGuiApplication, QML engine, wiring, single instance
 ├── assets/                 # transforms/, anki/lapis/, i18n/*.ftl, icons
 ├── tests/fixtures/         # small committed files; media are generated with xtask
 └── docs/
@@ -257,10 +257,10 @@ anikoto/
 
 **ARC-010 — Dependency rules** (verified by T-ARC-010 with `cargo metadata`):
 
-- `anikoto-core` depends on no workspace crate.
-- `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` and `anikoto-library` **MUST NOT** depend on `cxx-qt`, `cxx` or `libmpv2`. They stay pure logic, testable without a display.
-- Only `anikoto-player` depends on `libmpv2`. Only `anikoto-ui`, `anikoto-player` and `anikoto-app` depend on `cxx-qt` / `cxx` (and on `cxx-qt-lib`, `cxx-qt-build`).
-- **ARC-011**: `unsafe` is allowed only in `anikoto-player` (mpv FFI, bridge to the video item), in `anikoto-app::linux` (iconv, `setlocale`) and in the cxx-qt bridge modules (files `src/bridge.rs` or under `src/bridge/`, which contain generated FFI declarations). C++ is allowed only for the video item, in `anikoto-player/cpp/`. Every `unsafe` block MUST have a `// SAFETY:` comment. Crates without bridges declare `#![forbid(unsafe_code)]`; crates with bridges declare `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on the modules listed above.
+- `nikomiru-core` depends on no workspace crate.
+- `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on `cxx-qt`, `cxx` or `libmpv2`. They stay pure logic, testable without a display.
+- Only `nikomiru-player` depends on `libmpv2`. Only `nikomiru-ui`, `nikomiru-player` and `nikomiru-app` depend on `cxx-qt` / `cxx` (and on `cxx-qt-lib`, `cxx-qt-build`).
+- **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI, bridge to the video item), in `nikomiru-app::linux` (iconv, `setlocale`) and in the cxx-qt bridge modules (files `src/bridge.rs` or under `src/bridge/`, which contain generated FFI declarations). C++ is allowed only for the video item, in `nikomiru-player/cpp/`. Every `unsafe` block MUST have a `// SAFETY:` comment. Crates without bridges declare `#![forbid(unsafe_code)]`; crates with bridges declare `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on the modules listed above.
 
 ### 5.2 Video and UI in the same window (Qt Quick)
 
@@ -285,17 +285,17 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 
 #### 5.2.2 mpv rendering
 
-1. The mpv core is owned by `anikoto-player` (Rust, `libmpv2`): options (PLY-005), properties, commands and events. Its handle is passed to the video item, which only renders.
+1. The mpv core is owned by `nikomiru-player` (Rust, `libmpv2`): options (PLY-005), properties, commands and events. Its handle is passed to the video item, which only renders.
 2. The render context is created on the render thread when the item's first FBO is created: `mpv_render_context_create` with the OpenGL API, `get_proc_address` taken from the current `QOpenGLContext`, and the native Wayland or X11 display, which mpv needs for zero-copy hwdec interop (VA-API on EGL).
 3. `loadfile` MUST wait until the render context exists: with `vo=libmpv`, a file loaded earlier has no video output and the item renders nothing. The item reports "renderer ready" with a queued signal.
 4. The mpv update callback (called from any thread) **MUST NOT** call mpv APIs. It only schedules a queued `update()` of the item.
 5. `render()` (render thread) calls `mpv_render_context_render` on the item's FBO, at its physical size.
 6. The item and its renderer share a mutex-protected link, which the item clears in its destructor: Qt destroys the renderer on the render thread after the item, and the update callback may still arrive.
 7. Shutdown, in this order: the render context is freed on the render thread, with the GL context current; then the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of the `mpv-events` thread; finally the core is destroyed. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001).
-8. `LC_NUMERIC` MUST be `"C"` before mpv is created: `QGuiApplication` sets the locale from the environment, and libmpv then refuses to start (`mpv_create` returns NULL). `anikoto-app` calls `setlocale(LC_NUMERIC, "C")` right after creating `QGuiApplication`.
-9. On X11, `anikoto-app` sets `QT_XCB_GL_INTEGRATION=xcb_egl` before creating `QGuiApplication`, so that the GL context is EGL and mpv gets zero-copy VA-API. If EGL is not available, the app falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
+8. `LC_NUMERIC` MUST be `"C"` before mpv is created: `QGuiApplication` sets the locale from the environment, and libmpv then refuses to start (`mpv_create` returns NULL). `nikomiru-app` calls `setlocale(LC_NUMERIC, "C")` right after creating `QGuiApplication`.
+9. On X11, `nikomiru-app` sets `QT_XCB_GL_INTEGRATION=xcb_egl` before creating `QGuiApplication`, so that the GL context is EGL and mpv gets zero-copy VA-API. If EGL is not available, the app falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
 10. `gpu-hwdec-interop` is `vaapi` unless NVIDIA's proprietary driver is loaded (`/proc/driver/nvidia/version` exists), in which case mpv's automatic choice, CUDA included, is kept. On AMD and Intel the CUDA interop is useless, and probing it prints `Cannot load libcuda.so.1` on stderr (seen on the developer's session, 2026-10-19).
-11. libmpv's messages go to Anikoto's log (`mpv_request_log_messages`, level `warn` by default, `v` with debug logging), never to stderr; PRV-002 applies to them as well.
+11. libmpv's messages go to Nikomiru's log (`mpv_request_log_messages`, level `warn` by default, `v` with debug logging), never to stderr; PRV-002 applies to them as well.
 
 #### 5.2.3 Fallback
 
@@ -328,7 +328,7 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 - The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s for the GUI thread.
 - The **tokio runtime** runs I/O, ffmpeg, HTTP and dictionary import; results reach the GUI thread through queued calls.
 
-- **ARC-001**: `anikoto-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
+- **ARC-001**: `nikomiru-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
 - **ARC-002**: every load has an increasing `LoadToken`. Events and asynchronous results with an old token are discarded. This is the equivalent of the Fushi bugs "re-check player and loadToken after every await".
 - **ARC-003**: no synchronous read of mpv properties on the GUI thread during playback (Fushi BUG-3507). State is read from events.
 - **ARC-004**: `time-pos` updates to the UI are limited to ≤ 30 Hz. Cue synchronization uses the most recent value with a binary search. Fushi's 125 ms timer is not needed.
@@ -337,19 +337,19 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 
 | What | Where | Format |
 |---|---|---|
-| Settings | `$XDG_CONFIG_HOME/anikoto/config.toml` | Human-readable TOML; atomic write (temporary file + rename); permissions 0600 |
-| Library, progress, statistics | `$XDG_DATA_HOME/anikoto/library.redb` | redb; `postcard` values; `meta.schema_version` table |
-| Dictionaries | `$XDG_DATA_HOME/anikoto/dicts/<id>/dict.redb` | One file per dictionary (§6.5.3) |
-| Cache (extracted subtitles, thumbnails, word audio) | `$XDG_CACHE_HOME/anikoto/` | Files; can be deleted at any time |
-| Logs | `$XDG_STATE_HOME/anikoto/logs/` | Text, daily rotation, 7 files |
+| Settings | `$XDG_CONFIG_HOME/nikomiru/config.toml` | Human-readable TOML; atomic write (temporary file + rename); permissions 0600 |
+| Library, progress, statistics | `$XDG_DATA_HOME/nikomiru/library.redb` | redb; `postcard` values; `meta.schema_version` table |
+| Dictionaries | `$XDG_DATA_HOME/nikomiru/dicts/<id>/dict.redb` | One file per dictionary (§6.5.3) |
+| Cache (extracted subtitles, thumbnails, word audio) | `$XDG_CACHE_HOME/nikomiru/` | Files; can be deleted at any time |
+| Logs | `$XDG_STATE_HOME/nikomiru/logs/` | Text, daily rotation, 7 files |
 
 - **DAT-001**: schema migrations go forward only, are numbered and are idempotent. Before migrating, the file is copied to `library.redb.bak-v<N>`.
-- **DAT-002**: if the file was written by a newer version of Anikoto (schema higher than the supported one), it is opened read-only with a warning. It is never modified.
+- **DAT-002**: if the file was written by a newer version of Nikomiru (schema higher than the supported one), it is opened read-only with a warning. It is never modified.
 - **DAT-003**: the identity of a video is `uid = "video/" + sanitize(file name without extension)`, as in Fushi. In addition, `size` and `mtime` are stored to recognize a moved file.
 
 ### 5.5 External processes
 
-- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `ANIKOTO_FFMPEG` variable, `PATH`. At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
+- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `NIKOMIRU_FFMPEG` variable, `PATH`. At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
 - **EXT-002**: arguments are always passed as a vector, never through a shell. Input paths are prefixed with `file:` to neutralize names that start with `-` or contain `:`.
 - **EXT-003**: every process has a timeout (default 60 s; for subtitle extraction it scales with the duration) and can be cancelled. On cancellation the process is killed and partial files are removed.
 
@@ -362,8 +362,8 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 
 ### 5.7 Single instance and URL scheme
 
-- **APP-001**: only one instance per user. A second launch passes its arguments (files to open, `anikoto://` URLs) to the running instance through the Unix socket `$XDG_RUNTIME_DIR/anikoto.sock`, then exits.
-- **APP-002**: the `.desktop` file registers `MimeType=x-scheme-handler/anikoto;` and the video types, with `Exec=anikoto %U`.
+- **APP-001**: only one instance per user. A second launch passes its arguments (files to open, `nikomiru://` URLs) to the running instance through the Unix socket `$XDG_RUNTIME_DIR/nikomiru.sock`, then exits.
+- **APP-002**: the `.desktop` file registers `MimeType=x-scheme-handler/nikomiru;` and the video types, with `Exec=nikomiru %U`.
 
 ---
 
@@ -400,13 +400,13 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 | PLY-008 | After `file-loaded`: adopt the actual `aid`; disable mpv rendering for text tracks (`sid=no`, `sub-visibility=no`); apply the saved volume and speed | `video_player_controller.dart` `load()` |
 | PLY-009 | The player and the render context are **reused** from one episode to the next: only the content is recreated with `loadfile replace` | BUG-120 |
 | PLY-010 | Speed uses only the `speed` property, never the `scaletempo` filter | TODO-116 |
-| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Anikoto` folder (`$XDG_PICTURES_DIR/Anikoto`) | |
+| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) | |
 | PLY-012 | Playback errors (missing file, unsupported codec, `end-file` with an error) MUST show an understandable message and must not block the app | |
 | PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal, or through mpv's `stop-screensaver` if the portal is not available | |
 | PLY-014 | Thumbnails on the progress bar: post-1.0 | |
 | PLY-015 | Screenshot with the overlay subtitles (`Shift+S`): post-1.0, because it requires compositing the overlay onto the frame | |
-| PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/anikoto/mpv/<name>.conf`, or to any file chosen in the file dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`); (c) switch between saved presets. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as applied, ignored (with the reason) or invalid (with mpv's error); nothing changes until the user confirms. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Anikoto version, date) and only the options that differ from the defaults, so the file also works in mpv | |
-| PLY-017 | **Options that the raw options and the presets can never set** (PLY-006, PLY-016): they are rejected with a reason and never reach mpv. (1) The fixed options of PLY-005. (2) Options that run code, load other configuration, open sockets or write files outside the XDG folders (NFR-SEC-02): `script*`, `scripts`, `load-*`, `include`, `config-dir`, `use-filedir-conf`, `input-*`, `log-file`, `dump-stats`, `stream-dump`, `stream-record`, `record-file`, `watch-later-*`, `write-filename-in-watch-later-config`, `screenshot-*` (Anikoto owns screenshots, PLY-011), `ytdl*`. (3) Options with no effect under the libmpv render API (`gpu-api`, `gpu-context`, `vo-*`) are ignored with a warning, and so are `sub-*` options for text subtitles, which Anikoto draws itself (§6.4). The list is a single table in `anikoto-player`, covered by tests | |
+| PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/nikomiru/mpv/<name>.conf`, or to any file chosen in the file dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`); (c) switch between saved presets. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as applied, ignored (with the reason) or invalid (with mpv's error); nothing changes until the user confirms. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Nikomiru version, date) and only the options that differ from the defaults, so the file also works in mpv | |
+| PLY-017 | **Options that the raw options and the presets can never set** (PLY-006, PLY-016): they are rejected with a reason and never reach mpv. (1) The fixed options of PLY-005. (2) Options that run code, load other configuration, open sockets or write files outside the XDG folders (NFR-SEC-02): `script*`, `scripts`, `load-*`, `include`, `config-dir`, `use-filedir-conf`, `input-*`, `log-file`, `dump-stats`, `stream-dump`, `stream-record`, `record-file`, `watch-later-*`, `write-filename-in-watch-later-config`, `screenshot-*` (Nikomiru owns screenshots, PLY-011), `ytdl*`. (3) Options with no effect under the libmpv render API (`gpu-api`, `gpu-context`, `vo-*`) are ignored with a warning, and so are `sub-*` options for text subtitles, which Nikomiru draws itself (§6.4). The list is a single table in `nikomiru-player`, covered by tests | |
 | PLY-018 | **Render and audio settings in the UI** (Settings → Player, groups Rendering, Audio and Advanced): profile (`default`, `fast`, `high-quality`), `scale`, `cscale`, `dscale`, `deband` (with `deband-iterations` and `deband-threshold`), `dither-depth`, `interpolation` (with `tscale` and `video-sync`), `tone-mapping`, `target-peak`, `hdr-compute-peak`, `deinterlace`, `brightness`, `contrast`, `saturation`, `gamma`, `hwdec`; audio: `audio-channels`, `audio-pitch-correction`, `volume-max`, `audio-normalize-downmix`. Each control writes the same mpv option that a preset contains (PLY-016). Options that mpv can change at runtime apply immediately (SET-002); the others apply from the next file, with a note next to the control. Each group has a reset to the defaults (SET-006) | |
 
 ### 6.3 Shortcuts (KEY)
@@ -443,7 +443,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 
 ### 6.4 Subtitles (SUB)
 
-**Principle (from Fushi):** mpv does **not** draw text subtitles. Anikoto parses them into cues and draws them in the QML overlay. This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
+**Principle (from Fushi):** mpv does **not** draw text subtitles. Nikomiru parses them into cues and draws them in the QML overlay. This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
 
 | ID | Requirement | Fushi |
 |---|---|---|
@@ -602,7 +602,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-007 | Header of each entry: headword with furigana (LKP-050), ♪ audio button (AUD), create-card button (+ / ✓ / ✓↩, ANK-030), deinflection trace chips with a description on hover, frequency row, pitch accent row, term tag chips. | `popup.js` |
 | POP-008 | One collapsible block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
 | POP-009 | Yomitan **structured content**: converted into QML items from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
-| POP-010 | Dictionary images: QML image provider `image://anikoto-dict/<id>/<path>` (a `QQuickImageProvider`) served from the `media` table; respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`. | |
+| POP-010 | Dictionary images: QML image provider `image://nikomiru-dict/<id>/<path>` (a `QQuickImageProvider`) served from the `media` table; respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`. | |
 | POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links → system browser with `Qt.openUrlExternally` (`xdg-open`). | |
 | POP-012 | Nested popups: select text inside a glossary and a child popup opens. Esc or Back closes the last one; a click on the parent closes the children; a click outside closes everything. Maximum depth 8. | |
 | POP-013 | Kanji entries (LKP-037) shown with a dedicated card. | |
@@ -655,7 +655,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ANK-024 | `{sentence}`: the cue (or the merged cues, ANK-041) with the looked-up word wrapped in `<b>`, at the exact position of the click offset (or at the first occurrence, if the offset is not valid). |
 | ANK-025 | `{frequency-harmonic-rank}` as in LKP-040. `{frequencies}`: `<ul style="text-align: left;"><li>D: value</li>…</ul>`. |
 | ANK-026 | Empty fields: omitted on creation. The first field of the note type cannot be empty (dedicated error). Only fields that actually exist in the note type are sent. |
-| ANK-027 | Tags: user tags + `anikoto` + `video` + cleaned-up series title (spaces → `_`). Deduplicated, in order. |
+| ANK-027 | Tags: user tags + `nikomiru` + `video` + cleaned-up series title (spaces → `_`). Deduplicated, in order. |
 
 #### 6.9.4 Mining flow from video
 
@@ -667,7 +667,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ANK-033 | Sentence audio: `ffmpeg -y -ss S -t D -i file:IN -vn -sn -map_chapters -1 -map 0:<ff-index of the active audio track> -c:a aac -ac 1 -b:a 64k out.m4a`. Quality levels: mono 64k (default), stereo 128k, stereo 192k. Alternative formats: Opus/OGG, MP3. |
 | ANK-034 | Image: the exact frame at the moment of the click, captured by mpv (`screenshot-to-file <tmp>.png video`), then resized and encoded with ffmpeg. Levels: long side 720 px / q80, **1000 px / q90 (default)**, 2000 px / q95, original. Formats: JPEG (default), WebP. Alternative mode: frame at the start of the cue. |
 | ANK-035 | Audio and image are extracted in parallel. If the audio is missing, the card is cancelled with a message (as in Fushi). |
-| ANK-036 | Media in Anki: content-based name `anikoto_<sha256[0..16]>.<ext>`. If the host is loopback, `storeMediaFile` is used with `path`; otherwise `data` in base64. If `addNote` fails, the media uploaded in that attempt are deleted. |
+| ANK-036 | Media in Anki: content-based name `nikomiru_<sha256[0..16]>.<ext>`. If the host is loopback, `storeMediaFile` is used with `path`; otherwise `data` in base64. If `addNote` fails, the media uploaded in that attempt are deleted. |
 | ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`) and `addTags`. Default scope: only the last card mined in the session. |
 | ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` on the first field and then `guiBrowse` with the ids found. |
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
@@ -679,7 +679,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement |
 |---|---|
-| ANK-050 | `{source-link}` = `<a href="anikoto://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped). |
+| ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped). |
 | ANK-051 | Parsing is strict: unknown or duplicate parameters, absolute paths and `file:` uids are rejected; maximum length 16 KiB. |
 | ANK-052 | Opening the link (APP-001/002) opens the video, goes to `startMs` paused and highlights the cue. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file". |
 | ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS`, only if `end > start`. |
@@ -737,11 +737,11 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | NFR-REL-01 | No crash and no data loss if the app is closed during: import, config write, progress save, mining | T-REL-001, T-REL-002 |
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
 | NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: QML shows them only as plain text (`Text.PlainText`) or as allowlisted items (POP-009), never as raw HTML or with scripts; the QML engine refuses remote URLs (images only through the app's image providers, POP-010) | T-SEC-* |
-| NFR-SEC-02 | No file written outside Anikoto's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
+| NFR-SEC-02 | No file written outside Nikomiru's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
 | NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; Qt `Accessible` properties (role, name) on the player controls | T-A11Y-* |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |
 | NFR-MAINT-01 | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; `///` documentation on every `pub` item of the library crates | T-MAINT-001 |
-| NFR-MAINT-02 | Line coverage ≥ 80% for `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |
+| NFR-MAINT-02 | Line coverage ≥ 80% for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |
 
 ---
 
@@ -831,18 +831,19 @@ Decisions D-1…D-10 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-3 | GPL-3.0-only or GPL-3.0-or-later | **Approved**: GPL-3.0-only (§3.1) |
 | D-4 | Default audio format for cards | **Approved**: AAC in M4A, compatible with Anki desktop, AnkiDroid and AnkiMobile |
 | D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**KDE runtime**, Qt 6, with libmpv and ffmpeg included in the manifest; runtime updated by D-10) |
-| D-6 | Name of the app, the folder and the repository | **Approved**: the app is called **Anikoto**; the local folder (currently "Amikoto") and the repository are renamed to `anikoto` |
+| D-6 | Name of the app, the folder and the repository | **Approved**, then superseded by D-11: the app was called **Anikoto**, a name that turned out to be taken |
 | D-7 | The `cargo deny` check on the real graph (M0, 2026-10-19) finds 5 class B crates missing from the §3.2 table: `yoke-derive`, `zerofrom-derive`, `zerovec-derive` (Unicode-3.0) and `const_format_proc_macros`, `konst_macro_rules` (Zlib). They are procedural macros of the already approved families (`yoke`, `zerofrom`, `zerovec`, `const_format`, `konst`), with the same license and the same requester. `foldhash` and `zlib-rs`, on the other hand, do not appear in the Linux graph | **Approved**: the 5 crates are in the §3.2 table and in `deny.toml`; `foldhash` and `zlib-rs` stay, since they may reappear with other versions or platforms. Superseded by D-10: only the Unicode-3.0 macro crates remain |
 | D-8 | The `router` feature of `dioxus` (§4) brings in `base16` 0.2.1, which is **CC0-1.0** (forbidden, §3.2), through `dioxus-router-macro` | **Obsolete (D-10)**: no Dioxus, no `base16`. CC0-1.0 is forbidden with no exception (§3.2) |
 | D-9 | Language of documents and code comments | **Approved**: documents and code comments are in English (§0). For consistency, commit messages and developer-tool messages (`cargo xtask`) are in English too. The UI stays localized (SET-004) |
 | D-10 | UI toolkit | **Approved**: Qt 6 Quick (QML) through cxx-qt instead of Dioxus ([ADR 0003](adr/0003-qt-quick-ui.md)). On the developer's 4K, 120 Hz, fractional-scale session no frame was dropped, where the Dioxus design dropped 2456 in 60 s; the class B table shrinks to the ICU/Unicode family and `foldhash` |
+| D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
 
 ### 10.2 Risks
 
 | ID | Risk | Prob. | Impact | Mitigation |
 |---|---|---|---|---|
 | R-1 | Video and UI composition in the same window (§5.2) does not render smoothly | Low (D-10) | High | Qt Quick composition measured in [ADR 0003](adr/0003-qt-quick-ui.md): at 4K under load 60 renders/s and 0–2 dropped frames, none on the developer's 4K/120 Hz session (the Dioxus design of [ADR 0001](adr/0001-video-composition.md) dropped frames at 4K). Residual: the OpenGL scene graph is required; without it, fallback D (§5.2.3) |
-| R-2 | cxx-qt is still 0.x: API changes between versions | Medium | Medium | Pinned versions; bridges isolated in `anikoto-ui`/`anikoto-player`; upgrades only through a dedicated PR |
+| R-2 | cxx-qt is still 0.x: API changes between versions | Medium | Medium | Pinned versions; bridges isolated in `nikomiru-ui`/`nikomiru-player`; upgrades only through a dedicated PR |
 | R-3 | A new version of cxx-qt, cxx or reqwest adds dependencies with new licenses | Medium | Medium | `cargo deny` in CI; updates only through a dedicated PR |
 | R-4 | System ffmpeg without encoders (e.g. `aac` missing in reduced builds) | Low | Medium | EXT-001: check at startup, fallback to Opus/MP3, clear message |
 | R-5 | redb performance not sufficient for lookup | Low | Medium | Spike S2; `DictStore` trait and a custom format as plan B |

@@ -4,7 +4,7 @@
 //! lookup with a minimal deinflector. Measurements for NFR-PERF-04 (lookup p95 ≤
 //! 10 ms, p99 ≤ 25 ms with 5 term + 3 freq + 1 pitch dictionaries) and NFR-PERF-05
 //! (import of 300k entries / 150 MB of JSON ≤ 60 s with peak RAM ≤ 1 GiB).
-//! Throwaway code: in M3 it is rewritten cleanly in `anikoto-dict`.
+//! Throwaway code: in M3 it is rewritten cleanly in `nikomiru-dict`.
 //!
 //! Usage:
 //!   spike-s2-storage all <directory with synth-*.zip and queries.txt> <output directory>

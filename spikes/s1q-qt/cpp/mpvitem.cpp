@@ -302,5 +302,5 @@ void MpvItem::onMpvEvents() {
 extern "C" void s1q_register() {
     // QQuickFramebufferObject needs the OpenGL backend of the scene graph.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
-    qmlRegisterType<MpvItem>("Anikoto.Video", 1, 0, "MpvItem");
+    qmlRegisterType<MpvItem>("Nikomiru.Video", 1, 0, "MpvItem");
 }

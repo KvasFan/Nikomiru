@@ -10,7 +10,7 @@
 
 ## Context
 
-SPECIFICATION §6.5.3 plans one redb file per dictionary, behind the `DictStore` trait (DIC-020). Spike S2 must tell whether redb meets the limits of NFR-PERF-04 (lookup) and NFR-PERF-05 (import) before `anikoto-dict` is written in M3. If it does not, the custom format is adopted (mmap + hash table + blob, like fushidicts).
+SPECIFICATION §6.5.3 plans one redb file per dictionary, behind the `DictStore` trait (DIC-020). Spike S2 must tell whether redb meets the limits of NFR-PERF-04 (lookup) and NFR-PERF-05 (import) before `nikomiru-dict` is written in M3. If it does not, the custom format is adopted (mmap + hash table + blob, like fushidicts).
 
 ## Method
 
@@ -44,7 +44,7 @@ Average results per query: 9.4 groups, 37 glossaries; all 10k queries have resul
 ## Decision
 
 1. **We adopt redb** as the first implementation of `DictStore` (DIC-020). The limits are met with a margin of 25× on import, 4× on warm p95 and 2× on cold p99. The custom format remains plan B behind the same trait, but there is no need to write it.
-2. Guidance for `anikoto-dict` (M3):
+2. Guidance for `nikomiru-dict` (M3):
    - import in **a single transaction**, with the multimap indexes written **in key order**;
    - **`compact()` after import**, before the atomic rename of DIC-013: the file shrinks by 40%;
    - **16 MiB redb cache per dictionary**, not the default one (1 GiB). With 64 MiB the p95 improves by only 0.7 ms, but RSS rises by 250 MiB, and NFR-PERF-09 (≤ 400 MB at idle, WebKit included) does not allow that;
@@ -53,7 +53,7 @@ Average results per query: 9.4 groups, 37 glossaries; all 10k queries have resul
 ## Spike limits and residual risks
 
 - **The M3 lookup will do more work.** The full LKP-011 chain (NFKC, width, kanji variants, iteration marks, numerals) generates more variants. Mixed orthography (LKP-031) adds up to 64 searches per reading, and the Yomitan tables have more rules. Conservative estimate: 2–3× today's searches, so p95 ~5–7 ms warm, ~10–14 ms cold. The LRU result cache (LKP-038) and memoization of deinflections per prefix are the first countermeasures. T-PERF-04 in M3 will verify this with the real engine.
-- **Per-record lz4 compresses short glossaries poorly.** In M3 it is measured on real dictionaries (JMdict, with `ANIKOTO_REALDATA`), and block compression of records is evaluated if disk space is a problem.
+- **Per-record lz4 compresses short glossaries poorly.** In M3 it is measured on real dictionaries (JMdict, with `NIKOMIRU_REALDATA`), and block compression of records is evaluated if disk space is a problem.
 - **Hardware**: this machine is faster than REF (SPECIFICATION §7) in compute and slower in I/O (NVMe over USB and LUKS encryption). The margins make a failure on REF unlikely, but T-PERF-04/05 must be repeated on REF in M3.
 - The data is synthetic. Key distribution and glossary length imitate those of JMdict, but do not reproduce them.
 

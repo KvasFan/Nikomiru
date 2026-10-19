@@ -1,4 +1,4 @@
-# Anikoto — Test plan
+# Nikomiru — Test plan
 
 | Field | Value |
 |---|---|
@@ -10,9 +10,9 @@
 
 1. **Every requirement has at least one test.** The test carries the requirement ID (`T-SUB-012` verifies `SUB-012`). Coverage is checked by `cargo xtask trace` (§8).
 2. **Pure logic without a display.** Text, subtitles, dictionaries, Anki and library are tested without Qt, QML or mpv (SPECIFICATION ARC-010). Most of the tests are concentrated here.
-3. **Deterministic and offline.** The default suite does not use the network, does not depend on the real clock (injectable clock in `anikoto-core`) and does not depend on files outside the repository. Tests with network, real data or real Anki are separate and optional (§2, levels L5–L7).
+3. **Deterministic and offline.** The default suite does not use the network, does not depend on the real clock (injectable clock in `nikomiru-core`) and does not depend on files outside the repository. Tests with network, real data or real Anki are separate and optional (§2, levels L5–L7).
 4. **Fushi is the oracle.** Where a Fushi test exists, its input and output vectors are ported as conformance tests (§5). Every Fushi bug cited in SPECIFICATION becomes a regression test.
-5. **Every Anikoto bug produces a test** before the fix (§7).
+5. **Every Nikomiru bug produces a test** before the fix (§7).
 6. **Test tools follow the license policy** (SPECIFICATION §3.5), even though they are not distributed.
 
 ---
@@ -25,7 +25,7 @@
 | L2 Property | Invariants with generated inputs (`proptest`) | `#[cfg(test)]`, `tests/` | Every push (256 cases); nightly 100k cases |
 | L3 Snapshot | Structured outputs compared with approved files (`insta`): popup JSON, Anki field HTML, ffmpeg argv, QML item trees (item types and key properties, dumped by a test helper), outputs of the Rust `QObject`s | `tests/snapshots/` | Every push |
 | L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`wiremock`) | `crates/*/tests/` | Every PR |
-| L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/anikoto-player/tests/` | Every PR |
+| L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/nikomiru-player/tests/` | Every PR |
 | L6 GUI end-to-end | Real app driven by the **test harness** (§2.1), under Xvfb (X11) and headless Weston or virtual KWin (Wayland), with Mesa llvmpipe | `tests/e2e/` | Every PR (smoke); nightly (full) |
 | L7 External | Real Anki desktop with AnkiConnect; real online services (AniList, Jimaku); real user data (JMdict, …) | `#[ignore]`, name starting with `l7_`, + `cargo xtask test --anki-e2e / --live / --realdata` | Nightly or by hand |
 | L8 Performance | `criterion` benchmarks and harness metrics, with thresholds (§6.15) | `benches/`, `tests/e2e/perf_*` | Nightly |
@@ -33,8 +33,8 @@
 
 ### 2.1 GUI test harness
 
-- Cargo feature `test-harness` of `anikoto-app`, **never enabled in release builds** (verified by T-SEC-004).
-- Start: `anikoto --test-harness <socket>`. Protocol: JSON lines on a Unix socket.
+- Cargo feature `test-harness` of `nikomiru-app`, **never enabled in release builds** (verified by T-SEC-004).
+- Start: `nikomiru --test-harness <socket>`. Protocol: JSON lines on a Unix socket.
 - Commands:
   - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}`;
   - `click_grapheme {layer, cue_index, grapheme_index}`, `hover_grapheme {…}`, `click {selector}`;
@@ -106,7 +106,7 @@ They are generated with ffmpeg `lavfi` in `target/fixtures/`, with the `+bitexac
 
 ### 4.5 Real data (optional, L7)
 
-Variable `ANIKOTO_REALDATA=/path`, with files provided by the user: `jmdict_english.zip`, `jmnedict.zip`, a frequency dictionary, a pitch accent dictionary, `android.db`, a real episode with ASS. If the variable is missing, the `#[ignore = "realdata"]` tests are skipped.
+Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_english.zip`, `jmnedict.zip`, a frequency dictionary, a pitch accent dictionary, `android.db`, a real episode with ASS. If the variable is missing, the `#[ignore = "realdata"]` tests are skipped.
 
 ---
 
@@ -114,7 +114,7 @@ Variable `ANIKOTO_REALDATA=/path`, with files provided by the user: `jmdict_engl
 
 ### 5.1 Vector sources
 
-| Area | Fushi file (commit `ac8034e`) | Anikoto test |
+| Area | Fushi file (commit `ac8034e`) | Nikomiru test |
 |---|---|---|
 | Word scanning | `native/fushidicts/tests/word_scan_test.cpp`, `fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart`, `reader_cue_gap_word_scan_bug3453_test.dart` | T-LKP-001…004 |
 | Preprocessors | `native/fushidicts/tests/text_processor_test.cpp` | T-LKP-010…012 |
@@ -153,25 +153,25 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIC-002 | Canary: temporary crate that depends on `xxhash-rust` (BSL-1.0) | `cargo deny` fails | nightly |
 | T-LIC-003 | `cargo about generate` | `THIRD_PARTY_LICENSES.html` generated, with all the crates in the graph | L4 |
 | T-ARC-010 | Crate dependency rules (`cargo metadata`) | No logic crate depends on `cxx-qt`, `cxx` or `libmpv2` | L4 |
-| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:`; no `unsafe` outside the allowed modules (the cxx-qt bridge modules `src/bridge.rs` and `src/bridge/` are allowed); C++ sources exist only in `crates/anikoto-player/cpp/` | `xtask` check | L4 |
+| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:`; no `unsafe` outside the allowed modules (the cxx-qt bridge modules `src/bridge.rs` and `src/bridge/` are allowed); C++ sources exist only in `crates/nikomiru-player/cpp/` | `xtask` check | L4 |
 | T-ARC-020 | `SPDX-License-Identifier: GPL-3.0-only` header in every `.rs`, `.cpp`, `.h` and `.qml` file | `xtask check-headers` | L4 |
 | T-ARC-001 | Player API | After `file-loaded`, at least one event arrives for each observed property of ARC-001 | L5 |
 | T-ARC-002 | LoadToken: events from a previous load | They are discarded and do not change the state (fake event source) | L1 |
-| T-ARC-003 | No synchronous reads from the UI thread | `PlayerHandle` exposes no synchronous getters (compile-time check with a `trybuild`-like test in `xtask`); lint: no call to `get_property` outside `anikoto-player` | L4 |
+| T-ARC-003 | No synchronous reads from the UI thread | `PlayerHandle` exposes no synchronous getters (compile-time check with a `trybuild`-like test in `xtask`); lint: no call to `get_property` outside `nikomiru-player` | L4 |
 | T-ARC-004 | `time-pos` throttling | With 240 updates/s, the UI receives ≤ 30/s; the last value always arrives | L1 |
 | T-ERR-001 | Translated errors | Every variant of the public errors has a Fluent key in `it` and `en` (test that enumerates the variants) | L1 |
 | T-ERR-002 | No `unwrap`/`expect` on external input | Clippy `unwrap_used`, `expect_used` = error in library crates; T-FUZZ-* without panics | L4 |
-| T-EXT-001 | Discovery of ffmpeg and encoders | Order: setting → `ANIKOTO_FFMPEG` → `PATH` (fake scripts in temporary directories); a fake `-encoders` without `aac` → AAC format disabled with a warning, fallback to Opus | L4 |
+| T-EXT-001 | Discovery of ffmpeg and encoders | Order: setting → `NIKOMIRU_FFMPEG` → `PATH` (fake scripts in temporary directories); a fake `-encoders` without `aac` → AAC format disabled with a warning, fallback to Opus | L4 |
 | T-EXT-002 | Arguments as a vector and `file:` prefix | argv snapshot; no invocation goes through `sh -c` (see also T-SEC-005) | L3 |
 | T-EXT-003 | Timeout and cancellation | Fake ffmpeg that sleeps 120 s → killed at the timeout; with cancellation, the process ends within 1 s and the partial files are removed | L4 |
 | T-PRV-001 | No unrequested network traffic | L6 suite under `strace -f -e trace=connect`: no `connect()` to non-loopback addresses if the user has not started network features | L6 |
 | T-PRV-002 | Clean logs | Flows with sentinel text in the subtitles and a sentinel API key: neither of the two appears in the log files | L4 |
 | T-MAINT-001 | Code quality | `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `#![deny(missing_docs)]` in library crates | CI |
-| T-MAINT-002 | Coverage | `cargo llvm-cov` ≥ 80% of lines for `anikoto-text`, `anikoto-subs`, `anikoto-dict`, `anikoto-anki` | CI |
+| T-MAINT-002 | Coverage | `cargo llvm-cov` ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` | CI |
 | T-PORT-001 | Wayland and X11 | The L6 smoke test passes both under headless Weston and under Xvfb | L6 |
 | T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds | CI |
 
-### 6.2 Text (`anikoto-text`)
+### 6.2 Text (`nikomiru-text`)
 
 | ID | Check | Expected | L |
 |---|---|---|---|
@@ -187,7 +187,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-022 | `{furigana-plain}` | `食[た]べ 物[もの]` | L1 |
 | T-STA-003 | Character count | `日本語abc 123です` → 7 (3 + 1 + 1 + 2); `가나다` → 3; cases with apostrophes and combining marks from the Fushi vectors | L1 |
 
-### 6.3 Subtitles (`anikoto-subs`, `anikoto-media`)
+### 6.3 Subtitles (`nikomiru-subs`, `nikomiru-media`)
 
 | ID | Check | Expected | L |
 |---|---|---|---|
@@ -261,7 +261,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-007 | Header | QML item-tree snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
 | T-POP-008 | Per-dictionary blocks | QML item-tree snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
 | T-POP-009 | Structured content | QML item-tree snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
-| T-POP-010 | Images | The image provider `image://anikoto-dict/<id>/img/a.png` returns the image (2×2 px); a nonexistent path → null image; `..` → rejected | L4 |
+| T-POP-010 | Images | The image provider `image://nikomiru-dict/<id>/img/a.png` returns the image (2×2 px); a nonexistent path → null image; `..` → rejected | L4 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); an external link opens `xdg-open` (spy) | L1 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
 | T-POP-013 | Kanji entry | QML item-tree snapshot for `食` from `mini-kanji` | L3 |
@@ -275,13 +275,13 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted QML items are produced; no network request (spy proxy) | L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
 | T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
-| T-SEC-004 | Release build | `cargo tree -e features --release -p anikoto-app` without `test-harness`; the binary does not contain the harness symbol | L4 |
+| T-SEC-004 | Release build | `cargo tree -e features --release -p nikomiru-app` without `test-harness`; the binary does not contain the harness symbol | L4 |
 | T-SEC-005 | Argument injection into ffmpeg | `-weird: name & spaces ü 日本.mkv` and `http:fake.mkv` are treated as local files; argv captured with a snapshot | L4 |
 | T-SEC-006 | QML network isolation | The QML engine's network access refuses every remote URL; a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
-| T-SEC-007 | Hostile `anikoto://` links | Absolute paths, `file:`, duplicate or unknown parameters, > 16 KiB → rejected without effects (see T-ANK-051) | L1 |
+| T-SEC-007 | Hostile `nikomiru://` links | Absolute paths, `file:`, duplicate or unknown parameters, > 16 KiB → rejected without effects (see T-ANK-051) | L1 |
 | T-SEC-008 | Config permissions | `config.toml` created with permissions 0600 | L4 |
 
-**Security review in M8**: besides the tests, a manual review of every point where external data enters (zips, dictionary JSON, subtitles, HTTP responses, `anikoto://` links, arguments from the second instance) and of every `unsafe` block. The results go into `docs/security-review-1.0.md`.
+**Security review in M8**: besides the tests, a manual review of every point where external data enters (zips, dictionary JSON, subtitles, HTTP responses, `nikomiru://` links, arguments from the second instance) and of every `unsafe` block. The results go into `docs/security-review-1.0.md`.
 
 ### 6.8 Player, shortcuts, single instance
 
@@ -297,14 +297,14 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-008 | After loading | `sid = no`, `sub-visibility = no`; `aid` adopted | L5 |
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
-| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Anikoto` with the video dimensions, without subtitles | L5 |
+| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles | L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
 | T-PLY-013 | Screensaver | During playback the inhibition is active; when paused for > 1 min it is released (spy portal) | L4 |
 | T-PLY-016 | `mpv.conf` presets | Round trip: option set from the UI → saved preset → loaded → identical option set, with UI controls and raw options filled as before. A sample `mpv.conf` with comments, a flag (`deband`), `no-` prefix, `--key=value`, quoted values, `profile=high-quality`, a `[section]` and `include=` → preview with applied / ignored / invalid for each line, and no option reaches mpv before confirmation (spy on the option setter). A saved preset is accepted by a real mpv (`mpv --no-config --include=<file> --idle=once` exits with 0) | L1/L5 |
 | T-PLY-017 | Blocked options | Every entry of the blocked table, in the raw options and in a preset, is rejected with its reason and never reaches mpv (spy). `script=x.lua`, `input-ipc-server=<tmp>/s`, `log-file=<tmp>/l`, `include=<tmp>/i.conf` → no file created and no socket opened (inotify on the temporary folder, see T-SEC-003); `sub-font=…` and `gpu-api=…` → ignored with a warning | L1/L5 |
 | T-PLY-018 | Render and audio settings | Each control sets the expected mpv option (`mpv_get`); runtime options (`deband`, `scale`, `brightness`…) change during playback without reloading the file; `hwdec` shows the "from the next file" note and takes effect on the next `loadfile`; reset of a group restores only that group | L5/L6 |
 | T-KEY-001…004 | Shortcuts | Remapping saved and reloaded; binding by scan code (with a simulated AZERTY layout, the physical key of evdev `KEY_Q` still triggers the action bound to it); conflict in the same context rejected; single-key shortcuts disabled in a text field | L1/L6 |
-| T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/anikoto` and the video types; `Exec=anikoto %U` | L4 |
+| T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/nikomiru` and the video types; `Exec=nikomiru %U` | L4 |
 | T-APP-001 | Single instance | Second start with a file → the file opens in the first instance; the second process exits with 0 | L6 |
 | T-E2E-001 | M1 flow | open → play → seek → close → reopen → resumes from the saved position | L6 |
 
@@ -320,7 +320,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense, scoped `<style>`), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja` | L3 |
 | T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
-| T-ANK-027 | Tags | `["mine", "anikoto", "video", "Sousou_no_Frieren"]` deduplicated and in order | L1 |
+| T-ANK-027 | Tags | `["mine", "nikomiru", "video", "Sousou_no_Frieren"]` deduplicated and in order | L1 |
 | T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock) | L4 |
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
 | T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345) | L3/L4 |
@@ -329,7 +329,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-036 | Media | Stable content-based name; loopback host → `path`, remote host → base64 `data`; if `addNote` fails → `deleteMediaFile` only for the media uploaded in that attempt | L4 |
 | T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`); different note type → rejection | L4 |
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |
-| T-ANK-052 | Opening the link | `anikoto://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
+| T-ANK-052 | Opening the link | `nikomiru://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
 | T-E2E-ANKI-001 | Real Anki | Anki in Xvfb with AnkiConnect, empty profile → "Create Lapis deck" → mining from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media` | L7 |
 
 ### 6.10 Library and word audio
@@ -403,7 +403,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
 | T-FUZZ-006 | Structured content → QML items | No panic; the output contains only items from the allowlist | L2 |
-| T-FUZZ-007 | Parser for `anikoto://` links and for the TOML config | No panic | L2 |
+| T-FUZZ-007 | Parser for `nikomiru://` links and for the TOML config | No panic | L2 |
 
 ### 6.15 Performance
 
@@ -425,7 +425,7 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 
 ## 7. Bugs and regressions
 
-- Every Anikoto bug has a report `docs/bugs/AK-BUG-NNN.md` (symptom, steps to reproduce, cause, fix) and a test `ak_bug_nnn_<description>` marked `// AK-BUG-NNN`, written **before** the fix and verified to fail.
+- Every Nikomiru bug has a report `docs/bugs/AK-BUG-NNN.md` (symptom, steps to reproduce, cause, fix) and a test `ak_bug_nnn_<description>` marked `// AK-BUG-NNN`, written **before** the fix and verified to fail.
 - The Fushi bugs cited in SPECIFICATION (`BUG-xxxx`) have a test `fushi_bug_xxxx_<description>` marked `// FUSHI-BUG-xxxx`.
 - Priority: P1 = crash, data loss or wrong Anki card; P2 = main feature degraded; P3 = cosmetic issues or rare cases. No release with open P1 bugs.
 
@@ -464,7 +464,7 @@ They are recorded in `docs/qa/<version>.md`: who, date, environment (distributio
 
 ### 9.3 Lookup (end of M3): comparison with Fushi
 
-Import **the same** dictionaries into Anikoto and into Fushi (JMdict English, a frequency dictionary, a pitch accent dictionary) and compare the first headword for each query. **The oracle is Fushi's result.** The "Indicative" column is only a rough guide.
+Import **the same** dictionaries into Nikomiru and into Fushi (JMdict English, a frequency dictionary, a pitch accent dictionary) and compare the first headword for each query. **The oracle is Fushi's result.** The "Indicative" column is only a rough guide.
 
 | # | Query | Indicative | # | Query | Indicative |
 |---|---|---|---|---|---|
@@ -500,7 +500,7 @@ Criterion: 50/50 identical, or every difference explained by an intentional dive
 
 - [ ] 10 cards from 2 real episodes: in Anki desktop, audio and image play, the word is bold in the sentence, the furigana is correct.
 - [ ] After syncing to AnkiDroid: audio and image work.
-- [ ] The link in the card reopens the scene in Anikoto (with Anikoto closed and with Anikoto open).
+- [ ] The link in the card reopens the scene in Nikomiru (with Nikomiru closed and with Nikomiru open).
 - [ ] Duplicate: the button shows ✓; "add anyway" creates the second card; "overwrite" replaces the last one.
 - [ ] With Anki closed: clear message, no freeze.
 

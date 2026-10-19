@@ -3,7 +3,7 @@
 //! Spike S1 (ROADMAP M0): mpv video and the Dioxus UI in the same window, using
 //! the solution from SPECIFICATION §5.2.1 (GtkOverlay: GLArea below, transparent
 //! webview above). Throwaway code: in M1 it is rewritten cleanly in
-//! `anikoto-player` and `anikoto-app::linux`.
+//! `nikomiru-player` and `nikomiru-app::linux`.
 //!
 //! Usage:
 //!   spike-s1-composition <video> [--hwdec auto-safe] [--mpv key=value]… [--fullscreen]
@@ -110,7 +110,7 @@ fn main() {
     let cfg = Config::new()
         .with_window(
             WindowBuilder::new()
-                .with_title("Anikoto — spike S1")
+                .with_title("Nikomiru — spike S1")
                 .with_inner_size(LogicalSize::new(1280.0, 720.0)),
         )
         .with_menu(None)

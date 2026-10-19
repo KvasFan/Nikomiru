@@ -203,7 +203,7 @@ pub fn canary(root: &Path) -> Result<()> {
 
 // T-LIC-003
 /// Generates `target/THIRD_PARTY_LICENSES.html` for the distributed binary
-/// (`anikoto-app`) and checks that it lists every crate in its graph.
+/// (`nikomiru-app`) and checks that it lists every crate in its graph.
 pub fn about(root: &Path) -> Result<PathBuf> {
     if !util::have_program("cargo-about") {
         bail!("cargo-about is not installed: cargo install --locked cargo-about --features cli");
@@ -216,7 +216,7 @@ pub fn about(root: &Path) -> Result<PathBuf> {
         "--locked",
         "--fail",
         "--manifest-path",
-        "crates/anikoto-app/Cargo.toml",
+        "crates/nikomiru-app/Cargo.toml",
         "--output-file",
         &out.to_string_lossy(),
         "about.hbs",
@@ -238,8 +238,8 @@ pub fn about(root: &Path) -> Result<PathBuf> {
     let app = graph
         .members
         .iter()
-        .find(|m| graph.names.get(*m).is_some_and(|n| n == "anikoto-app"))
-        .context("anikoto-app is not in the workspace")?;
+        .find(|m| graph.names.get(*m).is_some_and(|n| n == "nikomiru-app"))
+        .context("nikomiru-app is not in the workspace")?;
     let mut missing = Vec::new();
     for dep in graph.closure(app) {
         if graph.members.contains(&dep) {

@@ -1,10 +1,12 @@
-# Anikoto
+# Nikomiru
 
 Video player for **learning languages by watching anime and TV series**. You click a word in the subtitles, look it up in your Yomitan dictionaries and create an Anki card with the sentence, a screenshot and the audio of the line.
 
-Anikoto is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0), limited to the video + dictionary + Anki core. The interface is [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt); playback is [mpv](https://mpv.io/) through [libmpv2](https://crates.io/crates/libmpv2), rendered on Qt Quick's render thread ([ADR 0003](docs/adr/0003-qt-quick-ui.md)).
+Nikomiru is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0), limited to the video + dictionary + Anki core. The interface is [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt); playback is [mpv](https://mpv.io/) through [libmpv2](https://crates.io/crates/libmpv2), rendered on Qt Quick's render thread ([ADR 0003](docs/adr/0003-qt-quick-ui.md)).
 
-> **Status: milestone M0 in progress** (foundations and spikes). The workspace and the tools are in place; the crates are still empty. See [ROADMAP](docs/ROADMAP.md#m0--foundations-and-spikes).
+> **Status: milestone M1 in progress** (minimal player). M0 (foundations and spikes) is done. See [ROADMAP](docs/ROADMAP.md#m1--minimal-player).
+>
+> Nikomiru was called Anikoto until 2026-10-19 (decision D-11).
 
 ## Documents
 
@@ -44,6 +46,6 @@ Expected system dependencies: Qt ≥ 6.5 (Base, Declarative, Wayland), libmpv �
 
 ## License
 
-[GPL-3.0-only](LICENSE). Anikoto derives from GPL-3.0 code (Fushi, Yomitan, hoshidicts, Lapis).
+[GPL-3.0-only](LICENSE). Nikomiru derives from GPL-3.0 code (Fushi, Yomitan, hoshidicts, Lapis).
 
 The allowed dependencies are MIT, Apache-2.0, GPL and LGPL. The only exceptions are a few permissive transitive dependencies (the Unicode-3.0 ICU family and `foldhash`), documented in [SPECIFICATION §3](docs/SPECIFICATION.md#3-licenses). The check is automatic, with `cargo deny`.

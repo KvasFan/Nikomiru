@@ -5,7 +5,7 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 fn main() {
     let mpv = pkg_config_flags("mpv");
     let builder =
-        CxxQtBuilder::new_qml_module(QmlModule::new("Anikoto.Spike").qml_file("qml/main.qml"))
+        CxxQtBuilder::new_qml_module(QmlModule::new("Nikomiru.Spike").qml_file("qml/main.qml"))
             .qt_module("Quick")
             .qt_module("OpenGL")
             .file("src/probe.rs")

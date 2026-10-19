@@ -51,7 +51,7 @@ Virtual KWin, RX 7900 XTX, **under the same heavy CPU load as the ADR 0001 revis
 The specification is revised accordingly (SPECIFICATION v0.5):
 
 - **Stack (§1.1, §4)**: Qt ≥ 6.5 (Quick, QML; fractional scaling on Wayland) and cxx-qt replace `dioxus`, `gtk`/`glib`/`gdk` and WebKitGTK. The class B table (§3.2) is checked again: the exceptions forced by Dioxus desktop (`slotmap`, `const_format`, `konst`, `subtle`, the `image` crates, `base16`/D-8, probably `libloading`) disappear; the `icu_*` family stays through `url`/`idna` (reqwest).
-- **Architecture (§5)**: `anikoto-ui` becomes QML plus Rust `QObject`s; the video item lives in `anikoto-player` (C++ plus the Rust bridge). The composition of §5.2 (GtkOverlay) and its fallbacks are replaced by Qt Quick on both Wayland and X11.
+- **Architecture (§5)**: `nikomiru-ui` becomes QML plus Rust `QObject`s; the video item lives in `nikomiru-player` (C++ plus the Rust bridge). The composition of §5.2 (GtkOverlay) and its fallbacks are replaced by Qt Quick on both Wayland and X11.
 - **Dictionary popup (POP-009, POP-010, DIC-035)**: Yomitan structured content is rendered as QML items, which is natural for ruby, lists, tables and images, without HTML and therefore without scripts. Per-dictionary CSS (`@scope`) cannot be applied as it is: either a safe subset of CSS properties is mapped onto QML, or the popup uses a web view (QtWebEngine, heavy). This needs a short spike before M3.
 - **Tests (TEST)**: the `dioxus-ssr` snapshots become QML tests (Qt Quick Test, item-tree snapshots); the GUI harness keeps its protocol.
 - **Packaging (D-5)**: the Flatpak runtime becomes KDE instead of GNOME.

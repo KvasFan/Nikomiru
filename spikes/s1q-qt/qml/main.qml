@@ -5,8 +5,8 @@
 
 import QtQuick
 import QtQuick.Window
-import Anikoto.Video
-import Anikoto.Spike
+import Nikomiru.Video
+import Nikomiru.Spike
 
 Window {
     id: win
@@ -14,7 +14,7 @@ Window {
     height: 720
     visible: true
     color: "black"
-    title: "Anikoto — spike S1q"
+    title: "Nikomiru — spike S1q"
     visibility: probe.fullscreen ? Window.FullScreen : Window.Windowed
 
     Probe { id: probe }

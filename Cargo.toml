@@ -15,25 +15,25 @@ publish = false
 # Every new crate requires, in its PR, the license, a rationale and an evaluated alternative.
 [workspace.dependencies]
 # Workspace crates
-anikoto-core = { path = "crates/anikoto-core" }
-anikoto-text = { path = "crates/anikoto-text" }
-anikoto-dict = { path = "crates/anikoto-dict" }
-anikoto-subs = { path = "crates/anikoto-subs" }
-anikoto-media = { path = "crates/anikoto-media" }
-anikoto-player = { path = "crates/anikoto-player" }
-anikoto-anki = { path = "crates/anikoto-anki" }
-anikoto-library = { path = "crates/anikoto-library" }
-anikoto-online = { path = "crates/anikoto-online" }
-anikoto-ui = { path = "crates/anikoto-ui" }
+nikomiru-core = { path = "crates/nikomiru-core" }
+nikomiru-text = { path = "crates/nikomiru-text" }
+nikomiru-dict = { path = "crates/nikomiru-dict" }
+nikomiru-subs = { path = "crates/nikomiru-subs" }
+nikomiru-media = { path = "crates/nikomiru-media" }
+nikomiru-player = { path = "crates/nikomiru-player" }
+nikomiru-anki = { path = "crates/nikomiru-anki" }
+nikomiru-library = { path = "crates/nikomiru-library" }
+nikomiru-online = { path = "crates/nikomiru-online" }
+nikomiru-ui = { path = "crates/nikomiru-ui" }
 
-# Qt 6 Quick through cxx-qt (anikoto-ui, anikoto-player and anikoto-app only;
+# Qt 6 Quick through cxx-qt (nikomiru-ui, nikomiru-player and nikomiru-app only;
 # ARC-010, D-10). Qt itself is a system library (SPECIFICATION §3.3).
 cxx = "1.0.205"
 cxx-qt = "0.10"
 cxx-qt-lib = { version = "0.10", features = ["qt_gui", "qt_qml"] }
 cxx-qt-build = "0.10"
 
-# mpv core (anikoto-player only, ARC-010)
+# mpv core (nikomiru-player only, ARC-010)
 libmpv2 = { version = "6.0.0", features = ["render"] }
 
 # Logic

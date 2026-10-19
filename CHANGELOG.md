@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed (rename)
+
+- **The project is now called Nikomiru** (D-11): "Anikoto" was already taken. Crates `nikomiru-*`, binary `nikomiru`, URL scheme `nikomiru://`, XDG folders `nikomiru`, environment variables `NIKOMIRU_*`, GitHub repository `nikomiru`.
+
 ### Added
 
 - Specification (`docs/SPECIFICATION.md`), roadmap (`docs/ROADMAP.md`) and test plan (`docs/TEST.md`) for the Rust rewrite of Fushi.
@@ -25,5 +29,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - ROADMAP: the X11 T-PERF-03 measurement moved from M0 to M1; M4 (release 0.1.0) now includes restyling the repository page after storytold/cadcraft.
 - **D-10: the UI toolkit is Qt 6 Quick (QML) through cxx-qt instead of Dioxus** (ADR 0003, accepted after the developer's 4K/120 Hz session showed no dropped frames). SPECIFICATION v0.5, TEST and ROADMAP revised: architecture (§5), class B table reduced to the ICU/Unicode family and `foldhash`, XDG paths implemented in-house (no `directories`, no MPL-2.0 exception), popup and styling as QML items (spike S4 before M3), Flatpak with the KDE runtime. ADR 0001 superseded.
 - M0 done: all exit criteria met (the X11 measurement on a real Xorg session moved to M1). SPECIFICATION §5.2.2: CUDA interop only with NVIDIA's proprietary driver (no more `Cannot load libcuda.so.1`), libmpv messages routed to the log.
-- `cargo xtask`: dependency rules for cxx-qt/libmpv2 and a guard against the retired toolkit, `unsafe` allowed in cxx-qt bridge modules, C++ only in `anikoto-player/cpp/`, SPDX headers also on `.cpp`, `.h` and `.qml` files.
+- `cargo xtask`: dependency rules for cxx-qt/libmpv2 and a guard against the retired toolkit, `unsafe` allowed in cxx-qt bridge modules, C++ only in `nikomiru-player/cpp/`, SPDX headers also on `.cpp`, `.h` and `.qml` files.
 - SPECIFICATION: new requirements PLY-016 (save and load mpv option presets in `mpv.conf` format, M6), PLY-017 (options that raw options and presets can never set, M1) and PLY-018 (render and audio settings in the UI, M6), with tests T-PLY-016…018.

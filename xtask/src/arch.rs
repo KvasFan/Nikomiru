@@ -20,25 +20,25 @@ const SOURCE_DIRS: [&str; 4] = ["crates", "xtask", "spikes", "tests"];
 /// Source extensions that need the SPDX header: Rust, the C++ video item, QML.
 const SOURCE_EXTENSIONS: [&str; 5] = ["rs", "cpp", "h", "hpp", "qml"];
 
-/// C++ extensions: C++ is allowed only in `anikoto-player/cpp/` (ARC-011).
+/// C++ extensions: C++ is allowed only in `nikomiru-player/cpp/` (ARC-011).
 const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
 
 /// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
 /// crate) that may contain it (ARC-011). `src/bridge` covers the cxx-qt bridge
 /// modules (`src/bridge.rs` or `src/bridge/`), which hold generated FFI declarations.
 const UNSAFE_ALLOWED: [(&str, &[&str]); 3] = [
-    ("anikoto-player", &["src/"]),
-    ("anikoto-app", &["src/linux", "src/bridge"]),
-    ("anikoto-ui", &["src/bridge"]),
+    ("nikomiru-player", &["src/"]),
+    ("nikomiru-app", &["src/linux", "src/bridge"]),
+    ("nikomiru-ui", &["src/bridge"]),
 ];
 
 /// Pure-logic crates: they do not depend, not even indirectly, on Qt or mpv.
 const LOGIC_CRATES: [&str; 5] = [
-    "anikoto-text",
-    "anikoto-subs",
-    "anikoto-dict",
-    "anikoto-anki",
-    "anikoto-library",
+    "nikomiru-text",
+    "nikomiru-subs",
+    "nikomiru-dict",
+    "nikomiru-anki",
+    "nikomiru-library",
 ];
 
 /// Runs all checks and fails with the list of problems.
@@ -135,11 +135,11 @@ pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
     for (name, file, is_lib) in roots {
         let text = std::fs::read_to_string(&file)?;
         // Crates with cxx-qt bridges deny `unsafe` at crate level and allow it again
-        // only in the modules of UNSAFE_ALLOWED; anikoto-player uses it for the mpv
+        // only in the modules of UNSAFE_ALLOWED; nikomiru-player uses it for the mpv
         // FFI and the video item.
         let required = match name.as_str() {
-            "anikoto-player" => None,
-            "anikoto-app" | "anikoto-ui" => Some("#![deny(unsafe_code)]"),
+            "nikomiru-player" => None,
+            "nikomiru-app" | "nikomiru-ui" => Some("#![deny(unsafe_code)]"),
             _ => Some("#![forbid(unsafe_code)]"),
         };
         if let Some(attr) = required
@@ -232,13 +232,13 @@ pub fn check_unsafe(root: &Path) -> Result<Vec<String>> {
 }
 
 // T-ARC-011
-/// C++ only for the Qt Quick video item, in `crates/anikoto-player/cpp/`.
+/// C++ only for the Qt Quick video item, in `crates/nikomiru-player/cpp/`.
 pub fn check_cpp_location(root: &Path) -> Result<Vec<String>> {
     let crates = root.join("crates");
     if !crates.is_dir() {
         return Ok(Vec::new());
     }
-    let allowed = crates.join("anikoto-player/cpp");
+    let allowed = crates.join("nikomiru-player/cpp");
     let mut files = Vec::new();
     for ext in CPP_EXTENSIONS {
         walk(&crates, ext, &mut files)?;
@@ -248,7 +248,7 @@ pub fn check_cpp_location(root: &Path) -> Result<Vec<String>> {
         .filter(|f| !f.starts_with(&allowed))
         .map(|f| {
             format!(
-                "{}: C++ is allowed only in crates/anikoto-player/cpp/ (ARC-011)",
+                "{}: C++ is allowed only in crates/nikomiru-player/cpp/ (ARC-011)",
                 rel(&f)
             )
         })
@@ -358,7 +358,7 @@ fn is_retired_ui(name: &str) -> bool {
 }
 
 /// Crates allowed to depend directly on Qt (cxx-qt).
-const QT_CRATES: [&str; 3] = ["anikoto-ui", "anikoto-player", "anikoto-app"];
+const QT_CRATES: [&str; 3] = ["nikomiru-ui", "nikomiru-player", "nikomiru-app"];
 
 // T-ARC-010
 /// Dependency rules of SPECIFICATION §5.1.
@@ -367,11 +367,11 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
     for member in &g.members {
         let name = g.name(member);
         let direct = g.direct(member);
-        if name == "anikoto-core" {
+        if name == "nikomiru-core" {
             for d in &direct {
                 if g.members.contains(*d) {
                     problems.push(format!(
-                        "anikoto-core depends on {}: it must not depend on workspace crates",
+                        "nikomiru-core depends on {}: it must not depend on workspace crates",
                         g.name(d)
                     ));
                 }
@@ -389,10 +389,10 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
         }
         for d in &direct {
             let dn = g.name(d);
-            let rule = if is_mpv(dn) && name != "anikoto-player" {
-                Some("only anikoto-player may depend on it")
+            let rule = if is_mpv(dn) && name != "nikomiru-player" {
+                Some("only nikomiru-player may depend on it")
             } else if is_qt(dn) && !QT_CRATES.contains(&name) {
-                Some("only anikoto-ui, anikoto-player and anikoto-app may depend on it")
+                Some("only nikomiru-ui, nikomiru-player and nikomiru-app may depend on it")
             } else if is_retired_ui(dn) {
                 Some("the UI toolkit is Qt 6 (D-10)")
             } else {
@@ -431,11 +431,11 @@ mod tests {
     fn deps_rules_accept_the_intended_layout() {
         let g = graph(
             &[
-                "anikoto-core",
-                "anikoto-dict",
-                "anikoto-player",
-                "anikoto-ui",
-                "anikoto-app",
+                "nikomiru-core",
+                "nikomiru-dict",
+                "nikomiru-player",
+                "nikomiru-ui",
+                "nikomiru-app",
                 "redb",
                 "libmpv2",
                 "cxx",
@@ -444,23 +444,23 @@ mod tests {
                 "cxx-qt-build",
             ],
             &[
-                "anikoto-core",
-                "anikoto-dict",
-                "anikoto-player",
-                "anikoto-ui",
-                "anikoto-app",
+                "nikomiru-core",
+                "nikomiru-dict",
+                "nikomiru-player",
+                "nikomiru-ui",
+                "nikomiru-app",
             ],
             &[
-                ("anikoto-dict", "anikoto-core", false),
-                ("anikoto-dict", "redb", false),
-                ("anikoto-player", "libmpv2", false),
-                ("anikoto-player", "cxx", false),
-                ("anikoto-player", "cxx-qt-build", false),
-                ("anikoto-ui", "cxx-qt", false),
-                ("anikoto-ui", "cxx-qt-lib", false),
-                ("anikoto-app", "anikoto-player", false),
-                ("anikoto-app", "anikoto-ui", false),
-                ("anikoto-app", "cxx-qt-lib", false),
+                ("nikomiru-dict", "nikomiru-core", false),
+                ("nikomiru-dict", "redb", false),
+                ("nikomiru-player", "libmpv2", false),
+                ("nikomiru-player", "cxx", false),
+                ("nikomiru-player", "cxx-qt-build", false),
+                ("nikomiru-ui", "cxx-qt", false),
+                ("nikomiru-ui", "cxx-qt-lib", false),
+                ("nikomiru-app", "nikomiru-player", false),
+                ("nikomiru-app", "nikomiru-ui", false),
+                ("nikomiru-app", "cxx-qt-lib", false),
             ],
         );
         assert_eq!(check_deps(&g), Vec::<String>::new());
@@ -470,28 +470,28 @@ mod tests {
     fn deps_rules_reject_qt_in_logic_crates_even_indirectly() {
         let g = graph(
             &[
-                "anikoto-subs",
+                "nikomiru-subs",
                 "helper",
                 "cxx-qt-lib",
-                "anikoto-core",
-                "anikoto-text",
+                "nikomiru-core",
+                "nikomiru-text",
             ],
-            &["anikoto-subs", "anikoto-core", "anikoto-text"],
+            &["nikomiru-subs", "nikomiru-core", "nikomiru-text"],
             &[
-                ("anikoto-subs", "helper", false),
+                ("nikomiru-subs", "helper", false),
                 ("helper", "cxx-qt-lib", false),
-                ("anikoto-core", "anikoto-text", false),
+                ("nikomiru-core", "nikomiru-text", false),
             ],
         );
         let p = check_deps(&g);
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-subs") && m.contains("cxx-qt-lib")),
+                .any(|m| m.contains("nikomiru-subs") && m.contains("cxx-qt-lib")),
             "{p:?}"
         );
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-core depends on anikoto-text")),
+                .any(|m| m.contains("nikomiru-core depends on nikomiru-text")),
             "{p:?}"
         );
     }
@@ -500,39 +500,39 @@ mod tests {
     fn deps_rules_ignore_dev_dependencies_and_reject_direct_misuse() {
         let g = graph(
             &[
-                "anikoto-text",
+                "nikomiru-text",
                 "proptest",
                 "cxx",
-                "anikoto-ui",
-                "anikoto-media",
+                "nikomiru-ui",
+                "nikomiru-media",
                 "libmpv2",
                 "cxx-qt",
                 "dioxus",
             ],
-            &["anikoto-text", "anikoto-ui", "anikoto-media"],
+            &["nikomiru-text", "nikomiru-ui", "nikomiru-media"],
             &[
-                ("anikoto-text", "proptest", true),
+                ("nikomiru-text", "proptest", true),
                 ("proptest", "cxx", false),
-                ("anikoto-ui", "libmpv2", false),
-                ("anikoto-ui", "dioxus", false),
-                ("anikoto-media", "cxx-qt", false),
+                ("nikomiru-ui", "libmpv2", false),
+                ("nikomiru-ui", "dioxus", false),
+                ("nikomiru-media", "cxx-qt", false),
             ],
         );
         let p = check_deps(&g);
-        assert!(!p.iter().any(|m| m.contains("anikoto-text")), "{p:?}");
+        assert!(!p.iter().any(|m| m.contains("nikomiru-text")), "{p:?}");
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-ui depends directly on libmpv2")),
+                .any(|m| m.contains("nikomiru-ui depends directly on libmpv2")),
             "{p:?}"
         );
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-ui depends directly on dioxus") && m.contains("D-10")),
+                .any(|m| m.contains("nikomiru-ui depends directly on dioxus") && m.contains("D-10")),
             "{p:?}"
         );
         assert!(
             p.iter()
-                .any(|m| m.contains("anikoto-media depends directly on cxx-qt")),
+                .any(|m| m.contains("nikomiru-media depends directly on cxx-qt")),
             "{p:?}"
         );
     }

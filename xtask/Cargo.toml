@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Anikoto development tasks (cargo xtask): ci, fixtures, check-headers, trace, about"
+description = "Nikomiru development tasks (cargo xtask): ci, fixtures, check-headers, trace, about"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
