@@ -9,6 +9,7 @@
 
 mod arch;
 mod ci;
+mod evil;
 mod fixtures;
 mod licenses;
 mod synth;

@@ -68,6 +68,19 @@ error-job-timeout = { $program } did not finish within { $seconds } seconds and 
 error-job-cancelled = { $program } was cancelled.
 error-job-failed = { $program } failed: { $reason }
 
+# Dictionaries (nikomiru-dict ImportError, StoreError)
+error-dict-io = { $path } cannot be used ({ $reason }).
+error-dict-zip = The file is not a valid zip archive ({ $reason }).
+error-dict-unsafe = The dictionary contains an unsafe file ({ $entry }): it was not imported.
+error-dict-no-index = This is not a Yomitan dictionary: index.json is missing.
+error-dict-format = { $file } is not in the Yomitan format ({ $reason }).
+error-dict-too-many = The dictionary has more than 10 million entries.
+error-dict-glossary = The definition of { $expression } is larger than 10 MiB.
+error-dict-empty = The dictionary contains nothing Nikomiru can use.
+error-dict-storage-full = The disk is full: free some space and import the dictionary again.
+error-dict-cancelled = Import cancelled.
+error-dict-store = The dictionary database cannot be used ({ $reason }).
+
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
 error-instance-no-answer = Nikomiru is already running but does not answer. Close it and try again.

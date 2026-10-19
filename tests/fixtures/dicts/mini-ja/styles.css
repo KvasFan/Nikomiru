@@ -1,0 +1,3 @@
+.gloss-sc-table { border-collapse: collapse; }
+.gloss-sc-td, .gloss-sc-th { border: 1px solid gray; padding: 2px 4px; }
+span[data-sc-class="note"] { color: gray; font-style: italic; }

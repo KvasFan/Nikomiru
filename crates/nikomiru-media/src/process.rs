@@ -8,33 +8,12 @@ use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// Default timeout of a job (EXT-003).
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Lets another thread stop a running job.
-#[derive(Debug, Clone, Default)]
-pub struct Cancel(Arc<AtomicBool>);
-
-impl Cancel {
-    /// A token that is not cancelled.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Stops the jobs that watch this token.
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
-
-    /// Whether [`Cancel::cancel`] was called.
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-}
+pub use nikomiru_core::Cancel;
 
 /// `file:` + path: an input that starts with `-` or contains `:` cannot be
 /// taken for an option or a protocol (EXT-002).

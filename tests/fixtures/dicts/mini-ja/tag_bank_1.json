@@ -1,0 +1,191 @@
+[
+ [
+  "P",
+  "popular",
+  -10,
+  "common word",
+  10
+ ],
+ [
+  "v1",
+  "partOfSpeech",
+  -3,
+  "Ichidan verb",
+  0
+ ],
+ [
+  "v5k",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'ku' ending",
+  0
+ ],
+ [
+  "v5k-s",
+  "partOfSpeech",
+  -3,
+  "Godan verb - Iku/Yuku special class",
+  0
+ ],
+ [
+  "v5g",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'gu' ending",
+  0
+ ],
+ [
+  "v5s",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'su' ending",
+  0
+ ],
+ [
+  "v5t",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'tsu' ending",
+  0
+ ],
+ [
+  "v5n",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'nu' ending",
+  0
+ ],
+ [
+  "v5b",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'bu' ending",
+  0
+ ],
+ [
+  "v5m",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'mu' ending",
+  0
+ ],
+ [
+  "v5r",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'ru' ending",
+  0
+ ],
+ [
+  "v5u",
+  "partOfSpeech",
+  -3,
+  "Godan verb with 'u' ending",
+  0
+ ],
+ [
+  "vk",
+  "partOfSpeech",
+  -3,
+  "Kuru verb - special class",
+  0
+ ],
+ [
+  "vs-i",
+  "partOfSpeech",
+  -3,
+  "suru verb - included",
+  0
+ ],
+ [
+  "vs",
+  "partOfSpeech",
+  -3,
+  "noun or participle which takes the aux. verb suru",
+  0
+ ],
+ [
+  "vt",
+  "partOfSpeech",
+  -3,
+  "transitive verb",
+  0
+ ],
+ [
+  "vi",
+  "partOfSpeech",
+  -3,
+  "intransitive verb",
+  0
+ ],
+ [
+  "n",
+  "partOfSpeech",
+  -3,
+  "noun",
+  0
+ ],
+ [
+  "adj-i",
+  "partOfSpeech",
+  -3,
+  "adjective (keiyoushi)",
+  0
+ ],
+ [
+  "adj-na",
+  "partOfSpeech",
+  -3,
+  "adjectival nouns or quasi-adjectives (keiyodoshi)",
+  0
+ ],
+ [
+  "adv",
+  "partOfSpeech",
+  -3,
+  "adverb",
+  0
+ ],
+ [
+  "prt",
+  "partOfSpeech",
+  -3,
+  "particle",
+  0
+ ],
+ [
+  "exp",
+  "partOfSpeech",
+  -3,
+  "expressions",
+  0
+ ],
+ [
+  "int",
+  "partOfSpeech",
+  -3,
+  "interjection",
+  0
+ ],
+ [
+  "pref",
+  "partOfSpeech",
+  -3,
+  "prefix",
+  0
+ ],
+ [
+  "uk",
+  "misc",
+  0,
+  "word usually written using kana alone",
+  0
+ ],
+ [
+  "1",
+  "misc",
+  0,
+  "sense number (numeric tags are hidden)",
+  0
+ ]
+]

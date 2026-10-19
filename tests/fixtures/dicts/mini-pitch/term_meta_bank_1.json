@@ -1,0 +1,140 @@
+[
+ [
+  "箸",
+  "pitch",
+  {
+   "reading": "はし",
+   "pitches": [
+    {
+     "position": 1
+    }
+   ]
+  }
+ ],
+ [
+  "橋",
+  "pitch",
+  {
+   "reading": "はし",
+   "pitches": [
+    {
+     "position": 2
+    }
+   ]
+  }
+ ],
+ [
+  "食べる",
+  "pitch",
+  {
+   "reading": "たべる",
+   "pitches": [
+    {
+     "position": 2,
+     "tags": [
+      "v1"
+     ]
+    }
+   ]
+  }
+ ],
+ [
+  "高い",
+  "pitch",
+  {
+   "reading": "たかい",
+   "pitches": [
+    {
+     "position": 2,
+     "tags": [
+      "adj-i"
+     ]
+    }
+   ]
+  }
+ ],
+ [
+  "学生",
+  "pitch",
+  {
+   "reading": "がくせい",
+   "pitches": [
+    {
+     "position": 0,
+     "devoice": [
+      2
+     ]
+    }
+   ]
+  }
+ ],
+ [
+  "映画",
+  "pitch",
+  {
+   "reading": "えいが",
+   "pitches": [
+    {
+     "position": "LHHH"
+    }
+   ]
+  }
+ ],
+ [
+  "今日",
+  "pitch",
+  {
+   "reading": "きょう",
+   "pitches": [
+    {
+     "position": 1
+    }
+   ]
+  }
+ ],
+ [
+  "日本",
+  "pitch",
+  {
+   "reading": "にほん",
+   "pitches": [
+    {
+     "position": 2
+    },
+    {
+     "position": 2
+    }
+   ]
+  }
+ ],
+ [
+  "鏡",
+  "pitch",
+  {
+   "reading": "かがみ",
+   "pitches": [
+    {
+     "position": 3,
+     "nasal": [
+      2
+     ]
+    }
+   ]
+  }
+ ],
+ [
+  "日本",
+  "ipa",
+  {
+   "reading": "にほん",
+   "transcriptions": [
+    {
+     "ipa": "ɲihoɴ",
+     "tags": [
+      "standard"
+     ]
+    }
+   ]
+  }
+ ]
+]

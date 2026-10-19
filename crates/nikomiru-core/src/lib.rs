@@ -7,12 +7,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod cancel;
 pub mod clock;
 pub mod config;
 pub mod error;
 pub mod fs;
 pub mod paths;
 
+pub use cancel::Cancel;
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use config::{Config, ConfigError, PathsConfig, SubtitlesConfig};
 pub use error::Localized;

@@ -1,0 +1,9 @@
+{
+ "title": "Nikomiru mini-freq-occ",
+ "revision": "1",
+ "format": 3,
+ "author": "Nikomiru project",
+ "description": "Test dictionary written for Nikomiru's tests (GPL-3.0-only)",
+ "frequencyMode": "occurrence-based",
+ "sourceLanguage": "ja"
+}

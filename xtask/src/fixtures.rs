@@ -33,6 +33,10 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     media(&out, perf)?;
     zip_dict_sources(&root.join("tests/fixtures/dicts"), &out.join("dicts"))?;
+    crate::evil::generate(
+        &out.join("dicts"),
+        &root.join("tests/fixtures/dicts/mini-ja"),
+    )?;
     if large {
         synth::generate(&out.join("dicts/synth"))?;
     }
