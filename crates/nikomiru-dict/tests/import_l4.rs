@@ -6,58 +6,17 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+mod common;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use common::zipped;
 
 use nikomiru_core::Cancel;
 use nikomiru_dict::import::{ImportError, Unsafe, cleanup, import, read_index};
 use nikomiru_dict::store::{DictStore, Field, RedbStore};
 use nikomiru_dict::yomitan::{FrequencyMode, Meta};
-
-fn source(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/dicts")
-        .join(name)
-}
-
-fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
-    for e in std::fs::read_dir(dir).unwrap() {
-        let p = e.unwrap().path();
-        if p.is_dir() {
-            collect(&p, out);
-        } else {
-            out.push(p);
-        }
-    }
-}
-
-/// Zips a fixture folder into `dir`.
-fn zipped(dir: &Path, name: &str, extra: &[(&str, Vec<u8>)]) -> PathBuf {
-    let src = source(name);
-    let mut files = Vec::new();
-    collect(&src, &mut files);
-    files.sort();
-    let path = dir.join(format!("{name}.zip"));
-    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-    let options = zip::write::SimpleFileOptions::default();
-    for f in files {
-        let inner = f
-            .strip_prefix(&src)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
-        zip.start_file(inner, options).unwrap();
-        zip.write_all(&std::fs::read(&f).unwrap()).unwrap();
-    }
-    // extra entries are stored: a compressible payload would trip the bomb check
-    let stored = options.compression_method(zip::CompressionMethod::Stored);
-    for (inner, bytes) in extra {
-        zip.start_file(*inner, stored).unwrap();
-        zip.write_all(bytes).unwrap();
-    }
-    zip.finish().unwrap();
-    path
-}
 
 fn import_ok(zip: &Path, dicts: &Path) -> RedbStore {
     let imported = import(zip, dicts, &Cancel::new(), |_| {}).unwrap();

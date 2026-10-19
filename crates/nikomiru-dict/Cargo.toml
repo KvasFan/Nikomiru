@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# MemStore, an in-memory DictStore for the L1 lookup tests
+test-support = []
+
 [dependencies]
 nikomiru-core.workspace = true
 nikomiru-text.workspace = true
@@ -23,6 +27,7 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+nikomiru-dict = { path = ".", features = ["test-support"] }
 tempfile.workspace = true
 proptest.workspace = true
 

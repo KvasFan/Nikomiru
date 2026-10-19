@@ -9,6 +9,11 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod deinflect;
 pub mod import;
+pub mod lookup;
+#[cfg(any(test, feature = "test-support"))]
+pub mod memory;
+pub mod mixed;
 pub mod store;
 pub mod yomitan;

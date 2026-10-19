@@ -82,6 +82,9 @@ pub struct Counts {
     pub tags: u64,
     /// Media files.
     pub media: u64,
+    /// Terms with deinflection rules: with none, empty rules mean `*`
+    /// (LKP-023, BUG-2543).
+    pub with_rules: u64,
 }
 
 /// What a dictionary file says about itself.
@@ -120,11 +123,33 @@ pub struct StoredTerm {
 }
 
 impl StoredTerm {
+    /// The record of `term`, with id `id`.
+    pub fn new(id: u64, t: Term) -> Self {
+        Self {
+            id,
+            expression: t.expression,
+            reading: t.reading,
+            definition_tags: t.definition_tags,
+            rules: t.rules,
+            score: t.score,
+            sequence: t.sequence,
+            term_tags: t.term_tags,
+            glossary_lz4: lz4_flex::compress_prepend_size(t.glossary.as_bytes()),
+        }
+    }
+
     /// The glossary JSON.
     pub fn glossary(&self) -> Result<String, StoreError> {
         let bytes = lz4_flex::decompress_size_prepended(&self.glossary_lz4)
             .map_err(|e| StoreError::Glossary(e.to_string()))?;
         String::from_utf8(bytes).map_err(|e| StoreError::Glossary(e.to_string()))
+    }
+
+    /// Length of the glossary JSON in bytes, without decompressing it.
+    pub fn glossary_len(&self) -> usize {
+        self.glossary_lz4
+            .first_chunk::<4>()
+            .map_or(0, |n| u32::from_le_bytes(*n) as usize)
     }
 }
 
@@ -308,20 +333,13 @@ impl StoreWriter {
             let id = self.next_id;
             self.next_id += 1;
             self.by_expression.push((t.expression.clone(), id));
-            if t.reading != t.expression {
+            if !t.reading.is_empty() && t.reading != t.expression {
                 self.by_reading.push((t.reading.clone(), id));
             }
-            let record = StoredTerm {
-                id,
-                expression: t.expression,
-                reading: t.reading,
-                definition_tags: t.definition_tags,
-                rules: t.rules,
-                score: t.score,
-                sequence: t.sequence,
-                term_tags: t.term_tags,
-                glossary_lz4: lz4_flex::compress_prepend_size(t.glossary.as_bytes()),
-            };
+            if !t.rules.trim().is_empty() {
+                self.counts.with_rules += 1;
+            }
+            let record = StoredTerm::new(id, t);
             rows.push((id, encode(&record)?));
         }
         {
@@ -507,6 +525,7 @@ mod tests {
         let by_expr = s.terms(Field::Expression, "食べる").unwrap();
         assert_eq!(by_expr.len(), 1);
         assert_eq!(by_expr[0].glossary().unwrap(), r#"["to eat"]"#);
+        assert_eq!(by_expr[0].glossary_len(), r#"["to eat"]"#.len());
         assert_eq!(by_expr[0].sequence, 7);
         // the reading index holds only readings that differ from the headword
         assert_eq!(s.terms(Field::Reading, "たべる").unwrap().len(), 2);

@@ -886,6 +886,7 @@ dependencies = [
  "flate2",
  "lz4_flex",
  "nikomiru-core",
+ "nikomiru-dict",
  "nikomiru-text",
  "postcard",
  "proptest",
