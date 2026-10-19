@@ -139,6 +139,10 @@ pub fn install(
     overlay.add_overlay(&webview);
     vbox.pack_start(&overlay, true, true, 0);
     overlay.show_all();
+    // S1_NO_WEBVIEW: hide the webview to measure the GLArea alone.
+    if std::env::var_os("S1_NO_WEBVIEW").is_some() {
+        webview.set_visible(false);
+    }
     vbox.queue_resize();
     webview.grab_focus();
     Ok((overlay, area))

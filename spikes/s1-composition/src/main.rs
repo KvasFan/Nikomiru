@@ -12,8 +12,9 @@
 //! The backend is chosen through the environment: `GDK_BACKEND=wayland` (native)
 //! or `x11` (XWayland or X11), and optionally `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
 //! `DRI_PRIME` selects the GPU. Diagnostics: `S1_DEBUG=1` prints the widget tree and
-//! the render calls, `S1_STATIC_SUB=1` freezes the fake subtitle, `S1_NO_INSTALL=1`
-//! skips the composition and only dumps the plain Dioxus window.
+//! the render calls, `S1_STATIC_SUB=1` freezes the fake subtitle, `S1_NO_WEBVIEW=1`
+//! hides the webview (GLArea alone), `S1_NO_SWAP=1` skips `report_swap`, and
+//! `S1_NO_INSTALL=1` skips the composition and only dumps the plain Dioxus window.
 
 mod compositor;
 mod metrics;

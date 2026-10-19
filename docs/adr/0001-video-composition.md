@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Accepted for Wayland; X11 performance moved to M1, visual checks on the real session still open (see the end) |
+| Status | **Under review** (revision of 2026-10-19, see "4K and CPU contention"): the GtkOverlay composition holds at 1080p on an idle machine, but not at 4K under load; spike S1b proposed |
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §5.2, ARC-001…ARC-004, PLY-005, PLY-009 |
 | Risk | R-1 (transparent webview + GLArea composition not smooth) |
@@ -79,6 +79,34 @@ Each cycle destroys the GLArea (unrealize: render context, `quit`, join of the e
 | X11 (XWayland) | 310.9 MiB | 313.6 MiB | **+0.9%** |
 
 Limit: +10%.
+
+## Revision of 2026-10-19: 4K and CPU contention
+
+The developer's real session (KDE Wayland, RX 7900 XTX, 4K monitor at 120 Hz with fractional scale 2.7, so GTK 3 renders at 3×) ran `--measure 60` at 10:27: **17.3 renders/s, 2456 dropped frames in 60 s** (about 43 per second, steady, not in bursts), VA-API active, every process on the 7900 XTX (`drm-pdev 0000:03:00.0`), process CPU 60%, `render()` p50 1.1 ms. The machine was under heavy load at the time: five unrelated `cargo test --release` runs at nice −4, load average 26–35 on 16 threads.
+
+Control runs in the virtual KWin at 3840×2160, during the same load, 20 s each:
+
+| Configuration | Renders/s | Dropped | Process CPU |
+|---|---|---|---|
+| **mpv alone** (`vo=gpu-next`, `hwdec=auto-safe` → vulkan) | 60 | **0** | — |
+| Spike, GLArea only (`S1_NO_WEBVIEW=1`) | 53.5 | 131 | 27% |
+| Spike, GLArea + transparent webview (normal) | 14.4 | **912** | 31% |
+| Same, `WEBKIT_DISABLE_DMABUF_RENDERER=1` | 12.3 | 960 | 30% |
+| Same, `WEBKIT_DISABLE_COMPOSITING_MODE=1` | 13.6 | 933 | 30% |
+| Same, X11 with `GDK_SCALE=1` / `GDK_SCALE=3` | 17.6 / 17.6 | 850 / 852 | 25% / 25% |
+
+**Reading.**
+
+- **The cost is the transparent webview over a changing GLArea.** With the webview hidden, the GLArea alone renders at 53.5 per second. With it, each video frame forces GTK 3 to recompose the whole window, including the full-window webview, on the main thread; at 4K that takes about four times longer.
+- **WebKit's rendering mode and the GTK scale are not the cause.** Neither WebKit switch helps, and scale 1 and scale 3 give identical results.
+- **mpv alone does not drop a frame under the same load.** It renders on its own thread and lets the compositor present its surface. Our design puts video presentation on the GTK main thread, which also runs Dioxus, the webview and the window composition; any contention or extra work there costs frames.
+- At idle and 1080p the design works (results above). But SPECIFICATION §1.2 asks for "the quality of mpv", 4K HiDPI monitors are common, and a laptop under load is normal. **The GtkOverlay composition is therefore not adequate as the final design.**
+
+**Proposed next step: spike S1b (Wayland subsurface).** The video goes to a `wl_subsurface` placed *below* the window's main surface, with its own EGL surface. mpv renders on a dedicated thread (render API with its own EGL context, presentation driven by the compositor's frame callbacks), and its size follows the content area through `wp_viewporter`, at the exact physical resolution even with fractional scaling. The window background is transparent, and the webview stays on top in the main surface, receiving all input (the subsurface has an empty input region). KWin or Mutter then composite video and UI, as for any other surface. The main thread does no per-frame video work: it only repaints the webview when the UI changes.
+
+- X11 has no subsurfaces. There it keeps the GtkOverlay composition, which holds at 1080p, or fallback B (SPECIFICATION §5.2.3). It is measured in M1 together with the X11 T-PERF-03 criterion.
+- S1b uses `libwayland-client` and `libwayland-egl` (MIT) through FFI or the `wayland-client`/`wayland-sys` crates (MIT), and `gdk_wayland_window_get_wl_surface`.
+- Exit criteria: the same as S1, at 4K and under the load of this revision, compared with mpv alone.
 
 ## Findings that change the M1 implementation
 
