@@ -29,6 +29,7 @@ nikomiru-core.workspace = true
 nikomiru-library.workspace = true
 nikomiru-media.workspace = true
 nikomiru-player.workspace = true
+nikomiru-subs.workspace = true
 nikomiru-ui.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true

@@ -1,0 +1,18 @@
+WEBVTT - with notes and styles
+
+STYLE
+::cue {
+  color: yellow;
+}
+
+NOTE
+This block is a comment
+and spans two lines.
+
+00:00:01.000 --> 00:00:02.000
+<v 太郎>こんにちは</v>
+
+NOTE one-line note
+
+00:00:03.000 --> 00:00:04.000
+<c.highlight>ありがとう</c> &amp; さようなら

@@ -1,0 +1,7 @@
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:01.00,0:00:02.00,Default,ok
+Dialogue: broken line
+Dialogue: 0,bad,0:00:02.00,Default,bad start
+[Script Info]
+PlayResX: notanumber

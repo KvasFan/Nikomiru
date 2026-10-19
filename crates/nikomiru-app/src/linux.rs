@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Process setup that needs `unsafe` (ARC-011): the environment Qt reads at
-//! startup, the numeric locale libmpv requires and the termination signals.
+//! What needs `unsafe` in the application (ARC-011): the environment Qt reads at
+//! startup, the numeric locale libmpv requires, the termination signals, and
+//! glibc's `iconv` for subtitle encodings (SUB-005).
 
 use std::fs::File;
 use std::io::Read;
@@ -95,6 +96,47 @@ impl Signals {
                 _ => return None,
             }
         }
+    }
+}
+
+/// glibc `iconv` as the subtitle decoder of SUB-005.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Iconv;
+
+impl nikomiru_subs::encoding::Decoder for Iconv {
+    fn decode(&self, bytes: &[u8], encoding: &str) -> Option<String> {
+        let from = std::ffi::CString::new(encoding).ok()?;
+        // UTF-8 needs at most 4 bytes for any input character
+        let mut out = vec![0u8; bytes.len() * 4 + 16];
+        let mut in_ptr = bytes.as_ptr().cast_mut().cast::<libc::c_char>();
+        let mut in_left = bytes.len();
+        let mut out_ptr = out.as_mut_ptr().cast::<libc::c_char>();
+        let mut out_left = out.len();
+        // SAFETY: the conversion descriptor is checked before use and closed on
+        // every path; iconv reads at most `in_left` bytes from `bytes` (it does
+        // not write through the input pointer) and writes at most `out_left`
+        // bytes into `out`, updating the pointers and counts it is given.
+        let ok = unsafe {
+            let cd = libc::iconv_open(c"UTF-8".as_ptr(), from.as_ptr());
+            if cd as isize == -1 {
+                return None;
+            }
+            let rc = libc::iconv(cd, &mut in_ptr, &mut in_left, &mut out_ptr, &mut out_left);
+            let flushed = libc::iconv(
+                cd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut out_ptr,
+                &mut out_left,
+            );
+            libc::iconv_close(cd);
+            rc != usize::MAX && flushed != usize::MAX && in_left == 0
+        };
+        if !ok {
+            return None;
+        }
+        out.truncate(out.len() - out_left);
+        String::from_utf8(out).ok()
     }
 }
 
