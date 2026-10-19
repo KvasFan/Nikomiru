@@ -214,6 +214,18 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
         (time_pos(s) - 4.82).abs() < 0.05
     });
     assert!(visible_text(&s).is_empty(), "{s}");
+    // V turns the subtitles off and on again, keeping the track
+    h.key("KeyV");
+    h.state_until("subtitles off", |s| subs(s)["disabled"] == true);
+    h.key("KeyV");
+    let s = h.state_until("subtitles on", |s| subs(s)["disabled"] == false);
+    assert!(
+        subs(&s)["source"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("track:"),
+        "{s}"
+    );
     // X moves the subtitles 100 ms later
     h.key("KeyX");
     let s = h.state_until("the offset", |s| subs(s)["delay_ms"] == 100);

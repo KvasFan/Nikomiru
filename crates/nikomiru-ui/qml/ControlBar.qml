@@ -176,15 +176,28 @@ Rectangle {
                         text: controller.tr("subtitle-open-file")
                         onTriggered: bar.subtitleFileRequested()
                     }
+                    MenuItem {
+                        text: controller.tr("subtitles-disable") + "  (V)"
+                        checkable: true
+                        checked: controller.subtitles_disabled
+                        onTriggered: controller.action("sub_toggle")
+                    }
                     Menu {
                         id: encodingMenu
                         title: controller.tr("subtitle-encoding")
-                               + (controller.subtitle_encoding !== "" ? " (" + controller.subtitle_encoding + ")" : "")
+                               + (controller.subtitle_encoding_label !== "" ? ": " + controller.subtitle_encoding_label : "")
                         Instantiator {
                             model: bar.encodings
                             delegate: MenuItem {
                                 required property var modelData
-                                text: modelData === "" ? controller.tr("encoding-auto") : modelData
+                                // "Automatic (detected: …)" while nothing is forced
+                                text: modelData === ""
+                                      ? controller.tr("encoding-auto")
+                                        + (controller.subtitle_forced_encoding === "" && controller.subtitle_encoding_label !== ""
+                                           ? " — " + controller.subtitle_encoding_label : "")
+                                      : controller.encoding_label(modelData)
+                                checkable: true
+                                checked: controller.subtitle_forced_encoding === modelData
                                 onTriggered: controller.force_encoding(modelData)
                             }
                             onObjectAdded: (index, object) => encodingMenu.insertItem(index, object)

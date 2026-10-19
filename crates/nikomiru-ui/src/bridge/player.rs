@@ -46,6 +46,9 @@ pub mod qobject {
         #[qproperty(QString, subtitle_menu)]
         #[qproperty(QString, subtitle_key)]
         #[qproperty(QString, subtitle_encoding)]
+        #[qproperty(QString, subtitle_encoding_label)]
+        #[qproperty(QString, subtitle_forced_encoding)]
+        #[qproperty(bool, subtitles_disabled)]
         #[qproperty(QString, subtitle_obscure)]
         #[qproperty(f64, subtitle_font_size)]
         #[qproperty(bool, respect_ass)]
@@ -134,6 +137,10 @@ pub mod qobject {
         #[qinvokable]
         fn search_subtitles(self: &PlayerController, query: &QString) -> QString;
 
+        /// A readable name for an encoding (`CP932` → "Japanese — Shift_JIS (CP932)").
+        #[qinvokable]
+        fn encoding_label(self: &PlayerController, encoding: &QString) -> QString;
+
         /// The window is closing: save the position.
         #[qinvokable]
         fn shutdown(self: Pin<&mut PlayerController>);
@@ -190,6 +197,9 @@ pub struct PlayerControllerRust {
     subtitle_menu: QString,
     subtitle_key: QString,
     subtitle_encoding: QString,
+    subtitle_encoding_label: QString,
+    subtitle_forced_encoding: QString,
+    subtitles_disabled: bool,
     subtitle_obscure: QString,
     subtitle_font_size: f64,
     respect_ass: bool,
@@ -442,6 +452,13 @@ impl qobject::PlayerController {
                 s.subtitle_menu().to_string(),
                 s.subs.source.as_ref().map(|x| x.key()).unwrap_or_default(),
                 s.subs.encoding.clone().unwrap_or_default(),
+                s.subs
+                    .encoding
+                    .as_deref()
+                    .map(|e| s.encoding_label(e))
+                    .unwrap_or_default(),
+                s.subs.forced_encoding.clone().unwrap_or_default(),
+                s.subs.disabled,
                 s.obscure_now().name(),
                 font_size,
                 respect,
@@ -451,8 +468,22 @@ impl qobject::PlayerController {
         }) else {
             return;
         };
-        let (cues, list, row, menu, key, encoding, obscure, font_size, respect, res_y, (vw, vh)) =
-            state;
+        let (
+            cues,
+            list,
+            row,
+            menu,
+            key,
+            encoding,
+            encoding_label,
+            forced,
+            disabled,
+            obscure,
+            font_size,
+            respect,
+            res_y,
+            (vw, vh),
+        ) = state;
         if let Some(v) = set_text(self.subtitle_cues(), &cues) {
             self.as_mut().set_subtitle_cues(v);
         }
@@ -472,6 +503,15 @@ impl qobject::PlayerController {
         }
         if let Some(v) = set_text(self.subtitle_encoding(), &encoding) {
             self.as_mut().set_subtitle_encoding(v);
+        }
+        if let Some(v) = set_text(self.subtitle_encoding_label(), &encoding_label) {
+            self.as_mut().set_subtitle_encoding_label(v);
+        }
+        if let Some(v) = set_text(self.subtitle_forced_encoding(), &forced) {
+            self.as_mut().set_subtitle_forced_encoding(v);
+        }
+        if *self.subtitles_disabled() != disabled {
+            self.as_mut().set_subtitles_disabled(disabled);
         }
         if let Some(v) = set_text(self.subtitle_obscure(), obscure) {
             self.as_mut().set_subtitle_obscure(v);
@@ -536,6 +576,16 @@ impl qobject::PlayerController {
     fn subtitle_hover(mut self: Pin<&mut Self>, inside: bool) {
         self.as_mut().with_session(|s| s.subs.hovered = inside);
         self.sync();
+    }
+
+    fn encoding_label(&self, encoding: &QString) -> QString {
+        let encoding = encoding.to_string();
+        let label = self
+            .rust()
+            .session
+            .as_ref()
+            .map_or_else(|| encoding.clone(), |s| s.encoding_label(&encoding));
+        QString::from(label.as_str())
     }
 
     fn search_subtitles(&self, query: &QString) -> QString {

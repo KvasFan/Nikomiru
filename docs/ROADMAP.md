@@ -28,7 +28,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 |---|---|---|---|---|
 | M0 | Foundations and spikes | M | — | done |
 | M1 | Minimal player | M | — | in progress |
-| M2 | Own subtitle rendering | L | — | in progress |
+| M2 | Own subtitle rendering | L | — | done |
 | M3 | Dictionaries and lookup | XL | — | not started |
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | not started |
 | M5 | Library and word audio | L | 0.2.0 | not started |
@@ -146,7 +146,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [x] T-SUB-001…T-SUB-016 green, including the Fushi conformance vectors (TEST §5) for the parsers (67 of 84 cases apply to 1.0; the others are recorded divergences).
 - [x] T-FUZZ-001…T-FUZZ-003 (parsers) without panics for 10 minutes each (12 million cases each, 15–18 minutes, 2026-10-19).
 - [x] T-PERF-07: cue visible within ≤ 50 ms of its start.
-- [ ] Manual checklist "Subtitles" with at least 3 real files: Shift_JIS SRT, fansub ASS with styles, MKV with 2 embedded tracks.
+- [x] Manual checklist "Subtitles" with at least 3 real files: Shift_JIS SRT, fansub ASS with styles, MKV with 2 embedded tracks ([docs/qa/m2-subtitles.md](qa/m2-subtitles.md), 2026-10-19).
 
 ---
 

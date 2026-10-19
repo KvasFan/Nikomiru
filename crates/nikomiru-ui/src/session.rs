@@ -655,6 +655,16 @@ impl Session {
                 self.toasts.push(self.tr(key, &[]));
                 Ok(())
             }
+            Action::SubToggle => {
+                self.subs.disabled = !self.subs.disabled;
+                let key = if self.subs.disabled {
+                    "toast-sub-off"
+                } else {
+                    "toast-sub-on"
+                };
+                self.toasts.push(self.tr(key, &[]));
+                Ok(())
+            }
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
@@ -828,7 +838,7 @@ impl Session {
         match result {
             Ok(loaded) => {
                 let name = source_name(&source);
-                let encoding = loaded.encoding.clone();
+                let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
                 self.sub_list_version += 1;
@@ -906,6 +916,16 @@ impl Session {
             }
         });
         serde_json::Value::Array(items.collect())
+    }
+
+    /// A readable name for an encoding ("Japanese — Shift_JIS (CP932)"), or
+    /// the encoding itself when there is no translation for it.
+    pub fn encoding_label(&self, encoding: &str) -> String {
+        let id = format!("encoding-{}", encoding.to_ascii_lowercase());
+        self.services
+            .translator
+            .try_tr(&id, &[])
+            .unwrap_or_else(|_| encoding.to_string())
     }
 
     fn after_delay_change(&mut self, delay_ms: i64) {

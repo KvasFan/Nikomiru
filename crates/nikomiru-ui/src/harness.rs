@@ -156,6 +156,7 @@ pub fn state() -> Result<Value, String> {
                     "visible": visible,
                     "selected": s.subs.selection.map(|(c, o)| json!([c, o])),
                     "obscure": s.obscure_now().name(),
+                    "disabled": s.subs.disabled,
                 })
             }),
         })

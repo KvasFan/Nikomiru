@@ -167,6 +167,21 @@ mod tests {
         }
     }
 
+    // SUB-005: every encoding the detection can report has a readable name
+    #[test]
+    fn every_encoding_has_a_readable_name() {
+        let names = ["UTF-8", "UTF-16LE", "UTF-16BE", "ISO-8859-1"]
+            .into_iter()
+            .chain(nikomiru_subs::encoding::LEGACY);
+        for (lang, _) in SOURCES {
+            let t = Translator::new(lang);
+            for e in names.clone() {
+                let id = format!("encoding-{}", e.to_ascii_lowercase());
+                assert!(t.try_tr(&id, &[]).is_ok(), "{lang}: {id}");
+            }
+        }
+    }
+
     // T-SET-004
     #[test]
     fn language_from_the_locale_with_english_fallback() {

@@ -129,6 +129,9 @@ pub struct Subtitles {
     pub mode: Obscure,
     /// The mouse is over the subtitles.
     pub hovered: bool,
+    /// Subtitles turned off with V: nothing is drawn, not even on hover, and
+    /// the chosen track stays for when they are turned on again.
+    pub disabled: bool,
     active: Vec<usize>,
     /// The selected grapheme: cue and byte offset (M3 looks it up).
     pub selection: Option<(usize, usize)>,
@@ -222,6 +225,9 @@ impl Subtitles {
     /// order, with its placement and its graphemes. `respect_ass` adds the ASS
     /// style of the cue.
     pub fn overlay(&self, respect_ass: bool) -> Value {
+        if self.disabled {
+            return Value::Array(Vec::new());
+        }
         let cues: Vec<Value> = self
             .active
             .iter()
@@ -409,6 +415,11 @@ mod tests {
         );
         assert_eq!(first["lines"][1][0]["t"], "二");
         assert_eq!(overlay[1]["anchor"], 8);
+        // V: nothing is drawn, the cues stay active for when it comes back
+        s.disabled = true;
+        assert_eq!(s.overlay(false), json!([]));
+        assert_eq!(s.active(), [0, 1]);
+        s.disabled = false;
         // leaving the cue drops the selection
         s.update(3500);
         assert_eq!(s.selection, None);
