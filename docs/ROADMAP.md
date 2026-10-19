@@ -143,9 +143,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Exit criteria**
 
-- [ ] T-SUB-001…T-SUB-016 green, including the Fushi conformance vectors (TEST §5) for the parsers.
-- [ ] T-FUZZ-001…T-FUZZ-003 (parsers) without panics for 10 minutes each.
-- [ ] T-PERF-07: cue visible within ≤ 50 ms of its start.
+- [x] T-SUB-001…T-SUB-016 green, including the Fushi conformance vectors (TEST §5) for the parsers (67 of 84 cases apply to 1.0; the others are recorded divergences).
+- [x] T-FUZZ-001…T-FUZZ-003 (parsers) without panics for 10 minutes each (12 million cases each, 15–18 minutes, 2026-10-19).
+- [x] T-PERF-07: cue visible within ≤ 50 ms of its start.
 - [ ] Manual checklist "Subtitles" with at least 3 real files: Shift_JIS SRT, fansub ASS with styles, MKV with 2 embedded tracks.
 
 ---
