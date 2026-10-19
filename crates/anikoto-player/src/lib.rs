@@ -12,3 +12,6 @@
 
 pub mod control;
 pub mod options;
+pub mod player;
+
+pub use player::{LoadRequest, Player, PlayerError, PlayerEvent, PlayerHandle, VideoOutput};
