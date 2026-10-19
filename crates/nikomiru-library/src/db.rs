@@ -238,7 +238,7 @@ impl Library {
         self.schema
     }
 
-    fn read<T>(
+    pub(crate) fn read<T>(
         &self,
         f: impl FnOnce(&redb::ReadTransaction) -> Result<T, LibraryError>,
     ) -> Result<T, LibraryError> {
@@ -249,7 +249,7 @@ impl Library {
         f(&tx)
     }
 
-    fn write(&self) -> Result<redb::WriteTransaction, LibraryError> {
+    pub(crate) fn write(&self) -> Result<redb::WriteTransaction, LibraryError> {
         match &self.db {
             Handle::ReadWrite(db) => db_err!(db.begin_write()),
             Handle::ReadOnly(_) => Err(LibraryError::ReadOnly(self.schema)),

@@ -9,13 +9,17 @@ publish.workspace = true
 
 [dependencies]
 nikomiru-core.workspace = true
+nikomiru-dict.workspace = true
 redb.workspace = true
 postcard.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+zip.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

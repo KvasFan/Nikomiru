@@ -905,11 +905,15 @@ name = "nikomiru-library"
 version = "0.0.0"
 dependencies = [
  "nikomiru-core",
+ "nikomiru-dict",
  "postcard",
  "redb",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "tracing",
+ "zip",
 ]
 
 [[package]]

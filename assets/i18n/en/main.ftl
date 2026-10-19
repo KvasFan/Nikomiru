@@ -80,6 +80,8 @@ error-dict-empty = The dictionary contains nothing Nikomiru can use.
 error-dict-storage-full = The disk is full: free some space and import the dictionary again.
 error-dict-cancelled = Import cancelled.
 error-dict-store = The dictionary database cannot be used ({ $reason }).
+error-dict-same-revision = { $title } revision { $revision } is already installed.
+error-dict-unknown = The dictionary no longer exists.
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
