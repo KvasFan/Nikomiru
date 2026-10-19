@@ -8,20 +8,22 @@
 use std::path::Path;
 
 use redb::{
-    Database, MultimapTableDefinition, ReadableDatabase, TableDefinition, WriteTransaction,
+    Database, MultimapTableDefinition, ReadOnlyMultimapTable, ReadOnlyTable, ReadableDatabase,
+    TableDefinition, WriteTransaction,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::bloom::Bloom;
 use crate::yomitan::{Index, Kanji, Kinds, Meta, Tag, Term};
 
 /// Schema version of the dictionary files.
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
 
 const INFO: TableDefinition<&str, &[u8]> = TableDefinition::new("info");
 const TERMS: TableDefinition<u64, &[u8]> = TableDefinition::new("terms");
-const BY_EXPRESSION: MultimapTableDefinition<&str, u64> =
+const BY_EXPRESSION: MultimapTableDefinition<&str, &[u8]> =
     MultimapTableDefinition::new("term_by_expression");
-const BY_READING: MultimapTableDefinition<&str, u64> =
+const BY_READING: MultimapTableDefinition<&str, &[u8]> =
     MultimapTableDefinition::new("term_by_reading");
 const TERM_META: MultimapTableDefinition<&str, &[u8]> = MultimapTableDefinition::new("term_meta");
 const KANJI: TableDefinition<&str, &[u8]> = TableDefinition::new("kanji");
@@ -119,6 +121,9 @@ pub struct StoredTerm {
     pub sequence: i64,
     /// Term tags, space separated.
     pub term_tags: String,
+    /// The glossary only points to other headwords (LKP-032): checked once,
+    /// at import, so lookups decompress only these.
+    pub redirect: bool,
     glossary_lz4: Vec<u8>,
 }
 
@@ -134,6 +139,7 @@ impl StoredTerm {
             score: t.score,
             sequence: t.sequence,
             term_tags: t.term_tags,
+            redirect: crate::yomitan::parse_redirects(&t.glossary).is_some(),
             glossary_lz4: lz4_flex::compress_prepend_size(t.glossary.as_bytes()),
         }
     }
@@ -153,6 +159,39 @@ impl StoredTerm {
     }
 }
 
+/// What a lookup needs of a term before choosing what to show: the indexes
+/// hold it, so a reading with hundreds of homophones is one sequential read,
+/// and the record itself is read only for the entries shown (LKP-035).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TermHead {
+    /// Id of the record.
+    pub id: u64,
+    /// Headword.
+    pub expression: String,
+    /// Reading.
+    pub reading: String,
+    /// Deinflection rules, space separated.
+    pub rules: String,
+    /// Score.
+    pub score: f64,
+    /// The glossary only points to other headwords (LKP-032).
+    pub redirect: bool,
+}
+
+impl TermHead {
+    /// The head of a record.
+    pub fn of(t: &StoredTerm) -> Self {
+        Self {
+            id: t.id,
+            expression: t.expression.clone(),
+            reading: t.reading.clone(),
+            rules: t.rules.clone(),
+            score: t.score,
+            redirect: t.redirect,
+        }
+    }
+}
+
 /// Which index a term search uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
@@ -162,22 +201,57 @@ pub enum Field {
     Reading,
 }
 
-/// Read access to one dictionary (DIC-020).
-pub trait DictStore: Send + Sync {
-    /// What the dictionary says about itself.
-    fn info(&self) -> &DictInfo;
-    /// Terms whose `field` equals `text`.
-    fn terms(&self, field: Field, text: &str) -> Result<Vec<StoredTerm>, StoreError>;
+/// Queries on one snapshot of a dictionary. A lookup makes hundreds of
+/// queries: it opens one reader per dictionary instead of one read
+/// transaction per query.
+pub trait DictReader {
+    /// Heads of the terms whose `field` equals `text`, by id.
+    fn heads(&self, field: Field, text: &str) -> Result<Vec<TermHead>, StoreError>;
+    /// The record with this id.
+    fn term(&self, id: u64) -> Result<Option<StoredTerm>, StoreError>;
+    /// Terms whose `field` equals `text`, by id.
+    fn terms(&self, field: Field, text: &str) -> Result<Vec<StoredTerm>, StoreError> {
+        let mut out = Vec::new();
+        for head in self.heads(field, text)? {
+            out.extend(self.term(head.id)?);
+        }
+        Ok(out)
+    }
     /// Frequencies, pitch accents and IPA of `text`.
     fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError>;
     /// The kanji entry of `character`.
     fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError>;
     /// Frequencies of `character`.
     fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError>;
+}
+
+/// Read access to one dictionary (DIC-020).
+pub trait DictStore: Send + Sync {
+    /// What the dictionary says about itself.
+    fn info(&self) -> &DictInfo;
+    /// A reader on the current contents.
+    fn reader(&self) -> Result<Box<dyn DictReader + '_>, StoreError>;
     /// The tag called `name`.
     fn tag(&self, name: &str) -> Result<Option<Tag>, StoreError>;
     /// A media file (DIC-001, POP-010), by its normalized path.
     fn media(&self, path: &str) -> Result<Option<Vec<u8>>, StoreError>;
+
+    /// Terms whose `field` equals `text` (one query: see [`DictReader`]).
+    fn terms(&self, field: Field, text: &str) -> Result<Vec<StoredTerm>, StoreError> {
+        self.reader()?.terms(field, text)
+    }
+    /// Frequencies, pitch accents and IPA of `text`.
+    fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError> {
+        self.reader()?.term_meta(text)
+    }
+    /// The kanji entry of `character`.
+    fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError> {
+        self.reader()?.kanji(character)
+    }
+    /// Frequencies of `character`.
+    fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError> {
+        self.reader()?.kanji_meta(character)
+    }
 }
 
 /// The normalized form of a media path: `/` separators, no leading `/`.
@@ -190,6 +264,8 @@ pub fn media_key(path: &str) -> String {
 pub struct RedbStore {
     db: Database,
     info: DictInfo,
+    /// The keys of both term indexes.
+    filter: Bloom,
 }
 
 fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, StoreError> {
@@ -200,7 +276,7 @@ impl RedbStore {
     /// Opens a dictionary file.
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         let db = db!(Database::builder().set_cache_size(16 << 20).open(path))?;
-        let info = {
+        let (info, filter) = {
             let txn = db!(db.begin_read())?;
             let table = db!(txn.open_table(INFO))?;
             let schema: u32 = match db!(table.get("schema"))? {
@@ -211,9 +287,12 @@ impl RedbStore {
                 return Err(StoreError::Schema(schema));
             }
             let info = db!(table.get("info"))?.ok_or(StoreError::Schema(0))?;
-            decode::<DictInfo>(info.value())?
+            let filter = db!(table.get("filter"))?
+                .and_then(|f| Bloom::from_bytes(f.value()))
+                .ok_or(StoreError::Schema(schema))?;
+            (decode::<DictInfo>(info.value())?, filter)
         };
-        Ok(Self { db, info })
+        Ok(Self { db, info, filter })
     }
 }
 
@@ -222,37 +301,17 @@ impl DictStore for RedbStore {
         &self.info
     }
 
-    fn terms(&self, field: Field, text: &str) -> Result<Vec<StoredTerm>, StoreError> {
+    fn reader(&self) -> Result<Box<dyn DictReader + '_>, StoreError> {
         let txn = db!(self.db.begin_read())?;
-        let index = db!(txn.open_multimap_table(match field {
-            Field::Expression => BY_EXPRESSION,
-            Field::Reading => BY_READING,
-        }))?;
-        let terms = db!(txn.open_table(TERMS))?;
-        let mut out = Vec::new();
-        for id in db!(index.get(text))? {
-            let id = db!(id)?.value();
-            if let Some(bytes) = db!(terms.get(id))? {
-                out.push(decode(bytes.value())?);
-            }
-        }
-        Ok(out)
-    }
-
-    fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError> {
-        multimap(&self.db, TERM_META, text)
-    }
-
-    fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError> {
-        let txn = db!(self.db.begin_read())?;
-        let table = db!(txn.open_table(KANJI))?;
-        db!(table.get(character))?
-            .map(|v| decode(v.value()))
-            .transpose()
-    }
-
-    fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError> {
-        multimap(&self.db, KANJI_META, character)
+        Ok(Box::new(RedbReader {
+            terms: db!(txn.open_table(TERMS))?,
+            by_expression: db!(txn.open_multimap_table(BY_EXPRESSION))?,
+            by_reading: db!(txn.open_multimap_table(BY_READING))?,
+            filter: &self.filter,
+            term_meta: db!(txn.open_multimap_table(TERM_META))?,
+            kanji: db!(txn.open_table(KANJI))?,
+            kanji_meta: db!(txn.open_multimap_table(KANJI_META))?,
+        }))
     }
 
     fn tag(&self, name: &str) -> Result<Option<Tag>, StoreError> {
@@ -268,13 +327,59 @@ impl DictStore for RedbStore {
     }
 }
 
-fn multimap(
-    db: &Database,
-    def: MultimapTableDefinition<&str, &[u8]>,
+/// The tables of one read transaction (they keep its snapshot alive).
+struct RedbReader<'a> {
+    terms: ReadOnlyTable<u64, &'static [u8]>,
+    by_expression: ReadOnlyMultimapTable<&'static str, &'static [u8]>,
+    by_reading: ReadOnlyMultimapTable<&'static str, &'static [u8]>,
+    filter: &'a Bloom,
+    term_meta: ReadOnlyMultimapTable<&'static str, &'static [u8]>,
+    kanji: ReadOnlyTable<&'static str, &'static [u8]>,
+    kanji_meta: ReadOnlyMultimapTable<&'static str, &'static [u8]>,
+}
+
+impl DictReader for RedbReader<'_> {
+    fn heads(&self, field: Field, text: &str) -> Result<Vec<TermHead>, StoreError> {
+        if !self.filter.may_contain(text) {
+            return Ok(Vec::new());
+        }
+        let index = match field {
+            Field::Expression => &self.by_expression,
+            Field::Reading => &self.by_reading,
+        };
+        let mut out: Vec<TermHead> = Vec::new();
+        for head in db!(index.get(text))? {
+            out.push(decode(db!(head)?.value())?);
+        }
+        out.sort_by_key(|h| h.id);
+        Ok(out)
+    }
+
+    fn term(&self, id: u64) -> Result<Option<StoredTerm>, StoreError> {
+        db!(self.terms.get(id))?
+            .map(|v| decode(v.value()))
+            .transpose()
+    }
+
+    fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError> {
+        meta(&self.term_meta, text)
+    }
+
+    fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError> {
+        db!(self.kanji.get(character))?
+            .map(|v| decode(v.value()))
+            .transpose()
+    }
+
+    fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError> {
+        meta(&self.kanji_meta, character)
+    }
+}
+
+fn meta(
+    table: &ReadOnlyMultimapTable<&'static str, &'static [u8]>,
     key: &str,
 ) -> Result<Vec<Meta>, StoreError> {
-    let txn = db!(db.begin_read())?;
-    let table = db!(txn.open_multimap_table(def))?;
     let mut out = Vec::new();
     for v in db!(table.get(key))? {
         out.push(decode(db!(v)?.value())?);
@@ -292,8 +397,8 @@ pub struct StoreWriter {
     db: Database,
     txn: Option<WriteTransaction>,
     next_id: u64,
-    by_expression: Vec<(String, u64)>,
-    by_reading: Vec<(String, u64)>,
+    by_expression: Vec<(String, Vec<u8>)>,
+    by_reading: Vec<(String, Vec<u8>)>,
     counts: Counts,
 }
 
@@ -332,14 +437,15 @@ impl StoreWriter {
         for t in terms {
             let id = self.next_id;
             self.next_id += 1;
-            self.by_expression.push((t.expression.clone(), id));
-            if !t.reading.is_empty() && t.reading != t.expression {
-                self.by_reading.push((t.reading.clone(), id));
-            }
             if !t.rules.trim().is_empty() {
                 self.counts.with_rules += 1;
             }
             let record = StoredTerm::new(id, t);
+            let head = encode(&TermHead::of(&record))?;
+            if !record.reading.is_empty() && record.reading != record.expression {
+                self.by_reading.push((record.reading.clone(), head.clone()));
+            }
+            self.by_expression.push((record.expression.clone(), head));
             rows.push((id, encode(&record)?));
         }
         {
@@ -412,7 +518,7 @@ impl StoreWriter {
     }
 
     /// Writes the indexes (sorted by key, as fast as redb inserts) and the
-    /// info, and commits.
+    /// info, commits and compacts.
     pub fn finish(
         mut self,
         index: Index,
@@ -423,14 +529,18 @@ impl StoreWriter {
             .txn
             .take()
             .ok_or_else(|| StoreError::Glossary("writer already finished".into()))?;
+        let mut filter = Bloom::with_capacity(self.by_expression.len() + self.by_reading.len());
+        for (key, _) in self.by_expression.iter().chain(&self.by_reading) {
+            filter.insert(key);
+        }
         for (def, mut pairs) in [
             (BY_EXPRESSION, std::mem::take(&mut self.by_expression)),
             (BY_READING, std::mem::take(&mut self.by_reading)),
         ] {
             pairs.sort();
             let mut table = db!(txn.open_multimap_table(def))?;
-            for (key, id) in &pairs {
-                db!(table.insert(key.as_str(), *id))?;
+            for (key, head) in &pairs {
+                db!(table.insert(key.as_str(), head.as_slice()))?;
             }
         }
         // every table exists, even empty, so readers can open them
@@ -450,9 +560,12 @@ impl StoreWriter {
             let mut table = db!(txn.open_table(INFO))?;
             db!(table.insert("schema", encode(&SCHEMA)?.as_slice()))?;
             db!(table.insert("info", encode(&info)?.as_slice()))?;
+            db!(table.insert("filter", filter.to_bytes().as_slice()))?;
         }
         db!(txn.commit())?;
-        drop(self.db);
+        // the file shrinks by ~40% (ADR 0002)
+        let mut db = self.db;
+        db!(db.compact())?;
         Ok(info)
     }
 }

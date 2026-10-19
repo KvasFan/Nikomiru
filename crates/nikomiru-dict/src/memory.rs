@@ -5,7 +5,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::store::{Counts, DictInfo, DictStore, Field, StoreError, StoredTerm};
+use crate::store::{
+    Counts, DictInfo, DictReader, DictStore, Field, StoreError, StoredTerm, TermHead,
+};
 use crate::yomitan::{Index, Kanji, Kinds, Meta, Tag, Term};
 
 /// A dictionary held in memory.
@@ -110,48 +112,8 @@ impl DictStore for MemStore {
         &self.info
     }
 
-    fn terms(&self, field: Field, text: &str) -> Result<Vec<StoredTerm>, StoreError> {
-        self.count();
-        Ok(self
-            .terms
-            .iter()
-            .filter(|t| match field {
-                Field::Expression => t.expression == text,
-                Field::Reading => {
-                    !t.reading.is_empty() && t.reading != t.expression && t.reading == text
-                }
-            })
-            .cloned()
-            .collect())
-    }
-
-    fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError> {
-        self.count();
-        Ok(self
-            .meta
-            .iter()
-            .filter(|(t, _)| t == text)
-            .map(|(_, m)| m.clone())
-            .collect())
-    }
-
-    fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError> {
-        self.count();
-        Ok(self
-            .kanji
-            .iter()
-            .find(|k| k.character == character)
-            .cloned())
-    }
-
-    fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError> {
-        self.count();
-        Ok(self
-            .kanji_meta
-            .iter()
-            .filter(|(t, _)| t == character)
-            .map(|(_, m)| m.clone())
-            .collect())
+    fn reader(&self) -> Result<Box<dyn DictReader + '_>, StoreError> {
+        Ok(Box::new(MemReader(self)))
     }
 
     fn tag(&self, name: &str) -> Result<Option<Tag>, StoreError> {
@@ -160,5 +122,64 @@ impl DictStore for MemStore {
 
     fn media(&self, _path: &str) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
+    }
+}
+
+struct MemReader<'a>(&'a MemStore);
+
+impl DictReader for MemReader<'_> {
+    fn heads(&self, field: Field, text: &str) -> Result<Vec<TermHead>, StoreError> {
+        self.0.count();
+        Ok(self
+            .0
+            .terms
+            .iter()
+            .filter(|t| match field {
+                Field::Expression => t.expression == text,
+                Field::Reading => {
+                    !t.reading.is_empty() && t.reading != t.expression && t.reading == text
+                }
+            })
+            .map(TermHead::of)
+            .collect())
+    }
+
+    fn term(&self, id: u64) -> Result<Option<StoredTerm>, StoreError> {
+        Ok(usize::try_from(id)
+            .ok()
+            .and_then(|i| self.0.terms.get(i))
+            .cloned())
+    }
+
+    fn term_meta(&self, text: &str) -> Result<Vec<Meta>, StoreError> {
+        self.0.count();
+        Ok(self
+            .0
+            .meta
+            .iter()
+            .filter(|(t, _)| t == text)
+            .map(|(_, m)| m.clone())
+            .collect())
+    }
+
+    fn kanji(&self, character: &str) -> Result<Option<Kanji>, StoreError> {
+        self.0.count();
+        Ok(self
+            .0
+            .kanji
+            .iter()
+            .find(|k| k.character == character)
+            .cloned())
+    }
+
+    fn kanji_meta(&self, character: &str) -> Result<Vec<Meta>, StoreError> {
+        self.0.count();
+        Ok(self
+            .0
+            .kanji_meta
+            .iter()
+            .filter(|(t, _)| t == character)
+            .map(|(_, m)| m.clone())
+            .collect())
     }
 }

@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod bloom;
 pub mod deinflect;
 pub mod import;
 pub mod lookup;

@@ -29,7 +29,7 @@ fn first(lookup: &Lookup, text: &str) -> Entry {
 }
 
 fn trace(e: &Entry) -> Vec<&str> {
-    e.trace.iter().map(|s| s.name.as_str()).collect()
+    e.trace.iter().map(|s| &*s.name).collect()
 }
 
 // T-LKP-020, T-LKP-021, T-LKP-022, T-LKP-024

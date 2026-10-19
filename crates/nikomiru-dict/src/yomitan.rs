@@ -92,6 +92,27 @@ pub fn parse_index(bytes: &[u8]) -> Result<Index, FormatError> {
     })
 }
 
+/// Glossaries this short may be a redirect (LKP-032).
+pub const MAX_REDIRECT_BYTES: usize = 1024;
+
+/// `[formOf, [rules…]]`: a glossary item that points to another headword.
+pub type Redirect = (String, Vec<String>);
+
+/// The redirects of a glossary made only of `[formOf, [rules…]]` items
+/// (LKP-032, at most [`MAX_REDIRECT_BYTES`]); `None` for anything else, a
+/// real definition next to a redirect label included (BUG-2566).
+pub fn parse_redirects(glossary: &str) -> Option<Vec<Redirect>> {
+    if glossary.len() > MAX_REDIRECT_BYTES {
+        return None;
+    }
+    let mut rest = glossary.trim_start();
+    for _ in 0..2 {
+        rest = rest.strip_prefix('[')?.trim_start();
+    }
+    let items: Vec<Redirect> = serde_json::from_str(glossary).ok()?;
+    (!items.is_empty() && items.iter().all(|(form, _)| !form.is_empty())).then_some(items)
+}
+
 /// A term entry. The glossary is the raw JSON array.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Term {

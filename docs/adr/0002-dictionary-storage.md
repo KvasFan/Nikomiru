@@ -57,6 +57,25 @@ Average results per query: 9.4 groups, 37 glossaries; all 10k queries have resul
 - **Hardware**: this machine is faster than REF (SPECIFICATION §7) in compute and slower in I/O (NVMe over USB and LUKS encryption). The margins make a failure on REF unlikely, but T-PERF-04/05 must be repeated on REF in M3.
 - The data is synthetic. Key distribution and glossary length imitate those of JMdict, but do not reproduce them.
 
+## M3: the real engine
+
+T-PERF-04/05 with `nikomiru-dict` (full LKP-011 chain, Yomitan `ja.json` tables, mixed orthography, redirects, the Kansai exception), same data and machine, under a load average of 5–12 from other builds:
+
+| | Import (each term dictionary) | Lookup p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| First version (one read transaction per query, records read for every hit) | 2.7–4.3 s, 205 MiB | 4.5 ms | **44 ms** | **132 ms** | 600 ms |
+| Final | 2.9–3.5 s, 261 MiB, 175 MB file | **0.40 ms** | **1.7 ms** | **2.2 ms** | 5 ms |
+
+The residual risk above was real: the engine made up to 3,000 queries per click (mostly mixed-orthography readings that exist nowhere) and single-kana readings hit 700+ records. What fixed it, in order of effect:
+
+1. **Term heads in the indexes**: `term_by_expression` and `term_by_reading` hold id, headword, reading, rules, score and the redirect flag, so a key with hundreds of homophones is one sequential read; the record (glossary, tags) is read only for the groups shown, after truncation.
+2. **A Bloom filter per dictionary** (10 bits per key, ~0.8% false positives, stored in the file): a query for a string that is in no index costs a few hashes.
+3. **One reader per dictionary per lookup** (one read transaction, tables opened once).
+4. **Redirects flagged at import**, so a lookup decompresses only the glossaries that are redirects.
+5. **Frequencies read only for groups that can still enter the budget** (keys 1–4 of LKP-034 do not need them).
+
+`cargo xtask bench` repeats T-PERF-04/05.
+
 ## How to repeat the measurements
 
 ```sh

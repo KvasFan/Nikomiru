@@ -417,8 +417,8 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 | T-PERF-01 | Cold start until `library-ready` | Harness, median of 10 runs (disk cache dropped with `vmtouch -e` or similar) | ≤ 1.5 s |
 | T-PERF-02 | From `open` to `first-frame` | Harness | ≤ 1.0 s |
 | T-PERF-03 | Dropped frames and CPU during playback | `frame-drop-count`, `vo-delayed-frame-count` (mpv) and `/proc/<pid>/stat` for 5 min on `av_hd60_*` with the overlay visible | 0 dropped; CPU ≤ 25% of one core |
-| T-PERF-04 | Lookup in the engine | `criterion`, synthetic dictionary ×5 + freq ×3 + pitch, 10k queries from a sentence corpus | p95 ≤ 10 ms, p99 ≤ 25 ms |
-| T-PERF-05 | Import of 300k entries | Total time and `VmHWM` | ≤ 60 s; ≤ 1 GiB |
+| T-PERF-04 | Lookup in the engine | `cargo xtask bench` (release test `nikomiru-dict/tests/perf.rs`): synthetic dictionary ×5 + freq ×3 + pitch, 10k queries from a sentence corpus, percentiles of the single lookups | p95 ≤ 10 ms, p99 ≤ 25 ms |
+| T-PERF-05 | Import of 300k entries | `cargo xtask bench`: total time and `VmHWM` of each import, in its own process | ≤ 60 s; ≤ 1 GiB |
 | T-PERF-06 | From `click_grapheme` to `popup-rendered` | Harness, 100 clicks | p95 ≤ 100 ms |
 | T-PERF-07 | Cue display delay | `cue-shown.time_pos − cue.start` | ≤ 50 ms |
 | T-PERF-08 | Mining | From Ctrl+Enter to `card-created`, fake AnkiConnect, real ffmpeg | ≤ 3 s |

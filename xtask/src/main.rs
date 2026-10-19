@@ -29,6 +29,8 @@ cargo xtask <command>
                        generates test media and dictionaries in target/fixtures
                        (--large: synthetic dictionaries with 300k entries; --perf:
                        5-minute 1080p60 videos for T-PERF-03)
+  bench                T-PERF-04/05: imports the synthetic dictionaries (generated
+                       with fixtures --large if needed) and times 10k lookups
   check-headers        SPDX headers, unsafe, documentation, dependencies
   check-licenses [--canary]
                        deny.toml exceptions = SPECIFICATION §3.2, then cargo deny;
@@ -57,6 +59,7 @@ fn run() -> Result<()> {
     match cmd.as_str() {
         "ci" => ci::run(&root, rest),
         "fixtures" => fixtures::run(&root, rest),
+        "bench" => bench(&root),
         "check-headers" => arch::check_all(&root),
         "check-licenses" if rest.iter().any(|a| a == "--canary") => licenses::canary(&root),
         "check-licenses" => licenses::check(&root, true),
@@ -68,4 +71,23 @@ fn run() -> Result<()> {
         }
         other => bail!("unknown command: {other}\n\n{HELP}"),
     }
+}
+
+/// The dictionary benchmarks (TEST §6.15): release build, one test thread.
+fn bench(root: &std::path::Path) -> Result<()> {
+    fixtures::run(root, &["--large".to_string()])?;
+    util::run(util::cargo().args([
+        "test",
+        "--release",
+        "--locked",
+        "-p",
+        "nikomiru-dict",
+        "--test",
+        "perf",
+        "--",
+        "--ignored",
+        "--nocapture",
+        "--test-threads",
+        "1",
+    ]))
 }

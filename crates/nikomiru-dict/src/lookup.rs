@@ -11,6 +11,7 @@
 //! added, the groups sorted (LKP-034) and cut to the budget (LKP-035), and
 //! only then pitch accents are read.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
@@ -20,11 +21,8 @@ use nikomiru_text::variants::{Group, groups_for_all, variants};
 
 use crate::deinflect::Deinflector;
 use crate::mixed;
-use crate::store::{DictStore, Field, StoreError, StoredTerm};
-use crate::yomitan::{Frequency, FrequencyMode, Ipa, Kanji, Meta, Pitch};
-
-/// Glossaries this short may be a redirect (LKP-032).
-pub const MAX_REDIRECT_BYTES: usize = 1024;
+use crate::store::{DictReader, DictStore, Field, StoreError, StoredTerm};
+use crate::yomitan::{Frequency, FrequencyMode, Ipa, Kanji, Meta, Pitch, parse_redirects};
 
 /// Results kept by the cache (LKP-038).
 pub const CACHE_SIZE: usize = 5000;
@@ -73,13 +71,14 @@ impl Default for Options {
     }
 }
 
-/// One step of a trace (LKP-024): a transform or a redirect's rule.
+/// One step of a trace (LKP-024): a transform or a redirect's rule. Shared
+/// strings: a lookup copies traces hundreds of times.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Step {
     /// Name (`-て`).
-    pub name: String,
+    pub name: Arc<str>,
     /// What it means (empty for redirects).
-    pub description: String,
+    pub description: Arc<str>,
 }
 
 /// A definition of a headword and the dictionary it comes from.
@@ -176,7 +175,23 @@ struct Raw {
     reading: String,
     rules: String,
     score: f64,
-    glossaries: Vec<Glossary>,
+    hits: Vec<Hit>,
+}
+
+/// A record found while scanning; its glossary is read only if its group is
+/// shown.
+#[derive(Debug, Clone, Copy)]
+struct Hit {
+    dictionary: usize,
+    id: u64,
+    redirect: bool,
+}
+
+/// A group while scanning: the entry without glossaries, and its records.
+#[derive(Debug, Clone)]
+struct Candidate {
+    entry: Entry,
+    hits: Vec<Hit>,
 }
 
 type Key = (String, String);
@@ -238,6 +253,8 @@ impl<V: Clone> Lru<V> {
 pub struct Lookup {
     dictionaries: Vec<Dictionary>,
     deinflectors: Vec<Deinflector>,
+    /// The transforms of each deinflector as trace steps.
+    steps: Vec<Vec<Step>>,
     groups: Vec<Group>,
     cache: Mutex<Lru<Arc<Vec<Entry>>>>,
 }
@@ -262,8 +279,10 @@ struct Form<'a> {
 /// State of one lookup.
 struct Run<'a> {
     lookup: &'a Lookup,
+    /// One reader per dictionary, for the whole lookup.
+    readers: Vec<Box<dyn DictReader + 'a>>,
     window: &'a str,
-    results: BTreeMap<Key, Entry>,
+    results: BTreeMap<Key, Candidate>,
     raw: HashMap<String, Arc<Vec<Raw>>>,
     run_readings: HashMap<String, Vec<String>>,
 }
@@ -286,12 +305,26 @@ impl Lookup {
         if languages.is_empty() {
             languages.push("ja".into());
         }
+        let deinflectors: Vec<Deinflector> = languages
+            .iter()
+            .filter_map(|l| Deinflector::for_language(l))
+            .collect();
+        let steps = deinflectors
+            .iter()
+            .map(|d| {
+                d.transforms()
+                    .iter()
+                    .map(|t| Step {
+                        name: t.name.as_str().into(),
+                        description: t.description.as_str().into(),
+                    })
+                    .collect()
+            })
+            .collect();
         Self {
             groups: groups_for_all(languages.iter().map(String::as_str)),
-            deinflectors: languages
-                .iter()
-                .filter_map(|l| Deinflector::for_language(l))
-                .collect(),
+            deinflectors,
+            steps,
             dictionaries,
             cache: Mutex::new(Lru::new(CACHE_SIZE)),
         }
@@ -314,8 +347,14 @@ impl Lookup {
         if let Some(hit) = self.cache.lock().ok().and_then(|mut c| c.get(&key)) {
             return Ok(hit);
         }
+        let readers = self
+            .dictionaries
+            .iter()
+            .map(|d| d.store.reader())
+            .collect::<Result<Vec<_>, _>>()?;
         let mut run = Run {
             lookup: self,
+            readers,
             window,
             results: BTreeMap::new(),
             raw: HashMap::new(),
@@ -373,15 +412,19 @@ impl Lookup {
 
     /// Records of `text` in the term dictionaries: equal headword or reading,
     /// merged by headword and reading, glossaries in dictionary order.
-    fn query(&self, text: &str) -> Result<Vec<Raw>, StoreError> {
+    fn query(
+        &self,
+        readers: &[Box<dyn DictReader + '_>],
+        text: &str,
+    ) -> Result<Vec<Raw>, StoreError> {
         let mut merged: BTreeMap<Key, Raw> = BTreeMap::new();
         for (i, d) in self.dictionaries.iter().enumerate() {
             let info = d.store.info();
             if !info.kinds.terms {
                 continue;
             }
-            let mut terms = d.store.terms(Field::Expression, text)?;
-            terms.extend(d.store.terms(Field::Reading, text)?);
+            let mut terms = readers[i].heads(Field::Expression, text)?;
+            terms.extend(readers[i].heads(Field::Reading, text)?);
             terms.sort_by_key(|t| t.id);
             terms.dedup_by_key(|t| t.id);
             // a dictionary without rules anywhere: empty means any (BUG-2543)
@@ -399,7 +442,7 @@ impl Lookup {
                         reading: term.reading.clone(),
                         rules: String::new(),
                         score: term.score,
-                        glossaries: Vec::new(),
+                        hits: Vec::new(),
                     });
                 if !rules.is_empty() {
                     if !raw.rules.is_empty() {
@@ -411,16 +454,21 @@ impl Lookup {
                 if raw.reading.is_empty() {
                     raw.reading.clone_from(&term.reading);
                 }
-                raw.glossaries.push(Glossary {
+                raw.hits.push(Hit {
                     dictionary: i,
-                    term,
+                    id: term.id,
+                    redirect: term.redirect,
                 });
             }
         }
         Ok(merged.into_values().collect())
     }
 
-    fn frequencies(&self, entry: &Entry) -> Result<Vec<Frequencies>, StoreError> {
+    fn frequencies(
+        &self,
+        readers: &[Box<dyn DictReader + '_>],
+        entry: &Entry,
+    ) -> Result<Vec<Frequencies>, StoreError> {
         let mut out = Vec::new();
         for (i, d) in self.dictionaries.iter().enumerate() {
             if !d.store.info().kinds.frequency {
@@ -428,7 +476,7 @@ impl Lookup {
             }
             let reading = entry.reading_or_expression();
             let values = dedup(
-                d.store
+                readers[i]
                     .term_meta(&entry.expression)?
                     .into_iter()
                     .filter_map(|m| match m {
@@ -448,7 +496,11 @@ impl Lookup {
         Ok(out)
     }
 
-    fn pitches(&self, entry: &Entry) -> Result<Vec<Pitches>, StoreError> {
+    fn pitches(
+        &self,
+        readers: &[Box<dyn DictReader + '_>],
+        entry: &Entry,
+    ) -> Result<Vec<Pitches>, StoreError> {
         let mut out = Vec::new();
         for (i, d) in self.dictionaries.iter().enumerate() {
             if !d.store.info().kinds.pitch {
@@ -460,7 +512,7 @@ impl Lookup {
                 pitches: Vec::new(),
                 ipa: Vec::new(),
             };
-            for meta in d.store.term_meta(&entry.expression)? {
+            for meta in readers[i].term_meta(&entry.expression)? {
                 match meta {
                     Meta::Pitch {
                         reading: r,
@@ -497,9 +549,10 @@ impl Lookup {
         Ok(out)
     }
 
-    /// The lowest frequency value of an entry in one dictionary, or the highest
-    /// for occurrence-based dictionaries (DIC-003); `None` without one ≥ 0.
-    fn frequency_rank(&self, entry: &Entry, dictionary: usize) -> Option<i64> {
+    /// The sort key of an entry for one frequency dictionary (LKP-034 (5)):
+    /// its lowest value ≥ 0, or the highest negated for occurrence-based
+    /// dictionaries (DIC-003); missing values last.
+    fn frequency_key(&self, entry: &Entry, dictionary: usize) -> i64 {
         let occurrence = self.dictionaries[dictionary]
             .store
             .info()
@@ -512,43 +565,35 @@ impl Lookup {
             .filter(|f| f.dictionary == dictionary)
             .flat_map(|f| f.values.iter().map(|v| v.value))
             .filter(|&v| v >= 0);
-        if occurrence {
-            values.max()
+        let best = if occurrence {
+            values.max().map(|v| -v)
         } else {
             values.min()
-        }
+        };
+        best.unwrap_or(i64::MAX)
     }
 
-    /// The order of LKP-034.
-    fn compare(&self, a: &Entry, b: &Entry, frequency_dicts: &[usize]) -> Ordering {
+    /// Keys 1–4 of LKP-034: longest match, fewer preprocessor steps, shorter
+    /// trace, headword equal to the form looked up.
+    fn compare_head(&self, a: &Entry, b: &Entry) -> Ordering {
         let len = |e: &Entry| e.matched.chars().count();
         let exact = |e: &Entry| e.expression == e.deinflected;
-        let priority = |e: &Entry| e.glossaries.first().map_or(usize::MAX, |g| g.dictionary);
-        let kana = |e: &Entry| e.expression == e.reading;
         len(b)
             .cmp(&len(a))
             .then(a.preprocessor_steps.cmp(&b.preprocessor_steps))
             .then(a.trace.len().cmp(&b.trace.len()))
             .then(exact(b).cmp(&exact(a)))
-            .then_with(|| {
-                for &d in frequency_dicts {
-                    let occurrence = self.dictionaries[d].store.info().index.frequency_mode
-                        == FrequencyMode::OccurrenceBased;
-                    let order = match (self.frequency_rank(a, d), self.frequency_rank(b, d)) {
-                        (Some(x), Some(y)) if occurrence => y.cmp(&x),
-                        (Some(x), Some(y)) => x.cmp(&y),
-                        (Some(_), None) => Ordering::Less,
-                        (None, Some(_)) => Ordering::Greater,
-                        (None, None) => Ordering::Equal,
-                    };
-                    if order != Ordering::Equal {
-                        return order;
-                    }
-                }
-                Ordering::Equal
-            })
+    }
+
+    /// The order of LKP-034; `ka` and `kb` are the frequency keys.
+    fn compare(&self, a: &Candidate, b: &Candidate, ka: &[i64], kb: &[i64]) -> Ordering {
+        let priority = |c: &Candidate| c.hits.first().map_or(usize::MAX, |h| h.dictionary);
+        let kana = |c: &Candidate| c.entry.expression == c.entry.reading;
+        let (ea, eb) = (&a.entry, &b.entry);
+        self.compare_head(ea, eb)
+            .then_with(|| ka.cmp(kb))
             .then(priority(a).cmp(&priority(b)))
-            .then(b.score.total_cmp(&a.score))
+            .then(eb.score.total_cmp(&ea.score))
             .then(kana(b).cmp(&kana(a)))
     }
 }
@@ -564,34 +609,15 @@ fn dedup(values: impl Iterator<Item = Frequency>) -> Vec<Frequency> {
     out
 }
 
-/// `[formOf, [rules…]]`: a glossary item that points to another headword.
-type Redirect = (String, Vec<String>);
-
-/// The redirects of a glossary made only of `[formOf, [rules…]]` items
-/// (LKP-032); `None` for anything else, a real definition included.
-fn redirects(term: &StoredTerm) -> Result<Option<Vec<Redirect>>, StoreError> {
-    if term.glossary_len() > MAX_REDIRECT_BYTES {
-        return Ok(None);
-    }
-    let json = term.glossary()?;
-    let mut rest = json.trim_start();
-    for _ in 0..2 {
-        let Some(after) = rest.strip_prefix('[') else {
-            return Ok(None);
-        };
-        rest = after.trim_start();
-    }
-    let Ok(items) = serde_json::from_str::<Vec<Redirect>>(&json) else {
-        return Ok(None);
-    };
-    if items.is_empty() || items.iter().any(|(form, _)| form.is_empty()) {
-        return Ok(None);
-    }
-    Ok(Some(items))
+fn kansai(trace: &[Step]) -> bool {
+    trace.iter().any(|s| &*s.name == KANSAI)
 }
 
-fn kansai(trace: &[Step]) -> bool {
-    trace.iter().any(|s| s.name == KANSAI)
+/// Whether one of the protected words follows byte `at` of the window.
+fn protected(window: &str, at: usize) -> bool {
+    window
+        .get(at..)
+        .is_some_and(|rest| KANSAI_PROTECTED.iter().any(|p| rest.starts_with(p)))
 }
 
 impl Run<'_> {
@@ -599,7 +625,7 @@ impl Run<'_> {
         if let Some(hit) = self.raw.get(text) {
             return Ok(Arc::clone(hit));
         }
-        let found = Arc::new(self.lookup.query(text)?);
+        let found = Arc::new(self.lookup.query(&self.readers, text)?);
         self.raw.insert(text.to_string(), Arc::clone(&found));
         Ok(found)
     }
@@ -615,8 +641,8 @@ impl Run<'_> {
             if raw.expression == run && !raw.reading.is_empty() {
                 let reading = mixed::to_hiragana(&raw.reading);
                 match votes.iter_mut().find(|(r, _)| *r == reading) {
-                    Some((_, n)) => *n += raw.glossaries.len(),
-                    None => votes.push((reading, raw.glossaries.len())),
+                    Some((_, n)) => *n += raw.hits.len(),
+                    None => votes.push((reading, raw.hits.len())),
                 }
             }
         }
@@ -631,41 +657,40 @@ impl Run<'_> {
         let lookup = self.lookup;
         for search in candidates(self.window, SCAN_LENGTH) {
             for variant in variants(search, &lookup.groups) {
-                let mut forms: Vec<(String, u64, usize, Vec<u16>)> = Vec::new();
+                let mut targets: Vec<(String, Vec<Step>)> = Vec::new();
                 for (n, d) in lookup.deinflectors.iter().enumerate() {
                     for x in d.deinflect(&variant.text) {
                         // the text itself once, not once per language
-                        if n == 0 || !x.trace.is_empty() {
-                            forms.push((x.text, x.conditions, n, x.trace));
+                        if n > 0 && x.trace.is_empty() {
+                            continue;
                         }
+                        let form = Form {
+                            text: &x.text,
+                            conditions: x.conditions,
+                            deinflector: n,
+                            trace: x
+                                .trace
+                                .iter()
+                                .map(|&t| lookup.steps[n][usize::from(t)].clone())
+                                .collect(),
+                        };
+                        self.form(search, variant.steps, &form, &mut targets)?;
                     }
                 }
                 if lookup.deinflectors.is_empty() {
-                    forms.push((variant.text.clone(), 0, 0, Vec::new()));
-                }
-                let mut targets: Vec<(String, Vec<Step>)> = Vec::new();
-                for (text, conditions, n, trace) in &forms {
                     let form = Form {
-                        text,
-                        conditions: *conditions,
-                        deinflector: *n,
-                        trace: trace
-                            .iter()
-                            .map(|&t| {
-                                let t = lookup.deinflectors[*n].transform(t);
-                                Step {
-                                    name: t.name.clone(),
-                                    description: t.description.clone(),
-                                }
-                            })
-                            .collect(),
+                        text: &variant.text,
+                        conditions: 0,
+                        deinflector: 0,
+                        trace: Vec::new(),
                     };
                     self.form(search, variant.steps, &form, &mut targets)?;
                 }
                 // redirect targets: no part-of-speech filter, one level only
                 for (form_of, trace) in targets {
-                    let terms: Vec<Raw> = self.raw(&form_of)?.iter().cloned().collect();
-                    self.merge(search, variant.steps, &form_of, &trace, terms, None)?;
+                    let found = self.raw(&form_of)?;
+                    let terms: Vec<&Raw> = found.iter().collect();
+                    self.merge(search, variant.steps, &form_of, &trace, &terms, None)?;
                 }
             }
         }
@@ -679,16 +704,22 @@ impl Run<'_> {
         form: &Form<'_>,
         targets: &mut Vec<(String, Vec<Step>)>,
     ) -> Result<(), StoreError> {
-        let mut texts = vec![form.text.to_string()];
+        let found = self.raw(form.text)?;
+        let terms = self.filter(found.iter(), form);
+        self.merge(search, steps, form.text, &form.trace, &terms, Some(targets))?;
         // Korean rules work on jamo; the dictionaries index syllables (BUG-2148)
         let syllables = nikomiru_text::hangul::reassemble(form.text);
         if syllables != form.text {
-            texts.push(syllables);
-        }
-        for text in &texts {
-            let found = self.raw(text)?;
-            let terms = self.filter(found.iter().cloned().collect(), form);
-            self.merge(search, steps, text, &form.trace, terms, Some(targets))?;
+            let found = self.raw(&syllables)?;
+            let terms = self.filter(found.iter(), form);
+            self.merge(
+                search,
+                steps,
+                &syllables,
+                &form.trace,
+                &terms,
+                Some(targets),
+            )?;
         }
         if mixed::is_mixed(form.text) {
             let text = form.text;
@@ -703,108 +734,121 @@ impl Run<'_> {
                 return Err(e);
             }
             for candidate in candidates {
-                let terms: Vec<Raw> = self
-                    .raw(&candidate)?
-                    .iter()
-                    .filter(|r| mixed::matches(text, &r.expression, &r.reading))
-                    .cloned()
-                    .collect();
-                if terms.is_empty() {
-                    continue;
+                let found = self.raw(&candidate)?;
+                let terms = self.filter(
+                    found
+                        .iter()
+                        .filter(|r| mixed::matches(text, &r.expression, &r.reading)),
+                    form,
+                );
+                if !terms.is_empty() {
+                    self.merge(search, steps, text, &form.trace, &terms, Some(targets))?;
                 }
-                let terms = self.filter(terms, form);
-                self.merge(search, steps, text, &form.trace, terms, Some(targets))?;
             }
         }
         Ok(())
     }
 
     /// The part-of-speech filter (LKP-023).
-    fn filter(&self, mut terms: Vec<Raw>, form: &Form<'_>) -> Vec<Raw> {
-        if form.conditions != 0 {
-            let d = &self.lookup.deinflectors[form.deinflector];
-            terms.retain(|t| d.rules_conditions(&t.rules) & form.conditions != 0);
-        }
+    fn filter<'r>(&self, terms: impl Iterator<Item = &'r Raw>, form: &Form<'_>) -> Vec<&'r Raw> {
+        let d = self.lookup.deinflectors.get(form.deinflector);
         terms
+            .filter(|t| {
+                form.conditions == 0
+                    || d.is_none_or(|d| d.rules_conditions(&t.rules) & form.conditions != 0)
+            })
+            .collect()
     }
 
+    /// Adds hits to the results (LKP-032, LKP-033). Records are copied only
+    /// when they win.
     fn merge(
         &mut self,
         search: &str,
         steps: u32,
         deinflected: &str,
         trace: &[Step],
-        terms: Vec<Raw>,
+        terms: &[&Raw],
         mut targets: Option<&mut Vec<(String, Vec<Step>)>>,
     ) -> Result<(), StoreError> {
-        for mut raw in terms {
-            let mut kept = Vec::with_capacity(raw.glossaries.len());
-            for g in raw.glossaries {
-                let Some(found) = redirects(&g.term)? else {
-                    kept.push(g);
-                    continue;
-                };
-                if let Some(targets) = targets.as_deref_mut() {
-                    for (form_of, rules) in found {
+        for raw in terms {
+            let hits: Cow<'_, [Hit]> = if raw.hits.iter().any(|h| h.redirect) {
+                let mut kept = Vec::with_capacity(raw.hits.len());
+                for h in &raw.hits {
+                    if !h.redirect {
+                        kept.push(*h);
+                        continue;
+                    }
+                    let Some(targets) = targets.as_deref_mut() else {
+                        continue;
+                    };
+                    let Some(record) = self.readers[h.dictionary].term(h.id)? else {
+                        continue;
+                    };
+                    for (form_of, rules) in parse_redirects(&record.glossary()?).unwrap_or_default()
+                    {
                         if form_of != raw.expression {
                             let mut chained = trace.to_vec();
                             chained.extend(rules.into_iter().map(|name| Step {
-                                name,
-                                description: String::new(),
+                                name: name.into(),
+                                description: "".into(),
                             }));
                             targets.push((form_of, chained));
                         }
                     }
                 }
-            }
-            raw.glossaries = kept;
-            if raw.glossaries.is_empty() {
+                Cow::Owned(kept)
+            } else {
+                Cow::Borrowed(&raw.hits)
+            };
+            if hits.is_empty() {
                 continue;
             }
-            let entry = Entry {
-                expression: raw.expression,
-                reading: raw.reading,
-                matched: search.to_string(),
-                deinflected: deinflected.to_string(),
-                trace: trace.to_vec(),
-                preprocessor_steps: steps,
-                rules: raw.rules,
-                score: raw.score,
-                glossaries: raw.glossaries,
-                frequencies: Vec::new(),
-                pitches: Vec::new(),
-            };
-            let key = key_of(&entry.expression, &entry.reading);
-            match self.results.get_mut(&key) {
-                None => {
-                    self.results.insert(key, entry);
-                }
-                Some(held) => {
+            let key = key_of(&raw.expression, &raw.reading);
+            let wins = match self.results.get(&key) {
+                None => true,
+                Some(Candidate { entry: held, .. }) => {
                     // the Kansai -た must not swallow ため/たび (BUG-3212)
-                    let window = self.window;
-                    let short_wins = |short: &Entry, long: &Entry| {
-                        short.trace.is_empty()
-                            && long.matched.len() > short.matched.len()
-                            && kansai(&long.trace)
-                            && window.get(short.matched.len()..).is_some_and(|rest| {
-                                KANSAI_PROTECTED.iter().any(|p| rest.starts_with(p))
-                            })
-                    };
-                    if short_wins(&entry, held) {
-                        *held = entry;
-                        continue;
-                    }
-                    if short_wins(held, &entry) {
-                        continue;
-                    }
-                    let incoming = entry.matched.chars().count();
-                    let current = held.matched.chars().count();
-                    if incoming > current
-                        || (incoming == current && steps < held.preprocessor_steps)
+                    if trace.is_empty()
+                        && held.matched.len() > search.len()
+                        && kansai(&held.trace)
+                        && protected(self.window, search.len())
                     {
-                        *held = entry;
+                        true
+                    } else if held.trace.is_empty()
+                        && search.len() > held.matched.len()
+                        && kansai(trace)
+                        && protected(self.window, held.matched.len())
+                    {
+                        false
+                    } else {
+                        let incoming = search.chars().count();
+                        let current = held.matched.chars().count();
+                        incoming > current
+                            || (incoming == current && steps < held.preprocessor_steps)
                     }
                 }
+            };
+            if wins {
+                self.results.insert(
+                    key,
+                    Candidate {
+                        entry: Entry {
+                            expression: raw.expression.clone(),
+                            reading: raw.reading.clone(),
+                            matched: search.to_string(),
+                            deinflected: deinflected.to_string(),
+                            trace: trace.to_vec(),
+                            preprocessor_steps: steps,
+                            rules: raw.rules.clone(),
+                            score: raw.score,
+                            glossaries: Vec::new(),
+                            frequencies: Vec::new(),
+                            pitches: Vec::new(),
+                        },
+                        hits: hits.into_owned(),
+                    },
+                );
             }
         }
         Ok(())
@@ -812,19 +856,50 @@ impl Run<'_> {
 
     fn finish(self, options: Options) -> Result<Vec<Entry>, StoreError> {
         let lookup = self.lookup;
-        let mut entries: Vec<Entry> = self.results.into_values().collect();
+        let mut groups: Vec<Candidate> = self.results.into_values().collect();
+        // Keys 1–4 of LKP-034 do not need frequencies: whatever is behind the
+        // last group of the budget on those keys cannot be shown.
+        groups.sort_by(|a, b| lookup.compare_head(&a.entry, &b.entry));
+        if let Some(cut) = groups.get(options.max_results.saturating_sub(1)).cloned() {
+            let end = groups.partition_point(|c| {
+                lookup.compare_head(&c.entry, &cut.entry) != Ordering::Greater
+            });
+            groups.truncate(end);
+        }
         // frequencies before sorting, on the merged set (BUG-1304)
-        for e in &mut entries {
-            e.frequencies = lookup.frequencies(e)?;
+        for c in &mut groups {
+            c.entry.frequencies = lookup.frequencies(&self.readers, &c.entry)?;
         }
         let frequency_dicts: Vec<usize> = (0..lookup.dictionaries.len())
             .filter(|&i| lookup.dictionaries[i].store.info().kinds.frequency)
             .collect();
-        entries.sort_by(|a, b| lookup.compare(a, b, &frequency_dicts));
-        entries.truncate(options.max_results);
-        // pitch accents only for what is shown (BUG-1304)
-        for e in &mut entries {
-            e.pitches = lookup.pitches(e)?;
+        let mut ranked: Vec<(Vec<i64>, Candidate)> = groups
+            .into_iter()
+            .map(|c| {
+                (
+                    frequency_dicts
+                        .iter()
+                        .map(|&d| lookup.frequency_key(&c.entry, d))
+                        .collect(),
+                    c,
+                )
+            })
+            .collect();
+        ranked.sort_by(|(ka, a), (kb, b)| lookup.compare(a, b, ka, kb));
+        let mut entries = Vec::with_capacity(options.max_results);
+        for (_, Candidate { mut entry, hits }) in ranked.into_iter().take(options.max_results) {
+            // the records of what is shown, and only those (LKP-035)
+            for h in hits {
+                if let Some(term) = self.readers[h.dictionary].term(h.id)? {
+                    entry.glossaries.push(Glossary {
+                        dictionary: h.dictionary,
+                        term,
+                    });
+                }
+            }
+            // pitch accents only for what is shown (BUG-1304)
+            entry.pitches = lookup.pitches(&self.readers, &entry)?;
+            entries.push(entry);
         }
         Ok(entries)
     }

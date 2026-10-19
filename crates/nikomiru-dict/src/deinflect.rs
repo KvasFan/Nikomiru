@@ -295,6 +295,11 @@ impl Deinflector {
         &self.language
     }
 
+    /// All transforms, by id.
+    pub fn transforms(&self) -> &[Transform] {
+        &self.transforms
+    }
+
     /// A transform of a trace.
     pub fn transform(&self, id: u16) -> &Transform {
         &self.transforms[usize::from(id)]
