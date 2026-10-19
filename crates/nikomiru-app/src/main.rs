@@ -108,6 +108,36 @@ fn watch_termination_signals() {
     }
 }
 
+/// EXT-001: finds ffmpeg and ffprobe and logs what they can do, on a thread so
+/// that a slow executable does not delay the window. Nothing in M1 uses them
+/// yet; from M2 the result goes to the features that need it.
+fn check_ffmpeg(setting: &str) {
+    let search = nikomiru_media::tools::Search::from_env(setting);
+    let spawned = std::thread::Builder::new()
+        .name("ffmpeg-probe".into())
+        .spawn(move || match nikomiru_media::tools::probe(&search) {
+            Ok(tools) => {
+                tracing::info!(
+                    "ffmpeg {} at {} ({:?})",
+                    tools.version,
+                    tools.ffmpeg.display(),
+                    tools.origin
+                );
+                for m in tools.missing_encoders() {
+                    tracing::warn!(
+                        "ffmpeg has no {} encoder: the {} format is disabled",
+                        m.encoder,
+                        m.format
+                    );
+                }
+            }
+            Err(e) => tracing::warn!("{e}: subtitle extraction and card media are disabled"),
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("ffmpeg probe thread: {e}");
+    }
+}
+
 /// Logs a startup error, prints it and fails.
 fn fatal(e: &dyn std::fmt::Display) -> ExitCode {
     tracing::error!("{e}");
@@ -153,6 +183,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
     nikomiru_player::video::init();
 
     let (config, config_notice) = load_config(paths);
+    check_ffmpeg(&config.paths.ffmpeg);
     let translator =
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
     let mut notices = Vec::new();

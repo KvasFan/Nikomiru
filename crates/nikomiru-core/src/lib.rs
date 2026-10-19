@@ -13,5 +13,5 @@ pub mod fs;
 pub mod paths;
 
 pub use clock::{Clock, ManualClock, SystemClock};
-pub use config::{Config, ConfigError};
+pub use config::{Config, ConfigError, PathsConfig};
 pub use paths::{Paths, PathsError};

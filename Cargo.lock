@@ -553,6 +553,7 @@ dependencies = [
  "libc",
  "nikomiru-core",
  "nikomiru-library",
+ "nikomiru-media",
  "nikomiru-player",
  "nikomiru-ui",
  "serde",
@@ -592,6 +593,11 @@ dependencies = [
 [[package]]
 name = "nikomiru-media"
 version = "0.0.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
 
 [[package]]
 name = "nikomiru-online"

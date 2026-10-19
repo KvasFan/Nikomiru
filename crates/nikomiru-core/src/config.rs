@@ -45,6 +45,8 @@ pub struct Config {
     pub general: General,
     /// `[player]`.
     pub player: PlayerConfig,
+    /// `[paths]`.
+    pub paths: PathsConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
@@ -91,6 +93,18 @@ pub struct PlayerConfig {
     pub other: toml::Table,
 }
 
+/// `[paths]`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PathsConfig {
+    /// The ffmpeg executable, or its folder; empty = `NIKOMIRU_FFMPEG`, then
+    /// `PATH` (EXT-001). ffprobe is looked for next to it.
+    pub ffmpeg: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
 impl Default for General {
     fn default() -> Self {
         Self {
@@ -122,6 +136,7 @@ impl Default for Config {
         Self {
             general: General::default(),
             player: PlayerConfig::default(),
+            paths: PathsConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
         }
@@ -168,6 +183,7 @@ impl Config {
         let mut out: Vec<String> = self.other.keys().cloned().collect();
         out.extend(self.general.other.keys().map(|k| format!("general.{k}")));
         out.extend(self.player.other.keys().map(|k| format!("player.{k}")));
+        out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
         out.sort();
         out
     }
