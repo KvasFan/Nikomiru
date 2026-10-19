@@ -7,3 +7,9 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+pub mod db;
+pub mod progress;
+pub mod uid;
+
+pub use db::{Library, LibraryError, VideoRecord};

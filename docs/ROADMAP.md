@@ -27,7 +27,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | Milestone | Title | Size | Release | Status |
 |---|---|---|---|---|
 | M0 | Foundations and spikes | M | — | done |
-| M1 | Minimal player | M | — | not started |
+| M1 | Minimal player | M | — | in progress |
 | M2 | Own subtitle rendering | L | — | not started |
 | M3 | Dictionaries and lookup | XL | — | not started |
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | not started |
