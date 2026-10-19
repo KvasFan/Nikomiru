@@ -9,6 +9,7 @@
 #include <mpv/render_gl.h>
 
 #include <QDateTime>
+#include <QFile>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QOpenGLContext>
@@ -133,6 +134,11 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     };
     for (auto &kv : fixed) {
         mpv_set_option_string(h, kv[0], kv[1]);
+    }
+    // Load the CUDA interop only with NVIDIA's proprietary driver: elsewhere it is
+    // useless, and probing it prints "Cannot load libcuda.so.1" on stderr.
+    if (!QFile::exists(QStringLiteral("/proc/driver/nvidia/version"))) {
+        mpv_set_option_string(h, "gpu-hwdec-interop", "vaapi");
     }
     const QByteArray extra = qgetenv("S1Q_MPV_OPTIONS"); // "key=value,key=value"
     for (const QByteArray &kv : extra.split(',')) {

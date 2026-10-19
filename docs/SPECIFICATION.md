@@ -294,6 +294,8 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 7. Shutdown, in this order: the render context is freed on the render thread, with the GL context current; then the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of the `mpv-events` thread; finally the core is destroyed. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001).
 8. `LC_NUMERIC` MUST be `"C"` before mpv is created: `QGuiApplication` sets the locale from the environment, and libmpv then refuses to start (`mpv_create` returns NULL). `anikoto-app` calls `setlocale(LC_NUMERIC, "C")` right after creating `QGuiApplication`.
 9. On X11, `anikoto-app` sets `QT_XCB_GL_INTEGRATION=xcb_egl` before creating `QGuiApplication`, so that the GL context is EGL and mpv gets zero-copy VA-API. If EGL is not available, the app falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
+10. `gpu-hwdec-interop` is `vaapi` unless NVIDIA's proprietary driver is loaded (`/proc/driver/nvidia/version` exists), in which case mpv's automatic choice, CUDA included, is kept. On AMD and Intel the CUDA interop is useless, and probing it prints `Cannot load libcuda.so.1` on stderr (seen on the developer's session, 2026-10-19).
+11. libmpv's messages go to Anikoto's log (`mpv_request_log_messages`, level `warn` by default, `v` with debug logging), never to stderr; PRV-002 applies to them as well.
 
 #### 5.2.3 Fallback
 

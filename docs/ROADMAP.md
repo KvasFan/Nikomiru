@@ -26,7 +26,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 | Milestone | Title | Size | Release | Status |
 |---|---|---|---|---|
-| M0 | Foundations and spikes | M | — | in progress |
+| M0 | Foundations and spikes | M | — | done |
 | M1 | Minimal player | M | — | not started |
 | M2 | Own subtitle rendering | L | — | not started |
 | M3 | Dictionaries and lookup | XL | — | not started |
@@ -64,7 +64,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 **Exit criteria**
 
 - [x] `cargo xtask ci` green on the empty workspace (T-LIC-001, T-ARC-010, T-ARC-011, T-ARC-020); the canary T-LIC-002 (`cargo xtask check-licenses --canary`) confirms that a forbidden license makes CI fail.
-- [ ] S1 meets **all** of these points on REF, both with Wayland (GNOME or KDE) and with X11:
+- [x] S1 meets **all** of these points on REF, both with Wayland (GNOME or KDE) and with X11:
   - 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and CPU ≤ 25% of one core (T-PERF-03);
   - clicks and keys reach the UI over the video (with D-10: the QML overlay);
   - resizing, fullscreen and HiDPI 2× without artifacts;
@@ -80,7 +80,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
   - [x] 50 opens and closes without RSS growth.
   - [x] REF, integrated GPU (Radeon 610M) at 1080p: 0 dropped frames with H.264 and HEVC 10-bit.
   - [x] X11 in the virtual KWin with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, zero-copy VA-API): 0 dropped frames. The measurement on a real Xorg session stays in M1.
-  - [ ] By hand, on the real session: clicks and keys on the overlay, resizing and fullscreen without artifacts, sharpness at fractional scale (so far the developer has only reported the dropped frames).
+  - [x] By hand, on the real session: clicks and keys on the overlay, resizing and fullscreen without artifacts, sharpness at fractional scale (confirmed by the developer, 2026-10-19). The only remark, the `Cannot load libcuda.so.1` warning, is fixed by SPECIFICATION §5.2.2 point 10.
 - [x] S2: import ≤ 60 s and ≤ 1 GiB of RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). If it fails, the ADR adopts the custom format (DIC-020). — Passed: import of 300k entries in 2.3 s with 86 MiB; lookup p95 2.4 ms warm and 4.7 ms cold. redb is adopted ([ADR 0002](adr/0002-dictionary-storage.md)).
 - [x] D-1 (Class B exceptions) and D-3 (GPL-3.0-only) approved by the maintainer (2026-10-19).
 - [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English). D-10 (Qt 6 Quick, driven from Rust through cxx-qt, instead of Dioxus; [ADR 0003](adr/0003-qt-quick-ui.md)) approved by the maintainer (2026-10-19): it supersedes D-7 and D-8.
