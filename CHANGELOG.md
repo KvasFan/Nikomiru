@@ -1,14 +1,24 @@
 # Changelog
 
-Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.1.0/) e il progetto usa il [Semantic Versioning](https://semver.org/lang/it/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Aggiunto
+### Added
 
-- Specifiche (`docs/SPECIFICHE.md`), roadmap (`docs/ROADMAP.md`) e piano di test (`docs/TEST.md`) della riscrittura di Fushi in Rust.
-- Licenza GPL-3.0-only.
+- Specification (`docs/SPECIFICATION.md`), roadmap (`docs/ROADMAP.md`) and test plan (`docs/TEST.md`) for the Rust rewrite of Fushi.
+- GPL-3.0-only license.
+- Cargo workspace with the 11 crates of SPECIFICATION §5.1 (still empty), Rust 1.99.1 pinned in `rust-toolchain.toml`, shared lints (`unwrap_used` and `expect_used` forbidden, ERR-002).
+- License policy enforced: `deny.toml` (Class A, Class B exceptions of SPECIFICATION §3.2, ban on the alternatives rejected in §3.6), `about.toml` and the `THIRD_PARTY_LICENSES.html` template.
+- `cargo xtask` with the commands `ci [--full]`, `fixtures [--large] [--perf]`, `check-headers`, `check-licenses [--canary]`, `trace` and `about`.
+- Spikes S1 (video composition) and S2 (dictionary storage) in `spikes/`, with the measurements and the decisions in `docs/adr/`.
 
-### Modificato
+### Changed
 
-- Decisioni D-1…D-6 approvate e registrate in `docs/SPECIFICHE.md` §10.1.
+- Decisions D-1…D-6 approved and recorded in `docs/SPECIFICATION.md` §10.1.
+- SPECIFICATION §5.1: ARC-010 and ARC-011 written as definitions, so that `cargo xtask trace` reads them.
+- TEST: test marker rule (§8), L7 test names (`l7_…`), off-screen compositor for L6 (headless Weston or virtual KWin).
+- SPECIFICATION §5.2: composition strategy (a) adopted, with the constraints found by spike S1 (`with_disable_dma_buf_on_wayland(false)`, `LC_NUMERIC=C`, native display for hwdec, mpv shutdown order); risk R-1 updated.
+- SPECIFICATION §10.1: decisions D-7 (5 Class B procedural macros found in the real graph), D-8 (CC0 exception for `base16`, needed by the Dioxus `router` feature) and D-9 (English for documents, comments and commit messages) approved; §3.2 table and `deny.toml` updated.
+- Documents and code comments translated to English (D-9); `docs/SPECIFICHE.md` renamed to `docs/SPECIFICATION.md`.
+- ROADMAP: the X11 T-PERF-03 measurement moved from M0 to M1.

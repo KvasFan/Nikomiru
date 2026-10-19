@@ -1,27 +1,49 @@
 # Anikoto
 
-Player video per **imparare le lingue guardando anime e serie**. Clicchi una parola nei sottotitoli, la cerchi nei tuoi dizionari Yomitan e crei una carta Anki con la frase, uno screenshot e l'audio della battuta.
+Video player for **learning languages by watching anime and TV series**. You click a word in the subtitles, look it up in your Yomitan dictionaries and create an Anki card with the sentence, a screenshot and the audio of the line.
 
-Anikoto è una riscrittura in Rust, limitata al nucleo video + dizionario + Anki, di [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0). Usa [Dioxus](https://github.com/DioxusLabs/dioxus) per l'interfaccia e [libmpv2](https://crates.io/crates/libmpv2) per la riproduzione.
+Anikoto is a Rust rewrite of [Fushi](https://github.com/hajisensai/Fushi) (GPL-3.0), limited to the video + dictionary + Anki core. It uses [Dioxus](https://github.com/DioxusLabs/dioxus) for the interface and [libmpv2](https://crates.io/crates/libmpv2) for playback.
 
-> **Stato: progettazione.** Non c'è ancora codice. Il lavoro parte dalla milestone M0 della roadmap.
+> **Status: milestone M0 in progress** (foundations and spikes). The workspace and the tools are in place; the crates are still empty. See [ROADMAP](docs/ROADMAP.md#m0--foundations-and-spikes).
 
-## Documenti
+## Documents
 
-| Documento | Contenuto |
+| Document | Contents |
 |---|---|
-| [docs/SPECIFICHE.md](docs/SPECIFICHE.md) | Scopo, licenze, architettura, requisiti funzionali e non funzionali, decisioni e rischi |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone M0–M8 fino alla 1.0, criteri di uscita, backlog dopo la 1.0 |
-| [docs/TEST.md](docs/TEST.md) | Strategia di test, fixture, conformità con Fushi, catalogo dei casi, CI |
+| [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | Purpose, licenses, architecture, functional and non-functional requirements, decisions and risks |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones M0–M8 up to 1.0, exit criteria, post-1.0 backlog |
+| [docs/TEST.md](docs/TEST.md) | Test strategy, fixtures, conformance with Fushi, case catalog, CI |
+| [docs/adr/](docs/adr/) | Architecture decisions with the spike measurements |
 
-## Piattaforme
+## Development
 
-Linux (Wayland e X11) come piattaforma primaria. Windows e macOS dopo la 1.0.
+You need Rust through `rustup`: the version is pinned in `rust-toolchain.toml`. You also need the license checking tools:
 
-Dipendenze di sistema previste: libmpv ≥ 0.37, FFmpeg ≥ 6, GTK 3.24, WebKitGTK 4.1 ≥ 2.44.
+```sh
+cargo install --locked cargo-deny
+cargo install --locked cargo-about --features cli
+```
 
-## Licenza
+Tasks run with `cargo xtask`:
 
-[GPL-3.0-only](LICENSE). Anikoto deriva da codice GPL-3.0 (Fushi, Yomitan, hoshidicts, Lapis).
+| Command | What it does |
+|---|---|
+| `cargo xtask ci` | fmt, clippy `-D warnings`, architecture checks, licenses (`cargo deny`), traceability, tests |
+| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests and `THIRD_PARTY_LICENSES.html` |
+| `cargo xtask fixtures [--large] [--perf]` | generates test media and dictionaries in `target/fixtures/` (requires `ffmpeg`) |
+| `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
+| `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |
 
-Le dipendenze ammesse sono MIT, Apache-2.0, GPL e LGPL. Fanno eccezione alcune dipendenze transitive permissive, imposte da Dioxus e documentate in [SPECIFICHE §3](docs/SPECIFICHE.md#3-licenze). Il controllo è automatico, con `cargo deny`.
+The M0 spikes are separate workspaces in [`spikes/`](spikes/), with the measurements in the [ADRs](docs/adr/).
+
+## Platforms
+
+Linux (Wayland and X11) as the primary platform. Windows and macOS after 1.0.
+
+Expected system dependencies: libmpv ≥ 0.37, FFmpeg ≥ 6, GTK 3.24, WebKitGTK 4.1 ≥ 2.44.
+
+## License
+
+[GPL-3.0-only](LICENSE). Anikoto derives from GPL-3.0 code (Fushi, Yomitan, hoshidicts, Lapis).
+
+The allowed dependencies are MIT, Apache-2.0, GPL and LGPL. The exceptions are some permissive transitive dependencies, required by Dioxus and documented in [SPECIFICATION §3](docs/SPECIFICATION.md#3-licenses). The check is automatic, with `cargo deny`.

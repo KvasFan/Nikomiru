@@ -1,302 +1,320 @@
 # Anikoto — Roadmap
 
-| Campo | Valore |
+| Field | Value |
 |---|---|
-| Stato | Bozza v0.1 |
-| Data | 2026-10-19 |
-| Documenti collegati | [SPECIFICHE.md](SPECIFICHE.md) · [TEST.md](TEST.md) |
+| Status | Draft v0.1 |
+| Date | 2026-10-19 |
+| Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-La roadmap divide il lavoro in **milestone** (M0…M8). Ognuna ha un obiettivo, i requisiti che copre (ID di [SPECIFICHE.md](SPECIFICHE.md)), i deliverable e i **criteri di uscita** verificabili (ID di [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (M0…M8). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
 
-Non ci sono date: una milestone è chiusa quando tutti i criteri di uscita passano, non quando scade un termine. Le dimensioni (S/M/L/XL) danno solo un'idea dello sforzo relativo.
+There are no dates: a milestone is closed when all its exit criteria pass, not when a deadline expires. The sizes (S/M/L/XL) only give an idea of the relative effort.
 
-Stato possibile di una milestone: `da iniziare` · `in corso` · `completata`. Quando una milestone diventa `completata`, `cargo xtask trace` impone che ogni suo requisito abbia almeno un test (vedi TEST §8).
+Possible status of a milestone: `not started` · `in progress` · `done`. When a milestone becomes `done`, `cargo xtask trace` requires every one of its requirements to have at least one test (see TEST §8).
 
-## Panoramica
+## Overview
 
 ```
-M0 Fondamenta + spike ──► M1 Player ──► M2 Sottotitoli ──► M4 Mining Anki ══► 0.1.0 (MVP)
+M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 Anki mining ══► 0.1.0 (MVP)
         │                                   ▲                   ▲
-        └──► M3 Dizionari e lookup ─────────┴───────────────────┘
-                (logica pura: può procedere in parallelo a M1/M2)
+        └──► M3 Dictionaries and lookup ────┴───────────────────┘
+                (pure logic: can proceed in parallel with M1/M2)
 
-0.1.0 ──► M5 Libreria + audio parole (0.2.0) ──► M6 Statistiche, impostazioni, i18n (0.3.0)
-      ──► M7 Online: metadati e sottotitoli (0.4.0) ──► M8 Stabilizzazione ══► 1.0.0
+0.1.0 ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
+      ──► M7 Online: metadata and subtitles (0.4.0) ──► M8 Stabilization ══► 1.0.0
 ```
 
-| Milestone | Titolo | Dim. | Release | Stato |
+| Milestone | Title | Size | Release | Status |
 |---|---|---|---|---|
-| M0 | Fondamenta e spike | M | — | da iniziare |
-| M1 | Player minimo | M | — | da iniziare |
-| M2 | Sottotitoli propri | L | — | da iniziare |
-| M3 | Dizionari e lookup | XL | — | da iniziare |
-| M4 | Mining verso Anki | L | **0.1.0** (MVP alpha) | da iniziare |
-| M5 | Libreria e audio delle parole | L | 0.2.0 | da iniziare |
-| M6 | Statistiche, impostazioni, i18n, mining avanzato | M | 0.3.0 | da iniziare |
-| M7 | Metadati e sottotitoli online | M | 0.4.0 | da iniziare |
-| M8 | Stabilizzazione e pacchetti | M | **1.0.0** | da iniziare |
+| M0 | Foundations and spikes | M | — | in progress |
+| M1 | Minimal player | M | — | not started |
+| M2 | Own subtitle rendering | L | — | not started |
+| M3 | Dictionaries and lookup | XL | — | not started |
+| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | not started |
+| M5 | Library and word audio | L | 0.2.0 | not started |
+| M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
+| M7 | Online metadata and subtitles | M | 0.4.0 | not started |
+| M8 | Stabilization and packages | M | **1.0.0** | not started |
 
 ---
 
-## M0 — Fondamenta e spike
+## M0 — Foundations and spikes
 
-**Obiettivo**: preparare il workspace e la CI, e **eliminare i due rischi tecnici maggiori prima di scrivere funzioni**.
+**Goal**: set up the workspace and CI, and **remove the two biggest technical risks before writing features**.
 
-**Requisiti**: ARC-010, ARC-011, NFR-MAINT-01; politica di licenze (SPECIFICHE §3, §3.5).
+**Requirements**: ARC-010, ARC-011, NFR-MAINT-01; license policy (SPECIFICATION §3, §3.5).
 
-**Deliverable**
+**Deliverables**
 
-1. Workspace come in SPECIFICHE §5.1: crate vuoti con `lib.rs`, intestazioni SPDX `GPL-3.0-only`, `#![forbid(unsafe_code)]` dove richiesto.
-2. `rust-toolchain.toml`, `[workspace.dependencies]` centralizzate, `Cargo.lock` versionato, `clippy.toml` (`unwrap_used`, `expect_used` come errore nelle librerie).
-3. `deny.toml` con classe A, eccezioni di classe B per i soli crate elencati in SPECIFICHE §3.2, `bans` (niente versioni duplicate di crate pesanti senza motivo) e `sources` (solo crates.io).
-4. `about.toml` e generazione di `THIRD_PARTY_LICENSES.html`.
-5. `xtask` con i comandi:
+1. Workspace as in SPECIFICATION §5.1: empty crates with `lib.rs`, `GPL-3.0-only` SPDX headers, `#![forbid(unsafe_code)]` where required.
+2. `rust-toolchain.toml`, centralized `[workspace.dependencies]`, `Cargo.lock` under version control, `clippy.toml` (`unwrap_used`, `expect_used` as errors in libraries).
+3. `deny.toml` with Class A, Class B exceptions only for the crates listed in SPECIFICATION §3.2, `bans` (no duplicate versions of heavy crates without a reason) and `sources` (crates.io only).
+4. `about.toml` and generation of `THIRD_PARTY_LICENSES.html`.
+5. `xtask` with the commands:
    - `ci`: fmt, clippy, deny, test;
-   - `fixtures`: genera i media e i dizionari di test (TEST §4);
-   - `check-headers`: verifica le intestazioni SPDX;
-   - `trace`: matrice requisiti ↔ test;
+   - `fixtures`: generates the test media and dictionaries (TEST §4);
+   - `check-headers`: checks the SPDX headers;
+   - `trace`: requirements ↔ tests matrix;
    - `about`.
-6. Pipeline CI (servizio da scegliere quando si pubblica il repository) che chiama solo `cargo xtask ci` e `cargo xtask ci --full`.
-7. **Spike S1 — composizione video** (SPECIFICHE §5.2): finestra Dioxus con GtkOverlay(GLArea mpv + webview trasparente), un pulsante HTML sopra il video, un sottotitolo HTML finto che si aggiorna a ogni `time-pos`.
-8. **Spike S2 — storage dei dizionari**: import di un dizionario sintetico da 300k voci in redb e lookup con un deinflettore minimo.
-9. Per ogni spike, un ADR in `docs/adr/` (`0001-composizione-video.md`, `0002-storage-dizionari.md`) con misure, decisione e ripiego scelto. Il codice degli spike non entra in `crates/`: si riscrive pulito nelle milestone successive.
+6. CI pipeline (service to be chosen when the repository is published) that only calls `cargo xtask ci` and `cargo xtask ci --full`.
+7. **Spike S1 — video composition** (SPECIFICATION §5.2): Dioxus window with GtkOverlay(mpv GLArea + transparent webview), an HTML button over the video, a fake HTML subtitle that updates on every `time-pos`.
+8. **Spike S2 — dictionary storage**: import of a synthetic 300k-entry dictionary into redb and lookup with a minimal deinflector.
+9. For each spike, an ADR in `docs/adr/` (`0001-video-composition.md`, `0002-dictionary-storage.md`) with measurements, decision and chosen fallback. The spike code does not go into `crates/`: it is rewritten cleanly in later milestones.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] `cargo xtask ci` verde sul workspace vuoto (T-LIC-001, T-ARC-010, T-ARC-011, T-ARC-020).
-- [ ] S1 rispetta **tutti** questi punti su RIF, sia con Wayland (GNOME o KDE) sia con X11:
-  - 1080p60 H.264 e HEVC 10-bit per 5 minuti con hwdec, 0 fotogrammi persi e CPU ≤ 25% di un core (T-PERF-03);
-  - clic e tasti arrivano alla webview sopra il video;
-  - ridimensionamento, schermo intero e HiDPI 2× senza artefatti;
-  - 50 aperture e chiusure del player senza crescita della RSS oltre il 10%.
+- [x] `cargo xtask ci` green on the empty workspace (T-LIC-001, T-ARC-010, T-ARC-011, T-ARC-020); the canary T-LIC-002 (`cargo xtask check-licenses --canary`) confirms that a forbidden license makes CI fail.
+- [ ] S1 meets **all** of these points on REF, both with Wayland (GNOME or KDE) and with X11:
+  - 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and CPU ≤ 25% of one core (T-PERF-03);
+  - clicks and keys reach the webview over the video;
+  - resizing, fullscreen and HiDPI 2× without artifacts;
+  - 50 player opens and closes without RSS growth above 10%.
 
-  Se S1 fallisce, l'ADR sceglie un ripiego (B/C/D di SPECIFICHE §5.2.3) e si aggiorna questa roadmap prima di passare a M1.
-- [ ] S2: import ≤ 60 s e ≤ 1 GiB di RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). Se fallisce, l'ADR adotta il formato su misura (DIC-020).
-- [x] D-1 (deroghe di classe B) e D-3 (GPL-3.0-only) approvate dal maintainer (2026-10-19).
+  If S1 fails, the ADR picks a fallback (B/C/D of SPECIFICATION §5.2.3) and this roadmap is updated before moving to M1.
 
----
+  On 2026-10-19 the maintainer moved the X11 T-PERF-03 measurement to the M1 exit criteria, because it cannot be measured reliably with nested XWayland.
 
-## M1 — Player minimo
+  Status as of 2026-10-19 ([ADR 0001](adr/0001-video-composition.md)), automatic measurements in a virtual KWin on a machine with a dedicated GPU:
+  - [x] Wayland, T-PERF-03: 0 dropped frames in 5 minutes with H.264 and HEVC 10-bit (VA-API without copies); process CPU 9.8% and 9.6%.
+  - [x] Wayland and X11: 50 opens and closes with RSS −0.2% and +0.9%.
+  - [x] Wayland and X11: the render size follows resizing and fullscreen, without dropped frames; HiDPI 2× verified on X11 (`GDK_SCALE=2`).
+  - [x] X11, T-PERF-03: moved to M1. With nested XWayland, identical runs range from 0 to 5122 dropped frames, with CPU always below 21%; a measurement on a real X11 session is needed.
+  - [ ] By hand, on the real session: clicks and keys on the webview, no artifacts, HiDPI 2× on Wayland.
+  - [ ] On REF (integrated GPU): repeat T-PERF-03 on Wayland.
+- [x] S2: import ≤ 60 s and ≤ 1 GiB of RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). If it fails, the ADR adopts the custom format (DIC-020). — Passed: import of 300k entries in 2.3 s with 86 MiB; lookup p95 2.4 ms warm and 4.7 ms cold. redb is adopted ([ADR 0002](adr/0002-dictionary-storage.md)).
+- [x] D-1 (Class B exceptions) and D-3 (GPL-3.0-only) approved by the maintainer (2026-10-19).
+- [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English).
 
-**Obiettivo**: aprire un file e guardarlo con comandi completi da tastiera e mouse.
+**Progress notes** (2026-10-19)
 
-**Requisiti**: LIB-001, LIB-006 (salvataggio della posizione per singolo file), PLY-001…PLY-010, PLY-012, PLY-013, ARC-001…ARC-004, KEY-001…KEY-004 (scorciatoie M1 di SPECIFICHE §6.3), APP-001, EXT-001, ERR-001, ERR-002, PRV-001, PRV-002, DAT-001…DAT-003.
-
-**Deliverable**
-
-- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, opzioni mpv (PLY-005/006), ripresa con `start` (PLY-007), riuso tra un file e l'altro (PLY-009), parser delle opzioni mpv grezze.
-- `anikoto-app`: compositore Linux definitivo (dall'ADR 0001), istanza singola via socket, apertura da argomento o drag & drop.
-- `anikoto-ui`: pagina player con barra dei controlli (avanzamento, tempo, volume, velocità, tracce audio, schermo intero) e toast.
-- `config.toml` minimo, con scrittura atomica.
-- `library.redb` con la sola tabella `videos`.
-
-**Criteri di uscita**
-
-- [ ] T-PLY-001…T-PLY-013, T-KEY-001…T-KEY-004, T-APP-001 verdi.
-- [ ] GUI harness: apre una fixture, play/pausa/seek da tastiera, chiude e riapre e riprende dalla posizione salvata (T-E2E-001).
-- [ ] Checklist manuale TEST §9 sezione "Player" completata su Wayland e X11.
+- Deliverable 6 (CI pipeline) waits for the repository to be published: for now CI runs locally with `cargo xtask ci`.
+- The automatic S1 measurements run in an off-screen virtual KWin (`spikes/s1-composition/run-virtual.sh`): on the session in use, the window opened behind the others and, being covered, did not draw (see ADR 0001).
 
 ---
 
-## M2 — Sottotitoli propri
+## M1 — Minimal player
 
-**Obiettivo**: sottotitoli testuali disegnati da Anikoto, cliccabili per grafema, sincronizzati e navigabili.
+**Goal**: open a file and watch it with full keyboard and mouse controls.
 
-**Requisiti**: SUB-001…SUB-016, EXT-002, EXT-003, scorciatoie M2.
+**Requirements**: LIB-001, LIB-006 (position saving per single file), PLY-001…PLY-010, PLY-012, PLY-013, ARC-001…ARC-004, KEY-001…KEY-004 (M1 shortcuts of SPECIFICATION §6.3), APP-001, EXT-001, ERR-001, ERR-002, PRV-001, PRV-002, DAT-001…DAT-003.
 
-**Deliverable**
+**Deliverables**
+
+- `anikoto-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options.
+- `anikoto-app`: final Linux compositor (from ADR 0001), single instance via socket, opening from an argument or drag & drop.
+- `anikoto-ui`: player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
+- Minimal `config.toml`, with atomic writes.
+- `library.redb` with only the `videos` table.
+
+**Exit criteria**
+
+- [ ] T-PLY-001…T-PLY-013, T-KEY-001…T-KEY-004, T-APP-001 green.
+- [ ] GUI harness: opens a fixture, play/pause/seek from the keyboard, closes, reopens and resumes from the saved position (T-E2E-001).
+- [ ] Manual checklist TEST §9, "Player" section, completed on Wayland and X11.
+- [ ] T-PERF-03 on a real X11 session (Xorg): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer picks one of the X11 options listed in the ADR decision.
+
+---
+
+## M2 — Own subtitle rendering
+
+**Goal**: text subtitles drawn by Anikoto, clickable per grapheme, synchronized and navigable.
+
+**Requirements**: SUB-001…SUB-016, EXT-002, EXT-003, M2 shortcuts.
+
+**Deliverables**
 
 - `anikoto-subs`:
-  - parser SRT, VTT e ASS di base;
-  - modello `Cue { start_ms, end_ms, plain_text, markup }`;
-  - indice per ricerca binaria;
+  - basic SRT, VTT and ASS parsers;
+  - model `Cue { start_ms, end_ms, plain_text, markup }`;
+  - index for binary search;
   - offset;
-  - rilevamento della codifica tramite iconv (FFI in `anikoto-app::linux` o in un piccolo modulo `unsafe` dedicato, ARC-011).
-- `anikoto-media`: runner ffmpeg e ffprobe con timeout e cancellazione (EXT-002/003); estrazione delle tracce incorporate con cache.
+  - encoding detection via iconv (FFI in `anikoto-app::linux` or in a small dedicated `unsafe` module, ARC-011).
+- `anikoto-media`: ffmpeg and ffprobe runner with timeout and cancellation (EXT-002/003); extraction of embedded tracks with a cache.
 - `anikoto-ui`:
-  - overlay a grafemi;
-  - stile predefinito e "rispetta ASS";
-  - blur e nascondi;
-  - pannello lista con ricerca;
-  - navigazione prev/next/replay;
-  - Z/X e allineamento al playhead.
+  - grapheme overlay;
+  - default style and "respect ASS";
+  - blur and hide;
+  - list panel with search;
+  - prev/next/replay navigation;
+  - Z/X and alignment to the playhead.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-SUB-001…T-SUB-016 verdi, compresi i vettori di conformità con Fushi (TEST §5) per i parser.
-- [ ] T-FUZZ-001…T-FUZZ-003 (parser) senza panic per 10 minuti ciascuno.
-- [ ] T-PERF-07: cue visibile entro ≤ 50 ms dal suo start.
-- [ ] Checklist manuale "Sottotitoli" con almeno 3 file reali: SRT Shift_JIS, ASS di fansub con stili, MKV con 2 tracce incorporate.
+- [ ] T-SUB-001…T-SUB-016 green, including the Fushi conformance vectors (TEST §5) for the parsers.
+- [ ] T-FUZZ-001…T-FUZZ-003 (parsers) without panics for 10 minutes each.
+- [ ] T-PERF-07: cue visible within ≤ 50 ms of its start.
+- [ ] Manual checklist "Subtitles" with at least 3 real files: Shift_JIS SRT, fansub ASS with styles, MKV with 2 embedded tracks.
 
 ---
 
-## M3 — Dizionari e lookup
+## M3 — Dictionaries and lookup
 
-**Obiettivo**: importare dizionari Yomitan e fare lookup con qualità pari a Fushi, popup compreso.
+**Goal**: import Yomitan dictionaries and do lookups with the same quality as Fushi, popup included.
 
-**Requisiti**: DIC-001…DIC-003, DIC-010…DIC-016, DIC-020, DIC-021, DIC-030…DIC-035, LKP-001…LKP-050, LKP-060, POP-001…POP-015, NFR-SEC-01.
+**Requirements**: DIC-001…DIC-003, DIC-010…DIC-016, DIC-020, DIC-021, DIC-030…DIC-035, LKP-001…LKP-050, LKP-060, POP-001…POP-015, NFR-SEC-01.
 
-**Tracce di lavoro** (`anikoto-text` e `anikoto-dict` non dipendono dalla UI e possono iniziare in parallelo a M1):
+**Work tracks** (`anikoto-text` and `anikoto-dict` do not depend on the UI and can start in parallel with M1):
 
-1. `anikoto-text`: preprocessori (LKP-010…012), conversione kana, segni di iterazione, varianti dei kanji (tabella da Fushi), estrazione della frase, furigana (LKP-050), conteggio dei caratteri (STA-003, serve in M6).
+1. `anikoto-text`: preprocessors (LKP-010…012), kana conversion, iteration marks, kanji variants (table from Fushi), sentence extraction, furigana (LKP-050), character count (STA-003, needed in M6).
 2. `anikoto-dict`:
-   - import Yomitan sicuro (DIC-011), atomico (DIC-013) e annullabile;
-   - `DictStore` su redb;
-   - deinflettore sulle tabelle `assets/transforms`;
-   - scansione, unione, ordinamento e raggruppamento;
-   - frequenze, accento, kanji;
-   - cache LRU.
+   - safe (DIC-011), atomic (DIC-013) and cancellable Yomitan import;
+   - `DictStore` on redb;
+   - deinflector on the `assets/transforms` tables;
+   - scanning, merging, sorting and grouping;
+   - frequencies, pitch accent, kanji;
+   - LRU cache.
 3. `anikoto-ui`:
-   - gestione dei dizionari;
-   - popup (contenuto strutturato con lista di tag ammessi, CSS con `@scope`, immagini via `anikoto-dict://`);
-   - popup annidati;
-   - macchina a stati pausa/ripresa (POP-001/004/005);
-   - hover con Shift.
+   - dictionary management;
+   - popup (structured content with an allowlist of tags, CSS with `@scope`, images via `anikoto-dict://`);
+   - nested popups;
+   - pause/resume state machine (POP-001/004/005);
+   - hover with Shift.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-DIC-*, T-LKP-*, T-POP-* verdi, compresi **tutti** i vettori di conformità portati dai test di fushidicts (TEST §5.1).
-- [ ] T-PERF-04, T-PERF-05, T-PERF-06 entro le soglie.
-- [ ] T-SEC-001 (nessuno script eseguito dal contenuto dei dizionari) e T-SEC-002 (ZIP malevoli) verdi.
-- [ ] Prova manuale con JMdict (inglese), JMnedict, un dizionario di frequenza (es. JPDB) e uno di accento (es. NHK) importati dall'utente: le 50 parole della lista di TEST §9.3 danno lo stesso headword in Anikoto e in Fushi.
+- [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
+- [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
+- [ ] T-SEC-001 (no script executed from dictionary content) and T-SEC-002 (malicious ZIPs) green.
+- [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Anikoto and in Fushi.
 
 ---
 
-## M4 — Mining verso Anki → release 0.1.0 (MVP)
+## M4 — Mining to Anki → release 0.1.0 (MVP)
 
-**Obiettivo**: dal popup, una carta Lapis completa in un clic.
+**Goal**: from the popup, a complete Lapis card in one click.
 
-**Requisiti**: ANK-001…ANK-006, ANK-010…ANK-013, ANK-020…ANK-027, ANK-030…ANK-039, ANK-050…ANK-053, APP-002, PLY-011 (screenshot semplice), scorciatoia Ctrl+Enter.
+**Requirements**: ANK-001…ANK-006, ANK-010…ANK-013, ANK-020…ANK-027, ANK-030…ANK-039, ANK-050…ANK-053, APP-002, PLY-011 (simple screenshot), Ctrl+Enter shortcut.
 
-**Deliverable**
+**Deliverables**
 
-- `anikoto-anki`: client AnkiConnect (retry e duplicati come da specifica), composer dei campi, template Lapis vendorizzati (`assets/anki/lapis/` con `PROVENANCE.md`), link `anikoto://`.
-- `anikoto-media`: audio della frase e immagine (screenshot mpv → ffmpeg).
-- UI: impostazioni Anki (connessione, mazzo, tipo di nota, editor del mapping, "Crea mazzo Lapis", test di connessione), stati del pulsante + / ✓ / ✓↩, menu della carta esistente.
-- `.desktop` con `x-scheme-handler/anikoto`.
+- `anikoto-anki`: AnkiConnect client (retry and duplicates as in the specification), field composer, vendored Lapis templates (`assets/anki/lapis/` with `PROVENANCE.md`), `anikoto://` links.
+- `anikoto-media`: sentence audio and image (mpv screenshot → ffmpeg).
+- UI: Anki settings (connection, deck, note type, mapping editor, "Create Lapis deck", connection test), button states + / ✓ / ✓↩, menu for the existing card.
+- `.desktop` with `x-scheme-handler/anikoto`.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-ANK-* verdi su mock (wiremock).
-- [ ] T-E2E-ANKI-001 (Anki reale in Xvfb con AnkiConnect, eseguito di notte o a mano) verde.
+- [ ] T-ANK-* green on mocks (wiremock).
+- [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
 - [ ] T-PERF-08 ≤ 3 s.
-- [ ] Checklist manuale "Mining": 10 carte create da 2 episodi reali, controllate in Anki desktop e dopo la sincronizzazione su AnkiDroid (audio, immagine, grassetto nella frase, link di ritorno che riapre la scena).
-- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, istruzioni di build.
+- [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
+- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions.
 
 ---
 
-## M5 — Libreria e audio delle parole → 0.2.0
+## M5 — Library and word audio → 0.2.0
 
-**Requisiti**: LIB-002…LIB-005, LIB-007…LIB-012, AUD-001…AUD-008, spike **S3** (decisione D-2).
+**Requirements**: LIB-002…LIB-005, LIB-007…LIB-012, AUD-001…AUD-008, spike **S3** (decision D-2).
 
-**Deliverable**
+**Deliverables**
 
-- `anikoto-library`: import di cartelle, parser dei nomi file (porting di `video_filename_parser.dart` con i suoi vettori), serie ed episodi, tombstone, preferenze per serie, avanzamento automatico.
-- Home: "Continua a guardare", griglia delle serie, dettaglio della serie, copertine generate.
-- Audio delle parole: template URL, risposta JSON Yomitan o audio diretto, seconda istanza libmpv solo audio, cache LRU.
-- **Spike S3**: lettura read-only di un `android.db` reale con `turso` (MIT). Criteri: query (expression, reading) p95 ≤ 20 ms; nessuna licenza fuori classe A/B nel grafo. L'ADR `0003-db-audio-locale.md` conferma D-2, oppure la riapre se i criteri non sono rispettati.
+- `anikoto-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
+- Home: "Continue watching", series grid, series detail, generated covers.
+- Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
+- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0003-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-LIB-*, T-AUD-* verdi.
-- [ ] Import di una libreria reale di ≥ 200 episodi in ≤ 30 s (senza metadati online), con i raggruppamenti corretti controllati a mano.
+- [ ] T-LIB-*, T-AUD-* green.
+- [ ] Import of a real library of ≥ 200 episodes in ≤ 30 s (without online metadata), with the correct groupings checked by hand.
 - [ ] **Release 0.2.0**.
 
 ---
 
-## M6 — Statistiche, impostazioni complete, i18n, mining avanzato → 0.3.0
+## M6 — Statistics, full settings, i18n, advanced mining → 0.3.0
 
-**Requisiti**: STA-001…STA-005, SET-001…SET-007, ANK-040, ANK-041, NFR-A11Y-01.
+**Requirements**: STA-001…STA-005, SET-001…SET-007, ANK-040, ANK-041, NFR-A11Y-01.
 
-**Deliverable**
+**Deliverables**
 
-- Tracker della visione (copertura per intervalli, crediti per cue), orologio delle sessioni, pagina statistiche, export CSV.
-- Pagina impostazioni completa, editor delle scorciatoie con controllo dei conflitti, temi chiaro/scuro/sistema, scala dell'interfaccia.
-- Fluent con `it` ed `en` completi.
-- Dialogo di mining avanzato; frasi multiple.
+- Watch tracker (interval coverage, per-cue credits), session clock, statistics page, CSV export.
+- Full settings page, shortcut editor with conflict checks, light/dark/system themes, interface scale.
+- Fluent with complete `it` and `en`.
+- Advanced mining dialog; multiple sentences.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-STA-*, T-SET-*, T-I18N-*, T-A11Y-* verdi.
-- [ ] Giro completo dell'app con la sola tastiera (T-E2E-A11Y-001).
+- [ ] T-STA-*, T-SET-*, T-I18N-*, T-A11Y-* green.
+- [ ] Full tour of the app with the keyboard only (T-E2E-A11Y-001).
 - [ ] **Release 0.3.0**.
 
 ---
 
-## M7 — Metadati e sottotitoli online → 0.4.0
+## M7 — Online metadata and subtitles → 0.4.0
 
-**Requisiti**: MET-001…MET-005, SUB-017, SUB-018.
+**Requirements**: MET-001…MET-005, SUB-017, SUB-018.
 
-**Deliverable**
+**Deliverables**
 
-- Crate `anikoto-online`: client AniList (GraphQL), Jikan con limite di frequenza, Jimaku, OpenSubtitles. Tutti dietro un trait e con test su server finto.
-- UI: identificazione della serie (automatica se univoca, altrimenti scelta dell'utente), ricerca e download di sottotitoli per episodio.
-- Sottotitolo secondario; allineamento automatico con la forma d'onda.
+- Crate `anikoto-online`: AniList client (GraphQL), Jikan with rate limiting, Jimaku, OpenSubtitles. All behind a trait and with tests against a fake server.
+- UI: series identification (automatic if unique, otherwise chosen by the user), subtitle search and download per episode.
+- Secondary subtitle; automatic alignment with the waveform.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] T-MET-* verdi su server finti; T-MET-LIVE-* (rete reale, solo di notte e con chiavi) verdi.
-- [ ] Allineamento: su 5 coppie reali (sottotitolo scaricato + traccia incorporata) l'errore residuo è ≤ 150 ms.
+- [ ] T-MET-* green on fake servers; T-MET-LIVE-* (real network, nightly only and with keys) green.
+- [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 - [ ] **Release 0.4.0**.
 
 ---
 
-## M8 — Stabilizzazione e pacchetti → 1.0.0
+## M8 — Stabilization and packages → 1.0.0
 
-**Requisiti**: tutti gli NFR non assegnati ad altre milestone (NFR-PERF-*, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
+**Requirements**: all NFRs not assigned to other milestones (NFR-PERF-*, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
 
-**Deliverable**
+**Deliverables**
 
-- Pacchetti: PKGBUILD (AUR) e Flatpak (manifest con libmpv e ffmpeg, runtime GNOME), come deciso in D-5.
-- Guida utente in `docs/guida/` (italiano e inglese): installazione, primo avvio, import dei dizionari, configurazione di Anki con AnkiConnect (codice 2055492159).
-- Revisione di sicurezza (TEST §6.7) e dell'accessibilità.
-- Ottimizzazione finché tutti i T-PERF passano su RIF.
-- Pulizia del backlog dei bug P1/P2.
+- Packages: PKGBUILD (AUR) and Flatpak (manifest with libmpv and ffmpeg, GNOME runtime), as decided in D-5.
+- User guide in `docs/guide/` (Italian and English): installation, first start, dictionary import, Anki setup with AnkiConnect (code 2055492159).
+- Security review (TEST §6.7) and accessibility review.
+- Optimization until all T-PERF pass on REF.
+- Cleanup of the P1/P2 bug backlog.
 
-**Criteri di uscita**
+**Exit criteria**
 
-- [ ] Tutti i test automatici verdi; nessun bug aperto di priorità P1.
-- [ ] Checklist manuale di rilascio TEST §9 completa su: GNOME Wayland, KDE Wayland, X11 (Xfce o i3), GPU Intel, AMD e NVIDIA (driver proprietario).
-- [ ] `THIRD_PARTY_LICENSES.html` incluso nei pacchetti e visibile in "Informazioni".
+- [ ] All automatic tests green; no open P1 bugs.
+- [ ] Manual release checklist TEST §9 complete on: GNOME Wayland, KDE Wayland, X11 (Xfce or i3), Intel, AMD and NVIDIA GPUs (proprietary driver).
+- [ ] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About".
 - [ ] **Release 1.0.0**.
 
 ---
 
-## Dopo la 1.0 (backlog, senza ordine vincolante)
+## After 1.0 (backlog, in no binding order)
 
-Ogni voce richiede una modifica di SPECIFICHE.md prima di iniziare.
+Every item requires a change to SPECIFICATION.md before work starts.
 
-| Voce | Note su licenze e dipendenze |
+| Item | Notes on licenses and dependencies |
 |---|---|
-| Porting Windows e macOS (SPECIFICHE §5.2.4) | WebView2 / WKWebView; libmpv e ffmpeg da distribuire (LGPL/GPL, obblighi sul sorgente) |
-| Clip video WebM e copertine animate (ANK-042) | Encoder libvpx (BSD) e SVT-AV1 (BSD) **dentro ffmpeg di sistema**: sono processi esterni, non crate |
-| ASS avanzato (SUB-019), screenshot con sottotitoli (PLY-015), miniature sulla barra (PLY-014) | |
-| Furigana automatico sui sottotitoli (LKP-051), evidenziazione delle parole già minate | Usa LKP-060 e `mined_cards` |
-| Lookup dagli appunti e texthooker WebSocket (visual novel con Textractor/LunaTranslator esterni) | `tokio-tungstenite` (MIT) |
-| Import MDict, StarDict, DSL (DIC-004) | `ammonia` (MIT/Apache) per l'HTML |
-| Lettore EPUB (con il formato di sync ttu) e audiolibri | Grande; da rivalutare come progetto a parte |
-| SRS integrato | `fsrs` è BSD-3-Clause: o una deroga, o un'implementazione propria di FSRS in GPL dall'algoritmo pubblicato |
-| Backup/ripristino e sync WebDAV | |
-| Navigazione di Jellyfin e Plex | |
-| Identificazione AniDB ed2k (MET-006) | Registrare un client AniDB; `md4`/`ed2k` (MIT/Apache) |
-| Chiavi API nel keyring (MET-005) | `oo7` o `secret-service` (verificare le licenze) |
-| Interfaccia in giapponese | Fluent `ja` |
+| Windows and macOS port (SPECIFICATION §5.2.4) | WebView2 / WKWebView; libmpv and ffmpeg must be distributed (LGPL/GPL, source code obligations) |
+| WebM video clips and animated covers (ANK-042) | libvpx (BSD) and SVT-AV1 (BSD) encoders **inside the system ffmpeg**: they are external processes, not crates |
+| Advanced ASS (SUB-019), screenshots with subtitles (PLY-015), thumbnails on the seek bar (PLY-014) | |
+| Automatic furigana on subtitles (LKP-051), highlighting of already mined words | Uses LKP-060 and `mined_cards` |
+| Lookup from the clipboard and WebSocket texthooker (visual novels with external Textractor/LunaTranslator) | `tokio-tungstenite` (MIT) |
+| MDict, StarDict, DSL import (DIC-004) | `ammonia` (MIT/Apache) for the HTML |
+| EPUB reader (with the ttu sync format) and audiobooks | Large; to be re-evaluated as a separate project |
+| Built-in SRS | `fsrs` is BSD-3-Clause: either an exception, or our own GPL implementation of FSRS from the published algorithm |
+| Backup/restore and WebDAV sync | |
+| Jellyfin and Plex browsing | |
+| AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |
+| API keys in the keyring (MET-005) | `oo7` or `secret-service` (check the licenses) |
+| Japanese interface | Fluent `ja` |
 
 ---
 
-## Definizione di "fatto" (vale per ogni PR)
+## Definition of done (applies to every PR)
 
-1. I requisiti toccati sono citati nel titolo o nella descrizione della PR.
-2. Ogni requisito implementato ha almeno un test marcato con il suo ID (`// T-XXX-NNN`).
-3. `cargo xtask ci` è verde (fmt, clippy `-D warnings`, deny, test, intestazioni, trace).
-4. Il codice portato da Fushi o da altri progetti GPL ha l'intestazione di provenienza (SPECIFICHE §2.2).
-5. Le stringhe visibili sono in Fluent, per `it` ed `en`.
-6. Ogni bug corretto ha un test di regressione `AK-BUG-NNN` (TEST §7).
-7. CHANGELOG aggiornato nella sezione `[Unreleased]`.
-8. Se cambia un comportamento specificato, SPECIFICHE.md è aggiornato **nella stessa PR**.
+1. The affected requirements are cited in the PR title or description.
+2. Every implemented requirement has at least one test marked with its ID (`// T-XXX-NNN`).
+3. `cargo xtask ci` is green (fmt, clippy `-D warnings`, deny, test, headers, trace).
+4. Code ported from Fushi or from other GPL projects has the provenance header (SPECIFICATION §2.2).
+5. Visible strings are in Fluent, for `it` and `en`.
+6. Every fixed bug has an `AK-BUG-NNN` regression test (TEST §7).
+7. CHANGELOG updated in the `[Unreleased]` section.
+8. If a specified behavior changes, SPECIFICATION.md is updated **in the same PR**.
+9. Documents, code comments and commit messages are in English (D-9).
 
-## Versioni
+## Versions
 
-- SemVer. Fino alla 1.0, `0.MINOR.PATCH`: MINOR per ogni milestone, PATCH per le correzioni.
-- Lo schema di `library.redb` si può cambiare solo con una migrazione (DAT-001), anche prima della 1.0.
-- CHANGELOG nel formato *Keep a Changelog*.
+- SemVer. Until 1.0, `0.MINOR.PATCH`: MINOR for each milestone, PATCH for fixes.
+- The `library.redb` schema can only change with a migration (DAT-001), even before 1.0.
+- CHANGELOG in the *Keep a Changelog* format.
