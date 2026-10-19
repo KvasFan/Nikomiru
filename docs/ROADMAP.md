@@ -81,6 +81,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
   - [x] X11, T-PERF-03: moved to M1. With nested XWayland, identical runs range from 0 to 5122 dropped frames, with CPU always below 21%; a measurement on a real X11 session is needed.
   - [ ] By hand, on the real session: clicks and keys on the webview, no artifacts, HiDPI 2× on Wayland.
   - [ ] On REF (integrated GPU): repeat T-PERF-03 on Wayland. On the Radeon 610M (2 CUs, the weakest iGPU that fits REF) 1080p60 drops 9–22 frames in 30 s, even with the overlay frozen; a mid-range iGPU still has to be measured (ADR 0001).
+  - [ ] **Spike S1q (Qt 6 Quick)**, proposed by the maintainer after the 4K revision of ADR 0001: at 4K under heavy CPU load it holds 60 renders/s with 0–2 dropped frames, like mpv alone (Dioxus: 14 renders/s, 912 dropped), and 0 dropped on the integrated GPU. [ADR 0003](adr/0003-qt-quick-ui.md) is proposed; it needs the check on the real session and the maintainer's approval, then a revision of SPECIFICATION.
 - [x] S2: import ≤ 60 s and ≤ 1 GiB of RAM (T-PERF-05); lookup p95 ≤ 10 ms (T-PERF-04). If it fails, the ADR adopts the custom format (DIC-020). — Passed: import of 300k entries in 2.3 s with 86 MiB; lookup p95 2.4 ms warm and 4.7 ms cold. redb is adopted ([ADR 0002](adr/0002-dictionary-storage.md)).
 - [x] D-1 (Class B exceptions) and D-3 (GPL-3.0-only) approved by the maintainer (2026-10-19).
 - [x] D-7 (5 Class B procedural macros that emerged from the real graph) and D-8 (CC0 exception for `base16`, brought in by the Dioxus `router` feature) approved by the maintainer (2026-10-19), together with D-9 (documents and comments in English).
@@ -221,7 +222,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - `anikoto-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
 - Home: "Continue watching", series grid, series detail, generated covers.
 - Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
-- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0003-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
+- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
 
 **Exit criteria**
 

@@ -5,6 +5,7 @@ Time-boxed prototypes that reduce technical risks before the features are writte
 | Spike | Question | Outcome |
 |---|---|---|
 | [`s1-composition/`](s1-composition/) | mpv video (GtkGLArea) and Dioxus UI (transparent webview) in the same window, with a `GtkOverlay` | [ADR 0001](../docs/adr/0001-video-composition.md) |
+| [`s1q-qt/`](s1q-qt/) | The same, with Qt 6 Quick instead of Dioxus: mpv in a `QQuickFramebufferObject` rendered on Qt Quick's render thread, QML overlay, Rust through cxx-qt | [ADR 0003](../docs/adr/0003-qt-quick-ui.md) (proposed) |
 | [`s2-storage/`](s2-storage/) | Can redb handle dictionary import and lookup within NFR-PERF-04/05? | [ADR 0002](../docs/adr/0002-dictionary-storage.md) |
 
 ## How to run them
@@ -31,3 +32,11 @@ GDK_BACKEND=wayland spikes/s1-composition/run-virtual.sh "$PWD/target/fixtures/a
 ```
 
 The JSON report goes to stdout.
+
+S1q needs Qt ≥ 6.5 with its development files, `qmake6`, a C++ compiler and libmpv:
+
+```sh
+cd spikes/s1q-qt && QMAKE=qmake6 cargo build --release && cd ../..
+spikes/s1q-qt/target/release/spike-s1q-qt target/fixtures/av_hd60_h264.mkv --measure 60   # on the real session
+spikes/s1q-qt/run-virtual.sh "$PWD/target/fixtures/av_hd60_h264.mkv" --fullscreen --measure 20   # virtual KWin, 4K
+```

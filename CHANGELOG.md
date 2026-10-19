@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - License policy enforced: `deny.toml` (Class A, Class B exceptions of SPECIFICATION §3.2, ban on the alternatives rejected in §3.6), `about.toml` and the `THIRD_PARTY_LICENSES.html` template.
 - `cargo xtask` with the commands `ci [--full]`, `fixtures [--large] [--perf]`, `check-headers`, `check-licenses [--canary]`, `trace` and `about`.
 - Spikes S1 (video composition) and S2 (dictionary storage) in `spikes/`, with the measurements and the decisions in `docs/adr/`.
+- Spike S1q (Qt 6 Quick + cxx-qt + mpv render on the scene graph thread) and ADR 0003 (proposed): Qt Quick as the UI toolkit instead of Dioxus.
 
 ### Changed
 
