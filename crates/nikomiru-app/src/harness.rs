@@ -10,6 +10,7 @@
 //! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
 //! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
+//! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
 //! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
@@ -111,6 +112,16 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("state") => harness::state(),
         Some("dict_css") => {
             harness::dict_css(text(command, "id")?, text(command, "css")?).map(|()| Value::Null)
+        }
+        Some("card") => {
+            let index = |name: &str| {
+                command[name]
+                    .as_u64()
+                    .map(|v| v as usize)
+                    .ok_or_else(|| format!("missing \"{name}\""))
+            };
+            harness::card(index("level")?, index("entry")?, command["item"].as_str())
+                .map(|()| Value::Null)
         }
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),
         Some("quit") => harness::quit().map(|()| Value::Null),

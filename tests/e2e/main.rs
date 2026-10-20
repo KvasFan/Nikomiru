@@ -128,6 +128,124 @@ fn s_saves_the_frame_shown_in_the_pictures_folder() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014 (Ctrl+Enter), T-PERF-08
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_is_made_from_the_popup() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\ntags = [\"mine\"]\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    // the check found no card: +
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+
+    // Ctrl+Enter makes the card of the entry the keyboard is on
+    let started = std::time::Instant::now();
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = match h
+        .try_cmd(serde_json::json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }))
+    {
+        Ok(v) => v,
+        Err(e) => panic!("{e}\nstate: {}\nlog:\n{}", h.state(), desk.log()),
+    };
+    let elapsed = started.elapsed();
+    eprintln!("T-PERF-08 Ctrl+Enter → card-created: {elapsed:?}");
+    assert!(elapsed <= Duration::from_secs(3), "T-PERF-08: {elapsed:?}");
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let anki = fake.collection();
+        let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+        assert_eq!(
+            (note.deck.as_str(), note.model.as_str()),
+            ("Lapis", "Lapis")
+        );
+        assert_eq!(note.tags, ["mine", "nikomiru", "video"]);
+        let field = |name: &str| {
+            note.fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(field("Expression"), "食べる");
+        assert_eq!(field("ExpressionFurigana"), "食[た]べる");
+        assert_eq!(field("Sentence"), "<b>食べました</b>");
+        assert_eq!(field("FreqSort"), "120");
+        assert_eq!(field("IsWordAndSentenceCard"), "x");
+        assert!(
+            field("Glossary").contains("to eat"),
+            "{}",
+            field("Glossary")
+        );
+        let misc = field("MiscInfo");
+        assert!(
+            misc.contains("nikomiru://source?v=1&amp;kind=video&amp;uid=video%2Fav_basic&amp;ep=0&amp;startMs=1880&amp;endMs=2700"),
+            "{misc}"
+        );
+        assert!(
+            misc.ends_with(">av_basic</a> 00:00:01 - 00:00:02"),
+            "{misc}"
+        );
+        let audio = field("SentenceAudio");
+        let picture = field("Picture");
+        assert!(
+            audio.starts_with("[sound:nikomiru_") && audio.ends_with(".m4a]"),
+            "{audio}"
+        );
+        assert!(
+            picture.starts_with("<img src=\"nikomiru_") && picture.ends_with(".jpg\">"),
+            "{picture}"
+        );
+        let names: Vec<&String> = anki.media.keys().collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        let jpeg = anki
+            .media
+            .iter()
+            .find(|(n, _)| n.ends_with(".jpg"))
+            .unwrap()
+            .1;
+        assert_eq!(&jpeg[..3], [0xFF, 0xD8, 0xFF]);
+    }
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+
+    // ✓↩: the menu, then overwrite (ANK-037): the same note
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "overwrite" }));
+    let again = h.wait("card-created");
+    assert_eq!(again["note_id"].as_u64(), Some(note_id));
+    assert_eq!(fake.collection().notes.len(), 1);
+    assert!(fake.actions().contains(&"updateNoteFields".to_string()));
+    // add anyway: a second note
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "add-anyway" }));
+    let second = h.wait("card-created")["note_id"].as_u64().unwrap();
+    assert_ne!(second, note_id);
+    assert_eq!(fake.collection().notes.len(), 2);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // ANK-039: the cards made are in the library
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let card = library.mined_card(second).unwrap().unwrap();
+    assert_eq!(
+        (card.expression.as_str(), card.video_uid.as_str()),
+        ("食べる", "video/av_basic")
+    );
+    assert_eq!((card.start_ms, card.end_ms), (1880, 2700));
+    assert_eq!(library.mined_card_count().unwrap(), 2);
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

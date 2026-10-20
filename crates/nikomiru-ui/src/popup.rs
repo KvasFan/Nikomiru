@@ -102,6 +102,10 @@ pub struct Popup {
     pub reply: Option<Reply>,
     /// The entry the keyboard is on (POP-014).
     pub entry: usize,
+    /// The card button of each entry (ANK-030).
+    pub cards: Vec<crate::mining::CardState>,
+    /// The entry whose card menu is open.
+    pub menu: Option<usize>,
 }
 
 /// The open popups, root first.
@@ -169,6 +173,8 @@ impl Popups {
             generation: self.generation,
             reply: None,
             entry: 0,
+            cards: Vec::new(),
+            menu: None,
         });
         Command::Lookup {
             generation: self.generation,
@@ -272,11 +278,18 @@ impl Popups {
     pub fn deliver(&mut self, generation: u64, reply: Reply) -> bool {
         match self.stack.iter_mut().find(|p| p.generation == generation) {
             Some(p) => {
+                p.cards = vec![crate::mining::CardState::Unknown; reply.entries];
+                p.menu = None;
                 p.reply = Some(reply);
                 true
             }
             None => false,
         }
+    }
+
+    /// The open popups, to change their card buttons.
+    pub fn stack_mut(&mut self) -> &mut [Popup] {
+        &mut self.stack
     }
 
     /// The query range to highlight in a cue (POP-002): the cue, the byte of

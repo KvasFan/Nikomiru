@@ -43,6 +43,7 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
         UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
+        UiEvent::CardCreated(note_id) => ("card-created", json!({ "note_id": note_id })),
         UiEvent::ScreenshotSaved(path) => (
             "screenshot-saved",
             json!({ "path": path.to_string_lossy() }),
@@ -223,6 +224,8 @@ pub fn state() -> Result<Value, String> {
                 "entries": p.reply.as_ref().map_or(0, |r| r.entries),
                 "loading": p.reply.is_none(),
                 "empty": p.reply.as_ref().is_some_and(|r| r.empty),
+                "cards": p.cards.iter().map(|c| c.name()).collect::<Vec<_>>(),
+                "menu": p.menu,
             })).collect::<Vec<_>>(),
             "paused_for_lookup": s.popups.paused_for_lookup(),
             "dictionaries": s.dict_page.json(),
@@ -260,6 +263,22 @@ pub fn popup_button(button: &str) -> Result<(), String> {
         "replay" => Command::PopupReplay,
         "goto" => Command::PopupGoto,
         other => return Err(format!("no popup button {other}")),
+    };
+    call(move |ui| ui.run(command))
+}
+
+/// The card button of entry `entry` of popup `level`, or an item of its
+/// menu (`overwrite`, `open-in-anki`, `add-anyway`), like the user's click
+/// (ANK-030).
+pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String> {
+    let command = match item {
+        None => Command::CardButton { level, entry },
+        Some(name) => Command::CardMenu {
+            level,
+            entry,
+            item: crate::mining::MenuItem::from_name(name)
+                .ok_or_else(|| format!("no card menu item {name}"))?,
+        },
     };
     call(move |ui| ui.run(command))
 }

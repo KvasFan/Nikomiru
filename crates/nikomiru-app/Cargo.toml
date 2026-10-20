@@ -25,6 +25,7 @@ required-features = ["test-harness"]
 test-harness = ["nikomiru-ui/test-harness"]
 
 [dependencies]
+nikomiru-anki.workspace = true
 nikomiru-core.workspace = true
 nikomiru-dict.workspace = true
 nikomiru-library.workspace = true
@@ -52,6 +53,8 @@ libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# the fake AnkiConnect of the mining tests
+nikomiru-anki = { workspace = true, features = ["test-support"] }
 # the L6 tests write a large dictionary for an import to interrupt
 zip.workspace = true
 wayland-protocols-wlr.workspace = true

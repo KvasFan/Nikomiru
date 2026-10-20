@@ -365,6 +365,17 @@ fn run(
     );
     let config_language = config.general.ui_language.clone();
     let max_results = config.lookup.max_results;
+    let anki = nikomiru_app::anki::Anki::start(nikomiru_app::anki::Parts {
+        config: config.anki.clone(),
+        ffmpeg: config.paths.ffmpeg.clone(),
+        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        dictionaries: dictionaries.clone(),
+        max_results,
+        frames: Box::new(player.handle()),
+        cache_dir: paths.cache_dir.join("mining"),
+        library: library.clone(),
+        clock: Arc::new(SystemClock::new()),
+    });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -384,6 +395,7 @@ fn run(
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
         screenshots_dir: paths.screenshots_dir(),
+        anki: Box::new(anki),
     };
     let instance = server.map(|server| {
         let waker = waker.clone();

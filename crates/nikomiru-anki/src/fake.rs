@@ -112,7 +112,7 @@ impl Default for Collection {
 struct Shared {
     collection: Mutex<Collection>,
     requests: Mutex<Vec<Value>>,
-    script: Mutex<VecDeque<Behaviour>>,
+    script: Mutex<VecDeque<(Option<String>, Behaviour)>>,
     key: Mutex<String>,
     unsupported: Mutex<Vec<String>>,
 }
@@ -186,7 +186,13 @@ impl FakeAnki {
 
     /// Does `behaviour` with the next request, instead of answering it.
     pub fn then(&self, behaviour: Behaviour) {
-        lock(&self.shared.script).push_back(behaviour);
+        lock(&self.shared.script).push_back((None, behaviour));
+    }
+
+    /// Does `behaviour` with the next request of `action`, instead of
+    /// answering it.
+    pub fn on(&self, action: &str, behaviour: Behaviour) {
+        lock(&self.shared.script).push_back((Some(action.to_string()), behaviour));
     }
 
     /// The bodies of the requests so far (a body that is not JSON is a string).
@@ -282,7 +288,15 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
     let request: Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&body).into_owned()));
     lock(&shared.requests).push(request.clone());
-    let behaviour = lock(&shared.script).pop_front();
+    let behaviour = {
+        let mut script = lock(&shared.script);
+        let action = request["action"].as_str().unwrap_or_default();
+        script
+            .iter()
+            .position(|(only, _)| only.as_deref().is_none_or(|a| a == action))
+            .and_then(|i| script.remove(i))
+            .map(|(_, b)| b)
+    };
     match behaviour {
         None => {
             let reply = answer(shared, &request);

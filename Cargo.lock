@@ -2218,6 +2218,7 @@ dependencies = [
  "glutin",
  "glutin-winit",
  "libc",
+ "nikomiru-anki",
  "nikomiru-core",
  "nikomiru-dict",
  "nikomiru-library",

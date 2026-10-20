@@ -92,11 +92,13 @@ pub enum Action {
     PopupNext,
     /// The previous entry of the popup (POP-014).
     PopupPrev,
+    /// Makes the card of the entry the keyboard is on (ANK-030, POP-014).
+    CreateCard,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 33] = [
+    pub const ALL: [Action; 34] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -130,6 +132,7 @@ impl Action {
         Action::SubAlignNext,
         Action::PopupNext,
         Action::PopupPrev,
+        Action::CreateCard,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the log.
@@ -168,6 +171,7 @@ impl Action {
             Action::SubAlignNext => "sub_align_next",
             Action::PopupNext => "popup_next",
             Action::PopupPrev => "popup_prev",
+            Action::CreateCard => "create_card",
         }
     }
 
@@ -180,7 +184,7 @@ impl Action {
     pub fn context(self) -> Context {
         match self {
             Action::OpenFile => Context::Global,
-            Action::PopupNext | Action::PopupPrev => Context::Popup,
+            Action::PopupNext | Action::PopupPrev | Action::CreateCard => Context::Popup,
             _ => Context::Player,
         }
     }
@@ -221,6 +225,7 @@ impl Action {
             Action::SubAlignNext => &["Ctrl+Shift+ArrowRight"],
             Action::PopupNext => &["Tab"],
             Action::PopupPrev => &["Shift+Tab"],
+            Action::CreateCard => &["Ctrl+Enter"],
         }
     }
 }

@@ -63,6 +63,8 @@ pub enum UiEvent {
     DictionaryImported,
     /// A screenshot was written (PLY-011).
     ScreenshotSaved(PathBuf),
+    /// A card was made or overwritten in Anki: its note id.
+    CardCreated(u64),
     /// A popup was drawn with its content (T-PERF-06).
     PopupRendered {
         /// Its level (0 = from the subtitles).
@@ -161,6 +163,8 @@ pub struct Services {
     pub dictionaries: Box<dyn DictionaryService>,
     /// Where screenshots go (PLY-011).
     pub screenshots_dir: PathBuf,
+    /// Mining to Anki (ADR 0007).
+    pub anki: Box<dyn crate::mining::AnkiService>,
 }
 
 impl std::fmt::Debug for Services {
@@ -211,6 +215,9 @@ pub struct Session {
     pub popups: Popups,
     lookups: Vec<(u64, String)>,
     screenshots: Vec<String>,
+    anki_jobs: Vec<crate::mining::AnkiJob>,
+    /// The last card made since Nikomiru started (ANK-030).
+    last_card: Option<crate::mining::LastCard>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -328,6 +335,8 @@ impl Session {
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             screenshots: Vec::new(),
+            anki_jobs: Vec::new(),
+            last_card: None,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -575,6 +584,275 @@ impl Session {
         self.popups.move_entry(delta);
     }
 
+    /// The Anki jobs to start, taken by the UI layer.
+    pub fn take_anki_jobs(&mut self) -> Vec<crate::mining::AnkiJob> {
+        std::mem::take(&mut self.anki_jobs)
+    }
+
+    /// The Anki service.
+    pub fn anki(&self) -> &dyn crate::mining::AnkiService {
+        self.services.anki.as_ref()
+    }
+
+    /// Marks the last card's entries `✓↩` (ANK-030).
+    fn apply_last_card(&mut self) {
+        use crate::mining::CardState;
+        let last = self.last_card.clone();
+        for p in self.popups.stack_mut() {
+            let Some(reply) = &p.reply else { continue };
+            for (k, e) in reply.content.entries.iter().enumerate() {
+                let Some(state) = p.cards.get_mut(k) else {
+                    continue;
+                };
+                match &last {
+                    Some(l) if l.expression == e.expression && l.reading == e.reading => {
+                        if *state != CardState::Busy {
+                            *state = CardState::Last(l.note_id);
+                        }
+                    }
+                    _ if matches!(state, CardState::Last(_)) => *state = CardState::Exists,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// The answer of a check (ANK-030).
+    pub fn card_states(&mut self, generation: u64, states: Option<Vec<bool>>) {
+        use crate::mining::CardState;
+        let Some(p) = self
+            .popups
+            .stack_mut()
+            .iter_mut()
+            .find(|p| p.generation == generation)
+        else {
+            return;
+        };
+        if let Some(states) = states {
+            for (card, exists) in p.cards.iter_mut().zip(states) {
+                if matches!(
+                    card,
+                    CardState::Unknown | CardState::CanAdd | CardState::Exists
+                ) {
+                    *card = if exists {
+                        CardState::Exists
+                    } else {
+                        CardState::CanAdd
+                    };
+                }
+            }
+        }
+        self.apply_last_card();
+    }
+
+    /// A click on an entry's card button, or Ctrl+Enter (ANK-030, POP-014).
+    pub fn card_button(&mut self, level: usize, entry: usize) {
+        use crate::mining::{CardAction, CardState};
+        let Some(p) = self.popups.stack_mut().get_mut(level) else {
+            return;
+        };
+        let state = p.cards.get(entry).copied().unwrap_or_default();
+        match state {
+            CardState::Busy => {}
+            s if s.has_menu() => {
+                p.menu = if p.menu == Some(entry) {
+                    None
+                } else {
+                    Some(entry)
+                };
+            }
+            _ => self.start_mining(level, entry, CardAction::Add),
+        }
+    }
+
+    /// An item of an entry's card menu (ANK-030, ANK-037, ANK-038).
+    pub fn card_menu(&mut self, level: usize, entry: usize, item: crate::mining::MenuItem) {
+        use crate::mining::{AnkiJob, BrowseTarget, CardAction, CardState, MenuItem};
+        let Some(p) = self.popups.stack_mut().get_mut(level) else {
+            return;
+        };
+        p.menu = None;
+        let state = p.cards.get(entry).copied().unwrap_or_default();
+        let Some(e) = p.reply.as_ref().and_then(|r| r.content.entries.get(entry)) else {
+            return;
+        };
+        let (expression, reading) = (e.expression.clone(), e.reading.clone());
+        match (item, state) {
+            (MenuItem::Overwrite, CardState::Last(id)) => {
+                self.start_mining(level, entry, CardAction::Overwrite(id));
+            }
+            (MenuItem::AddAnyway, _) => self.start_mining(level, entry, CardAction::AddAnyway),
+            (MenuItem::OpenInAnki, CardState::Last(id)) => {
+                self.anki_jobs.push(AnkiJob::Browse(BrowseTarget::Note(id)));
+            }
+            (MenuItem::OpenInAnki, _) => {
+                self.anki_jobs.push(AnkiJob::Browse(BrowseTarget::Word {
+                    expression,
+                    reading,
+                }));
+            }
+            (MenuItem::Overwrite, _) => {}
+        }
+    }
+
+    /// The reference cue of a card (ANK-031): the one the lookup started from,
+    /// the current one, the one found by position.
+    fn reference_cue(&self) -> Option<usize> {
+        let t = self.subs.timeline();
+        let pos = (self.view.time_pos * 1000.0) as i64;
+        self.popups
+            .root_cue()
+            .filter(|&c| c < t.cues().len())
+            .or_else(|| t.active(pos).first().copied())
+            .or_else(|| t.near(pos))
+    }
+
+    /// Builds the request for a card from entry `entry` of popup `level`.
+    fn start_mining(&mut self, level: usize, entry: usize, action: crate::mining::CardAction) {
+        use crate::mining::{AnkiJob, CardState, MineRequest};
+        let Some(current) = &self.current else {
+            return;
+        };
+        let Some(p) = self.popups.stack().get(level) else {
+            return;
+        };
+        let Some(e) = p.reply.as_ref().and_then(|r| r.content.entries.get(entry)) else {
+            return;
+        };
+        let anki = &self.services.config.anki;
+        let t = self.subs.timeline();
+        let cue = self.reference_cue();
+        let sentence = cue
+            .and_then(|c| t.cues().get(c))
+            .map(|c| c.plain_text.clone())
+            .unwrap_or_default();
+        // the word's place, if this popup's lookup started in that cue
+        let offset = match (level, self.popups.stack().first().map(|r| &r.origin)) {
+            (0, Some(Origin::Subtitle { cue: c, start })) if Some(*c) == cue => Some(*start),
+            _ => None,
+        };
+        let clip = cue.map(|c| {
+            let (start, end) = t.clip(
+                c,
+                i64::from(anki.audio_pad_head_ms),
+                i64::from(anki.audio_pad_tail_ms),
+            );
+            (start, end.min(start + nikomiru_media::clip::MAX_AUDIO_MS))
+        });
+        let tracks = &self.view.audio_tracks;
+        let selected = tracks.iter().find(|tr| Some(tr.id) == self.view.aid);
+        let audio_stream = match selected {
+            Some(tr) if !tr.external => tr.ff_index,
+            // an external track: the video's own first one
+            _ => tracks
+                .iter()
+                .find(|tr| tr.kind == "audio" && !tr.external)
+                .and_then(|tr| tr.ff_index),
+        }
+        .filter(|_| selected.is_some());
+        let request = MineRequest {
+            query: p.query.clone(),
+            entry,
+            expression: e.expression.clone(),
+            reading: e.reading.clone(),
+            matched: e.matched.clone(),
+            sentence,
+            offset,
+            video: current.path.clone(),
+            audio_stream,
+            clip,
+            position_ms: (self.view.time_pos * 1000.0) as i64,
+            uid: current.uid.clone(),
+            title: current
+                .path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            action,
+        };
+        let generation = p.generation;
+        if let Some(card) = self
+            .popups
+            .stack_mut()
+            .get_mut(level)
+            .and_then(|p| p.cards.get_mut(entry))
+        {
+            *card = CardState::Busy;
+        }
+        self.anki_jobs.push(AnkiJob::Mine {
+            generation,
+            entry,
+            request: Box::new(request),
+        });
+    }
+
+    /// A card was made, or not.
+    pub fn mined(
+        &mut self,
+        generation: u64,
+        entry: usize,
+        result: Result<crate::mining::Mined, crate::mining::MineFailure>,
+    ) {
+        use crate::mining::{CardState, LastCard};
+        let popup = self
+            .popups
+            .stack_mut()
+            .iter_mut()
+            .find(|p| p.generation == generation);
+        let entry_view = popup
+            .as_ref()
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| r.content.entries.get(entry))
+            .map(|e| (e.expression.clone(), e.reading.clone()));
+        match result {
+            Ok(mined) => {
+                if let Some((expression, reading)) = entry_view {
+                    self.last_card = Some(LastCard {
+                        note_id: mined.note_id,
+                        expression,
+                        reading,
+                    });
+                }
+                if let Some(card) = self
+                    .popups
+                    .stack_mut()
+                    .iter_mut()
+                    .find(|p| p.generation == generation)
+                    .and_then(|p| p.cards.get_mut(entry))
+                {
+                    *card = CardState::Last(mined.note_id);
+                }
+                self.apply_last_card();
+                let key = if mined.overwritten {
+                    "toast-card-overwritten"
+                } else {
+                    "toast-card-added"
+                };
+                let message = self.tr(key, &[("deck", mined.deck.clone())]);
+                self.toasts.push(message);
+                self.events.push(UiEvent::CardCreated(mined.note_id));
+            }
+            Err(failure) => {
+                if let Some(card) = popup.and_then(|p| p.cards.get_mut(entry)) {
+                    *card = if failure.duplicate {
+                        CardState::Exists
+                    } else {
+                        CardState::Unknown
+                    };
+                }
+                self.apply_last_card();
+                self.toasts.push(failure.message);
+            }
+        }
+    }
+
+    /// Anki's browser opened, or not (ANK-038).
+    pub fn browsed(&mut self, result: Result<(), String>) {
+        if let Err(message) = result {
+            self.toasts.push(message);
+        }
+    }
+
     fn update_screensaver(&mut self) {
         let now = self.services.clock.monotonic();
         let playing = self.view.loaded && !self.view.paused;
@@ -712,6 +990,15 @@ impl Session {
             }
             Action::PopupNext | Action::PopupPrev => {
                 self.popup_entry(if action == Action::PopupNext { 1 } else { -1 });
+                Ok(())
+            }
+            Action::CreateCard => {
+                let top = self.popups.stack().len().checked_sub(1);
+                if let Some((level, entry)) =
+                    top.and_then(|l| self.popups.stack().get(l).map(|p| (l, p.entry)))
+                {
+                    self.card_button(level, entry);
+                }
                 Ok(())
             }
             Action::ReplayCue if self.popups.is_open() => {
@@ -1511,8 +1798,21 @@ impl Session {
                 }
             }
         };
+        let entries: Vec<(String, String)> = reply
+            .content
+            .entries
+            .iter()
+            .map(|e| (e.expression.clone(), e.reading.clone()))
+            .collect();
         if self.popups.deliver(generation, reply) {
             self.sync_highlight();
+            self.apply_last_card();
+            if !entries.is_empty() {
+                self.anki_jobs.push(crate::mining::AnkiJob::Check {
+                    generation,
+                    request: crate::mining::CheckRequest { entries },
+                });
+            }
         }
     }
 

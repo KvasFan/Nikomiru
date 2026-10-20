@@ -71,6 +71,24 @@ pub enum Inbound {
     Dropped(PathBuf),
     /// A screenshot ended (PLY-011): the file written, or a message.
     Screenshot(Result<PathBuf, String>),
+    /// Which entries of a popup have a card already (ANK-030).
+    CardStates {
+        /// The popup's generation.
+        generation: u64,
+        /// One per entry; `None` if Anki could not be asked.
+        states: Option<Vec<bool>>,
+    },
+    /// A card was made, or not (ANK-030…ANK-039).
+    Mined {
+        /// The popup's generation.
+        generation: u64,
+        /// The entry.
+        entry: usize,
+        /// The card, or why not.
+        result: Result<crate::mining::Mined, crate::mining::MineFailure>,
+    },
+    /// Anki's browser opened, or not (ANK-038).
+    Browsed(Result<(), String>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -92,6 +110,9 @@ impl std::fmt::Debug for Inbound {
             Inbound::DialogFailed => "DialogFailed",
             Inbound::Dropped(_) => "Dropped",
             Inbound::Screenshot(_) => "Screenshot",
+            Inbound::CardStates { .. } => "CardStates",
+            Inbound::Mined { .. } => "Mined",
+            Inbound::Browsed(_) => "Browsed",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -181,6 +202,17 @@ pub(crate) enum Command {
     DictSetCollapse(String, String),
     /// The user's CSS of a dictionary, saved from its editor (DIC-035).
     DictSetUserCss(String, String),
+    /// The card button of an entry (ANK-030).
+    CardButton {
+        level: usize,
+        entry: usize,
+    },
+    /// An item of an entry's card menu (ANK-030).
+    CardMenu {
+        level: usize,
+        entry: usize,
+        item: crate::mining::MenuItem,
+    },
 }
 
 /// The interface: the session and its view.
@@ -294,6 +326,22 @@ impl Ui {
             }
             Inbound::Screenshot(result) => {
                 self.session.screenshot_done(result);
+                true
+            }
+            Inbound::CardStates { generation, states } => {
+                self.session.card_states(generation, states);
+                true
+            }
+            Inbound::Mined {
+                generation,
+                entry,
+                result,
+            } => {
+                self.session.mined(generation, entry, result);
+                true
+            }
+            Inbound::Browsed(result) => {
+                self.session.browsed(result);
                 true
             }
             Inbound::Dropped(path) => {
@@ -535,6 +583,8 @@ impl Ui {
             Command::DictRename(id, name) => s.dict_rename(&id, &name),
             Command::DictSetCollapse(id, state) => s.dict_set_collapse(&id, &state),
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
+            Command::CardButton { level, entry } => s.card_button(level, entry),
+            Command::CardMenu { level, entry, item } => s.card_menu(level, entry, item),
         }
     }
 
@@ -554,6 +604,36 @@ impl Ui {
                     });
                 }),
             );
+        }
+        for job in self.session.take_anki_jobs() {
+            let waker = self.waker.clone();
+            match job {
+                crate::mining::AnkiJob::Check {
+                    generation,
+                    request,
+                } => self.session.anki().check(
+                    request,
+                    Box::new(move |states| waker.wake(Inbound::CardStates { generation, states })),
+                ),
+                crate::mining::AnkiJob::Mine {
+                    generation,
+                    entry,
+                    request,
+                } => self.session.anki().mine(
+                    *request,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::Mined {
+                            generation,
+                            entry,
+                            result,
+                        });
+                    }),
+                ),
+                crate::mining::AnkiJob::Browse(target) => self
+                    .session
+                    .anki()
+                    .browse(target, Box::new(move |r| waker.wake(Inbound::Browsed(r)))),
+            }
         }
         for name in self.session.take_screenshots() {
             let waker = self.waker.clone();
