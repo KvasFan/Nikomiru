@@ -548,7 +548,11 @@ impl Session {
     /// "Go to sentence" (POP-015): the popups close and playback goes to the
     /// start of the cue.
     pub fn popup_goto(&mut self) {
-        let Some(cue) = self.popups.root_cue() else {
+        let Some(cue) = self
+            .popups
+            .root_cue()
+            .filter(|&c| c < self.subs.timeline().cues().len())
+        else {
             return;
         };
         let start = self.subs.timeline().start_pos(cue);
@@ -857,6 +861,16 @@ impl Session {
 
 /// Subtitles (SUB-005…SUB-016).
 impl Session {
+    /// The cues were replaced or removed: the list starts over, and the popups
+    /// close, since they looked up words of the cues that were (and replay or
+    /// go to them).
+    fn cues_changed(&mut self) {
+        self.sub_list_version += 1;
+        if self.popups.is_open() {
+            self.close_all_popups();
+        }
+    }
+
     fn reset_subtitles(&mut self) {
         self.subs.clear(None);
         self.sub_sources.clear();
@@ -864,7 +878,7 @@ impl Session {
         self.sub_generation += 1;
         self.sub_loads.clear();
         self.sub_auto_done = false;
-        self.sub_list_version += 1;
+        self.cues_changed();
     }
 
     /// The subtitle sources of the current file: external files next to it
@@ -946,7 +960,7 @@ impl Session {
             Source::Bitmap(id) => {
                 let _ = self.services.player.show_bitmap_subtitles(Some(*id));
                 self.subs.clear(Some(source));
-                self.sub_list_version += 1;
+                self.cues_changed();
             }
             Source::File(_) | Source::Embedded { .. } => {
                 let _ = self.services.player.show_bitmap_subtitles(None);
@@ -996,7 +1010,7 @@ impl Session {
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
-                self.sub_list_version += 1;
+                self.cues_changed();
                 let text = match encoding {
                     Some(e) => self.tr(
                         "toast-sub-loaded-encoding",
@@ -1009,7 +1023,7 @@ impl Session {
             Err(reason) => {
                 tracing::warn!("subtitles: {reason}");
                 self.subs.clear(None);
-                self.sub_list_version += 1;
+                self.cues_changed();
                 self.toasts
                     .push(self.tr("error-subtitles", &[("reason", reason)]));
             }
@@ -1022,7 +1036,7 @@ impl Session {
             self.sub_generation += 1;
             let _ = self.services.player.show_bitmap_subtitles(None);
             self.subs.clear(None);
-            self.sub_list_version += 1;
+            self.cues_changed();
             return;
         }
         if let Some(source) = self.sub_sources.iter().find(|s| s.key() == key).cloned() {
@@ -1121,6 +1135,7 @@ impl Session {
     pub fn subtitle_hover(&mut self, inside: bool) {
         self.subs.hovered = inside;
         let now = self.services.clock.monotonic();
+        self.controls.set_over_subtitles(inside, now);
         self.hover.inside(inside || self.popup_hovered, now);
     }
 
@@ -1138,13 +1153,14 @@ impl Session {
         if offset >= text.len() {
             return;
         }
-        self.subs.selection = Some((cue, offset));
-        self.subs.highlight = None;
         let range = nikomiru_text::scan::query(&text, offset, nikomiru_text::scan::Context::Cue);
         let query = nikomiru_text::scan::normalize(&text[range.clone()]);
+        // a space or a delimiter: nothing to look up, and nothing changes
         if query.is_empty() {
             return;
         }
+        self.subs.selection = Some((cue, offset));
+        self.subs.highlight = None;
         // where the normalized query starts in the cue
         let start = range.start + text[range].find(query.as_str()).unwrap_or(0);
         let playing = self.view.loaded && !self.view.paused;
@@ -1179,6 +1195,8 @@ impl Session {
             self.hover.reset();
             self.end_replay();
         }
+        // the bar stays while a popup is open (PLY-004)
+        self.controls.set_popup_open(self.popups.is_open());
         self.sync_highlight();
     }
 
