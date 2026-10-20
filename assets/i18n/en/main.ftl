@@ -176,5 +176,6 @@ dict-group-frequency = Frequencies
 dict-group-pitch = Pitch accent
 dict-reference = { $name }, listed under { $group }
 dict-language = language { $code }
+dict-drag = Drag to change the order
 error-dict-unavailable = The dictionaries are not available: the library could not be opened.
 error-file-dialog = The file dialog is not available: drop the file on the window, or give it on the command line.

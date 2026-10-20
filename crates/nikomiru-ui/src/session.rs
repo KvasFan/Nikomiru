@@ -1381,11 +1381,19 @@ impl Session {
         self.dict_effects(effects);
     }
 
-    /// Moves a dictionary up or down (DIC-031).
+    /// Moves a dictionary up or down in its group (DIC-031).
     pub fn dict_move(&mut self, id: &str, delta: i32) {
         let effects = self
             .dict_page
             .move_by(self.services.dictionaries.as_ref(), id, delta);
+        self.dict_effects(effects);
+    }
+
+    /// Moves a dictionary to a gap of its group, where it was dropped (DIC-031).
+    pub fn dict_move_to(&mut self, id: &str, to: usize) {
+        let effects = self
+            .dict_page
+            .move_to(self.services.dictionaries.as_ref(), id, to);
         self.dict_effects(effects);
     }
 

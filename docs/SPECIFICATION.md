@@ -523,7 +523,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | ID | Requirement |
 |---|---|
 | DIC-030 | List of dictionaries by type (terms, kanji, frequencies, pitch accent): title, revision, declared language, import date, number of entries, size. A dictionary with several types (DIC-015) has its row under the first of them in this order; under each of its other types a reference shows where it ranks. |
-| DIC-031 | Reordering by drag and drop: the order decides the position of the glossaries in the popup and the priority of the frequency dictionaries. |
+| DIC-031 | Reordering by drag and drop: the order decides the position of the glossaries in the popup and the priority of the frequency dictionaries. The order is one for every type: a dictionary dropped in its type's list goes just above the row under the drop marker (or just below the list's last row), and every other dictionary keeps its place. ▲/▼ buttons do the same one row at a time, for the keyboard and screen readers. |
 | DIC-032 | Every dictionary can be enabled or disabled. A disabled one is **not queried** (Fushi BUG-3454/2997: exclude it before truncation, not at render time). |
 | DIC-033 | Deletion with confirmation; renaming for display only (`display_name`). |
 | DIC-034 | Collapse/expand state of the dictionary in the popup: `expanded` / `collapsed` / `automatic` (only the first N are expanded). |

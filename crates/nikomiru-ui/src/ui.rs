@@ -165,6 +165,8 @@ pub(crate) enum Command {
     DictConfirm(bool),
     DictCancel,
     DictMove(String, i32),
+    /// A dictionary dropped in a gap of its group (DIC-031).
+    DictMoveTo(String, usize),
     DictSetEnabled(String, bool),
     DictDelete(String),
     DictRename(String, String),
@@ -512,6 +514,7 @@ impl Ui {
             Command::DictConfirm(update) => s.dict_confirm(update),
             Command::DictCancel => s.dict_cancel(),
             Command::DictMove(id, delta) => s.dict_move(&id, delta),
+            Command::DictMoveTo(id, to) => s.dict_move_to(&id, to),
             Command::DictSetEnabled(id, on) => s.dict_set_enabled(&id, on),
             Command::DictDelete(id) => s.dict_delete(&id),
             Command::DictRename(id, name) => s.dict_rename(&id, &name),

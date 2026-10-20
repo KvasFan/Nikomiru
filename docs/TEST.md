@@ -280,6 +280,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
 | T-DIC-022 | Concurrent registry edits | 8 threads edit the registry at once while one dictionary is deleted → no edit is lost and the deleted one does not come back | L4 |
 | T-DIC-030 | Dictionaries by type | Each dictionary is under its main type (terms, kanji, frequencies, pitch accent, in this order), with a reference row under each of its other types; title, revision, language, entries, size and import date shown; a reference has no controls | L1 |
+| T-DIC-031 | Order by drag and drop | A row dragged by its handle over the upper or lower half of a row of its type (a reference too) shows the marker there and moves just above or below it; next to itself or over another type nothing is marked or sent; in the order only the dragged dictionary moves, and ▲/▼ step over the rows of its type; the order decides the glossaries (L4) | L1, L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
 | T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot and L6 check) | L3/L6 |
 

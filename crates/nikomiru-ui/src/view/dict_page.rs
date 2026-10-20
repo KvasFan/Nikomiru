@@ -2,13 +2,14 @@
 
 //! The dictionaries page (DIC-001, DIC-010, DIC-016, DIC-030…DIC-034): import
 //! with progress and cancel, the update offer, and the dictionaries by type,
-//! each with enable, rename, the popup block state, order and delete. It
-//! covers the window and takes the pointer, so nothing under it reacts;
-//! toasts stay above it.
+//! each with enable, rename, the popup block state, order (by drag and drop
+//! or ▲/▼) and delete. It covers the window and takes the pointer, so nothing
+//! under it reacts; toasts stay above it.
 
 use egui::{
-    Align, Area, Button, Color32, ComboBox, Frame, Id, Key, Layout, Margin, Order, ProgressBar,
-    Rect, RichText, Role, ScrollArea, Sense, Stroke, TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
+    Align, Area, Button, Color32, ComboBox, DragAndDrop, FontId, Frame, Id, Key, LayerId, Layout,
+    Margin, Order, ProgressBar, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind,
+    TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
 };
 use nikomiru_library::{Collapse, DictionaryRecord};
 
@@ -25,6 +26,17 @@ const ROW: Color32 = Color32::from_rgb(0x2a, 0x2d, 0x34);
 const ROW_OFF: Color32 = Color32::from_rgb(0x1f, 0x21, 0x26);
 const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
 const OFF: Color32 = Color32::from_rgb(0x8a, 0x8f, 0x99);
+/// The drop marker and the dragged dictionary's outline.
+const DROP: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
+
+/// What a drag carries (DIC-031): the dictionary, its name for the chip that
+/// follows the pointer, and the group it moves in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Dragged {
+    id: String,
+    name: String,
+    group: Group,
+}
 
 /// A rename in progress.
 #[derive(Debug)]
@@ -141,7 +153,7 @@ fn group_name(group: Group, tr: &Translate<'_>) -> String {
 
 /// A dictionary listed under one of its other types: where it ranks in this
 /// one; its row is under its main type.
-fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) {
+fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) -> Rect {
     let home = group_name(Group::main(&m.record.kinds), tr);
     let text = tr(
         "dict-reference",
@@ -154,7 +166,83 @@ fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.add(egui::Label::new(RichText::new(text).italics().color(OFF)).truncate());
-        });
+        })
+        .response
+        .rect
+}
+
+/// A row as a drop target of its group's drag (DIC-031): the gap a drop
+/// lands in is above or below the row, by the half the pointer is over, and
+/// a line marks it. `(i, from)`: the row's place and the dragged one's.
+fn drop_zone(
+    ui: &mut Ui,
+    rect: Rect,
+    (group, id): (Group, &str),
+    (i, from): (usize, usize),
+    out: &mut Vec<Command>,
+) {
+    let half_gap = ui.spacing().item_spacing.y / 2.0;
+    // the gaps between the rows belong to the rows around them
+    let zone = ui.interact(
+        rect.expand2(vec2(0.0, half_gap)),
+        Id::unique(("dict-drop", group.name(), id)),
+        Sense::hover(),
+    );
+    let Some(pointer) = ui.ctx().pointer_latest_pos() else {
+        return;
+    };
+    if zone.dnd_hover_payload::<Dragged>().is_none() {
+        return;
+    }
+    let below = pointer.y >= rect.center().y;
+    let to = i + usize::from(below);
+    // next to itself: a drop would change nothing, so nothing is marked
+    if to == from || to == from + 1 {
+        return;
+    }
+    let y = if below {
+        rect.bottom() + half_gap
+    } else {
+        rect.top() - half_gap
+    };
+    ui.painter()
+        .hline(rect.x_range(), y, Stroke::new(2.0, DROP));
+    if let Some(d) = zone.dnd_release_payload::<Dragged>() {
+        out.push(Command::DictMoveTo(d.id.clone(), to));
+    }
+}
+
+/// While a dictionary is dragged: its name follows the pointer, and the list
+/// scrolls when the pointer nears its top or bottom edge.
+fn follow_drag(ui: &mut Ui, d: &Dragged) {
+    let Some(pointer) = ui.ctx().pointer_latest_pos() else {
+        return;
+    };
+    let painter = ui
+        .ctx()
+        .layer_painter(LayerId::new(Order::Tooltip, Id::unique("dict-drag-chip")));
+    let galley = painter.layout_no_wrap(d.name.clone(), FontId::proportional(15.0), Color32::WHITE);
+    let chip = Rect::from_min_size(
+        pointer + vec2(14.0, -galley.size().y / 2.0 - 4.0),
+        galley.size() + vec2(16.0, 8.0),
+    );
+    painter.rect(chip, 6, ROW, Stroke::new(1.0, DROP), StrokeKind::Outside);
+    painter.galley(chip.min + vec2(8.0, 4.0), galley, Color32::WHITE);
+
+    let view = ui.clip_rect();
+    const EDGE: f32 = 32.0;
+    let speed = 600.0 * ui.input(|i| i.stable_dt).min(0.1);
+    let step = if (view.top() - EDGE..view.top() + EDGE).contains(&pointer.y) {
+        speed
+    } else if (view.bottom() - EDGE..view.bottom() + EDGE).contains(&pointer.y) {
+        -speed
+    } else {
+        0.0
+    };
+    if step != 0.0 && view.x_range().contains(pointer.x) {
+        ui.scroll_with_delta_animation(vec2(0.0, step), egui::style::ScrollAnimation::none());
+        ui.ctx().request_repaint();
+    }
 }
 
 /// A flat button with a glyph, its tooltip and accessible name.
@@ -241,6 +329,10 @@ pub(crate) fn draw(
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 6.0;
+                        let dragged = DragAndDrop::payload::<Dragged>(ui.ctx());
+                        if let Some(d) = &dragged {
+                            follow_drag(ui, d);
+                        }
                         for group in Group::ALL {
                             let rows = page.group(group);
                             let Some(last) = rows.len().checked_sub(1) else {
@@ -253,12 +345,26 @@ pub(crate) fn draw(
                                     .family(theme::bold())
                                     .color(DETAILS),
                             );
+                            // the rows of the dragged dictionary's group are its
+                            // drop targets
+                            let from = dragged
+                                .as_deref()
+                                .filter(|d| d.group == group)
+                                .and_then(|d| rows.iter().position(|m| m.id == d.id));
                             for (i, m) in rows.iter().enumerate() {
-                                if m.reference {
-                                    reference(ui, scene.tr, m);
+                                let rect = if m.reference {
+                                    reference(ui, scene.tr, m)
                                 } else {
-                                    let (id, r) = (m.id, m.record);
-                                    row(ui, scene.tr, state, out, id, r, (i > 0, i < last));
+                                    let place = Place {
+                                        group,
+                                        up: i > 0,
+                                        down: i < last,
+                                        dragged: from == Some(i),
+                                    };
+                                    row(ui, scene.tr, state, out, m, place)
+                                };
+                                if let Some(from) = from {
+                                    drop_zone(ui, rect, (group, m.id), (i, from), out);
                                 }
                             }
                         }
@@ -351,24 +457,70 @@ fn import_block(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Where a dictionary's row is in its group.
+#[derive(Debug, Clone, Copy)]
+struct Place {
+    group: Group,
+    /// ▲ can move it.
+    up: bool,
+    /// ▼ can move it.
+    down: bool,
+    /// It is being dragged.
+    dragged: bool,
+}
+
+/// The handle a drag starts from (DIC-031): six dots, the whole height of
+/// the row's first line.
+fn drag_handle(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>, place: Place) {
+    let (rect, _) = ui.allocate_exact_size(vec2(12.0, 30.0), Sense::hover());
+    let handle = ui.interact(rect, Id::unique(("dict-drag", m.id)), Sense::drag());
+    handle.dnd_set_drag_payload(Dragged {
+        id: m.id.to_string(),
+        name: m.record.name().to_string(),
+        group: place.group,
+    });
+    let color = if handle.hovered() || place.dragged {
+        Color32::WHITE
+    } else {
+        OFF
+    };
+    for dx in [-2.5, 2.5] {
+        for dy in [-5.0, 0.0, 5.0] {
+            ui.painter()
+                .circle_filled(rect.center() + vec2(dx, dy), 1.5, color);
+        }
+    }
+    let name = tr("dict-drag", &[]);
+    handle.clone().on_hover_text(&name);
+    handle.widget_info(|| WidgetInfo::labeled(Role::Image, true, &name));
+}
+
 fn row(
     ui: &mut Ui,
     tr: &Translate<'_>,
     state: &mut State,
     out: &mut Vec<Command>,
-    id: &str,
-    r: &DictionaryRecord,
-    (up, down): (bool, bool),
-) {
+    m: &Member<'_>,
+    place: Place,
+) -> Rect {
     let t = |key: &str| tr(key, &[]);
-    Frame::new()
+    let (id, r) = (m.id, m.record);
+    let (up, down) = (place.up, place.down);
+    let mut frame = Frame::new()
         .fill(if r.enabled { ROW } else { ROW_OFF })
         .corner_radius(6)
-        .inner_margin(Margin::symmetric(10, 8))
+        .inner_margin(Margin::symmetric(10, 8));
+    if place.dragged {
+        frame = frame.stroke(Stroke::new(1.0, DROP));
+    }
+    frame
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
+            if place.dragged {
+                ui.multiply_opacity(0.5);
+            }
             ui.horizontal(|ui| {
+                drag_handle(ui, tr, m, place);
                 let mut enabled = r.enabled;
                 let check = ui
                     .checkbox(&mut enabled, "")
@@ -483,7 +635,9 @@ fn row(
                     }
                 });
             });
-        });
+        })
+        .response
+        .rect
 }
 
 /// The rename field: Enter renames (an empty name restores the title), Esc
@@ -567,7 +721,7 @@ fn confirm_delete(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::pos2;
+    use egui::{Pos2, pos2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use nikomiru_dict::yomitan::Kinds;
@@ -653,6 +807,33 @@ mod tests {
         h.drop_at(at);
         h.run();
         std::mem::take(&mut h.state_mut().out)
+    }
+
+    /// The height of the drop marker in the last frame, if one is drawn.
+    fn marker(h: &Harness<'_, Test>) -> Option<f32> {
+        h.output().shapes.iter().find_map(|c| match &c.shape {
+            egui::Shape::LineSegment { points, stroke } if stroke.color == DROP => {
+                Some(points[0].y)
+            }
+            _ => None,
+        })
+    }
+
+    /// Drags the handle of row `nth` to `to`: the marker over the target
+    /// before the release, and the commands.
+    fn drag(h: &mut Harness<'_, Test>, nth: usize, to: Pos2) -> (Option<f32>, Vec<Command>) {
+        let handles: Vec<_> = h.query_all_by_label("dict-drag").collect();
+        let from = handles[nth].rect().center();
+        h.hover_at(from);
+        h.drag_at(from);
+        // past the distance of a click: a drag
+        h.hover_at(from + vec2(0.0, 12.0));
+        h.hover_at(to);
+        h.run();
+        let marker = marker(h);
+        h.drop_at(to);
+        h.run();
+        (marker, std::mem::take(&mut h.state_mut().out))
     }
 
     #[test]
@@ -760,6 +941,81 @@ mod tests {
         assert!(h.query_by_label(&kanji).is_some(), "{kanji}");
         // a reference has no controls: one switch per dictionary
         assert_eq!(h.query_all_by_label("dict-enabled").count(), 4);
+    }
+
+    // T-DIC-031
+    #[test]
+    fn a_row_dragged_by_its_handle_drops_into_a_gap_of_its_group() {
+        let freq = DictionaryRecord {
+            kinds: Kinds {
+                frequency: true,
+                ..Kinds::default()
+            },
+            ..record("F", true)
+        };
+        // B gives frequencies too: a reference in F's group
+        let mut b = record("B", true);
+        b.kinds.frequency = true;
+        let mut h = harness(page(&[
+            ("a", record("A", true)),
+            ("b", b),
+            ("c", record("C", true)),
+            ("f", freq),
+        ]));
+        h.run();
+        assert_eq!(
+            h.query_all_by_label("dict-drag").count(),
+            4,
+            "none on a reference"
+        );
+        // the upper half of a row is its name, the lower half its details
+        let upper = |h: &Harness<'_, Test>, name: &str| h.get_by_label(name).rect();
+        let details = "1234 dict-type-terms · dict-size-mb whole=2 tenth=0 · 2026-10-20";
+        let lower = |h: &Harness<'_, Test>, nth: usize| {
+            let all: Vec<_> = h.query_all_by_label(details).collect();
+            all[nth].rect()
+        };
+
+        // C over the upper half of A: it goes above A, and the marker says so
+        let a = upper(&h, "A");
+        let (line, out) = drag(&mut h, 2, a.center());
+        assert!(line.is_some_and(|y| y < a.top()), "{line:?} {a:?}");
+        assert!(
+            matches!(&out[..], [Command::DictMoveTo(id, 0)] if id == "c"),
+            "{out:?}"
+        );
+        // A over the lower half of B: between B and C
+        let b = lower(&h, 1);
+        let (line, out) = drag(&mut h, 0, b.center());
+        assert!(line.is_some_and(|y| y > b.bottom()), "{line:?} {b:?}");
+        assert!(
+            matches!(&out[..], [Command::DictMoveTo(id, 2)] if id == "a"),
+            "{out:?}"
+        );
+        // B next to where it is: no marker, nothing sent
+        let a_below = lower(&h, 0).center();
+        let c_above = upper(&h, "C").center();
+        for to in [a_below, c_above] {
+            let (line, out) = drag(&mut h, 1, to);
+            assert!(line.is_none() && out.is_empty(), "{line:?} {out:?}");
+        }
+        // another group is not a target
+        let f = upper(&h, "F").center();
+        let (line, out) = drag(&mut h, 0, f);
+        assert!(line.is_none() && out.is_empty(), "{line:?} {out:?}");
+        // a reference is: F above B's frequencies
+        let reference = h
+            .get_by_label("dict-reference name=B group=dict-group-terms")
+            .rect();
+        let (line, out) = drag(&mut h, 3, reference.center_top() + vec2(0.0, 2.0));
+        assert!(line.is_some_and(|y| y < reference.top()), "{line:?}");
+        assert!(
+            matches!(&out[..], [Command::DictMoveTo(id, 0)] if id == "f"),
+            "{out:?}"
+        );
+        // a click on a handle is not a drag
+        let out = click(&mut h, "dict-drag", 0);
+        assert!(out.is_empty(), "{out:?}");
     }
 
     // T-DIC-031, T-DIC-032

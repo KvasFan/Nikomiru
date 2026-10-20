@@ -21,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - T-SEC-001 tests the hostile entry of `mini-ja` for real: looked up through the real import, lookup and popup content builder, its view model walked against the allowlist, drawn with `egui_kittest`, and opened in the real app, where a spy proxy sees no request. The GUI test harness has `lookup {text}` and `popup_content {level}` for it.
 - Conformance with every fushidicts test (TEST §5.3): `tests/conformance/import.json` and its runner (45 import cases: wrapper folders, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, media, styles, damaged dictionary files), 14 more lookup cases (kanji stats, glossary round trip, pitch patterns, score and frequency order, non-ASCII titles, malformed kanji rows) and an import that reaches a file size limit halfway. Five import cases are known failures of the importer, listed in TEST §5.3.
 - The dictionaries page lists the dictionaries by type (terms, kanji, frequencies, pitch accent) with their language (DIC-030): a dictionary with several types has its row under the first and a reference under the others, where it ranks too; ▲/▼ move it within its type.
+- The dictionaries page lists the dictionaries by type (terms, kanji, frequencies, pitch accent) with their language (DIC-030): a dictionary with several types has its row under the first and a reference under the others, where it ranks too; ▲/▼ move it within its type, and so does dragging it by its handle onto the drop marker (DIC-031).
 
 ### Changed
 
