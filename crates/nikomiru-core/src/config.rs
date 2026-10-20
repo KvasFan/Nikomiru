@@ -60,6 +60,8 @@ pub struct Config {
     pub lookup: LookupConfig,
     /// `[popup]`.
     pub popup: PopupConfig,
+    /// `[anki]`.
+    pub anki: AnkiConfig,
     /// `[paths]`.
     pub paths: PathsConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
@@ -215,6 +217,99 @@ impl Default for PopupConfig {
     }
 }
 
+/// `[anki]` (SPECIFICATION §9, ANK-001…ANK-036).
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnkiConfig {
+    /// AnkiConnect's address (ANK-001).
+    pub url: String,
+    /// AnkiConnect's API key; empty: none. Never logged (PRV-002).
+    pub api_key: String,
+    /// The deck cards go to.
+    pub deck: String,
+    /// The note type of the cards.
+    pub note_type: String,
+    /// `"deck"` or `"collection"` (ANK-030).
+    pub duplicate_scope: String,
+    /// Audio before the cue, 0–1000 ms (ANK-032).
+    pub audio_pad_head_ms: u32,
+    /// Audio after the cue, 0–1000 ms (ANK-032).
+    pub audio_pad_tail_ms: u32,
+    /// `"aac-m4a"`, `"opus-ogg"` or `"mp3"` (ANK-033).
+    pub audio_format: String,
+    /// 0 = mono 64k, 1 = stereo 128k, 2 = stereo 192k (ANK-033).
+    pub audio_quality_level: u8,
+    /// `"jpeg"` or `"webp"` (ANK-034).
+    pub image_format: String,
+    /// 0–3: long side 720, 1000, 2000 px or the original (ANK-034).
+    pub image_quality_level: u8,
+    /// The user's tags (ANK-027).
+    pub tags: Vec<String>,
+    /// Note type → field → template (ANK-020). A Lapis-like note type without
+    /// a mapping gets the defaults of ANK-012.
+    pub field_mapping: BTreeMap<String, BTreeMap<String, String>>,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl AnkiConfig {
+    /// The audio pads' upper limit (ANK-032).
+    pub const MAX_PAD_MS: u32 = 1000;
+
+    fn bounded(mut self) -> Self {
+        let defaults = Self::default();
+        self.audio_pad_head_ms = self.audio_pad_head_ms.min(Self::MAX_PAD_MS);
+        self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
+        self.audio_quality_level = self.audio_quality_level.min(2);
+        self.image_quality_level = self.image_quality_level.min(3);
+        if !matches!(self.duplicate_scope.as_str(), "deck" | "collection") {
+            self.duplicate_scope = defaults.duplicate_scope;
+        }
+        if !matches!(self.audio_format.as_str(), "aac-m4a" | "opus-ogg" | "mp3") {
+            self.audio_format = defaults.audio_format;
+        }
+        if !matches!(self.image_format.as_str(), "jpeg" | "webp") {
+            self.image_format = defaults.image_format;
+        }
+        self
+    }
+}
+
+impl std::fmt::Debug for AnkiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // never the API key (PRV-002)
+        f.debug_struct("AnkiConfig")
+            .field("url", &self.url)
+            .field("api_key", &if self.api_key.is_empty() { "" } else { "…" })
+            .field("deck", &self.deck)
+            .field("note_type", &self.note_type)
+            .field("duplicate_scope", &self.duplicate_scope)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for AnkiConfig {
+    fn default() -> Self {
+        Self {
+            url: "http://127.0.0.1:8765".into(),
+            api_key: String::new(),
+            deck: "Lapis".into(),
+            note_type: "Lapis".into(),
+            duplicate_scope: "deck".into(),
+            audio_pad_head_ms: 120,
+            audio_pad_tail_ms: 200,
+            audio_format: "aac-m4a".into(),
+            audio_quality_level: 0,
+            image_format: "jpeg".into(),
+            image_quality_level: 1,
+            tags: Vec::new(),
+            field_mapping: BTreeMap::new(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
 /// `[paths]`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -261,6 +356,7 @@ impl Default for Config {
             subtitles: SubtitlesConfig::default(),
             lookup: LookupConfig::default(),
             popup: PopupConfig::default(),
+            anki: AnkiConfig::default(),
             paths: PathsConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
@@ -279,6 +375,7 @@ impl Config {
         }
         (c.popup.max_width, c.popup.max_height) =
             PopupConfig::bounded(c.popup.max_width, c.popup.max_height);
+        c.anki = c.anki.bounded();
         Ok(c)
     }
 
@@ -316,6 +413,7 @@ impl Config {
         out.extend(self.player.other.keys().map(|k| format!("player.{k}")));
         out.extend(self.lookup.other.keys().map(|k| format!("lookup.{k}")));
         out.extend(self.popup.other.keys().map(|k| format!("popup.{k}")));
+        out.extend(self.anki.other.keys().map(|k| format!("anki.{k}")));
         out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
         out.extend(
             self.subtitles
@@ -411,7 +509,8 @@ mpv_options = { deband = "yes" }
 later = "x"
 
 [anki]
-deck = "Lapis"
+deck = "Mining"
+someday = 1
 
 [shortcuts]
 play_pause = ["Space"]
@@ -423,10 +522,52 @@ play_pause = ["Space"]
         assert_eq!(c.shortcuts["play_pause"], ["Space"]);
         assert_eq!(
             c.unknown_keys(),
-            ["anki", "future_section", "general.new_flag", "player.later"]
+            [
+                "anki.someday",
+                "future_section",
+                "general.new_flag",
+                "player.later"
+            ]
         );
         let again = Config::from_toml(&toml::to_string_pretty(&c).unwrap()).unwrap();
         assert_eq!(again, c);
+    }
+
+    #[test]
+    fn anki_settings_have_defaults_and_limits() {
+        let c = Config::from_toml(
+            r#"
+[anki]
+api_key = "s3cret"
+audio_pad_head_ms = 5000
+audio_quality_level = 9
+image_quality_level = 7
+duplicate_scope = "galaxy"
+audio_format = "flac"
+tags = ["mine"]
+
+[anki.field_mapping.Lapis]
+Expression = "{expression}"
+"#,
+        )
+        .unwrap();
+        let a = &c.anki;
+        assert_eq!(a.audio_pad_head_ms, 1000);
+        assert_eq!(a.audio_pad_tail_ms, 200);
+        assert_eq!((a.audio_quality_level, a.image_quality_level), (2, 3));
+        assert_eq!(
+            (a.duplicate_scope.as_str(), a.audio_format.as_str()),
+            ("deck", "aac-m4a")
+        );
+        assert_eq!(a.field_mapping["Lapis"]["Expression"], "{expression}");
+        assert_eq!(a.tags, ["mine"]);
+        // T-PRV-002: the key never shows in a debug print
+        assert!(!format!("{c:?}").contains("s3cret"));
+        let d = AnkiConfig::default();
+        assert_eq!(
+            (d.url.as_str(), d.deck.as_str()),
+            ("http://127.0.0.1:8765", "Lapis")
+        );
     }
 
     #[test]
