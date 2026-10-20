@@ -45,6 +45,13 @@ glutin = { version = "0.32", default-features = false, features = ["egl", "glx",
 glutin-winit = { version = "0.5", default-features = false, features = ["egl", "glx", "wayland", "x11"] }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen", "x11"] }
 raw-window-handle = "0.6"
+# Images of dictionary entries (POP-010), decoded on the lookup thread: the formats
+# Qt's plugins read, without SVG and AVIF (no class A decoder).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+# Drag and drop on Wayland, which winit 0.30 lacks: a data device on winit's own
+# connection (nikomiru-app only). Both are already in the graph through winit.
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
 
 # Logic
 tokio = "1.53"
@@ -78,6 +85,8 @@ insta = "1.49"
 criterion = "0.8"
 wiremock = "0.6"
 tempfile = "3.27"
+# UI tests of the egui views through AccessKit: no renderer, no wgpu.
+egui_kittest = { version = "0.37", default-features = false }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
