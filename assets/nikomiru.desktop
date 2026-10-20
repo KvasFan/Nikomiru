@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Nikomiru
+GenericName=Video player for language learning
+GenericName[it]=Lettore video per imparare le lingue
+Comment=Watch videos with clickable subtitles, look words up and make Anki cards
+Comment[it]=Guarda video con sottotitoli cliccabili, cerca le parole e crea carte Anki
+Exec=nikomiru %U
+TryExec=nikomiru
+Terminal=false
+StartupNotify=true
+StartupWMClass=nikomiru
+SingleMainWindow=true
+Categories=AudioVideo;Video;Player;
+Keywords=anime;Japanese;subtitles;dictionary;Anki;Yomitan;
+MimeType=x-scheme-handler/nikomiru;video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/webm;video/x-m4v;video/mp2t;video/x-flv;video/x-ms-wmv;video/mpeg;video/ogg;

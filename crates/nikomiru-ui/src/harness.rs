@@ -228,6 +228,10 @@ pub fn state() -> Result<Value, String> {
                 "menu": p.menu,
             })).collect::<Vec<_>>(),
             "paused_for_lookup": s.popups.paused_for_lookup(),
+            "missing_link": s.missing_link.as_ref().map(|m| json!({
+                "uid": m.link.uid,
+                "path": m.path,
+            })),
             "dictionaries": s.dict_page.json(),
         })
     })
@@ -281,6 +285,18 @@ pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String
         },
     };
     call(move |ui| ui.run(command))
+}
+
+/// Answers the file dialog of "Locate the file" with `path`, as the portal
+/// does (ANK-052).
+pub fn locate(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        ui.handle(Inbound::Chosen {
+            dialog: crate::view::Dialog::Locate,
+            path,
+        });
+    })
 }
 
 /// Saves a dictionary's CSS like the Save button of its editor (DIC-035).

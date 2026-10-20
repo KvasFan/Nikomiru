@@ -11,6 +11,7 @@ mod arch;
 mod ci;
 mod evil;
 mod fixtures;
+mod install;
 mod licenses;
 mod synth;
 mod trace;
@@ -37,6 +38,9 @@ cargo xtask <command>
                        --canary: checks that a BSL-1.0 crate is rejected
   trace                requirements ↔ tests ↔ milestones matrix in target/trace.md
   about                generates target/THIRD_PARTY_LICENSES.html
+  install [--prefix DIR]
+                       release build in DIR/bin (default ~/.local) and the desktop
+                       entry in DIR/share/applications, registered for nikomiru://
 ";
 
 fn main() -> ExitCode {
@@ -65,6 +69,7 @@ fn run() -> Result<()> {
         "check-licenses" => licenses::check(&root, true),
         "trace" => trace::run(&root),
         "about" => licenses::about(&root).map(|_| ()),
+        "install" => install::run(&root, rest),
         "help" | "-h" | "--help" => {
             eprint!("{HELP}");
             Ok(())

@@ -2348,6 +2348,7 @@ dependencies = [
  "fluent-bundle",
  "fontique",
  "image",
+ "nikomiru-anki",
  "nikomiru-core",
  "nikomiru-dict",
  "nikomiru-library",

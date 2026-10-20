@@ -11,6 +11,7 @@
 //! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
+//! `{"cmd":"locate","path":…}`,
 //! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
@@ -123,6 +124,7 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::card(index("level")?, index("entry")?, command["item"].as_str())
                 .map(|()| Value::Null)
         }
+        Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),
         Some("quit") => harness::quit().map(|()| Value::Null),
         _ => Err(format!("unknown command {command}")),

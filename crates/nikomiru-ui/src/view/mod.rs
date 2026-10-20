@@ -11,6 +11,7 @@
 mod bar;
 mod chrome;
 mod dict_page;
+mod link;
 mod list;
 mod overlay;
 mod popups;
@@ -32,6 +33,8 @@ pub enum Dialog {
     Subtitles,
     /// A Yomitan dictionary to import (DIC-001).
     Dictionary,
+    /// The moved video of a link to a scene (ANK-052).
+    Locate,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -70,6 +73,10 @@ impl FileDialog {
             Dialog::Dictionary => (
                 tr("dict-import"),
                 vec![(tr("dict-import-filter"), vec!["*.zip"])],
+            ),
+            Dialog::Locate => (
+                tr("link-locate"),
+                vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
             ),
         };
         Self {
@@ -206,6 +213,9 @@ impl View {
         self.mark_presented(s, &drawn);
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
+        }
+        if let Some(missing) = &s.missing_link {
+            link::show(&ctx, s, missing, &mut out);
         }
         chrome::show(&ctx, s, self);
 

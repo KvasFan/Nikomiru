@@ -180,6 +180,15 @@ struct Current {
     path: PathBuf,
 }
 
+/// A link to a scene whose video cannot be found (ANK-052).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingLink {
+    /// The link.
+    pub link: nikomiru_anki::link::SourceLink,
+    /// Where the library had the video, if it knows it.
+    pub path: Option<String>,
+}
+
 /// The playback session.
 pub struct Session {
     services: Services,
@@ -218,6 +227,14 @@ pub struct Session {
     anki_jobs: Vec<crate::mining::AnkiJob>,
     /// The last card made since Nikomiru started (ANK-030).
     last_card: Option<crate::mining::LastCard>,
+    /// A link whose video cannot be found: the view offers to locate it
+    /// (ANK-052).
+    pub missing_link: Option<MissingLink>,
+    /// The clip of the link being opened: once the subtitles are there,
+    /// playback goes to its first cue (ANK-052).
+    link_clip: Option<(i64, i64)>,
+    /// Where the next file opens, instead of where it was left.
+    start_at: Option<f64>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -337,6 +354,9 @@ impl Session {
             screenshots: Vec::new(),
             anki_jobs: Vec::new(),
             last_card: None,
+            missing_link: None,
+            link_clip: None,
+            start_at: None,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -377,6 +397,10 @@ impl Session {
         }
         self.flush_position();
         self.end_replay();
+        if self.start_at.is_none() {
+            // an ordinary open: no link's cue to go to
+            self.link_clip = None;
+        }
         // the reads below must see the positions still queued (the same file
         // reopened at once)
         if let Some(w) = &self.writer {
@@ -433,7 +457,9 @@ impl Session {
             }
         }
         let request = LoadRequest {
-            start: (record.last_position_ms > 0).then(|| record.last_position_ms as f64 / 1000.0),
+            start: self.start_at.take().or_else(|| {
+                (record.last_position_ms > 0).then(|| record.last_position_ms as f64 / 1000.0)
+            }),
             options,
             aid: record.aid,
             volume: record.volume,
@@ -582,6 +608,87 @@ impl Session {
     /// Tab, Shift+Tab, Alt+wheel in the popup (POP-014).
     pub fn popup_entry(&mut self, delta: i64) {
         self.popups.move_entry(delta);
+    }
+
+    /// Opens a `nikomiru://source` link (ANK-050…ANK-052): its video, paused at
+    /// the start of the clip; a video the library cannot find is offered to
+    /// be located.
+    pub fn open_link(&mut self, url: &str) {
+        let link = match nikomiru_anki::link::SourceLink::parse(url) {
+            Ok(link) => link,
+            Err(e) => {
+                tracing::info!("{e}");
+                let message = self.services.translator.error(&e);
+                self.toasts.push(message);
+                return;
+            }
+        };
+        let record = self
+            .services
+            .library
+            .as_ref()
+            .and_then(|lib| lib.video(&link.uid).ok().flatten());
+        match record.map(|r| PathBuf::from(r.path)) {
+            Some(path) if path.is_file() => self.open_at_link(&path, &link),
+            other => {
+                self.missing_link = Some(MissingLink {
+                    link,
+                    path: other.map(|p| p.to_string_lossy().into_owned()),
+                });
+            }
+        }
+    }
+
+    fn open_at_link(&mut self, path: &Path, link: &nikomiru_anki::link::SourceLink) {
+        self.close_all_popups();
+        self.missing_link = None;
+        let _ = self.services.player.set_pause(true);
+        self.start_at = Some(f64::from(link.start_ms) / 1000.0);
+        self.link_clip = Some((i64::from(link.start_ms), i64::from(link.end_ms)));
+        self.open(path);
+    }
+
+    /// With the subtitles of the link's video there, playback goes to the
+    /// first cue that overlaps the clip, still paused (ANK-052).
+    fn go_to_link_cue(&mut self) {
+        let Some((start, end)) = self.link_clip.take() else {
+            return;
+        };
+        let t = self.subs.timeline();
+        let cue = (0..t.cues().len()).find(|&i| {
+            let c = &t.cues()[i];
+            c.start_ms + t.delay_ms < end && c.end_ms + t.delay_ms > start
+        });
+        if let Some(i) = cue {
+            let at = t.start_pos(i);
+            let _ = self.services.player.seek_absolute(at as f64 / 1000.0);
+        }
+    }
+
+    /// "Locate the file" was chosen with `path` (ANK-052): the library keeps
+    /// the new place, and the link opens.
+    pub fn located(&mut self, path: &Path) {
+        let Some(missing) = self.missing_link.take() else {
+            return;
+        };
+        if let Some(lib) = self.services.library.as_ref().filter(|l| !l.read_only()) {
+            let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            let mut record = lib
+                .video(&missing.link.uid)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            record.path = path.to_string_lossy().into_owned();
+            if let Err(e) = lib.put_video(&missing.link.uid, &record) {
+                tracing::warn!("library: {e}");
+            }
+        }
+        self.open_at_link(path, &missing.link);
+    }
+
+    /// The offer to locate a video was declined.
+    pub fn dismiss_missing_link(&mut self) {
+        self.missing_link = None;
     }
 
     /// The Anki jobs to start, taken by the UI layer.
@@ -1315,6 +1422,7 @@ impl Session {
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
                 self.cues_changed();
+                self.go_to_link_cue();
                 let text = match encoding {
                     Some(e) => self.tr(
                         "toast-sub-loaded-encoding",

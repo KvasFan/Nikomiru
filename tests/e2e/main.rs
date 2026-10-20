@@ -246,6 +246,60 @@ fn a_card_is_made_from_the_popup() {
     assert_eq!(library.mined_card_count().unwrap(), 2);
 }
 
+// T-ANK-052, T-APP-001 with a link
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_link_reopens_the_scene_and_a_moved_video_is_located() {
+    let mut desk = Desktop::start();
+    let videos = desk.path("videos");
+    std::fs::create_dir_all(&videos).unwrap();
+    let scene = videos.join("scene.mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &scene).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&scene.to_string_lossy());
+    h.wait("file-loaded");
+    // the second cue is [5.0, 5.5]; the link's clip is padded around it
+    let link = "nikomiru://source?v=1&kind=video&uid=video%2Fscene&ep=0&startMs=4880&endMs=5700&sourceId=12345678-1234-4234-8234-123456789abc";
+    let at_the_cue = |s: &serde_json::Value| {
+        s["paused"] == true && (time_pos(s) - 5.0).abs() < 0.06 && s["loaded"] == true
+    };
+
+    // the video moved: the link offers to locate it
+    let moved = videos.join("scene-moved.mkv");
+    std::fs::rename(&scene, &moved).unwrap();
+    h.cmd(serde_json::json!({ "cmd": "open", "path": link }));
+    let s = h.state_until("the offer to locate", |s| !s["missing_link"].is_null());
+    assert_eq!(s["missing_link"]["uid"], "video/scene");
+    assert_eq!(s["missing_link"]["path"], scene.to_string_lossy().as_ref());
+    h.cmd(serde_json::json!({ "cmd": "locate", "path": moved.to_string_lossy() }));
+    h.wait("file-loaded");
+    let s = h.state_until("at the cue, paused", at_the_cue);
+    assert!(s["missing_link"].is_null());
+
+    // from a second launch, as the desktop passes a link from Anki
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Space" }));
+    h.state_until("playing", |s| s["paused"] == false);
+    let mut second = desk.app(&[link]).spawn().unwrap();
+    assert!(exit_status(&mut second, Duration::from_secs(15)).success());
+    h.wait("file-loaded");
+    h.state_until("at the cue again, paused", at_the_cue);
+
+    // a link that is not one: a message, nothing opens
+    h.cmd(serde_json::json!({ "cmd": "open", "path": "nikomiru://source?v=1&kind=video&uid=%2Fetc%2Fpasswd&ep=0&startMs=0&endMs=0&sourceId=12345678-1234-4234-8234-123456789abc" }));
+    let s = h.state_until("the message", |s| {
+        s["toast"]
+            .as_str()
+            .is_some_and(|t| t.contains("not a Nikomiru link"))
+    });
+    assert_eq!(s["title"], "scene-moved.mkv");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // the library keeps the new place
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let record = library.video("video/scene").unwrap().unwrap();
+    assert_eq!(record.path, moved.to_string_lossy());
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

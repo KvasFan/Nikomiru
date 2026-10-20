@@ -692,7 +692,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 |---|---|
 | ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped, the uid percent-encoded). `startMs`/`endMs` are the clip of ANK-032 in video time; `ep` is 0 until series exist (M5). |
 | ANK-051 | Parsing is strict: unknown or duplicate parameters, absolute paths and `file:` uids are rejected; maximum length 16 KiB. |
-| ANK-052 | Opening the link (APP-001/002) opens the video, goes to `startMs` paused and highlights the first cue that overlaps the clip. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file" (the portal's file chooser), which saves the new path in the video's record. |
+| ANK-052 | Opening the link (APP-001/002) opens the video paused at `startMs`, then, once its subtitles are loaded, at the start of the first cue that overlaps the clip, so the cue is on screen. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file" (the portal's file chooser), which saves the new path in the video's record. |
 | ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS` of the clip of ANK-032 (seconds truncated), only if `end > start`. |
 
 ### 6.10 Statistics (STA)

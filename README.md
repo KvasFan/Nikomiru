@@ -43,6 +43,7 @@ Tasks run with `cargo xtask`:
 | `cargo xtask fixtures [--large] [--perf]` | generates test media and dictionaries in `target/fixtures/` (requires `ffmpeg`) |
 | `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
 | `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |
+| `cargo xtask install [--prefix DIR]` | builds the release binary into `DIR/bin` (default `~/.local`) and installs the desktop entry, registered for `nikomiru://` links, so that the links in Anki cards open Nikomiru |
 
 The spikes are separate workspaces in [`spikes/`](spikes/), with the measurements in the [ADRs](docs/adr/).
 

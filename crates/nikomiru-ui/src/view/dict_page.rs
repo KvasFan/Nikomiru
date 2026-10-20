@@ -402,7 +402,12 @@ pub(crate) fn draw(
 
 /// A layer over the whole window, shaded with `shade`, that takes every
 /// click: what is under it does not react.
-fn full_screen(ctx: &egui::Context, id: &str, shade: Color32, content: impl FnOnce(&mut Ui)) {
+pub(super) fn full_screen(
+    ctx: &egui::Context,
+    id: &str,
+    shade: Color32,
+    content: impl FnOnce(&mut Ui),
+) {
     let screen = ctx.content_rect();
     Area::new(Id::unique(id))
         .order(Order::Foreground)

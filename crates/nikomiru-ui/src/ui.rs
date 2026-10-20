@@ -207,6 +207,10 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// "Locate the file" for a link whose video is missing (ANK-052).
+    LinkLocate,
+    /// The offer to locate it was declined.
+    LinkDismiss,
     /// An item of an entry's card menu (ANK-030).
     CardMenu {
         level: usize,
@@ -317,7 +321,14 @@ impl Ui {
                 true
             }
             Inbound::Open(target) => {
-                self.session.open(&url_to_path(&target));
+                if target
+                    .get(..9)
+                    .is_some_and(|s| s.eq_ignore_ascii_case("nikomiru:"))
+                {
+                    self.session.open_link(&target);
+                } else {
+                    self.session.open(&url_to_path(&target));
+                }
                 true
             }
             Inbound::Activate => {
@@ -358,6 +369,7 @@ impl Ui {
                     Dialog::Video => self.session.open(&path),
                     Dialog::Subtitles => self.session.open_subtitle_file(&path),
                     Dialog::Dictionary => self.session.dict_choose(path),
+                    Dialog::Locate => self.session.located(&path),
                 }
                 true
             }
@@ -584,6 +596,8 @@ impl Ui {
             Command::DictSetCollapse(id, state) => s.dict_set_collapse(&id, &state),
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
             Command::CardButton { level, entry } => s.card_button(level, entry),
+            Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
+            Command::LinkDismiss => s.dismiss_missing_link(),
             Command::CardMenu { level, entry, item } => s.card_menu(level, entry, item),
         }
     }

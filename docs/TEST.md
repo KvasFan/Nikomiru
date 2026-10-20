@@ -65,6 +65,7 @@
 | `cargo-llvm-cov` | Apache-2.0 OR MIT | Coverage (NFR-MAINT-02) |
 | `cargo-deny`, `cargo-about` | MIT OR Apache-2.0 | Licenses (T-LIC-*) |
 | Xvfb, Weston, Mesa llvmpipe | MIT/X11 | Headless display for L6 |
+| `desktop-file-validate` (desktop-file-utils) | GPL-2.0-or-later | T-APP-002 |
 | KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1, S1q and S5 measurements (ADR 0001, ADR 0003, ADR 0006); **only as an external program** |
 | ffmpeg, ffprobe, libmpv | LGPL/GPL | Generating and checking the fixtures |
 | Anki desktop + AnkiConnect | AGPL-3.0 / GPL | **Only as external programs** in L7: they are neither linked nor distributed |
