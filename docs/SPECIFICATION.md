@@ -328,15 +328,15 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
  └──────────────────────▲───────────────────┘   (proxy)    └─────────────────────────────┘
                         │ messages (proxy)
  ┌──────────────────────┴──────────────────────────────────────────────────────────────┐
- │ workers: subtitles (ffmpeg), lookup, import, library writes, portal, single          │
- │ instance, signals, test harness                                                       │
+ │ workers: subtitles (ffmpeg), lookup, import, library writes, anki (mining), portal,   │
+ │ single instance, signals, test harness                                                │
  └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - The **UI thread** runs the winit event loop, egui and the session (the UI state), and renders the video in every frame (§5.2.2). It never waits for the mpv core.
-- The **`mpv-commands` thread** runs the player's commands in order with the synchronous libmpv API: `PlayerHandle` queues them and never waits for them. Their errors are logged; a refused `loadfile` becomes an `EndFile` error of its load.
+- The **`mpv-commands` thread** runs the player's commands in order with the synchronous libmpv API: `PlayerHandle` queues them and never waits for them. Their errors are logged; a refused `loadfile` becomes an `EndFile` error of its load. A command with a reply (the screenshots of PLY-011 and ANK-034) sends its result back on a channel, which only a worker waits on.
 - The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s stamped with their load's token (ARC-002).
-- **Workers**, each on its own thread: subtitle loading and extraction, dictionary lookups and imports, library writes, the screensaver portal, the single-instance socket, the termination signals. Their results reach the UI thread as messages through the event loop's proxy, which also wakes it.
+- **Workers**, each on its own thread: subtitle loading and extraction, dictionary lookups and imports, library writes, the `anki` worker (AnkiConnect requests one at a time, and the mining of a card: screenshot, ffmpeg jobs in parallel, composition, upload; [ADR 0007](adr/0007-mining-to-anki.md)), the screensaver portal, the single-instance socket, the termination signals. Their results reach the UI thread as messages through the event loop's proxy, which also wakes it.
 
 - **ARC-001**: `nikomiru-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
 - **ARC-002**: every load has an increasing `LoadToken`. Events and asynchronous results with an old token are discarded. This is the equivalent of the Fushi bugs "re-check player and loadToken after every await".
@@ -373,7 +373,7 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 ### 5.7 Single instance and URL scheme
 
 - **APP-001**: only one instance per user. A second launch passes its arguments (files to open, `nikomiru://` URLs) to the running instance through the Unix socket `$XDG_RUNTIME_DIR/nikomiru.sock`, then exits.
-- **APP-002**: the `.desktop` file registers `MimeType=x-scheme-handler/nikomiru;` and the video types, with `Exec=nikomiru %U`.
+- **APP-002**: the `.desktop` file (`assets/nikomiru.desktop`) registers `MimeType=x-scheme-handler/nikomiru;` and the video types, with `Exec=nikomiru %U`. Until the packages of 1.0, `cargo xtask install` installs it with the binary for the user and registers the scheme.
 
 ---
 
@@ -410,7 +410,7 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 | PLY-008 | After `file-loaded`: adopt the actual `aid`; disable mpv rendering for text tracks (`sid=no`, `sub-visibility=no`); apply the saved volume and speed | `video_player_controller.dart` `load()` |
 | PLY-009 | The player and the render context are **reused** from one episode to the next: only the content is recreated with `loadfile replace` | BUG-120 |
 | PLY-010 | Speed uses only the `speed` property, never the `scaletempo` filter | TODO-116 |
-| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) | |
+| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) as `<file name> <HH-MM-SS.mmm>.png`, and a message names the file | |
 | PLY-012 | Playback errors (missing file, unsupported codec, `end-file` with an error) MUST show an understandable message and must not block the app | |
 | PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal (flag *idle*), kept for one minute after a pause. Nikomiru talks to the portal with its own minimal D-Bus client (`nikomiru-app::dbus`): `zbus` would add about 45 crates for three fixed calls. If the portal is not available, a warning is logged: mpv's `stop-screensaver` has no effect under the render API, because mpv owns no window | |
 | PLY-014 | Thumbnails on the progress bar: post-1.0 | |
@@ -440,7 +440,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | Speed + / − / normal | ], = / [, - / Backspace | M1 |
 | Hold for 2× speed | E | M1 |
 | Previous / next frame | , / . | M1 |
-| Screenshot | S | M1 |
+| Screenshot | S | M4 |
 | Fullscreen | F, F11 | M1 |
 | Subtitle list / search | L / Ctrl+F | M2 |
 | Blur subtitle / hide subtitle | B / H | M2 |
@@ -639,20 +639,20 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement | Fushi |
 |---|---|---|
-| ANK-001 | Default endpoint `http://127.0.0.1:8765`, configurable (host, port, HTTPS, API key). Request body: `{"action", "version": 6, "params"?, "key"?}`; `key` only if not empty. Timeouts: 10 s per request, 5 s for the connection. | `ankiconnect_service.dart` |
+| ANK-001 | AnkiConnect's legacy API, version 6, at one configurable URL (default `http://127.0.0.1:8765`; HTTPS only for a reverse proxy) with an optional API key. Request body: `{"action", "version": 6, "params"?, "key"?}`, also inside every `multi` child; `key` only if not empty. No proxy, no pooled connections (`Connection: close`). Timeouts: 10 s per request, 5 s for the connection ([ADR 0007](adr/0007-mining-to-anki.md)). | `ankiconnect_service.dart` |
 | ANK-002 | Response: an HTTP status other than 200, a non-JSON body or a body without `result`/`error` → protocol error. A non-null `error` → error. For `addNote`, the text `cannot create note because it is a duplicate` → dedicated duplicate error. | |
-| ANK-003 | Retry: a single new attempt, if the pooled connection had expired. `addNote` and `createModel` are **not idempotent**: they are retried only if the connection phase failed. Otherwise the error is "unknown outcome, check in Anki", without retrying. | |
-| ANK-004 | Error codes shown to the user: connection refused, timeout (port probably taken by another program), HTTP error, invalid field mapping, empty first field, Lapis missing. | |
-| ANK-005 | Actions used: `version`, `deckNames`, `modelNames`, `modelFieldNames`, `addNote`, `canAddNotesWithErrorDetail`, `findNotes`, `notesInfo`, `updateNoteFields`, `addTags`, `storeMediaFile`, `getMediaFilesNames`, `deleteMediaFile`, `createModel`, `createDeck`, `guiBrowse`, `multi`. | |
+| ANK-003 | Retry by the phase that failed, once: a request that failed to connect is retried whatever the action; a read-only or idempotent action is also retried when the connection closes before the reply, never after a reply timeout. `addNote` and `createModel` (and a `multi` holding one) are **not idempotent**: once sent, a failure is "unknown outcome, check in Anki", without retrying and without deleting the media uploaded. | |
+| ANK-004 | Errors shown to the user, each with its own message: connection refused ("is Anki open?"), timeout (port probably taken by another program), HTTP or protocol error, wrong API key, AnkiConnect too old, no Anki profile open, deck or note type missing, invalid field mapping, empty first field, duplicate, unknown outcome, Lapis missing, an Anki editor window open (AnkiConnect 26.10), audio missing, the dictionaries changed. | |
+| ANK-005 | Actions used: `version`, `deckNames`, `modelNames`, `modelNamesAndIds`, `modelFieldNames`, `addNote`, `canAddNotesWithErrorDetail`, `findNotes`, `notesInfo`, `updateNoteFields`, `addTags`, `storeMediaFile`, `getMediaFilesNames`, `deleteMediaFile`, `createModel`, `createDeck`, `guiBrowse`, `multi`. Only documented parameters are sent (AnkiConnect 25.x fails on unknown ones). | |
 | ANK-006 | Refresh configuration: call `version`, `deckNames`, `modelNames` and `modelFieldNames` for the selected model. The selection is kept by name. | |
 
 #### 6.9.2 Lapis note
 
 | ID | Requirement |
 |---|---|
-| ANK-010 | Vendored Lapis templates (front, back, CSS) in `assets/anki/lapis/`, with a pinned version (Fushi uses v1.7.0). Fields, in order: Expression, ExpressionFurigana, ExpressionReading, ExpressionAudio, SelectionText, MainDefinition, DefinitionPicture, Sentence, SentenceFurigana, SentenceAudio, Picture, Glossary, Hint, IsWordAndSentenceCard, IsClickCard, IsSentenceCard, IsAudioCard, PitchPosition, PitchCategories, Frequency, FreqSort, MiscInfo. |
-| ANK-011 | "Create Lapis deck": `createModel` if no model named "Lapis" exists; `createDeck("Lapis")`; then refresh the configuration and check that both exist; select them and apply the default mapping. It is idempotent. Outcome: `created` / `already exists` / `failed`. |
-| ANK-012 | Default Lapis mapping: Expression `{expression}` · ExpressionFurigana `{furigana-plain}` · ExpressionReading `{reading}` · ExpressionAudio `{audio}` · MainDefinition `{glossary-first}` · Sentence `{sentence}` · SentenceAudio `{sentence-audio}` · Picture `{card-image}` · Glossary `{glossary}` · PitchPosition `{pitch-accent-positions}` · PitchCategories `{pitch-accent-categories}` · Frequency `{frequencies}` · FreqSort `{frequency-harmonic-rank}` · MiscInfo `{source-link} {clip-timestamp}` · IsWordAndSentenceCard `x`. |
+| ANK-010 | Lapis templates (front, back, CSS) of the upstream tag `1.7.0` copied byte for byte into `assets/anki/lapis/`, with a `PROVENANCE.md` and their SHA-256 pinned by a test; one card template named `Mining`. Fields, in order: Expression, ExpressionFurigana, ExpressionReading, ExpressionAudio, SelectionText, MainDefinition, DefinitionPicture, Sentence, SentenceFurigana, SentenceAudio, Picture, Glossary, Hint, IsWordAndSentenceCard, IsClickCard, IsSentenceCard, IsAudioCard, PitchPosition, PitchCategories, Frequency, FreqSort, MiscInfo. |
+| ANK-011 | "Create Lapis deck": `createModel` if no model named "Lapis" exists; `createDeck("Lapis")`; then refresh the configuration and check that both exist; select them and apply the default mapping. It is idempotent. Outcome: `created` (the model or the deck was new) / `already exists` / `failed`. |
+| ANK-012 | Default Lapis mapping: Expression `{expression}` · ExpressionFurigana `{furigana-plain}` · ExpressionReading `{reading}` · ExpressionAudio `{audio}` · MainDefinition `{glossary-first}` · Sentence `{sentence}` · SentenceAudio `{sentence-audio}` · Picture `{card-image}` · Glossary `{glossary}` · PitchPosition `{pitch-accent-positions}` · PitchCategories `{pitch-accent-categories}` · Frequency `{frequencies}` · FreqSort `{frequency-harmonic-rank}` · MiscInfo `{source-link} {clip-timestamp}` · IsWordAndSentenceCard `x`. SelectionText stays empty (Fushi fills it with the popup's selection text, which a video card does not have). |
 | ANK-013 | Lapis detection: the name contains "lapis" (case-insensitive), or the fields include Expression, MainDefinition and Sentence. |
 
 #### 6.9.3 Field composition
@@ -660,27 +660,27 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ID | Requirement |
 |---|---|
 | ANK-020 | Every note field has a template with `{name}` placeholders (regex `\{[^}]*\}`); an unknown placeholder becomes an empty string. The mapping is saved per note type. |
-| ANK-021 | Placeholders to implement: `{expression}` `{reading}` `{furigana-plain}` `{glossary}` `{glossary-first}` `{single-glossary-<dictionary>}` `{sentence}` `{cue-sentence}` `{frequencies}` `{frequency-harmonic-rank}` `{pitch-accent-positions}` `{pitch-accent-categories}` `{phonetic-transcriptions}` `{audio}` `{sentence-audio}` `{card-image}` `{document-title}` `{source-link}` `{clip-timestamp}` `{tags}`. The HTML format of each one must match Fushi `anki_note_composer.dart` and `popup.js` (test vectors in T-ANK-02x). |
+| ANK-021 | Placeholders to implement: `{expression}` `{reading}` `{furigana-plain}` `{glossary}` `{glossary-first}` `{single-glossary-<dictionary>}` `{sentence}` `{cue-sentence}` `{frequencies}` `{frequency-harmonic-rank}` `{pitch-accent-positions}` `{pitch-accent-categories}` `{phonetic-transcriptions}` `{audio}` `{sentence-audio}` `{card-image}` `{document-title}` `{source-link}` `{clip-timestamp}` `{tags}`. The HTML format of each one matches Fushi `anki_note_composer.dart` and `popup.js` (test vectors in T-ANK-02x), except that **every value from a subtitle, a dictionary, a file name or the user is HTML-escaped**. `{document-title}` is the file name without extension until series exist (M5); `{tags}` the entry's term tags, comma-separated; `{audio}` is empty until word audio (M5); `{single-glossary-<dictionary>}` matches the title, then the name shown. |
 | ANK-022 | `{furigana-plain}`: a kanji group becomes ` 漢字[かんじ]`, a kana group stays the same; the result is trimmed (e.g. `食[た]べ 物[もの]`). |
-| ANK-023 | `{glossary}`: `<div style="text-align: left;" class="yomitan-glossary"><ol>`, then one `<li data-dictionary="D"><i>(tag, D)</i> <span>…</span></li>` per sense. The `(tag, D)` label appears only on the first sense of each dictionary, repeated part-of-speech tags are removed, disabled dictionaries and redirects are skipped. The dictionary CSS is added as a `<style>` scoped to `.yomitan-glossary [data-dictionary="D"]`. |
-| ANK-024 | `{sentence}`: the cue (or the merged cues, ANK-041) with the looked-up word wrapped in `<b>`, at the exact position of the click offset (or at the first occurrence, if the offset is not valid). |
+| ANK-023 | `{glossary}`: `<div style="text-align: left;" class="yomitan-glossary"><ol>`, then one `<li data-dictionary="D"><i>(tag, D)</i> <span>…</span></li>` per sense. The `(tag, D)` label appears only on the first sense of each dictionary, repeated part-of-speech tags are removed, disabled dictionaries and redirects are skipped. Structured content is written as Yomitan writes it (its tags, `data-sc-*` attributes, `gloss-sc-*` classes), through the allowlist of POP-009 and with inline styles limited to the CSS subset of DIC-035; images are uploaded with the card. The dictionary CSS and the user's (DIC-035) are added as a `<style>` rewritten from the rules the subset keeps and scoped to `.yomitan-glossary [data-dictionary="D"]`. |
+| ANK-024 | `{sentence}`: the cue (or the merged cues, ANK-041), escaped, with its lines joined by `<br>` and the looked-up word wrapped in `<b>` at the exact position of the click offset (or at the first occurrence, if the offset does not hold the word). |
 | ANK-025 | `{frequency-harmonic-rank}` as in LKP-040. `{frequencies}`: `<ul style="text-align: left;"><li>D: value</li>…</ul>`. |
 | ANK-026 | Empty fields: omitted on creation. The first field of the note type cannot be empty (dedicated error). Only fields that actually exist in the note type are sent. |
-| ANK-027 | Tags: user tags + `nikomiru` + `video` + cleaned-up series title (spaces → `_`). Deduplicated, in order. |
+| ANK-027 | Tags: user tags + `nikomiru` + `video` + cleaned-up series title (spaces → `_`, from M5, when series exist). Deduplicated, in order. |
 
 #### 6.9.4 Mining flow from video
 
 | ID | Requirement |
 |---|---|
-| ANK-030 | State of the button in the popup: `+` (can be added), `✓` (already exists: the click opens a menu with overwrite / open in Anki / add anyway), `✓↩` (last card of this session, can be overwritten). The check uses `canAddNotesWithErrorDetail` on the first field, with the same `duplicateScope` and `duplicateScopeOptions` as `addNote`; if AnkiConnect is old, it falls back to `findNotes`. After a transport error there is a 30 s pause for the whole process. |
+| ANK-030 | State of the button in the popup: `+` (can be added, or unknown), `✓` (already exists: the click opens a menu with open in Anki / add anyway), `✓↩` (last card made since Nikomiru started, wins over ✓: the same menu with overwrite first). The check runs when a popup's content arrives, for all its entries in one `canAddNotesWithErrorDetail`, on the first field rendered from its template, with `allowDuplicate: false` and the same `duplicateScope` and `duplicateScopeOptions` as `addNote` (`deck`: `deckName`, `checkChildren` and `checkAllModels` true; `collection`: `checkChildren` false, `checkAllModels` true); only the exact duplicate text means ✓. If AnkiConnect is old (`unsupported action`), it falls back to `findNotes`. After a transport error there is a 30 s pause for the whole process. Only a loopback URL is checked without an action of the user (PRV-001). |
 | ANK-031 | The reference cue is chosen in this order: the one the lookup started from, the current one, the one found by position. |
-| ANK-032 | Audio interval: `[start − pad_head, end + pad_tail]` (defaults 120 ms and 200 ms, maximum 1000 ms each), bounded by the adjacent cues, then shifted by `+delay_ms`. Maximum duration 30 s. |
-| ANK-033 | Sentence audio: `ffmpeg -y -ss S -t D -i file:IN -vn -sn -map_chapters -1 -map 0:<ff-index of the active audio track> -c:a aac -ac 1 -b:a 64k out.m4a`. Quality levels: mono 64k (default), stereo 128k, stereo 192k. Alternative formats: Opus/OGG, MP3. |
-| ANK-034 | Image: the exact frame at the moment of the click, captured by mpv (`screenshot-to-file <tmp>.png video`), then resized and encoded with ffmpeg. Levels: long side 720 px / q80, **1000 px / q90 (default)**, 2000 px / q95, original. Formats: JPEG (default), WebP. Alternative mode: frame at the start of the cue. |
+| ANK-032 | Audio interval: `[start − pad_head, end + pad_tail]` (defaults 120 ms and 200 ms, maximum 1000 ms each), bounded by the adjacent cues, then shifted by `+delay_ms`. Maximum duration 30 s: a longer clip keeps its first 30 s. The same clip is used for the link and the timestamp (ANK-050, ANK-053). |
+| ANK-033 | Sentence audio: `ffmpeg -y -ss S -t D -i file:IN -vn -sn -map_chapters -1 -map 0:<ff-index of the active audio track> -c:a aac -ac 1 -b:a 64k out.m4a`. Quality levels (`audio_quality_level`): 0 = mono 64k (default), 1 = stereo 128k, 2 = stereo 192k. Alternative formats: Opus/OGG, MP3. |
+| ANK-034 | Image: the exact frame at the moment of the click, captured by mpv (`screenshot-to-file <tmp>.png video`, a player command with a reply) while the popup keeps playback paused, then resized (never enlarged) and encoded with ffmpeg. Levels: long side 720 px / q80, **1000 px / q90 (default)**, 2000 px / q95, original. Formats: JPEG (default), WebP. A failed image still makes the card. Alternative mode, with the advanced mining of M6: frame at the start of the cue. |
 | ANK-035 | Audio and image are extracted in parallel. If the audio is missing, the card is cancelled with a message (as in Fushi). |
-| ANK-036 | Media in Anki: content-based name `nikomiru_<sha256[0..16]>.<ext>`. If the host is loopback, `storeMediaFile` is used with `path`; otherwise `data` in base64. If `addNote` fails, the media uploaded in that attempt are deleted. |
-| ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`) and `addTags`. Default scope: only the last card mined in the session. |
-| ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` on the first field and then `guiBrowse` with the ids found. |
+| ANK-036 | Media in Anki: content-based name `nikomiru_<first 16 hex digits of the SHA-256>.<ext>`, uploaded with `storeMediaFile` as base64 `data` (never `path`: a sandboxed Anki cannot read Nikomiru's files); the name AnkiConnect returns goes into the fields. Before uploading, `getMediaFilesNames` tells which names already exist. If `addNote` fails with a known error, the media new in that attempt are deleted; after an unknown outcome nothing is deleted. Temporary files live in `$XDG_CACHE_HOME/nikomiru/mining/`. |
+| ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`), `addTags`, and `notesInfo` again to check the write. Scope: only the last card made since Nikomiru started. `mined_cards` follows. |
+| ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` with Anki's duplicate search (`dupe:<model id>,<first field>` for each note type, from `modelNamesAndIds`, within the deck when the scope is `deck`) and then `guiBrowse` with the ids found. |
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
 | ANK-040 | "Advanced mining" dialog (Shift+click on +): editing of start/end with preview, frame choice, exclusion of audio or image. Milestone M6. |
 | ANK-041 | Adding the previous or next cues to the sentence (merging text and interval). Milestone M6. |
@@ -690,10 +690,10 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement |
 |---|---|
-| ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped). |
+| ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped, the uid percent-encoded). `startMs`/`endMs` are the clip of ANK-032 in video time; `ep` is 0 until series exist (M5). |
 | ANK-051 | Parsing is strict: unknown or duplicate parameters, absolute paths and `file:` uids are rejected; maximum length 16 KiB. |
-| ANK-052 | Opening the link (APP-001/002) opens the video, goes to `startMs` paused and highlights the cue. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file". |
-| ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS`, only if `end > start`. |
+| ANK-052 | Opening the link (APP-001/002) opens the video, goes to `startMs` paused and highlights the first cue that overlaps the clip. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file" (the portal's file chooser), which saves the new path in the video's record. |
+| ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS` of the clip of ANK-032 (seconds truncated), only if `end > start`. |
 
 ### 6.10 Statistics (STA)
 
@@ -766,7 +766,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | `watch_coverage` | `&str` uid | merged `[(start_ms, end_ms)]` intervals |
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
-| `mined_cards` | `u64` note id | expression, reading, sentence, media uid, start, end, `source_id`, date |
+| `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
 
@@ -818,6 +818,7 @@ duplicate_scope = "deck"    # "deck" | "collection"
 audio_pad_head_ms = 120
 audio_pad_tail_ms = 200
 audio_format = "aac-m4a"    # "aac-m4a" | "opus-ogg" | "mp3"
+audio_quality_level = 0     # 0 = mono 64k, 1 = stereo 128k, 2 = stereo 192k
 image_format = "jpeg"       # "jpeg" | "webp"
 image_quality_level = 1     # 0..3
 tags = []

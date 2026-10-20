@@ -30,7 +30,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M1 | Minimal player | M | — | in progress |
 | M2 | Own subtitle rendering | L | — | done |
 | M3 | Dictionaries and lookup | XL | — | in progress |
-| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | not started |
+| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
 | M5 | Library and word audio | L | 0.2.0 | not started |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
 | M7 | Online metadata and subtitles | M | 0.4.0 | not started |
@@ -223,9 +223,13 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
   Constraints: the logo and icons are original GPL-3.0-only works in `assets/brand/` (SPECIFICATION §3.4). Screenshots show only project-made media and the project's test dictionaries (`mini-ja`): no anime frames (copyright), no Creative Commons media, no content from third-party dictionaries. They are taken with the GUI harness in an off-screen compositor, so they can be regenerated for every release.
 
+**Status as of 2026-10-20**
+
+- Decided in [ADR 0007](adr/0007-mining-to-anki.md): the split between `nikomiru-anki` and the `anki` worker, AnkiConnect's legacy API over reqwest without proxy or pooled connections, retries by phase, a fake AnkiConnect of our own for the tests, Lapis 1.7.0 from the upstream tag, escaping and a Yomitan-shaped glossary, media always uploaded as base64, "session" as the run of the app, `mined_cards` as a new table.
+
 **Exit criteria**
 
-- [ ] T-ANK-* green on mocks (wiremock).
+- [ ] T-ANK-* green on the fake AnkiConnect ([ADR 0007](adr/0007-mining-to-anki.md)).
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
 - [ ] T-PERF-08 ≤ 3 s.
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).

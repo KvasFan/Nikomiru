@@ -24,7 +24,7 @@
 | L1 Unit | Functions and types, specific cases | `#[cfg(test)]` in the crate | Every push |
 | L2 Property | Invariants with generated inputs (`proptest`) | `#[cfg(test)]`, `tests/` | Every push (256 cases); nightly 100k cases |
 | L3 Snapshot | Structured outputs compared with approved files (`insta`): the popup's view model, Anki field HTML, ffmpeg argv, the AccessKit trees of the views (roles and names, through `egui_kittest`) | `tests/snapshots/` | Every push |
-| L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`wiremock`) | `crates/*/tests/` | Every PR |
+| L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`nikomiru_anki::fake`, [ADR 0007](adr/0007-mining-to-anki.md)) | `crates/*/tests/` | Every PR |
 | L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/nikomiru-player/tests/` | Every PR |
 | L6 GUI end-to-end | Real app driven by the **test harness** (§2.1), under Xvfb (X11) and headless Weston or virtual KWin (Wayland), with Mesa llvmpipe | `tests/e2e/` | Every PR (smoke); nightly (full) |
 | L7 External | Real Anki desktop with AnkiConnect; real online services (AniList, Jimaku); real user data (JMdict, …) | `#[ignore]`, name starting with `l7_`, + `cargo xtask test --anki-e2e / --live / --realdata` | Nightly or by hand |
@@ -58,7 +58,7 @@
 | `proptest` | MIT OR Apache-2.0 | L2 and structured fuzzing |
 | `insta`, `cargo-insta` | Apache-2.0 | L3 |
 | `egui_kittest` | MIT OR Apache-2.0 | Tests of the egui views through AccessKit, with no renderer |
-| `wiremock` | MIT/Apache-2.0 | Fake AnkiConnect, fake online services |
+| `wiremock` | MIT/Apache-2.0 | Fake online services (M7). AnkiConnect has its own fake, `nikomiru_anki::fake` (feature `test-support`): a `std::net` server that answers from a script, records the requests and can close a connection before replying or never reply |
 | `tempfile` | MIT OR Apache-2.0 | Isolated XDG directories for each test |
 | `criterion` | Apache-2.0 OR MIT | L8 |
 | `cargo-llvm-cov` | Apache-2.0 OR MIT | Coverage (NFR-MAINT-02) |
@@ -372,24 +372,33 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-ANK-001 | Request shape | JSON snapshot of each action; `key` absent if empty | L3 |
+| T-ANK-001 | Request shape | JSON snapshot of each action; `key` absent if empty, present in every `multi` child otherwise; `Connection: close`; no proxy | L3 |
 | T-ANK-002 | Error mapping | Non-200, non-JSON, missing `result`/`error`, duplicate message → the right typed error | L4 |
-| T-ANK-003 | Retry | `deckNames` with a timed-out connection → retried once (wiremock counts 2 requests). `addNote` with the response lost after sending → `CommitUnknown`, only **1** request | L4 |
+| T-ANK-003 | Retry | `deckNames` whose connection closes before the reply → retried once (the fake counts 2 requests); a reply timeout is not retried. `addNote` with the response lost after sending → `CommitUnknown`, only **1** request. Connection refused → one more attempt for any action | L4 |
+| T-ANK-004 | Error messages | Every error of ANK-004 has its message in English and Italian, and none quotes the API key (T-ERR-001, T-PRV-002) | L1 |
+| T-ANK-005 | Actions | Only the actions of ANK-005, each with documented parameters only (snapshots of T-ANK-001) | L3 |
+| T-ANK-006 | Refresh | `version`, `deckNames`, `modelNames`, `modelFieldNames` of the selected model; a selection whose list position changed is kept by name; a missing one is reported | L4 |
+| T-ANK-010 | Lapis files | SHA-256 of the three vendored files as in `PROVENANCE.md`; 22 fields in order; template `Mining` | L1 |
 | T-ANK-011 | "Create Lapis deck" | Model absent → `createModel` + `createDeck`; model present → only `createDeck`; failed check → `LapisSetupMissing`; second run → `already exists` | L4 |
 | T-ANK-012/013 | Default mapping and Lapis recognition | Vectors from `lapis_preset_test.dart` | L1 |
-| T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense, scoped `<style>`), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja` | L3 |
-| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence | L1 |
+| T-ANK-020 | Templates | Unknown placeholder → empty; literal text kept (`x`); the mapping of one note type does not change another's | L1 |
+| T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense, scoped `<style>`, `data-sc-*` attributes, the hostile `mini-ja` entry reduced to the allowlist), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja`; every value escaped | L3 |
+| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
-| T-ANK-027 | Tags | `["mine", "nikomiru", "video", "Sousou_no_Frieren"]` deduplicated and in order | L1 |
-| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock) | L4 |
+| T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; from M5 with the series tag (`Sousou_no_Frieren`) | L1 |
+| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock); a remote URL is not checked | L4 |
+| T-ANK-031 | Reference cue | The cue the lookup started from, else the current one, else the one at the position | L1 |
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
 | T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345) | L3/L4 |
 | T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution | L4/L5 |
 | T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request | L4 |
-| T-ANK-036 | Media | Stable content-based name; loopback host → `path`, remote host → base64 `data`; if `addNote` fails → `deleteMediaFile` only for the media uploaded in that attempt | L4 |
-| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`); different note type → rejection | L4 |
+| T-ANK-036 | Media | Stable content-based name; always base64 `data`; the name AnkiConnect returns goes into the fields; if `addNote` fails with a known error → `deleteMediaFile` only for the names that did not exist before the attempt; after `CommitUnknown` nothing is deleted | L4 |
+| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`), `addTags`, `notesInfo` again; different note type → rejection; "editor open" → its message | L4 |
+| T-ANK-038 | Open in Anki | `guiBrowse nid:<id>` for the last card; for a word, `findNotes` with `dupe:` for each note type, within the deck | L4 |
+| T-ANK-039 | Record | A created card adds its `mined_cards` record; an overwrite replaces it | L4 |
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |
 | T-ANK-052 | Opening the link | `nikomiru://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
+| T-ANK-053 | Timestamp | Vectors from Fushi `handlebar_clip_timestamp_test.dart`: 754000/758000 → `00:12:34 - 00:12:38`, 1999/2999 → `00:00:01 - 00:00:02`, end ≤ start → empty | L1 |
 | T-E2E-ANKI-001 | Real Anki | Anki in Xvfb with AnkiConnect, empty profile → "Create Lapis deck" → mining from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media` | L7 |
 
 ### 6.10 Library and word audio
