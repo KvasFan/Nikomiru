@@ -172,7 +172,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | Resource | License | Rule |
 |---|---|---|
 | Yomitan transform tables (JSON generated from Fushi `fushi/assets/transforms/`) | GPL-3.0 | Copied into `assets/transforms/` with a `PROVENANCE.md` file (Yomitan version and Fushi commit) |
-| Lapis note templates (donkuri/lapis) | GPL-3.0 | Copied into `assets/anki/lapis/` with a pinned version |
+| Lapis note templates (donkuri/lapis) | GPL-3.0 | Copied byte for byte into `assets/anki/lapis/` from a release tag, with a `PROVENANCE.md` (version, commit, hashes, authors); credited in the README and on the About screen, since `THIRD_PARTY_LICENSES.html` lists crates only |
 | Dictionaries (JMdict, JMnedict, KANJIDIC, frequency dictionaries, etc.) | Various (e.g. CC BY-SA 4.0) | **NOT** distributed. The user imports them. Tests use hand-written dictionaries (TEST §4.3) |
 | Fonts | — | **NO** fonts are distributed: system fonts are used (e.g. Noto CJK). An OFL font is not in the allowed list |
 | Icons and logo | GPL-3.0-only | Original works of the project; no Creative Commons license, for consistency with the policy |

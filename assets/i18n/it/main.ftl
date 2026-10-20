@@ -106,6 +106,7 @@ error-anki-deck-missing = Anki non ha il mazzo { $name }: aggiorna le impostazio
 error-anki-duplicate = La carta esiste già in Anki.
 error-anki-empty-note = Il primo campo della carta è vuoto.
 error-anki-commit-unknown = Anki non ha confermato { $action }: controlla in Anki se la carta è stata creata prima di riprovare.
+error-anki-lapis-missing = Anki non ha ancora il tipo di nota o il mazzo Lapis: controlla Anki e riprova.
 error-anki = AnkiConnect: { $reason }
 
 # Single instance (nikomiru-app InstanceError)

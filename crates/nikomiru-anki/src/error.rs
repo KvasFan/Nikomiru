@@ -72,6 +72,9 @@ pub enum AnkiError {
         /// The action.
         action: String,
     },
+    /// "Create Lapis deck" ended without the note type or the deck in Anki.
+    #[error("the Lapis note type or deck is still missing")]
+    LapisMissing,
     /// Another error from AnkiConnect, in its words.
     #[error("AnkiConnect: {0}")]
     Anki(String),
@@ -134,6 +137,7 @@ impl nikomiru_core::Localized for AnkiError {
             AnkiError::Duplicate => "error-anki-duplicate",
             AnkiError::EmptyNote => "error-anki-empty-note",
             AnkiError::CommitUnknown { .. } => "error-anki-commit-unknown",
+            AnkiError::LapisMissing => "error-anki-lapis-missing",
             AnkiError::Anki(_) => "error-anki",
         }
     }
@@ -158,7 +162,8 @@ impl nikomiru_core::Localized for AnkiError {
             | AnkiError::Busy
             | AnkiError::EditorOpen
             | AnkiError::Duplicate
-            | AnkiError::EmptyNote => Vec::new(),
+            | AnkiError::EmptyNote
+            | AnkiError::LapisMissing => Vec::new(),
         }
     }
 }
@@ -264,6 +269,7 @@ mod tests {
             AnkiError::CommitUnknown {
                 action: "addNote".into(),
             },
+            AnkiError::LapisMissing,
             AnkiError::Anki("x".into()),
         ];
         let all: Vec<&dyn Localized> = errors.iter().map(|e| e as _).collect();

@@ -15,6 +15,8 @@ pub mod client;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
+pub mod lapis;
+pub mod media;
 
 pub use client::{Client, DuplicateScope, NewModel, Note, NoteInfo};
 pub use error::AnkiError;

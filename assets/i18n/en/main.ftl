@@ -106,6 +106,7 @@ error-anki-deck-missing = Anki has no deck { $name }: refresh the Anki settings.
 error-anki-duplicate = The card already exists in Anki.
 error-anki-empty-note = The first field of the card is empty.
 error-anki-commit-unknown = Anki did not confirm { $action }: check in Anki whether the card was made before trying again.
+error-anki-lapis-missing = Anki still has no Lapis note type or deck: check Anki, then try again.
 error-anki = AnkiConnect: { $reason }
 
 # Single instance (nikomiru-app InstanceError)
