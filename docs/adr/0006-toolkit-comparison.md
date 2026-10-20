@@ -176,6 +176,17 @@ Each cell gives milliseconds; for egui and iced, the first showing, then the two
   - On REF hardware (4 cores, 8 threads, integrated GPU), which this spike did not measure.
 - **Documents.** D-13 goes in SPECIFICATION §10.1, and the work track "UI on egui" in ROADMAP M3.
 
+## After the port
+
+The finished egui interface (2026-10-20), measured like the spike with `measure_app.py` (the release build with the test harness, fullscreen at 3840×2160 in the off-screen KWin, 20 s after the warm-up, a fresh profile each run). Another project's tests were running on the machine at the same time, so these numbers are indicative; the spike's above remain the reference.
+
+| 2160p60 HEVC 10-bit | Dropped frames in 20 s | CPU | Memory |
+|---|---|---|---|
+| idle (2 runs) | 0 | 3.2–3.6% | 258 MiB |
+| load ×3 (4 runs) | 0, 1, 2, 5 | 3.2–4.3% | 243–261 MiB |
+
+Decoding was VA-API zero-copy (`hwdec-current` = `vaapi`) in every run. The app draws the same as the spike, plus the control bar and the subtitle layer: the video holds as it did there.
+
 ## How to repeat
 
 ```sh
