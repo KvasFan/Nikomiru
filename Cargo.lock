@@ -2010,6 +2010,7 @@ dependencies = [
  "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "winit",
+ "zip",
 ]
 
 [[package]]

@@ -498,3 +498,44 @@ fn files_dragged_from_another_client_open_and_import() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-REL-001, T-DIC-010: quitting during an import cancels it; the library is
+// closed, nothing is registered and nothing is left to repair or clean up
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn quitting_during_an_import_leaves_nothing_behind() {
+    let mut desk = Desktop::start();
+    let zip = desk.large_dictionary(300_000);
+    let (mut app, mut h) = desk.launch();
+    h.drop_files(&[&zip]);
+    h.state_until("the import running", |s| {
+        s["dictionaries"]["import"]["state"] == "running"
+            && s["dictionaries"]["import"]["done"].as_u64().unwrap_or(0) > 0
+    });
+    let quitting = std::time::Instant::now();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let took = quitting.elapsed();
+    eprintln!("quit during the import: {took:?}");
+    assert!(took < Duration::from_secs(5), "the exit waited {took:?}");
+    assert!(
+        !desk.data_file("library.redb.bak-repair").exists(),
+        "the library was left open"
+    );
+    // the next start: still nothing to repair, nothing registered, no
+    // staging folder left
+    let (mut app, mut h) = desk.launch();
+    h.state();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(!desk.data_file("library.redb.bak-repair").exists());
+    assert!(
+        desk.registered_dictionaries().is_empty(),
+        "{:?}",
+        desk.registered_dictionaries()
+    );
+    let left: Vec<_> = std::fs::read_dir(desk.data_file("dicts"))
+        .map(|d| d.filter_map(Result::ok).map(|e| e.file_name()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+}

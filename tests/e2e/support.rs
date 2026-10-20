@@ -159,6 +159,54 @@ impl Desktop {
         self.path("data").join("nikomiru").join(name)
     }
 
+    /// The registered dictionaries of this desktop's profile, read while the
+    /// app is not running.
+    pub fn registered_dictionaries(&self) -> Vec<String> {
+        use std::sync::Arc;
+        let data = self.path("data").join("nikomiru");
+        let library =
+            Arc::new(nikomiru_library::Library::open(&data.join("library.redb")).unwrap());
+        let clock: Arc<dyn nikomiru_core::Clock> = Arc::new(nikomiru_core::SystemClock::new());
+        let manager =
+            nikomiru_library::DictionaryManager::open(library, data.join("dicts"), clock, "ja")
+                .unwrap();
+        manager
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|(_, r)| r.title)
+            .collect()
+    }
+
+    /// A Yomitan dictionary of `entries` made-up terms, in banks of 10 000,
+    /// written in this desktop's folder: long enough to import that a test
+    /// can act while it runs.
+    pub fn large_dictionary(&self, entries: usize) -> String {
+        use std::io::Write as _;
+        let path = self.path("large.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("index.json", options).unwrap();
+        zip.write_all(br#"{"title":"Nikomiru large","format":3,"revision":"1"}"#)
+            .unwrap();
+        for bank in 0..entries.div_ceil(10_000) {
+            let rows: Vec<String> = (bank * 10_000..((bank + 1) * 10_000).min(entries))
+                .map(|i| {
+                    format!(
+                        r#"["語{i}","ご{i}","n","",0,["word {i}", "a longer gloss so that the bank weighs what a real one does"],{i},""]"#
+                    )
+                })
+                .collect();
+            zip.start_file(format!("term_bank_{}.json", bank + 1), options)
+                .unwrap();
+            zip.write_all(format!("[{}]", rows.join(",")).as_bytes())
+                .unwrap();
+        }
+        zip.finish().unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
     /// Imports dictionaries (zips of `target/fixtures/dicts`) into this
     /// desktop's profile, before the app starts.
     pub fn import_dictionaries(&self, names: &[&str]) {
