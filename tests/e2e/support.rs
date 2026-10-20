@@ -44,6 +44,43 @@ pub fn exit_status(child: &mut Child, timeout: Duration) -> ExitStatus {
     until(timeout, "process exit", || child.try_wait().unwrap())
 }
 
+/// The internet sockets (TCP, UDP or raw, IPv4 or IPv6) that process `pid`
+/// holds, as the kernel's tables list them.
+pub fn internet_sockets(pid: u32) -> Vec<String> {
+    let inodes: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
+        .map(|dir| {
+            dir.flatten()
+                .filter_map(|fd| {
+                    let link = std::fs::read_link(fd.path()).ok()?;
+                    let link = link.to_string_lossy();
+                    Some(
+                        link.strip_prefix("socket:[")?
+                            .strip_suffix(']')?
+                            .to_string(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut found = Vec::new();
+    for table in ["tcp", "tcp6", "udp", "udp6", "raw", "raw6"] {
+        let Ok(text) = std::fs::read_to_string(format!("/proc/{pid}/net/{table}")) else {
+            continue;
+        };
+        for line in text.lines().skip(1) {
+            // the tenth column is the socket's inode
+            if line
+                .split_whitespace()
+                .nth(9)
+                .is_some_and(|inode| inodes.iter().any(|i| i == inode))
+            {
+                found.push(format!("{table}: {line}"));
+            }
+        }
+    }
+    found
+}
+
 /// An off-screen desktop for one test.
 pub struct Desktop {
     dir: tempfile::TempDir,
@@ -51,6 +88,8 @@ pub struct Desktop {
     kwin: Child,
     bus_address: String,
     launches: usize,
+    /// More variables for the apps launched from now on.
+    env: Vec<(String, String)>,
 }
 
 const WAYLAND: &str = "wayland-e2e";
@@ -142,7 +181,13 @@ impl Desktop {
             kwin,
             bus_address,
             launches: 0,
+            env: Vec::new(),
         }
+    }
+
+    /// Gives the apps launched from now on the variable `key`.
+    pub fn set_env(&mut self, key: &str, value: &str) {
+        self.env.push((key.to_string(), value.to_string()));
     }
 
     /// The compositor's socket, for the test's own Wayland clients.
@@ -251,6 +296,7 @@ impl Desktop {
             .env("QT_QPA_PLATFORM", "wayland")
             .env("QT_FORCE_STDERR_LOGGING", "1")
             .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null())
             .stdout(log.try_clone().unwrap())
             .stderr(log);

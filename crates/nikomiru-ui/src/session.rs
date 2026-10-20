@@ -1178,6 +1178,22 @@ impl Session {
         }
     }
 
+    /// Looks `text` up in a root popup, as a click on a subtitle word does but
+    /// with no cue behind it: the GUI test harness's `lookup` (TEST §2.1).
+    #[cfg(feature = "test-harness")]
+    pub fn look_up_text(&mut self, text: &str) {
+        let query = nikomiru_text::scan::normalize(text);
+        if query.is_empty() {
+            return;
+        }
+        self.hover.reset();
+        let playing = self.view.loaded && !self.view.paused;
+        let commands =
+            self.popups
+                .open_from_subtitle(playing, query, Origin::Glossary, Rect::default());
+        self.run_popup_commands(commands);
+    }
+
     fn run_popup_commands(&mut self, commands: Vec<Command>) {
         for c in commands {
             match c {

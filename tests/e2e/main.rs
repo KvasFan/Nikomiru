@@ -304,7 +304,6 @@ fn perf_cues_appear_within_50_ms_of_their_start() {
 
 // T-POP-001, T-POP-002, T-POP-004 with real dictionaries
 // T-PERF-06
-// T-SEC-001
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
@@ -356,6 +355,76 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
         .filter(|l| (l.contains("WARN") || l.contains("ERROR")) && l.contains("nikomiru_ui"))
         .collect();
     assert!(bad.is_empty(), "{bad:#?}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SEC-001, T-SEC-006
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_hostile_dictionary_entry_shows_only_what_the_allowlist_lets_through() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    // a spy proxy: anything that fetched an address of the entry through the
+    // usual proxy variables would connect here
+    let spy = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    spy.set_nonblocking(true).unwrap();
+    let proxy = format!("http://{}", spy.local_addr().unwrap());
+    for var in [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+    ] {
+        desk.set_env(var, &proxy);
+    }
+    let (mut app, mut h) = desk.launch();
+    // 危険: a <script>, an onclick, a remote image and a javascript: link
+    h.cmd(serde_json::json!({ "cmd": "lookup", "text": "危険" }));
+    let rendered = h.wait("popup-rendered");
+    assert_eq!(
+        rendered["headwords"],
+        serde_json::json!(["危険"]),
+        "{rendered}"
+    );
+    let content = h.cmd(serde_json::json!({ "cmd": "popup_content", "level": 0 }));
+    let section = &content["entries"][0]["sections"][0];
+    assert_eq!(section["dictionary"], "Nikomiru mini-ja", "{content}");
+    assert_eq!(
+        section["glossaries"][0]["blocks"],
+        serde_json::json!([{ "k": "flow", "runs": [
+            { "k": "text", "t": "danger", "s": { "color": "#ff0000" } },
+            { "k": "link", "t": "click", "target": { "kind": "lookup", "to": "click" }, "s": {} }
+        ] }]),
+        "only the span's text and colour and the link's text survive"
+    );
+    let text = content.to_string();
+    for bad in [
+        "alert",
+        "steal",
+        "evil.example",
+        "javascript",
+        "script",
+        "url(",
+    ] {
+        assert!(!text.contains(bad), "{bad} in {text}");
+    }
+    // nothing reached for the network
+    let accepted = spy.accept();
+    assert!(
+        accepted
+            .as_ref()
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::WouldBlock),
+        "the spy proxy was reached: {accepted:?}"
+    );
+    let sockets = support::internet_sockets(app.id());
+    assert!(sockets.is_empty(), "{sockets:#?}");
+    assert!(
+        !support::internet_sockets(std::process::id()).is_empty(),
+        "the check sees the spy's own socket"
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

@@ -226,6 +226,30 @@ pub fn state() -> Result<Value, String> {
     })
 }
 
+/// Looks `text` up in a root popup, as a click on a subtitle word does but
+/// with no cue behind it; the popup takes the fallback place.
+pub fn lookup(text: &str) -> Result<(), String> {
+    let text = text.to_string();
+    call(move |ui| ui.session.look_up_text(&text))
+}
+
+/// The view model of popup `level` (POP-009), as drawn: `null` while its
+/// lookup runs.
+pub fn popup_content(level: usize) -> Result<Value, String> {
+    call(move |ui| {
+        let popup = ui
+            .session
+            .popups
+            .stack()
+            .get(level)
+            .ok_or_else(|| format!("no popup at level {level}"))?;
+        match &popup.reply {
+            Some(reply) => serde_json::to_value(&*reply.content).map_err(|e| e.to_string()),
+            None => Ok(Value::Null),
+        }
+    })?
+}
+
 /// A button of the root popup, like the user's click (POP-015).
 pub fn popup_button(button: &str) -> Result<(), String> {
     let command = match button {

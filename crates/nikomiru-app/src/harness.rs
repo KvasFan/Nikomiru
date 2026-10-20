@@ -8,7 +8,8 @@
 //! Commands: `{"cmd":"open","path":…}`, `{"cmd":"wait","event":…,"timeout_ms":…}`,
 //! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
 //! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
-//! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"state"}`,
+//! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
+//! `{"cmd":"popup_content","level":0}`, `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
 use std::io::{BufRead, BufReader, Write};
@@ -98,6 +99,13 @@ fn run(command: &Value) -> Result<Value, String> {
         }
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
+        }
+        Some("lookup") => harness::lookup(text(command, "text")?).map(|()| Value::Null),
+        Some("popup_content") => {
+            let level = command["level"]
+                .as_u64()
+                .ok_or_else(|| "missing \"level\"".to_string())?;
+            harness::popup_content(level as usize)
         }
         Some("state") => harness::state(),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),

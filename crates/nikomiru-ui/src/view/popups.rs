@@ -1562,6 +1562,50 @@ mod tests {
         assert!(h.query_by_label("▾").is_some(), "details open");
     }
 
+    // T-SEC-001: the hostile entry of mini-ja, from the real lookup, draws and
+    // opens nothing until its link is clicked, and that link is a lookup
+    #[test]
+    fn a_hostile_entry_draws_and_opens_nothing_by_itself() {
+        let mini = crate::popup_view::tests::mini_ja();
+        let mut stack = Vec::new();
+        for (generation, query) in [(1, "漢字"), (2, "危険")] {
+            let content = mini.content(query);
+            crate::popup_view::tests::assert_allowlisted(&content);
+            let mut p = popup(generation, None);
+            p.reply = Some(Reply {
+                entries: content.entries.len(),
+                empty: false,
+                best_length: content.best_length,
+                content: Arc::new(content),
+            });
+            stack.push(p);
+        }
+        // the child sits above its parent, next to a word of it
+        stack[1].origin = Origin::Glossary;
+        stack[1].anchor = popup::Rect {
+            x: 600.0,
+            y: 300.0,
+            w: 40.0,
+            h: 20.0,
+        };
+        let mut h = harness(stack);
+        h.run();
+        assert_eq!(h.state().drawn, [0, 1]);
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            !out.iter()
+                .any(|c| matches!(c, Command::OpenExternal(_) | Command::PopupLookup { .. })),
+            "{out:?}"
+        );
+        let at = link(&h, "click");
+        assert!(at.is_positive(), "{at:?}");
+        let out = click(&mut h, at.center());
+        assert!(
+            matches!(&out[..], [Command::PopupLookup { level: 1, text, .. }] if text == "click"),
+            "a javascript: address is looked up as text: {out:?}"
+        );
+    }
+
     #[test]
     fn images_keep_their_aspect_inside_the_flow() {
         let image = |width, height, units| Image {
