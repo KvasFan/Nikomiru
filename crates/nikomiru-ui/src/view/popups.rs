@@ -34,9 +34,6 @@ use crate::ui::Command;
 
 /// The size of glossary text; `em` lengths count in it.
 const BASE: f32 = 15.0;
-/// The preferred width; the height is the content's, up to 70% of the window.
-const WIDTH: f32 = 560.0;
-const MAX_HEIGHT: f32 = 0.7;
 /// Between the panel's border and its content.
 const PAD: f32 = 10.0;
 /// From the window's edges (POP-006).
@@ -113,9 +110,12 @@ enum Drawn {
 /// Translates a message with its arguments.
 pub(crate) type Translate<'a> = dyn Fn(&str, &[(&str, String)]) -> String + 'a;
 
-/// The popups to draw and the strings they show.
+/// The popups to draw, their size and the strings they show.
 pub(crate) struct Scene<'a> {
     pub stack: &'a [Popup],
+    /// Their size before their content and the window make them smaller
+    /// (POP-006).
+    pub size: (f64, f64),
     pub tr: &'a Translate<'a>,
 }
 
@@ -129,19 +129,18 @@ pub(crate) fn show(
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
     let scene = Scene {
         stack: s.popups.stack(),
+        size: s.popups.size(),
         tr: &tr,
     };
     draw(ctx, &scene, state, out)
 }
 
-/// The rectangle of a popup: its preferred size, placed next to its word.
-fn place(p: &Popup, content: Option<f32>, screen: Rect) -> Rect {
+/// The rectangle of a popup: as wide as `size` and as tall as its content up
+/// to that height, placed next to its word.
+fn place(p: &Popup, content: Option<f32>, size: (f64, f64), screen: Rect) -> Rect {
     let (width, height) = (f64::from(screen.width()), f64::from(screen.height()));
-    let preferred_height = content.map_or(height, |c| f64::from(c + 2.0 * PAD + 2.0));
-    let size = (
-        f64::from(WIDTH).min(width - 2.0 * EDGE),
-        preferred_height.min(f64::from(MAX_HEIGHT) * height),
-    );
+    let content_height = content.map_or(height, |c| f64::from(c + 2.0 * PAD + 2.0));
+    let size = (size.0, content_height.min(size.1));
     // the harness clicks with no rectangle: the bottom middle of the window
     let anchor = if p.anchor.w > 0.0 || p.anchor.h > 0.0 {
         p.anchor
@@ -181,7 +180,7 @@ pub(crate) fn draw(
     // parent, a panel already shown keeps its place
     for (level, p) in stack.iter().enumerate() {
         let panel = state.panels.entry(p.generation).or_default();
-        let rect = place(p, panel.content_height, screen);
+        let rect = place(p, panel.content_height, scene.size, screen);
         let layer = LayerId::new(Order::Foreground, Id::unique(("popup", p.generation)));
         let mut measured = None;
         Area::new(layer.id)
@@ -1290,6 +1289,7 @@ mod tests {
 
     struct Test {
         stack: Vec<Popup>,
+        size: (f64, f64),
         state: State,
         out: Vec<Command>,
         drawn: Vec<usize>,
@@ -1362,12 +1362,14 @@ mod tests {
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
                     let scene = Scene {
                         stack: &t.stack,
+                        size: t.size,
                         tr: &tr,
                     };
                     t.drawn = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                 },
                 Test {
                     stack,
+                    size: crate::popup::Popups::default().size(),
                     state: State::default(),
                     out: Vec::new(),
                     drawn: Vec::new(),
@@ -1442,6 +1444,33 @@ mod tests {
         h.state_mut().stack = vec![low];
         h.run();
         assert!(panel(&h, 0).min.y >= 60.0 + 4.0 - 0.5, "{:?}", panel(&h, 0));
+    }
+
+    // T-POP-006
+    #[test]
+    fn a_popup_is_as_wide_as_the_maximum_and_as_tall_as_its_content_up_to_it() {
+        let senses: Vec<String> = (1..=40).map(|i| format!("sense {i}")).collect();
+        let mut h = harness(vec![popup(1, Some(vec![entry("行く", json!(senses))]))]);
+        h.state_mut().size = (400.0, 300.0);
+        h.run();
+        let rect = panel(&h, 0);
+        assert!((rect.width() - 400.0).abs() < 0.5, "{rect:?}");
+        assert!(
+            (rect.height() - 300.0).abs() < 0.5,
+            "the rest scrolls: {rect:?}"
+        );
+        h.state_mut().stack = vec![popup(2, Some(vec![entry("行く", json!(["to go"]))]))];
+        h.run();
+        let short = panel(&h, 0);
+        assert!(short.height() < 200.0, "as tall as its content: {short:?}");
+        // a narrower window: inside it
+        h.set_size(vec2(320.0, 720.0));
+        h.run();
+        let narrow = panel(&h, 0);
+        assert!(
+            (narrow.width() - 304.0).abs() < 0.5 && narrow.min.x >= 8.0 - 0.5,
+            "{narrow:?}"
+        );
     }
 
     // T-POP-011, T-POP-012

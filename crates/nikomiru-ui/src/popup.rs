@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use nikomiru_core::PopupConfig;
+
 use crate::popup_view::Content;
 
 /// Nested popups at most (POP-012).
@@ -103,14 +105,39 @@ pub struct Popup {
 }
 
 /// The open popups, root first.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Popups {
     stack: Vec<Popup>,
     paused_for_lookup: bool,
     generation: u64,
+    size: (f64, f64),
+}
+
+impl Default for Popups {
+    fn default() -> Self {
+        let c = PopupConfig::default();
+        Self::new((c.max_width, c.max_height))
+    }
 }
 
 impl Popups {
+    /// No popup open; the popups will take `size`, the configured maximum
+    /// (POP-006).
+    pub fn new(size: (f64, f64)) -> Self {
+        Self {
+            stack: Vec::new(),
+            paused_for_lookup: false,
+            generation: 0,
+            size: PopupConfig::bounded(size.0, size.1),
+        }
+    }
+
+    /// The size of a popup before its content and the window make it
+    /// smaller (POP-006).
+    pub fn size(&self) -> (f64, f64) {
+        self.size
+    }
+
     /// The open popups, root first.
     pub fn stack(&self) -> &[Popup] {
         &self.stack

@@ -288,6 +288,10 @@ impl Session {
             ..ViewState::default()
         };
         let services_obscure = services.config.subtitles.obscure.clone();
+        let popup_size = (
+            services.config.popup.max_width,
+            services.config.popup.max_height,
+        );
         let writer = services
             .library
             .as_ref()
@@ -316,7 +320,7 @@ impl Session {
             sub_loads: Vec::new(),
             sub_auto_done: false,
             sub_list_version: 0,
-            popups: Popups::default(),
+            popups: Popups::new(popup_size),
             lookups: Vec::new(),
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),

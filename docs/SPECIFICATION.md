@@ -609,7 +609,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-003 | Hover with Shift (movement threshold 8 px; not repeated on the same character). Option `lookup.hover_without_modifier` (default no). Hover lookup pauses like a click. If the pointer leaves the subtitle and the popup for 320 ms, the popup closes and playback resumes (`lookup.resume_on_leave`, default yes). | |
 | POP-004 | When all popups are closed, playback resumes **only** if the lookup paused it (BUG-072). | |
 | POP-005 | With a popup open, a click on another character of the subtitle or the list replaces the entry and stays paused. | |
-| POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size; resizable by dragging the border. | `dictionary_popup_layer.dart` |
+| POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size (`[popup]`, §9; 560 × 500 points by default): a popup is that wide and as tall as its content up to that height. Resizable by dragging the border. | `dictionary_popup_layer.dart` |
 | POP-007 | Header of each entry: headword with furigana (LKP-050), ♪ audio button (AUD), create-card button (+ / ✓ / ✓↩, ANK-030), deinflection trace chips with a description on hover, frequency row, pitch accent row, term tag chips. | `popup.js` |
 | POP-008 | One collapsible block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
 | POP-009 | Yomitan **structured content**: converted into the popup's view model (typed blocks and runs, drawn by egui) from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
@@ -804,6 +804,10 @@ obscure = "none"            # "none" | "blur" | "hidden"
 max_results = 10
 hover_without_modifier = false
 resume_on_leave = true
+
+[popup]                     # the largest dictionary popup, in points (POP-006)
+max_width = 560             # 240–4096; never wider than the window
+max_height = 500            # 120–4096; a popup is as tall as its content, up to this
 
 [anki]
 url = "http://127.0.0.1:8765"
