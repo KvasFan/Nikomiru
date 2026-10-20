@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The dictionaries page (DIC-001, DIC-010, DIC-016, DIC-030…DIC-034): import
-//! with progress and cancel, the update offer, and per dictionary: enable,
-//! rename, the popup block state, order and delete. It covers the window and
-//! takes the pointer, so nothing under it reacts; toasts stay above it.
+//! with progress and cancel, the update offer, and the dictionaries by type,
+//! each with enable, rename, the popup block state, order and delete. It
+//! covers the window and takes the pointer, so nothing under it reacts;
+//! toasts stay above it.
 
 use egui::{
     Align, Area, Button, Color32, ComboBox, Frame, Id, Key, Layout, Margin, Order, ProgressBar,
@@ -13,7 +14,7 @@ use nikomiru_library::{Collapse, DictionaryRecord};
 
 use super::popups::Translate;
 use super::{Dialog, View, theme};
-use crate::dictionaries::{DictionaryPage, Import};
+use crate::dictionaries::{DictionaryPage, Group, Import, Member};
 use crate::session::Session;
 use crate::ui::Command;
 
@@ -133,6 +134,29 @@ fn details(r: &DictionaryRecord, tr: &Translate<'_>) -> String {
     parts.join(" · ")
 }
 
+/// The heading of a group.
+fn group_name(group: Group, tr: &Translate<'_>) -> String {
+    tr(&format!("dict-group-{}", group.name()), &[])
+}
+
+/// A dictionary listed under one of its other types: where it ranks in this
+/// one; its row is under its main type.
+fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) {
+    let home = group_name(Group::main(&m.record.kinds), tr);
+    let text = tr(
+        "dict-reference",
+        &[("name", m.record.name().to_string()), ("group", home)],
+    );
+    Frame::new()
+        .stroke(Stroke::new(1.0, ROW))
+        .corner_radius(6)
+        .inner_margin(Margin::symmetric(10, 4))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add(egui::Label::new(RichText::new(text).italics().color(OFF)).truncate());
+        });
+}
+
 /// A flat button with a glyph, its tooltip and accessible name.
 fn glyph(ui: &mut Ui, enabled: bool, glyph: &str, name: &str) -> bool {
     let response = ui
@@ -217,9 +241,26 @@ pub(crate) fn draw(
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 6.0;
-                        let last = page.rows.len() - 1;
-                        for (i, (id, r)) in page.rows.iter().enumerate() {
-                            row(ui, scene.tr, state, out, id, r, (i > 0, i < last));
+                        for group in Group::ALL {
+                            let rows = page.group(group);
+                            let Some(last) = rows.len().checked_sub(1) else {
+                                continue;
+                            };
+                            ui.add_space(4.0);
+                            ui.label(
+                                RichText::new(group_name(group, scene.tr))
+                                    .size(14.0)
+                                    .family(theme::bold())
+                                    .color(DETAILS),
+                            );
+                            for (i, m) in rows.iter().enumerate() {
+                                if m.reference {
+                                    reference(ui, scene.tr, m);
+                                } else {
+                                    let (id, r) = (m.id, m.record);
+                                    row(ui, scene.tr, state, out, id, r, (i > 0, i < last));
+                                }
+                            }
                         }
                     });
             });
@@ -359,10 +400,13 @@ fn row(
                                     )
                                     .truncate(),
                                 );
-                                ui.label(
-                                    RichText::new(format!("{} {}", t("dict-revision"), r.revision))
-                                        .color(DETAILS),
-                                );
+                                let mut about = format!("{} {}", t("dict-revision"), r.revision);
+                                if let Some(code) = r.language.as_deref().filter(|c| !c.is_empty())
+                                {
+                                    about.push_str(" · ");
+                                    about.push_str(&tr("dict-language", &[("code", code.into())]));
+                                }
+                                ui.label(RichText::new(about).color(DETAILS));
                             });
                         }
                     }
@@ -639,7 +683,86 @@ mod tests {
         );
     }
 
-    // T-DIC-030, T-DIC-031, T-DIC-032
+    // T-DIC-030
+    #[test]
+    fn dictionaries_are_listed_by_type_with_their_details() {
+        use nikomiru_dict::store::Counts;
+        let typed = |title: &str, kinds: Kinds, counts: Counts| DictionaryRecord {
+            kinds,
+            counts,
+            ..record(title, true)
+        };
+        let mut jm = record("JM", true);
+        jm.kinds.frequency = true;
+        jm.counts.frequencies = 50;
+        let mut kanjidic = typed(
+            "KANJIDIC",
+            Kinds {
+                kanji: true,
+                ..Kinds::default()
+            },
+            Counts {
+                kanji: 13108,
+                ..Counts::default()
+            },
+        );
+        kanjidic.language = None;
+        let nhk = typed(
+            "NHK",
+            Kinds {
+                pitch: true,
+                ..Kinds::default()
+            },
+            Counts {
+                pitches: 99,
+                ..Counts::default()
+            },
+        );
+        let jpdb = typed(
+            "JPDB",
+            Kinds {
+                frequency: true,
+                ..Kinds::default()
+            },
+            Counts {
+                frequencies: 900,
+                ..Counts::default()
+            },
+        );
+        let mut h = harness(page(&[("p", nhk), ("f", jpdb), ("a", jm), ("k", kanjidic)]));
+        h.run();
+        // the headings in the page's order, each over its dictionaries; the
+        // term dictionary's frequencies rank after JPDB's, and say where its
+        // row is
+        let column = [
+            "dict-group-terms",
+            "JM",
+            "dict-group-kanji",
+            "KANJIDIC",
+            "dict-group-frequency",
+            "JPDB",
+            "dict-reference name=JM group=dict-group-terms",
+            "dict-group-pitch",
+            "NHK",
+        ];
+        let top = |label: &str| h.get_by_label(label).rect().top();
+        for pair in column.windows(2) {
+            assert!(top(pair[0]) < top(pair[1]), "{} over {}", pair[0], pair[1]);
+        }
+        // title, revision and language; entries, size and import date
+        let about = "dict-revision 2 · dict-language code=ja";
+        assert_eq!(h.query_all_by_label(about).count(), 3);
+        assert!(h.query_by_label("dict-revision 2").is_some(), "no language");
+        let size = "dict-size-mb whole=2 tenth=0";
+        let jm = format!("1234 dict-type-terms · 50 dict-type-frequency · {size} · 2026-10-20");
+        assert!(h.query_by_label(&jm).is_some(), "{jm}");
+        let kanji = format!("13108 dict-type-kanji · {size} · 2026-10-20");
+        assert!(h.query_by_label(&kanji).is_some(), "{kanji}");
+        // a reference has no controls: one switch per dictionary
+        assert_eq!(h.query_all_by_label("dict-enabled").count(), 4);
+    }
+
+    // T-DIC-031, T-DIC-032
     #[test]
     fn rows_reorder_and_enable_and_the_page_takes_the_clicks() {
         let mut h = harness(page(&[
