@@ -66,7 +66,7 @@ postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 lz4_flex = "0.14"
 zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
 icu_normalizer = "2.3"
 unicode-segmentation = "1.13"
 thiserror = "2.0"

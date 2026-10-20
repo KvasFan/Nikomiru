@@ -90,6 +90,24 @@ error-dict-store = The dictionary database cannot be used ({ $reason }).
 error-dict-same-revision = { $title } revision { $revision } is already installed.
 error-dict-unknown = The dictionary no longer exists.
 
+# Anki (nikomiru-anki AnkiError, ANK-004)
+error-anki-bad-url = { $url } is not an AnkiConnect address: it starts with http:// or https://.
+error-anki-refused = AnkiConnect is not responding on { $url }: is Anki open?
+error-anki-timeout = No reply from { $url } in time: the port is probably used by another program.
+error-anki-http = AnkiConnect on { $url } could not answer ({ $reason }).
+error-anki-protocol = What answers on { $url } is not AnkiConnect ({ $reason }).
+error-anki-wrong-key = AnkiConnect refused the API key: check it in the Anki settings.
+error-anki-unsupported = This AnkiConnect is too old for { $action }: update it in Anki.
+error-anki-no-collection = Anki has no profile open.
+error-anki-busy = Anki is busy: try again in a moment.
+error-anki-editor-open = Close Anki's Browse, Add and Edit windows, then try again.
+error-anki-model-missing = Anki has no note type { $name }: refresh the Anki settings.
+error-anki-deck-missing = Anki has no deck { $name }: refresh the Anki settings.
+error-anki-duplicate = The card already exists in Anki.
+error-anki-empty-note = The first field of the card is empty.
+error-anki-commit-unknown = Anki did not confirm { $action }: check in Anki whether the card was made before trying again.
+error-anki = AnkiConnect: { $reason }
+
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
 error-instance-no-answer = Nikomiru is already running but does not answer. Close it and try again.

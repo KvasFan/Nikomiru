@@ -50,7 +50,7 @@ The spikes are separate workspaces in [`spikes/`](spikes/), with the measurement
 
 Linux (Wayland and X11) as the primary platform. Windows and macOS after 1.0.
 
-Expected system dependencies: libmpv ≥ 0.37, FFmpeg ≥ 6, OpenGL with EGL (Mesa or NVIDIA's driver), the Wayland or X11 client libraries and libxkbcommon, fontconfig, and a font with Japanese glyphs (for example Noto Sans CJK). Building also needs libmpv's development files.
+Expected system dependencies: libmpv ≥ 0.37, FFmpeg ≥ 6, OpenGL with EGL (Mesa or NVIDIA's driver), the Wayland or X11 client libraries and libxkbcommon, fontconfig, OpenSSL 3 (for HTTPS, through native-tls) and a font with Japanese glyphs (for example Noto Sans CJK). Building also needs the development files of libmpv and OpenSSL, and `pkg-config`.
 
 ## License
 

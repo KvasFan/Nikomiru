@@ -219,7 +219,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Serialization | `serde`, `serde_json`, `toml`, `postcard` | 1.x | MIT OR Apache-2.0 |
 | Compression | `lz4_flex` | 0.14 | MIT |
 | ZIP | `zip` (`default-features = false`, `deflate-flate2`; `flate2` with `miniz_oxide` backend) | 9.x | MIT |
-| HTTP | `reqwest` (`default-features = false`, `json`, `native-tls`) | 0.13 | MIT OR Apache-2.0 |
+| HTTP | `reqwest` (`default-features = false`, `blocking`, `native-tls`: the workers are threads, so the blocking client, with no proxy for AnkiConnect, [ADR 0007](adr/0007-mining-to-anki.md)) | 0.13 | MIT OR Apache-2.0 |
 | Unicode | `icu_normalizer`, `unicode-segmentation` | 2.3 / 1.13 | Unicode-3.0 (class B) / MIT OR Apache-2.0 |
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
@@ -230,7 +230,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
 | Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to the popup's view model | `ammonia` | 4.x | MIT OR Apache-2.0 |
-| Tests | `proptest`, `insta`, `criterion`, `wiremock`, `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
+| Tests | `proptest`, `insta`, `criterion`, `wiremock` (online services, M7; AnkiConnect has its own fake), `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
 
 Every new crate requires, in the PR: the license (verified by `cargo deny`), a justification and an assessment of the "write the code ourselves" alternative.
 

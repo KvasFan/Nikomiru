@@ -51,6 +51,8 @@ exceptions = [
     { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
     { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
     { crate = "icu_normalizer_data", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties", allow = ["Unicode-3.0"] },
+    { crate = "icu_properties_data", allow = ["Unicode-3.0"] },
     { crate = "icu_provider", allow = ["Unicode-3.0"] },
     { crate = "litemap", allow = ["Unicode-3.0"] },
     { crate = "tinystr", allow = ["Unicode-3.0"] },
