@@ -383,6 +383,7 @@ fn run(
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
+        screenshots_dir: paths.screenshots_dir(),
     };
     let instance = server.map(|server| {
         let waker = waker.clone();

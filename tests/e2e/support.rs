@@ -195,7 +195,8 @@ impl Desktop {
         self.path("run").join(WAYLAND)
     }
 
-    fn path(&self, sub: &str) -> PathBuf {
+    /// A path inside this desktop's home folder.
+    pub fn path(&self, sub: &str) -> PathBuf {
         self.dir.path().join(sub)
     }
 

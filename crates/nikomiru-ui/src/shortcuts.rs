@@ -50,6 +50,8 @@ pub enum Action {
     FramePrev,
     /// Next frame.
     FrameNext,
+    /// Saves the frame shown, without subtitles (PLY-011).
+    Screenshot,
     /// Fullscreen on/off.
     Fullscreen,
     /// Previous chapter.
@@ -94,7 +96,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 32] = [
+    pub const ALL: [Action; 33] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -107,6 +109,7 @@ impl Action {
         Action::HoldSpeed,
         Action::FramePrev,
         Action::FrameNext,
+        Action::Screenshot,
         Action::Fullscreen,
         Action::ChapterPrev,
         Action::ChapterNext,
@@ -144,6 +147,7 @@ impl Action {
             Action::HoldSpeed => "hold_speed",
             Action::FramePrev => "frame_prev",
             Action::FrameNext => "frame_next",
+            Action::Screenshot => "screenshot",
             Action::Fullscreen => "fullscreen",
             Action::ChapterPrev => "chapter_prev",
             Action::ChapterNext => "chapter_next",
@@ -181,7 +185,7 @@ impl Action {
         }
     }
 
-    /// Default keys (SPECIFICATION §6.3, M1 and M2 rows).
+    /// Default keys (SPECIFICATION §6.3).
     pub fn default_keys(self) -> &'static [&'static str] {
         match self {
             Action::PlayPause => &["Space", "KeyP", "MediaPlayPause"],
@@ -196,6 +200,7 @@ impl Action {
             Action::HoldSpeed => &["KeyE"],
             Action::FramePrev => &["Comma"],
             Action::FrameNext => &["Period"],
+            Action::Screenshot => &["KeyS"],
             Action::Fullscreen => &["KeyF", "F11"],
             Action::ChapterPrev => &["PageUp"],
             Action::ChapterNext => &["PageDown"],

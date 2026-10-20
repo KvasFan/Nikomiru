@@ -15,5 +15,6 @@ pub mod player;
 pub mod render;
 
 pub use player::{
-    LoadRequest, PlaybackError, Player, PlayerError, PlayerEvent, PlayerHandle, VideoOutput,
+    CommandReply, LoadRequest, PlaybackError, Player, PlayerError, PlayerEvent, PlayerHandle,
+    VideoOutput,
 };

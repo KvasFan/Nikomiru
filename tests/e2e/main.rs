@@ -102,6 +102,32 @@ fn files_open_from_the_command_line_and_by_drag_and_drop() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-011
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn s_saves_the_frame_shown_in_the_pictures_folder() {
+    let mut desk = Desktop::start();
+    let pictures = desk.path("pictures");
+    desk.set_env("XDG_PICTURES_DIR", &pictures.to_string_lossy());
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    h.key("KeyS");
+    let saved = h.wait("screenshot-saved");
+    let path = std::path::PathBuf::from(saved["path"].as_str().unwrap());
+    assert_eq!(path.parent(), Some(pictures.join("Nikomiru").as_path()));
+    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(
+        name.starts_with("av_basic ") && name.ends_with(".png"),
+        "{name}"
+    );
+    let png = std::fs::read(&path).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let int = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
+    assert_eq!((int(16), int(20)), (1280, 720), "the video's own size");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

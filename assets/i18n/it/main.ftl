@@ -26,6 +26,8 @@ chapter-next = Capitolo successivo
 
 toast-volume = Volume { $value }%
 toast-speed = Velocità { $value }×
+toast-screenshot = Screenshot salvato: { $name }
+toast-screenshot-failed = Impossibile salvare lo screenshot ({ $reason }).
 toast-muted = Audio disattivato
 toast-unmuted = Audio attivato
 toast-paused = In pausa
@@ -50,6 +52,7 @@ error-library-schema = Il file della libreria è danneggiato: non ha una version
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = Il player non può farlo ({ $reason }).
 error-player-thread = Il player non riesce ad avviarsi ({ $reason }).
+error-player-path = Il player non può usare questo percorso: { $path }.
 error-video-output = Il video non può essere mostrato: { $reason }
 playback-loading-failed = il file manca, non è leggibile o è danneggiato
 playback-audio-output = non c'è un'uscita audio disponibile

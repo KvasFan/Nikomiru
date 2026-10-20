@@ -14,6 +14,7 @@
 //! `test-support` feature, for tests and the
 //! GUI harness only, and never on the UI thread.
 
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
@@ -43,6 +44,9 @@ pub enum PlayerError {
     /// A thread of the player could not be started, or has stopped.
     #[error("mpv thread: {0}")]
     Thread(std::io::Error),
+    /// A path mpv cannot take: it is not valid UTF-8.
+    #[error("not a UTF-8 path: {}", .0.display())]
+    Path(std::path::PathBuf),
 }
 
 /// A libmpv2 error in words: mpv's error codes become [`PlaybackError`]s.
@@ -58,6 +62,7 @@ impl nikomiru_core::Localized for PlayerError {
         match self {
             PlayerError::Mpv(_) => "error-player",
             PlayerError::Thread(_) => "error-player-thread",
+            PlayerError::Path(_) => "error-player-path",
         }
     }
 
@@ -65,6 +70,7 @@ impl nikomiru_core::Localized for PlayerError {
         match self {
             PlayerError::Mpv(e) => vec![("reason", mpv_reason(e))],
             PlayerError::Thread(e) => vec![("reason", e.to_string())],
+            PlayerError::Path(p) => vec![("path", p.display().to_string())],
         }
     }
 }
@@ -240,6 +246,9 @@ pub struct LoadRequest {
 
 type Sink = Arc<dyn Fn(Stamped<PlayerEvent>) + Send + Sync>;
 
+/// Where the result of a command with a reply arrives ([`PlayerHandle::screenshot`]).
+pub type CommandReply = mpsc::Receiver<Result<(), PlayerError>>;
+
 /// A command for the core, run in order on the `mpv-commands` thread.
 enum Command {
     /// Options, `start` and `loadfile` of a load.
@@ -252,6 +261,12 @@ enum Command {
     Set(String, String),
     /// Runs a command.
     Run(&'static str, Vec<String>),
+    /// Runs a command and sends its result back.
+    Reply(
+        &'static str,
+        Vec<String>,
+        mpsc::Sender<Result<(), PlayerError>>,
+    ),
     /// Ends the thread ([`Player::shutdown`]).
     Stop,
 }
@@ -582,6 +597,23 @@ impl PlayerHandle {
         }
     }
 
+    /// Saves the frame shown, without subtitles or OSD, to `path`, in the format
+    /// of its extension (PLY-011, ANK-034). The command runs in order with the
+    /// others; its result comes on the returned channel, which a worker waits
+    /// on, never the UI thread.
+    pub fn screenshot(&self, path: &Path) -> Result<CommandReply, PlayerError> {
+        let file = path
+            .to_str()
+            .ok_or_else(|| PlayerError::Path(path.to_path_buf()))?;
+        let (reply, result) = mpsc::channel();
+        self.send(Command::Reply(
+            "screenshot-to-file",
+            vec![file.to_string(), "video".to_string()],
+            reply,
+        ))?;
+        Ok(result)
+    }
+
     /// Stores a string in the core under `user-data/nikomiru/<key>` (for the GUI
     /// harness and the tests, e.g. to check that the core is reused, PLY-009).
     pub fn set_user_data(&self, key: &str, value: &str) -> Result<(), PlayerError> {
@@ -614,6 +646,10 @@ fn command_loop(shared: &Shared, queue: &mpsc::Receiver<Command>, sink: &Sink) {
                 if let Err(e) = mpv.command(name, &args) {
                     tracing::warn!(target: "mpv", "{name}: {}", mpv_reason(&e));
                 }
+            }
+            Command::Reply(name, args, reply) => {
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                let _ = reply.send(mpv.command(name, &args).map_err(PlayerError::from));
             }
             Command::Load {
                 token,

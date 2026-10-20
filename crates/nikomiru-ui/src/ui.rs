@@ -69,6 +69,8 @@ pub enum Inbound {
     /// A file dropped on the window, where the app takes drops itself
     /// (Wayland): handled as [`Ui::dropped`].
     Dropped(PathBuf),
+    /// A screenshot ended (PLY-011): the file written, or a message.
+    Screenshot(Result<PathBuf, String>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -89,6 +91,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Chosen { .. } => "Chosen",
             Inbound::DialogFailed => "DialogFailed",
             Inbound::Dropped(_) => "Dropped",
+            Inbound::Screenshot(_) => "Screenshot",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -287,6 +290,10 @@ impl Ui {
             }
             Inbound::Activate => {
                 self.view.activate = true;
+                true
+            }
+            Inbound::Screenshot(result) => {
+                self.session.screenshot_done(result);
                 true
             }
             Inbound::Dropped(path) => {
@@ -546,6 +553,13 @@ impl Ui {
                         result,
                     });
                 }),
+            );
+        }
+        for name in self.session.take_screenshots() {
+            let waker = self.waker.clone();
+            self.session.start_screenshot(
+                name,
+                Box::new(move |result| waker.wake(Inbound::Screenshot(result))),
             );
         }
         for (generation, text) in self.session.take_lookups() {

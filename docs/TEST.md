@@ -45,7 +45,7 @@
   - `mpv_get {property}`: read-only, for metrics; read on the harness thread, never on the UI thread, which renders the video;
   - `quit {}`;
   - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
-- Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5), `card-created {note_id}` (M4). `wait` drops the events before the one it waits for and fails on an `error`.
+- Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `screenshot-saved {path}`, `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5), `card-created {note_id}` (M4). `wait` drops the events before the one it waits for and fails on an `error`.
 - The harness runs its commands on the UI thread through the same entry points as the user's input (the key and drop handlers, the view's commands, the close path), not through internal shortcuts that skip the logic under test.
 
 ---

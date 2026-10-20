@@ -61,6 +61,8 @@ pub enum UiEvent {
     },
     /// A dictionary import finished well.
     DictionaryImported,
+    /// A screenshot was written (PLY-011).
+    ScreenshotSaved(PathBuf),
     /// A popup was drawn with its content (T-PERF-06).
     PopupRendered {
         /// Its level (0 = from the subtitles).
@@ -157,6 +159,8 @@ pub struct Services {
     pub subtitle_source: Box<dyn SubtitleSource>,
     /// The dictionaries.
     pub dictionaries: Box<dyn DictionaryService>,
+    /// Where screenshots go (PLY-011).
+    pub screenshots_dir: PathBuf,
 }
 
 impl std::fmt::Debug for Services {
@@ -206,6 +210,7 @@ pub struct Session {
     /// The dictionary popups.
     pub popups: Popups,
     lookups: Vec<(u64, String)>,
+    screenshots: Vec<String>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -322,6 +327,7 @@ impl Session {
             sub_list_version: 0,
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
+            screenshots: Vec::new(),
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -742,6 +748,13 @@ impl Session {
             }
             Action::FramePrev => p.frame_step(false),
             Action::FrameNext => p.frame_step(true),
+            Action::Screenshot => {
+                if let Some(current) = &self.current {
+                    let name = crate::screenshot::file_name(&current.path, self.view.time_pos);
+                    self.screenshots.push(name);
+                }
+                Ok(())
+            }
             Action::ChapterPrev => p.chapter(-1),
             Action::ChapterNext => p.chapter(1),
             Action::SubPrev | Action::SubNext => {
@@ -1294,6 +1307,44 @@ impl Session {
             query: p.query.clone(),
             headwords,
         });
+    }
+
+    /// The screenshots to take (file names), taken by the UI layer.
+    pub fn take_screenshots(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.screenshots)
+    }
+
+    /// Saves the frame shown as `name` in the screenshots folder, off the UI
+    /// thread; `done` gets the file written.
+    pub fn start_screenshot(
+        &self,
+        name: String,
+        done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
+    ) {
+        crate::screenshot::start(
+            self.services.player.clone(),
+            self.services.screenshots_dir.clone(),
+            name,
+            done,
+        );
+    }
+
+    /// A screenshot was written, or could not be (PLY-011).
+    pub fn screenshot_done(&mut self, result: Result<PathBuf, String>) {
+        let message = match &result {
+            Ok(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.tr("toast-screenshot", &[("name", name)])
+            }
+            Err(reason) => self.tr("toast-screenshot-failed", &[("reason", reason.clone())]),
+        };
+        self.toasts.push(message);
+        if let Ok(path) = result {
+            self.events.push(UiEvent::ScreenshotSaved(path));
+        }
     }
 
     /// The lookups to start, taken by the UI layer.

@@ -19,6 +19,7 @@ pub mod i18n;
 pub mod popup;
 pub mod popup_view;
 pub mod screensaver;
+pub mod screenshot;
 pub mod session;
 pub mod shortcuts;
 pub mod subtitles;

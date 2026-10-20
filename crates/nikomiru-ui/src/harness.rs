@@ -43,6 +43,10 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
         UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
+        UiEvent::ScreenshotSaved(path) => (
+            "screenshot-saved",
+            json!({ "path": path.to_string_lossy() }),
+        ),
         UiEvent::PopupRendered {
             level,
             query,

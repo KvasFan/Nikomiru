@@ -26,6 +26,8 @@ chapter-next = Next chapter
 
 toast-volume = Volume { $value }%
 toast-speed = Speed { $value }×
+toast-screenshot = Screenshot saved: { $name }
+toast-screenshot-failed = Cannot save the screenshot ({ $reason }).
 toast-muted = Muted
 toast-unmuted = Sound on
 toast-paused = Paused
@@ -50,6 +52,7 @@ error-library-schema = The library file is damaged: it has no valid version. Nik
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = The player cannot do this ({ $reason }).
 error-player-thread = The player cannot start ({ $reason }).
+error-player-path = The player cannot use this path: { $path }.
 error-video-output = The video cannot be shown: { $reason }
 playback-loading-failed = the file is missing, unreadable or damaged
 playback-audio-output = no audio output is available

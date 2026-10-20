@@ -2085,6 +2085,7 @@ dependencies = [
  "libmpv2-sys",
  "nikomiru-core",
  "nikomiru-player",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
 ]

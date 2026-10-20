@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `S` saves the frame shown, without subtitles, as a PNG in `Pictures/Nikomiru` named after the file and the position, and says where (PLY-011). The player gets commands with a reply: they run in order with the others, and a worker waits for their result, never the UI thread.
 - Specification (`docs/SPECIFICATION.md`), roadmap (`docs/ROADMAP.md`) and test plan (`docs/TEST.md`) for the Rust rewrite of Fushi.
 - GPL-3.0-only license.
 - Cargo workspace with the 11 crates of SPECIFICATION §5.1 (still empty), Rust 1.99.1 pinned in `rust-toolchain.toml`, shared lints (`unwrap_used` and `expect_used` forbidden, ERR-002).
