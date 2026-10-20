@@ -22,7 +22,7 @@ required-features = ["test-harness"]
 
 [features]
 # GUI test harness (TEST §2.1): never in release builds (T-SEC-004).
-test-harness = ["nikomiru-ui/test_harness"]
+test-harness = ["nikomiru-ui/test-harness"]
 
 [dependencies]
 nikomiru-core.workspace = true
@@ -32,9 +32,16 @@ nikomiru-media.workspace = true
 nikomiru-player.workspace = true
 nikomiru-subs.workspace = true
 nikomiru-ui.workspace = true
-cxx.workspace = true
-cxx-qt.workspace = true
-cxx-qt-lib.workspace = true
+egui.workspace = true
+egui-winit.workspace = true
+egui_glow.workspace = true
+glow.workspace = true
+glutin.workspace = true
+glutin-winit.workspace = true
+winit.workspace = true
+raw-window-handle.workspace = true
+wayland-client.workspace = true
+wayland-backend.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -45,3 +52,5 @@ libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+wayland-protocols-wlr.workspace = true
+wayland-protocols-plasma.workspace = true

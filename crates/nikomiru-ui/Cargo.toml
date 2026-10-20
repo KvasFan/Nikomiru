@@ -1,18 +1,16 @@
 [package]
 name = "nikomiru-ui"
-description = "QML interface and Rust QObjects (cxx-qt): popup, subtitle overlay, controls and settings"
+description = "The interface (egui): player page, subtitle overlay, dictionary popup, dictionaries page and controls"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-links = "nikomiru_ui"
 
 [features]
 # GUI test harness (TEST §2.1), enabled by nikomiru-app's `test-harness`: never in
-# release builds (T-SEC-004). Underscore, not hyphen: cxx-qt-build 0.10 evaluates
-# `cfg(feature = …)` in bridges against CARGO_FEATURE_* without turning `-` into `_`.
-test_harness = ["nikomiru-player/test-support"]
+# release builds (T-SEC-004).
+test-harness = ["nikomiru-player/test-support"]
 
 [dependencies]
 nikomiru-core.workspace = true
@@ -22,19 +20,18 @@ nikomiru-library.workspace = true
 nikomiru-player.workspace = true
 nikomiru-media.workspace = true
 nikomiru-subs.workspace = true
-cxx.workspace = true
-cxx-qt.workspace = true
-cxx-qt-lib.workspace = true
+egui.workspace = true
+egui_system_font_provider.workspace = true
+fontique.workspace = true
+image.workspace = true
 fluent-bundle.workspace = true
 unic-langid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 
-[build-dependencies]
-cxx-qt-build.workspace = true
-
 [dev-dependencies]
+egui_kittest.workspace = true
 tempfile.workspace = true
 proptest.workspace = true
 nikomiru-dict = { workspace = true, features = ["test-support"] }

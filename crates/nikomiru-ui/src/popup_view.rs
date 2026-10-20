@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The content of a dictionary popup as JSON for QML (POP-007, POP-008,
-//! POP-013): headword with furigana, trace tags, frequency and pitch rows,
-//! tags, and one block per dictionary with its glossaries already converted
-//! to the safe view model of [`nikomiru_dict::structured`].
+//! The content of a dictionary popup (POP-007, POP-008, POP-010, POP-013):
+//! headword with furigana, trace tags, frequency and pitch rows, tags, and one
+//! section per dictionary with its glossaries already converted to the safe
+//! view model of [`nikomiru_dict::structured`]. Built on the lookup thread,
+//! images decoded there too; drawn by `view::popups`. It serializes to JSON
+//! for the test harness and the tests only.
+
+use std::collections::HashMap;
+use std::io::Cursor;
+use std::sync::Arc;
 
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::{Entry, KanjiEntry};
+use nikomiru_dict::structured::{self, Block, Image, Pixels, Run};
 use nikomiru_dict::yomitan::{PitchPosition, Tag};
-use nikomiru_dict::{frequency, pitch, present, structured};
-use serde_json::{Value, json};
+use nikomiru_dict::{frequency, pitch, present};
+use serde::Serialize;
 
 /// How a dictionary block starts (DIC-034).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -43,83 +50,272 @@ pub type TagLookup<'a> = &'a dyn Fn(usize, &str) -> Option<Tag>;
 /// Reads a media file of a dictionary (its `media` table).
 pub type MediaLookup<'a> = &'a dyn Fn(usize, &str) -> Option<Vec<u8>>;
 
-/// Images larger than this are not shown inline.
-pub const MAX_IMAGE_BYTES: usize = 1 << 20;
+/// Image files larger than this are not shown.
+pub const MAX_IMAGE_BYTES: usize = 4 << 20;
+/// Images are decoded only up to this size: a 1 MiB file can expand to
+/// gigabytes.
+const MAX_DECODED_SIDE: u32 = 8192;
+const MAX_DECODER_ALLOC: u64 = 128 << 20;
+/// Larger images are scaled down to this side: the popup is at most 560
+/// points wide.
+const MAX_SIDE: u32 = 1280;
+/// Decoded pixels kept for one popup at most.
+const MAX_POPUP_PIXELS_BYTES: usize = 64 << 20;
 
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16)
-            | (u32::from(chunk.get(1).copied().unwrap_or(0)) << 8)
-            | u32::from(chunk.get(2).copied().unwrap_or(0));
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(char::from(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize]));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
+/// A part of the headword with its reading (LKP-050): empty over kana.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Segment {
+    /// Text.
+    pub t: String,
+    /// Reading.
+    pub r: String,
 }
 
-/// The image type of a media path, for the images QML can show.
-fn mime(path: &str) -> Option<&'static str> {
-    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "svg" => "image/svg+xml",
-        "bmp" => "image/bmp",
-        "avif" => "image/avif",
-        _ => return None,
+/// A deinflection step (LKP-024).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Trace {
+    /// Name (`-て`).
+    pub name: String,
+    /// What it means.
+    pub description: String,
+}
+
+/// A tag, with its category (the chip colour) and notes (the tooltip).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TagChip {
+    /// Name.
+    pub name: String,
+    /// Category (`partOfSpeech`, `popular`…), empty when unknown.
+    pub category: String,
+    /// Notes.
+    pub notes: String,
+}
+
+/// The frequencies a dictionary gives (LKP-040).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrequencyRow {
+    /// Dictionary name.
+    pub dictionary: String,
+    /// The values, as shown.
+    pub values: Vec<String>,
+}
+
+/// A pitch accent: downstep position and its shape (LKP-041).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Accent {
+    /// Downstep position (0: heiban).
+    pub position: u32,
+    /// `H`/`L` per mora, and one more for the particle after.
+    pub high_low: String,
+    /// `heiban`, `atamadaka`, `nakadaka`, `odaka` or `kifuku`.
+    pub category: String,
+}
+
+/// A pitch row: the accents some dictionaries agree on (LKP-042, LKP-043).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PitchRow {
+    /// The dictionaries.
+    pub dictionaries: Vec<String>,
+    /// Accents by downstep.
+    pub accents: Vec<Accent>,
+    /// Accents written as patterns.
+    pub patterns: Vec<String>,
+    /// IPA.
+    pub transcriptions: Vec<String>,
+}
+
+/// A glossary: its definition tags and its content.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Glossary {
+    /// Tags shown (POP-008).
+    pub tags: Vec<TagChip>,
+    /// Content.
+    pub blocks: Vec<Block>,
+}
+
+/// The glossaries of one dictionary, in a row (POP-008).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Section {
+    /// Dictionary name.
+    pub dictionary: String,
+    /// Open at first (DIC-034).
+    pub expanded: bool,
+    /// The glossaries.
+    pub glossaries: Vec<Glossary>,
+}
+
+/// A term entry (POP-007).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryView {
+    /// Headword.
+    pub expression: String,
+    /// Reading.
+    pub reading: String,
+    /// The text that matched.
+    pub matched: String,
+    /// The headword with its reading over each part.
+    pub furigana: Vec<Segment>,
+    /// The morae of the reading (for the pitch notation).
+    pub morae: Vec<String>,
+    /// Deinflection, innermost first.
+    pub trace: Vec<Trace>,
+    /// Term tags, once each.
+    pub term_tags: Vec<TagChip>,
+    /// Frequencies.
+    pub frequencies: Vec<FrequencyRow>,
+    /// Pitch rows.
+    pub pitches: Vec<PitchRow>,
+    /// One section per dictionary, in the order of the glossaries.
+    pub sections: Vec<Section>,
+}
+
+/// A kanji entry (POP-013, LKP-037).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct KanjiView {
+    /// Dictionary name.
+    pub dictionary: String,
+    /// The character.
+    pub character: String,
+    /// On readings.
+    pub onyomi: Vec<String>,
+    /// Kun readings.
+    pub kunyomi: Vec<String>,
+    /// Meanings.
+    pub meanings: Vec<String>,
+    /// Stroke count.
+    pub strokes: Option<String>,
+    /// Radical.
+    pub radical: Option<String>,
+    /// The other statistics: name and value.
+    pub stats: Vec<(String, String)>,
+    /// Frequencies.
+    pub frequencies: Vec<FrequencyRow>,
+}
+
+/// What a popup shows.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Content {
+    /// Term entries.
+    pub entries: Vec<EntryView>,
+    /// Kanji entries.
+    pub kanji: Vec<KanjiView>,
+    /// Characters of the query that matched (POP-002).
+    pub best_length: usize,
+}
+
+/// Decodes a dictionary image, by its bytes (not its name): PNG, JPEG, GIF
+/// (the first frame), WebP or BMP, within limits; scaled down when large.
+pub fn decode_image(bytes: &[u8]) -> Option<Pixels> {
+    use image::ImageFormat;
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    let mut reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
+    if !matches!(
+        reader.format(),
+        Some(
+            ImageFormat::Png
+                | ImageFormat::Jpeg
+                | ImageFormat::Gif
+                | ImageFormat::WebP
+                | ImageFormat::Bmp
+        )
+    ) {
+        return None;
+    }
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODED_SIDE);
+    limits.max_image_height = Some(MAX_DECODED_SIDE);
+    limits.max_alloc = Some(MAX_DECODER_ALLOC);
+    reader.limits(limits);
+    let mut decoded = reader.decode().ok()?;
+    if decoded.width() > MAX_SIDE || decoded.height() > MAX_SIDE {
+        decoded = decoded.thumbnail(MAX_SIDE, MAX_SIDE);
+    }
+    let rgba = decoded.into_rgba8();
+    Some(Pixels {
+        size: [rgba.width() as usize, rgba.height() as usize],
+        rgba: rgba.into_raw(),
     })
 }
 
-/// Gives the image runs of rendered glossaries their pixels (POP-010): a
-/// `data:` URL made from the dictionary's media table, so QML never loads an
-/// address from a dictionary. Missing, unknown or too large images keep only
-/// their alternative text.
-fn attach_images(value: &mut Value, dictionary: usize, media: MediaLookup<'_>) {
-    match value {
-        Value::Object(o) => {
-            if o.get("k").and_then(Value::as_str) == Some("image")
-                && let Some(Value::Object(image)) = o.get_mut("image")
-            {
-                let path = image
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                let src = mime(&path).and_then(|m| {
-                    let bytes = media(dictionary, &path).filter(|b| b.len() <= MAX_IMAGE_BYTES)?;
-                    Some(format!("data:{m};base64,{}", base64(&bytes)))
-                });
-                if let Some(src) = src {
-                    image.insert("src".into(), Value::String(src));
+/// Gives the images of a popup their pixels (POP-010), from the dictionaries'
+/// media tables: the popup never loads an address from a dictionary. Missing,
+/// unknown or too large images keep their replacement text.
+struct Images<'a> {
+    media: MediaLookup<'a>,
+    decoded: HashMap<(usize, String), Option<Arc<Pixels>>>,
+    bytes: usize,
+}
+
+impl Images<'_> {
+    fn attach(&mut self, blocks: &mut [Block], dictionary: usize) {
+        for b in blocks {
+            match b {
+                Block::Flow { runs } => self.attach_runs(runs, dictionary),
+                Block::Box { blocks, .. } => self.attach(blocks, dictionary),
+                Block::List { items, .. } => {
+                    for item in items {
+                        self.attach(item, dictionary);
+                    }
                 }
-                return;
-            }
-            for v in o.values_mut() {
-                attach_images(v, dictionary, media);
+                Block::Table { rows, .. } => {
+                    for cell in rows.iter_mut().flatten() {
+                        self.attach(&mut cell.blocks, dictionary);
+                    }
+                }
+                Block::Details {
+                    summary, blocks, ..
+                } => {
+                    self.attach_runs(summary, dictionary);
+                    self.attach(blocks, dictionary);
+                }
+                Block::Pairs { .. } => {}
             }
         }
-        Value::Array(a) => {
-            for v in a {
-                attach_images(v, dictionary, media);
+    }
+
+    fn attach_runs(&mut self, runs: &mut [Run], dictionary: usize) {
+        for r in runs {
+            if let Run::Image { image } = r {
+                image.pixels = self.pixels(dictionary, image);
             }
         }
-        _ => {}
+    }
+
+    fn pixels(&mut self, dictionary: usize, image: &Image) -> Option<Arc<Pixels>> {
+        let key = (dictionary, image.path.clone());
+        if let Some(known) = self.decoded.get(&key) {
+            return known.clone();
+        }
+        let pixels = (self.bytes < MAX_POPUP_PIXELS_BYTES)
+            .then(|| (self.media)(dictionary, &image.path))
+            .flatten()
+            .and_then(|bytes| decode_image(&bytes))
+            .filter(|p| self.bytes + p.rgba.len() <= MAX_POPUP_PIXELS_BYTES)
+            .map(Arc::new);
+        if let Some(p) = &pixels {
+            self.bytes += p.rgba.len();
+        }
+        self.decoded.insert(key, pixels.clone());
+        pixels
     }
 }
 
-fn tag_chip(dictionary: usize, name: &str, tags: TagLookup<'_>) -> Value {
-    match tags(dictionary, name) {
-        Some(t) => json!({"name": name, "category": t.category, "notes": t.notes}),
-        None => json!({"name": name, "category": "", "notes": ""}),
+fn tag_chip(dictionary: usize, name: &str, tags: TagLookup<'_>) -> TagChip {
+    let info = tags(dictionary, name);
+    TagChip {
+        name: name.to_string(),
+        category: info
+            .as_ref()
+            .map(|t| t.category.clone())
+            .unwrap_or_default(),
+        notes: info.map(|t| t.notes).unwrap_or_default(),
     }
 }
 
@@ -130,47 +326,59 @@ fn definition_chips(
     names: &str,
     previous_pos: &mut Vec<String>,
     tags: TagLookup<'_>,
-) -> Vec<Value> {
+) -> Vec<TagChip> {
     let mut chips = Vec::new();
     let mut pos_now = Vec::new();
     for name in names.split_whitespace() {
         if name.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let info = tags(dictionary, name);
-        let is_pos = info.as_ref().is_some_and(|t| t.category == "partOfSpeech");
-        if is_pos {
+        let chip = tag_chip(dictionary, name, tags);
+        if chip.category == "partOfSpeech" {
             pos_now.push(name.to_string());
             if previous_pos.iter().any(|p| p == name) {
                 continue;
             }
         }
-        chips.push(tag_chip(dictionary, name, tags));
+        chips.push(chip);
     }
     *previous_pos = pos_now;
     chips
 }
 
-fn entry_json(
+fn frequency_rows(
+    frequencies: &[nikomiru_dict::lookup::Frequencies],
+    name: &dyn Fn(usize) -> String,
+) -> Vec<FrequencyRow> {
+    frequencies
+        .iter()
+        .map(|f| FrequencyRow {
+            dictionary: name(f.dictionary),
+            values: f.values.iter().map(frequency::shown).collect(),
+        })
+        .collect()
+}
+
+fn entry_view(
     entry: &Entry,
     dicts: &[DictView],
     tags: TagLookup<'_>,
-    media: MediaLookup<'_>,
-) -> Value {
+    images: &mut Images<'_>,
+) -> EntryView {
     let name = |i: usize| dicts.get(i).map(|d| d.name.clone()).unwrap_or_default();
-    let furigana: Vec<Value> =
-        nikomiru_text::furigana::distribute(&entry.expression, &entry.reading)
-            .iter()
-            .map(|s| json!({"t": s.text, "r": s.reading}))
-            .collect();
-    let trace: Vec<Value> = present::trace_tags(entry)
-        .iter()
-        .map(|s| json!({"name": &*s.name, "description": &*s.description}))
+    let furigana = nikomiru_text::furigana::distribute(&entry.expression, &entry.reading)
+        .into_iter()
+        .map(|s| Segment {
+            t: s.text,
+            r: s.reading,
+        })
         .collect();
-    let frequencies: Vec<Value> = entry
-        .frequencies
+    let trace = present::trace_tags(entry)
         .iter()
-        .map(|f| json!({"dictionary": name(f.dictionary), "values": f.values.iter().map(frequency::shown).collect::<Vec<_>>()}))
+        .map(|s| Trace {
+            name: s.name.to_string(),
+            description: s.description.to_string(),
+        })
         .collect();
     let groups: Vec<pitch::Group> = entry
         .pitches
@@ -197,69 +405,59 @@ fn entry_json(
         })
         .collect();
     let morae = pitch::morae(&entry.reading);
-    let pitches: Vec<Value> = pitch::rows(&groups, true)
-        .iter()
-        .map(|r| {
-            let shapes: Vec<Value> = r
+    let pitches = pitch::rows(&groups, true)
+        .into_iter()
+        .map(|r| PitchRow {
+            accents: r
                 .positions
                 .iter()
-                .map(|&p| {
-                    json!({
-                        "position": p,
-                        "highLow": pitch::high_low(morae.len(), p),
-                        "category": pitch::category(morae.len(), p, &entry.rules).name(),
-                    })
+                .map(|&p| Accent {
+                    position: p,
+                    high_low: pitch::high_low(morae.len(), p),
+                    category: pitch::category(morae.len(), p, &entry.rules)
+                        .name()
+                        .to_string(),
                 })
-                .collect();
-            json!({
-                "dictionaries": r.dictionaries,
-                "accents": shapes,
-                "patterns": r.patterns,
-                "transcriptions": r.transcriptions,
-            })
+                .collect(),
+            dictionaries: r.dictionaries,
+            patterns: r.patterns,
+            transcriptions: r.transcriptions,
         })
         .collect();
 
-    // one block per dictionary, in the order of the glossaries
-    let mut blocks: Vec<(usize, Vec<Value>, Vec<String>)> = Vec::new();
-    let mut term_tags: Vec<Value> = Vec::new();
-    let mut seen_term_tags: Vec<String> = Vec::new();
+    // one section per dictionary, in the order of the glossaries
+    let mut sections: Vec<(usize, Vec<Glossary>, Vec<String>)> = Vec::new();
+    let mut term_tags: Vec<TagChip> = Vec::new();
     for g in &entry.glossaries {
         let Ok(text) = g.term.glossary() else {
             continue;
         };
-        let Ok(json) = serde_json::from_str::<Value>(&text) else {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
             continue;
         };
         if present::is_redirect_label(&g.term.definition_tags, &g.term.term_tags, &json) {
             continue;
         }
         for t in g.term.term_tags.split_whitespace() {
-            if !seen_term_tags.iter().any(|s| s == t) {
-                seen_term_tags.push(t.to_string());
+            if !term_tags.iter().any(|s| s.name == t) {
                 term_tags.push(tag_chip(g.dictionary, t, tags));
             }
         }
-        let sheet = dicts
-            .get(g.dictionary)
-            .map(|d| &d.sheet)
-            .cloned()
-            .unwrap_or_default();
-        if blocks.last().is_none_or(|(d, _, _)| *d != g.dictionary) {
-            blocks.push((g.dictionary, Vec::new(), Vec::new()));
+        let sheet = dicts.get(g.dictionary).map(|d| &d.sheet);
+        if sections.last().is_none_or(|(d, _, _)| *d != g.dictionary) {
+            sections.push((g.dictionary, Vec::new(), Vec::new()));
         }
-        if let Some((d, glossaries, previous_pos)) = blocks.last_mut() {
+        if let Some((d, glossaries, previous_pos)) = sections.last_mut() {
             let chips = definition_chips(*d, &g.term.definition_tags, previous_pos, tags);
-            let mut rendered =
-                serde_json::to_value(structured::render(&json, &sheet)).unwrap_or_default();
-            attach_images(&mut rendered, *d, media);
-            glossaries.push(json!({
-                "tags": chips,
-                "blocks": rendered,
-            }));
+            let mut blocks = structured::render(&json, sheet.unwrap_or(&Sheet::default()));
+            images.attach(&mut blocks, *d);
+            glossaries.push(Glossary {
+                tags: chips,
+                blocks,
+            });
         }
     }
-    let blocks: Vec<Value> = blocks
+    let sections = sections
         .into_iter()
         .enumerate()
         .map(|(n, (d, glossaries, _))| {
@@ -269,24 +467,28 @@ fn entry_json(
                 Collapse::Collapsed => false,
                 Collapse::Automatic => n < AUTOMATIC_EXPANDED,
             };
-            json!({"dictionary": view.name, "expanded": expanded, "glossaries": glossaries})
+            Section {
+                dictionary: view.name,
+                expanded,
+                glossaries,
+            }
         })
         .collect();
-    json!({
-        "expression": entry.expression,
-        "reading": entry.reading,
-        "matched": entry.matched,
-        "furigana": furigana,
-        "morae": morae,
-        "trace": trace,
-        "termTags": term_tags,
-        "frequencies": frequencies,
-        "pitches": pitches,
-        "blocks": blocks,
-    })
+    EntryView {
+        expression: entry.expression.clone(),
+        reading: entry.reading.clone(),
+        matched: entry.matched.clone(),
+        furigana,
+        morae,
+        trace,
+        term_tags,
+        frequencies: frequency_rows(&entry.frequencies, &name),
+        pitches,
+        sections,
+    }
 }
 
-fn kanji_json(k: &KanjiEntry, dicts: &[DictView]) -> Value {
+fn kanji_view(k: &KanjiEntry, dicts: &[DictView]) -> KanjiView {
     let name = |i: usize| dicts.get(i).map(|d| d.name.clone()).unwrap_or_default();
     let stat = |n: &str| {
         k.kanji
@@ -295,17 +497,33 @@ fn kanji_json(k: &KanjiEntry, dicts: &[DictView]) -> Value {
             .find(|(s, _)| s == n)
             .map(|(_, v)| v.clone())
     };
-    json!({
-        "dictionary": name(k.dictionary),
-        "character": k.kanji.character,
-        "onyomi": k.kanji.onyomi.split_whitespace().collect::<Vec<_>>(),
-        "kunyomi": k.kanji.kunyomi.split_whitespace().collect::<Vec<_>>(),
-        "meanings": k.kanji.meanings,
-        "strokes": stat("strokes"),
-        "radical": stat("radical"),
-        "stats": k.kanji.stats.iter().filter(|(n, _)| n != "strokes" && n != "radical").map(|(n, v)| json!([n, v])).collect::<Vec<_>>(),
-        "frequencies": k.frequencies.iter().map(|f| json!({"dictionary": name(f.dictionary), "values": f.values.iter().map(frequency::shown).collect::<Vec<_>>()})).collect::<Vec<_>>(),
-    })
+    KanjiView {
+        dictionary: name(k.dictionary),
+        character: k.kanji.character.clone(),
+        onyomi: k
+            .kanji
+            .onyomi
+            .split_whitespace()
+            .map(String::from)
+            .collect(),
+        kunyomi: k
+            .kanji
+            .kunyomi
+            .split_whitespace()
+            .map(String::from)
+            .collect(),
+        meanings: k.kanji.meanings.clone(),
+        strokes: stat("strokes"),
+        radical: stat("radical"),
+        stats: k
+            .kanji
+            .stats
+            .iter()
+            .filter(|(n, _)| n != "strokes" && n != "radical")
+            .cloned()
+            .collect(),
+        frequencies: frequency_rows(&k.frequencies, &name),
+    }
 }
 
 /// The popup content for these entries and kanji entries.
@@ -315,12 +533,20 @@ pub fn content(
     dicts: &[DictView],
     tags: TagLookup<'_>,
     media: MediaLookup<'_>,
-) -> Value {
-    json!({
-        "entries": entries.iter().map(|e| entry_json(e, dicts, tags, media)).collect::<Vec<_>>(),
-        "kanji": kanji.iter().map(|k| kanji_json(k, dicts)).collect::<Vec<_>>(),
-        "bestLength": nikomiru_dict::lookup::best_length(entries),
-    })
+) -> Content {
+    let mut images = Images {
+        media,
+        decoded: HashMap::new(),
+        bytes: 0,
+    };
+    Content {
+        entries: entries
+            .iter()
+            .map(|e| entry_view(e, dicts, tags, &mut images))
+            .collect(),
+        kanji: kanji.iter().map(|k| kanji_view(k, dicts)).collect(),
+        best_length: nikomiru_dict::lookup::best_length(entries),
+    }
 }
 
 #[cfg(test)]
@@ -410,56 +636,103 @@ mod tests {
             store.tag(name).ok().flatten()
         };
         let v = content(&entries, &[], &dicts, &tags, &|_, _| None);
-        let e = &v["entries"][0];
-        assert_eq!(e["expression"], "食べる");
-        assert_eq!(e["furigana"][0], json!({"t": "食", "r": "た"}));
-        assert_eq!(e["trace"].as_array().unwrap().len(), 2);
-        assert_eq!(e["termTags"][0]["category"], "popular");
-        assert_eq!(e["frequencies"][0]["values"][0], "120");
-        assert_eq!(e["pitches"][0]["accents"][0]["highLow"], "LHLL");
-        assert_eq!(e["pitches"][0]["accents"][0]["category"], "kifuku");
-        let block = &e["blocks"][0];
+        let e = &v.entries[0];
+        assert_eq!(e.expression, "食べる");
         assert_eq!(
-            (block["dictionary"].as_str(), block["expanded"].as_bool()),
-            (Some("JM"), Some(true))
+            e.furigana[0],
+            Segment {
+                t: "食".into(),
+                r: "た".into()
+            }
         );
-        let first: Vec<&str> = block["glossaries"][0]["tags"]
-            .as_array()
-            .unwrap()
+        assert_eq!(e.trace.len(), 2);
+        assert_eq!(e.term_tags[0].category, "popular");
+        assert_eq!(e.frequencies[0].values, ["120"]);
+        assert_eq!(e.pitches[0].accents[0].high_low, "LHLL");
+        assert_eq!(e.pitches[0].accents[0].category, "kifuku");
+        let section = &e.sections[0];
+        assert_eq!(
+            (section.dictionary.as_str(), section.expanded),
+            ("JM", true)
+        );
+        let first: Vec<&str> = section.glossaries[0]
+            .tags
             .iter()
-            .map(|t| t["name"].as_str().unwrap())
+            .map(|t| t.name.as_str())
             .collect();
         assert_eq!(first, ["v1", "vt"], "the sense number is hidden");
         assert!(
-            block["glossaries"][1]["tags"]
-                .as_array()
-                .unwrap()
-                .is_empty(),
+            section.glossaries[1].tags.is_empty(),
             "repeated part of speech omitted"
         );
-        assert_eq!(v["bestLength"], 5);
+        assert_eq!(v.best_length, 5);
+    }
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image::RgbaImage::from_pixel(width, height, image::Rgba([255, 0, 0, 255]))
+            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        bytes
     }
 
     // T-POP-010
     #[test]
-    fn images_become_data_urls_from_the_media_table() {
-        assert_eq!(base64(b"Man"), "TWFu");
-        assert_eq!(base64(b"Ma"), "TWE=");
-        assert_eq!(base64(b"M"), "TQ==");
-        let png = b"\x89PNG".to_vec();
-        let media = |d: usize, path: &str| (d == 0 && path == "img/a.png").then(|| png.clone());
-        let mut v = json!([{"k": "flow", "runs": [
-            {"k": "image", "image": {"path": "img/a.png", "units": "px"}},
-            {"k": "image", "image": {"path": "img/missing.png", "units": "px"}},
-            {"k": "image", "image": {"path": "img/a.exe", "units": "px"}}
-        ]}]);
-        attach_images(&mut v, 0, &media);
-        let runs = &v[0]["runs"];
-        assert_eq!(runs[0]["image"]["src"], "data:image/png;base64,iVBORw==");
+    fn images_are_decoded_from_the_media_table() {
+        let small = png(2, 3);
+        let decoded = decode_image(&small).unwrap();
+        assert_eq!(decoded.size, [2, 3]);
+        assert_eq!(&decoded.rgba[..4], &[255, 0, 0, 255]);
+        // by content, not by name; never anything but the allowed formats
+        assert!(decode_image(b"<svg xmlns='http://www.w3.org/2000/svg'/>").is_none());
+        assert!(decode_image(b"\x89PNG garbage").is_none());
+        // large images are scaled down
+        let big = decode_image(&png(4000, 100)).unwrap();
+        assert_eq!(big.size, [1280, 32]);
+
+        let image = |path: &str| Run::Image {
+            image: Image {
+                path: path.into(),
+                width: None,
+                height: None,
+                units: nikomiru_dict::structured::Units::Px,
+                pixelated: false,
+                collapsed: false,
+                title: String::new(),
+                alt: "alt".into(),
+                pixels: None,
+            },
+        };
+        let mut blocks = vec![Block::Flow {
+            runs: vec![
+                image("img/a.png"),
+                image("img/missing.png"),
+                image("img/a.png"),
+            ],
+        }];
+        let media = |d: usize, path: &str| (d == 0 && path == "img/a.png").then(|| small.clone());
+        let mut images = Images {
+            media: &media,
+            decoded: HashMap::new(),
+            bytes: 0,
+        };
+        images.attach(&mut blocks, 0);
+        let Block::Flow { runs } = &blocks[0] else {
+            panic!()
+        };
+        let pixels: Vec<Option<&Arc<Pixels>>> = runs
+            .iter()
+            .map(|r| match r {
+                Run::Image { image } => image.pixels.as_ref(),
+                _ => None,
+            })
+            .collect();
+        assert!(pixels[0].is_some());
+        assert!(pixels[1].is_none(), "a missing image keeps its alt text");
         assert!(
-            runs[1]["image"].get("src").is_none(),
-            "a missing image keeps its alt text"
+            Arc::ptr_eq(pixels[0].unwrap(), pixels[2].unwrap()),
+            "decoded once"
         );
-        assert!(runs[2]["image"].get("src").is_none(), "only image types");
+        assert_eq!(images.bytes, 2 * 3 * 4);
     }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The dictionaries page without Qt (DIC-016, DIC-030…DIC-034): the list of
+//! The dictionaries page apart from its drawing (DIC-016, DIC-030…DIC-034): the list of
 //! registered dictionaries and the import of a zip, with the update offer
 //! for a new revision, its progress and its cancellation. The work is done
 //! by a [`DictionaryService`] of the application.
@@ -339,7 +339,7 @@ impl DictionaryPage {
         self.after(service, r)
     }
 
-    /// The page for QML.
+    /// The page as JSON, for the test harness's `state`.
     pub fn json(&self) -> Value {
         let rows: Vec<Value> = self
             .rows

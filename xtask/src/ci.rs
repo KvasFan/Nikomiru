@@ -93,14 +93,18 @@ fn release_build() -> Result<()> {
         "-p",
         "nikomiru-app",
     ]))?;
-    for feature in ["test-harness", "test_harness", "test-support"] {
+    for feature in ["test-harness", "test-support"] {
         if tree.contains(feature) {
             bail!("the release feature tree enables `{feature}`");
         }
     }
     let binary = std::fs::read(util::root().join("target/release/nikomiru"))?;
-    // the QML sources are in the binary too: they name only `onKeyRequested`…
-    for needle in ["test harness connected", "keyRequested", "dropRequested"] {
+    // messages that only the harness's code holds (nikomiru-app and nikomiru-ui)
+    for needle in [
+        "test harness connected",
+        "the window did not appear",
+        "no subtitle layer",
+    ] {
         if binary.windows(needle.len()).any(|w| w == needle.as_bytes()) {
             bail!("the release binary contains the harness string {needle:?}");
         }

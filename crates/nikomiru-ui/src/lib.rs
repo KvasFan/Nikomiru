@@ -1,21 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The QML interface and its Rust `QObject`s (cxx-qt): player, subtitle overlay,
-//! dictionary popup, library and settings (D-10).
+//! The interface of Nikomiru, drawn with egui (D-13, ADR 0006): the session,
+//! which turns player events, keys and clicks into state and commands, and the
+//! view, which draws that state every frame and turns clicks into commands.
 //!
-//! `unsafe` is denied; only the cxx-qt bridge modules (`src/bridge.rs` or
-//! `src/bridge/`), which hold generated FFI declarations, may allow it (ARC-011).
+//! The app drives it from its event loop ([`Ui`]); the work done on other
+//! threads comes back as [`Inbound`] messages.
 
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-#[allow(unsafe_code, missing_docs, clippy::too_many_arguments)]
-mod bridge {
-    pub mod player;
-}
 pub mod controls;
 pub mod dictionaries;
-#[cfg(feature = "test_harness")]
+#[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod hover;
 pub mod i18n;
@@ -25,8 +22,10 @@ pub mod screensaver;
 pub mod session;
 pub mod shortcuts;
 pub mod subtitles;
+mod ui;
+pub mod view;
 
-pub use bridge::player::{
-    deliver, install, request_activate, request_open, request_quit, uninstall,
-};
 pub use session::Services;
+pub use shortcuts::Modifiers;
+pub use ui::{Inbound, Key, Ui, Waker, Wheel, is_web_address};
+pub use view::{Dialog, FileDialog};

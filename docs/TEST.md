@@ -9,7 +9,7 @@
 ## 1. Principles
 
 1. **Every requirement has at least one test.** The test carries the requirement ID (`T-SUB-012` verifies `SUB-012`). Coverage is checked by `cargo xtask trace` (§8).
-2. **Pure logic without a display.** Text, subtitles, dictionaries, Anki and library are tested without Qt, QML or mpv (SPECIFICATION ARC-010). Most of the tests are concentrated here.
+2. **Pure logic without a display.** Text, subtitles, dictionaries, Anki and library are tested without the UI toolkit (egui, winit, OpenGL) or mpv (SPECIFICATION ARC-010). Most of the tests are concentrated here.
 3. **Deterministic and offline.** The default suite does not use the network, does not depend on the real clock (injectable clock in `nikomiru-core`) and does not depend on files outside the repository. Tests with network, real data or real Anki are separate and optional (§2, levels L5–L7).
 4. **Fushi is the oracle.** Where a Fushi test exists, its input and output vectors are ported as conformance tests (§5). Every Fushi bug cited in SPECIFICATION becomes a regression test.
 5. **Every Nikomiru bug produces a test** before the fix (§7).
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | L1 Unit | Functions and types, specific cases | `#[cfg(test)]` in the crate | Every push |
 | L2 Property | Invariants with generated inputs (`proptest`) | `#[cfg(test)]`, `tests/` | Every push (256 cases); nightly 100k cases |
-| L3 Snapshot | Structured outputs compared with approved files (`insta`): popup JSON, Anki field HTML, ffmpeg argv, QML item trees (item types and key properties, dumped by a test helper), outputs of the Rust `QObject`s | `tests/snapshots/` | Every push |
+| L3 Snapshot | Structured outputs compared with approved files (`insta`): the popup's view model, Anki field HTML, ffmpeg argv, the AccessKit trees of the views (roles and names, through `egui_kittest`) | `tests/snapshots/` | Every push |
 | L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`wiremock`) | `crates/*/tests/` | Every PR |
 | L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/nikomiru-player/tests/` | Every PR |
 | L6 GUI end-to-end | Real app driven by the **test harness** (§2.1), under Xvfb (X11) and headless Weston or virtual KWin (Wayland), with Mesa llvmpipe | `tests/e2e/` | Every PR (smoke); nightly (full) |
@@ -33,17 +33,18 @@
 
 ### 2.1 GUI test harness
 
-- Cargo feature `test-harness` of `nikomiru-app`, **never enabled in release builds** (verified by T-SEC-004). It enables `nikomiru-ui/test_harness` (underscore: cxx-qt-build 0.10 does not match hyphenated features in `cfg` attributes of bridges).
+- Cargo feature `test-harness` of `nikomiru-app`, **never enabled in release builds** (verified by T-SEC-004). It enables `nikomiru-ui/test-harness`.
 - Start: `nikomiru --test-harness <socket>`. The test listens on the socket and the application connects to it. Protocol: JSON lines on a Unix socket; each command `{"cmd": …}` gets one answer, `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
-- The L6 tests live in `tests/e2e/`, a test target of `nikomiru-app` with `required-features = ["test-harness"]`, so `CARGO_BIN_EXE_nikomiru` is the harness build. Each test starts its own `kwin_wayland --virtual` on a private D-Bus bus without service activation, with isolated XDG folders and a private `XDG_RUNTIME_DIR`: no real portal, audio server or user file is reached. `cargo xtask ci --full` runs them.
+- The L6 tests live in `tests/e2e/`, a test target of `nikomiru-app` with `required-features = ["test-harness"]`, so `CARGO_BIN_EXE_nikomiru` is the harness build. Each test starts its own `kwin_wayland --virtual` on a private D-Bus bus without service activation, with isolated XDG folders and a private `XDG_RUNTIME_DIR`: no real portal, audio server or user file is reached, and mpv's audio output is `null` (without an audio server, probing PipeWire can hang mpv's core on a quick second load). A desktop kills the app a failed test leaves running. `cargo xtask ci --full` runs them.
 - Commands:
-  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the same QML handler as a real one), `drop {paths}` (percent-encoded `file://` URLs, through the window's drop handler);
-  - `click_grapheme {layer, cue_index, grapheme_index}`, `hover_grapheme {…}`, `click {selector}`;
-  - `state {}`: player state, open popups, visible cues, toasts;
-  - `mpv_get {property}`: read-only, for metrics;
-  - `quit {}`.
-- Events: `library-ready`, `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {depth}`, `card-created {note_id}`, `error {code}` (`code` is the Fluent id of the error, ERR-001). `wait` drops the events before the one it waits for and fails on an `error`.
-- The harness interacts through the same QML handlers as the UI, not through internal shortcuts that skip the logic under test.
+  - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the window's key handler, as a real one does), `drop {paths}` (paths; the first goes through the window's drop handler);
+  - `click_grapheme {layer, cue_index, grapheme_index}` (through the overlay's click command, with the popup's fallback place), `popup_button {replay | goto}`;
+  - `state {}`: player state, open popups, visible cues, toasts, dictionaries page;
+  - `mpv_get {property}`: read-only, for metrics; read on the harness thread, never on the UI thread, which renders the video;
+  - `quit {}`;
+  - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
+- Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5), `card-created {note_id}` (M4). `wait` drops the events before the one it waits for and fails on an `error`.
+- The harness runs its commands on the UI thread through the same entry points as the user's input (the key and drop handlers, the view's commands, the close path), not through internal shortcuts that skip the logic under test.
 
 ---
 
@@ -54,14 +55,14 @@
 | `cargo test`, `cargo-nextest` | MIT/Apache · Apache-2.0 OR MIT | Running the tests |
 | `proptest` | MIT OR Apache-2.0 | L2 and structured fuzzing |
 | `insta`, `cargo-insta` | Apache-2.0 | L3 |
-| Qt Quick Test (`qmltestrunner`) | LGPL-3.0 / GPL (part of Qt, external tool) | QML unit tests |
+| `egui_kittest` | MIT OR Apache-2.0 | Tests of the egui views through AccessKit, with no renderer |
 | `wiremock` | MIT/Apache-2.0 | Fake AnkiConnect, fake online services |
 | `tempfile` | MIT OR Apache-2.0 | Isolated XDG directories for each test |
 | `criterion` | Apache-2.0 OR MIT | L8 |
 | `cargo-llvm-cov` | Apache-2.0 OR MIT | Coverage (NFR-MAINT-02) |
 | `cargo-deny`, `cargo-about` | MIT OR Apache-2.0 | Licenses (T-LIC-*) |
 | Xvfb, Weston, Mesa llvmpipe | MIT/X11 | Headless display for L6 |
-| KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1 and S1q measurements (ADR 0001, ADR 0003); **only as an external program** |
+| KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1, S1q and S5 measurements (ADR 0001, ADR 0003, ADR 0006); **only as an external program** |
 | ffmpeg, ffprobe, libmpv | LGPL/GPL | Generating and checking the fixtures |
 | Anki desktop + AnkiConnect | AGPL-3.0 / GPL | **Only as external programs** in L7: they are neither linked nor distributed |
 
@@ -153,9 +154,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIC-001 | `cargo deny check licenses bans sources advisories` | Exit code 0. The Class B exceptions match SPECIFICATION §3.2 **exactly**: `xtask` compares the markdown table with `deny.toml` | L4 |
 | T-LIC-002 | Canary: temporary crate that depends on `xxhash-rust` (BSL-1.0) | `cargo deny` fails | nightly |
 | T-LIC-003 | `cargo about generate` | `THIRD_PARTY_LICENSES.html` generated, with all the crates in the graph | L4 |
-| T-ARC-010 | Crate dependency rules (`cargo metadata`) | No logic crate depends on `cxx-qt`, `cxx` or `libmpv2` | L4 |
-| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:`; no `unsafe` outside the allowed modules (the cxx-qt bridge modules `src/bridge.rs` and `src/bridge/` are allowed); C++ sources exist only in `crates/nikomiru-player/cpp/` | `xtask` check | L4 |
-| T-ARC-020 | `SPDX-License-Identifier: GPL-3.0-only` header in every `.rs`, `.cpp`, `.h` and `.qml` file | `xtask check-headers` | L4 |
+| T-ARC-010 | Crate dependency rules (`cargo metadata`) | No logic crate depends on the UI toolkit (egui, winit, glutin, glow, AccessKit) or `libmpv2`; only `nikomiru-ui` and `nikomiru-app` depend on the toolkit; no retired toolkit (Dioxus, cxx-qt) | L4 |
+| T-ARC-011 | `#![forbid(unsafe_code)]` present in the required crates; every `unsafe` has `// SAFETY:`; no `unsafe` outside the allowed modules (`nikomiru-player`, `nikomiru-app::linux` and `nikomiru-app::window`); no C++ in the crates | `xtask` check | L4 |
+| T-ARC-020 | `SPDX-License-Identifier: GPL-3.0-only` header in every `.rs` file (and in the `.cpp`, `.h` and `.qml` files of the spikes) | `xtask check-headers` | L4 |
 | T-ARC-001 | Player API | After `file-loaded`, at least one event arrives for each observed property of ARC-001 | L5 |
 | T-ARC-002 | LoadToken: events from a previous load | They are discarded and do not change the state (fake event source) | L1 |
 | T-ARC-003 | No synchronous reads from the UI thread | `PlayerHandle` exposes no synchronous getters (compile-time check with a `trybuild`-like test in `xtask`); lint: no call to `get_property` outside `nikomiru-player` | L4 |
@@ -226,7 +227,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement | L4 |
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
-| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (QML snapshot and L6 check) | L3/L6 |
+| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot and L6 check) | L3/L6 |
 
 ### 6.5 Lookup
 
@@ -258,16 +259,16 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | ID | Check | Expected | L |
 |---|---|---|---|
 | T-POP-001/004/005 | Pause/resume state machine | (playing) click → pause and `paused_for_lookup`; close → resume. (paused) click → no change; close → stays paused. Click on another word with the popup open → replacement, stays paused. Nested: resume only when the stack is empty | L1 |
-| T-POP-002 | Highlighting | QML item-tree snapshot: exactly `best_length` graphemes marked starting from the clicked one, even with composite graphemes (emoji, combining marks) | L3 |
+| T-POP-002 | Highlighting | Overlay snapshot: exactly `best_length` graphemes marked starting from the clicked one, even with composite graphemes (emoji, combining marks) | L3 |
 | T-POP-003 | Hover | Shift + movement ≥ 8 px → lookup; no new lookup on the same character; leaving for 320 ms → close and resume (fake clock) | L1 |
 | T-POP-006 | Positioning | Property: for every word rectangle and every window ≥ 320×240, the popup does not cover the word and fits inside the window | L2 |
-| T-POP-007 | Header | QML item-tree snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
-| T-POP-008 | Per-dictionary blocks | QML item-tree snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
-| T-POP-009 | Structured content | QML item-tree snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
-| T-POP-010 | Images | `img/a.png` of `mini-ja` becomes a `data:image/png` URL; a nonexistent path or a non-image type → alternative text only; `..` → rejected | L1 |
-| T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); an external link opens `xdg-open` (spy) | L1 |
+| T-POP-007 | Header | View-model and AccessKit snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
+| T-POP-008 | Per-dictionary blocks | View-model snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
+| T-POP-009 | Structured content | View-model snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
+| T-POP-010 | Images | A PNG from the media table is decoded to its pixels, once per path; a nonexistent path, an SVG or a damaged file → alternative text only; a large image is scaled down to 1280 pixels; `..` → rejected; the drawn size keeps the aspect and the flow's width | L1 |
+| T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); a click on a link asks for a nested lookup next to it, or for the browser; only `http(s)` addresses are opened (L1); an external link reaches the `OpenURI` portal (spy portal on a private bus, L4) | L1, L4 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
-| T-POP-013 | Kanji entry | QML item-tree snapshot for `食` from `mini-kanji` | L3 |
+| T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |
 | T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness) | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
@@ -275,12 +276,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted QML items are produced; no network request (spy proxy) | L6 |
+| T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted view-model nodes are produced; no network request (spy proxy) | L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
 | T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
 | T-SEC-004 | Release build | `cargo tree -e normal,build,features -p nikomiru-app` without `test-harness`, `test_harness` or `test-support`; the release binary contains none of the harness's strings and starts, opens a file and quits on SIGTERM (L6) | L4 |
 | T-SEC-005 | Argument injection into ffmpeg | `-weird: name & spaces ü 日本.mkv` and `http:fake.mkv` are treated as local files; argv captured with a snapshot | L4 |
-| T-SEC-006 | QML network isolation | The QML engine's network access refuses every remote URL; a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
+| T-SEC-006 | Network isolation of the interface | No network-capable image loader is in the UI's graph (no egui_extras `http`); a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
 | T-SEC-007 | Hostile `nikomiru://` links | Absolute paths, `file:`, duplicate or unknown parameters, > 16 KiB → rejected without effects (see T-ANK-051) | L1 |
 | T-SEC-008 | Config permissions | `config.toml` created with permissions 0600 | L4 |
 
@@ -339,7 +340,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-LIB-001 | Opening a file | From the command line and with simulated drag & drop (`drop {paths}` in the harness); the dialog is checked by hand (§9.1) | L6 |
+| T-LIB-001 | Opening a file | From the command line and with simulated drag & drop (`drop {paths}` in the harness); on Wayland a real drag from another client (a layer-shell surface and KWin's fake input) of a video and of a dictionary, copied and never moved; the XDG FileChooser request and its answer, chosen or cancelled, against a spy portal on a private bus (L4); the desktop's dialog by hand (§9.1) | L4, L6 |
 | T-LIB-002 | Folder import | Temporary tree with 2 series, season subfolders and non-video files: per-series mode → 2 series with the correct episodes; per-folder mode → one collection per subfolder plus the root one | L4 |
 | T-LIB-003 | File names | Vectors from `video_filename_parser_test.dart`. E.g.: `[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv` → series `Sousou no Frieren`, ep. 1; `Show.S02E05.1080p.mkv` → s2 e5; `Season 2/03.mkv` → s2 e3; `第2季/03.mkv` → s2 e3 | L1 |
 | T-LIB-004 | Rescan | Progress, subtitles and offsets preserved; a deleted series is not recreated; mode change reversible without losses | L4 |
@@ -383,8 +384,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values | L1 |
 | T-SET-007 | Proxy | HTTP requests go through the proxy (wiremock as proxy); AnkiConnect on loopback does not | L4 |
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en`; no unused key; same `{ $var }` arguments in all languages | L1 |
-| T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in `.qml` files (explicit exception list) | L4 |
-| T-A11Y-001 | Focus and accessibility | QML item-tree snapshot of the player controls with `Accessible.name` and `Accessible.role`; visible focus | L3 |
+| T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in the views of `nikomiru-ui` (explicit exception list) | L4 |
+| T-A11Y-001 | Focus and accessibility | AccessKit tree snapshot of the player controls (role and name of each); visible focus | L3 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup → mining → settings → back, without a mouse (harness) | L6 |
 
 ### 6.13 Online (M7)
@@ -405,7 +406,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered | L4 |
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
-| T-FUZZ-006 | Structured content → QML items | No panic; the output contains only items from the allowlist | L2 |
+| T-FUZZ-006 | Structured content → view model | No panic; the output contains only nodes from the allowlist | L2 |
 | T-FUZZ-007 | Parser for `nikomiru://` links and for the TOML config | No panic | L2 |
 
 ### 6.15 Performance
@@ -448,7 +449,7 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 
 ## 9. Manual tests
 
-They are recorded in `docs/qa/<version>.md`: who, date, environment (distribution, compositor, GPU, driver, mpv/ffmpeg/Qt versions), result of each item.
+They are recorded in `docs/qa/<version>.md`: who, date, environment (distribution, compositor, GPU, driver, mpv/ffmpeg/Mesa versions), result of each item.
 
 ### 9.1 Player (end of M1)
 
@@ -528,8 +529,7 @@ Sections 9.1–9.4, plus:
 | Nightly | Every night | L2 with 100k cases, fuzzing (T-FUZZ-*) for 10 minutes each, full L6, L8 with baseline, T-LIC-002, L7 where secrets or data are available | Opens an issue if it fails |
 | Release | Tag `v*` | Full + nightly + checklist §9.5 + `THIRD_PARTY_LICENSES.html` | Yes |
 
-The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libmpv-dev` ≥ 0.37, `ffmpeg` ≥ 6 with `libx264`/`libx265` (only to generate the performance fixtures), Qt 6 (base, declarative, wayland, Qt Quick Test, with development files), `qmake6`, a C++ compiler, Xvfb, Weston (or KWin), Mesa, `cargo-deny`, `cargo-about`.
+The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libmpv-dev` ≥ 0.37, `ffmpeg` ≥ 6 with `libx264`/`libx265` (only to generate the performance fixtures), the libraries winit and glutin load at run time (Mesa EGL/GL, libwayland-client, libxkbcommon, the X11 client libraries), fontconfig and a CJK font (Noto Sans CJK), Xvfb, Weston (or KWin), `cargo-deny`, `cargo-about`.
 
-Without a terminal, Qt logs to journald: the test runners set `QT_FORCE_STDERR_LOGGING=1`, so that Qt's warnings appear in the test output.
 
 **L6 tests never run on the developer's graphical session.** A covered window does not receive the compositor's frame callbacks and does not render (ADR 0001). An off-screen compositor is always used: headless Weston, virtual KWin or Xvfb.

@@ -17,23 +17,24 @@ pub const SPDX: &str = "// SPDX-License-Identifier: GPL-3.0-only";
 /// Directories that contain project sources.
 const SOURCE_DIRS: [&str; 4] = ["crates", "xtask", "spikes", "tests"];
 
-/// Source extensions that need the SPDX header: Rust, the C++ video item, QML.
+/// Source extensions that need the SPDX header: Rust, and the C++ and QML of the
+/// spikes.
 const SOURCE_EXTENSIONS: [&str; 5] = ["rs", "cpp", "h", "hpp", "qml"];
 
-/// C++ extensions: C++ is allowed only in `nikomiru-player/cpp/` (ARC-011).
+/// C++ extensions: no C++ in the crates since D-13 (ARC-011).
 const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
 
 /// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
-/// crate) that may contain it (ARC-011). `src/bridge` covers the cxx-qt bridge
-/// modules (`src/bridge.rs` or `src/bridge/`), which hold generated FFI declarations;
-/// the player's `build.rs` uses the `unsafe` `cc_builder` hook of cxx-qt-build.
-const UNSAFE_ALLOWED: [(&str, &[&str]); 3] = [
-    ("nikomiru-player", &["src/", "build.rs"]),
-    ("nikomiru-app", &["src/linux", "src/bridge"]),
-    ("nikomiru-ui", &["src/bridge"]),
+/// crate) that may contain it (ARC-011): the player for the mpv FFI and its
+/// render context; the app for system calls (`src/linux`) and the OpenGL context
+/// of the window (`src/window.rs`).
+const UNSAFE_ALLOWED: [(&str, &[&str]); 2] = [
+    ("nikomiru-player", &["src/"]),
+    ("nikomiru-app", &["src/linux", "src/window.rs"]),
 ];
 
-/// Pure-logic crates: they do not depend, not even indirectly, on Qt or mpv.
+/// Pure-logic crates: they do not depend, not even indirectly, on the UI toolkit
+/// or mpv.
 const LOGIC_CRATES: [&str; 5] = [
     "nikomiru-text",
     "nikomiru-subs",
@@ -52,7 +53,6 @@ pub fn check_all(root: &Path) -> Result<()> {
     problems.extend(check_panic_lints(root)?);
     let metadata = cargo_metadata()?;
     problems.extend(check_deps(&Graph::from_metadata(&metadata)?));
-    problems.extend(check_cxx_versions(&metadata));
     report("architecture checks", &problems)
 }
 
@@ -141,12 +141,12 @@ pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
     roots.push(("xtask".into(), root.join("xtask/src/main.rs"), false));
     for (name, file, is_lib) in roots {
         let text = std::fs::read_to_string(&file)?;
-        // Crates with cxx-qt bridges deny `unsafe` at crate level and allow it again
-        // only in the modules of UNSAFE_ALLOWED; nikomiru-player uses it for the mpv
-        // FFI and the video item.
+        // nikomiru-app denies `unsafe` at crate level and allows it again only in
+        // the modules of UNSAFE_ALLOWED; nikomiru-player uses it for the mpv FFI and
+        // the render context.
         let required = match name.as_str() {
             "nikomiru-player" => None,
-            "nikomiru-app" | "nikomiru-ui" => Some("#![deny(unsafe_code)]"),
+            "nikomiru-app" => Some("#![deny(unsafe_code)]"),
             _ => Some("#![forbid(unsafe_code)]"),
         };
         if let Some(attr) = required
@@ -239,26 +239,19 @@ pub fn check_unsafe(root: &Path) -> Result<Vec<String>> {
 }
 
 // T-ARC-011
-/// C++ only for the Qt Quick video item, in `crates/nikomiru-player/cpp/`.
+/// No C++ in the crates: since D-13 the video is drawn from Rust.
 pub fn check_cpp_location(root: &Path) -> Result<Vec<String>> {
     let crates = root.join("crates");
     if !crates.is_dir() {
         return Ok(Vec::new());
     }
-    let allowed = crates.join("nikomiru-player/cpp");
     let mut files = Vec::new();
     for ext in CPP_EXTENSIONS {
         walk(&crates, ext, &mut files)?;
     }
     Ok(files
         .into_iter()
-        .filter(|f| !f.starts_with(&allowed))
-        .map(|f| {
-            format!(
-                "{}: C++ is allowed only in crates/nikomiru-player/cpp/ (ARC-011)",
-                rel(&f)
-            )
-        })
+        .map(|f| format!("{}: no C++ in the crates (ARC-011, D-13)", rel(&f)))
         .collect())
 }
 
@@ -461,24 +454,40 @@ impl Graph {
     }
 }
 
-/// Qt through cxx-qt (D-10): `cxx-qt`, `cxx-qt-lib`, `cxx-qt-build`, `cxx`, …
-fn is_qt(name: &str) -> bool {
-    name == "cxx" || name.starts_with("cxx-qt") || name == "qt-build-utils"
+/// The UI toolkit (D-13): egui and the crates that put it in a window.
+fn is_ui_toolkit(name: &str) -> bool {
+    matches!(
+        name,
+        "egui"
+            | "epaint"
+            | "emath"
+            | "ecolor"
+            | "egui-winit"
+            | "egui_glow"
+            | "winit"
+            | "glutin"
+            | "glutin-winit"
+            | "glow"
+    ) || name.starts_with("accesskit")
 }
 
 fn is_mpv(name: &str) -> bool {
     name == "libmpv2" || name == "libmpv2-sys"
 }
 
-/// The toolkit replaced by D-10: no workspace crate may depend on it again.
+/// The toolkits replaced by D-10 (Dioxus) and D-13 (Qt through cxx-qt): no
+/// workspace crate may depend on them again.
 fn is_retired_ui(name: &str) -> bool {
     name == "dioxus"
         || name.starts_with("dioxus-")
         || matches!(name, "gtk" | "gdk" | "webkit2gtk" | "tao" | "wry")
+        || name == "cxx"
+        || name.starts_with("cxx-qt")
+        || name == "qt-build-utils"
 }
 
-/// Crates allowed to depend directly on Qt (cxx-qt).
-const QT_CRATES: [&str; 3] = ["nikomiru-ui", "nikomiru-player", "nikomiru-app"];
+/// Crates allowed to depend directly on the UI toolkit.
+const UI_CRATES: [&str; 2] = ["nikomiru-ui", "nikomiru-app"];
 
 // T-ARC-010
 /// Dependency rules of SPECIFICATION §5.1.
@@ -500,7 +509,7 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
         if LOGIC_CRATES.contains(&name) {
             for d in g.closure(member) {
                 let dn = g.name(&d);
-                if is_qt(dn) || is_mpv(dn) || is_retired_ui(dn) {
+                if is_ui_toolkit(dn) || is_mpv(dn) || is_retired_ui(dn) {
                     problems.push(format!(
                         "{name} depends (possibly indirectly) on {dn}: it is a pure-logic crate"
                     ));
@@ -511,10 +520,10 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
             let dn = g.name(d);
             let rule = if is_mpv(dn) && name != "nikomiru-player" {
                 Some("only nikomiru-player may depend on it")
-            } else if is_qt(dn) && !QT_CRATES.contains(&name) {
-                Some("only nikomiru-ui, nikomiru-player and nikomiru-app may depend on it")
+            } else if is_ui_toolkit(dn) && !UI_CRATES.contains(&name) {
+                Some("only nikomiru-ui and nikomiru-app may depend on it")
             } else if is_retired_ui(dn) {
-                Some("the UI toolkit is Qt 6 (D-10)")
+                Some("the UI toolkit is egui (D-13)")
             } else {
                 None
             };
@@ -526,45 +535,9 @@ pub fn check_deps(g: &Graph) -> Vec<String> {
     problems
 }
 
-/// `cxx-gen` 0.7.N writes the C++ side of the bridges with symbols named after
-/// N, the `cxx` 1.0.N macro the Rust side: a lock file that resolves them to
-/// different patch levels links with undefined `cxxbridge1$N$…` symbols.
-pub fn check_cxx_versions(metadata: &Value) -> Vec<String> {
-    let patch = |name: &str| -> BTreeSet<String> {
-        metadata["packages"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|p| p["name"] == name)
-            .filter_map(|p| p["version"].as_str()?.split('.').nth(2).map(str::to_string))
-            .collect()
-    };
-    let (cxx, generator) = (patch("cxx"), patch("cxx-gen"));
-    if generator.is_empty() || cxx == generator {
-        return Vec::new();
-    }
-    vec![format!(
-        "cxx 1.0.{cxx:?} and cxx-gen 0.7.{generator:?} differ: run \
-         `cargo update -p cxx-gen --precise 0.7.<cxx patch>`"
-    )]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cxx_and_cxx_gen_must_share_the_patch_level() {
-        let meta = |gen_version: &str| {
-            serde_json::json!({"packages": [
-                {"name": "cxx", "version": "1.0.205"},
-                {"name": "cxx-gen", "version": gen_version},
-            ]})
-        };
-        assert!(check_cxx_versions(&meta("0.7.205")).is_empty());
-        assert_eq!(check_cxx_versions(&meta("0.7.198")).len(), 1);
-        assert!(check_cxx_versions(&serde_json::json!({"packages": []})).is_empty());
-    }
 
     fn graph(pkgs: &[&str], members: &[&str], edges: &[(&str, &str, bool)]) -> Graph {
         let mut g = Graph::default();
@@ -594,10 +567,9 @@ mod tests {
                 "nikomiru-app",
                 "redb",
                 "libmpv2",
-                "cxx",
-                "cxx-qt",
-                "cxx-qt-lib",
-                "cxx-qt-build",
+                "egui",
+                "egui_glow",
+                "winit",
             ],
             &[
                 "nikomiru-core",
@@ -610,39 +582,37 @@ mod tests {
                 ("nikomiru-dict", "nikomiru-core", false),
                 ("nikomiru-dict", "redb", false),
                 ("nikomiru-player", "libmpv2", false),
-                ("nikomiru-player", "cxx", false),
-                ("nikomiru-player", "cxx-qt-build", false),
-                ("nikomiru-ui", "cxx-qt", false),
-                ("nikomiru-ui", "cxx-qt-lib", false),
+                ("nikomiru-ui", "egui", false),
                 ("nikomiru-app", "nikomiru-player", false),
                 ("nikomiru-app", "nikomiru-ui", false),
-                ("nikomiru-app", "cxx-qt-lib", false),
+                ("nikomiru-app", "egui_glow", false),
+                ("nikomiru-app", "winit", false),
             ],
         );
         assert_eq!(check_deps(&g), Vec::<String>::new());
     }
 
     #[test]
-    fn deps_rules_reject_qt_in_logic_crates_even_indirectly() {
+    fn deps_rules_reject_the_toolkit_in_logic_crates_even_indirectly() {
         let g = graph(
             &[
                 "nikomiru-subs",
                 "helper",
-                "cxx-qt-lib",
+                "egui",
                 "nikomiru-core",
                 "nikomiru-text",
             ],
             &["nikomiru-subs", "nikomiru-core", "nikomiru-text"],
             &[
                 ("nikomiru-subs", "helper", false),
-                ("helper", "cxx-qt-lib", false),
+                ("helper", "egui", false),
                 ("nikomiru-core", "nikomiru-text", false),
             ],
         );
         let p = check_deps(&g);
         assert!(
             p.iter()
-                .any(|m| m.contains("nikomiru-subs") && m.contains("cxx-qt-lib")),
+                .any(|m| m.contains("nikomiru-subs") && m.contains("egui")),
             "{p:?}"
         );
         assert!(
@@ -664,6 +634,7 @@ mod tests {
                 "libmpv2",
                 "cxx-qt",
                 "dioxus",
+                "winit",
             ],
             &["nikomiru-text", "nikomiru-ui", "nikomiru-media"],
             &[
@@ -672,6 +643,7 @@ mod tests {
                 ("nikomiru-ui", "libmpv2", false),
                 ("nikomiru-ui", "dioxus", false),
                 ("nikomiru-media", "cxx-qt", false),
+                ("nikomiru-media", "winit", false),
             ],
         );
         let p = check_deps(&g);
@@ -683,12 +655,17 @@ mod tests {
         );
         assert!(
             p.iter()
-                .any(|m| m.contains("nikomiru-ui depends directly on dioxus") && m.contains("D-10")),
+                .any(|m| m.contains("nikomiru-ui depends directly on dioxus") && m.contains("D-13")),
             "{p:?}"
         );
         assert!(
             p.iter()
                 .any(|m| m.contains("nikomiru-media depends directly on cxx-qt")),
+            "{p:?}"
+        );
+        assert!(
+            p.iter()
+                .any(|m| m.contains("nikomiru-media depends directly on winit")),
             "{p:?}"
         );
     }

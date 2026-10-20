@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The subtitles of the player page, without Qt: the loaded track, the cues
+//! The subtitles of the player page, apart from their drawing: the loaded track, the cues
 //! active at the position, what the overlay and the list panel draw, and the
 //! blur/hide state (SUB-008…SUB-016). mpv draws no text subtitle; graphic
 //! tracks (PGS, VobSub) are left to mpv and have no lookup (SPECIFICATION §6.4).
@@ -9,7 +9,6 @@ use std::path::PathBuf;
 
 use nikomiru_subs::timeline::Timeline;
 use nikomiru_subs::{AssStyle, Cue, Format, Track};
-use serde_json::{Value, json};
 
 /// Default font size: 36 px for a video 1080 px high (SUB-010).
 pub const DEFAULT_FONT_SIZE: f64 = 36.0;
@@ -86,7 +85,7 @@ impl Obscure {
         }
     }
 
-    /// Name for the QML layer.
+    /// Name for the test harness (`state.subtitles.obscure`).
     pub fn name(self) -> &'static str {
         match self {
             Obscure::None => "none",
@@ -110,6 +109,22 @@ pub fn obscured(mode: Obscure, playing: bool, popup_open: bool, hovered: bool) -
     } else {
         mode
     }
+}
+
+/// An active cue as the overlay draws it (SUB-009, SUB-010).
+#[derive(Debug, Clone)]
+pub struct Shown<'a> {
+    /// Index of the cue.
+    pub index: usize,
+    /// The cue.
+    pub cue: &'a Cue,
+    /// Its ASS style, only when ASS styles are respected.
+    pub style: Option<&'a AssStyle>,
+    /// Numpad anchor 1–9: `\an`, or the style's alignment when respected.
+    pub anchor: Option<u8>,
+    /// The bytes to highlight: the text the popup matched, or the clicked
+    /// grapheme while the lookup runs (POP-002).
+    pub highlight: Option<std::ops::Range<usize>>,
 }
 
 /// The subtitles of the current file.
@@ -225,94 +240,22 @@ impl Subtitles {
             .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 
-    /// What the overlay draws (SUB-009, SUB-010): every active cue in drawing
-    /// order, with its placement and its graphemes. `respect_ass` adds the ASS
-    /// style of the cue.
-    pub fn overlay(&self, respect_ass: bool) -> Value {
-        if self.disabled {
-            return Value::Array(Vec::new());
-        }
-        let cues: Vec<Value> = self
-            .active
-            .iter()
-            .filter_map(|&i| self.cue(i).map(|c| (i, c)))
-            .map(|(i, cue)| {
-                let style = respect_ass.then(|| self.style_of(cue)).flatten();
-                let anchor = cue.markup.anchor.or(style.map(|s| s.alignment));
-                let mut lines: Vec<Vec<Value>> = vec![Vec::new()];
-                for g in cue.graphemes() {
-                    if g.text == "\n" {
-                        lines.push(Vec::new());
-                        continue;
-                    }
-                    let mut item = json!({ "t": g.text, "o": g.offset });
-                    if let Some(s) = g.style {
-                        let m = item.as_object_mut();
-                        if let Some(m) = m {
-                            if let Some(b) = s.bold {
-                                m.insert("b".into(), b.into());
-                            }
-                            if let Some(v) = s.italic {
-                                m.insert("i".into(), v.into());
-                            }
-                            if let Some(v) = s.underline {
-                                m.insert("u".into(), v.into());
-                            }
-                            if let Some(v) = s.strike {
-                                m.insert("s".into(), v.into());
-                            }
-                            if respect_ass {
-                                if let Some(c) = s.color {
-                                    m.insert("c".into(), c.hex().into());
-                                }
-                                if let Some(f) = &s.font {
-                                    m.insert("fn".into(), f.clone().into());
-                                }
-                                if let Some(sz) = s.size {
-                                    m.insert("fs".into(), f64::from(sz).into());
-                                }
-                            }
-                        }
-                    }
-                    if let Some((reading, covered)) = g.ruby
-                        && let Some(m) = item.as_object_mut()
-                    {
-                        m.insert("ruby".into(), reading.into());
-                        m.insert("rubyN".into(), covered.into());
-                    }
-                    if let Some(last) = lines.last_mut() {
-                        last.push(item);
-                    }
-                }
-                json!({
-                    "cue": i,
-                    "layer": cue.layer,
-                    "anchor": anchor,
-                    "pos": cue.markup.pos.map(|(x, y)| json!([x, y])),
-                    "vtt": cue.markup.vtt.as_ref().map(|v| json!({
-                        "line": v.line.map(|l| match l {
-                            nikomiru_subs::cue::VttLine::Percent(p) => json!({ "percent": p }),
-                            nikomiru_subs::cue::VttLine::Number(n) => json!({ "number": n }),
-                        }),
-                        "position": v.position,
-                        "align": v.align.map(|a| format!("{a:?}").to_lowercase()),
-                    })),
-                    "style": style.map(|s| json!({
-                        "font": s.font,
-                        "size": s.size,
-                        "color": s.primary.hex(),
-                        "outline": s.outline,
-                        "outline_color": s.outline_color.hex(),
-                        "bold": s.bold,
-                        "italic": s.italic,
-                        "margin_v": s.margin_v,
-                    })),
-                    "hl": self.highlight_range(i).map(|r| json!([r.start, r.end])),
-                    "lines": lines,
-                })
+    /// The active cues in drawing order (layer, then file order), with what
+    /// the overlay needs to draw them; none while turned off with V (SUB-014).
+    /// `respect_ass` adds the ASS style of each cue (SUB-010).
+    pub fn shown(&self, respect_ass: bool) -> impl Iterator<Item = Shown<'_>> + '_ {
+        let active: &[usize] = if self.disabled { &[] } else { &self.active };
+        active.iter().filter_map(move |&index| {
+            let cue = self.cue(index)?;
+            let style = respect_ass.then(|| self.style_of(cue)).flatten();
+            Some(Shown {
+                index,
+                cue,
+                style,
+                anchor: cue.markup.anchor.or(style.map(|s| s.alignment)),
+                highlight: self.highlight_range(index),
             })
-            .collect();
-        Value::Array(cues)
+        })
     }
 
     /// The bytes of cue `i` to highlight: the matched text, or the clicked
@@ -329,19 +272,6 @@ impl Subtitles {
     pub fn play_res(&self) -> Option<(u32, u32)> {
         self.play_res
     }
-
-    /// Every cue for the list panel (SUB-015): start in milliseconds (with the
-    /// offset) and text.
-    pub fn list(&self) -> Value {
-        Value::Array(
-            self.timeline
-                .cues()
-                .iter()
-                .enumerate()
-                .map(|(i, c)| json!({ "i": i, "start": self.timeline.start_pos(i), "text": c.plain_text }))
-                .collect(),
-        )
-    }
 }
 
 /// `m:ss` or `h:mm:ss`.
@@ -355,16 +285,12 @@ pub fn clock(ms: i64) -> String {
     }
 }
 
-/// The byte offset in `text` of the UTF-16 position `pos` (QML text positions).
-pub fn utf16_to_byte(text: &str, pos: usize) -> usize {
-    let mut units = 0;
-    for (byte, c) in text.char_indices() {
-        if units >= pos {
-            return byte;
-        }
-        units += c.len_utf16();
-    }
-    text.len()
+/// The byte offset in `text` of the character at index `pos` (egui's text
+/// cursors count characters).
+pub fn char_to_byte(text: &str, pos: usize) -> usize {
+    text.char_indices()
+        .nth(pos)
+        .map_or(text.len(), |(byte, _)| byte)
 }
 
 #[cfg(test)]
@@ -419,25 +345,29 @@ mod tests {
         assert_eq!(s.update(1600), Vec::<usize>::new(), "no change");
         assert_eq!(s.update(2500), [1]);
         s.selection = Some((0, 3));
-        let overlay = s.overlay(false);
-        let first = &overlay[0];
-        assert_eq!(first["cue"], 0);
-        assert_eq!(first["hl"], json!([3, 4]));
+        let shown: Vec<Shown<'_>> = s.shown(false).collect();
         assert_eq!(
-            first["lines"][0][0],
-            json!({ "t": "食", "o": 0, "b": true })
+            (shown[0].index, shown[0].highlight.clone()),
+            (0, Some(3..4))
         );
-        assert_eq!(first["lines"][1][0]["t"], "二");
-        assert_eq!(overlay[1]["anchor"], 8);
+        let mut graphemes = shown[0].cue.graphemes().into_iter();
+        let first = graphemes.next().unwrap();
+        assert_eq!(
+            (first.text, first.offset, first.style.and_then(|s| s.bold)),
+            ("食", 0, Some(true))
+        );
+        let second_line = graphemes.skip_while(|g| g.text != "\n").nth(1).unwrap();
+        assert_eq!(second_line.text, "二");
+        assert_eq!(shown[1].anchor, Some(8));
         // V: nothing is drawn, the cues stay active for when it comes back
         s.disabled = true;
-        assert_eq!(s.overlay(false), json!([]));
+        assert_eq!(s.shown(false).count(), 0);
         assert_eq!(s.active(), [0, 1]);
         s.disabled = false;
         // leaving the cue drops the selection
         s.update(3500);
         assert_eq!(s.selection, None);
-        assert_eq!(s.list()[1]["start"], 2000);
+        assert_eq!(s.timeline().start_pos(1), 2000);
     }
 
     // T-SUB-010
@@ -447,31 +377,41 @@ mod tests {
         let mut s = Subtitles::default();
         s.set_track(Source::File("a.ass".into()), loaded(ass, Format::Ass));
         s.update(1500);
-        // default style: no ASS font, size, colour or alignment
-        let plain = s.overlay(false);
-        assert!(plain[0]["style"].is_null());
-        assert!(plain[0]["anchor"].is_null());
-        assert!(plain[0]["lines"][0][0].get("c").is_none());
+        // default style: no ASS style or alignment (the overlay also leaves out
+        // the inline colour then, view::overlay's tests)
+        let plain: Vec<Shown<'_>> = s.shown(false).collect();
+        assert!(plain[0].style.is_none());
+        assert_eq!(plain[0].anchor, None);
         // respected: the style's font, size, colour and top alignment, and inline colours
-        let styled = s.overlay(true);
-        assert_eq!(styled[0]["anchor"], 8);
-        assert_eq!(styled[0]["style"]["font"], "Serif");
-        assert_eq!(styled[0]["style"]["size"], 48.0);
-        assert_eq!(styled[0]["style"]["color"], "#FFD700");
-        assert_eq!(styled[0]["style"]["margin_v"], 30);
-        assert_eq!(styled[0]["lines"][0][0]["c"], "#0000FF");
+        let styled: Vec<Shown<'_>> = s.shown(true).collect();
+        assert_eq!(styled[0].anchor, Some(8));
+        let style = styled[0].style.unwrap();
+        assert_eq!(
+            (
+                style.font.as_str(),
+                style.size,
+                style.primary.hex(),
+                style.margin_v
+            ),
+            ("Serif", 48.0, "#FFD700".to_string(), 30)
+        );
+        let first = styled[0].cue.graphemes()[0].clone();
+        assert_eq!(
+            first.style.and_then(|s| s.color).map(|c| c.hex()),
+            Some("#0000FF".to_string())
+        );
         assert_eq!(s.play_res(), Some((1440, 1080)));
     }
 
     #[test]
-    fn clocks_and_utf16_positions() {
+    fn clocks_and_character_positions() {
         assert_eq!(clock(65_000), "1:05");
         assert_eq!(clock(3_725_000), "1:02:05");
         let text = "a😀日本";
-        assert_eq!(utf16_to_byte(text, 0), 0);
-        assert_eq!(utf16_to_byte(text, 1), 1);
-        assert_eq!(utf16_to_byte(text, 3), 5);
-        assert_eq!(utf16_to_byte(text, 4), 8);
-        assert_eq!(utf16_to_byte(text, 99), text.len());
+        assert_eq!(char_to_byte(text, 0), 0);
+        assert_eq!(char_to_byte(text, 1), 1);
+        assert_eq!(char_to_byte(text, 2), 5);
+        assert_eq!(char_to_byte(text, 3), 8);
+        assert_eq!(char_to_byte(text, 99), text.len());
     }
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The playback session behind the player page, without Qt: it opens files,
+//! The playback session behind the player page, apart from its drawing: it opens files,
 //! filters and reduces player events into a [`ViewState`], saves the position
 //! (LIB-006) and turns shortcut actions into player commands.
 
@@ -25,7 +25,8 @@ use crate::subtitles::{Loaded, Obscure, Request, Source, Subtitles};
 use nikomiru_subs::select::{self, Choice, EmbeddedTrack};
 use nikomiru_subs::timeline::Jump;
 
-/// What the QML layer must do after an action (things Rust cannot do itself).
+/// What the view must do after an action: the window's business, not the
+/// session's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEffect {
     /// Nothing for the UI.
@@ -40,20 +41,6 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
-}
-
-impl UiEffect {
-    /// Name used by the QML layer.
-    pub fn name(self) -> &'static str {
-        match self {
-            UiEffect::None => "",
-            UiEffect::ToggleFullscreen => "fullscreen",
-            UiEffect::Back => "back",
-            UiEffect::OpenDialog => "open_file",
-            UiEffect::ToggleSubList => "sub_list",
-            UiEffect::SubSearch => "sub_search",
-        }
-    }
 }
 
 /// Milestones of a load, for the GUI test harness (TEST §2.1).
@@ -219,8 +206,6 @@ pub struct Session {
     /// The dictionary popups.
     pub popups: Popups,
     lookups: Vec<(u64, String)>,
-    /// Changes whenever a popup opens, closes or gets its content.
-    pub popup_version: u64,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -258,15 +243,21 @@ pub fn url_to_path(url: &str) -> PathBuf {
     let Some(rest) = url.strip_prefix("file://") else {
         return PathBuf::from(url);
     };
+    // bytes, not `&str` slices: a `%` before a multibyte character must not panic
+    let hex = |b: u8| {
+        char::from(b)
+            .to_digit(16)
+            .and_then(|d| u8::try_from(d).ok())
+    };
     let bytes = rest.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(b) = u8::from_str_radix(&rest[i + 1..i + 3], 16)
+            && let (Some(high), Some(low)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
         {
-            out.push(b);
+            out.push(high << 4 | low);
             i += 3;
             continue;
         }
@@ -327,7 +318,6 @@ impl Session {
             sub_list_version: 0,
             popups: Popups::default(),
             lookups: Vec::new(),
-            popup_version: 0,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -342,7 +332,7 @@ impl Session {
     }
 
     /// The player, for the GUI test harness's `mpv_get`.
-    #[cfg(feature = "test_harness")]
+    #[cfg(feature = "test-harness")]
     pub fn player(&self) -> &nikomiru_player::PlayerHandle {
         &self.services.player
     }
@@ -443,13 +433,9 @@ impl Session {
             path.display(),
             request.start
         );
+        // the options mpv rejects are logged by the player's command thread
         match self.services.player.load(&path.to_string_lossy(), request) {
-            Ok((token, rejected)) => {
-                self.token = token;
-                for e in rejected {
-                    tracing::warn!("mpv rejected option {}: {}", e.option.key, e.message);
-                }
-            }
+            Ok(token) => self.token = token,
             Err(e) => {
                 tracing::error!("load failed: {e}");
                 self.view.error = Some(self.services.translator.error(&e));
@@ -572,9 +558,7 @@ impl Session {
 
     /// Tab, Shift+Tab, Alt+wheel in the popup (POP-014).
     pub fn popup_entry(&mut self, delta: i64) {
-        if self.popups.move_entry(delta) {
-            self.popup_version += 1;
-        }
+        self.popups.move_entry(delta);
     }
 
     fn update_screensaver(&mut self) {
@@ -648,22 +632,22 @@ impl Session {
         !self.view.loaded || self.controls.visible(self.services.clock.monotonic())
     }
 
-    /// A key event from the QML layer (KEY-002: Qt's `nativeScanCode`).
+    /// A key event: the physical key as an evdev code (KEY-002) and the
+    /// modifiers. `text_focus`: a text field has the keyboard (KEY-004). Returns
+    /// the effect and whether a binding took the key.
     pub fn key(
         &mut self,
-        native_scan_code: u32,
-        qt_modifiers: u32,
+        evdev: u32,
+        mods: Modifiers,
         pressed: bool,
         auto_repeat: bool,
         text_focus: bool,
-    ) -> UiEffect {
-        let Some(chord) =
-            crate::shortcuts::chord(native_scan_code, Modifiers::from_qt(qt_modifiers))
-        else {
+    ) -> (UiEffect, bool) {
+        let Some(chord) = crate::shortcuts::chord(evdev, mods) else {
             if pressed {
-                tracing::debug!("key: scan code {native_scan_code} has no name");
+                tracing::debug!("key: evdev code {evdev} has no name");
             }
-            return UiEffect::None;
+            return (UiEffect::None, false);
         };
         // a popup's keys first, then the player's (KEY-003)
         let action = if self.popups.is_open() {
@@ -677,23 +661,29 @@ impl Session {
             tracing::debug!("key {chord} → {}", action.map_or("nothing", Action::name));
         }
         let Some(action) = action else {
-            return UiEffect::None;
+            return (UiEffect::None, false);
         };
         if !pressed {
-            if action == Action::HoldSpeed
-                && let Some(speed) = self.hold.key_up()
-            {
-                let _ = self.services.player.set_speed(speed);
+            if action == Action::HoldSpeed {
+                self.release_hold();
             }
-            return UiEffect::None;
+            return (UiEffect::None, true);
         }
         if action == Action::HoldSpeed {
             if let Some(speed) = self.hold.key_down(self.view.speed, auto_repeat) {
                 let _ = self.services.player.set_speed(speed);
             }
-            return UiEffect::None;
+            return (UiEffect::None, true);
         }
-        self.action(action)
+        (self.action(action), true)
+    }
+
+    /// Ends hold-to-speed (PLY-002): on the key's release, or when the window
+    /// loses the keyboard and the release will never arrive.
+    pub fn release_hold(&mut self) {
+        if let Some(speed) = self.hold.key_up() {
+            let _ = self.services.player.set_speed(speed);
+        }
     }
 
     /// Runs an action (from a key or a button).
@@ -1164,10 +1154,10 @@ impl Session {
         self.run_popup_commands(commands);
     }
 
-    /// A click in the text of a list row, at a QML (UTF-16) position.
-    pub fn select_in_list(&mut self, cue: usize, utf16_pos: usize, anchor: Rect) {
+    /// A click in the text of a list row, on the character at index `pos`.
+    pub fn select_in_list(&mut self, cue: usize, pos: usize, anchor: Rect) {
         if let Some(c) = self.subs.cue(cue) {
-            let offset = crate::subtitles::utf16_to_byte(&c.plain_text, utf16_pos);
+            let offset = crate::subtitles::char_to_byte(&c.plain_text, pos);
             self.select_grapheme(cue, offset, anchor);
         }
     }
@@ -1190,7 +1180,6 @@ impl Session {
             self.end_replay();
         }
         self.sync_highlight();
-        self.popup_version += 1;
     }
 
     fn sync_highlight(&mut self) {
@@ -1222,7 +1211,6 @@ impl Session {
     pub fn popup_focus(&mut self, level: usize) {
         if self.popups.stack().len() > level + 1 {
             self.popups.focus(level);
-            self.popup_version += 1;
         }
     }
 
@@ -1240,7 +1228,7 @@ impl Session {
         }
     }
 
-    /// QML drew popup `level` with its content.
+    /// Popup `level` is on screen with its content (T-PERF-06).
     pub fn popup_rendered(&mut self, level: usize) {
         let Some(p) = self.popups.stack().get(level) else {
             return;
@@ -1248,13 +1236,12 @@ impl Session {
         let headwords = p
             .reply
             .as_ref()
-            .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok())
-            .and_then(|v| {
-                v["entries"].as_array().map(|a| {
-                    a.iter()
-                        .filter_map(|e| e["expression"].as_str().map(String::from))
-                        .collect()
-                })
+            .map(|r| {
+                r.content
+                    .entries
+                    .iter()
+                    .map(|e| e.expression.clone())
+                    .collect()
             })
             .unwrap_or_default();
         self.events.push(UiEvent::PopupRendered {
@@ -1414,61 +1401,7 @@ impl Session {
         };
         if self.popups.deliver(generation, reply) {
             self.sync_highlight();
-            self.popup_version += 1;
         }
-    }
-
-    /// The open popups for QML: level, query, anchor, content.
-    pub fn popups_json(&self) -> String {
-        #[derive(serde::Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Anchor {
-            x: f64,
-            y: f64,
-            w: f64,
-            h: f64,
-        }
-        #[derive(serde::Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct PopupView<'a> {
-            level: usize,
-            entry: usize,
-            from_subtitle: bool,
-            query: &'a str,
-            anchor: Anchor,
-            loading: bool,
-            empty: bool,
-            /// The content as a JSON string: each panel parses its own
-            /// once. As an object it would make the panels' model heavy (a
-            /// Repeater turns an array of objects into variants, deeply).
-            content: Option<&'a str>,
-        }
-        let views: Vec<PopupView<'_>> = self
-            .popups
-            .stack()
-            .iter()
-            .enumerate()
-            .map(|(level, p)| PopupView {
-                level,
-                entry: p.entry,
-                from_subtitle: matches!(p.origin, Origin::Subtitle { .. }),
-                query: &p.query,
-                anchor: Anchor {
-                    x: p.anchor.x,
-                    y: p.anchor.y,
-                    w: p.anchor.w,
-                    h: p.anchor.h,
-                },
-                loading: p.reply.is_none(),
-                empty: p.reply.as_ref().is_some_and(|r| r.empty),
-                content: p
-                    .reply
-                    .as_ref()
-                    .map(|r| r.content.as_str())
-                    .filter(|c| !c.is_empty()),
-            })
-            .collect();
-        serde_json::to_string(&views).unwrap_or_else(|_| "[]".into())
     }
 
     /// A click on the time of a list row: playback goes to the cue.
@@ -1529,6 +1462,11 @@ mod tests {
         assert_eq!(
             url_to_path("file:///bad%zz.mkv"),
             PathBuf::from("/bad%zz.mkv")
+        );
+        // a `%` and one hex digit before a multibyte character (ERR-002)
+        assert_eq!(
+            url_to_path("file:///x%a日.mkv"),
+            PathBuf::from("/x%a日.mkv")
         );
     }
 }

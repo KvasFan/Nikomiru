@@ -16,7 +16,14 @@ feature-depth = 1
 
 [advisories]
 yanked = "deny"
-ignore = []
+# Not vulnerabilities: crates merged into zbus 6, reached only through AccessKit's
+# AT-SPI stack (accesskit_unix → atspi → zbus 5), which has no zbus 6 release yet.
+# Revisit on every update of egui and AccessKit (D-13).
+ignore = [
+    { id = "RUSTSEC-2026-0370", reason = "zvariant, merged into zbus 6: through accesskit_unix" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names, merged into zbus 6: through accesskit_unix" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive, merged into zbus 6: through accesskit_unix" },
+]
 
 [licenses]
 allow = [
@@ -34,18 +41,16 @@ allow = [
 confidence-threshold = 0.93
 # Class A is declared in full even though not all of its licenses are in the graph today.
 unused-allowed-license = "allow"
-# The class B exceptions apply to the complete graph. cxx-qt entered the workspace in
-# M1: an exception that is no longer used is reported, so it can be removed.
+# The class B exceptions apply to the complete graph: an exception that is no longer
+# used is reported, so it can be removed (SPECIFICATION §3.2, rule 4).
 unused-license-exception = "warn"
 exceptions = [
     # Unicode-3.0 — url → idna (reqwest); icu_normalizer (direct, §4); proc-macro2
-    # (every procedural macro: serde_derive, thiserror, cxx, cxx-qt)
+    # (every procedural macro: serde_derive, thiserror, zbus through AccessKit)
     { crate = "icu_collections", allow = ["Unicode-3.0"] },
     { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
     { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
     { crate = "icu_normalizer_data", allow = ["Unicode-3.0"] },
-    { crate = "icu_properties", allow = ["Unicode-3.0"] },
-    { crate = "icu_properties_data", allow = ["Unicode-3.0"] },
     { crate = "icu_provider", allow = ["Unicode-3.0"] },
     { crate = "litemap", allow = ["Unicode-3.0"] },
     { crate = "tinystr", allow = ["Unicode-3.0"] },
@@ -59,7 +64,7 @@ exceptions = [
     { crate = "zerovec-derive", allow = ["Unicode-3.0"] },
     { crate = "potential_utf", allow = ["Unicode-3.0"] },
     { crate = "unicode-ident", allow = ["Unicode-3.0"] },
-    # Zlib — cxx (through cxx-qt)
+    # Zlib — hashbrown's default hasher (fontique, AccessKit, epaint), glifo (epaint)
     { crate = "foldhash", allow = ["Zlib"] },
     # ISC — glutin and the libraries winit loads at run time (D-13)
     { crate = "libloading", allow = ["ISC"] },

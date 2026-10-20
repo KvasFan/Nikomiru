@@ -7,6 +7,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+mod drag;
 mod support;
 
 use std::time::Duration;
@@ -215,7 +216,10 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
         s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
     });
 
-    // Ctrl+→ goes 180 ms before the next cue
+    // Ctrl+→ goes 180 ms before the next cue; paused, so that the position
+    // stays there long enough to be read
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
     h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowRight", "mods": ["Ctrl"] }));
     let s = h.state_until("the jump to the next cue", |s| {
         (time_pos(s) - 4.82).abs() < 0.05
@@ -345,17 +349,13 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
         times[times.len() / 2]
     );
     assert!(p95 <= Duration::from_millis(100), "p95 {p95:?}");
-    // no QML warnings about the popup (bindings, missing properties)
+    // nothing went wrong in the interface while drawing them
     let log = desk.log();
-    for bad in [
-        "GlossaryBlocks.qml",
-        "GlossaryRuns.qml",
-        "PopupEntry.qml",
-        "DictionaryPopups.qml",
-        "Chip.qml",
-    ] {
-        assert!(!log.contains(bad), "QML warnings:\n{log}");
-    }
+    let bad: Vec<&str> = log
+        .lines()
+        .filter(|l| (l.contains("WARN") || l.contains("ERROR")) && l.contains("nikomiru_ui"))
+        .collect();
+    assert!(bad.is_empty(), "{bad:#?}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -386,7 +386,8 @@ fn a_dropped_dictionary_is_imported_and_used() {
             .contains("Nikomiru mini-ja")
     });
     assert_eq!(s["dictionaries"]["rows"].as_array().map(Vec::len), Some(1));
-    // the popup uses it
+    // Esc closes the page (it covers the popups); the popup uses the dictionary
+    h.key("Escape");
     h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
     let rendered = h.wait("popup-rendered");
     assert_eq!(rendered["headwords"][0], "食べる", "{rendered}");
@@ -460,6 +461,40 @@ fn the_popup_keyboard_replay_and_go_to_sentence() {
             && s["paused"] == false
             && (4.9..5.6).contains(&time_pos(s))
     });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-LIB-001, T-DIC-001 on Wayland, where winit takes no drops: the app's own
+// data device, with a drag from another client as a file manager makes it
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn files_dragged_from_another_client_open_and_import() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    let mut source = drag::DragSource::connect(&desk.wayland_socket());
+    // a video: it opens, and is copied (the source offers a move too)
+    let video = fixture("-weird: name & spaces ü 日本.mkv");
+    let outcome = source.drag(&[&video], (640.0, 400.0));
+    assert_eq!(
+        outcome.accepted.as_deref(),
+        Some("text/uri-list"),
+        "{outcome:?}"
+    );
+    assert!(
+        outcome.sent && outcome.finished && !outcome.cancelled,
+        "{outcome:?}"
+    );
+    h.wait("file-loaded");
+    let s = h.state();
+    assert!(s["title"].as_str().unwrap_or("").contains("weird"), "{s}");
+    assert!(std::path::Path::new(&video).exists(), "copied, not moved");
+    // a dictionary: imported from the page
+    let outcome = source.drag(&[&fixture("dicts/mini-ja.zip")], (640.0, 400.0));
+    assert!(outcome.finished, "{outcome:?}");
+    h.wait("dictionary-imported");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

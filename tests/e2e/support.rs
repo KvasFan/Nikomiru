@@ -63,6 +63,15 @@ impl Desktop {
         }
         let run = dir.path().join("run");
         std::fs::set_permissions(&run, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // No audio server is reachable here: mpv's audio output is null. Probing
+        // the others also races in mpv's PipeWire output, which can hang the core
+        // when a second file is loaded while it is still failing to connect.
+        std::fs::create_dir_all(dir.path().join("config/nikomiru")).unwrap();
+        std::fs::write(
+            dir.path().join("config/nikomiru/config.toml"),
+            "[player]\nmpv_options = { ao = \"null\" }\n",
+        )
+        .unwrap();
 
         let config = dir.path().join("bus.conf");
         std::fs::write(
@@ -134,6 +143,11 @@ impl Desktop {
             bus_address,
             launches: 0,
         }
+    }
+
+    /// The compositor's socket, for the test's own Wayland clients.
+    pub fn wayland_socket(&self) -> PathBuf {
+        self.path("run").join(WAYLAND)
     }
 
     fn path(&self, sub: &str) -> PathBuf {
@@ -252,8 +266,37 @@ impl Desktop {
     }
 }
 
+impl Desktop {
+    /// The apps a failed test left running on this desktop: the `nikomiru`
+    /// processes whose environment holds this desktop's runtime folder.
+    fn leftover_apps(&self) -> Vec<u32> {
+        let needle = format!("XDG_RUNTIME_DIR={}", self.path("run").display());
+        let Ok(entries) = std::fs::read_dir("/proc") else {
+            return Vec::new();
+        };
+        entries
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
+            .filter(|pid| {
+                let proc = PathBuf::from(format!("/proc/{pid}"));
+                let is_app = std::fs::read_link(proc.join("exe"))
+                    .is_ok_and(|exe| exe.file_name().is_some_and(|n| n == "nikomiru"));
+                is_app
+                    && std::fs::read(proc.join("environ"))
+                        .is_ok_and(|env| env.split(|b| *b == 0).any(|var| var == needle.as_bytes()))
+            })
+            .collect()
+    }
+}
+
 impl Drop for Desktop {
     fn drop(&mut self) {
+        // a failed test may leave its app running: it must not outlive the desktop
+        for pid in self.leftover_apps() {
+            let _ = Command::new("kill")
+                .args(["-KILL", &pid.to_string()])
+                .status();
+        }
         for child in [&mut self.kwin, &mut self.bus] {
             let _ = child.kill();
             let _ = child.wait();
