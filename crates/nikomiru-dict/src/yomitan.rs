@@ -64,9 +64,11 @@ fn text(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-/// Parses `index.json`.
+/// Parses `index.json`. Bytes that are not UTF-8 become U+FFFD, as in Fushi:
+/// a damaged title must not stop the import (BUG-2952).
 pub fn parse_index(bytes: &[u8]) -> Result<Index, FormatError> {
-    let v: Value = serde_json::from_slice(bytes).map_err(|e| err(format!("index.json: {e}")))?;
+    let json = String::from_utf8_lossy(bytes);
+    let v: Value = serde_json::from_str(&json).map_err(|e| err(format!("index.json: {e}")))?;
     let title = text(&v, "title").ok_or_else(|| err("index.json has no title"))?;
     let revision = match v.get("revision") {
         Some(Value::String(s)) => s.clone(),
@@ -378,7 +380,11 @@ fn frequency(data: &Value) -> Option<Frequency> {
     }
     let (value, display) = frequency_value(data)?;
     Some(Frequency {
-        reading: None,
+        // a reading next to the value, `{reading, value}`, as Fushi reads it
+        reading: data
+            .get("reading")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         value,
         display,
     })
@@ -493,59 +499,65 @@ pub struct Kanji {
 }
 
 /// Parses a `kanji_bank_*.json` (format 1 puts the meanings after the tags);
-/// `None` when `cancel` stopped it.
+/// `None` when `cancel` stopped it. A malformed row (a number where a string
+/// belongs, meanings that are not a list of strings, no character) is
+/// skipped, as in Fushi: one bad row must not drop the bank (BUG-2952).
 pub fn parse_kanji(
     bytes: &[u8],
     format: u32,
     cancel: &Cancel,
 ) -> Result<Option<Vec<Kanji>>, FormatError> {
-    rows(bytes, cancel, |i, row: Value| {
-        let a = row
-            .as_array()
-            .ok_or_else(|| err(format!("kanji {i}: not an array")))?;
-        let s = |k: usize| {
-            a.get(k)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string()
+    rows(bytes, cancel, |_, row: Value| Ok(kanji_row(&row, format)))
+}
+
+fn kanji_row(row: &Value, format: u32) -> Option<Kanji> {
+    let a = row.as_array()?;
+    // the four text fields are strings when present
+    let s = |k: usize| match a.get(k) {
+        None => Some(String::new()),
+        Some(v) => v.as_str().map(str::to_string),
+    };
+    let character = s(0).filter(|c| !c.is_empty())?;
+    let (meanings, stats) = if format == 1 {
+        (
+            a[4.min(a.len())..]
+                .iter()
+                .filter_map(|m| m.as_str().map(str::to_string))
+                .collect(),
+            Vec::new(),
+        )
+    } else {
+        let meanings = match a.get(4) {
+            None => Vec::new(),
+            Some(m) => m
+                .as_array()?
+                .iter()
+                .map(|m| m.as_str().map(str::to_string))
+                .collect::<Option<_>>()?,
         };
-        let character = s(0);
-        if character.is_empty() {
-            return Err(err(format!("kanji {i}: no character")));
-        }
-        let (meanings, stats) = if format == 1 {
-            (
-                a[4.min(a.len())..]
-                    .iter()
-                    .filter_map(|m| m.as_str().map(str::to_string))
-                    .collect(),
-                Vec::new(),
-            )
-        } else {
-            let stats = a
-                .get(5)
-                .and_then(Value::as_object)
-                .map(|o| {
-                    o.iter()
-                        .map(|(k, v)| {
-                            (
-                                k.clone(),
-                                v.as_str().map_or_else(|| v.to_string(), str::to_string),
-                            )
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            (strings(a.get(4)), stats)
-        };
-        Ok(Some(Kanji {
-            character,
-            onyomi: s(1),
-            kunyomi: s(2),
-            tags: s(3),
-            meanings,
-            stats,
-        }))
+        let stats = a
+            .get(5)
+            .and_then(Value::as_object)
+            .map(|o| {
+                o.iter()
+                    .map(|(k, v)| {
+                        (
+                            k.clone(),
+                            v.as_str().map_or_else(|| v.to_string(), str::to_string),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        (meanings, stats)
+    };
+    Some(Kanji {
+        character,
+        onyomi: s(1)?,
+        kunyomi: s(2)?,
+        tags: s(3)?,
+        meanings,
+        stats,
     })
 }
 
@@ -736,6 +748,14 @@ mod tests {
             ]
         );
         assert_eq!(m.len(), 4, "unknown modes are skipped");
+        let flat = all(parse_meta_bank(
+            r#"[["猫","freq",{"reading":"ねこ","value":100}]]"#.as_bytes(),
+            &Cancel::new(),
+        ));
+        assert!(
+            matches!(&flat[0].1, Meta::Frequency(f) if f.reading.as_deref() == Some("ねこ") && f.value == 100),
+            "{flat:?}"
+        );
     }
 
     #[test]
@@ -776,6 +796,27 @@ mod tests {
         ));
         assert_eq!((t[0].category.as_str(), t[0].order), ("partOfSpeech", -3));
         assert_eq!(t.len(), 1, "a tag without a name is skipped");
+    }
+
+    #[test]
+    fn a_malformed_kanji_row_or_title_does_not_stop_the_import() {
+        let k = parse_kanji(
+            r#"[["日","nichi","hi","jouyou",["day","","sun"],{"strokes":"4"}],
+                [123,"","","",["number as character"],{}],
+                ["x","","","","meanings-not-an-array",{}],
+                ["𠮟","","","",["異体字",""],{}],
+                ["y","","","",[],"stats-as-string"]]"#
+                .as_bytes(),
+            3,
+            &Cancel::new(),
+        );
+        let k = all(k);
+        let characters: Vec<&str> = k.iter().map(|k| k.character.as_str()).collect();
+        assert_eq!(characters, ["日", "𠮟", "y"]);
+        let index =
+            parse_index(b"{\"title\":\"bad\xff\xfe title\",\"format\":3,\"revision\":\"t\"}")
+                .unwrap();
+        assert_eq!(index.title, "bad\u{fffd}\u{fffd} title");
     }
 
     // T-DIC-015

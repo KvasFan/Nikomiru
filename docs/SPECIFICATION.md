@@ -486,7 +486,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 |---|---|---|
 | DIC-001 | MUST import **Yomitan/Yomichan** dictionaries (zip with `index.json`, format 3; format 1/2 is SHOULD): `term_bank_*`, `term_meta_bank_*` (`freq`, `pitch`, `ipa`), `kanji_bank_*`, `kanji_meta_bank_*` (`freq`), `tag_bank_*`, `styles.css`, media files | `importer.cpp` |
 | DIC-002 | Unlike Fushi, MUST import the `tag_bank_*` files (category, order, notes, score) and use them for chips and for sorting. MUST keep `sequence` and `score` | Fushi gap |
-| DIC-003 | Frequencies: values as a number, `{value, displayValue?}` and `{reading, frequency}`. Unlike Fushi, MUST also accept string values (reading the leading integer) and respect `frequencyMode` from `index.json` (`rank-based` default; `occurrence-based` = higher is better) | Fushi gap |
+| DIC-003 | Frequencies: values as a number, `{value, displayValue?}` and `{reading, frequency}` (also written `{reading, value}`, which Fushi reads too). Unlike Fushi, MUST also accept string values (reading the leading integer) and respect `frequencyMode` from `index.json` (`rank-based` default; `occurrence-based` = higher is better) | Fushi gap |
 | DIC-004 | MDict, StarDict, DSL, Migaku: post-1.0 | |
 
 #### 6.5.2 Import pipeline
