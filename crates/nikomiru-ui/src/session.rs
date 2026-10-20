@@ -1135,6 +1135,7 @@ impl Session {
     pub fn subtitle_hover(&mut self, inside: bool) {
         self.subs.hovered = inside;
         let now = self.services.clock.monotonic();
+        self.controls.set_over_subtitles(inside, now);
         self.hover.inside(inside || self.popup_hovered, now);
     }
 
@@ -1152,13 +1153,14 @@ impl Session {
         if offset >= text.len() {
             return;
         }
-        self.subs.selection = Some((cue, offset));
-        self.subs.highlight = None;
         let range = nikomiru_text::scan::query(&text, offset, nikomiru_text::scan::Context::Cue);
         let query = nikomiru_text::scan::normalize(&text[range.clone()]);
+        // a space or a delimiter: nothing to look up, and nothing changes
         if query.is_empty() {
             return;
         }
+        self.subs.selection = Some((cue, offset));
+        self.subs.highlight = None;
         // where the normalized query starts in the cue
         let start = range.start + text[range].find(query.as_str()).unwrap_or(0);
         let playing = self.view.loaded && !self.view.paused;
@@ -1193,6 +1195,8 @@ impl Session {
             self.hover.reset();
             self.end_replay();
         }
+        // the bar stays while a popup is open (PLY-004)
+        self.controls.set_popup_open(self.popups.is_open());
         self.sync_highlight();
     }
 

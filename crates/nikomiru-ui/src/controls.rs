@@ -3,12 +3,16 @@
 //! Visibility of the control bar (PLY-004): it hides after 2 s without mouse
 //! movement during playback, together with the cursor, and comes back on
 //! movement. It stays visible while paused, with the mouse over the subtitles
-//! and with a popup open.
+//! and with a popup open. Only the mouse moving onto the subtitles counts:
+//! the bar lifts the bottom subtitles, and subtitles that come back under a
+//! resting pointer when it hides must not bring it back, every 2 s.
 
 use std::time::Duration;
 
 /// Time without movement after which the bar hides.
 pub const HIDE_AFTER: Duration = Duration::from_secs(2);
+/// The pointer entered the subtitles by moving if it moved this recently.
+const MOVED_ONTO: Duration = Duration::from_millis(250);
 
 /// State of the control bar.
 #[derive(Debug, Clone, Default)]
@@ -34,9 +38,9 @@ impl ControlsVisibility {
         self.playing = playing;
     }
 
-    /// The mouse is over the subtitles, or left them.
-    pub fn set_over_subtitles(&mut self, over: bool) {
-        self.over_subtitles = over;
+    /// The mouse is over the subtitles, or left them, at `now`.
+    pub fn set_over_subtitles(&mut self, over: bool, now: Duration) {
+        self.over_subtitles = over && now.saturating_sub(self.last_motion) < MOVED_ONTO;
     }
 
     /// A popup opened or the last one closed.
@@ -70,9 +74,14 @@ mod tests {
         c.mouse_moved(s(3));
         assert!(c.visible(ms(4999)));
         assert!(!c.visible(s(5)));
-        c.set_over_subtitles(true);
-        assert!(c.visible(s(60)), "mouse over the subtitles");
-        c.set_over_subtitles(false);
+        c.mouse_moved(ms(59_900));
+        c.set_over_subtitles(true, s(60));
+        assert!(c.visible(s(90)), "mouse over the subtitles");
+        c.set_over_subtitles(false, s(90));
+        assert!(!c.visible(s(90)));
+        // subtitles that come under a resting pointer do not count
+        c.set_over_subtitles(true, s(95));
+        assert!(!c.visible(s(95)));
         c.set_popup_open(true);
         assert!(c.visible(s(60)), "popup open");
         c.set_popup_open(false);

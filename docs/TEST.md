@@ -294,7 +294,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-001 | Commands on `av_basic.mkv` | play/pause; seek ±3 s (expected `time-pos` ± 0.1 s); speed clamped to 0.25–4.0; volume clamped to 0–150; frame step on `av_vfr.mkv` | L5 |
 | T-PLY-002 | Hold to speed up | keydown `E` → speed 2.0; key auto-repeats are ignored; keyup → back to the previous speed | L1 |
 | T-PLY-003 | Audio tracks | 2 tracks listed with their language; switching track updates `aid` | L5 |
-| T-PLY-004 | Control bar | State machine with a fake clock: hides after 2 s without movement during playback; stays visible while paused, with the mouse over the subtitles and with a popup open | L1 |
+| T-PLY-004 | Control bar | State machine with a fake clock: hides after 2 s without movement during playback; stays visible while paused, with the mouse over the subtitles (moved onto them: subtitles that come back under a resting pointer do not count) and with a popup open | L1 |
 | T-PLY-005 | Fixed options | After initialization, every option of PLY-005 has the expected value (`mpv_get`) | L5 |
 | T-PLY-006 | Raw mpv options | `deband=yes` applied; `key without equals` → error at line 1; the application order is respected (raw options win) | L1/L5 |
 | T-PLY-007 | Resume | `start = 5` → after `file-loaded`, `time-pos` ∈ [4.9, 5.5] and `start` goes back to `none` | L5 |

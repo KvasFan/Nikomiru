@@ -115,6 +115,9 @@ impl DictionaryService for Dictionaries {
     ) {
         let manager = Arc::clone(&self.manager);
         let translator = self.translator.clone();
+        // the page waits for `done`: it must come even if the thread cannot start
+        let done = Arc::new(std::sync::Mutex::new(Some(done)));
+        let finish = Arc::clone(&done);
         let spawned = std::thread::Builder::new()
             .name("nikomiru-import".into())
             .spawn(move || {
@@ -125,10 +128,15 @@ impl DictionaryService for Dictionaries {
                 if let Err(e) = &result {
                     tracing::warn!(zip = %zip.display(), "import failed: {e}");
                 }
-                done(result);
+                if let Some(done) = finish.lock().ok().and_then(|mut d| d.take()) {
+                    done(result);
+                }
             });
         if let Err(e) = spawned {
             tracing::error!("cannot start the import thread: {e}");
+            if let Some(done) = done.lock().ok().and_then(|mut d| d.take()) {
+                done(Err(e.to_string()));
+            }
         }
     }
 
