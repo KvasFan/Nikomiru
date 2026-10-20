@@ -9,7 +9,8 @@
 //! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
 //! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
 //! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
-//! `{"cmd":"popup_content","level":0}`, `{"cmd":"state"}`,
+//! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
+//! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
 use std::io::{BufRead, BufReader, Write};
@@ -108,6 +109,9 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::popup_content(level as usize)
         }
         Some("state") => harness::state(),
+        Some("dict_css") => {
+            harness::dict_css(text(command, "id")?, text(command, "css")?).map(|()| Value::Null)
+        }
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),
         Some("quit") => harness::quit().map(|()| Value::Null),
         _ => Err(format!("unknown command {command}")),

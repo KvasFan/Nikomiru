@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The dictionaries page (DIC-001, DIC-010, DIC-016, DIC-030…DIC-034): import
+//! The dictionaries page (DIC-001, DIC-010, DIC-016, DIC-030…DIC-035): import
 //! with progress and cancel, the update offer, and the dictionaries by type,
-//! each with enable, rename, the popup block state, order (by drag and drop
-//! or ▲/▼) and delete. It covers the window and takes the pointer, so nothing
-//! under it reacts; toasts stay above it.
+//! each with enable, rename, the popup block state, the user's CSS, order (by
+//! drag and drop or ▲/▼) and delete. It covers the window and takes the
+//! pointer, so nothing under it reacts; toasts stay above it.
+
+use std::collections::HashMap;
 
 use egui::{
     Align, Area, Button, Color32, ComboBox, DragAndDrop, FontId, Frame, Id, Key, LayerId, Layout,
     Margin, Order, ProgressBar, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind,
     TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
 };
+use nikomiru_dict::css::{Report, Sheet};
 use nikomiru_library::{Collapse, DictionaryRecord};
 
 use super::popups::Translate;
@@ -28,6 +31,11 @@ const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
 const OFF: Color32 = Color32::from_rgb(0x8a, 0x8f, 0x99);
 /// The drop marker and the dragged dictionary's outline.
 const DROP: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
+/// What the CSS subset leaves out.
+const LEFT_OUT: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
+/// The user's CSS is for a few rules: a long paste would be parsed by every
+/// lookup.
+const MAX_CSS_CHARS: usize = 32 * 1024;
 
 /// What a drag carries (DIC-031): the dictionary, its name for the chip that
 /// follows the pointer, and the group it moves in.
@@ -51,12 +59,26 @@ struct Rename {
     focused: bool,
 }
 
+/// The editor of a dictionary's CSS (DIC-035).
+#[derive(Debug)]
+struct CssEditor {
+    /// The text typed so far: it survives the page's refreshes and a fold.
+    text: String,
+    /// Unfolded under the row.
+    open: bool,
+    /// What the subset keeps of `checked`, the text of the last check.
+    report: Report,
+    checked: Option<String>,
+}
+
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Debug, Default)]
 pub(crate) struct State {
     renaming: Option<Rename>,
     /// The dictionary to delete once confirmed: its id and name.
     deleting: Option<(String, String)>,
+    /// The CSS editors unfolded since the page opened, by dictionary.
+    css: HashMap<String, CssEditor>,
 }
 
 /// What the page shows.
@@ -531,8 +553,10 @@ fn row(
                     out.push(Command::DictSetEnabled(id.to_string(), enabled));
                 }
 
-                // name and details, or the rename field
-                let room = (ui.available_width() - 4.0 * 34.0 - 150.0).max(80.0);
+                // name and details, or the rename field; then, from the right,
+                // four glyphs, the CSS button and the block state menu
+                let buttons = 4.0 * 34.0 + CSS_BUTTON + MENU + 6.0 * ui.spacing().item_spacing.x;
+                let room = (ui.available_width() - buttons).max(80.0);
                 let mut renamed = false;
                 ui.vertical(|ui| {
                     ui.set_width(room);
@@ -586,6 +610,25 @@ fn row(
                             }),
                         };
                     }
+                    // the user's CSS, for the glossaries of term dictionaries (DIC-035)
+                    if r.kinds.terms {
+                        let open = state.css.get(id).is_some_and(|e| e.open);
+                        if css_toggle(ui, open, &t("dict-css")) {
+                            let editor =
+                                state
+                                    .css
+                                    .entry(id.to_string())
+                                    .or_insert_with(|| CssEditor {
+                                        text: r.user_css.clone(),
+                                        open: false,
+                                        report: Report::default(),
+                                        checked: None,
+                                    });
+                            editor.open = !editor.open;
+                        }
+                    } else {
+                        ui.add_space(CSS_BUTTON + ui.spacing().item_spacing.x);
+                    }
                     if glyph(ui, down, "▼", &t("dict-move-down")) {
                         out.push(Command::DictMove(id.to_string(), 1));
                     }
@@ -613,7 +656,7 @@ fn row(
                             .map(|(_, _, label)| label.clone())
                             .unwrap_or_default();
                         let combo = ComboBox::from_id_salt(("dict-collapse", id))
-                            .width(130.0)
+                            .width(MENU)
                             .selected_text(current)
                             .show_ui(ui, |ui| {
                                 for (c, key, label) in &options {
@@ -631,13 +674,130 @@ fn row(
                             .response
                             .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &name));
                     } else {
-                        ui.add_space(130.0 + ui.spacing().item_spacing.x);
+                        ui.add_space(MENU + ui.spacing().item_spacing.x);
                     }
                 });
             });
+            if r.kinds.terms
+                && let Some(editor) = state.css.get_mut(id).filter(|e| e.open)
+            {
+                css_panel(ui, tr, m, editor, out);
+            }
         })
         .response
         .rect
+}
+
+/// The width of the button that unfolds the CSS editor.
+const CSS_BUTTON: f32 = 44.0;
+/// The width of the block state menu.
+const MENU: f32 = 130.0;
+
+/// The button that unfolds and folds a dictionary's CSS editor.
+fn css_toggle(ui: &mut Ui, open: bool, name: &str) -> bool {
+    let response = ui
+        .add(
+            Button::selectable(open, RichText::new("CSS").size(13.0))
+                .min_size(vec2(CSS_BUTTON, 28.0)),
+        )
+        .on_hover_text(name);
+    let label = name.to_string();
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, open, &label));
+    response.clicked()
+}
+
+/// Up to six of `items`, each once, for a line of the CSS feedback.
+fn listed(items: &[String]) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    for item in items {
+        if !seen.contains(&item.as_str()) {
+            seen.push(item);
+        }
+    }
+    let more = seen.len() > 6;
+    seen.truncate(6);
+    let mut text = seen.join(", ");
+    if more {
+        text.push_str(", …");
+    }
+    text
+}
+
+/// The editor of a dictionary's CSS (DIC-035), applied after its own
+/// `styles.css` through the same safe subset: a code field (it takes the
+/// keyboard and the input method like every text field), Save, Revert and
+/// Clear, and what the subset keeps of what is typed.
+fn css_panel(
+    ui: &mut Ui,
+    tr: &Translate<'_>,
+    m: &Member<'_>,
+    editor: &mut CssEditor,
+    out: &mut Vec<Command>,
+) {
+    let t = |key: &str| tr(key, &[]);
+    let (id, r) = (m.id, m.record);
+    ui.add_space(6.0);
+    ui.add(egui::Label::new(RichText::new(t("dict-css-intro")).size(13.0).color(DETAILS)).wrap());
+    let name = tr("dict-css-field", &[("title", r.name().to_string())]);
+    ScrollArea::vertical()
+        .id_salt(("dict-css", id))
+        .max_height(180.0)
+        .show(ui, |ui| {
+            let field = ui.add(
+                TextEdit::multiline(&mut editor.text)
+                    .code_editor()
+                    .desired_rows(5)
+                    .desired_width(f32::INFINITY)
+                    .char_limit(MAX_CSS_CHARS)
+                    .hint_text(r#"span[data-sc-class="tag"] { color: #8ab4ff }"#),
+            );
+            field.widget_info(|| WidgetInfo::labeled(Role::MultilineTextInput, true, &name));
+        });
+
+    if editor.checked.as_ref() != Some(&editor.text) {
+        editor.report = Sheet::check(&editor.text);
+        editor.checked = Some(editor.text.clone());
+    }
+    let report = &editor.report;
+    let small =
+        |text: String, color| egui::Label::new(RichText::new(text).size(13.0).color(color)).wrap();
+    ui.add(small(
+        tr("dict-css-rules", &[("count", report.rules.to_string())]),
+        DETAILS,
+    ));
+    if !report.dropped.is_empty() {
+        let list = listed(&report.dropped);
+        ui.add(small(tr("dict-css-dropped", &[("list", list)]), LEFT_OUT));
+    }
+    if !report.ignored.is_empty() {
+        let list = listed(&report.ignored);
+        ui.add(small(tr("dict-css-ignored", &[("list", list)]), LEFT_OUT));
+    }
+
+    let unsaved = editor.text != r.user_css;
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(unsaved, Button::new(t("dict-css-save")))
+            .clicked()
+        {
+            out.push(Command::DictSetUserCss(id.to_string(), editor.text.clone()));
+        }
+        if ui
+            .add_enabled(unsaved, Button::new(t("dict-css-revert")))
+            .clicked()
+        {
+            editor.text.clone_from(&r.user_css);
+        }
+        if ui
+            .add_enabled(!editor.text.is_empty(), Button::new(t("dict-css-clear")))
+            .clicked()
+        {
+            editor.text.clear();
+        }
+        if unsaved {
+            ui.label(RichText::new(t("dict-css-unsaved")).color(LEFT_OUT));
+        }
+    });
 }
 
 /// The rename field: Enter renames (an empty name restores the title), Esc
@@ -1015,6 +1175,72 @@ mod tests {
         );
         // a click on a handle is not a drag
         let out = click(&mut h, "dict-drag", 0);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    // T-DIC-035
+    #[test]
+    fn the_css_editor_says_what_applies_and_saves_reverts_and_clears() {
+        let mut jm = record("JM", true);
+        jm.user_css = "div { margin: 1em }".into();
+        let freq = DictionaryRecord {
+            kinds: Kinds {
+                frequency: true,
+                ..Kinds::default()
+            },
+            ..record("F", true)
+        };
+        let mut h = harness(page(&[("a", jm), ("f", freq)]));
+        h.run();
+        // a term dictionary's: its glossaries are what it styles
+        assert_eq!(h.query_all_by_label("dict-css").count(), 1);
+        let field = "dict-css-field title=JM";
+        assert!(h.query_by_label(field).is_none(), "folded");
+        click(&mut h, "dict-css", 0);
+        let saved = h.get_by_label(field).value();
+        assert_eq!(saved.as_deref(), Some("div { margin: 1em }"));
+        assert!(h.query_by_label("dict-css-rules count=1").is_some());
+        assert!(h.query_by_label("dict-css-unsaved").is_none());
+
+        // Clear, then type: the feedback follows the text
+        click(&mut h, "dict-css-clear", 0);
+        assert!(h.query_by_label("dict-css-rules count=0").is_some());
+        h.get_by_label(field).focus();
+        h.run();
+        let css =
+            "span { color: red; position: absolute } a:hover { color: blue } ul { cursor: x }";
+        h.get_by_label(field).type_text(css);
+        h.run();
+        assert_eq!(h.get_by_label(field).value().as_deref(), Some(css));
+        assert!(h.query_by_label("dict-css-rules count=1").is_some());
+        assert!(
+            h.query_by_label("dict-css-dropped list=position, cursor")
+                .is_some()
+        );
+        assert!(h.query_by_label("dict-css-ignored list=a:hover").is_some());
+        assert!(h.query_by_label("dict-css-unsaved").is_some());
+
+        // Save sends the text; folding keeps the draft
+        let out = click(&mut h, "dict-css-save", 0);
+        assert!(
+            matches!(&out[..], [Command::DictSetUserCss(id, text)] if id == "a" && text == css),
+            "{out:?}"
+        );
+        click(&mut h, "dict-css", 0);
+        assert!(h.query_by_label(field).is_none());
+        click(&mut h, "dict-css", 0);
+        assert_eq!(h.get_by_label(field).value().as_deref(), Some(css));
+        // Revert goes back to the saved CSS
+        click(&mut h, "dict-css-revert", 0);
+        let reverted = h.get_by_label(field).value();
+        assert_eq!(reverted.as_deref(), Some("div { margin: 1em }"));
+        assert!(h.query_by_label("dict-css-unsaved").is_none());
+        // once the page reads the saved text back, nothing is left to save
+        click(&mut h, "dict-css-clear", 0);
+        h.state_mut().page.rows[0].1.user_css.clear();
+        h.run();
+        assert!(h.query_by_label("dict-css-unsaved").is_none());
+        let out = click(&mut h, "dict-css-save", 0);
         assert!(out.is_empty(), "{out:?}");
     }
 

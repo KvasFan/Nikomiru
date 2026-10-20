@@ -41,6 +41,7 @@
   - `click_grapheme {layer, cue_index, grapheme_index}` (through the overlay's click command, with the popup's fallback place), `popup_button {replay | goto}`;
   - `lookup {text}`: a root popup for `text`, opened as a click on a subtitle word opens one but with no cue behind it (fallback place); `popup_content {level}`: the view model of that popup as JSON (POP-009), `null` while it looks up;
   - `state {}`: player state, open popups, visible cues, toasts, dictionaries page;
+  - `dict_css {id, css}`: a dictionary's CSS saved through the command of its editor's Save button;
   - `mpv_get {property}`: read-only, for metrics; read on the harness thread, never on the UI thread, which renders the video;
   - `quit {}`;
   - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
@@ -282,7 +283,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-030 | Dictionaries by type | Each dictionary is under its main type (terms, kanji, frequencies, pitch accent, in this order), with a reference row under each of its other types; title, revision, language, entries, size and import date shown; a reference has no controls | L1 |
 | T-DIC-031 | Order by drag and drop | A row dragged by its handle over the upper or lower half of a row of its type (a reference too) shows the marker there and moves just above or below it; next to itself or over another type nothing is marked or sent; in the order only the dragged dictionary moves, and ▲/▼ step over the rows of its type; the order decides the glossaries (L4) | L1, L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
-| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot and L6 check) | L3/L6 |
+| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot); the check of a stylesheet reports the rules applied, the properties left out and the rules ignored (L1); the page's editor shows that report, saves, reverts and clears the user's CSS of a term dictionary (L1); the registry keeps it across an update and a restart and drops the cached lookup (L4); saved on the page, it restyles the popup after the dictionary's `styles.css`, and stays after a restart (L6) | L1/L3/L4/L6 |
 
 ### 6.5 Lookup
 

@@ -171,6 +171,8 @@ pub(crate) enum Command {
     DictDelete(String),
     DictRename(String, String),
     DictSetCollapse(String, String),
+    /// The user's CSS of a dictionary, saved from its editor (DIC-035).
+    DictSetUserCss(String, String),
 }
 
 /// The interface: the session and its view.
@@ -519,6 +521,7 @@ impl Ui {
             Command::DictDelete(id) => s.dict_delete(&id),
             Command::DictRename(id, name) => s.dict_rename(&id, &name),
             Command::DictSetCollapse(id, state) => s.dict_set_collapse(&id, &state),
+            Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
         }
     }
 

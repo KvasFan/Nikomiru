@@ -481,6 +481,97 @@ fn a_dropped_dictionary_is_imported_and_used() {
     );
 }
 
+/// The style of the first text run of `content` that reads `text`.
+fn style_of<'a>(content: &'a serde_json::Value, text: &str) -> Option<&'a serde_json::Value> {
+    match content {
+        serde_json::Value::Object(o) if o.get("t").and_then(|t| t.as_str()) == Some(text) => {
+            o.get("s")
+        }
+        serde_json::Value::Object(o) => o.values().find_map(|v| style_of(v, text)),
+        serde_json::Value::Array(a) => a.iter().find_map(|v| style_of(v, text)),
+        _ => None,
+    }
+}
+
+// T-DIC-035 with a real lookup
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_users_css_saved_on_the_page_styles_the_popup() {
+    // 表 in mini-ja has a note, grey in the dictionary's styles.css
+    let dir = tempfile::tempdir().unwrap();
+    let video = dir.path().join("Ep01.mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &video).unwrap();
+    std::fs::write(
+        dir.path().join("Ep01.ja.srt"),
+        "1\n00:00:00,500 --> 00:00:09,500\n表\n",
+    )
+    .unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    // paused on the cue, so that it stays
+    let open = |desk: &mut Desktop| {
+        let (app, mut h) = desk.launch();
+        h.open(&video.to_string_lossy());
+        h.wait("file-loaded");
+        h.state_until("the cue", |s| visible_text(s) == ["表"]);
+        h.key("Space");
+        h.state_until("paused", |s| s["paused"] == true);
+        (app, h)
+    };
+    let (mut app, mut h) = open(&mut desk);
+    let note = |h: &mut support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+        h.wait("popup-rendered");
+        let content = h.cmd(serde_json::json!({ "cmd": "popup_content", "level": 0 }));
+        let style = style_of(&content, "a table").cloned();
+        h.key("Escape");
+        h.state_until("the popup closed", |s| {
+            s["popups"].as_array().is_some_and(Vec::is_empty)
+        });
+        style.unwrap_or_else(|| panic!("no note in {content}"))
+    };
+    let style = note(&mut h);
+    assert_eq!(style["color"], "#808080", "{style}");
+    assert_eq!(style["italic"], true, "{style}");
+
+    // the page, opened by a drop of the installed zip (refused as the same
+    // revision); then its editor's Save
+    h.drop_files(&[&fixture("dicts/mini-ja.zip")]);
+    let s = h.state_until("the page's list", |s| {
+        s["dictionaries"]["rows"]
+            .as_array()
+            .is_some_and(|r| !r.is_empty())
+    });
+    let id = s["dictionaries"]["rows"][0]["id"].clone();
+    let css = r#"span[data-sc-class="note"] { color: #ff0000; position: fixed }"#;
+    h.cmd(serde_json::json!({ "cmd": "dict_css", "id": id, "css": css }));
+    let s = h.state();
+    assert_eq!(s["dictionaries"]["rows"][0]["userCss"], css, "{s}");
+    assert!(
+        s["toast"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Nikomiru mini-ja"),
+        "{s}"
+    );
+    // Esc closes the page, which covers the popups
+    h.key("Escape");
+
+    // the user's rule comes after the dictionary's and wins; the rest of the
+    // style stays, and what the subset refuses does nothing
+    let style = note(&mut h);
+    assert_eq!(style["color"], "#ff0000", "{style}");
+    assert_eq!(style["italic"], true, "{style}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+
+    // kept for the next start
+    let (mut app, mut h) = open(&mut desk);
+    assert_eq!(note(&mut h)["color"], "#ff0000");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-POP-014, T-POP-015
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

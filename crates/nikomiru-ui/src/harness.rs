@@ -260,6 +260,12 @@ pub fn popup_button(button: &str) -> Result<(), String> {
     call(move |ui| ui.run(command))
 }
 
+/// Saves a dictionary's CSS like the Save button of its editor (DIC-035).
+pub fn dict_css(id: &str, css: &str) -> Result<(), String> {
+    let (id, css) = (id.to_string(), css.to_string());
+    call(move |ui| ui.run(Command::DictSetUserCss(id, css)))
+}
+
 /// An mpv property, read-only, for metrics. Read on this thread: a
 /// synchronous read must never run on the UI thread, which renders the video.
 pub fn mpv_get(property: &str) -> Result<Value, String> {

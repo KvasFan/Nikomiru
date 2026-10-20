@@ -527,7 +527,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | DIC-032 | Every dictionary can be enabled or disabled. A disabled one is **not queried** (Fushi BUG-3454/2997: exclude it before truncation, not at render time). |
 | DIC-033 | Deletion with confirmation; renaming for display only (`display_name`). |
 | DIC-034 | Collapse/expand state of the dictionary in the popup: `expanded` / `collapsed` / `automatic` (only the first N are expanded). |
-| DIC-035 | Per-dictionary styling: a safe subset of CSS properties taken from the dictionary's `styles.css` and from the user's CSS (color, font size, weight and style, margins, padding, borders, background), applied only to that dictionary's popup content. The subset is the one of spike S4 ([ADR 0005](adr/0005-popup-qml.md)). |
+| DIC-035 | Per-dictionary styling: a safe subset of CSS properties taken from the dictionary's `styles.css` and from the user's CSS (color, font size, weight and style, margins, padding, borders, background), applied only to that dictionary's popup content. The subset is the one of spike S4 ([ADR 0005](adr/0005-popup-qml.md)). The user's CSS of a term dictionary is written on the dictionaries page, in a code field with Save, Revert and Clear, and applied after its `styles.css` through the same subset; the page says what the subset keeps of it: the rules applied, the properties left out and the rules ignored. |
 
 ### 6.6 Lookup (LKP)
 
