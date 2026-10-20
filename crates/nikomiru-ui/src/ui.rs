@@ -112,9 +112,6 @@ pub struct Key {
 
 /// What a click or a drag in the view asks for. The view only reads the
 /// session while it draws; the commands run after the frame.
-// the overlay, list, popup and dictionaries views send the rest (ROADMAP M3,
-// work track 5)
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
     Action(Action),
@@ -152,15 +149,12 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     PopupFocus(usize),
-    PopupCloseAll,
     PopupHover(bool),
     PopupReplay,
     PopupGoto,
-    PopupEntry(i64),
     /// A web link in a popup (POP-011): opened by the system, never by egui.
     OpenExternal(String),
     DictOpen,
-    DictChoose(PathBuf),
     DictConfirm(bool),
     DictCancel,
     DictMove(String, i32),
@@ -490,18 +484,15 @@ impl Ui {
                 anchor,
             } => s.popup_lookup(level, &text, anchor),
             Command::PopupFocus(level) => s.popup_focus(level),
-            Command::PopupCloseAll => s.close_all_popups(),
             Command::PopupHover(inside) => s.popup_hover(inside),
             Command::PopupReplay => s.popup_replay(),
             Command::PopupGoto => s.popup_goto(),
-            Command::PopupEntry(delta) => s.popup_entry(delta),
             Command::OpenExternal(url) => {
                 if is_web_address(&url) {
                     self.external.push(url);
                 }
             }
             Command::DictOpen => s.dict_refresh(),
-            Command::DictChoose(zip) => s.dict_choose(zip),
             Command::DictConfirm(update) => s.dict_confirm(update),
             Command::DictCancel => s.dict_cancel(),
             Command::DictMove(id, delta) => s.dict_move(&id, delta),

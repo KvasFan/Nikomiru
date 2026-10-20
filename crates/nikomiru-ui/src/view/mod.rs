@@ -194,7 +194,13 @@ impl View {
         if controls {
             bar::show(&ctx, s, self, &mut out);
         }
-        let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);
+        // the dictionaries page covers the popups: they wait under it
+        let drawn = if self.dict_page_open {
+            self.popups.rects.clear();
+            Vec::new()
+        } else {
+            popups::show(&ctx, s, &mut self.popups, &mut out)
+        };
         self.mark_presented(s, &drawn);
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);

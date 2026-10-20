@@ -177,6 +177,8 @@ pub(crate) fn draw(
     let (pointer, pressed) = ctx.input(|i| (i.pointer.hover_pos(), i.pointer.any_pressed()));
     let mut drawn = Vec::new();
     let mut over = false;
+    // egui brings an area up when it appears: a nested popup comes over its
+    // parent, a panel already shown keeps its place
     for (level, p) in stack.iter().enumerate() {
         let panel = state.panels.entry(p.generation).or_default();
         let rect = place(p, panel.content_height, screen);
@@ -215,8 +217,6 @@ pub(crate) fn draw(
                         measured = Some(scroll.content_size.y);
                     });
             });
-        // the highest level on top
-        ctx.move_to_top(layer);
         let panel = state.panels.entry(p.generation).or_default();
         if let Some(height) = measured
             && panel

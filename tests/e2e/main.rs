@@ -385,7 +385,8 @@ fn a_dropped_dictionary_is_imported_and_used() {
             .contains("Nikomiru mini-ja")
     });
     assert_eq!(s["dictionaries"]["rows"].as_array().map(Vec::len), Some(1));
-    // the popup uses it
+    // Esc closes the page (it covers the popups); the popup uses the dictionary
+    h.key("Escape");
     h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
     let rendered = h.wait("popup-rendered");
     assert_eq!(rendered["headwords"][0], "食べる", "{rendered}");
