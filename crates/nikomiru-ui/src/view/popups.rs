@@ -65,6 +65,8 @@ const CELL_BORDER: Color32 = Color32::from_rgb(0x55, 0x5b, 0x66);
 const HEADER_CELL: Color32 = Color32::from_rgb(0x2c, 0x30, 0x38);
 const BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0x90, 0x9a, 0xa8, 0x80);
 const GRIP: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x55);
+/// Under selected text: the subtitles' highlight.
+const SELECTION: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
 
 /// What a popup keeps between frames, by its generation: what the reader
 /// changed in it and what its drawing needs.
@@ -87,6 +89,25 @@ struct Panel {
     /// The side of its word the panel keeps once resized: a new size must
     /// not throw it across the word.
     side: Option<Side>,
+    /// The text selected in a glossary (POP-012).
+    selection: Option<Selection>,
+}
+
+/// Text selected in a flow of a glossary (POP-012): between two boundaries
+/// of the flow's characters, where the drag started and where it is now.
+#[derive(Debug, Clone, Copy)]
+struct Selection {
+    flow: Id,
+    anchor: usize,
+    head: usize,
+    /// The button is still down: its release looks the text up.
+    held: bool,
+}
+
+impl Selection {
+    fn range(&self) -> Range<usize> {
+        self.anchor.min(self.head)..self.anchor.max(self.head)
+    }
 }
 
 /// A grip of a panel's border (POP-006): the edge away from the word, the
@@ -195,8 +216,19 @@ impl std::fmt::Debug for State {
 #[cfg(test)]
 #[derive(Debug, Clone)]
 enum Drawn {
-    Panel { level: usize, rect: Rect },
-    Link { text: String, rect: Rect },
+    Panel {
+        level: usize,
+        rect: Rect,
+    },
+    Link {
+        text: String,
+        rect: Rect,
+    },
+    /// A flow's selectable text, and where each character is.
+    Text {
+        text: String,
+        chars: Vec<Rect>,
+    },
 }
 
 /// Translates a message with its arguments.
@@ -387,6 +419,10 @@ pub(crate) fn draw(
     for (level, p) in stack.iter().enumerate() {
         let layer = LayerId::new(Order::Foreground, Id::unique(("popup", p.generation)));
         let panel = state.panels.entry(p.generation).or_default();
+        // a selection stays lit while the popup it opened is open (POP-012)
+        if panel.selection.is_some_and(|s| !s.held) && level + 1 == stack.len() {
+            panel.selection = None;
+        }
         let word = word(p, window);
         let dragged = resize(ctx, panel, word, scene.size, screen, layer.id, out);
         let (rect, side) = place(word, panel, scene.size, dragged, screen);
@@ -480,12 +516,7 @@ impl Draw<'_> {
             Target::Lookup(text) => self.out.push(Command::PopupLookup {
                 level: self.level,
                 text: text.clone(),
-                anchor: popup::Rect {
-                    x: f64::from(rect.min.x),
-                    y: f64::from(rect.min.y),
-                    w: f64::from(rect.width()),
-                    h: f64::from(rect.height()),
-                },
+                anchor: anchor(rect),
             }),
             Target::External(url) => self.out.push(Command::OpenExternal(url.clone())),
         }
@@ -511,6 +542,16 @@ impl Draw<'_> {
                 ctx.load_texture("dictionary-image", image, options)
             })
             .clone()
+    }
+}
+
+/// The rectangle a nested popup is placed next to.
+fn anchor(rect: Rect) -> popup::Rect {
+    popup::Rect {
+        x: f64::from(rect.min.x),
+        y: f64::from(rect.min.y),
+        w: f64::from(rect.width()),
+        h: f64::from(rect.height()),
     }
 }
 
@@ -613,20 +654,175 @@ fn char_at(galley: &Galley, pos: Vec2) -> Option<usize> {
 
 /// The rectangle around characters `chars` of a galley.
 fn chars_rect(galley: &Galley, chars: &Range<usize>) -> Rect {
-    let mut rect = Rect::NOTHING;
-    let mut start = 0;
+    rows_rects(galley, Pos2::ZERO, 0, chars)
+        .into_iter()
+        .fold(Rect::NOTHING, Rect::union)
+}
+
+/// Where characters `chars` of a galley drawn at `pos` are, one rectangle
+/// per row; the galley's characters count from `start`.
+fn rows_rects(galley: &Galley, pos: Pos2, start: usize, chars: &Range<usize>) -> Vec<Rect> {
+    let mut out = Vec::new();
+    let mut index = start;
     for row in &galley.rows {
+        let mut rect = Rect::NOTHING;
         for (k, g) in row.glyphs.iter().enumerate() {
-            if chars.contains(&(start + k)) {
+            if chars.contains(&(index + k)) {
                 rect = rect.union(Rect::from_min_max(
                     row.pos + vec2(g.pos.x, 0.0),
                     row.pos + vec2(g.max_x(), row.size.y),
                 ));
             }
         }
-        start += row.glyphs.len() + usize::from(row.ends_with_newline);
+        if !rect.is_negative() {
+            out.push(rect.translate(pos.to_vec2()));
+        }
+        index += row.glyphs.len() + usize::from(row.ends_with_newline);
     }
-    rect
+    out
+}
+
+/// The text a drag selects in a flow (POP-012): the galleys of its runs in
+/// reading order, each where it is drawn over a slot for the highlight. A
+/// ruby run gives its base, not its reading.
+#[derive(Default)]
+struct Selectable {
+    text: Vec<char>,
+    pieces: Vec<Piece>,
+}
+
+struct Piece {
+    galley: Arc<Galley>,
+    pos: Pos2,
+    /// The flow's character it starts at.
+    start: usize,
+    /// A shape under the text, for the highlight.
+    slot: egui::layers::ShapeIdx,
+}
+
+impl Selectable {
+    /// Draws `galley` at `pos`; its text follows the flow's.
+    fn draw(&mut self, ui: &Ui, galley: Arc<Galley>, pos: Pos2) {
+        let slot = ui.painter().add(Shape::Noop);
+        self.pieces.push(Piece {
+            galley: Arc::clone(&galley),
+            pos,
+            start: self.text.len(),
+            slot,
+        });
+        self.text.extend(galley.text().chars());
+        ui.painter().galley(pos, galley, TEXT);
+    }
+
+    /// A line break between runs.
+    fn newline(&mut self) {
+        if !self.text.is_empty() {
+            self.text.push('\n');
+        }
+    }
+
+    /// The boundary between characters nearest to `pos`: in the run of the
+    /// pointer's line nearest to it, else in the nearest run.
+    fn cursor_at(&self, pos: Pos2) -> Option<usize> {
+        let rect = |p: &Piece| Rect::from_min_size(p.pos, p.galley.size());
+        let nearest = |on_line: bool| {
+            self.pieces
+                .iter()
+                .filter(|p| !on_line || rect(p).y_range().contains(pos.y))
+                .min_by(|a, b| {
+                    let distance = |p: &Piece| rect(p).distance_sq_to_pos(pos);
+                    distance(a).total_cmp(&distance(b))
+                })
+        };
+        let piece = nearest(true).or_else(|| nearest(false))?;
+        // over a reading, or past the last line: the line under the pointer
+        let height = (piece.galley.size().y - 1.0).max(0.0);
+        let inside = vec2(
+            pos.x - piece.pos.x,
+            (pos.y - piece.pos.y).clamp(0.0, height),
+        );
+        Some(piece.start + piece.galley.cursor_from_pos(inside).index.0)
+    }
+
+    fn text(&self, chars: &Range<usize>) -> String {
+        self.text
+            .get(chars.clone())
+            .unwrap_or_default()
+            .iter()
+            .collect()
+    }
+
+    /// Lights characters `chars`; returns the rectangle around them.
+    fn highlight(&self, painter: &egui::Painter, chars: &Range<usize>) -> Rect {
+        let mut around = Rect::NOTHING;
+        for p in &self.pieces {
+            let rects = rows_rects(&p.galley, p.pos, p.start, chars);
+            let shapes = rects
+                .into_iter()
+                .map(|r| {
+                    around = around.union(r);
+                    Shape::rect_filled(r, 2.0, SELECTION)
+                })
+                .collect();
+            painter.set(p.slot, Shape::Vec(shapes));
+        }
+        around
+    }
+
+    #[cfg(test)]
+    fn chars(&self) -> Vec<Rect> {
+        (0..self.text.len())
+            .map(|i| {
+                self.pieces
+                    .iter()
+                    .flat_map(|p| rows_rects(&p.galley, p.pos, p.start, &(i..i + 1)))
+                    .fold(Rect::NOTHING, Rect::union)
+            })
+            .collect()
+    }
+}
+
+/// A drag over a flow selects its text, which stays lit while the popup it
+/// opens is open: the release looks it up in a child popup next to it
+/// (POP-012). Only the text goes to the lookup (NFR-SEC-01).
+fn select_text(ui: &Ui, d: &mut Draw<'_>, response: &Response, text: &Selectable, flow: Id) {
+    let cursor = |pos: Option<Pos2>| pos.and_then(|p| text.cursor_at(p));
+    if response.drag_started()
+        && let Some(at) = cursor(ui.input(|i| i.pointer.press_origin()))
+    {
+        d.panel.selection = Some(Selection {
+            flow,
+            anchor: at,
+            head: at,
+            held: true,
+        });
+    }
+    // a link has its hand already
+    if response.hovered() && ui.ctx().output(|o| o.cursor_icon) == CursorIcon::Default {
+        ui.ctx().set_cursor_icon(CursorIcon::Text);
+    }
+    #[cfg(test)]
+    d.drawn.push(Drawn::Text {
+        text: text.text.iter().collect(),
+        chars: text.chars(),
+    });
+    let Some(selection) = d.panel.selection.as_mut().filter(|s| s.flow == flow) else {
+        return;
+    };
+    if (response.dragged() || response.drag_stopped())
+        && let Some(head) = cursor(ui.input(|i| i.pointer.interact_pos()))
+    {
+        selection.head = head;
+    }
+    let chars = selection.range();
+    let around = text.highlight(ui.painter(), &chars);
+    if response.drag_stopped() && std::mem::take(&mut selection.held) && !chars.is_empty() {
+        d.out.push(Command::PopupLookup {
+            level: d.level,
+            text: text.text(&chars),
+            anchor: anchor(around),
+        });
+    }
 }
 
 /// A small coloured label; `tip` is shown on hover.
@@ -661,7 +857,8 @@ fn chip_button(ui: &mut Ui, text: &str) -> bool {
 }
 
 /// Text with its reading centred above it; an empty reading keeps its line,
-/// so text and ruby in a flow stand on one base line.
+/// so text and ruby in a flow stand on one base line. The text, without the
+/// reading, goes on `text`.
 fn ruby(
     ui: &mut Ui,
     base: LayoutJob,
@@ -669,6 +866,7 @@ fn ruby(
     size: f32,
     color: Color32,
     sense: Sense,
+    text: &mut Selectable,
 ) -> Response {
     let base = ui.ctx().fonts_mut(|f| f.layout_job(base));
     let reading = if reading.is_empty() { " " } else { reading };
@@ -682,22 +880,33 @@ fn ruby(
     } else {
         Role::Label
     };
-    let text = base.text().to_string();
-    response.widget_info(|| WidgetInfo::labeled(role, true, &text));
-    let painter = ui.painter();
-    painter.galley(
+    let name = base.text().to_string();
+    response.widget_info(|| WidgetInfo::labeled(role, true, &name));
+    ui.painter().galley(
         pos2(rect.center().x - top.size().x / 2.0, rect.top()),
         top.clone(),
         color,
     );
-    painter.galley(
-        pos2(
-            rect.center().x - base.size().x / 2.0,
-            rect.top() + top.size().y,
-        ),
-        base,
-        TEXT,
+    let at = pos2(
+        rect.center().x - base.size().x / 2.0,
+        rect.top() + top.size().y,
     );
+    text.draw(ui, base, at);
+    response
+}
+
+/// A run laid out like `label`, drawn over a slot for the selection's
+/// highlight; its text goes on `text`.
+fn text_run(ui: &mut Ui, label: Label, text: &mut Selectable) -> Response {
+    let (pos, galley, response) = label.selectable(false).layout_in_ui(ui);
+    let role = if response.sense.senses_click() {
+        Role::Link
+    } else {
+        Role::Label
+    };
+    let name = galley.text().to_string();
+    response.widget_info(|| WidgetInfo::labeled(role, true, &name));
+    text.draw(ui, galley, pos);
     response
 }
 
@@ -765,7 +974,16 @@ fn entry(ui: &mut Ui, d: &mut Draw<'_>, e: &EntryView, k: usize) {
                 segment.t.clone(),
                 TextFormat::simple(FontId::proportional(26.0), Color32::WHITE),
             );
-            ruby(ui, base, &segment.r, 12.0, READING, Sense::hover());
+            let headword = &mut Selectable::default();
+            ruby(
+                ui,
+                base,
+                &segment.r,
+                12.0,
+                READING,
+                Sense::hover(),
+                headword,
+            );
         }
     });
     if !e.trace.is_empty() || !e.term_tags.is_empty() {
@@ -975,7 +1193,7 @@ fn blocks(ui: &mut Ui, d: &mut Draw<'_>, blocks_: &[Block], id: Id) {
     for (i, b) in blocks_.iter().enumerate() {
         let id = id.with(i);
         match b {
-            Block::Flow { runs } => flow(ui, d, runs, id),
+            Block::Flow { runs } => flow(ui, d, runs, id, true),
             Block::Box { s, blocks: inner } => boxed(ui, d, s, inner, id),
             Block::List {
                 ordered,
@@ -1004,17 +1222,28 @@ fn blocks(ui: &mut Ui, d: &mut Draw<'_>, blocks_: &[Block], id: Id) {
     }
 }
 
-fn flow(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id) {
+/// A flow of runs; `select`: a drag selects its text (POP-012).
+fn flow(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
     if structured::plain(runs) {
-        paragraph(ui, d, runs);
+        paragraph(ui, d, runs, id, select);
     } else {
-        mixed(ui, d, runs, id);
+        mixed(ui, d, runs, id, select);
+    }
+}
+
+/// The sense of a flow's text that a drag selects: a press that does not
+/// move stays a click, for its links (POP-012).
+fn selecting(select: bool) -> Sense {
+    if select {
+        Sense::CLICK | Sense::DRAG
+    } else {
+        Sense::hover()
     }
 }
 
 /// Plain runs as one text: they wrap together, and a click finds its link by
 /// the character under the pointer.
-fn paragraph(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run]) {
+fn paragraph(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
     let mut job = LayoutJob::default();
     job.wrap.max_width = ui.available_width();
     let mut links: Vec<(Range<usize>, &Target)> = Vec::new();
@@ -1048,14 +1277,14 @@ fn paragraph(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run]) {
     } else {
         Sense::click()
     };
-    let (rect, response) = ui.allocate_exact_size(galley.size(), sense);
-    let text = galley.text().to_string();
-    response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &text));
+    let (rect, response) = ui.allocate_exact_size(galley.size(), sense | selecting(select));
+    let name = galley.text().to_string();
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &name));
     let link_at = |pos: Pos2| {
         let c = char_at(&galley, pos - rect.min)?;
         links.iter().find(|(range, _)| range.contains(&c))
     };
-    if response.hover_pos().and_then(link_at).is_some() {
+    if !response.dragged() && response.hover_pos().and_then(link_at).is_some() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
     if response.clicked()
@@ -1077,54 +1306,63 @@ fn paragraph(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run]) {
             rect: chars_rect(&galley, range).translate(rect.min.to_vec2()),
         });
     }
-    ui.painter().galley(rect.min, galley, TEXT);
+    let mut text = Selectable::default();
+    text.draw(ui, galley, rect.min);
+    if select {
+        select_text(ui, d, &response, &text, id);
+    }
 }
 
 /// Runs with ruby, chips or images: one item each, wrapping like words. In a
 /// flow with ruby every item has a reading line, so all stand on one base
-/// line.
-fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id) {
+/// line. A drag selects across the runs, the way they read.
+fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
     let ruby_flow = runs.iter().any(|r| matches!(r, Run::Ruby { .. }));
     let reading = BASE * 0.55;
     let layout = Layout::left_to_right(if ruby_flow { Align::Min } else { Align::Center })
         .with_main_wrap(true);
-    ui.with_layout(layout, |ui| {
+    let mut text = Selectable::default();
+    // under the runs: a link keeps its click, a drag from anywhere selects
+    let builder = UiBuilder::new().layout(layout).sense(selecting(select));
+    let flow = ui.scope_builder(builder, |ui| {
         ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
         for (i, r) in runs.iter().enumerate() {
             match r {
-                Run::Br => ui.end_row(),
+                Run::Br => {
+                    ui.end_row();
+                    text.newline();
+                }
                 Run::Text { t, s } if structured::chip(s) => {
                     if ruby_flow {
                         ui.vertical(|ui| {
                             ui.add_space(reading * 1.2);
-                            chip_run(ui, t, s);
+                            chip_run(ui, t, s, &mut text);
                         });
                     } else {
-                        chip_run(ui, t, s);
+                        chip_run(ui, t, s, &mut text);
                     }
                 }
                 Run::Text { t, s } if ruby_flow => {
-                    ruby(ui, run_job(t, s, false), "", reading, TEXT, Sense::hover());
+                    let job = run_job(t, s, false);
+                    ruby(ui, job, "", reading, TEXT, Sense::hover(), &mut text);
                 }
                 Run::Text { t, s } => {
                     let em = BASE * s.font_scale.unwrap_or(1.0);
                     ui.add_space(points(s.margin.left, em) + points(s.padding.left, em));
-                    ui.add(Label::new(run_job(t, s, false)).selectable(false));
+                    text_run(ui, Label::new(run_job(t, s, false)), &mut text);
                     ui.add_space(points(s.padding.right, em) + points(s.margin.right, em));
                 }
                 Run::Ruby { t, rt, s } => {
                     let color = s.color.map_or(TEXT, rgba);
-                    ruby(ui, run_job(t, s, false), rt, reading, color, Sense::hover());
+                    let job = run_job(t, s, false);
+                    ruby(ui, job, rt, reading, color, Sense::hover(), &mut text);
                 }
                 Run::Link { t, target, s } => {
+                    let job = run_job(t, s, true);
                     let response = if ruby_flow {
-                        ruby(ui, run_job(t, s, true), "", reading, LINK, Sense::click())
+                        ruby(ui, job, "", reading, LINK, Sense::click(), &mut text)
                     } else {
-                        ui.add(
-                            Label::new(run_job(t, s, true))
-                                .sense(Sense::click())
-                                .selectable(false),
-                        )
+                        text_run(ui, Label::new(job).sense(Sense::click()), &mut text)
                     }
                     .on_hover_cursor(CursorIcon::PointingHand);
                     #[cfg(test)]
@@ -1140,10 +1378,13 @@ fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id) {
             }
         }
     });
+    if select {
+        select_text(ui, d, &flow.response, &text, id);
+    }
 }
 
-/// A run with a background or a border.
-fn chip_run(ui: &mut Ui, text: &str, s: &Style) {
+/// A run with a background or a border; its text goes on `text`.
+fn chip_run(ui: &mut Ui, t: &str, s: &Style, text: &mut Selectable) {
     let em = BASE * s.font_scale.unwrap_or(1.0);
     let border = s
         .border_color
@@ -1166,11 +1407,8 @@ fn chip_run(ui: &mut Ui, text: &str, s: &Style) {
             points(s.padding.bottom, em),
         ))
         .show(ui, |ui| {
-            ui.add(
-                Label::new(run_job(text, s, false))
-                    .wrap_mode(TextWrapMode::Extend)
-                    .selectable(false),
-            );
+            let label = Label::new(run_job(t, s, false)).wrap_mode(TextWrapMode::Extend);
+            text_run(ui, label, text);
         });
     ui.add_space(points(s.margin.right, em));
 }
@@ -1358,7 +1596,9 @@ fn details(ui: &mut Ui, d: &mut Draw<'_>, open: bool, summary: &[Run], inner: &[
                 )
                 .selectable(false),
             );
-            flow(ui, d, summary, id.with("summary"));
+            // the summary opens and closes the body: a drag over it does not
+            // select, a selection's widget would take the header's click
+            flow(ui, d, summary, id.with("summary"), false);
         })
         .response
         .interact(Sense::click())
@@ -1504,6 +1744,10 @@ mod tests {
         state: State,
         out: Vec<Command>,
         drawn: Vec<usize>,
+        /// Open a child for each lookup, as the session does before the next
+        /// frame.
+        nest: bool,
+        nested: Vec<String>,
     }
 
     fn word() -> popup::Rect {
@@ -1585,6 +1829,24 @@ mod tests {
                     {
                         t.size = (width, height);
                     }
+                    if t.nest {
+                        for c in &t.out {
+                            if let Command::PopupLookup {
+                                level,
+                                text,
+                                anchor,
+                            } = c
+                                && !t.nested.contains(text)
+                            {
+                                t.nested.push(text.clone());
+                                let mut child = popup(100 + t.nested.len() as u64, None);
+                                child.origin = Origin::Glossary;
+                                child.anchor = *anchor;
+                                t.stack.truncate(level + 1);
+                                t.stack.push(child);
+                            }
+                        }
+                    }
                 },
                 Test {
                     stack,
@@ -1592,6 +1854,8 @@ mod tests {
                     state: State::default(),
                     out: Vec::new(),
                     drawn: Vec::new(),
+                    nest: false,
+                    nested: Vec::new(),
                 },
             )
     }
@@ -1614,6 +1878,24 @@ mod tests {
         h.drag_at(from);
         h.hover_at(from.lerp(to, 0.5));
         h.hover_at(to);
+        h.drop_at(to);
+        h.run();
+        let mut out = std::mem::take(&mut h.state_mut().out);
+        out.retain(|c| !matches!(c, Command::PopupHover(_)));
+        out
+    }
+
+    /// A drag as a hand makes it, a frame for each step: what a scroll
+    /// area needs to follow it.
+    fn drag_slowly(h: &mut Harness<'_, Test>, from: Pos2, to: Pos2) -> Vec<Command> {
+        h.hover_at(from);
+        h.step();
+        h.drag_at(from);
+        h.step();
+        for k in 1..=10 {
+            h.hover_at(from.lerp(to, k as f32 / 10.0));
+            h.step();
+        }
         h.drop_at(to);
         h.run();
         let mut out = std::mem::take(&mut h.state_mut().out);
@@ -1656,6 +1938,46 @@ mod tests {
                 _ => None,
             })
             .unwrap_or(Rect::NOTHING)
+    }
+
+    /// Where each character of a flow is, by its selectable text.
+    fn chars(h: &Harness<'_, Test>, text: &str) -> Vec<Rect> {
+        h.state()
+            .state
+            .drawn
+            .iter()
+            .find_map(|d| match d {
+                Drawn::Text { text: t, chars } if t == text => Some(chars.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// From just inside the left of character `first` to just inside the
+    /// right of character `last`.
+    fn across(chars: &[Rect], first: usize, last: usize) -> (Pos2, Pos2) {
+        (
+            chars[first].left_center() + vec2(1.0, 0.0),
+            chars[last].right_center() - vec2(1.0, 0.0),
+        )
+    }
+
+    fn selection(h: &Harness<'_, Test>, generation: u64) -> Option<Range<usize>> {
+        let panel = h.state().state.panels.get(&generation)?;
+        panel.selection.map(|s| s.range())
+    }
+
+    fn looked_up(out: &[Command]) -> Option<(&str, popup::Rect)> {
+        match out {
+            [
+                Command::PopupLookup {
+                    level: 0,
+                    text,
+                    anchor,
+                },
+            ] => Some((text, *anchor)),
+            _ => None,
+        }
     }
 
     // T-POP-006
@@ -1990,6 +2312,121 @@ mod tests {
             matches!(&out[..], [Command::PopupLookup { level: 1, text, .. }] if text == "click"),
             "a javascript: address is looked up as text: {out:?}"
         );
+    }
+
+    // T-POP-012
+    #[test]
+    fn a_drag_across_glossary_text_looks_the_selection_up_in_a_child_popup() {
+        let g = json!(["果物を食べる"]);
+        let mut h = harness(vec![popup(1, Some(vec![entry("食べる", g)]))]);
+        h.state_mut().nest = true;
+        h.run();
+        let chars = chars(&h, "果物を食べる");
+        let (from, to) = across(&chars, 3, 5);
+        let out = drag(&mut h, from, to);
+        let around = anchor(chars[3].union(chars[5]));
+        assert_eq!(looked_up(&out), Some(("食べる", around)), "{out:?}");
+        // lit while the popup it opened is open, and no longer
+        assert_eq!(h.state().stack.len(), 2);
+        assert_eq!(selection(&h, 1), Some(3..6));
+        h.state_mut().stack.truncate(1);
+        h.run();
+        assert_eq!(selection(&h, 1), None);
+        // a click selects nothing
+        let out = click(&mut h, chars[1].center());
+        assert!(out.is_empty(), "{out:?}");
+        assert_eq!(selection(&h, 1), None);
+    }
+
+    // T-POP-012: a line with ruby, across its runs, the readings left out
+    #[test]
+    fn a_selection_across_ruby_takes_the_text_without_its_readings() {
+        let g = json!([{"type": "structured-content", "content": [
+            "昨日",
+            {"tag": "ruby", "content": ["食", {"tag": "rt", "content": "た"}]},
+            "べた"
+        ]}]);
+        let mut h = harness(vec![popup(1, Some(vec![entry("食べる", g)]))]);
+        h.run();
+        let chars = chars(&h, "昨日食べた");
+        assert_eq!(chars.len(), 5);
+        let (from, to) = across(&chars, 2, 4);
+        let out = drag(&mut h, from, to);
+        let around = anchor(chars[2].union(chars[4]));
+        assert_eq!(looked_up(&out), Some(("食べた", around)), "{out:?}");
+        // a drag that starts over a reading starts at the text under it
+        let over_reading = from - vec2(0.0, 6.0);
+        let out = drag(&mut h, over_reading, to);
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("食べた"), "{out:?}");
+    }
+
+    // T-POP-011, T-POP-012
+    #[test]
+    fn a_drag_from_a_link_selects_and_a_click_still_follows_it() {
+        let g = json!([{"type": "structured-content", "content": [
+            "見て",
+            {"tag": "a", "href": "?query=%E6%9D%A5%E3%82%8B", "content": "来る"},
+            "ところ"
+        ]}]);
+        let mut h = harness(vec![popup(1, Some(vec![entry("見る", g)]))]);
+        h.run();
+        let chars = chars(&h, "見て来るところ");
+        let (from, to) = across(&chars, 2, 4);
+        let out = drag(&mut h, from, to);
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("来ると"), "{out:?}");
+        let out = click(&mut h, chars[3].center());
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("来る"), "{out:?}");
+    }
+
+    // T-POP-011, T-POP-012
+    #[test]
+    fn a_line_with_a_chip_and_a_link_is_selected_across_them() {
+        let g = json!([{"type": "structured-content", "content": [
+            {"tag": "span", "style": {"backgroundColor": "#565656"}, "content": "名"},
+            "詞の",
+            {"tag": "a", "href": "?query=x", "content": "例"}
+        ]}]);
+        let mut h = harness(vec![popup(1, Some(vec![entry("名詞", g)]))]);
+        h.run();
+        let chars = chars(&h, "名詞の例");
+        let (from, to) = across(&chars, 0, 3);
+        let out = drag(&mut h, from, to);
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("名詞の例"), "{out:?}");
+        let example = link(&h, "例");
+        let out = click(&mut h, example.center());
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("x"), "{out:?}");
+    }
+
+    // T-POP-012: the summary of a `details` opens it; it selects nothing
+    #[test]
+    fn a_details_summary_opens_its_block_and_is_not_selected() {
+        let g = json!([{"type": "structured-content", "content": [
+            {"tag": "details", "content": [{"tag": "summary", "content": "more"}, "hidden"]}
+        ]}]);
+        let mut h = harness(vec![popup(1, Some(vec![entry("行く", g)]))]);
+        h.run();
+        let summary = h.get_by_label("more").rect();
+        let out = drag(&mut h, summary.left_center(), summary.right_center());
+        assert!(out.is_empty(), "{out:?}");
+        click(&mut h, summary.center());
+        assert!(h.query_by_label("▾").is_some(), "details open");
+    }
+
+    // T-POP-012: a drag on text selects and the popup stays still (with a
+    // mouse, egui scrolls by drag only on touch screens)
+    #[test]
+    fn a_drag_on_the_text_selects_without_scrolling_the_popup() {
+        let mut h = harness(vec![popup(1, Some(vec![long("行く")]))]);
+        h.run();
+        let before = chars(&h, "sense 3");
+        let (from, to) = across(&before, 0, 4);
+        let out = drag(&mut h, from, to);
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("sense"), "{out:?}");
+        assert_eq!(chars(&h, "sense 3"), before, "not scrolled");
+        // a slow drag too
+        let out = drag_slowly(&mut h, from, to);
+        assert_eq!(looked_up(&out).map(|l| l.0), Some("sense"), "{out:?}");
+        assert_eq!(chars(&h, "sense 3"), before, "not scrolled");
     }
 
     #[test]

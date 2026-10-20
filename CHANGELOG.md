@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - The dictionaries page lists the dictionaries by type (terms, kanji, frequencies, pitch accent) with their language (DIC-030): a dictionary with several types has its row under the first and a reference under the others, where it ranks too; ▲/▼ move it within its type, and so does dragging it by its handle onto the drop marker (DIC-031). A term dictionary has an editor for the user's CSS (DIC-035), applied after its `styles.css` through the same safe subset, which says what the subset keeps: the rules applied, the properties left out, the rules ignored.
 - `[popup]` in `config.toml` (POP-006): the largest dictionary popup, 560 × 500 points by default; it was 560 points wide and up to 70% of the window high.
 - A dictionary popup is resized by dragging its border (POP-006): the edge away from the word, the side edges and the corners between them. The popup keeps its side of the word, and the next popups take the new size until the app closes.
+- Text selected in a glossary opens a nested popup (POP-012): a drag across a paragraph, or across a line of ruby, chips and links (the readings left out), looks the selection up in a child popup next to it, and the selection stays lit while that popup is open. Links still open with a click.
 
 ### Changed
 
