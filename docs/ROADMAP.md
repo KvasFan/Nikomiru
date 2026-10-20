@@ -223,15 +223,18 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
   Constraints: the logo and icons are original GPL-3.0-only works in `assets/brand/` (SPECIFICATION §3.4). Screenshots show only project-made media and the project's test dictionaries (`mini-ja`): no anime frames (copyright), no Creative Commons media, no content from third-party dictionaries. They are taken with the GUI harness in an off-screen compositor, so they can be regenerated for every release.
 
-**Status as of 2026-10-20**
+**Status as of 2026-10-21**
 
 - Decided in [ADR 0007](adr/0007-mining-to-anki.md): the split between `nikomiru-anki` and the `anki` worker, AnkiConnect's legacy API over reqwest without proxy or pooled connections, retries by phase, a fake AnkiConnect of our own for the tests, Lapis 1.7.0 from the upstream tag, escaping and a Yomitan-shaped glossary, media always uploaded as base64, "session" as the run of the app, `mined_cards` as a new table.
+- Done: the AnkiConnect client and its fake (T-ANK-001…005), Lapis 1.7.0 vendored and "Create Lapis deck" (ANK-010…013), the field composer with the Yomitan-shaped glossary, its images and the scoped CSS of the subset (ANK-020…027), the sentence audio and the card image (ANK-033, ANK-034; the player's commands with a reply, also for `S`, PLY-011), the + / ✓ / ✓↩ buttons with their menu and Ctrl+Enter, the `anki` worker (checks, mining, overwrite, rollback, Open in Anki), `mined_cards`, the `[anki]` settings and their page, `nikomiru://source` links with "Locate the file" (ANK-050…053), `assets/nikomiru.desktop` and `cargo xtask install` (APP-002). Every M4 requirement has its tests.
+- Measured: T-PERF-08, Ctrl+Enter → `card-created` against the fake AnkiConnect with the real ffmpeg and mpv, 276 ms (limit 3 s).
+- Open: T-E2E-ANKI-001 against a real Anki (`cargo xtask test --anki-e2e`, needs Anki with AnkiConnect, not installed on the development machine), the manual "Mining" checklist with real episodes and AnkiDroid, the release tasks (repository page with logo and screenshots, tag, `THIRD_PARTY_LICENSES.html`).
 
 **Exit criteria**
 
-- [ ] T-ANK-* green on the fake AnkiConnect ([ADR 0007](adr/0007-mining-to-anki.md)).
+- [x] T-ANK-* green on the fake AnkiConnect ([ADR 0007](adr/0007-mining-to-anki.md)).
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
-- [ ] T-PERF-08 ≤ 3 s.
+- [x] T-PERF-08 ≤ 3 s (276 ms against the fake AnkiConnect).
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
 - [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
 
