@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! L4: the dictionary registry and its folders (DIC-013, DIC-016, DIC-021,
-//! DIC-031…DIC-033) with the mini dictionaries.
+//! DIC-031…DIC-033, DIC-035) with the mini dictionaries.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -265,6 +265,52 @@ fn the_order_decides_the_glossaries() {
         .map(|(i, _)| i)
         .collect();
     assert_eq!(ids, [norules, ja]);
+}
+
+// T-DIC-035
+#[test]
+fn the_users_css_is_kept_carried_over_by_an_update_and_drops_the_cache() {
+    let env = Env::new();
+    let old = env.add("mini-norules", &[]);
+    let css = "span[data-sc-class=\"note\"] { color: red }";
+    let before = env.manager.lookup().unwrap();
+    env.manager.set_user_css(&old, css).unwrap();
+    assert!(
+        !Arc::ptr_eq(&before, &env.manager.lookup().unwrap()),
+        "the cached lookup is dropped, as by any other change"
+    );
+    assert_eq!(env.manager.list().unwrap()[0].1.user_css, css);
+    assert!(matches!(
+        env.manager.set_user_css("gone", css),
+        Err(DictionaryError::Unknown(_))
+    ));
+
+    let newer = zipped(
+        env.tmp.path(),
+        "mini-norules",
+        "r2",
+        &[index("Nikomiru mini-norules", "2")],
+    );
+    let new = env
+        .manager
+        .import(&newer, Some(&old), &Cancel::new(), |_| {})
+        .unwrap();
+    let (id, rec) = &env.manager.list().unwrap()[0];
+    assert_eq!(
+        (id, rec.user_css.as_str()),
+        (&new, css),
+        "the update keeps it"
+    );
+
+    // an empty one clears it, and it is in the registry, not in memory
+    env.manager.set_user_css(&new, "").unwrap();
+    assert_eq!(env.manager.list().unwrap()[0].1.user_css, "");
+    env.manager
+        .set_user_css(&new, "div { margin: 1em }")
+        .unwrap();
+    drop(env.manager);
+    let manager = Env::open(env.tmp.path());
+    assert_eq!(manager.list().unwrap()[0].1.user_css, "div { margin: 1em }");
 }
 
 // T-DIC-013

@@ -45,6 +45,8 @@ pub trait DictionaryService: Send {
     fn rename(&self, id: &str, name: Option<String>) -> Result<(), String>;
     /// Sets the popup state of a dictionary's block (DIC-034).
     fn set_collapse(&self, id: &str, collapse: Collapse) -> Result<(), String>;
+    /// Sets the user's CSS of a dictionary; empty clears it (DIC-035).
+    fn set_user_css(&self, id: &str, css: &str) -> Result<(), String>;
 }
 
 /// Where the import of a zip is.
@@ -339,6 +341,23 @@ impl DictionaryPage {
         self.after(service, r)
     }
 
+    /// Saves the user's CSS of a dictionary (DIC-035).
+    pub fn set_user_css(
+        &mut self,
+        service: &dyn DictionaryService,
+        id: &str,
+        css: &str,
+    ) -> Vec<Effect> {
+        let r = service.set_user_css(id, css);
+        let saved = r.is_ok();
+        let mut effects = self.after(service, r);
+        if saved {
+            let title = self.title_of(id);
+            effects.push(Effect::Message("dict-css-saved", vec![("title", title)]));
+        }
+        effects
+    }
+
     /// The page as JSON, for the test harness's `state`.
     pub fn json(&self) -> Value {
         let rows: Vec<Value> = self
@@ -375,6 +394,8 @@ impl DictionaryPage {
                         Collapse::Expanded => "expanded",
                         Collapse::Collapsed => "collapsed",
                     },
+                    "language": r.language,
+                    "userCss": r.user_css,
                 })
             })
             .collect();
@@ -499,6 +520,15 @@ mod tests {
         fn set_collapse(&self, _id: &str, _collapse: Collapse) -> Result<(), String> {
             Err("read-only".into())
         }
+        fn set_user_css(&self, id: &str, css: &str) -> Result<(), String> {
+            let mut rows = self.rows.lock().unwrap();
+            let (_, r) = rows
+                .iter_mut()
+                .find(|(i, _)| i == id)
+                .ok_or_else(|| "no such dictionary".to_string())?;
+            r.user_css = css.to_string();
+            Ok(())
+        }
     }
 
     fn fake() -> Fake {
@@ -622,5 +652,30 @@ mod tests {
         page.delete(&f, "b");
         assert_eq!(page.rows.len(), 1);
         assert_eq!(page.json()["rows"][0]["types"], json!(["terms"]));
+    }
+
+    // T-DIC-035
+    #[test]
+    fn the_users_css_is_saved_and_the_page_reads_it_back() {
+        let f = fake();
+        let mut page = DictionaryPage::default();
+        page.refresh(&f);
+        let version = page.version;
+        let css = "span { color: red }";
+        assert_eq!(
+            page.set_user_css(&f, "b", css),
+            [Effect::Message(
+                "dict-css-saved",
+                vec![("title", "Freq".into())]
+            )]
+        );
+        assert!(page.version > version, "the page is drawn again");
+        assert_eq!(page.json()["rows"][1]["userCss"], css);
+        assert_eq!(page.rows[1].1.user_css, css);
+        // a failure is said, and nothing is claimed saved
+        assert_eq!(
+            page.set_user_css(&f, "gone", css),
+            [Effect::Error("no such dictionary".into())]
+        );
     }
 }

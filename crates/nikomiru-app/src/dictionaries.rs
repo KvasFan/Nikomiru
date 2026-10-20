@@ -186,6 +186,10 @@ impl DictionaryService for Dictionaries {
     fn set_collapse(&self, id: &str, collapse: RecordCollapse) -> Result<(), String> {
         self.tr(self.manager.set_collapse(id, collapse))
     }
+
+    fn set_user_css(&self, id: &str, css: &str) -> Result<(), String> {
+        self.tr(self.manager.set_user_css(id, css))
+    }
 }
 
 fn is_han(c: char) -> bool {

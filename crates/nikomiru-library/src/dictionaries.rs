@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The dictionary registry (DIC-021, DIC-030…DIC-034) in the `dictionaries`
+//! The dictionary registry (DIC-021, DIC-030…DIC-035) in the `dictionaries`
 //! table of `library.redb`, and [`DictionaryManager`], which keeps it in step
 //! with the folders under `dicts/`: import and update (DIC-016), deletion,
 //! order, enabling, and the [`Lookup`] over the enabled dictionaries.
@@ -467,6 +467,12 @@ impl DictionaryManager {
     /// Sets the popup state of a dictionary (DIC-034).
     pub fn set_collapse(&self, id: &str, collapse: Collapse) -> Result<(), DictionaryError> {
         self.update(id, |r| r.collapse = collapse)
+    }
+
+    /// Sets the user's CSS of a dictionary (DIC-035), applied after its
+    /// `styles.css` through the same safe subset; an update keeps it.
+    pub fn set_user_css(&self, id: &str, css: &str) -> Result<(), DictionaryError> {
+        self.update(id, |r| r.user_css = css.to_string())
     }
 
     /// Puts the dictionaries in this order (DIC-031); ids not listed keep

@@ -1421,6 +1421,14 @@ impl Session {
         self.dict_effects(effects);
     }
 
+    /// Saves the user's CSS of a dictionary (DIC-035).
+    pub fn dict_set_user_css(&mut self, id: &str, css: &str) {
+        let effects = self
+            .dict_page
+            .set_user_css(self.services.dictionaries.as_ref(), id, css);
+        self.dict_effects(effects);
+    }
+
     /// A lookup answered.
     pub fn lookup_done(&mut self, generation: u64, result: Result<Reply, String>) {
         let reply = match result {
