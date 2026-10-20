@@ -41,12 +41,15 @@
   - `click_grapheme {layer, cue_index, grapheme_index}` (through the overlay's click command, with the popup's fallback place), `popup_button {replay | goto}`;
   - `lookup {text}`: a root popup for `text`, opened as a click on a subtitle word opens one but with no cue behind it (fallback place); `popup_content {level}`: the view model of that popup as JSON (POP-009), `null` while it looks up;
   - `state {}`: player state, open popups (with the card button of each entry, `add`, `exists`, `last`, `busy` or `unknown`, and the entry whose card menu is open), visible cues, toasts, dictionaries page;
+  - `anki {action, config?}`: the Anki settings page — `open`, `close`, and its buttons `test`, `create-lapis`, `save` with the saved settings changed by `config` (a TOML `[anki]` body); `state` shows the page (`anki_page`: open, busy, status, decks, note types, fields);
+  - `locate {path}`: answers the file dialog of "Locate the file" (ANK-052);
   - `card {level, entry, item?}`: an entry's card button, or with `item` (`overwrite`, `open-in-anki`, `add-anyway`) an item of its menu, through the view's commands (ANK-030);
   - `dict_css {id, css}`: a dictionary's CSS saved through the command of its editor's Save button;
   - `mpv_get {property}`: read-only, for metrics; read on the harness thread, never on the UI thread, which renders the video;
   - `quit {}`;
   - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
 - Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `screenshot-saved {path}`, `card-created {note_id}` (a card made or overwritten in Anki), `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5). `wait` drops the events before the one it waits for and fails on an `error`.
+- Screenshots for review and for the repository page come from the L6 test `screenshots_of_the_interface`: with `NIKOMIRU_SCREENSHOTS=<folder>` it drives the app with the project's media and test dictionaries and saves the off-screen desktop with `spectacle` (KWin started with `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS`).
 - The harness runs its commands on the UI thread through the same entry points as the user's input (the key and drop handlers, the view's commands, the close path), not through internal shortcuts that skip the logic under test.
 
 ---

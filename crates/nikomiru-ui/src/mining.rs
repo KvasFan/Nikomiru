@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use nikomiru_core::config::AnkiConfig;
+
 /// The card button of an entry (ANK-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CardState {
@@ -194,6 +196,21 @@ pub enum BrowseTarget {
     },
 }
 
+/// What Anki has, for the settings page (ANK-006).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AnkiLists {
+    /// AnkiConnect's API version.
+    pub version: u64,
+    /// The decks.
+    pub decks: Vec<String>,
+    /// The note types.
+    pub models: Vec<String>,
+    /// The note type the fields belong to.
+    pub model: String,
+    /// Its fields, empty if Anki does not have it.
+    pub fields: Vec<String>,
+}
+
 /// Mining, away from the UI thread: the `anki` worker of the app. `done`
 /// may run on any thread.
 pub trait AnkiService: Send {
@@ -206,6 +223,16 @@ pub trait AnkiService: Send {
 
     /// Opens Anki's browser.
     fn browse(&self, target: BrowseTarget, done: Box<dyn FnOnce(Result<(), String>) + Send>);
+
+    /// Reads what the AnkiConnect of `config` has (ANK-006): the connection
+    /// test of the settings.
+    fn refresh(&self, config: AnkiConfig, done: Box<dyn FnOnce(Result<AnkiLists, String>) + Send>);
+
+    /// "Create Lapis deck" (ANK-011): `true` if something was made.
+    fn create_lapis(&self, config: AnkiConfig, done: Box<dyn FnOnce(Result<bool, String>) + Send>);
+
+    /// The settings changed: cards follow them from now on.
+    fn configure(&self, config: AnkiConfig);
 }
 
 /// No Anki: checks know nothing, cards are not made.
@@ -227,6 +254,16 @@ impl AnkiService for NoAnki {
     fn browse(&self, _: BrowseTarget, done: Box<dyn FnOnce(Result<(), String>) + Send>) {
         done(Err(self.0.clone()));
     }
+
+    fn refresh(&self, _: AnkiConfig, done: Box<dyn FnOnce(Result<AnkiLists, String>) + Send>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn create_lapis(&self, _: AnkiConfig, done: Box<dyn FnOnce(Result<bool, String>) + Send>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn configure(&self, _: AnkiConfig) {}
 }
 
 /// A job for the worker, taken by the UI layer.
@@ -250,6 +287,26 @@ pub enum AnkiJob {
     },
     /// Open Anki's browser.
     Browse(BrowseTarget),
+    /// Read what Anki has, with these settings.
+    Refresh(AnkiConfig),
+    /// "Create Lapis deck", with these settings.
+    CreateLapis(AnkiConfig),
+    /// New settings.
+    Configure(AnkiConfig),
+}
+
+/// The settings page's state in the session (ANK-006, ANK-011).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AnkiPage {
+    /// What Anki has, after the last test.
+    pub lists: Option<AnkiLists>,
+    /// The last outcome: a message, and whether it went well.
+    pub status: Option<(String, bool)>,
+    /// A request is running.
+    pub busy: bool,
+    /// Grows with each "Create Lapis deck" that worked: the page then chooses
+    /// Lapis.
+    pub lapis_created: u64,
 }
 
 /// The last card made since Nikomiru started (ANK-030, ANK-037).

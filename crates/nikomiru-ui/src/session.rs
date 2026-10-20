@@ -165,6 +165,8 @@ pub struct Services {
     pub screenshots_dir: PathBuf,
     /// Mining to Anki (ADR 0007).
     pub anki: Box<dyn crate::mining::AnkiService>,
+    /// `config.toml`, where the settings pages save.
+    pub config_file: PathBuf,
 }
 
 impl std::fmt::Debug for Services {
@@ -235,6 +237,10 @@ pub struct Session {
     link_clip: Option<(i64, i64)>,
     /// Where the next file opens, instead of where it was left.
     start_at: Option<f64>,
+    /// The Anki settings page (ANK-006, ANK-011).
+    pub anki_page: crate::mining::AnkiPage,
+    /// The settings to write, taken by the UI layer.
+    config_save: Option<Config>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -357,6 +363,8 @@ impl Session {
             missing_link: None,
             link_clip: None,
             start_at: None,
+            anki_page: crate::mining::AnkiPage::default(),
+            config_save: None,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -689,6 +697,92 @@ impl Session {
     /// The offer to locate a video was declined.
     pub fn dismiss_missing_link(&mut self) {
         self.missing_link = None;
+    }
+
+    /// The Anki settings as saved.
+    pub fn anki_config(&self) -> &nikomiru_core::config::AnkiConfig {
+        &self.services.config.anki
+    }
+
+    /// The Anki settings page opened: what Anki has is read at once.
+    pub fn anki_open(&mut self) {
+        self.anki_page.status = None;
+        let config = self.services.config.anki.clone();
+        self.anki_test(config);
+    }
+
+    /// "Test the connection" with the settings being edited (ANK-006).
+    pub fn anki_test(&mut self, config: nikomiru_core::config::AnkiConfig) {
+        self.anki_page.busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::Refresh(config));
+    }
+
+    /// "Create Lapis deck" with the settings being edited (ANK-011).
+    pub fn anki_create_lapis(&mut self, config: nikomiru_core::config::AnkiConfig) {
+        self.anki_page.busy = true;
+        self.anki_jobs
+            .push(crate::mining::AnkiJob::CreateLapis(config));
+    }
+
+    /// Saves the Anki settings: `config.toml` and the worker (SET-002).
+    pub fn anki_save(&mut self, config: nikomiru_core::config::AnkiConfig) {
+        self.services.config.anki = config.clone();
+        self.config_save = Some(self.services.config.clone());
+        self.anki_jobs
+            .push(crate::mining::AnkiJob::Configure(config));
+    }
+
+    /// What Anki has, or why it could not be read.
+    pub fn anki_lists(&mut self, result: Result<crate::mining::AnkiLists, String>) {
+        self.anki_page.busy = false;
+        match result {
+            Ok(lists) => {
+                let text = self.tr(
+                    "anki-connected",
+                    &[
+                        ("version", lists.version.to_string()),
+                        ("decks", lists.decks.len().to_string()),
+                        ("models", lists.models.len().to_string()),
+                    ],
+                );
+                self.anki_page.status = Some((text, true));
+                self.anki_page.lists = Some(lists);
+            }
+            Err(message) => self.anki_page.status = Some((message, false)),
+        }
+    }
+
+    /// "Create Lapis deck" ended (ANK-011).
+    pub fn lapis_done(&mut self, result: Result<bool, String>) {
+        self.anki_page.busy = false;
+        match result {
+            Ok(created) => {
+                let key = if created {
+                    "anki-lapis-created"
+                } else {
+                    "anki-lapis-exists"
+                };
+                self.anki_page.status = Some((self.tr(key, &[]), true));
+                self.anki_page.lapis_created += 1;
+            }
+            Err(message) => self.anki_page.status = Some((message, false)),
+        }
+    }
+
+    /// The settings to write, taken by the UI layer with their file.
+    pub fn take_config_save(&mut self) -> Option<(Config, PathBuf)> {
+        self.config_save
+            .take()
+            .map(|c| (c, self.services.config_file.clone()))
+    }
+
+    /// The settings were written, or not.
+    pub fn config_saved(&mut self, result: Result<(), String>) {
+        let status = match result {
+            Ok(()) => (self.tr("settings-saved", &[]), true),
+            Err(message) => (message, false),
+        };
+        self.anki_page.status = Some(status);
     }
 
     /// The Anki jobs to start, taken by the UI layer.

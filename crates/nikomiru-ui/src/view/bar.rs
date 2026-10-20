@@ -236,6 +236,9 @@ pub(crate) fn show(
                             if icon(ui, true, "📚", &tr("dict-page-title")) {
                                 view.open_dict_page(out);
                             }
+                            if icon(ui, true, "Anki", &tr("anki-open")) {
+                                view.open_anki_page(out);
+                            }
                             let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
                                 subtitle_menu(ui, s, view, out);
                             });

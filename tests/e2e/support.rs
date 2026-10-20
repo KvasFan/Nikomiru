@@ -167,6 +167,8 @@ impl Desktop {
             .env_remove("WAYLAND_DISPLAY")
             .env("XDG_RUNTIME_DIR", &run)
             .env("DBUS_SESSION_BUS_ADDRESS", &bus_address)
+            // the screenshots of `capture` come from any client of this desktop
+            .env("KWIN_SCREENSHOT_NO_PERMISSION_CHECKS", "1")
             .stdout(log.try_clone().unwrap())
             .stderr(log)
             .spawn()
@@ -188,6 +190,26 @@ impl Desktop {
     /// Gives the apps launched from now on the variable `key`.
     pub fn set_env(&mut self, key: &str, value: &str) {
         self.env.push((key.to_string(), value.to_string()));
+    }
+
+    /// A screenshot of the whole desktop, as a PNG at `out` (spectacle).
+    pub fn capture(&self, out: &Path) {
+        let status = Command::new("spectacle")
+            .args(["--background", "--nonotify", "--fullscreen", "--output"])
+            .arg(out)
+            .env_clear()
+            .env("HOME", self.dir.path())
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("XDG_RUNTIME_DIR", self.path("run"))
+            .env("XDG_CONFIG_HOME", self.path("config"))
+            .env("WAYLAND_DISPLAY", WAYLAND)
+            .env("QT_QPA_PLATFORM", "wayland")
+            .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("spectacle");
+        assert!(status.success() && out.exists(), "spectacle: {status}");
     }
 
     /// The compositor's socket, for the test's own Wayland clients.

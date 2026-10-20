@@ -29,7 +29,7 @@ use nikomiru_media::process::run;
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, Tools, probe};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
-    AnkiService, BrowseTarget, CardAction, CheckRequest, MineFailure, MineRequest, Mined,
+    AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, MineFailure, MineRequest, Mined,
 };
 
 /// The pause of the duplicate checks after a transport error (ANK-030).
@@ -88,6 +88,8 @@ impl std::fmt::Debug for Parts {
 type Checked = Box<dyn FnOnce(Option<Vec<bool>>) + Send>;
 type MineDone = Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>;
 type Browsed = Box<dyn FnOnce(Result<(), String>) + Send>;
+type Listed = Box<dyn FnOnce(Result<AnkiLists, String>) + Send>;
+type LapisMade = Box<dyn FnOnce(Result<bool, String>) + Send>;
 /// Renders the field values for a list of note fields.
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
@@ -95,6 +97,9 @@ enum Job {
     Check(CheckRequest, Checked),
     Mine(Box<MineRequest>, MineDone),
     Browse(BrowseTarget, Browsed),
+    Refresh(Box<AnkiConfig>, Listed),
+    CreateLapis(Box<AnkiConfig>, LapisMade),
+    Configure(Box<AnkiConfig>),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -134,6 +139,9 @@ impl Anki {
                         Job::Check(request, done) => done(worker.check(&request)),
                         Job::Mine(request, done) => done(worker.mine(&request)),
                         Job::Browse(target, done) => done(worker.browse(&target)),
+                        Job::Refresh(config, done) => done(worker.refresh(&config)),
+                        Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
+                        Job::Configure(config) => worker.configure(*config),
                     }
                 }
             });
@@ -166,6 +174,9 @@ impl Anki {
                 duplicate: false,
             })),
             Job::Browse(_, done) => done(Err(self.unavailable.clone())),
+            Job::Refresh(_, done) => done(Err(self.unavailable.clone())),
+            Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
+            Job::Configure(_) => {}
         }
     }
 }
@@ -187,6 +198,22 @@ impl AnkiService for Anki {
         if let Some(job) = self.send(Job::Browse(target, done)) {
             self.refuse(job);
         }
+    }
+
+    fn refresh(&self, config: AnkiConfig, done: Listed) {
+        if let Some(job) = self.send(Job::Refresh(Box::new(config), done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn create_lapis(&self, config: AnkiConfig, done: LapisMade) {
+        if let Some(job) = self.send(Job::CreateLapis(Box::new(config), done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn configure(&self, config: AnkiConfig) {
+        let _ = self.send(Job::Configure(Box::new(config)));
     }
 }
 
@@ -703,6 +730,35 @@ impl Worker {
         if let Err(e) = library.put_mined_card(note_id, &card) {
             tracing::warn!("mined_cards: {e}");
         }
+    }
+
+    /// The connection test of the settings (ANK-006), with their address.
+    fn refresh(&mut self, config: &AnkiConfig) -> Result<AnkiLists, String> {
+        let client = Client::new(&config.url, &config.api_key).map_err(|e| self.message(&e))?;
+        let state = lapis::refresh(&client, &config.note_type).map_err(|e| self.message(&e))?;
+        Ok(AnkiLists {
+            version: state.version,
+            decks: state.decks,
+            models: state.models,
+            model: config.note_type.clone(),
+            fields: state.fields,
+        })
+    }
+
+    /// "Create Lapis deck" (ANK-011), with the settings' address.
+    fn create_lapis(&mut self, config: &AnkiConfig) -> Result<bool, String> {
+        let client = Client::new(&config.url, &config.api_key).map_err(|e| self.message(&e))?;
+        let setup = lapis::create(&client).map_err(|e| self.message(&e))?;
+        Ok(setup == lapis::Setup::Created)
+    }
+
+    /// New settings: a new client, the note type's fields asked again, the
+    /// pause of the checks lifted.
+    fn configure(&mut self, config: AnkiConfig) {
+        self.client = Client::new(&config.url, &config.api_key);
+        self.parts.config = config;
+        self.note_fields = None;
+        self.paused_until = None;
     }
 
     /// "Open in Anki" (ANK-038).

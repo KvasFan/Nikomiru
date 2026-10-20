@@ -8,6 +8,7 @@
 //! subtitles, the subtitle list, the control bar, the dictionary popups, the
 //! dictionaries page, the toast.
 
+mod anki_page;
 mod bar;
 mod chrome;
 mod dict_page;
@@ -94,6 +95,10 @@ pub(crate) struct View {
     pub activate: bool,
     /// The dictionaries page is shown.
     pub dict_page_open: bool,
+    /// The Anki settings page is shown.
+    pub anki_page_open: bool,
+    /// What the Anki settings page keeps.
+    pub anki: anki_page::State,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
     /// Give the keyboard to the list's search field (Ctrl+F).
@@ -128,7 +133,9 @@ impl View {
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)
-                if self.dict_page_open {
+                if self.anki_page_open {
+                    self.close_anki_page();
+                } else if self.dict_page_open {
                     self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
@@ -154,6 +161,18 @@ impl View {
             self.dict_page_open = true;
             out.push(Command::DictOpen);
         }
+    }
+
+    pub fn open_anki_page(&mut self, out: &mut Vec<Command>) {
+        if !self.anki_page_open {
+            self.anki_page_open = true;
+            out.push(Command::AnkiOpen);
+        }
+    }
+
+    pub fn close_anki_page(&mut self) {
+        self.anki_page_open = false;
+        self.anki = anki_page::State::default();
     }
 
     pub fn close_dict_page(&mut self) {
@@ -203,8 +222,8 @@ impl View {
         if opacity > 0.0 {
             bar::show(&ctx, s, self, opacity, &mut out);
         }
-        // the dictionaries page covers the popups: they wait under it
-        let drawn = if self.dict_page_open {
+        // the settings pages cover the popups: they wait under them
+        let drawn = if self.dict_page_open || self.anki_page_open {
             self.popups.rects.clear();
             Vec::new()
         } else {
@@ -213,6 +232,9 @@ impl View {
         self.mark_presented(s, &drawn);
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
+        }
+        if self.anki_page_open {
+            anki_page::show(&ctx, s, self, &mut out);
         }
         if let Some(missing) = &s.missing_link {
             link::show(&ctx, s, missing, &mut out);

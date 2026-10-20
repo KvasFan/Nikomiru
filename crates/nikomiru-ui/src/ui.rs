@@ -89,6 +89,12 @@ pub enum Inbound {
     },
     /// Anki's browser opened, or not (ANK-038).
     Browsed(Result<(), String>),
+    /// What Anki has, for the settings page (ANK-006).
+    AnkiLists(Result<crate::mining::AnkiLists, String>),
+    /// "Create Lapis deck" ended (ANK-011).
+    LapisDone(Result<bool, String>),
+    /// `config.toml` was written, or not.
+    ConfigSaved(Result<(), String>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -113,6 +119,9 @@ impl std::fmt::Debug for Inbound {
             Inbound::CardStates { .. } => "CardStates",
             Inbound::Mined { .. } => "Mined",
             Inbound::Browsed(_) => "Browsed",
+            Inbound::AnkiLists(_) => "AnkiLists",
+            Inbound::LapisDone(_) => "LapisDone",
+            Inbound::ConfigSaved(_) => "ConfigSaved",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -207,6 +216,14 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// The Anki settings page opened.
+    AnkiOpen,
+    /// "Test the connection" with these settings (ANK-006).
+    AnkiTest(nikomiru_core::config::AnkiConfig),
+    /// "Create Lapis deck" with these settings (ANK-011).
+    AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
+    /// Save these Anki settings.
+    AnkiSave(nikomiru_core::config::AnkiConfig),
     /// "Locate the file" for a link whose video is missing (ANK-052).
     LinkLocate,
     /// The offer to locate it was declined.
@@ -353,6 +370,18 @@ impl Ui {
             }
             Inbound::Browsed(result) => {
                 self.session.browsed(result);
+                true
+            }
+            Inbound::AnkiLists(result) => {
+                self.session.anki_lists(result);
+                true
+            }
+            Inbound::LapisDone(result) => {
+                self.session.lapis_done(result);
+                true
+            }
+            Inbound::ConfigSaved(result) => {
+                self.session.config_saved(result);
                 true
             }
             Inbound::Dropped(path) => {
@@ -597,6 +626,10 @@ impl Ui {
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
             Command::CardButton { level, entry } => s.card_button(level, entry),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
+            Command::AnkiOpen => s.anki_open(),
+            Command::AnkiTest(config) => s.anki_test(config),
+            Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
+            Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::CardMenu { level, entry, item } => s.card_menu(level, entry, item),
         }
@@ -647,6 +680,29 @@ impl Ui {
                     .session
                     .anki()
                     .browse(target, Box::new(move |r| waker.wake(Inbound::Browsed(r)))),
+                crate::mining::AnkiJob::Refresh(config) => self
+                    .session
+                    .anki()
+                    .refresh(config, Box::new(move |r| waker.wake(Inbound::AnkiLists(r)))),
+                crate::mining::AnkiJob::CreateLapis(config) => self
+                    .session
+                    .anki()
+                    .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
+                crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
+            }
+        }
+        if let Some((config, file)) = self.session.take_config_save() {
+            let waker = self.waker.clone();
+            let translator = self.session.translator().clone();
+            // an atomic write waits for the disk: never on the UI thread
+            let spawned = std::thread::Builder::new()
+                .name("config-save".into())
+                .spawn(move || {
+                    let result = config.save(&file).map_err(|e| translator.error(&e));
+                    waker.wake(Inbound::ConfigSaved(result));
+                });
+            if let Err(e) = spawned {
+                tracing::error!("cannot start the settings thread: {e}");
             }
         }
         for name in self.session.take_screenshots() {

@@ -396,6 +396,7 @@ fn run(
         },
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
+        config_file: paths.config_file(),
     };
     let instance = server.map(|server| {
         let waker = waker.clone();

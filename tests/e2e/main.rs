@@ -300,6 +300,130 @@ fn a_card_link_reopens_the_scene_and_a_moved_video_is_located() {
     assert_eq!(record.path, moved.to_string_lossy());
 }
 
+// T-ANK-006, T-ANK-011, T-SEC-008, SET-002 for Anki
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_anki_settings_test_create_lapis_and_save() {
+    use std::os::unix::fs::PermissionsExt;
+    let fake = nikomiru_anki::fake::FakeAnki::start().unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\ndeck = \"Default\"\nnote_type = \"Basic\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    // the page reads what Anki has at once
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    let s = h.state_until("the lists", |s| !s["anki_page"]["models"].is_null());
+    assert_eq!(s["anki_page"]["open"], true);
+    assert_eq!(s["anki_page"]["models"], serde_json::json!(["Basic"]));
+    assert_eq!(
+        s["anki_page"]["fields"],
+        serde_json::json!(["Front", "Back"])
+    );
+    // Create Lapis deck: the page then chooses Lapis and reads its fields
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "create-lapis" }));
+    let s = h.state_until("Lapis", |s| {
+        s["anki_page"]["fields"]
+            .as_array()
+            .is_some_and(|f| f.len() == 22)
+    });
+    assert_eq!(
+        s["anki_page"]["models"],
+        serde_json::json!(["Basic", "Lapis"])
+    );
+    // Save: the file, readable by the user only
+    let url = fake.url();
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": format!(
+        "url = \"{url}\"\ndeck = \"Lapis\"\nnote_type = \"Lapis\"\ntags = [\"from-settings\"]\naudio_pad_head_ms = 0\n"
+    ) }));
+    h.state_until("saved", |s| {
+        s["anki_page"]["status"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("saved"))
+    });
+    let file = desk.path("config/nikomiru/config.toml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    let config = nikomiru_core::Config::from_toml(&text).unwrap();
+    assert_eq!(
+        (config.anki.deck.as_str(), config.anki.note_type.as_str()),
+        ("Lapis", "Lapis")
+    );
+    assert_eq!(config.anki.tags, ["from-settings"]);
+    assert_eq!(config.player.mpv_options["ao"], "null", "the rest is kept");
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    // the next card follows the new settings
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "close" }));
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    let id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    {
+        let anki = fake.collection();
+        let note = anki.notes.iter().find(|n| n.id == id).unwrap();
+        assert_eq!(note.deck, "Lapis");
+        assert_eq!(note.tags, ["from-settings", "nikomiru", "video"]);
+        let misc = &note.fields.iter().find(|(n, _)| n == "MiscInfo").unwrap().1;
+        assert!(
+            misc.contains("startMs=2000&amp;endMs=2700"),
+            "no head pad: {misc}"
+        );
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+/// Screenshots of the interface with the project's own media and test
+/// dictionaries, for review and for the repository page (ROADMAP M4), into
+/// the folder named by `NIKOMIRU_SCREENSHOTS`; without it, nothing.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, spectacle and `cargo xtask fixtures`"]
+fn screenshots_of_the_interface() {
+    let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from) else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let fake = nikomiru_anki::fake::FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("popup.png"));
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.wait("card-created");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("popup-card-menu.png"));
+    h.key("Escape");
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    h.state_until("the lists", |s| {
+        s["anki_page"]["fields"]
+            .as_array()
+            .is_some_and(|f| f.len() == 22)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("anki-settings.png"));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

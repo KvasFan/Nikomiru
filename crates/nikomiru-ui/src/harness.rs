@@ -228,6 +228,14 @@ pub fn state() -> Result<Value, String> {
                 "menu": p.menu,
             })).collect::<Vec<_>>(),
             "paused_for_lookup": s.popups.paused_for_lookup(),
+            "anki_page": json!({
+                "open": ui.view.anki_page_open,
+                "busy": s.anki_page.busy,
+                "status": s.anki_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "decks": s.anki_page.lists.as_ref().map(|l| l.decks.clone()),
+                "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
+                "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
+            }),
             "missing_link": s.missing_link.as_ref().map(|m| json!({
                 "uid": m.link.uid,
                 "path": m.path,
@@ -297,6 +305,43 @@ pub fn locate(path: &str) -> Result<(), String> {
             path,
         });
     })
+}
+
+/// The Anki settings page (ANK-006, ANK-011): `open` and `close` as its
+/// button and Esc, `test`, `create-lapis` and `save` as its buttons, with the
+/// settings given (the saved ones changed by `config`, a TOML `[anki]` table).
+pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
+    let action = action.to_string();
+    let config = config.map(str::to_string);
+    call(move |ui| {
+        let mut draft = ui.session.anki_config().clone();
+        if let Some(text) = &config {
+            let table: nikomiru_core::Config =
+                nikomiru_core::Config::from_toml(&format!("[anki]\n{text}"))
+                    .map_err(|e| e.to_string())?;
+            draft = table.anki;
+        }
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_anki_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_anki_page();
+                return Ok(());
+            }
+            "test" => Command::AnkiTest(draft),
+            "create-lapis" => Command::AnkiCreateLapis(draft),
+            "save" => Command::AnkiSave(draft),
+            other => return Err(format!("no Anki page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
 }
 
 /// Saves a dictionary's CSS like the Save button of its editor (DIC-035).
