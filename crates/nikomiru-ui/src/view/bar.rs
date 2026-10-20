@@ -160,7 +160,13 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
     }
 }
 
-pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut Vec<Command>) {
+pub(crate) fn show(
+    ctx: &egui::Context,
+    s: &Session,
+    view: &mut View,
+    opacity: f32,
+    out: &mut Vec<Command>,
+) {
     let screen = ctx.content_rect();
     let tr = |id: &str| s.translator().tr(id, &[]);
     let v = &s.view;
@@ -169,6 +175,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         .pivot(Align2::LEFT_BOTTOM)
         .fixed_pos(pos2(screen.left(), screen.bottom()))
         .show(ctx, |ui| {
+            ui.multiply_opacity(opacity);
             Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(0x14, 0x14, 0x18, 0xd9))
                 .inner_margin(Margin::same(10))

@@ -3,7 +3,7 @@
 //! Video library: folder import, file name parser, progress and viewing
 //! statistics (milestones M5 and M6), and the dictionary registry (M3).
 //!
-//! Pure logic: no Qt and no `libmpv2` (ARC-010).
+//! Pure logic: no UI toolkit and no `libmpv2` (ARC-010).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

@@ -33,8 +33,8 @@ use crate::ui::Command;
 const HIGHLIGHT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
 /// The outline without an ASS style.
 const OUTLINE: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0x99);
-/// The soft shadow under each row of text (QML: `#cc000000` blurred with the
-/// text's own coverage, which leaves about a third of it).
+/// The soft shadow under each row of text: `#cc000000` spread over the row,
+/// which leaves about a third of it where the glyphs are.
 const SHADOW: Color32 = Color32::from_black_alpha(0x50);
 /// The eight directions of the outline copies.
 const AROUND: [(f32, f32); 8] = [
@@ -741,7 +741,7 @@ fn paint(painter: &Painter, cue: &Laid<'_>, offset: Vec2, mode: Obscure, units: 
     for rect in &cue.highlight {
         painter.rect_filled(rect.translate(offset), 3.0, HIGHLIGHT);
     }
-    // QML: a shadow blurred by half of the blur's reach, 1 px down
+    // the shadow: blurred by half of the blur's reach, 1 px down
     let sigma = blur_sigma(f64::from(units.font)) as f32;
     let reach = (2.0 * sigma).round().min(64.0);
     for row in &cue.rows {

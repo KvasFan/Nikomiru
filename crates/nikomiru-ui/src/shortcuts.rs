@@ -2,9 +2,9 @@
 
 //! Keyboard shortcuts (KEY-001…KEY-004, SPECIFICATION §6.3).
 //!
-//! Keys are identified by their physical position (KEY-002): Qt's
-//! `nativeScanCode` is the XKB keycode, i.e. the evdev code + 8, which does not
-//! depend on the layout or the input method. Keys are named with the W3C
+//! Keys are identified by their physical position (KEY-002): the evdev code,
+//! which winit gives as the key's scancode on Linux, does not depend on the
+//! layout or the input method. Keys are named with the W3C
 //! `KeyboardEvent.code` names (`KeyQ`, `ArrowLeft`…), so `config.toml` stays
 //! readable, and a chord is written `Ctrl+Alt+Shift+Key`.
 
@@ -129,7 +129,7 @@ impl Action {
         Action::PopupPrev,
     ];
 
-    /// Name used in `config.toml` (`[shortcuts]`) and in the QML layer.
+    /// Name used in `config.toml` (`[shortcuts]`) and in the log.
     pub fn name(self) -> &'static str {
         match self {
             Action::PlayPause => "play_pause",

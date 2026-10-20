@@ -160,9 +160,9 @@ pub fn chosen(body: &[Value]) -> Option<PathBuf> {
     })
 }
 
-/// Opens a web address from a dictionary in the browser (POP-011), through
-/// `xdg-open` with the address as its only argument. Anything but `http(s)`
-/// is refused again here.
+/// Opens a web address from a dictionary in the browser (POP-011): through
+/// the `OpenURI` portal, or `xdg-open` with the address as its only argument
+/// when there is no portal. Anything but `http(s)` is refused again here.
 pub fn open_uri(url: &str) {
     if !is_web_address(url) {
         tracing::warn!("not a web address, not opened");
@@ -172,19 +172,43 @@ pub fn open_uri(url: &str) {
     let spawned = std::thread::Builder::new()
         .name("nikomiru-open-uri".into())
         .spawn(move || {
-            let status = Command::new("xdg-open")
-                .arg(&url)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-            if let Err(e) = status {
-                tracing::warn!("xdg-open: {e}");
+            let portal = Connection::session().and_then(|mut conn| open_uri_on(&mut conn, &url));
+            if let Err(e) = portal {
+                tracing::debug!("OpenURI portal: {e}; xdg-open instead");
+                let status = Command::new("xdg-open")
+                    .arg(&url)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+                if let Err(e) = status {
+                    tracing::warn!("xdg-open: {e}");
+                }
             }
         });
     if let Err(e) = spawned {
         tracing::warn!("{e}");
     }
+}
+
+/// Asks the portal on `conn` to open `url`; the portal answers once it has
+/// handed it to the browser, which the app does not wait for.
+pub fn open_uri_on(conn: &mut Connection, url: &str) -> io::Result<()> {
+    let token = format!("nikomiru{}", TOKENS.fetch_add(1, Ordering::Relaxed));
+    conn.call(
+        Message::call(
+            PORTAL,
+            PORTAL_PATH,
+            "org.freedesktop.portal.OpenURI",
+            "OpenURI",
+        )
+        .with_body(vec![
+            Value::Str(String::new()),
+            Value::Str(url.to_string()),
+            Value::dict(&[("handle_token", Value::Str(token))]),
+        ]),
+    )
+    .map(drop)
 }
 
 #[cfg(test)]

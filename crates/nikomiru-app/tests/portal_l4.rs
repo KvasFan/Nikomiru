@@ -93,6 +93,9 @@ enum Seen {
         title: String,
         token: String,
     },
+    OpenUri {
+        uri: String,
+    },
 }
 
 /// The string in a variant of an `a{sv}` option, by key.
@@ -172,6 +175,18 @@ fn spy_portal(mut conn: Connection) -> mpsc::Receiver<Seen> {
                         break;
                     }
                     continue;
+                }
+                Some("OpenURI") => {
+                    let [Value::Str(_), Value::Str(uri), Value::Array(_, _)] = &msg.body[..] else {
+                        panic!("OpenURI with body {:?}", msg.body);
+                    };
+                    let _ = tx.send(Seen::OpenUri { uri: uri.clone() });
+                    Message::reply_to(
+                        &msg,
+                        vec![Value::Path(
+                            "/org/freedesktop/portal/desktop/request/1_9/u".into(),
+                        )],
+                    )
                 }
                 Some("Inhibit") => {
                     let [
@@ -311,4 +326,19 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
     let path = nikomiru_app::portal::choose(&mut conn, &dialog("cancel")).unwrap();
     assert_eq!(path, None);
     assert!(matches!(next(&seen), Seen::OpenFile { .. }));
+}
+
+// T-POP-011: a web link goes to the portal, nothing else
+#[test]
+fn web_links_go_to_the_open_uri_portal() {
+    let bus = Bus::start();
+    let seen = spy_portal(bus.connect());
+    let mut conn = bus.connect();
+    nikomiru_app::portal::open_uri_on(&mut conn, "https://example.org/x").unwrap();
+    assert_eq!(
+        next(&seen),
+        Seen::OpenUri {
+            uri: "https://example.org/x".into()
+        }
+    );
 }

@@ -2,7 +2,7 @@
 
 //! The view: draws the session every frame, bottom to top, and turns clicks
 //! into [`Command`]s. It only reads the session; the commands run after the
-//! frame, so nothing changes under the drawing (as `Qt.callLater` did).
+//! frame, so nothing changes under the drawing.
 //!
 //! Layers, bottom to top: the video (drawn by mpv before egui paints), the
 //! subtitles, the subtitle list, the control bar, the dictionary popups, the
@@ -191,8 +191,10 @@ impl View {
                 &mut out,
             );
         }
-        if controls {
-            bar::show(&ctx, s, self, &mut out);
+        // the bar fades in and out over 150 ms (PLY-004)
+        let opacity = ctx.animate_bool_with_time(Id::unique("bar-fade"), controls, 0.15);
+        if opacity > 0.0 {
+            bar::show(&ctx, s, self, opacity, &mut out);
         }
         // the dictionaries page covers the popups: they wait under it
         let drawn = if self.dict_page_open {

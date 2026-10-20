@@ -4,7 +4,7 @@
 //! detection (milestone M2). mpv draws no text subtitle: Nikomiru parses them
 //! into cues and draws them itself (SPECIFICATION §6.4).
 //!
-//! Pure logic: no Qt and no `libmpv2` (ARC-010).
+//! Pure logic: no UI toolkit and no `libmpv2` (ARC-010).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

@@ -363,7 +363,7 @@ mod tests {
     const CHILD_PATH: &str = "NIKOMIRU_TEST_LIBRARY_LEFT_OPEN";
 
     /// Runs only as the child of the next test: writes and exits without
-    /// closing the library, as the app did when its QML failed to load.
+    /// closing the library, as an app that dies would.
     #[test]
     fn child_leaves_the_library_open() {
         let Ok(path) = std::env::var(CHILD_PATH) else {

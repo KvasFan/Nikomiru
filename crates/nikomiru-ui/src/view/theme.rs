@@ -41,7 +41,7 @@ pub(crate) fn install(ctx: &egui::Context) {
             (TextStyle::Monospace, FontId::monospace(14.0)),
         ]
         .into();
-        // QML's tooltips appeared after 300 ms
+        // tooltips after 300 ms
         style.interaction.tooltip_delay = 0.3;
         // a drag over text is not a selection: clicks on words look them up
         style.interaction.selectable_labels = false;

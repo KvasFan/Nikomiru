@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The playback session behind the player page, without Qt: it opens files,
+//! The playback session behind the player page, apart from its drawing: it opens files,
 //! filters and reduces player events into a [`ViewState`], saves the position
 //! (LIB-006) and turns shortcut actions into player commands.
 
@@ -25,7 +25,8 @@ use crate::subtitles::{Loaded, Obscure, Request, Source, Subtitles};
 use nikomiru_subs::select::{self, Choice, EmbeddedTrack};
 use nikomiru_subs::timeline::Jump;
 
-/// What the QML layer must do after an action (things Rust cannot do itself).
+/// What the view must do after an action: the window's business, not the
+/// session's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEffect {
     /// Nothing for the UI.
@@ -40,20 +41,6 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
-}
-
-impl UiEffect {
-    /// Name used by the QML layer.
-    pub fn name(self) -> &'static str {
-        match self {
-            UiEffect::None => "",
-            UiEffect::ToggleFullscreen => "fullscreen",
-            UiEffect::Back => "back",
-            UiEffect::OpenDialog => "open_file",
-            UiEffect::ToggleSubList => "sub_list",
-            UiEffect::SubSearch => "sub_search",
-        }
-    }
 }
 
 /// Milestones of a load, for the GUI test harness (TEST §2.1).
@@ -219,8 +206,6 @@ pub struct Session {
     /// The dictionary popups.
     pub popups: Popups,
     lookups: Vec<(u64, String)>,
-    /// Changes whenever a popup opens, closes or gets its content.
-    pub popup_version: u64,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -333,7 +318,6 @@ impl Session {
             sub_list_version: 0,
             popups: Popups::default(),
             lookups: Vec::new(),
-            popup_version: 0,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -574,9 +558,7 @@ impl Session {
 
     /// Tab, Shift+Tab, Alt+wheel in the popup (POP-014).
     pub fn popup_entry(&mut self, delta: i64) {
-        if self.popups.move_entry(delta) {
-            self.popup_version += 1;
-        }
+        self.popups.move_entry(delta);
     }
 
     fn update_screensaver(&mut self) {
@@ -1198,7 +1180,6 @@ impl Session {
             self.end_replay();
         }
         self.sync_highlight();
-        self.popup_version += 1;
     }
 
     fn sync_highlight(&mut self) {
@@ -1230,7 +1211,6 @@ impl Session {
     pub fn popup_focus(&mut self, level: usize) {
         if self.popups.stack().len() > level + 1 {
             self.popups.focus(level);
-            self.popup_version += 1;
         }
     }
 
@@ -1421,7 +1401,6 @@ impl Session {
         };
         if self.popups.deliver(generation, reply) {
             self.sync_highlight();
-            self.popup_version += 1;
         }
     }
 

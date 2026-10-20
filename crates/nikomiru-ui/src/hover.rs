@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Lookup on hover (POP-003) without Qt: with Shift held (or always, with
+//! Lookup on hover (POP-003), apart from the view: with Shift held (or always, with
 //! `lookup.hover_without_modifier`), a movement of at least 8 px over a new
 //! character looks it up; a popup opened this way closes, and playback
 //! resumes, when the pointer stays out of the subtitles and the popups for
