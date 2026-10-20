@@ -236,7 +236,7 @@ fn ignored(name: &str) -> bool {
 }
 
 /// Opens `zip` and checks every entry (DIC-011); returns the entries with the
-/// single wrapper folder, if any, removed from their names.
+/// wrapper folders, if any, removed from their names.
 fn checked_entries(zip: &mut zip::ZipArchive<File>) -> Result<Vec<Entry>, ImportError> {
     let mut entries = Vec::new();
     let mut total: u64 = 0;
@@ -281,12 +281,13 @@ fn checked_entries(zip: &mut zip::ZipArchive<File>) -> Result<Vec<Entry>, Import
             size,
         });
     }
-    // a single wrapper folder (`dict/index.json`) is stripped (BUG-2053)
-    if !entries.iter().any(|e| e.name == "index.json")
+    // a folder holding the whole archive (`dict/index.json`) is stripped,
+    // again while index.json is not at the root (BUG-2053)
+    while !entries.iter().any(|e| e.name == "index.json")
         && let Some(prefix) = entries
-            .iter()
-            .find(|e| e.name.ends_with("/index.json") && e.name.matches('/').count() == 1)
-            .map(|e| e.name.trim_end_matches("index.json").to_string())
+            .first()
+            .and_then(|e| e.name.split_once('/'))
+            .map(|(folder, _)| format!("{folder}/"))
         && entries.iter().all(|e| e.name.starts_with(&prefix))
     {
         for e in &mut entries {

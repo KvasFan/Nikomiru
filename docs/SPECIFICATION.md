@@ -494,7 +494,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | ID | Requirement |
 |---|---|
 | DIC-010 | Import runs in a background task with progress (files and entries) and can be cancelled; the UI stays responsive. |
-| DIC-011 | ZIP safety: reject absolute paths, `..` components, symbolic links, entries > 512 MiB uncompressed, compression ratio > 200:1 on entries > 1 MiB, total uncompressed > 8 GiB. Strip a single wrapper folder and ignore `__MACOSX` and `.DS_Store` (BUG-2053). Support the Info-ZIP extra field for Unicode paths (BUG-3277) and ZIP64. |
+| DIC-011 | ZIP safety: reject absolute paths, `..` components, symbolic links, entries > 512 MiB uncompressed, compression ratio > 200:1 on entries > 1 MiB, total uncompressed > 8 GiB. Strip the wrapper folder that holds the whole archive, and the one nested in it, until `index.json` is at the root; ignore `__MACOSX` and `.DS_Store` (BUG-2053). Support the Info-ZIP extra field for Unicode paths (BUG-3277) and ZIP64. |
 | DIC-012 | Limits: 10 M entries per dictionary, glossary ≤ 10 MiB per entry. If a limit is exceeded, the import fails cleanly. |
 | DIC-013 | Import writes to `dicts/<id>.importing/` and, only on complete success, does an atomic rename to `dicts/<id>/` and registers the dictionary. After an error or a crash nothing partial remains; leftover `.importing` folders are deleted at startup. |
 | DIC-014 | Disk full: specific message (`ERR_STORAGE_FULL`), with cleanup of partial files. |

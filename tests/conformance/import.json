@@ -381,10 +381,7 @@
         }
       },
       "divergence": null,
-      "known_failure": {
-        "owner": "crates/nikomiru-dict/src/import.rs",
-        "note": "checked_entries strips one wrapper folder only (index.json with a single '/'), so the import fails with no index.json."
-      },
+      "known_failure": null,
       "skip": false,
       "note": "Extracting a wrapped dictionary and zipping the outer folder again nests it twice; Fushi peels the wrappers until index.json is at the root."
     },

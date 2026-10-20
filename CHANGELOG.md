@@ -47,6 +47,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- A dictionary zip whose wrapper folder holds a second one (a wrapped dictionary extracted and zipped again) imports: wrapper folders are stripped until `index.json` is at the root, as in Fushi (BUG-2053).
 - The dictionary registry is read and written in one transaction: an edit on the dictionaries page and the registration of an import, on its own thread, no longer overwrite each other (a deleted dictionary could come back). The registration checks the registry again: the same dictionary imported twice at once is registered once, and an update whose old dictionary was deleted meanwhile is added instead of failing.
 - An update whose old folder cannot be removed is no longer reported as an error with the old dictionary still in the popups: it is registered, the lookup cache is dropped, and the next start removes the folder.
 - A dictionary import stops promptly when cancelled, at every step: large banks are read, parsed and written a stretch at a time, and the final step (indexes, commit, compaction) looks at the cancel too, where it used to ignore it and register the dictionary anyway. With a 300k-entry dictionary in one bank (release build), a cancel used to wait up to 1.1 s inside the bank and was ignored in the final step; it now stops the import within 0.1 s, or 0.45 s when it comes during redb's commit.

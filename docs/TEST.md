@@ -181,7 +181,7 @@ Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of
 | `zip_high_ratio_bank_test.cpp` | `import.json` `zhr-*` (5; 3 divergences, DIC-011: the 200:1 ratio limit and the 512 MiB cap) |
 | `zip_malformed_deflate_test.cpp` | `import.json` `zmd-*` (4) |
 | `zip_unicode_path_extra_test.cpp` | `import.json` `zup-*` (8; 4 known failures) |
-| `zip_wrapper_directory_test.cpp` | `import.json` `zwd-*` (8; 1 known failure) |
+| `zip_wrapper_directory_test.cpp` | `import.json` `zwd-*` (8) |
 | `simple_dict_css_test.cpp` | `import.json` `sdc-styles`: the Yomitan counterpart, `styles.css` kept byte for byte; the `.css` next to an MDX file does not apply |
 | `win_utf8_import_test.cpp` | `import.json` `wui-non-ascii-paths`: non-ASCII zip, folder and title (the Windows ANSI path bug itself does not apply) |
 | `ffi_guard_coverage_test.cpp`, `decompressor_null_guard_test.cpp` | Do not apply: source scans of Fushi's C ABI and of its libdeflate calls; Nikomiru has no C ABI and inflates with `flate2` |
@@ -192,7 +192,7 @@ Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of
 | `fushi/test/dictionary/deinflection_grammar_tags_test.dart` | `lookup.json` `dgt-*` (5, 7 skipped: Fushi's stored extras, its second result builder, an engine state no lookup produces, source guards) |
 | `fushi/test/lookup/sentence_extraction_test.dart` | `text.json` `sent-*` (9, 2 skipped: a negative click offset and a source guard) |
 
-Known failures, owner `crates/nikomiru-dict/src/import.rs`: `zwd-nested-twice` (one wrapper folder is stripped, not two); `zup-bit11`, `zup-unknown-version`, `zup-overrun`, `zup-empty-name` (the importer takes the `zip` crate's Unicode Path handling, which applies the field with bit 11 set or with any version, refuses an archive whose field overruns its block and takes an empty name).
+Known failures, owner `crates/nikomiru-dict/src/import.rs`: `zup-bit11`, `zup-unknown-version`, `zup-overrun`, `zup-empty-name` (the importer takes the `zip` crate's Unicode Path handling, which applies the field with bit 11 set or with any version, refuses an archive whose field overruns its block and takes an empty name).
 
 ---
 
