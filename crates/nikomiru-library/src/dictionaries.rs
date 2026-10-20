@@ -316,7 +316,9 @@ impl DictionaryManager {
 
     /// Imports `zip`. A new dictionary goes last and enabled; an update
     /// (`replace`, after [`Check::Update`]) takes the place and the settings of
-    /// the old one, which is deleted only once the new one is registered.
+    /// the old one, which is deleted only once the new one is registered. Until
+    /// then `cancel` stops it, and a cancelled import leaves nothing (DIC-010,
+    /// DIC-013).
     pub fn import(
         &self,
         zip: &Path,
@@ -333,7 +335,12 @@ impl DictionaryManager {
             });
         }
         let imported = import::import(zip, &self.dir, cancel, progress)?;
-        let replaced = match self.register(&imported, replace) {
+        let registered = if cancel.is_cancelled() {
+            Err(ImportError::Cancelled.into())
+        } else {
+            self.register(&imported, replace)
+        };
+        let replaced = match registered {
             Ok(replaced) => replaced,
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&imported.dir);

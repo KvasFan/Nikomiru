@@ -218,7 +218,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-001 | Import of `mini-ja` | The counts of terms, meta, kanji, tags and media match the source; `styles.css` preserved | L4 |
 | T-DIC-002 | Tag bank and `sequence` | The `v5k` tag has category and notes; `sequence` preserved | L4 |
 | T-DIC-003 | `mini-freq-occ` | String values read; inverted ordering (higher = better) | L4 |
-| T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files | L4 |
+| T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files. A cancel inside one large bank (60k entries, while it is read, parsed or written) or in the final step stops the import in < 1 s; the parser, the writes and the final step stop at their next check | L1, L4 |
 | T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted | L4 |
 | T-DIC-012 | Limits | A glossary > 10 MiB makes the import fail cleanly | L4 |
 | T-DIC-013 | Crash during import | Child process killed with SIGKILL halfway → on restart, no partial dictionary; the `.importing` folder is deleted | L4 |
