@@ -64,6 +64,8 @@ pub enum Inbound {
         /// The file.
         path: PathBuf,
     },
+    /// The file dialog could not be opened (no desktop portal).
+    DialogFailed,
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -82,6 +84,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Open(_) => "Open",
             Inbound::Activate => "Activate",
             Inbound::Chosen { .. } => "Chosen",
+            Inbound::DialogFailed => "DialogFailed",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -271,6 +274,11 @@ impl Ui {
             }
             Inbound::Activate => {
                 self.view.activate = true;
+                true
+            }
+            Inbound::DialogFailed => {
+                let text = self.session.translator().tr("error-file-dialog", &[]);
+                self.view.toast(text);
                 true
             }
             Inbound::Chosen { dialog, path } => {

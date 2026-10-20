@@ -340,7 +340,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-LIB-001 | Opening a file | From the command line and with simulated drag & drop (`drop {paths}` in the harness); the dialog is checked by hand (§9.1) | L6 |
+| T-LIB-001 | Opening a file | From the command line and with simulated drag & drop (`drop {paths}` in the harness); the XDG FileChooser request and its answer, chosen or cancelled, against a spy portal on a private bus (L4); the desktop's dialog by hand (§9.1) | L4, L6 |
 | T-LIB-002 | Folder import | Temporary tree with 2 series, season subfolders and non-video files: per-series mode → 2 series with the correct episodes; per-folder mode → one collection per subfolder plus the root one | L4 |
 | T-LIB-003 | File names | Vectors from `video_filename_parser_test.dart`. E.g.: `[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv` → series `Sousou no Frieren`, ep. 1; `Show.S02E05.1080p.mkv` → s2 e5; `Season 2/03.mkv` → s2 e3; `第2季/03.mkv` → s2 e3 | L1 |
 | T-LIB-004 | Rescan | Progress, subtitles and offsets preserved; a deleted series is not recreated; mode change reversible without losses | L4 |

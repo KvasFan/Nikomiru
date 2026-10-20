@@ -443,6 +443,16 @@ impl Message {
         }
     }
 
+    /// A signal.
+    pub fn signal(path: &str, interface: &str, member: &str) -> Self {
+        Self {
+            path: Some(path.into()),
+            interface: Some(interface.into()),
+            member: Some(member.into()),
+            ..Self::empty(Kind::Signal)
+        }
+    }
+
     /// The successful reply to `call`.
     pub fn reply_to(call: &Message, body: Vec<Value>) -> Self {
         Self {
@@ -684,6 +694,12 @@ impl Connection {
     /// The name the bus gave this connection.
     pub fn unique_name(&self) -> &str {
         &self.unique_name
+    }
+
+    /// How long [`Self::receive`] waits for a message; `None` waits for as
+    /// long as it takes (a portal dialog waits for the user).
+    pub fn set_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.stream.set_read_timeout(timeout)
     }
 
     fn authenticate(&mut self) -> io::Result<()> {

@@ -170,3 +170,4 @@ dict-imported = { $title } importato.
 dict-same-revision = { $title } è già installato con questa revisione.
 dict-import-busy = Attendi la fine dell'importazione in corso.
 error-dict-unavailable = I dizionari non sono disponibili: la libreria non si è aperta.
+error-file-dialog = La finestra di scelta dei file non è disponibile: trascina il file sulla finestra o indicalo dalla riga di comando.

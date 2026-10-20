@@ -10,9 +10,12 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use std::path::PathBuf;
+
 use nikomiru_app::dbus::{Connection, Kind, Message, Value};
 use nikomiru_app::inhibit::PortalInhibitor;
 use nikomiru_ui::session::IdleInhibitor;
+use nikomiru_ui::{Dialog, FileDialog};
 
 /// A private bus without service activation, so no real portal can start.
 struct Bus {
@@ -86,6 +89,27 @@ enum Seen {
     Close {
         path: String,
     },
+    OpenFile {
+        title: String,
+        token: String,
+    },
+}
+
+/// The string in a variant of an `a{sv}` option, by key.
+fn option(options: &[Value], key: &str) -> String {
+    options
+        .iter()
+        .find_map(|e| match e {
+            Value::Entry(k, v) if **k == Value::Str(key.into()) => match v.as_ref() {
+                Value::Variant(s) => match s.as_ref() {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// Owns `org.freedesktop.portal.Desktop` and answers like the real portal.
@@ -113,6 +137,42 @@ fn spy_portal(mut conn: Connection) -> mpsc::Receiver<Seen> {
                 continue;
             }
             let answer = match msg.member.as_deref() {
+                // the user picks a file, or cancels when the title says so
+                Some("OpenFile") => {
+                    let [Value::Str(_), Value::Str(title), Value::Array(_, options)] =
+                        &msg.body[..]
+                    else {
+                        panic!("OpenFile with body {:?}", msg.body);
+                    };
+                    let token = option(options, "handle_token");
+                    let sender = msg
+                        .sender
+                        .clone()
+                        .unwrap_or_default()
+                        .trim_start_matches(':')
+                        .replace('.', "_");
+                    let path = format!("/org/freedesktop/portal/desktop/request/{sender}/{token}");
+                    let _ = tx.send(Seen::OpenFile {
+                        title: title.clone(),
+                        token,
+                    });
+                    let reply = Message::reply_to(&msg, vec![Value::Path(path.clone())]);
+                    let (response, uris) = if title == "cancel" {
+                        (1, Vec::new())
+                    } else {
+                        (0, vec![Value::Str("file:///v/a%20b.mkv".into())])
+                    };
+                    let signal =
+                        Message::signal(&path, "org.freedesktop.portal.Request", "Response")
+                            .with_body(vec![
+                                Value::U32(response),
+                                Value::dict(&[("uris", Value::Array("s".into(), uris))]),
+                            ]);
+                    if conn.send(&reply).is_err() || conn.send(&signal).is_err() {
+                        break;
+                    }
+                    continue;
+                }
                 Some("Inhibit") => {
                     let [
                         Value::Str(window),
@@ -227,4 +287,28 @@ fn without_a_portal_the_inhibitor_keeps_working_once_one_appears() {
     inhibitor.set(false); // not inhibited: nothing to close
     inhibitor.set(true);
     assert!(matches!(next(&seen), Seen::Inhibit { .. }));
+}
+
+// T-LIB-001: the file dialog through the portal
+#[test]
+fn the_file_chooser_gives_the_chosen_file_or_nothing() {
+    let bus = Bus::start();
+    let seen = spy_portal(bus.connect());
+    let mut conn = bus.connect();
+    let dialog = |title: &str| FileDialog {
+        dialog: Dialog::Video,
+        title: title.into(),
+        filters: vec![("Video".into(), vec!["*.mkv"])],
+    };
+    let path = nikomiru_app::portal::choose(&mut conn, &dialog("Open a video")).unwrap();
+    assert_eq!(path, Some(PathBuf::from("/v/a b.mkv")));
+    let Seen::OpenFile { title, token } = next(&seen) else {
+        panic!()
+    };
+    assert_eq!(title, "Open a video");
+    assert!(token.starts_with("nikomiru"), "{token}");
+    // cancelled: nothing, and the connection still works
+    let path = nikomiru_app::portal::choose(&mut conn, &dialog("cancel")).unwrap();
+    assert_eq!(path, None);
+    assert!(matches!(next(&seen), Seen::OpenFile { .. }));
 }
