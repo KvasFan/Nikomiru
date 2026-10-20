@@ -86,7 +86,7 @@ impl Obscure {
         }
     }
 
-    /// Name for the QML layer.
+    /// Name for the test harness (`state.subtitles.obscure`).
     pub fn name(self) -> &'static str {
         match self {
             Obscure::None => "none",
@@ -110,6 +110,22 @@ pub fn obscured(mode: Obscure, playing: bool, popup_open: bool, hovered: bool) -
     } else {
         mode
     }
+}
+
+/// An active cue as the overlay draws it (SUB-009, SUB-010).
+#[derive(Debug, Clone)]
+pub struct Shown<'a> {
+    /// Index of the cue.
+    pub index: usize,
+    /// The cue.
+    pub cue: &'a Cue,
+    /// Its ASS style, only when ASS styles are respected.
+    pub style: Option<&'a AssStyle>,
+    /// Numpad anchor 1–9: `\an`, or the style's alignment when respected.
+    pub anchor: Option<u8>,
+    /// The bytes to highlight: the text the popup matched, or the clicked
+    /// grapheme while the lookup runs (POP-002).
+    pub highlight: Option<std::ops::Range<usize>>,
 }
 
 /// The subtitles of the current file.
@@ -225,20 +241,38 @@ impl Subtitles {
             .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 
-    /// What the overlay draws (SUB-009, SUB-010): every active cue in drawing
-    /// order, with its placement and its graphemes. `respect_ass` adds the ASS
-    /// style of the cue.
+    /// The active cues in drawing order (layer, then file order), with what
+    /// the overlay needs to draw them; none while turned off with V (SUB-014).
+    /// `respect_ass` adds the ASS style of each cue (SUB-010).
+    pub fn shown(&self, respect_ass: bool) -> impl Iterator<Item = Shown<'_>> + '_ {
+        let active: &[usize] = if self.disabled { &[] } else { &self.active };
+        active.iter().filter_map(move |&index| {
+            let cue = self.cue(index)?;
+            let style = respect_ass.then(|| self.style_of(cue)).flatten();
+            Some(Shown {
+                index,
+                cue,
+                style,
+                anchor: cue.markup.anchor.or(style.map(|s| s.alignment)),
+                highlight: self.highlight_range(index),
+            })
+        })
+    }
+
+    /// What the overlay draws (SUB-009, SUB-010), as JSON for the tests:
+    /// every active cue in drawing order, with its placement and its
+    /// graphemes. `respect_ass` adds the ASS style of the cue.
     pub fn overlay(&self, respect_ass: bool) -> Value {
-        if self.disabled {
-            return Value::Array(Vec::new());
-        }
         let cues: Vec<Value> = self
-            .active
-            .iter()
-            .filter_map(|&i| self.cue(i).map(|c| (i, c)))
-            .map(|(i, cue)| {
-                let style = respect_ass.then(|| self.style_of(cue)).flatten();
-                let anchor = cue.markup.anchor.or(style.map(|s| s.alignment));
+            .shown(respect_ass)
+            .map(|shown| {
+                let Shown {
+                    index: i,
+                    cue,
+                    style,
+                    anchor,
+                    highlight,
+                } = shown;
                 let mut lines: Vec<Vec<Value>> = vec![Vec::new()];
                 for g in cue.graphemes() {
                     if g.text == "\n" {
@@ -307,7 +341,7 @@ impl Subtitles {
                         "italic": s.italic,
                         "margin_v": s.margin_v,
                     })),
-                    "hl": self.highlight_range(i).map(|r| json!([r.start, r.end])),
+                    "hl": highlight.map(|r| json!([r.start, r.end])),
                     "lines": lines,
                 })
             })
