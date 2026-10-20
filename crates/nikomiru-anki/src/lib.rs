@@ -12,10 +12,14 @@
 
 pub mod base64;
 pub mod client;
+pub mod compose;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
+pub mod glossary;
+pub mod html;
 pub mod lapis;
+pub mod link;
 pub mod media;
 
 pub use client::{Client, DuplicateScope, NewModel, Note, NoteInfo};

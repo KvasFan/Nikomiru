@@ -108,6 +108,7 @@ error-anki-empty-note = Il primo campo della carta è vuoto.
 error-anki-commit-unknown = Anki non ha confermato { $action }: controlla in Anki se la carta è stata creata prima di riprovare.
 error-anki-lapis-missing = Anki non ha ancora il tipo di nota o il mazzo Lapis: controlla Anki e riprova.
 error-anki = AnkiConnect: { $reason }
+error-link-invalid = Questo non è un link di Nikomiru a una scena.
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } non si può usare ({ $reason }): potrebbero aprirsi più finestre di Nikomiru.

@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Anki cards are composed from the popup entry (ANK-020…ANK-027): the placeholders of Fushi and Yomitan, with every text escaped; the glossary in the shape the Lapis CSS styles (`data-sc-*` attributes, `gloss-sc-*` classes), reduced to the popup's allowlist, with the dictionary's CSS rewritten from the subset of DIC-035 and scoped, and its images sent with the card. The link back to the scene, `nikomiru://source`, is built and read strictly (ANK-050, ANK-051).
 - `S` saves the frame shown, without subtitles, as a PNG in `Pictures/Nikomiru` named after the file and the position, and says where (PLY-011). The player gets commands with a reply: they run in order with the others, and a worker waits for their result, never the UI thread.
 - Specification (`docs/SPECIFICATION.md`), roadmap (`docs/ROADMAP.md`) and test plan (`docs/TEST.md`) for the Rust rewrite of Fushi.
 - GPL-3.0-only license.

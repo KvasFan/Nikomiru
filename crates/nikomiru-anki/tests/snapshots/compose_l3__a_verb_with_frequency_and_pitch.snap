@@ -1,0 +1,15 @@
+---
+source: crates/nikomiru-anki/tests/compose_l3.rs
+expression: "shown(&fields(&d, \"食べました\"))"
+---
+expression: 食べる
+reading: たべる
+furigana-plain: 食[た]べる
+glossary: <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(v1, vt, Nikomiru mini-ja)</i> <span>to eat</span></li></ol></div>
+frequencies: <ul style="text-align: left;"><li>Nikomiru mini-freq: 120</li></ul>
+frequency-harmonic-rank: 120
+pitch-accent-positions: <ul><li><span style="display:inline;"><span>[</span><span>2</span><span>]</span></span></li></ul>
+pitch-accent-categories: kifuku
+phonetic-transcriptions: 
+tags: P
+single-glossary-Nikomiru mini-ja (Nikomiru mini-ja (renamed)): <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(v1, vt, Nikomiru mini-ja)</i> <span>to eat</span></li></ol></div>

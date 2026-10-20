@@ -1,0 +1,15 @@
+---
+source: crates/nikomiru-anki/tests/compose_l3.rs
+expression: "shown(&fields(&d, \"日本\"))"
+---
+expression: 日本
+reading: にほん
+furigana-plain: 日本[にほん]
+glossary: <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span>Japan</span></li></ol></div>
+frequencies: <ul style="text-align: left;"><li>Nikomiru mini-freq: 300</li></ul>
+frequency-harmonic-rank: 300
+pitch-accent-positions: <ul><li><span style="display:inline;"><span>[</span><span>2</span><span>]</span></span></li><li><span style="display:inline;"><span>[</span><span>ɲihoɴ</span><span>]</span></span></li></ul>
+pitch-accent-categories: nakadaka
+phonetic-transcriptions: <ul><li><span style="display:inline;"><span>[</span><span>ɲihoɴ</span><span>]</span></span></li></ul>
+tags: P
+single-glossary-Nikomiru mini-ja (Nikomiru mini-ja (renamed)): <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span>Japan</span></li></ol></div>

@@ -13,15 +13,21 @@ test-support = []
 
 [dependencies]
 nikomiru-core.workspace = true
+nikomiru-dict.workspace = true
+nikomiru-text.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 nikomiru-anki = { path = ".", features = ["test-support"] }
 insta.workspace = true
+proptest.workspace = true
+tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

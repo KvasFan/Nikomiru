@@ -108,6 +108,7 @@ error-anki-empty-note = The first field of the card is empty.
 error-anki-commit-unknown = Anki did not confirm { $action }: check in Anki whether the card was made before trying again.
 error-anki-lapis-missing = Anki still has no Lapis note type or deck: check Anki, then try again.
 error-anki = AnkiConnect: { $reason }
+error-link-invalid = This is not a Nikomiru link to a scene.
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.

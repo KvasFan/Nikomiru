@@ -2194,11 +2194,17 @@ dependencies = [
  "insta",
  "nikomiru-anki",
  "nikomiru-core",
+ "nikomiru-dict",
+ "nikomiru-text",
+ "proptest",
  "reqwest",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
+ "uuid",
+ "zip",
 ]
 
 [[package]]
