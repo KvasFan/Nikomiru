@@ -2007,6 +2007,8 @@ dependencies = [
  "tracing-subscriber",
  "wayland-backend",
  "wayland-client",
+ "wayland-protocols-plasma",
+ "wayland-protocols-wlr",
  "winit",
 ]
 

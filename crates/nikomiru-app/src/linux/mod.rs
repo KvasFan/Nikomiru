@@ -2,7 +2,10 @@
 
 //! What needs `unsafe` in the application for the system (ARC-011): the
 //! environment at startup, the numeric locale libmpv requires, the termination
-//! signals, and glibc's `iconv` for subtitle encodings (SUB-005).
+//! signals, glibc's `iconv` for subtitle encodings (SUB-005), and drag and drop
+//! on Wayland ([`dnd`]).
+
+pub mod dnd;
 
 use std::fs::File;
 use std::io::Read;

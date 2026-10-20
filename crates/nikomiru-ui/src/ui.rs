@@ -66,6 +66,9 @@ pub enum Inbound {
     },
     /// The file dialog could not be opened (no desktop portal).
     DialogFailed,
+    /// A file dropped on the window, where the app takes drops itself
+    /// (Wayland): handled as [`Ui::dropped`].
+    Dropped(PathBuf),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -85,6 +88,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Activate => "Activate",
             Inbound::Chosen { .. } => "Chosen",
             Inbound::DialogFailed => "DialogFailed",
+            Inbound::Dropped(_) => "Dropped",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -274,6 +278,10 @@ impl Ui {
             }
             Inbound::Activate => {
                 self.view.activate = true;
+                true
+            }
+            Inbound::Dropped(path) => {
+                self.dropped(&path);
                 true
             }
             Inbound::DialogFailed => {

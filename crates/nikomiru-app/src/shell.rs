@@ -7,6 +7,7 @@
 //! A frame: egui lays out the interface; mpv draws the video into the window's
 //! framebuffer; egui paints over it; the buffers swap; mpv is told of the swap.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -22,6 +23,7 @@ use winit::keyboard::ModifiersState;
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::WindowId;
 
+use crate::linux::dnd::Drops;
 use crate::window::GlWindow;
 
 /// What the other threads and the window system send to the event loop.
@@ -74,6 +76,8 @@ struct Open {
     renderer: Option<VideoRenderer>,
     egui: EguiGlow,
     ui: Ui,
+    /// Drops on Wayland; before `gl` (it uses the event loop's connection).
+    drops: Option<Drops>,
     gl: GlWindow,
 }
 
@@ -174,12 +178,23 @@ impl<'a> Shell<'a> {
         for message in self.pending.drain(..) {
             ui.handle(message);
         }
+        // winit takes no drops on Wayland: the data device is ours (LIB-001)
+        let waker = self.waker.clone();
+        let drops = Drops::new(
+            &gl.window,
+            Arc::new(move |files: Vec<PathBuf>| {
+                if let Some(first) = files.into_iter().next() {
+                    waker.wake(Inbound::Dropped(first));
+                }
+            }),
+        );
         gl.window.set_visible(true);
         gl.window.request_redraw();
         self.open = Some(Open {
             renderer,
             egui,
             ui,
+            drops,
             gl,
         });
         Ok(())
@@ -194,6 +209,7 @@ impl<'a> Shell<'a> {
             egui,
             ui,
             gl,
+            ..
         } = open;
         // the window's state for egui (fullscreen, focus, size): EguiGlow does not
         // fill it in itself
@@ -388,6 +404,9 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
         self.dropped = false;
         let now = Instant::now();
         if let Some(open) = &mut self.open {
+            if let Some(drops) = &mut open.drops {
+                drops.dispatch();
+            }
             if now >= self.next_tick {
                 if open.ui.tick() {
                     open.gl.window.request_redraw();
@@ -415,6 +434,7 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                 renderer,
                 mut egui,
                 ui,
+                drops,
                 gl,
             } = open;
             // SPECIFICATION §5.2.2 #7: mpv's render context first, with the GL
@@ -423,6 +443,7 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
             drop(renderer);
             egui.destroy();
             drop(ui);
+            drop(drops);
             drop(gl);
         }
         // a window that never opened: the services must be closed too (T-REL-001)

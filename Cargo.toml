@@ -52,6 +52,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # connection (nikomiru-app only). Both are already in the graph through winit.
 wayland-client = "0.31"
 wayland-backend = { version = "0.3", features = ["client_system"] }
+# The L6 drag source: a layer-shell surface and KWin's fake input (tests only)
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 
 # Logic
 tokio = "1.53"

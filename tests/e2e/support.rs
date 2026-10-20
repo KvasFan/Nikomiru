@@ -145,6 +145,11 @@ impl Desktop {
         }
     }
 
+    /// The compositor's socket, for the test's own Wayland clients.
+    pub fn wayland_socket(&self) -> PathBuf {
+        self.path("run").join(WAYLAND)
+    }
+
     fn path(&self, sub: &str) -> PathBuf {
         self.dir.path().join(sub)
     }
