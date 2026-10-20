@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod clip;
 pub mod extract;
 pub mod process;
 pub mod tools;
