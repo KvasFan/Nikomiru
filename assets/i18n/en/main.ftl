@@ -99,6 +99,7 @@ subtitle-encoding = Encoding
 encoding-auto = Automatic
 subtitle-list = Subtitle list
 subtitle-search = Search the subtitles
+subtitle-list-close = Close the subtitle list
 file-filter-subtitles = Subtitle files
 toast-sub-loaded = Subtitles: { $name }
 toast-sub-loaded-encoding = Subtitles: { $name } ({ $encoding })

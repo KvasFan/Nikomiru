@@ -363,19 +363,6 @@ impl Subtitles {
     pub fn play_res(&self) -> Option<(u32, u32)> {
         self.play_res
     }
-
-    /// Every cue for the list panel (SUB-015): start in milliseconds (with the
-    /// offset) and text.
-    pub fn list(&self) -> Value {
-        Value::Array(
-            self.timeline
-                .cues()
-                .iter()
-                .enumerate()
-                .map(|(i, c)| json!({ "i": i, "start": self.timeline.start_pos(i), "text": c.plain_text }))
-                .collect(),
-        )
-    }
 }
 
 /// `m:ss` or `h:mm:ss`.
@@ -467,7 +454,7 @@ mod tests {
         // leaving the cue drops the selection
         s.update(3500);
         assert_eq!(s.selection, None);
-        assert_eq!(s.list()[1]["start"], 2000);
+        assert_eq!(s.timeline().start_pos(1), 2000);
     }
 
     // T-SUB-010

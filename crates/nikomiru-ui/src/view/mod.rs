@@ -182,7 +182,7 @@ impl View {
         let bar_height = if controls { self.bar.height } else { 0.0 };
         overlay::show(&ctx, s, &mut self.overlay, bar_height, &mut out);
         if self.sub_list_open {
-            list::show(
+            self.sub_list_open = list::show(
                 &ctx,
                 s,
                 &mut self.list,

@@ -99,6 +99,7 @@ subtitle-encoding = Codifica
 encoding-auto = Automatica
 subtitle-list = Elenco dei sottotitoli
 subtitle-search = Cerca nei sottotitoli
+subtitle-list-close = Chiudi l'elenco dei sottotitoli
 file-filter-subtitles = File di sottotitoli
 toast-sub-loaded = Sottotitoli: { $name }
 toast-sub-loaded-encoding = Sottotitoli: { $name } ({ $encoding })
