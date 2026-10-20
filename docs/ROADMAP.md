@@ -101,9 +101,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- `nikomiru-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017), the Qt Quick video item (C++, [ADR 0003](adr/0003-qt-quick-ui.md)) and its cxx-qt bridge.
-- `nikomiru-app`: Qt application (`QGuiApplication`, QML engine) instead of the GTK compositor of ADR 0001, single instance via socket, opening from an argument or drag & drop.
-- `nikomiru-ui`: QML player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts.
+- `nikomiru-player`: `PlayerHandle`, `PlayerEvent`, mpv options (PLY-005/006), resume with `start` (PLY-007), reuse from one file to the next (PLY-009), parser for raw mpv options with the table of blocked options (PLY-017), the video's render context (first the Qt Quick video item of [ADR 0003](adr/0003-qt-quick-ui.md); with D-13 the libmpv render API driven from the egui frame, and a command thread).
+- `nikomiru-app`: the application window (Qt until D-13; now winit + glutin with EGL + egui_glow) instead of the GTK compositor of ADR 0001, single instance via socket, opening from an argument or drag & drop.
+- `nikomiru-ui`: player page with control bar (progress, time, volume, speed, audio tracks, fullscreen) and toasts (QML until D-13, now egui).
 - Minimal `config.toml`, with atomic writes.
 - `library.redb` with only the `videos` table.
 - cxx-qt enters the workspace: `deny.toml` turns `unused-license-exception` back to `warn`.
@@ -114,7 +114,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [x] GUI harness: opens a fixture, play/pause/seek from the keyboard, closes, reopens and resumes from the saved position (T-E2E-001).
 - [ ] T-PRV-001 under `strace` (not installed on the development machine yet).
 - [ ] Manual checklist TEST §9, "Player" section, completed on Wayland and X11.
-- [ ] T-PERF-03 on a real X11 session (Xorg), with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, [ADR 0003](adr/0003-qt-quick-ui.md)): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer decides between a documented tolerance on X11 and moving X11 support after 1.0.
+- [ ] T-PERF-03 on a real X11 session (Xorg), with EGL (glutin prefers EGL on X11, [ADR 0006](adr/0006-toolkit-comparison.md)): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer decides between a documented tolerance on X11 and moving X11 support after 1.0.
 
 ---
 
@@ -134,9 +134,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
   - encoding detection via iconv (FFI in `nikomiru-app::linux` or in a small dedicated `unsafe` module, ARC-011).
 - `nikomiru-media`: ffmpeg and ffprobe runner with timeout and cancellation (EXT-002/003); extraction of embedded tracks with a cache.
 - `nikomiru-ui`:
-  - grapheme overlay as QML items;
+  - grapheme overlay (QML items; with D-13 drawn by egui);
   - default style and "respect ASS";
-  - blur (with `MultiEffect`) and hide;
+  - blur and hide;
   - list panel with search;
   - prev/next/replay navigation;
   - Z/X and alignment to the playhead.
@@ -169,7 +169,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
    - LRU cache.
 4. `nikomiru-ui`:
    - dictionary management;
-   - popup (structured content rendered as QML items from an allowlist of tags, the style subset of DIC-035, images through the `image://nikomiru-dict` provider);
+   - popup (structured content turned into a view model from an allowlist of tags, the style subset of DIC-035, images from the dictionary's media; drawn with QML until D-13, now with egui);
    - nested popups;
    - pause/resume state machine (POP-001/004/005);
    - hover with Shift.
@@ -193,7 +193,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
 - [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
-- [ ] T-SEC-001 (dictionary content produces only allowlisted QML items) and T-SEC-002 (malicious ZIPs) green.
+- [ ] T-SEC-001 (dictionary content produces only allowlisted view-model nodes) and T-SEC-002 (malicious ZIPs) green.
 - [ ] UI on egui (D-13): the L6 suite green on the egui build; T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)); no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
@@ -295,7 +295,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Deliverables**
 
-- Packages: PKGBUILD (AUR) and Flatpak (manifest with libmpv and ffmpeg, KDE runtime with Qt 6), as decided in D-5 (runtime updated by D-10).
+- Packages: PKGBUILD (AUR) and Flatpak (manifest with libmpv and ffmpeg, freedesktop runtime), as decided in D-5 (runtime updated by D-10 and D-13).
 - User guide in `docs/guide/` (Italian and English): installation, first start, dictionary import, Anki setup with AnkiConnect (code 2055492159).
 - Security review (TEST §6.7) and accessibility review.
 - Optimization until all T-PERF pass on REF.
@@ -316,7 +316,7 @@ Every item requires a change to SPECIFICATION.md before work starts.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
-| Windows and macOS port (SPECIFICATION §5.2.4) | WebView2 / WKWebView; libmpv and ffmpeg must be distributed (LGPL/GPL, source code obligations) |
+| Windows and macOS port (SPECIFICATION §5.2.4) | glutin with WGL or CGL (OpenGL is deprecated on macOS); libmpv and ffmpeg must be distributed (LGPL/GPL, source code obligations) |
 | WebM video clips and animated covers (ANK-042) | libvpx (BSD) and SVT-AV1 (BSD) encoders **inside the system ffmpeg**: they are external processes, not crates |
 | Advanced ASS (SUB-019), screenshots with subtitles (PLY-015), thumbnails on the seek bar (PLY-014) | |
 | Automatic furigana on subtitles (LKP-051), highlighting of already mined words | Uses LKP-060 and `mined_cards` |

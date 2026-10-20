@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | v0.7 — decisions D-1…D-12 approved on 2026-10-19 and D-13 on 2026-10-20 (§10.1); D-13 replaces Qt 6 Quick with egui (the sections on the UI follow the port, ROADMAP M3 work track 5); D-11 renames the project to Nikomiru |
+| Status | v0.7 — decisions D-1…D-12 approved on 2026-10-19 and D-13 on 2026-10-20 (§10.1); D-13 replaces Qt 6 Quick with egui; D-11 renames the project to Nikomiru |
 | Date | 2026-10-20 |
 | Reference | Fushi, commit `ac8034e8bbc25e877e6d419334a38951bc477105` (2026-10-18), <https://github.com/hajisensai/Fushi> |
 | Related documents | [ROADMAP.md](ROADMAP.md) · [TEST.md](TEST.md) |
@@ -26,8 +26,8 @@ Nikomiru is a desktop video player for **learning languages by watching anime an
 
 Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/Dart app that covers EPUB reading, manga, audiobooks, video, visual novels and much more. Nikomiru starts from its "video + dictionary + Anki" core and reimplements it with:
 
-- **UI**: [Qt 6 Quick](https://doc.qt.io/qt-6/qtquick-index.html) (QML), driven from Rust through [cxx-qt](https://github.com/KDAB/cxx-qt);
-- **playback**: libmpv through [libmpv2](https://crates.io/crates/libmpv2) 6.0 (core, commands, events), plus a small C++ Qt Quick video item that renders with the libmpv render API on Qt Quick's render thread;
+- **UI**: [egui](https://github.com/emilk/egui) (immediate mode, all Rust) on winit and glutin (OpenGL through EGL), with accessibility through AccessKit;
+- **playback**: libmpv through [libmpv2](https://crates.io/crates/libmpv2) 6.0 (core, commands, events) and its OpenGL render API, which draws the video into the window under the interface;
 - **licenses**: only GNU (GPL/LGPL), Apache-2.0 and MIT, with the unavoidable exceptions documented in §3.
 
 **Direction (D-12).** Until 1.0 the focus is video with clickable subtitles: a click on a word, in the overlay or in the subtitle list, shows its dictionary explanation, and a second click makes the Anki card. After 1.0 Nikomiru will grow to books (EPUB), manga and online resources. That is why lookup, dictionaries and mining live in crates that know nothing about video (`nikomiru-text`, `nikomiru-dict`, `nikomiru-anki`, §5.1): a book or a manga page must be able to reuse them as they are.
@@ -53,12 +53,12 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 | Cloud sync, Interconnect, iroh P2P, headless server, CLI | post-1.0 (WebDAV backup/sync only) | Complexity; not needed for the MVP |
 | Built-in SRS (FSRS) | post-1.0 | `fsrs` is BSD-3-Clause: it would need an exception (§3) |
 | Leaderboard, in-app feedback, usage telemetry | excluded | Privacy; no service to run |
-| Android, iOS | excluded | Qt for mobile + libmpv are not a goal |
+| Android, iOS | excluded | Mobile builds with libmpv are not a goal |
 | Windows, macOS | post-1.0 | Linux first; the architecture must not rule them out (§5.2.4) |
 
 ### 1.4 Platforms
 
-- **Primary**: Linux x86_64, both **Wayland** and **X11**, with Qt ≥ 6.5 (Base, Declarative/Quick, Wayland platform plugin; fractional scaling on Wayland) and OpenGL drivers with EGL installed. On X11 Qt uses its xcb platform with EGL (`QT_XCB_GL_INTEGRATION=xcb_egl`, §5.2.2).
+- **Primary**: Linux x86_64, both **Wayland** and **X11**, with OpenGL drivers with EGL installed (Mesa or the proprietary NVIDIA driver), the Wayland and X11 client libraries and libxkbcommon, which winit loads at run time, and fontconfig. Fractional scaling on Wayland comes through winit. On X11 the OpenGL context is EGL too (§5.2.2).
 - **libmpv**: API ≥ 2.2 (mpv ≥ 0.37). Development reference: mpv 0.41 (API 2.5).
 - **FFmpeg**: ≥ 6.0 as a system executable (`ffmpeg`, `ffprobe`). Development reference: 9.0.
 - Secondary (post-1.0): Windows 10+, macOS 13+ on Apple Silicon.
@@ -94,10 +94,10 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 | Fushi area | Reference | Nikomiru crate | Milestone |
 |---|---|---|---|
 | Video player, mpv config | `fushi/lib/src/media/video/video_player_controller.dart`, `video_mpv_config.dart` | `nikomiru-player` | M1 |
-| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `nikomiru-subs`, `nikomiru-ui` (QML) | M2 |
+| Subtitles (parser, markup, overlay) | `packages/fushi_audio/lib/src/parsers/`, `fushi/lib/src/media/video/video_subtitle_overlay.dart` | `nikomiru-subs`, `nikomiru-ui` (egui) | M2 |
 | Dictionary engine | `native/fushidicts/fushidicts_src/` | `nikomiru-dict` | M3 |
 | Preprocessors and kana | `native/fushidicts/fushidicts_src/text_processor/` | `nikomiru-text` | M3 |
-| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `nikomiru-ui` (QML) | M3 |
+| Lookup popup | `fushi/assets/popup/popup.js`, `selection.js` | `nikomiru-ui` (egui) | M3 |
 | Anki / Lapis / composer | `packages/fushi_anki/lib/src/` | `nikomiru-anki` | M4 |
 | Video mining (ffmpeg) | `fushi/lib/src/mining/immersion_mining_engine.dart`, `packages/fushi_engine/lib/utils/misc/desktop_audio_clipper.dart` | `nikomiru-media` | M4 |
 | Library, file name parser | `packages/fushi_engine/lib/media/video/video_library_import.dart`, `video_filename_parser.dart` | `nikomiru-library` | M5 |
@@ -133,12 +133,12 @@ Expressions with `OR` (e.g. `MIT OR Apache-2.0`, `Unlicense OR MIT`, `MIT OR Zli
 
 **Class B — unavoidable exceptions, allowed only for the listed crates.**
 
-A real check with `cargo deny` on the whole §4 stack (D-10: `cxx-qt` 0.10, `libmpv2` 6.0.0, `reqwest` with native-tls) shows a few unavoidable crates outside class A: the Unicode-3.0 ICU family (`url` → `idna`, needed by reqwest, and the direct `icu_normalizer`), `unicode-ident` (every procedural macro) and `foldhash` (Zlib, required by `cxx`). All of them are permissive licenses compatible with GPL-3.0. The longer list forced by Dioxus desktop (D-1, D-7, D-8) is gone with D-10. egui (D-13) adds `libloading` (ISC): glutin and winit open the system's graphics and windowing libraries at run time ([ADR 0006](adr/0006-toolkit-comparison.md)).
+A real check with `cargo deny` on the whole §4 stack (D-13: egui 0.37 on winit and glutin, `libmpv2` 6.0.0, `reqwest` with native-tls) shows a few unavoidable crates outside class A: the Unicode-3.0 ICU family (`url` → `idna`, needed by reqwest, and the direct `icu_normalizer`), `unicode-ident` (every procedural macro), `foldhash` (Zlib, the default hasher of `hashbrown` in egui's text stack and in AccessKit) and `libloading` (ISC: glutin and winit open the system's graphics and windowing libraries at run time, [ADR 0006](adr/0006-toolkit-comparison.md)). All of them are permissive licenses compatible with GPL-3.0. The longer list forced by Dioxus desktop (D-1, D-7, D-8) went with D-10; cxx and cxx-qt went with D-13.
 
 | License | Crate (verified version) | Required by |
 |---|---|---|
-| `Unicode-3.0` | `icu_*` 2.3, `litemap`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`, `potential_utf`; `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`) | `url` → `idna` (reqwest); `icu_normalizer` (direct, §4); `proc-macro2` (every procedural macro: serde_derive, thiserror, cxx, cxx-qt) |
-| `Zlib` | `foldhash` | `cxx` (through cxx-qt) |
+| `Unicode-3.0` | `icu_*` 2.3, `litemap`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`, `potential_utf`; `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`) | `url` → `idna` (reqwest); `icu_normalizer` (direct, §4); `proc-macro2` (every procedural macro: serde_derive, thiserror, zbus through AccessKit) |
+| `Zlib` | `foldhash` | `hashbrown`'s default hasher (fontique, AccessKit, epaint's `vello_cpu`) and `glifo` (epaint) |
 | `ISC` | `libloading` | `glutin` and the libraries winit loads at run time (libEGL, libwayland, Xlib): egui's window and OpenGL context (D-13) |
 
 Rules for class B:
@@ -146,7 +146,7 @@ Rules for class B:
 1. The exceptions apply **only** to the listed crates, through `[[licenses.exceptions]]` in `deny.toml`. A new crate with one of these licenses makes CI fail.
 2. Every new exception requires: a justification ("what requires it and why it cannot be avoided"), a row in this table and explicit approval from the maintainer.
 3. No **direct** dependency of Nikomiru may be class B, except `icu_normalizer` (see §4): it is already in the graph through `idna`, so it adds no new license.
-4. On every update of cxx-qt, cxx or reqwest we MUST try to shrink class B.
+4. On every update of egui, winit, glutin or reqwest we MUST try to shrink class B.
 
 **Forbidden** (CI fails):
 
@@ -161,10 +161,11 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 |---|---|---|
 | libmpv (mpv) | GPL-2.0-or-later (or LGPL-2.1-or-later, depending on the build) | Playback |
 | FFmpeg / FFprobe (executables) | LGPL-2.1-or-later or GPL-2.0-or-later | Subtitle extraction, audio clips, images |
-| Qt 6 (Base, Declarative, Wayland) | LGPL-3.0-only (or GPL-2.0/GPL-3.0) | UI (Qt Quick, QML) |
+| libwayland-client, libxkbcommon, libX11 and its extensions (Xcursor, Xi, Xrandr) | MIT / X11 | Window and input (winit, glutin), loaded at run time |
+| fontconfig | MIT-style | Finding the system fonts (fontique) |
 | glibc (`iconv`) | LGPL-2.1-or-later | Subtitle encoding conversion (§6.4) |
 | OpenSSL 3 | Apache-2.0 | TLS through `native-tls` |
-| Mesa / libEGL / libGL | MIT | OpenGL context for the Qt Quick scene graph and mpv rendering |
+| Mesa / libEGL / libGL | MIT | OpenGL context for egui and for mpv's rendering |
 
 ### 3.4 Data and resources
 
@@ -207,9 +208,12 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 
 | Area | Crate | Version | License |
 |---|---|---|---|
-| Toolchain | Rust stable, edition 2024, pinned in `rust-toolchain.toml` | ≥ 1.89: let chains (1.88), `File::try_lock` (1.89) (development: 1.99) | — |
-| UI | Qt 6 Quick (system library, §3.3) through `cxx-qt`, `cxx-qt-lib` (features `qt_gui`, `qt_qml`), `cxx-qt-build`, `cxx` | 0.10 / 1.0 | MIT OR Apache-2.0 (Qt: LGPL-3.0, system) |
-| Video | `libmpv2` (feature `render`) for the core, plus the C++ video item (`QQuickFramebufferObject`, own code, §5.2) | 6.0.0 | LGPL-2.1 |
+| Toolchain | Rust stable, edition 2024, pinned in `rust-toolchain.toml` | ≥ 1.95: egui 0.37 (also let chains, `File::try_lock`) (development: 1.99) | — |
+| UI | `egui` (no default fonts), `egui-winit` (AccessKit, clipboard; no `links`), `egui_glow`, `winit` (no Adwaita decorations), `glutin` and `glutin-winit` (EGL first), `glow`, `raw-window-handle` | 0.37 / 0.30 / 0.32 / 0.5 / 0.17 / 0.6 | MIT OR Apache-2.0; class B: `libloading` (§3.2) |
+| Fonts | `fontique` (system fonts through fontconfig, §3.4), `egui_system_font_provider` | 0.11 / 0.37 | Apache-2.0 OR MIT |
+| Video | `libmpv2` (feature `render`) for the core, `libmpv2-sys` for the render context (§5.2) | 6.0.0 / 4.0.1 | LGPL-2.1 |
+| Dictionary images | `image` (png, jpeg, gif, webp, bmp), decoded on the lookup thread (POP-010) | 0.25 | MIT OR Apache-2.0 |
+| Wayland drag and drop | `wayland-client`, `wayland-backend` (already in the graph through winit): a data device on winit's connection, which has none | 0.31 / 0.3 | MIT |
 | Async | `tokio` | 1.x | MIT |
 | Storage | `redb` | 4.x | MIT OR Apache-2.0 |
 | Serialization | `serde`, `serde_json`, `toml`, `postcard` | 1.x | MIT OR Apache-2.0 |
@@ -220,13 +224,13 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
 | XDG paths | Own implementation in `nikomiru-core` (§3.6), no crate | — | — |
-| System calls | `libc`, only in `nikomiru-app::linux` (`setlocale` for libmpv, termination signals) | 0.2 | MIT OR Apache-2.0 |
+| System calls | `libc`, only in `nikomiru-app::linux` (`setlocale` for libmpv, termination signals, iconv) | 0.2 | MIT OR Apache-2.0 |
 | D-Bus (portals) | Own minimal client in `nikomiru-app::dbus` (PLY-013), no crate | — | — |
-| File dialogs | Qt Quick Dialogs `FileDialog` (XDG portal through Qt), no crate | — | (Qt: LGPL-3.0, system) |
+| File dialogs, external links | The XDG portal (`FileChooser`, `OpenURI`) through the own D-Bus client, no crate; `xdg-open` as the fallback for links | — | — |
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
-| Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to QML items | `ammonia` | 4.x | MIT OR Apache-2.0 |
-| Tests | `proptest`, `insta`, `criterion`, `wiremock`, `tempfile` | — | MIT/Apache |
+| Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to the popup's view model | `ammonia` | 4.x | MIT OR Apache-2.0 |
+| Tests | `proptest`, `insta`, `criterion`, `wiremock`, `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
 
 Every new crate requires, in the PR: the license (verified by `cargo deny`), a justification and an assessment of the "write the code ourselves" alternative.
 
@@ -249,12 +253,12 @@ nikomiru/
 │   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
 │   ├── nikomiru-player/     # libmpv core (libmpv2): init, properties, commands, events;
-│   │                       # Qt Quick video item (C++ in cpp/, renders on the scene-graph thread)
+│   │                       # the OpenGL render context of the video
 │   ├── nikomiru-anki/       # AnkiConnect client, note composer, Lapis, return link
 │   ├── nikomiru-library/    # library, file names, progress, statistics
 │   ├── nikomiru-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
-│   ├── nikomiru-ui/         # QML UI and Rust QObjects (cxx-qt): popup, subtitle overlay, controls, settings
-│   └── nikomiru-app/        # binary: QGuiApplication, QML engine, wiring, single instance
+│   ├── nikomiru-ui/         # egui interface: player page, subtitle overlay, popup, pages, controls
+│   └── nikomiru-app/        # binary: winit event loop, glutin (EGL) window, egui_glow, wiring, single instance
 ├── assets/                 # transforms/, anki/lapis/, i18n/*.ftl, icons
 ├── tests/fixtures/         # small committed files; media are generated with xtask
 └── docs/
@@ -263,75 +267,76 @@ nikomiru/
 **ARC-010 — Dependency rules** (verified by T-ARC-010 with `cargo metadata`):
 
 - `nikomiru-core` depends on no workspace crate.
-- `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on `cxx-qt`, `cxx` or `libmpv2`. They stay pure logic, testable without a display.
-- Only `nikomiru-player` depends on `libmpv2`. Only `nikomiru-ui`, `nikomiru-player` and `nikomiru-app` depend on `cxx-qt` / `cxx` (and on `cxx-qt-lib`, `cxx-qt-build`).
-- **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI, bridge to the video item), in `nikomiru-app::linux` (iconv, `setlocale`) and in the cxx-qt bridge modules (files `src/bridge.rs` or under `src/bridge/`, which contain generated FFI declarations). C++ is allowed only for the video item, in `nikomiru-player/cpp/`. Every `unsafe` block MUST have a `// SAFETY:` comment. Crates without bridges declare `#![forbid(unsafe_code)]`; crates with bridges declare `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on the modules listed above.
+- `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
+- Only `nikomiru-player` depends on `libmpv2` (and `libmpv2-sys`). Only `nikomiru-ui` and `nikomiru-app` depend on the UI toolkit. No crate depends on a retired toolkit (Dioxus, D-10; Qt through cxx-qt, D-13).
+- **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI and the render context), in `nikomiru-app::linux` (environment, `setlocale`, signals, iconv, the Wayland connection for drag and drop) and in `nikomiru-app::window` (the OpenGL context through glutin, the GL state around mpv's render). There is no C++. Every `unsafe` block MUST have a `// SAFETY:` comment on the line above it. `nikomiru-app` declares `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on those modules; every other crate except `nikomiru-player` declares `#![forbid(unsafe_code)]`.
 
-### 5.2 Video and UI in the same window (Qt Quick)
+### 5.2 Video and UI in the same window (egui)
 
-This was the **main technical risk** (R-1). The Dioxus design (a transparent WebKitGTK webview over a `GtkGLArea`) recomposed the whole window on the GTK main thread for every video frame and dropped frames at 4K under CPU load ([ADR 0001](adr/0001-video-composition.md)). With D-10 the UI is a Qt Quick scene graph, and mpv renders into one of its items ([ADR 0003](adr/0003-qt-quick-ui.md)).
+This was the **main technical risk** (R-1). The Dioxus design (a transparent WebKitGTK webview over a `GtkGLArea`) recomposed the whole window on the GTK main thread for every video frame and dropped frames at 4K under CPU load ([ADR 0001](adr/0001-video-composition.md)). D-10 moved to Qt Quick, which rendered mpv into a scene-graph item on its render thread ([ADR 0003](adr/0003-qt-quick-ui.md)). With D-13 the UI is egui: mpv draws each video frame into the window's framebuffer, and egui paints the interface over it in the same frame ([ADR 0006](adr/0006-toolkit-comparison.md)).
 
 #### 5.2.1 Composition
 
 ```
-QQuickWindow (OpenGL scene graph)
-└── player page (QML)
-    ├── video item           (C++, QQuickFramebufferObject: libmpv render API)
-    └── overlay items (QML)  (controls, subtitles, popups)
+winit window + glutin surface (OpenGL through EGL; GLX only as a fallback)
+└── each frame, on the UI thread
+    1. egui lays out the interface      (controls, subtitles, popups, pages)
+    2. mpv draws the video              (libmpv render API, framebuffer 0)
+    3. egui paints over it              (egui_glow, no clear)
+    4. buffer swap, then mpv's report_swap
 ```
 
-- The window uses the OpenGL scene graph: `QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)` MUST be called before the first window is created.
-- The video item fills the player page. The QML overlay items (controls, subtitles, popups) are above it.
-- Qt Quick composites everything on the GPU, on its render thread. The GUI thread does no per-frame video work: it only updates QML items when the UI state changes.
-- Mouse and keyboard input goes to the QML items; the video item accepts none.
-- Pages without video (library, settings) do not create the video item.
+- The OpenGL context MUST be created through EGL when it is available (glutin, on X11 too), before the first frame.
+- The video fills the window and the interface is painted over it. Pages without video (library, settings) do not call mpv's render.
+- Input goes to egui; a click no element takes goes to the player page (play/pause, or closing the popups; a double click toggles fullscreen). Keys go to the shortcuts first (KEY-002); egui gets them only when a text field has the keyboard (KEY-004).
+- The UI thread renders the video, so it MUST NOT wait for the mpv core (`<mpv/render.h>`): the player's commands are queued to a command thread (§5.3), and long work stays on worker threads, because on this thread it delays video frames.
 
-Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–2 dropped frames, on both Wayland and X11; on the developer's session (4K, 120 Hz, fractional scale 2.7) no frame was dropped.
+Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 renders per second and 0–2 dropped frames in 20 s, with about half of Qt Quick's process CPU. ADR 0003 keeps the Qt figures.
 
 #### 5.2.2 mpv rendering
 
-1. The mpv core is owned by `nikomiru-player` (Rust, `libmpv2`): options (PLY-005), properties, commands and events. Its handle is passed to the video item, which only renders.
-2. The render context is created on the render thread when the item's first FBO is created: `mpv_render_context_create` with the OpenGL API, `get_proc_address` taken from the current `QOpenGLContext`, and the native Wayland or X11 display, which mpv needs for zero-copy hwdec interop (VA-API on EGL).
-3. `loadfile` MUST wait until the render context exists: with `vo=libmpv`, a file loaded earlier has no video output and the item renders nothing. The item reports "renderer ready" with a queued signal.
-4. The mpv update callback (called from any thread) **MUST NOT** call mpv APIs. It only schedules a queued `update()` of the item.
-5. `render()` (render thread) calls `mpv_render_context_render` on the item's FBO, at its physical size.
-6. The item and its renderer share a mutex-protected link, which the item clears in its destructor: Qt destroys the renderer on the render thread after the item, and the update callback may still arrive.
-7. Shutdown, in this order: the render context is freed on the render thread, with the GL context current; then the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of the `mpv-events` thread; finally the core is destroyed. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001).
-8. `LC_NUMERIC` MUST be `"C"` before mpv is created: `QGuiApplication` sets the locale from the environment, and libmpv then refuses to start (`mpv_create` returns NULL). `nikomiru-app` calls `setlocale(LC_NUMERIC, "C")` right after creating `QGuiApplication`.
-9. On X11, `nikomiru-app` sets `QT_XCB_GL_INTEGRATION=xcb_egl` before creating `QGuiApplication`, so that the GL context is EGL and mpv gets zero-copy VA-API. If EGL is not available, the app falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
+1. The mpv core is owned by `nikomiru-player` (Rust, `libmpv2`): options (PLY-005), properties, commands and events. Its `render` module holds the render context; the app hands it only the GL context's `get_proc_address`, the framebuffer and the native display.
+2. The render context is created once, as soon as the window's GL context is current and before the first frame: `mpv_render_context_create` with the OpenGL API, `get_proc_address` from glutin's display, and the native Wayland or X11 display, which mpv needs for zero-copy hwdec interop (VA-API on EGL).
+3. `loadfile` MUST wait until the render context exists: with `vo=libmpv`, a file loaded earlier has no video output. A file opened earlier (command line, second launch) waits in the session until then.
+4. The mpv update callback (called from any thread) **MUST NOT** call mpv APIs. It only wakes the event loop for a redraw.
+5. Each frame resets the GL state mpv expects (no blending, scissor, program, vertex array or texture bound), calls `mpv_render_context_render` on framebuffer 0 at the window's physical size with `FLIP_Y`, lets egui paint without clearing, swaps the buffers and calls `mpv_render_context_report_swap`.
+6. Every `mpv_render_*` call runs on the UI thread, with the window's GL context current.
+7. Shutdown, in this order: the render context is freed with the GL context current; then egui's painter, the session (which saves the position, joins its workers and closes the library) and the window; then, once the command thread has run what it had queued, the `quit` command, which sends `MPV_EVENT_SHUTDOWN` to the event-thread client; then the join of the `mpv-events` thread; finally the core is destroyed. The lifetimes of `libmpv2::render::RenderContext<'a>` are not enough to guarantee this: `'a` is only a `PhantomData`, and the `Drop` of `Mpv` calls `mpv_destroy`, which does not stop the core while another client exists (ADR 0001). This is why the render context is driven through `libmpv2-sys`.
+8. `LC_NUMERIC` MUST be `"C"` before mpv is created, or libmpv refuses to start (`mpv_create` returns NULL); on X11 winit sets `LC_CTYPE` when its event loop starts. `nikomiru-app` calls `setlocale(LC_NUMERIC, "C")` right after creating the event loop, before the player.
+9. On X11 the GL context is EGL too (glutin prefers EGL), so mpv gets zero-copy VA-API. If EGL is not available, glutin falls back to GLX, where `hwdec=auto-safe` uses a copy mode (`vulkan-copy` or `vaapi-copy`).
 10. `gpu-hwdec-interop` is `vaapi` unless NVIDIA's proprietary driver is loaded (`/proc/driver/nvidia/version` exists), in which case mpv's automatic choice, CUDA included, is kept. It is set when the core is created, because the render context probes the interops as soon as it exists, before any file is loaded. On AMD and Intel the CUDA interop is useless, and probing it prints `Cannot load libcuda.so.1` on stderr (seen on the developer's session, 2026-10-19).
 11. libmpv's messages go to Nikomiru's log (`mpv_request_log_messages`, level `warn` by default, `v` with debug logging), never to stderr; PRV-002 applies to them as well.
 
 #### 5.2.3 Fallback
 
-- If the OpenGL scene graph is not available, the player falls back to **option D**: mpv in its own window, drawing on its own. It is accepted only as a temporary fallback, because it loses the clickable subtitles over the video.
+- Without OpenGL (neither EGL nor GLX) there is no window: the app reports the error and exits. Option D (mpv in its own window) is withdrawn: egui needs OpenGL too, so it would keep the video without the interface.
 - The GtkOverlay design of ADR 0001 and its fallbacks B (separate transparent window over a `wid` child window) and C (`dioxus-native`) are withdrawn (D-10).
 
 #### 5.2.4 Other platforms (post-1.0)
 
-- Windows: the same video item with the OpenGL scene graph.
-- macOS: Qt Quick uses Metal by default and OpenGL is deprecated; a Metal path (for example a `QQuickRhiItem`) may be needed, to be evaluated.
+- Windows: the same integration, with glutin on WGL.
+- macOS: OpenGL is deprecated (glutin still supports CGL); a Metal path may be needed, to be evaluated.
 
 ### 5.3 Threads and events
 
 ```
- ┌──────────────── GUI thread (main) ─────────────────┐        ┌──── mpv-events thread ────┐
- │ QGuiApplication event loop, QML engine             │        │ loop: mpv.wait_event(-1)  │
- │ Rust QObjects (cxx-qt): state and commands for QML │◄───────┤ PropertyChange / EndFile  │
- │ UI commands → PlayerHandle (mpsc)                  ├───────►│ → PlayerEvent (channel)   │
- └───────┬───────────────────────────┬─────────▲──────┘        └───────────────────────────┘
-         │ sync, update()            │ tasks   │ results
- ┌───────▼───────────────────┐ ┌─────▼─────────┴─────────────────────────────┐
- │ Qt Quick render thread    │ │ tokio runtime                               │
- │ scene graph → GPU         │ │ I/O, ffmpeg, HTTP, dictionary import        │
- │ video item → mpv render   │ └─────────────────────────────────────────────┘
- └───────────────────────────┘
+ ┌──────────── UI thread (main) ────────────┐   queued     ┌──── mpv-commands thread ────┐
+ │ winit event loop, egui, the session      ├─────────────►│ commands, in order          │
+ │ each frame: layout, mpv render, paint,   │              └─────────────────────────────┘
+ │ swap                                     │   messages   ┌──── mpv-events thread ──────┐
+ │                                          │◄─────────────┤ wait_event → PlayerEvent    │
+ └──────────────────────▲───────────────────┘   (proxy)    └─────────────────────────────┘
+                        │ messages (proxy)
+ ┌──────────────────────┴──────────────────────────────────────────────────────────────┐
+ │ workers: subtitles (ffmpeg), lookup, import, library writes, portal, single          │
+ │ instance, signals, test harness                                                       │
+ └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- The **GUI thread** runs the Qt event loop, the QML engine and the Rust `QObject`s that expose state to QML and receive the UI commands.
-- The **Qt Quick render thread** renders the scene graph; inside it, the video item calls the mpv render API (§5.2.2). The mpv update callback only schedules a queued `update()` of the item.
-- The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s for the GUI thread.
-- The **tokio runtime** runs I/O, ffmpeg, HTTP and dictionary import; results reach the GUI thread through queued calls.
+- The **UI thread** runs the winit event loop, egui and the session (the UI state), and renders the video in every frame (§5.2.2). It never waits for the mpv core.
+- The **`mpv-commands` thread** runs the player's commands in order with the synchronous libmpv API: `PlayerHandle` queues them and never waits for them. Their errors are logged; a refused `loadfile` becomes an `EndFile` error of its load.
+- The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s stamped with their load's token (ARC-002).
+- **Workers**, each on its own thread: subtitle loading and extraction, dictionary lookups and imports, library writes, the screensaver portal, the single-instance socket, the termination signals. Their results reach the UI thread as messages through the event loop's proxy, which also wakes it.
 
 - **ARC-001**: `nikomiru-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
 - **ARC-002**: every load has an increasing `LoadToken`. Events and asynchronous results with an old token are discarded. This is the equivalent of the Fushi bugs "re-check player and loadToken after every await".
@@ -419,7 +424,7 @@ Measured in ADR 0003: at 4K under heavy CPU load, 60 renders per second and 0–
 | ID | Requirement |
 |---|---|
 | KEY-001 | All actions can be remapped; the bindings are saved in `config.toml` (`[shortcuts]`). |
-| KEY-002 | Keys are recognized by their **physical key**, i.e. the scan code (`QKeyEvent::nativeScanCode`, mapped to the evdev code), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
+| KEY-002 | Keys are recognized by their **physical key**, i.e. the scan code (winit's physical key, as a Linux evdev code), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
 | KEY-003 | Two actions in the same context (`global`, `library`, `player`, `popup`) cannot have the same key: the editor reports the conflict and does not save. |
 | KEY-004 | While a text field is focused, single-key shortcuts are disabled. |
 
@@ -449,7 +454,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 
 ### 6.4 Subtitles (SUB)
 
-**Principle (from Fushi):** mpv does **not** draw text subtitles. Nikomiru parses them into cues and draws them in the QML overlay. This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
+**Principle (from Fushi):** mpv does **not** draw text subtitles. Nikomiru parses them into cues and draws them in its own overlay (egui). This is what makes clicking a single character, blur, styles and mining possible. Only graphic tracks (PGS, VobSub, DVB) are drawn by mpv (`sub-visibility=yes`), without lookup.
 
 | ID | Requirement | Fushi |
 |---|---|---|
@@ -461,12 +466,12 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`). They are loaded automatically according to the preferred language (default `ja`) | |
 | SUB-007 | Embedded text tracks: extracted with `ffmpeg -y -i file:<video> -map 0:<ff-index> -c:s <srt\|ass\|webvtt> <cache>`. Several tracks are extracted in a single pass; if the pass fails, it is retried track by track. The cache key is (path, size, mtime, ff-index) | `video_subtitle_source.dart` |
 | SUB-008 | Automatic subtitle selection: (1) the choice saved for the series; (2) an external file in the preferred language; (3) an embedded track in the preferred language (`lang` = ja/jpn, or a title that contains "Japanese" or "日本語"); (4) none | |
-| SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a QML `Text` item carrying its character offset in `plain_text` | `video_subtitle_overlay.dart` |
+| SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a hit target of the laid-out text carrying its byte offset in `plain_text` | `video_subtitle_overlay.dart` |
 | SUB-010 | Default style: white text, weight 400, soft shadow, no box, 36 px relative to a video height of 1080 (scales proportionally), 75 px from the bottom; it moves up when the control bar is visible. The style options (font, size, outline, shadow, box, position) can be changed. "Respect ASS styles" (default no) uses the ASS colors, font and position | `video_subtitle_style.dart` |
 | SUB-011 | Offset: positive `delay_ms` = the subtitle appears later. The compared cue time is `pos − delay_ms`; seek and mining apply the inverse. Z/X = ∓100 ms; the offset is shown in a toast | |
 | SUB-012 | Navigation: "previous/next" goes to `cue.start − 180 ms`, never before the start of the previous cue, taking `delay_ms` into account (BUG-259). The target is computed from the current position with a *floor* search, not from the cached index. Without subtitles it falls back to the ±N s seek. With the keyboard, if the previous cue is more than 10 s away, a time seek is done (BUG-3339) | `video_player_controller.dart` |
 | SUB-013 | "Replay cue" goes to the start of the current cue and, if triggered from the popup, pauses at the end of the cue | `replayCue` |
-| SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur is drawn with Qt Quick's `MultiEffect`, with sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235). **V** turns the subtitles off and on: nothing is drawn, not even on hover, and the chosen track stays for when they come back (maintainer request after the M2 checklist) | |
+| SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur is a soft blur of the text, with sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235). **V** turns the subtitles off and on: nothing is drawn, not even on hover, and the chosen track stays for when they come back (maintainer request after the M2 checklist) | |
 | SUB-015 | Subtitle list panel (`L`): list of all cues with time, text search (`Ctrl+F`), automatic scrolling that follows playback (in gaps between cues it stays on the previous cue), click on the time to jump, click on a word for lookup | `video_subtitle_jump_panel.dart` |
 | SUB-016 | Align the start of the previous or next cue to the current position (Ctrl+Shift+←/→), updating `delay_ms` | |
 | SUB-017 | **Secondary** subtitle (e.g. a translation): second layer with its own offset (default: follows the main one), its own blur mode and position. Milestone M7 | |
@@ -522,7 +527,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | DIC-032 | Every dictionary can be enabled or disabled. A disabled one is **not queried** (Fushi BUG-3454/2997: exclude it before truncation, not at render time). |
 | DIC-033 | Deletion with confirmation; renaming for display only (`display_name`). |
 | DIC-034 | Collapse/expand state of the dictionary in the popup: `expanded` / `collapsed` / `automatic` (only the first N are expanded). |
-| DIC-035 | Per-dictionary styling: a safe subset of CSS properties taken from the dictionary's `styles.css` and from the user's CSS (color, font size, weight and style, margins, padding, borders, background), applied only to that dictionary's QML items. The exact subset is fixed by spike S4 at the start of M3 ([ADR 0003](adr/0003-qt-quick-ui.md)). |
+| DIC-035 | Per-dictionary styling: a safe subset of CSS properties taken from the dictionary's `styles.css` and from the user's CSS (color, font size, weight and style, margins, padding, borders, background), applied only to that dictionary's popup content. The subset is the one of spike S4 ([ADR 0005](adr/0005-popup-qml.md)). |
 
 ### 6.6 Lookup (LKP)
 
@@ -607,9 +612,9 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size; resizable by dragging the border. | `dictionary_popup_layer.dart` |
 | POP-007 | Header of each entry: headword with furigana (LKP-050), ♪ audio button (AUD), create-card button (+ / ✓ / ✓↩, ANK-030), deinflection trace chips with a description on hover, frequency row, pitch accent row, term tag chips. | `popup.js` |
 | POP-008 | One collapsible block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
-| POP-009 | Yomitan **structured content**: converted into QML items from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
-| POP-010 | Dictionary images, read from the dictionary's `media` table and given to QML as `data:` URLs (image types only, at most 1 MiB each; [ADR 0005](adr/0005-popup-qml.md)): QML never receives an address from a dictionary. Respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`; a missing or too large image shows its alternative text. | |
-| POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links → system browser with `Qt.openUrlExternally` (`xdg-open`). | |
+| POP-009 | Yomitan **structured content**: converted into the popup's view model (typed blocks and runs, drawn by egui) from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
+| POP-010 | Dictionary images, read from the dictionary's `media` table and decoded on the lookup thread (image types only, at most 1 MiB each, with limits on dimensions and memory; [ADR 0005](adr/0005-popup-qml.md)): the UI never loads an address from a dictionary. Respects `width`, `height`, `sizeUnits`, `imageRendering`, `collapsed`; a missing or too large image shows its alternative text. | |
+| POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links (`http`/`https` only) → system browser through the OpenURI portal, or `xdg-open` with the URL as its only argument. | |
 | POP-012 | Nested popups: select text inside a glossary and a child popup opens. Esc or Back closes the last one; a click on the parent closes the children; a click outside closes everything. Maximum depth 8. | |
 | POP-013 | Kanji entries (LKP-037) shown with a dedicated card. | |
 | POP-014 | Keyboard navigation: Tab/Shift+Tab between entries, Enter = audio, Ctrl+Enter = create card, Esc = close. Alt+wheel = next or previous entry. | |
@@ -623,7 +628,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded. The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` or, unlike Fushi, direct audio (`Content-Type: audio/*`). | `word_audio_resolver.dart` |
 | AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (nhk16, forvo, jpod, …). The format is SQLite: it is read with `turso` (MIT), to be validated in spike S3 (D-2). | `local_audio_db.dart` |
 | AUD-004 | Resolution: for playback the first valid result in order is enough; the menu (right click on ♪) queries all sources in parallel and shows them all. Timeouts: 8 s for the connection, 10 s for the response. A 4xx response = "no audio"; a connection error pauses the host for 45 s. | |
-| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. Qt Multimedia is not used. Configurable volume. | |
+| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. Configurable volume. | |
 | AUD-006 | Option "play automatically when the popup opens", default yes: it does not overlap the dialogue because the lookup already pauses the video (POP-001). It can be disabled. | |
 | AUD-007 | There are no default JapanesePod101 or Forvo URLs (terms of service). The user adds their own templates. | |
 | AUD-008 | On-disk cache of downloaded audio (key = URL), limited to 500 MiB with an LRU policy. | |
@@ -706,9 +711,9 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 |---|---|
 | SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). |
 | SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file). |
-| SET-003 | Light / dark / system theme (the system theme follows the desktop through Qt's `styleHints().colorScheme`), with a configurable accent color. Design tokens in a single QML singleton (`Theme`). |
-| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`), which stays in Rust: QML gets the strings through a Rust object. No user-visible string literal in QML, and no visible string hard-coded elsewhere. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
-| SET-005 | UI scale 75–200% of the QML UI, independent of the subtitle size. |
+| SET-003 | Light / dark / system theme (the system theme follows the desktop's `color-scheme`, read from the XDG settings portal), with a configurable accent color. Design tokens in a single Rust `Theme`, applied to egui's visuals. |
+| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
+| SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
 | SET-007 | Configurable HTTP(S) proxy; used for all network requests except AnkiConnect on loopback. |
 
@@ -742,9 +747,9 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | NFR-PERF-09 | Idle RAM (RSS) with the library open ≤ 400 MB | T-PERF-09 |
 | NFR-REL-01 | No crash and no data loss if the app is closed during: import, config write, progress save, mining | T-REL-001, T-REL-002 |
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
-| NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: QML shows them only as plain text (`Text.PlainText`), as allowlisted items (POP-009) or as `Text.StyledText` that Nikomiru generates itself from escaped text with a fixed set of tags (`b`, `i`, `u`, `s`, `font` colour/size, `br`, links by index; never `img`), never as raw HTML or with scripts; QML never receives a remote URL from them (images only as `data:` URLs made from the dictionary, POP-010) | T-SEC-* |
+| NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: the interface lays them out as literal text from a typed view model (allowlisted blocks and runs, POP-009); no markup is ever parsed from them for display, never raw HTML or scripts; the interface never loads a URL from them (images are decoded from the dictionary's own media, POP-010; external links open only `http`/`https` in the browser, POP-011) | T-SEC-* |
 | NFR-SEC-02 | No file written outside Nikomiru's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
-| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; Qt `Accessible` properties (role, name) on the player controls | T-A11Y-* |
+| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; AccessKit roles and names on the controls (AT-SPI on Linux) | T-A11Y-* |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |
 | NFR-MAINT-01 | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; `///` documentation on every `pub` item of the library crates | T-MAINT-001 |
 | NFR-MAINT-02 | Line coverage ≥ 80% for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |
@@ -836,7 +841,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-2 | Reading the local audio DB (SQLite, public domain) | **Approved** option (a): `turso` (MIT, a Rust rewrite of SQLite), to be validated in spike S3. If S3 fails, the decision is reopened between (b) an exception for the system SQLite library and (c) dropping AUD-003 |
 | D-3 | GPL-3.0-only or GPL-3.0-or-later | **Approved**: GPL-3.0-only (§3.1) |
 | D-4 | Default audio format for cards | **Approved**: AAC in M4A, compatible with Anki desktop, AnkiDroid and AnkiMobile |
-| D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**KDE runtime**, Qt 6, with libmpv and ffmpeg included in the manifest; runtime updated by D-10) |
+| D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**freedesktop runtime**, with libmpv and ffmpeg included in the manifest; runtime updated by D-10, then by D-13: the KDE runtime and Qt are no longer needed) |
 | D-6 | Name of the app, the folder and the repository | **Approved**, then superseded by D-11: the app was called **Anikoto**, a name that turned out to be taken |
 | D-7 | The `cargo deny` check on the real graph (M0, 2026-10-19) finds 5 class B crates missing from the §3.2 table: `yoke-derive`, `zerofrom-derive`, `zerovec-derive` (Unicode-3.0) and `const_format_proc_macros`, `konst_macro_rules` (Zlib). They are procedural macros of the already approved families (`yoke`, `zerofrom`, `zerovec`, `const_format`, `konst`), with the same license and the same requester. `foldhash` and `zlib-rs`, on the other hand, do not appear in the Linux graph | **Approved**: the 5 crates are in the §3.2 table and in `deny.toml`; `foldhash` and `zlib-rs` stay, since they may reappear with other versions or platforms. Superseded by D-10: only the Unicode-3.0 macro crates remain |
 | D-8 | The `router` feature of `dioxus` (§4) brings in `base16` 0.2.1, which is **CC0-1.0** (forbidden, §3.2), through `dioxus-router-macro` | **Obsolete (D-10)**: no Dioxus, no `base16`. CC0-1.0 is forbidden with no exception (§3.2) |
@@ -850,14 +855,15 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 
 | ID | Risk | Prob. | Impact | Mitigation |
 |---|---|---|---|---|
-| R-1 | Video and UI composition in the same window (§5.2) does not render smoothly | Low (D-10) | High | Qt Quick composition measured in [ADR 0003](adr/0003-qt-quick-ui.md): at 4K under load 60 renders/s and 0–2 dropped frames, none on the developer's 4K/120 Hz session (the Dioxus design of [ADR 0001](adr/0001-video-composition.md) dropped frames at 4K). Residual: the OpenGL scene graph is required; without it, fallback D (§5.2.3) |
-| R-2 | cxx-qt is still 0.x: API changes between versions | Medium | Medium | Pinned versions; bridges isolated in `nikomiru-ui`/`nikomiru-player`; upgrades only through a dedicated PR |
-| R-3 | A new version of cxx-qt, cxx or reqwest adds dependencies with new licenses | Medium | Medium | `cargo deny` in CI; updates only through a dedicated PR |
+| R-1 | Video and UI composition in the same window (§5.2) does not render smoothly | Low (D-13) | High | egui composition measured in [ADR 0006](adr/0006-toolkit-comparison.md): at 4K HEVC 10-bit under load 60 renders/s and 0–2 dropped frames, like Qt Quick in [ADR 0003](adr/0003-qt-quick-ui.md) (the Dioxus design of [ADR 0001](adr/0001-video-composition.md) dropped frames at 4K). Residual: video and interface share the UI thread, so long work on it delays frames (§5.2.1); OpenGL is required (§5.2.3); the egui build still has to be measured on the developer's session and on REF |
+| R-2 | egui and winit are still 0.x: API changes between versions | Medium | Medium | Pinned versions; the toolkit only in `nikomiru-ui`/`nikomiru-app` (ARC-010); upgrades only through a dedicated PR |
+| R-3 | A new version of egui, winit, glutin or reqwest adds dependencies with new licenses | Medium | Medium | `cargo deny` in CI; updates only through a dedicated PR |
 | R-4 | System ffmpeg without encoders (e.g. `aac` missing in reduced builds) | Low | Medium | EXT-001: check at startup, fallback to Opus/MP3, clear message |
 | R-5 | redb performance not sufficient for lookup | Low | Medium | Spike S2; `DictStore` trait and a custom format as plan B |
 | R-6 | AnkiConnect changes or removes `canAddNotesWithErrorDetail` | Low | Low | Fallback to `findNotes` (ANK-030) |
 | R-7 | The size of Fushi pushes toward widening the scope | High | High | §1.3 is binding; every new feature goes through a change to this document |
-| R-8 | Distributions ship Qt older than 6.5 | Medium | Medium | Flatpak with the KDE runtime (D-5); the AUR package depends on the distribution's Qt 6 |
+| R-8 | ~~Distributions ship Qt older than 6.5~~ | — | — | Obsolete (D-13): no Qt |
+| R-9 | winit's gaps on Linux: no Wayland drag and drop, no window activation on Wayland, the desktop's colour scheme not reported; no client-side decorations without a further class B exception (GNOME shows no title bar) | Medium | Medium | Own Wayland data device (§4); XDG portals through the own D-Bus client; revisit with each winit release |
 
 ---
 
