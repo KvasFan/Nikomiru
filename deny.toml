@@ -1,10 +1,11 @@
 # Nikomiru license policy: SPECIFICATION §3.2 and §3.5.
 #
 # - [licenses].allow      = class A, always allowed.
-# - [licenses].exceptions = class B, unavoidable exceptions (ICU family, foldhash), ONLY
-#   for the listed crates. The list must match the table of SPECIFICATION §3.2:
-#   `cargo xtask ci` checks it (T-LIC-001). Every addition requires an updated
-#   table and the explicit approval of the maintainer (decisions D-1, D-10).
+# - [licenses].exceptions = class B, unavoidable exceptions (ICU family, foldhash,
+#   libloading), ONLY for the listed crates. The list must match the table of
+#   SPECIFICATION §3.2: `cargo xtask ci` checks it (T-LIC-001). Every addition requires
+#   an updated table and the explicit approval of the maintainer (decisions D-1, D-10,
+#   D-13).
 
 [graph]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -60,6 +61,8 @@ exceptions = [
     { crate = "unicode-ident", allow = ["Unicode-3.0"] },
     # Zlib — cxx (through cxx-qt)
     { crate = "foldhash", allow = ["Zlib"] },
+    # ISC — glutin and the libraries winit loads at run time (D-13)
+    { crate = "libloading", allow = ["ISC"] },
 ]
 
 # `libmpv2` and `libmpv2-sys` declare "LGPL-2.1", a deprecated SPDX identifier

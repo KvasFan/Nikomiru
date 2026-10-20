@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | v0.6 — decisions D-1…D-11 approved on 2026-10-19 (§10.1); D-10 replaces Dioxus with Qt 6 Quick; D-11 renames the project to Nikomiru |
-| Date | 2026-10-19 |
+| Status | v0.7 — decisions D-1…D-12 approved on 2026-10-19 and D-13 on 2026-10-20 (§10.1); D-13 replaces Qt 6 Quick with egui (the sections on the UI follow the port, ROADMAP M3 work track 5); D-11 renames the project to Nikomiru |
+| Date | 2026-10-20 |
 | Reference | Fushi, commit `ac8034e8bbc25e877e6d419334a38951bc477105` (2026-10-18), <https://github.com/hajisensai/Fushi> |
 | Related documents | [ROADMAP.md](ROADMAP.md) · [TEST.md](TEST.md) |
 
@@ -133,12 +133,13 @@ Expressions with `OR` (e.g. `MIT OR Apache-2.0`, `Unlicense OR MIT`, `MIT OR Zli
 
 **Class B — unavoidable exceptions, allowed only for the listed crates.**
 
-A real check with `cargo deny` on the whole §4 stack (D-10: `cxx-qt` 0.10, `libmpv2` 6.0.0, `reqwest` with native-tls) shows a few unavoidable crates outside class A: the Unicode-3.0 ICU family (`url` → `idna`, needed by reqwest, and the direct `icu_normalizer`), `unicode-ident` (every procedural macro) and `foldhash` (Zlib, required by `cxx`). All of them are permissive licenses compatible with GPL-3.0. The longer list forced by Dioxus desktop (D-1, D-7, D-8) is gone with D-10.
+A real check with `cargo deny` on the whole §4 stack (D-10: `cxx-qt` 0.10, `libmpv2` 6.0.0, `reqwest` with native-tls) shows a few unavoidable crates outside class A: the Unicode-3.0 ICU family (`url` → `idna`, needed by reqwest, and the direct `icu_normalizer`), `unicode-ident` (every procedural macro) and `foldhash` (Zlib, required by `cxx`). All of them are permissive licenses compatible with GPL-3.0. The longer list forced by Dioxus desktop (D-1, D-7, D-8) is gone with D-10. egui (D-13) adds `libloading` (ISC): glutin and winit open the system's graphics and windowing libraries at run time ([ADR 0006](adr/0006-toolkit-comparison.md)).
 
 | License | Crate (verified version) | Required by |
 |---|---|---|
 | `Unicode-3.0` | `icu_*` 2.3, `litemap`, `tinystr`, `writeable`, `yoke`, `yoke-derive`, `zerofrom`, `zerofrom-derive`, `zerotrie`, `zerovec`, `zerovec-derive`, `potential_utf`; `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`) | `url` → `idna` (reqwest); `icu_normalizer` (direct, §4); `proc-macro2` (every procedural macro: serde_derive, thiserror, cxx, cxx-qt) |
 | `Zlib` | `foldhash` | `cxx` (through cxx-qt) |
+| `ISC` | `libloading` | `glutin` and the libraries winit loads at run time (libEGL, libwayland, Xlib): egui's window and OpenGL context (D-13) |
 
 Rules for class B:
 
@@ -827,7 +828,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 ### 10.1 Maintainer decisions
 
-Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q). A decision is reopened only through an explicit change to this table.
+Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q), D-13 on 2026-10-20 after spike S5. A decision is reopened only through an explicit change to this table.
 
 | ID | Decision | Outcome |
 |---|---|---|
@@ -840,9 +841,10 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-7 | The `cargo deny` check on the real graph (M0, 2026-10-19) finds 5 class B crates missing from the §3.2 table: `yoke-derive`, `zerofrom-derive`, `zerovec-derive` (Unicode-3.0) and `const_format_proc_macros`, `konst_macro_rules` (Zlib). They are procedural macros of the already approved families (`yoke`, `zerofrom`, `zerovec`, `const_format`, `konst`), with the same license and the same requester. `foldhash` and `zlib-rs`, on the other hand, do not appear in the Linux graph | **Approved**: the 5 crates are in the §3.2 table and in `deny.toml`; `foldhash` and `zlib-rs` stay, since they may reappear with other versions or platforms. Superseded by D-10: only the Unicode-3.0 macro crates remain |
 | D-8 | The `router` feature of `dioxus` (§4) brings in `base16` 0.2.1, which is **CC0-1.0** (forbidden, §3.2), through `dioxus-router-macro` | **Obsolete (D-10)**: no Dioxus, no `base16`. CC0-1.0 is forbidden with no exception (§3.2) |
 | D-9 | Language of documents and code comments | **Approved**: documents and code comments are in English (§0). For consistency, commit messages and developer-tool messages (`cargo xtask`) are in English too. The UI stays localized (SET-004) |
-| D-10 | UI toolkit | **Approved**: Qt 6 Quick (QML) through cxx-qt instead of Dioxus ([ADR 0003](adr/0003-qt-quick-ui.md)). On the developer's 4K, 120 Hz, fractional-scale session no frame was dropped, where the Dioxus design dropped 2456 in 60 s; the class B table shrinks to the ICU/Unicode family and `foldhash` |
+| D-10 | UI toolkit | **Approved**: Qt 6 Quick (QML) through cxx-qt instead of Dioxus ([ADR 0003](adr/0003-qt-quick-ui.md)). On the developer's 4K, 120 Hz, fractional-scale session no frame was dropped, where the Dioxus design dropped 2456 in 60 s; the class B table shrinks to the ICU/Unicode family and `foldhash`. Superseded by D-13: the UI is egui; ADR 0003's findings on mpv (render context before loading, native display, shutdown order) still apply |
 | D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
+| D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
 
 ### 10.2 Risks
 

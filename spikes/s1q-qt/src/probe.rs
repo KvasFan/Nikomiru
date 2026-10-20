@@ -104,22 +104,28 @@ fn stat_fields(pid: &str) -> Option<(u32, u64)> {
     ))
 }
 
+/// The descendants of `root`, from each thread's list of children: reading
+/// every process in /proc takes milliseconds (more under load) on the GUI
+/// thread, enough to drop frames at the start of the window.
 fn descendants(root: u32) -> Vec<u32> {
-    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
-    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
-        let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
-            continue;
-        };
-        if let Some((ppid, _)) = stat_fields(&pid.to_string()) {
-            children.entry(ppid).or_default().push(pid);
-        }
-    }
     let mut out = Vec::new();
     let mut stack = vec![root];
     while let Some(p) = stack.pop() {
-        for c in children.get(&p).into_iter().flatten() {
-            out.push(*c);
-            stack.push(*c);
+        for task in std::fs::read_dir(format!("/proc/{p}/task"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let Ok(list) = std::fs::read_to_string(task.path().join("children")) else {
+                continue;
+            };
+            for c in list
+                .split_whitespace()
+                .filter_map(|c| c.parse::<u32>().ok())
+            {
+                out.push(c);
+                stack.push(c);
+            }
         }
     }
     out

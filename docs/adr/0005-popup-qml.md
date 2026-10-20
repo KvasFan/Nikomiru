@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Accepted |
+| Status | Accepted; the QML part is **superseded** by [ADR 0006](0006-toolkit-comparison.md) (decision D-13, egui): the view model of `nikomiru_dict::structured` stays, the popup is drawn with egui |
 | Date | 2026-10-19 |
 | Requirements | POP-001…POP-013, DIC-034, DIC-035, NFR-SEC-01, NFR-PERF-06 |
 | Spike | S4 — done directly in `nikomiru-dict` (`structured`, `css`, `style`) and `nikomiru-ui` (`popup`, `popup_view`, the popup QML files) |

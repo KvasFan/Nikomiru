@@ -173,6 +173,12 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
    - nested popups;
    - pause/resume state machine (POP-001/004/005);
    - hover with Shift.
+5. **UI on egui** (D-13, [ADR 0006](adr/0006-toolkit-comparison.md)). Qt 6 Quick, QML, cxx-qt and the C++ video item give way to egui 0.37 on winit + glutin (EGL first) + egui-winit + egui_glow. mpv draws the video with the libmpv OpenGL render API into the window's framebuffer, under the interface, on the UI thread; the player's commands move to a command thread so that this thread never waits for the core. The Rust logic (session, subtitles, popup state, dictionaries page, shortcuts, i18n) and the harness protocol (TEST §2.1) stay, and with them the L6 tests; the requirements are those of M1–M3. In order:
+   - the window, the video and the control bar (the behaviour of M1);
+   - the subtitle overlay and the subtitle list (M2);
+   - the popup, with a typed view model and images decoded on the lookup thread, and the dictionaries page (M3);
+   - the harness, drag and drop on Wayland, file dialogs through the XDG portal;
+   - removal of Qt, cxx-qt and the C++ code; specification, test plan and packages updated (the Flatpak runtime becomes the freedesktop one).
 
 **Status as of 2026-10-20**
 
@@ -181,12 +187,14 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - Measured: T-PERF-04 p95 1.7 ms / p99 2.2 ms, T-PERF-05 ≤ 4.4 s and 261 MiB per 300k-entry dictionary, T-PERF-06 p95 21 ms; with Jitendex and JMdict, click → popup 20–64 ms in a release build (ADR 0005).
 - Also done: the dictionaries page (import with progress and cancel, update offer, order, enable, rename, popup block state, delete), hover with Shift (POP-003), Tab/Shift+Tab/Alt+wheel between entries (POP-014; Enter and Ctrl+Enter wait for audio in M5 and cards in M4), replay and go to sentence (POP-015), `[lookup]` settings, library writes off the UI thread.
 - Open: selection inside glossaries for nested popups (POP-012; links already open them), the user's CSS per dictionary (DIC-035), the manual test with real dictionaries.
+- UI on egui (D-13, 2026-10-20): decided after spike S5, which measured iced and egui against Qt Quick ([ADR 0006](adr/0006-toolkit-comparison.md)); the port is work track 5.
 
 **Exit criteria**
 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
 - [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
 - [ ] T-SEC-001 (dictionary content produces only allowlisted QML items) and T-SEC-002 (malicious ZIPs) green.
+- [ ] UI on egui (D-13): the L6 suite green on the egui build; T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)); no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
 ---

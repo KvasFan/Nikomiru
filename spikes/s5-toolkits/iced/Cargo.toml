@@ -1,0 +1,16 @@
+[package]
+name = "spike-s5-iced"
+description = "Spike S5: the video overlay and the dictionary popup with iced"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+s5-common.workspace = true
+serde_json.workspace = true
+# the default features minus the software renderer, the thread pool (tokio
+# runs the subscriptions) and the colour helpers
+iced = { version = "0.14", default-features = false, features = ["wgpu", "advanced", "tokio", "wayland", "x11", "crisp"] }
+# wgpu's OpenGL backend: mpv renders into a GL texture that wgpu samples
+glow = "0.16"

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Accepted** (decision D-10, 2026-10-19): proposed by the maintainer and confirmed on the developer's real session |
+| Status | **Superseded** by [ADR 0006](0006-toolkit-comparison.md) (decision D-13, egui, 2026-10-20). Accepted with D-10 on 2026-10-19; its findings on mpv (render context before loading, native display for zero-copy decoding, shutdown order, `LC_NUMERIC`) still apply |
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §1.1, §1.2 (objective 1: "the quality of mpv"), §4, §5 |
 | Supersedes | The UI part of SPECIFICATION §1.1/§4/§5 and the composition of [ADR 0001](0001-video-composition.md) |

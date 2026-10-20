@@ -17,9 +17,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `cargo xtask` with the commands `ci [--full]`, `fixtures [--large] [--perf]`, `check-headers`, `check-licenses [--canary]`, `trace` and `about`.
 - Spikes S1 (video composition) and S2 (dictionary storage) in `spikes/`, with the measurements and the decisions in `docs/adr/`.
 - Spike S1q (Qt 6 Quick + cxx-qt + mpv render on the scene graph thread) and ADR 0003: Qt Quick as the UI toolkit instead of Dioxus.
+- Spike S5 (the video overlay and the dictionary popup with iced and with egui, measured against S1q's Qt Quick) and ADR 0006.
 
 ### Changed
 
+- **D-13: the UI toolkit is egui instead of Qt 6 Quick** (ADR 0006, accepted after spike S5): under heavy load at 4K HEVC 10-bit egui keeps the video like Qt (0–2 dropped frames in 20 s) with about half of its CPU, draws a whole popup entry in one frame, and is all Rust; iced was rejected (no zero-copy video, dropped frames under load, a CC0 crate, no accessibility). Class B exception `libloading` (ISC) in SPECIFICATION §3.2, `deny.toml` and `about.toml`. The port is ROADMAP M3 work track 5; ADR 0003 and the QML part of ADR 0005 are superseded.
 - Decisions D-1…D-6 approved and recorded in `docs/SPECIFICATION.md` §10.1.
 - SPECIFICATION §5.1: ARC-010 and ARC-011 written as definitions, so that `cargo xtask trace` reads them.
 - TEST: test marker rule (§8), L7 test names (`l7_…`), off-screen compositor for L6 (headless Weston or virtual KWin).

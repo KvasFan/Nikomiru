@@ -28,6 +28,9 @@ Window {
     property var snapA: null
     property var timeline: []
     property int lastDrops: 0
+    // subtitle changes, for the measured rate
+    property int subtitleUpdates: 0
+    property int subtitleUpdatesA: 0
     readonly property var mpv: videoLoader.item
 
     Loader {
@@ -45,6 +48,7 @@ Window {
                 return;
             const t = win.mpv.timePos.toFixed(2).padStart(7, " ");
             win.graphemes = JSON.parse(probe.graphemes("字幕のテストです・" + t + "秒・クリックしてね"));
+            win.subtitleUpdates++;
         }
     }
 
@@ -173,8 +177,9 @@ Window {
         id: warmup
         interval: 3000
         onTriggered: {
-            win.snapA = win.snap();
             probe.cpu_snapshot();
+            win.snapA = win.snap();
+            win.subtitleUpdatesA = win.subtitleUpdates;
             win.mpv.resetRenderTimes();
             win.lastDrops = win.snapA.drops;
             dropTimer.start();
@@ -210,6 +215,7 @@ Window {
                 vo_delayed_frame_count: b.delayed - a.delayed,
                 renders_per_second: (b.renders - a.renders) / secs,
                 new_frames_per_second: (b.newFrames - a.newFrames) / secs,
+                subtitle_updates_per_second: (win.subtitleUpdates - win.subtitleUpdatesA) / secs,
                 render_us: { p50: s.render_us_p50, p95: s.render_us_p95, max: s.render_us_max },
                 render_size: [s.fbo_width, s.fbo_height],
                 device_pixel_ratio: s.device_pixel_ratio,
