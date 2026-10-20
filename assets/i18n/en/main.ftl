@@ -134,6 +134,8 @@ popup-no-results = No dictionary has this word. Import dictionaries from the men
 popup-pitch-accent = pitch accent
 popup-replay = Replay
 popup-goto = Go to the sentence
+# The name of the popup's border for screen readers: dragging it resizes the popup.
+popup-resize = Resize the popup
 kanji-strokes = strokes: { $count }
 kanji-radical = radical: { $radical }
 

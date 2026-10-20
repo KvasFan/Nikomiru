@@ -22,6 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Conformance with every fushidicts test (TEST §5.3): `tests/conformance/import.json` and its runner (45 import cases: wrapper folders, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, media, styles, damaged dictionary files), 14 more lookup cases (kanji stats, glossary round trip, pitch patterns, score and frequency order, non-ASCII titles, malformed kanji rows) and an import that reaches a file size limit halfway. Five import cases are known failures of the importer, listed in TEST §5.3.
 - The dictionaries page lists the dictionaries by type (terms, kanji, frequencies, pitch accent) with their language (DIC-030): a dictionary with several types has its row under the first and a reference under the others, where it ranks too; ▲/▼ move it within its type, and so does dragging it by its handle onto the drop marker (DIC-031). A term dictionary has an editor for the user's CSS (DIC-035), applied after its `styles.css` through the same safe subset, which says what the subset keeps: the rules applied, the properties left out, the rules ignored.
 - `[popup]` in `config.toml` (POP-006): the largest dictionary popup, 560 × 500 points by default; it was 560 points wide and up to 70% of the window high.
+- A dictionary popup is resized by dragging its border (POP-006): the edge away from the word, the side edges and the corners between them. The popup keeps its side of the word, and the next popups take the new size until the app closes.
 
 ### Changed
 

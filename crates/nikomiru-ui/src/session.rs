@@ -1245,6 +1245,13 @@ impl Session {
         self.run_popup_commands(commands);
     }
 
+    /// A popup's border was dragged to `width` × `height` (POP-006): the next
+    /// popups take that size until the app closes. `config.toml` keeps the
+    /// configured one: the app does not write it yet.
+    pub fn popup_resized(&mut self, width: f64, height: f64) {
+        self.popups.set_size((width, height));
+    }
+
     /// A click inside popup `level`: the popups above it close.
     pub fn popup_focus(&mut self, level: usize) {
         if self.popups.stack().len() > level + 1 {

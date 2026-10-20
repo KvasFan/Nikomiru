@@ -134,6 +134,8 @@ popup-no-results = Nessun dizionario contiene questa parola. Importa i dizionari
 popup-pitch-accent = accento tonale
 popup-replay = Riascolta
 popup-goto = Vai alla frase
+# The name of the popup's border for screen readers: dragging it resizes the popup.
+popup-resize = Ridimensiona il popup
 kanji-strokes = tratti: { $count }
 kanji-radical = radicale: { $radical }
 

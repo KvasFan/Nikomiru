@@ -10,7 +10,8 @@
 //! are pixels decoded on the lookup thread (NFR-SEC-01). A panel's height is
 //! known only once its content is laid out: a pass that measures a height
 //! other than the one the panel was placed with is discarded and run again,
-//! so a popup never shows in the wrong place (POP-006).
+//! so a popup never shows in the wrong place (POP-006). Dragging its border
+//! resizes it, and the size goes to the session for the next popups.
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -19,15 +20,16 @@ use std::sync::Arc;
 use egui::text::{LayoutJob, TextFormat};
 use egui::{
     Align, Area, Color32, ColorImage, CursorIcon, FontFamily, FontId, Frame, Galley, Id, Label,
-    LayerId, Layout, Margin, Order, Pos2, Rect, Response, RichText, Role, ScrollArea, Sense, Shape,
-    Stroke, StrokeKind, TextWrapMode, TextureHandle, TextureOptions, Ui, UiBuilder, Vec2,
-    WidgetInfo, pos2, vec2,
+    LayerId, Layout, Margin, Order, Pos2, Rangef, Rect, Response, RichText, Role, ScrollArea,
+    Sense, Shape, Stroke, StrokeKind, TextWrapMode, TextureHandle, TextureOptions, Ui, UiBuilder,
+    Vec2, WidgetInfo, pos2, vec2,
 };
+use nikomiru_core::PopupConfig;
 use nikomiru_dict::structured::{self, Block, Cell, Image, Pixels, Run, Target, Units};
 use nikomiru_dict::style::{Length, ListMarker, Rgba, Style, VerticalAlign};
 
 use super::theme;
-use crate::popup::{self, Origin, Popup};
+use crate::popup::{self, Origin, Popup, Side};
 use crate::popup_view::{Accent, EntryView, KanjiView, PitchRow, Section};
 use crate::session::Session;
 use crate::ui::Command;
@@ -38,6 +40,10 @@ const BASE: f32 = 15.0;
 const PAD: f32 = 10.0;
 /// From the window's edges (POP-006).
 const EDGE: f64 = 8.0;
+/// The grips of the border, inside its padding: bands along the edges and
+/// squares at the corners (POP-006).
+const BAND: f32 = 6.0;
+const CORNER: f32 = PAD;
 
 const PANEL: Color32 = Color32::from_rgba_unmultiplied_const(0x1b, 0x1d, 0x22, 0xf2);
 const PANEL_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
@@ -58,6 +64,7 @@ const CHIP: Color32 = Color32::from_rgb(0x3a, 0x3d, 0x44);
 const CELL_BORDER: Color32 = Color32::from_rgb(0x55, 0x5b, 0x66);
 const HEADER_CELL: Color32 = Color32::from_rgb(0x2c, 0x30, 0x38);
 const BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0x90, 0x9a, 0xa8, 0x80);
+const GRIP: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x55);
 
 /// What a popup keeps between frames, by its generation: what the reader
 /// changed in it and what its drawing needs.
@@ -75,6 +82,91 @@ struct Panel {
     textures: HashMap<(usize, bool), TextureHandle>,
     /// The keyboard entry the panel last scrolled to (POP-014).
     entry: Option<usize>,
+    /// The border being dragged (POP-006).
+    drag: Option<Drag>,
+    /// The side of its word the panel keeps once resized: a new size must
+    /// not throw it across the word.
+    side: Option<Side>,
+}
+
+/// A grip of a panel's border (POP-006): the edge away from the word, the
+/// side edges and the corners between them. The edge next to the word has
+/// none: moving it would cover the word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Grip {
+    Far,
+    Left,
+    Right,
+    FarLeft,
+    FarRight,
+}
+
+impl Grip {
+    const ALL: [Grip; 5] = [
+        Grip::Far,
+        Grip::Left,
+        Grip::Right,
+        Grip::FarLeft,
+        Grip::FarRight,
+    ];
+
+    /// The side edge it moves: the right one or the left one.
+    fn side_edge(self) -> Option<bool> {
+        match self {
+            Grip::Left | Grip::FarLeft => Some(false),
+            Grip::Right | Grip::FarRight => Some(true),
+            Grip::Far => None,
+        }
+    }
+
+    /// Whether it moves the edge away from the word.
+    fn far(self) -> bool {
+        matches!(self, Grip::Far | Grip::FarLeft | Grip::FarRight)
+    }
+
+    /// Where it is on a panel at `r`, on `side` of its word.
+    fn rect(self, r: Rect, side: Side) -> Rect {
+        let far = |depth: f32| match side {
+            Side::Above => Rangef::new(r.top(), r.top() + depth),
+            Side::Below => Rangef::new(r.bottom() - depth, r.bottom()),
+        };
+        let along = match side {
+            Side::Above => Rangef::new(r.top() + CORNER, r.bottom()),
+            Side::Below => Rangef::new(r.top(), r.bottom() - CORNER),
+        };
+        let x = Rangef::new;
+        match self {
+            Grip::Far => Rect::from_x_y_ranges(x(r.left() + CORNER, r.right() - CORNER), far(BAND)),
+            Grip::Left => Rect::from_x_y_ranges(x(r.left(), r.left() + BAND), along),
+            Grip::Right => Rect::from_x_y_ranges(x(r.right() - BAND, r.right()), along),
+            Grip::FarLeft => Rect::from_x_y_ranges(x(r.left(), r.left() + CORNER), far(CORNER)),
+            Grip::FarRight => Rect::from_x_y_ranges(x(r.right() - CORNER, r.right()), far(CORNER)),
+        }
+    }
+
+    fn cursor(self, side: Side) -> CursorIcon {
+        match (self, side) {
+            (Grip::Far, _) => CursorIcon::ResizeVertical,
+            (Grip::Left | Grip::Right, _) => CursorIcon::ResizeHorizontal,
+            (Grip::FarLeft, Side::Above) | (Grip::FarRight, Side::Below) => CursorIcon::ResizeNwSe,
+            (Grip::FarLeft, Side::Below) | (Grip::FarRight, Side::Above) => CursorIcon::ResizeNeSw,
+        }
+    }
+}
+
+/// A drag of a panel's border: the grip, where the panel and the pointer
+/// were when it started, and the size it gives the panel now.
+#[derive(Debug, Clone, Copy)]
+struct Drag {
+    grip: Grip,
+    side: Side,
+    start: Rect,
+    origin: Pos2,
+    size: (f64, f64),
+}
+
+fn grip_id(layer: Id, grip: Grip) -> Id {
+    layer.with(("grip", grip))
 }
 
 /// What the popups keep between frames.
@@ -135,14 +227,10 @@ pub(crate) fn show(
     draw(ctx, &scene, state, out)
 }
 
-/// The rectangle of a popup: as wide as `size` and as tall as its content up
-/// to that height, placed next to its word.
-fn place(p: &Popup, content: Option<f32>, size: (f64, f64), screen: Rect) -> Rect {
-    let (width, height) = (f64::from(screen.width()), f64::from(screen.height()));
-    let content_height = content.map_or(height, |c| f64::from(c + 2.0 * PAD + 2.0));
-    let size = (size.0, content_height.min(size.1));
-    // the harness clicks with no rectangle: the bottom middle of the window
-    let anchor = if p.anchor.w > 0.0 || p.anchor.h > 0.0 {
+/// The rectangle of a popup's word, in the window; the harness clicks with
+/// none: then the bottom middle of the window.
+fn word(p: &Popup, (width, height): (f64, f64)) -> popup::Rect {
+    if p.anchor.w > 0.0 || p.anchor.h > 0.0 {
         p.anchor
     } else {
         popup::Rect {
@@ -151,12 +239,128 @@ fn place(p: &Popup, content: Option<f32>, size: (f64, f64), screen: Rect) -> Rec
             w: 0.5 * width,
             h: 0.12 * height,
         }
-    };
-    let r = popup::place(anchor, size, (width, height), EDGE);
-    Rect::from_min_size(
+    }
+}
+
+/// The rectangle of a popup and the side of its word it is on: as wide as
+/// `size` and as tall as its content up to that height, or the size its
+/// border is dragged to (`dragged`), next to its word (POP-006).
+fn place(
+    word: popup::Rect,
+    panel: &Panel,
+    size: (f64, f64),
+    dragged: Option<(f64, f64)>,
+    screen: Rect,
+) -> (Rect, Side) {
+    let window = (f64::from(screen.width()), f64::from(screen.height()));
+    let size = dragged.unwrap_or_else(|| {
+        let content = panel
+            .content_height
+            .map_or(window.1, |c| f64::from(c + 2.0 * PAD + 2.0));
+        (size.0, content.min(size.1))
+    });
+    let side = panel
+        .side
+        .unwrap_or_else(|| popup::side(word, size.1, window, EDGE));
+    let r = popup::place_on(word, size, window, EDGE, side);
+    let rect = Rect::from_min_size(
         screen.min + vec2(r.x as f32, r.y as f32),
         vec2(r.w as f32, r.h as f32),
-    )
+    );
+    (rect, side)
+}
+
+/// Follows a drag of a panel's border: the size the pointer gives the panel
+/// now, on its side of the word and inside the window. When the button is
+/// let go, that size (in what the drag changed) is the size of the next
+/// popups, and the panel shows it once more while the session takes it
+/// (POP-006).
+fn resize(
+    ctx: &egui::Context,
+    panel: &mut Panel,
+    word: popup::Rect,
+    size: (f64, f64),
+    screen: Rect,
+    layer: Id,
+    out: &mut Vec<Command>,
+) -> Option<(f64, f64)> {
+    let drag = panel.drag.as_mut()?;
+    let window = (f64::from(screen.width()), f64::from(screen.height()));
+    if let Some(pointer) = ctx.input(|i| i.pointer.interact_pos()) {
+        let moved = pointer - drag.origin;
+        let start = drag.start.translate(-screen.min.to_vec2());
+        let width = match drag.grip.side_edge() {
+            Some(right) => {
+                let edge = if right { start.right() } else { start.left() };
+                let widths = (*PopupConfig::WIDTHS.start(), *PopupConfig::WIDTHS.end());
+                popup::width_for_edge(word, window, EDGE, right, f64::from(edge + moved.x), widths)
+            }
+            None => f64::from(start.width()),
+        };
+        let height = if drag.grip.far() {
+            let grown = match drag.side {
+                Side::Above => -moved.y,
+                Side::Below => moved.y,
+            };
+            let heights = &PopupConfig::HEIGHTS;
+            f64::from(start.height() + grown).clamp(*heights.start(), *heights.end())
+        } else {
+            f64::from(start.height())
+        };
+        let r = popup::place_on(word, (width, height), window, EDGE, drag.side);
+        drag.size = (r.w, r.h);
+    }
+    let shown = drag.size;
+    if !ctx.is_being_dragged(grip_id(layer, drag.grip)) {
+        out.push(Command::PopupResized {
+            width: if drag.grip.side_edge().is_some() {
+                shown.0
+            } else {
+                size.0
+            },
+            height: if drag.grip.far() { shown.1 } else { size.1 },
+        });
+        panel.drag = None;
+    }
+    Some(shown)
+}
+
+/// The grips of a panel's border, over the padding around its content; a
+/// press on one starts a drag that [`resize`] follows (POP-006).
+fn grips(ui: &Ui, panel: &mut Panel, rect: Rect, side: Side, layer: Id, name: &str) {
+    for grip in Grip::ALL {
+        let response = ui
+            .interact(grip.rect(rect, side), grip_id(layer, grip), Sense::DRAG)
+            .on_hover_cursor(grip.cursor(side));
+        response.widget_info(|| WidgetInfo::labeled(Role::Splitter, true, name));
+        if response.drag_started()
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+        {
+            panel.side = Some(side);
+            panel.drag = Some(Drag {
+                grip,
+                side,
+                start: rect,
+                origin,
+                size: (f64::from(rect.width()), f64::from(rect.height())),
+            });
+        }
+    }
+    // two strokes in the far corner on the right, as resizable things have
+    let corner = match side {
+        Side::Above => rect.right_top(),
+        Side::Below => rect.right_bottom(),
+    };
+    let toward = match side {
+        Side::Above => vec2(-1.0, 1.0),
+        Side::Below => vec2(-1.0, -1.0),
+    };
+    let stroke = Stroke::new(1.0, GRIP);
+    for (from, to) in [(3.0, 9.0), (3.0, 6.0)] {
+        let start = corner + toward * vec2(from, to);
+        let end = corner + toward * vec2(to, from);
+        ui.painter().line_segment([start, end], stroke);
+    }
 }
 
 pub(crate) fn draw(
@@ -173,15 +377,19 @@ pub(crate) fn draw(
     #[cfg(test)]
     state.drawn.clear();
     let screen = ctx.content_rect();
+    let window = (f64::from(screen.width()), f64::from(screen.height()));
     let (pointer, pressed) = ctx.input(|i| (i.pointer.hover_pos(), i.pointer.any_pressed()));
+    let resize_name = (scene.tr)("popup-resize", &[]);
     let mut drawn = Vec::new();
     let mut over = false;
     // egui brings an area up when it appears: a nested popup comes over its
     // parent, a panel already shown keeps its place
     for (level, p) in stack.iter().enumerate() {
-        let panel = state.panels.entry(p.generation).or_default();
-        let rect = place(p, panel.content_height, scene.size, screen);
         let layer = LayerId::new(Order::Foreground, Id::unique(("popup", p.generation)));
+        let panel = state.panels.entry(p.generation).or_default();
+        let word = word(p, window);
+        let dragged = resize(ctx, panel, word, scene.size, screen, layer.id, out);
+        let (rect, side) = place(word, panel, scene.size, dragged, screen);
         let mut measured = None;
         Area::new(layer.id)
             .order(Order::Foreground)
@@ -205,8 +413,8 @@ pub(crate) fn draw(
                             .show(ui, |ui| {
                                 let mut d = Draw {
                                     level,
-                                    panel,
-                                    out,
+                                    panel: &mut *panel,
+                                    out: &mut *out,
                                     tr: scene.tr,
                                     #[cfg(test)]
                                     drawn: &mut state.drawn,
@@ -215,15 +423,18 @@ pub(crate) fn draw(
                             });
                         measured = Some(scroll.content_size.y);
                     });
+                grips(ui, panel, rect, side, layer.id, &resize_name);
             });
-        let panel = state.panels.entry(p.generation).or_default();
         if let Some(height) = measured
             && panel
                 .content_height
                 .is_none_or(|old| (old - height).abs() > 0.5)
         {
             panel.content_height = Some(height);
-            ctx.request_discard("popup size");
+            // a dragged panel has its size from the pointer: nothing to redo
+            if dragged.is_none() {
+                ctx.request_discard("popup size");
+            }
         }
         state.rects.push(rect);
         #[cfg(test)]
@@ -1366,6 +1577,14 @@ mod tests {
                         tr: &tr,
                     };
                     t.drawn = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
+                    // the session's part: the next popups take a dragged size
+                    if let Some(&Command::PopupResized { width, height }) = t
+                        .out
+                        .iter()
+                        .rfind(|c| matches!(c, Command::PopupResized { .. }))
+                    {
+                        t.size = (width, height);
+                    }
                 },
                 Test {
                     stack,
@@ -1387,6 +1606,32 @@ mod tests {
         let mut out = std::mem::take(&mut h.state_mut().out);
         out.retain(|c| !matches!(c, Command::PopupHover(_)));
         out
+    }
+
+    /// A press at `from`, a move to `to` by way of the middle, the release.
+    fn drag(h: &mut Harness<'_, Test>, from: Pos2, to: Pos2) -> Vec<Command> {
+        h.hover_at(from);
+        h.drag_at(from);
+        h.hover_at(from.lerp(to, 0.5));
+        h.hover_at(to);
+        h.drop_at(to);
+        h.run();
+        let mut out = std::mem::take(&mut h.state_mut().out);
+        out.retain(|c| !matches!(c, Command::PopupHover(_)));
+        out
+    }
+
+    fn resized(out: &[Command]) -> Option<(f64, f64)> {
+        match out {
+            [Command::PopupResized { width, height }] => Some((*width, *height)),
+            _ => None,
+        }
+    }
+
+    /// An entry longer than any popup.
+    fn long(expression: &str) -> EntryView {
+        let senses: Vec<String> = (1..=60).map(|i| format!("sense {i}")).collect();
+        entry(expression, json!(senses))
     }
 
     fn panel(h: &Harness<'_, Test>, level: usize) -> Rect {
@@ -1470,6 +1715,118 @@ mod tests {
         assert!(
             (narrow.width() - 304.0).abs() < 0.5 && narrow.min.x >= 8.0 - 0.5,
             "{narrow:?}"
+        );
+    }
+
+    // T-POP-006
+    #[test]
+    fn dragging_the_edge_away_from_the_word_resizes_the_popup_and_the_next_ones() {
+        let mut h = harness(vec![popup(1, Some(vec![long("行く")]))]);
+        h.run();
+        let before = panel(&h, 0);
+        assert!((before.height() - 500.0).abs() < 0.5, "{before:?}");
+        // above the word: its top edge, 80 points up
+        let grip = pos2(before.center().x, before.top() + 2.0);
+        let out = drag(&mut h, grip, grip - vec2(0.0, 80.0));
+        assert_eq!(resized(&out), Some((560.0, 580.0)), "{out:?}");
+        let after = panel(&h, 0);
+        assert!((after.height() - 580.0).abs() < 0.5, "{after:?}");
+        assert!(
+            (after.bottom() - before.bottom()).abs() < 0.5,
+            "still right above the word: {after:?}"
+        );
+        h.state_mut().stack = vec![popup(2, Some(vec![long("来る")]))];
+        h.run();
+        assert!((panel(&h, 0).height() - 580.0).abs() < 0.5, "the next one");
+    }
+
+    // T-POP-006
+    #[test]
+    fn a_dragged_side_edge_follows_the_pointer_and_the_popup_stays_on_its_word() {
+        let mut h = harness(vec![popup(1, Some(vec![entry("行く", json!(["to go"]))]))]);
+        h.run();
+        let before = panel(&h, 0);
+        assert!((before.center().x - 640.0).abs() < 0.5, "{before:?}");
+        let grip = pos2(before.right() - 2.0, before.center().y);
+        let out = drag(&mut h, grip, grip + vec2(60.0, 0.0));
+        // centred on its word, the popup grows on both sides; the height
+        // that was not dragged stays the configured one
+        assert_eq!(resized(&out), Some((680.0, 500.0)), "{out:?}");
+        let after = panel(&h, 0);
+        assert!(
+            (after.right() - (before.right() + 60.0)).abs() < 0.5
+                && (after.center().x - 640.0).abs() < 0.5
+                && (after.height() - before.height()).abs() < 0.5,
+            "{after:?}"
+        );
+        let grip = pos2(after.left() + 2.0, after.center().y);
+        let out = drag(&mut h, grip, grip - vec2(40.0, 0.0));
+        assert_eq!(resized(&out), Some((760.0, 500.0)), "{out:?}");
+        // the corner away from the word: both sizes; taller than its
+        // content, the popup goes back to it once let go
+        let wide = panel(&h, 0);
+        let grip = pos2(wide.right() - 3.0, wide.top() + 3.0);
+        let out = drag(&mut h, grip, grip + vec2(20.0, -30.0));
+        let (width, height) = resized(&out).unwrap_or_default();
+        assert!(
+            (width - 800.0).abs() < 0.5 && (height - f64::from(wide.height() + 30.0)).abs() < 0.5,
+            "{out:?}"
+        );
+        assert!((panel(&h, 0).height() - wide.height()).abs() < 0.5);
+    }
+
+    // T-POP-006: at any size the popup stays off its word and in the window
+    #[test]
+    fn a_border_dragged_past_the_window_stops_at_its_edges() {
+        let mut h = harness(vec![popup(1, Some(vec![long("行く")]))]);
+        h.run();
+        let inside = |r: Rect| {
+            r.left() >= 8.0 - 0.5
+                && r.top() >= 8.0 - 0.5
+                && r.right() <= 1272.0 + 0.5
+                && r.bottom() <= 596.0 + 0.5
+        };
+        let before = panel(&h, 0);
+        let grip = pos2(before.center().x, before.top() + 2.0);
+        drag(&mut h, grip, pos2(grip.x, -1000.0));
+        let tall = panel(&h, 0);
+        assert!(inside(tall) && (tall.top() - 8.0).abs() < 0.5, "{tall:?}");
+        let grip = pos2(tall.right() - 2.0, tall.center().y);
+        let out = drag(&mut h, grip, pos2(5000.0, grip.y));
+        assert_eq!(resized(&out).map(|s| s.0), Some(1264.0), "{out:?}");
+        let wide = panel(&h, 0);
+        assert!(
+            inside(wide) && (wide.width() - 1264.0).abs() < 0.5,
+            "{wide:?}"
+        );
+        // and no narrower than the configuration allows
+        let grip = pos2(wide.left() + 2.0, wide.center().y);
+        let out = drag(&mut h, grip, pos2(5000.0, grip.y));
+        assert_eq!(resized(&out).map(|s| s.0), Some(240.0), "{out:?}");
+        assert!(inside(panel(&h, 0)), "{:?}", panel(&h, 0));
+    }
+
+    // T-POP-006
+    #[test]
+    fn a_popup_below_its_word_stays_below_when_resized() {
+        let mut p = popup(1, Some(vec![long("行く")]));
+        // more room below than above, and not enough for the whole popup
+        p.anchor.y = 300.0;
+        let mut h = harness(vec![p]);
+        h.run();
+        let before = panel(&h, 0);
+        assert!(
+            (before.top() - 344.0).abs() < 0.5 && (before.height() - 368.0).abs() < 0.5,
+            "{before:?}"
+        );
+        // its bottom edge up: small enough now to fit above, it stays below
+        let grip = pos2(before.center().x, before.bottom() - 2.0);
+        let out = drag(&mut h, grip, grip - vec2(0.0, 200.0));
+        assert_eq!(resized(&out), Some((560.0, 168.0)), "{out:?}");
+        let after = panel(&h, 0);
+        assert!(
+            (after.top() - 344.0).abs() < 0.5 && (after.height() - 168.0).abs() < 0.5,
+            "{after:?}"
         );
     }
 

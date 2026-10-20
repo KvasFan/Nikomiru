@@ -157,6 +157,11 @@ pub(crate) enum Command {
     },
     PopupFocus(usize),
     PopupHover(bool),
+    /// A popup's border was dragged to this size (POP-006).
+    PopupResized {
+        width: f64,
+        height: f64,
+    },
     PopupReplay,
     PopupGoto,
     /// A web link in a popup (POP-011): opened by the system, never by egui.
@@ -505,6 +510,7 @@ impl Ui {
             } => s.popup_lookup(level, &text, anchor),
             Command::PopupFocus(level) => s.popup_focus(level),
             Command::PopupHover(inside) => s.popup_hover(inside),
+            Command::PopupResized { width, height } => s.popup_resized(width, height),
             Command::PopupReplay => s.popup_replay(),
             Command::PopupGoto => s.popup_goto(),
             Command::OpenExternal(url) => {
