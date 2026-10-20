@@ -12,7 +12,11 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use nikomiru_core::{Cancel, ManualClock};
 use nikomiru_dict::lookup::Options;
-use nikomiru_library::{Check, Collapse, DictionaryError, DictionaryManager, Library};
+use nikomiru_dict::store::Counts;
+use nikomiru_dict::yomitan::Kinds;
+use nikomiru_library::{
+    Check, Collapse, DictionaryError, DictionaryManager, DictionaryRecord, Library,
+};
 
 fn source(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -290,4 +294,200 @@ fn opening_removes_what_a_crash_left() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(folders, [id]);
+}
+
+fn record(title: &str) -> DictionaryRecord {
+    DictionaryRecord {
+        title: title.into(),
+        revision: "1".into(),
+        kinds: Kinds::default(),
+        order: 0,
+        enabled: true,
+        language: None,
+        display_name: None,
+        collapse: Collapse::Automatic,
+        user_css: String::new(),
+        counts: Counts::default(),
+        imported_at: 0,
+        size: 0,
+    }
+}
+
+// T-DIC-022
+#[test]
+fn registry_edits_from_several_threads_are_never_lost() {
+    const THREADS: u64 = 8;
+    const EDITS: u64 = 25;
+    let tmp = tempfile::tempdir().unwrap();
+    let library = Arc::new(Library::open(&tmp.path().join("library.redb")).unwrap());
+    library
+        .edit_dictionaries(|list| {
+            for name in ["counter", "deleted"] {
+                list.push((name.into(), record(name)));
+            }
+            for t in 0..THREADS {
+                list.push((format!("own-{t}"), record("own")));
+            }
+        })
+        .unwrap();
+    let threads: Vec<_> = (0..THREADS)
+        .map(|t| {
+            let library = Arc::clone(&library);
+            std::thread::spawn(move || {
+                for n in 0..EDITS {
+                    library
+                        .edit_dictionaries(|list| {
+                            for (id, r) in list.iter_mut() {
+                                if id == "counter" {
+                                    r.size += 1;
+                                } else if *id == format!("own-{t}") {
+                                    r.display_name = Some(format!("edit {n}"));
+                                }
+                            }
+                        })
+                        .unwrap();
+                }
+            })
+        })
+        .collect();
+    // the page deletes one while the others are being edited
+    while library.dictionaries().unwrap()[0].1.size < THREADS * EDITS / 4
+        && !threads.iter().all(std::thread::JoinHandle::is_finished)
+    {
+        std::thread::yield_now();
+    }
+    library
+        .edit_dictionaries(|list| list.retain(|(id, _)| id != "deleted"))
+        .unwrap();
+    for t in threads {
+        t.join().unwrap();
+    }
+    let all = library.dictionaries().unwrap();
+    assert!(
+        all.iter().all(|(id, _)| id != "deleted"),
+        "a deleted dictionary came back"
+    );
+    let counter = all.iter().find(|(id, _)| id == "counter").unwrap();
+    assert_eq!(counter.1.size, THREADS * EDITS, "increments were lost");
+    let last = format!("edit {}", EDITS - 1);
+    for t in 0..THREADS {
+        let own = all
+            .iter()
+            .find(|(id, _)| *id == format!("own-{t}"))
+            .unwrap();
+        assert_eq!(own.1.display_name.as_deref(), Some(last.as_str()));
+    }
+    let orders: Vec<u32> = all.iter().map(|(_, r)| r.order).collect();
+    assert_eq!(orders, (0..all.len() as u32).collect::<Vec<_>>());
+}
+
+// T-DIC-016
+#[test]
+fn the_same_dictionary_imported_twice_at_once_is_registered_once() {
+    let env = Env::new();
+    let first = zipped(env.tmp.path(), "mini-ja", "first", &[]);
+    let second = zipped(env.tmp.path(), "mini-ja", "second", &[]);
+    let mut nested = None;
+    // the second import starts and ends while the first one is being written
+    let err = env
+        .manager
+        .import(&first, None, &Cancel::new(), |p| {
+            if p.files_done == 1 && nested.is_none() {
+                nested = Some(env.manager.import(&second, None, &Cancel::new(), |_| {}));
+            }
+        })
+        .unwrap_err();
+    let kept = nested.unwrap().unwrap();
+    assert!(matches!(err, DictionaryError::SameRevision { .. }), "{err}");
+    let ids: Vec<String> = env
+        .manager
+        .list()
+        .unwrap()
+        .into_iter()
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(ids, std::slice::from_ref(&kept));
+    assert_eq!(env.folders(), [kept], "the refused copy is removed");
+}
+
+// T-DIC-016
+#[test]
+fn an_update_whose_old_dictionary_was_deleted_meanwhile_is_added() {
+    let env = Env::new();
+    let old = env.add("mini-norules", &[]);
+    let newer = zipped(
+        env.tmp.path(),
+        "mini-norules",
+        "r2",
+        &[index("Nikomiru mini-norules", "2")],
+    );
+    let mut deleted = false;
+    let new = env
+        .manager
+        .import(&newer, Some(&old), &Cancel::new(), |p| {
+            if p.files_done == 1 && !deleted {
+                env.manager.delete(&old).unwrap();
+                deleted = true;
+            }
+        })
+        .unwrap();
+    let list = env.manager.list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!((&list[0].0, list[0].1.revision.as_str()), (&new, "2"));
+    assert_eq!(env.folders(), [new]);
+}
+
+// T-DIC-016
+#[test]
+fn an_update_holds_even_if_the_old_folder_cannot_be_removed() {
+    use std::os::unix::fs::PermissionsExt;
+    let env = Env::new();
+    let old = env.add("mini-norules", &[]);
+    assert_eq!(env.manager.lookup().unwrap().dictionaries()[0].id, old);
+    // a folder inside the old one whose entries cannot be removed
+    let locked = env.tmp.path().join("dicts").join(&old).join("locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::write(locked.join("file"), b"x").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let privileged = std::fs::write(locked.join("probe"), b"x").is_ok();
+
+    let newer = zipped(
+        env.tmp.path(),
+        "mini-norules",
+        "r2",
+        &[index("Nikomiru mini-norules", "2")],
+    );
+    let result = env
+        .manager
+        .import(&newer, Some(&old), &Cancel::new(), |_| {});
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let new = result.expect("the update is done even if the old folder stays");
+    let ids: Vec<String> = env
+        .manager
+        .list()
+        .unwrap()
+        .into_iter()
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(ids, std::slice::from_ref(&new));
+    assert_eq!(
+        env.manager.lookup().unwrap().dictionaries()[0].id,
+        new,
+        "the cached lookup is dropped"
+    );
+    if privileged {
+        eprintln!("running with privileges: the old folder could be removed");
+    } else {
+        assert!(env.folders().contains(&old), "the old folder stayed");
+    }
+    // the next start removes the folder the registry no longer knows
+    drop(env.manager);
+    let manager = Env::open(env.tmp.path());
+    assert_eq!(manager.list().unwrap().len(), 1);
+    let folders: Vec<String> = std::fs::read_dir(env.tmp.path().join("dicts"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(folders, [new]);
 }

@@ -224,8 +224,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-013 | Crash during import | Child process killed with SIGKILL halfway → on restart, no partial dictionary; the `.importing` folder is deleted | L4 |
 | T-DIC-014 | Disk full | Small tmpfs filesystem → `ERR_STORAGE_FULL`, full cleanup | L4 (Linux) |
 | T-DIC-015 | Type detection | Vectors: term, kanji, freq, pitch, term+kanji | L1 |
-| T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement | L4 |
+| T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement. The registration checks the registry again: the same dictionary imported twice at once is registered once; an update whose old dictionary was deleted meanwhile is added; an old folder that cannot be removed does not fail the update (the lookup cache is dropped, the next start removes the folder) | L4 |
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
+| T-DIC-022 | Concurrent registry edits | 8 threads edit the registry at once while one dictionary is deleted → no edit is lost and the deleted one does not come back | L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
 | T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot and L6 check) | L3/L6 |
 

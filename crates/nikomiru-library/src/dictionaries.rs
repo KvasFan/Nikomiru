@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 
 use nikomiru_core::{Cancel, Clock};
-use nikomiru_dict::import::{self, ImportError, Progress};
+use nikomiru_dict::import::{self, ImportError, Imported, Progress};
 use nikomiru_dict::lookup::{Dictionary, Lookup};
 use nikomiru_dict::store::{Counts, RedbStore, StoreError};
 use nikomiru_dict::yomitan::Kinds;
@@ -70,43 +70,52 @@ impl DictionaryRecord {
     }
 }
 
+/// The records of the registry table, in the user's order.
+fn in_order(
+    table: &impl ReadableTable<&'static str, &'static [u8]>,
+) -> Result<Vec<(String, DictionaryRecord)>, LibraryError> {
+    let mut out = Vec::new();
+    for row in table.iter().map_err(|e| LibraryError::Db(e.into()))? {
+        let (k, v) = row.map_err(|e| LibraryError::Db(e.into()))?;
+        out.push((
+            k.value().to_string(),
+            postcard::from_bytes::<DictionaryRecord>(v.value())?,
+        ));
+    }
+    out.sort_by(|a, b| a.1.order.cmp(&b.1.order).then_with(|| a.0.cmp(&b.0)));
+    Ok(out)
+}
+
 impl Library {
     /// The registered dictionaries, in the user's order.
     pub fn dictionaries(&self) -> Result<Vec<(String, DictionaryRecord)>, LibraryError> {
-        let mut out = self.read(|tx| {
-            let t = match tx.open_table(DICTIONARIES) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-                Err(e) => return Err(LibraryError::Db(e.into())),
-            };
-            let mut out = Vec::new();
-            for row in t.iter().map_err(|e| LibraryError::Db(e.into()))? {
-                let (k, v) = row.map_err(|e| LibraryError::Db(e.into()))?;
-                out.push((
-                    k.value().to_string(),
-                    postcard::from_bytes::<DictionaryRecord>(v.value())?,
-                ));
-            }
-            Ok(out)
-        })?;
-        out.sort_by(|a, b| a.1.order.cmp(&b.1.order).then_with(|| a.0.cmp(&b.0)));
-        Ok(out)
+        self.read(|tx| match tx.open_table(DICTIONARIES) {
+            Ok(t) => in_order(&t),
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(Vec::new()),
+            Err(e) => Err(LibraryError::Db(e.into())),
+        })
     }
 
-    /// Applies `edit` to the registry in one transaction: the list it gets is
-    /// in order, and the order it leaves is renumbered from 0.
-    pub fn edit_dictionaries(
+    /// Applies `edit` to the registry and returns what it returns: the list it
+    /// gets is in order, and the order it leaves is renumbered from 0.
+    ///
+    /// The list is read and written back in one write transaction, and redb
+    /// runs those one at a time: a page edit on the UI thread and an import's
+    /// registration on its own thread never overwrite each other, and a
+    /// deleted dictionary never comes back. `edit` must not write to the
+    /// library: it would wait for its own transaction.
+    pub fn edit_dictionaries<T>(
         &self,
-        edit: impl FnOnce(&mut Vec<(String, DictionaryRecord)>),
-    ) -> Result<(), LibraryError> {
-        let mut list = self.dictionaries()?;
-        let before: Vec<String> = list.iter().map(|(id, _)| id.clone()).collect();
-        edit(&mut list);
+        edit: impl FnOnce(&mut Vec<(String, DictionaryRecord)>) -> T,
+    ) -> Result<T, LibraryError> {
         let tx = self.write()?;
-        {
+        let out = {
             let mut t = tx
                 .open_table(DICTIONARIES)
                 .map_err(|e| LibraryError::Db(e.into()))?;
+            let mut list = in_order(&t)?;
+            let before: Vec<String> = list.iter().map(|(id, _)| id.clone()).collect();
+            let out = edit(&mut list);
             for id in &before {
                 if !list.iter().any(|(i, _)| i == id) {
                     t.remove(id.as_str())
@@ -119,8 +128,10 @@ impl Library {
                 t.insert(id.as_str(), bytes.as_slice())
                     .map_err(|e| LibraryError::Db(e.into()))?;
             }
-        }
-        tx.commit().map_err(|e| LibraryError::Db(e.into()))
+            out
+        };
+        tx.commit().map_err(|e| LibraryError::Db(e.into()))?;
+        Ok(out)
     }
 }
 
@@ -322,6 +333,33 @@ impl DictionaryManager {
             });
         }
         let imported = import::import(zip, &self.dir, cancel, progress)?;
+        let replaced = match self.register(&imported, replace) {
+            Ok(replaced) => replaced,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&imported.dir);
+                return Err(e);
+            }
+        };
+        self.invalidate();
+        // The update is done: a folder that cannot be removed now is one the
+        // registry no longer knows, and the next start removes it (DIC-013).
+        if let Some(old) = replaced
+            && let Err(e) = self.remove_folder(&old)
+        {
+            tracing::warn!("the replaced dictionary stays on disk until the next start: {e}");
+        }
+        Ok(imported.id)
+    }
+
+    /// Registers a finished import, in place of `replace` if that is still
+    /// registered; returns the id it replaced. The registry is checked again
+    /// in the transaction that writes it: it may have changed while the
+    /// dictionary was written (an edit on the page, another import).
+    fn register(
+        &self,
+        imported: &Imported,
+        replace: Option<&str>,
+    ) -> Result<Option<String>, DictionaryError> {
         let info = &imported.info;
         let imported_at = self
             .clock
@@ -342,38 +380,34 @@ impl DictionaryManager {
             imported_at,
             size: dir_size(&imported.dir),
         };
-        let old = replace
-            .map(|id| self.record(id).map(|r| (id.to_string(), r)))
-            .transpose();
-        let old = match old {
-            Ok(old) => old,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&imported.dir);
-                return Err(e);
+        self.library.edit_dictionaries(|list| {
+            if list
+                .iter()
+                .any(|(_, r)| r.title == record.title && r.revision == record.revision)
+            {
+                return Err(DictionaryError::SameRevision {
+                    title: record.title.clone(),
+                    revision: record.revision.clone(),
+                });
             }
-        };
-        let id = imported.id.clone();
-        let registered = self.library.edit_dictionaries(|list| match &old {
-            Some((old_id, prev)) => {
-                record.enabled = prev.enabled;
-                record.display_name.clone_from(&prev.display_name);
-                record.collapse = prev.collapse;
-                record.user_css.clone_from(&prev.user_css);
-                if let Some(slot) = list.iter_mut().find(|(i, _)| i == old_id) {
-                    *slot = (id.clone(), record.clone());
+            let id = imported.id.clone();
+            match replace.and_then(|old| list.iter_mut().find(|(i, _)| i == old)) {
+                Some(slot) => {
+                    let prev = &slot.1;
+                    record.enabled = prev.enabled;
+                    record.display_name.clone_from(&prev.display_name);
+                    record.collapse = prev.collapse;
+                    record.user_css.clone_from(&prev.user_css);
+                    let (old, _) = std::mem::replace(slot, (id, record));
+                    Ok(Some(old))
+                }
+                // a new dictionary, or an update whose old one was deleted meanwhile
+                None => {
+                    list.push((id, record));
+                    Ok(None)
                 }
             }
-            None => list.push((id.clone(), record.clone())),
-        });
-        if let Err(e) = registered {
-            let _ = std::fs::remove_dir_all(&imported.dir);
-            return Err(e.into());
-        }
-        if let Some((old_id, _)) = old {
-            self.remove_folder(&old_id)?;
-        }
-        self.invalidate();
-        Ok(id)
+        })?
     }
 
     fn record(&self, id: &str) -> Result<DictionaryRecord, DictionaryError> {
@@ -399,9 +433,14 @@ impl DictionaryManager {
 
     /// Deletes a dictionary: out of the registry, then off the disk (DIC-021).
     pub fn delete(&self, id: &str) -> Result<(), DictionaryError> {
-        self.record(id)?;
-        self.library
-            .edit_dictionaries(|list| list.retain(|(i, _)| i != id))?;
+        let found = self.library.edit_dictionaries(|list| {
+            let before = list.len();
+            list.retain(|(i, _)| i != id);
+            list.len() < before
+        })?;
+        if !found {
+            return Err(DictionaryError::Unknown(id.to_string()));
+        }
         self.invalidate();
         self.remove_folder(id)
     }
@@ -446,12 +485,15 @@ impl DictionaryManager {
         id: &str,
         edit: impl FnOnce(&mut DictionaryRecord),
     ) -> Result<(), DictionaryError> {
-        self.record(id)?;
-        self.library.edit_dictionaries(|list| {
-            if let Some((_, r)) = list.iter_mut().find(|(i, _)| i == id) {
-                edit(r);
-            }
+        let found = self.library.edit_dictionaries(|list| {
+            list.iter_mut()
+                .find(|(i, _)| i == id)
+                .map(|(_, r)| edit(r))
+                .is_some()
         })?;
+        if !found {
+            return Err(DictionaryError::Unknown(id.to_string()));
+        }
         self.invalidate();
         Ok(())
     }

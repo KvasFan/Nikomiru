@@ -38,3 +38,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - M0 done: all exit criteria met (the X11 measurement on a real Xorg session moved to M1). SPECIFICATION §5.2.2: CUDA interop only with NVIDIA's proprietary driver (no more `Cannot load libcuda.so.1`), libmpv messages routed to the log.
 - `cargo xtask`: dependency rules for cxx-qt/libmpv2 and a guard against the retired toolkit, `unsafe` allowed in cxx-qt bridge modules, C++ only in `nikomiru-player/cpp/`, SPDX headers also on `.cpp`, `.h` and `.qml` files.
 - SPECIFICATION: new requirements PLY-016 (save and load mpv option presets in `mpv.conf` format, M6), PLY-017 (options that raw options and presets can never set, M1) and PLY-018 (render and audio settings in the UI, M6), with tests T-PLY-016…018.
+
+### Fixed
+
+- The dictionary registry is read and written in one transaction: an edit on the dictionaries page and the registration of an import, on its own thread, no longer overwrite each other (a deleted dictionary could come back). The registration checks the registry again: the same dictionary imported twice at once is registered once, and an update whose old dictionary was deleted meanwhile is added instead of failing.
+- An update whose old folder cannot be removed is no longer reported as an error with the old dictionary still in the popups: it is registered, the lookup cache is dropped, and the next start removes the folder.
