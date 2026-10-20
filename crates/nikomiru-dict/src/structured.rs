@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Yomitan glossaries as a safe view model for QML (POP-009, NFR-SEC-01): a
-//! port of the structure of Fushi's `renderStructuredContent`
+//! Yomitan glossaries as a safe view model for the popup (POP-009,
+//! NFR-SEC-01): a port of the structure of Fushi's `renderStructuredContent`
 //! (`fushi/assets/popup/popup.js`, ac8034e), producing data instead of HTML.
 //!
 //! Block elements (`div`, lists, tables, `details`) become [`Block`]s; inline
-//! content becomes flat [`Run`]s with their style already inherited, which QML
-//! lays out in a flow of plain-text items. Only the tags of the allowlist
-//! survive; `script`, `style` and similar are dropped with their content;
-//! styles go through [`Style`]; images are paths inside the dictionary; links
-//! are a lookup or an `http(s)` address. Nothing from the dictionary reaches
-//! QML as markup.
+//! content becomes flat [`Run`]s with their style already inherited, which the
+//! popup lays out in a flow. Only the tags of the allowlist survive; `script`,
+//! `style` and similar are dropped with their content; styles go through
+//! [`Style`]; images are paths inside the dictionary; links are a lookup or an
+//! `http(s)` address. Nothing from the dictionary reaches the popup as markup:
+//! every string is drawn as literal text.
+
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::css::{Sheet, kebab};
-use crate::style::{Length, Style};
+use crate::style::{ListMarker, Style, VerticalAlign};
 
 /// Nesting deeper than this is flattened (hostile input).
 const MAX_DEPTH: usize = 48;
@@ -40,6 +42,25 @@ pub enum Target {
     External(String),
 }
 
+/// The units of an image's size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Units {
+    /// Pixels.
+    Px,
+    /// Ems of the text around it.
+    Em,
+}
+
+/// Decoded pixels: RGBA, 8 bits a channel, not premultiplied, row by row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pixels {
+    /// Width and height.
+    pub size: [usize; 2],
+    /// `size[0] × size[1] × 4` bytes.
+    pub rgba: Vec<u8>,
+}
+
 /// A dictionary image (POP-010).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,8 +73,8 @@ pub struct Image {
     /// Height, in `units`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<f32>,
-    /// `px` or `em`.
-    pub units: &'static str,
+    /// What the sizes count.
+    pub units: Units,
     /// Nearest-neighbour scaling.
     pub pixelated: bool,
     /// Shown as a link to open it instead of the image.
@@ -64,6 +85,10 @@ pub struct Image {
     /// Replacement text.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub alt: String,
+    /// The image, decoded from the dictionary's media by whoever shows it;
+    /// `None` shows the replacement text.
+    #[serde(skip)]
+    pub pixels: Option<Arc<Pixels>>,
 }
 
 /// Inline content.
@@ -146,34 +171,15 @@ fn natural_em(blocks: &[Block]) -> f32 {
                             line += t.chars().map(char_em).sum::<f32>();
                         }
                         Run::Image { image } => {
-                            line += image
-                                .width
-                                .map_or(2.0, |w| if image.units == "em" { w } else { w / 16.0 })
+                            line += image.width.map_or(2.0, |w| match image.units {
+                                Units::Em => w,
+                                Units::Px => w / 16.0,
+                            })
                         }
                     }
                 }
                 best.max(line)
             }
-            Block::Text { html, .. } => html
-                .split("<br>")
-                .map(|line| {
-                    let mut in_tag = false;
-                    line.chars()
-                        .filter(|&c| match c {
-                            '<' => {
-                                in_tag = true;
-                                false
-                            }
-                            '>' => {
-                                in_tag = false;
-                                false
-                            }
-                            _ => !in_tag,
-                        })
-                        .map(char_em)
-                        .sum::<f32>()
-                })
-                .fold(0.0, f32::max),
             Block::Box { blocks, .. } => natural_em(blocks),
             Block::List { items, .. } => items
                 .iter()
@@ -204,17 +210,8 @@ fn natural_em(blocks: &[Block]) -> f32 {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "k", rename_all = "lowercase")]
 pub enum Block {
-    /// A paragraph of styled text drawn by one QML `Text` (Qt "StyledText"):
-    /// the markup is generated here from escaped text, with `b`, `i`, `u`,
-    /// `s`, `font color/size`, `br` and links `a href="<index into links>"`
-    /// only.
-    Text {
-        /// The paragraph.
-        html: String,
-        /// Link targets, by the index in `href`.
-        links: Vec<Target>,
-    },
-    /// Inline runs, laid out in a flow.
+    /// Inline runs, laid out in a flow: a paragraph, its lines separated by
+    /// [`Run::Br`].
     Flow {
         /// The runs.
         runs: Vec<Run>,
@@ -237,7 +234,7 @@ pub enum Block {
         /// The marker an item sets for itself (Jitendex's ①, ②…), by item;
         /// empty when none does.
         #[serde(skip_serializing_if = "Vec::is_empty")]
-        markers: Vec<Option<String>>,
+        markers: Vec<Option<ListMarker>>,
     },
     /// A table, in a scrollable container.
     Table {
@@ -354,12 +351,12 @@ pub fn render(glossary: &Value, sheet: &Sheet) -> Vec<Block> {
     simplify(out.finish())
 }
 
-/// Fewer, better items for QML: a box that draws nothing (no margin,
-/// padding, background or border) and a list without markers give way to
-/// their content; consecutive flows of plain styled text become one
-/// [`Block::Text`], a line each; a flow with ruby is split into characters
-/// (words for Latin text), so it wraps like Japanese text with each reading
-/// over its base.
+/// Fewer, simpler blocks: a box that draws nothing (no margin, padding,
+/// background or border) and a list without markers give way to their
+/// content; consecutive flows of plain styled text become one paragraph, a
+/// line each, which the popup lays out as one text; a flow with ruby is split
+/// into characters (words for Latin text), so it wraps like Japanese text
+/// with each reading over its base.
 fn simplify(blocks: Vec<Block>) -> Vec<Block> {
     let mut flat = Vec::with_capacity(blocks.len());
     for b in blocks {
@@ -381,14 +378,16 @@ fn simplify(blocks: Vec<Block>) -> Vec<Block> {
             }
             other => {
                 if !lines.is_empty() {
-                    out.push(styled_text(&std::mem::take(&mut lines)));
+                    out.push(Block::Flow {
+                        runs: std::mem::take(&mut lines),
+                    });
                 }
                 out.push(simplify_block(other));
             }
         }
     }
     if !lines.is_empty() {
-        out.push(styled_text(&lines));
+        out.push(Block::Flow { runs: lines });
     }
     out
 }
@@ -406,8 +405,8 @@ fn flatten(block: Block, out: &mut Vec<Block>) {
             markers,
             ..
         } if (0..items.len()).all(|i| {
-            let own = markers.get(i).and_then(Option::as_deref);
-            own.or(s.list_marker.as_deref()) == Some("none")
+            let own = markers.get(i).and_then(Option::as_ref);
+            own.or(s.list_marker.as_ref()) == Some(&ListMarker::None)
         }) =>
         {
             s.list_marker = None;
@@ -466,8 +465,8 @@ fn simplify_block(block: Block) -> Block {
     }
 }
 
-/// Runs that one StyledText paragraph can show: no ruby, image or chip.
-fn plain(runs: &[Run]) -> bool {
+/// Runs that one paragraph of text can show: no ruby, image or chip.
+pub fn plain(runs: &[Run]) -> bool {
     runs.iter().all(|r| match r {
         Run::Text { s, .. } | Run::Link { s, .. } => !chip(s),
         Run::Br => true,
@@ -478,7 +477,7 @@ fn plain(runs: &[Run]) -> bool {
 /// Whether a run's style needs its own item: a chip, with a background or a
 /// border. Its other box properties are only space around it (an inline
 /// element has no vertical margin).
-fn chip(s: &Style) -> bool {
+pub fn chip(s: &Style) -> bool {
     s.background.is_some() || s.border_color.is_some()
 }
 
@@ -493,106 +492,6 @@ fn boxed(s: &Style) -> bool {
         || s.border_sides.is_some()
         || s.padding != Sides::default()
         || s.margin != Sides::default()
-}
-
-fn escape(text: &str, out: &mut String) {
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            c => out.push(c),
-        }
-    }
-}
-
-/// Qt StyledText font sizes 1–7 scale the base font by 0.7, 0.8, 1, 1.2,
-/// 1.5, 2 and 2.4: the nearest one, `None` for the base size.
-fn font_size(scale: f32) -> Option<u8> {
-    let size = match scale {
-        s if s < 0.75 => 1,
-        s if s < 0.9 => 2,
-        s if s < 1.1 => return None,
-        s if s < 1.35 => 4,
-        s if s < 1.75 => 5,
-        s if s < 2.2 => 6,
-        _ => 7,
-    };
-    Some(size)
-}
-
-/// [`plain`] runs as one StyledText paragraph.
-fn styled_text(runs: &[Run]) -> Block {
-    let mut html = String::new();
-    let mut links = Vec::new();
-    for r in runs {
-        let (text, style, link) = match r {
-            Run::Text { t, s } => (t, s, None),
-            Run::Link { t, target, s } => (t, s, Some(target)),
-            Run::Br => {
-                html.push_str("<br>");
-                continue;
-            }
-            Run::Ruby { .. } | Run::Image { .. } => continue,
-        };
-        html.push_str(spaces(style.margin.left, style.padding.left));
-        let mut close = Vec::new();
-        if let Some(target) = link {
-            html.push_str(&format!("<a href=\"{}\">", links.len()));
-            links.push(target.clone());
-            close.push("</a>");
-        }
-        let size = match style.vertical_align {
-            Some(_) => Some(2),
-            None => style.font_scale.and_then(font_size),
-        };
-        if style.color.is_some() || size.is_some() {
-            html.push_str("<font");
-            if let Some(c) = &style.color {
-                // colours are checked by Style (hex or a known name)
-                html.push_str(&format!(" color=\"{c}\""));
-            }
-            if let Some(n) = size {
-                html.push_str(&format!(" size=\"{n}\""));
-            }
-            html.push('>');
-            close.push("</font>");
-        }
-        for (on, open, end) in [
-            (style.bold == Some(true), "<b>", "</b>"),
-            (style.italic == Some(true), "<i>", "</i>"),
-            (style.underline == Some(true), "<u>", "</u>"),
-            (style.strike == Some(true), "<s>", "</s>"),
-        ] {
-            if on {
-                html.push_str(open);
-                close.push(end);
-            }
-        }
-        escape(text, &mut html);
-        for end in close.iter().rev() {
-            html.push_str(end);
-        }
-        html.push_str(spaces(style.padding.right, style.margin.right));
-    }
-    Block::Text { html, links }
-}
-
-/// Non-breaking spaces as wide as a horizontal margin and padding (a space is
-/// about a quarter of an em).
-fn spaces(margin: Option<Length>, padding: Option<Length>) -> &'static str {
-    let em = |l: Option<Length>| match l {
-        Some(Length::Em(v)) => v,
-        Some(Length::Px(v)) => v / 16.0,
-        None => 0.0,
-    };
-    match ((em(margin) + em(padding)) / 0.27).round() as i32 {
-        ..=0 => "",
-        1 => "&nbsp;",
-        2 => "&nbsp;&nbsp;",
-        _ => "&nbsp;&nbsp;&nbsp;",
-    }
 }
 
 /// Text runs cut into characters (CJK) and words (the rest, with their
@@ -853,8 +752,8 @@ fn inline_html_into(html: &str, base: &Style, out: &mut Out) {
                 match n {
                     "b" | "strong" => s.bold = Some(true),
                     "i" | "em" => s.italic = Some(true),
-                    "sup" => s.vertical_align = Some("super"),
-                    "sub" => s.vertical_align = Some("sub"),
+                    "sup" => s.vertical_align = Some(VerticalAlign::Super),
+                    "sub" => s.vertical_align = Some(VerticalAlign::Sub),
                     "u" => s.underline = Some(true),
                     _ => {}
                 }
@@ -939,15 +838,16 @@ fn image(o: &serde_json::Map<String, Value>) -> Option<Image> {
         width: num("width"),
         height: num("height"),
         units: if o.get("sizeUnits").and_then(Value::as_str) == Some("em") {
-            "em"
+            Units::Em
         } else {
-            "px"
+            Units::Px
         },
         pixelated: o.get("pixelated").and_then(Value::as_bool).unwrap_or(false)
             || matches!(rendering, Some("pixelated" | "crisp-edges")),
         collapsed: o.get("collapsed").and_then(Value::as_bool).unwrap_or(false),
         title: text("title"),
         alt: text("alt"),
+        pixels: None,
     })
 }
 
@@ -1062,8 +962,7 @@ fn element_into(
         return;
     }
     let own = own_style(ctx, &tag, o);
-    let mut text_style = inherited.clone();
-    text_style.merge(&own);
+    let text_style = inherited.with_own(&own);
     let inner_inherited = text_style.inherited();
     ctx.path.push((tag.clone(), data_of(o)));
     element_body(ctx, o, &tag, own, text_style, &inner_inherited, out, depth);
@@ -1144,8 +1043,7 @@ fn element_body(
                         {
                             let mut li_style = own_style(ctx, "li", li);
                             markers.push(li_style.list_marker.take());
-                            let mut s = inner_inherited.clone();
-                            s.merge(&li_style);
+                            let s = inner_inherited.with_own(&li_style);
                             let blocks = ctx.inside("li", li, |ctx| {
                                 children(ctx, li, &s.inherited(), depth + 1)
                             });
@@ -1258,8 +1156,7 @@ fn collect_rows(
                                 return None;
                             }
                             let s = own_style(ctx, tag, cell);
-                            let mut text = inherited.clone();
-                            text.merge(&s);
+                            let text = inherited.with_own(&s);
                             let blocks = ctx.inside(tag, cell, |ctx| {
                                 children(ctx, cell, &text.inherited(), depth + 1)
                             });
@@ -1367,62 +1264,19 @@ mod tests {
         serde_json::to_string(blocks).unwrap()
     }
 
-    /// The StyledText of every paragraph, at any depth.
-    fn paragraphs(blocks: &[Block], out: &mut Vec<String>) {
-        for b in blocks {
-            match b {
-                Block::Text { html, .. } => out.push(html.clone()),
-                Block::Box { blocks, .. } | Block::Details { blocks, .. } => {
-                    paragraphs(blocks, out)
-                }
-                Block::List { items, .. } => items.iter().for_each(|i| paragraphs(i, out)),
-                Block::Table { rows, .. } => rows
-                    .iter()
-                    .flatten()
-                    .for_each(|c| paragraphs(&c.blocks, out)),
-                Block::Flow { .. } | Block::Pairs { .. } => {}
-            }
+    fn text(t: &str) -> Run {
+        Run::Text {
+            t: t.into(),
+            s: Style::default(),
         }
     }
 
-    /// NFR-SEC-01: only the tags Nikomiru writes, with the attributes it
-    /// writes.
-    fn assert_generated_markup(html: &str) {
-        let attribute = |rest: &str, name: &str, ok: fn(char) -> bool| -> Option<usize> {
-            let value = rest.strip_prefix(&format!(" {name}=\""))?;
-            let end = value.find('"')?;
-            (end > 0 && value[..end].chars().all(ok)).then_some(name.len() + 4 + end)
-        };
-        let allowed = |tag: &str| {
-            if [
-                "b", "/b", "i", "/i", "u", "/u", "s", "/s", "/font", "/a", "br",
-            ]
-            .contains(&tag)
-            {
-                return true;
-            }
-            if let Some(rest) = tag.strip_prefix('a') {
-                return attribute(rest, "href", |c| c.is_ascii_digit()) == Some(rest.len());
-            }
-            let Some(mut rest) = tag.strip_prefix("font") else {
-                return false;
-            };
-            if let Some(n) = attribute(rest, "color", |c| c == '#' || c.is_ascii_alphanumeric()) {
-                rest = &rest[n..];
-            }
-            if let Some(n) = attribute(rest, "size", |c| ('1'..='7').contains(&c)) {
-                rest = &rest[n..];
-            }
-            rest.is_empty() && tag != "font"
-        };
-        let mut rest = html;
-        while let Some(start) = rest.find('<') {
-            let end = rest[start..].find('>').expect("closed tag") + start;
-            let tag = &rest[start + 1..end];
-            assert!(allowed(tag), "<{tag}> in {html}");
-            rest = &rest[end + 1..];
+    fn link(t: &str, target: Target) -> Run {
+        Run::Link {
+            t: t.into(),
+            target,
+            s: Style::default(),
         }
-        assert!(!rest.contains('>'), "{html}");
     }
 
     // T-POP-009
@@ -1430,9 +1284,8 @@ mod tests {
     fn strings_lists_and_breaks() {
         assert_eq!(
             blocks(json!(["to eat"])),
-            [Block::Text {
-                html: "to eat".into(),
-                links: vec![]
+            [Block::Flow {
+                runs: vec![text("to eat")]
             }]
         );
         let list = blocks(json!(["to eat", "to live on"]));
@@ -1442,9 +1295,8 @@ mod tests {
         let lines = blocks(json!(["one\ntwo"]));
         assert_eq!(
             lines,
-            [Block::Text {
-                html: "one<br>two".into(),
-                links: vec![]
+            [Block::Flow {
+                runs: vec![text("one"), Run::Br, text("two")]
             }]
         );
     }
@@ -1484,21 +1336,17 @@ mod tests {
         assert!(
             matches!(&b[3], Block::Details { open: false, summary, blocks } if summary.len() == 1 && blocks.len() == 1)
         );
-        let Block::Text { html, links } = &b[4] else {
+        let Block::Flow { runs } = &b[4] else {
             panic!("{:?}", b[4])
         };
         assert_eq!(
-            links,
+            runs,
             &[
-                Target::Lookup("食べる".into()),
-                Target::Lookup("本".into()),
-                Target::External("https://example.org/x".into())
+                link("x", Target::Lookup("食べる".into())),
+                link("本", Target::Lookup("本".into())),
+                link("site", Target::External("https://example.org/x".into()))
             ],
             "without ?query= the link text without <rt> is looked up (BUG-2456)"
-        );
-        assert_eq!(
-            html,
-            r#"<a href="0">x</a><a href="1">本</a><a href="2">site</a>"#
         );
     }
 
@@ -1527,23 +1375,19 @@ mod tests {
             assert!(!json.contains(bad), "{bad} in {json}");
         }
         assert!(json.contains("safe") && json.contains("img/a.png") && json.contains("bold"));
-        assert!(json.contains(r##""color":"red""##));
+        assert!(json.contains(r##""color":"#ff0000""##));
 
-        // markup in text stays text in the generated StyledText
+        // what looks like markup in a string or an attribute stays text, and
+        // the popup draws text literally
         let g = json!([{"type": "structured-content", "content": [
-            "<img src=\"http://evil/x\"> & <b>",
             {"tag": "span", "style": {"color": "\"><img src=x>"}, "content": "c"},
             {"tag": "a", "href": "?query=<script>", "content": "<i>"}
         ]}]);
-        let b = blocks(g);
-        let mut html = Vec::new();
-        paragraphs(&b, &mut html);
-        assert_eq!(html.len(), 1, "{b:?}");
-        assert_generated_markup(&html[0]);
-        assert!(
-            html[0].contains("&amp;") && html[0].contains("&lt;i&gt;"),
-            "{}",
-            html[0]
+        assert_eq!(
+            blocks(g),
+            [Block::Flow {
+                runs: vec![text("c"), link("<i>", Target::Lookup("<script>".into()))]
+            }]
         );
     }
 
@@ -1571,8 +1415,12 @@ mod tests {
             panic!()
         };
         assert_eq!(
-            (chip.bold, chip.background.as_deref(), chip.color.as_deref()),
-            (Some(true), Some("#565656"), Some("white"))
+            (chip.bold, chip.background, chip.color),
+            (
+                Some(true),
+                crate::style::color("#565656"),
+                crate::style::color("white")
+            )
         );
         let Run::Text { s: plain, .. } = &runs[1] else {
             panic!()
@@ -1620,28 +1468,40 @@ mod tests {
         assert_eq!(text, " & bold");
     }
 
-    // T-POP-009, NFR-SEC-01
+    // T-POP-009
     #[test]
-    fn plain_paragraphs_become_escaped_styled_text() {
+    fn plain_paragraphs_keep_their_runs_and_styles() {
         let g = json!([{"type": "structured-content", "content": [
             {"tag": "span", "style": {"fontWeight": "bold", "color": "red", "fontSize": "80%"}, "content": "1 < 2 & 3"},
             " plain ",
             {"tag": "span", "style": {"fontStyle": "italic", "textDecorationLine": "underline"}, "content": "x\"y"}
         ]}]);
-        let Block::Text { html, links } = &blocks(g)[0] else {
+        let Block::Flow { runs } = &blocks(g)[0] else {
             panic!()
         };
-        assert!(links.is_empty());
+        let [
+            Run::Text { t: first, s: bold },
+            Run::Text { t: middle, .. },
+            Run::Text { t: last, s: italic },
+        ] = &runs[..]
+        else {
+            panic!("{runs:?}")
+        };
         assert_eq!(
-            html,
-            r#"<font color="red" size="2"><b>1 &lt; 2 &amp; 3</b></font> plain <i><u>x&quot;y</u></i>"#
+            (first.as_str(), middle.as_str(), last.as_str()),
+            ("1 < 2 & 3", " plain ", "x\"y")
         );
-        assert_generated_markup(html);
-        // a chip (background, padding) keeps its own item
+        assert_eq!(
+            (bold.bold, bold.color, bold.font_scale),
+            (Some(true), crate::style::color("red"), Some(0.8))
+        );
+        assert_eq!((italic.italic, italic.underline), (Some(true), Some(true)));
+        // a chip (background, padding) is not plain text
         let chip = json!([{"type": "structured-content", "content": [
             {"tag": "span", "style": {"backgroundColor": "#565656", "padding": "0.2em"}, "content": "n"}, " noun"
         ]}]);
-        assert!(matches!(&blocks(chip)[0], Block::Flow { runs } if runs.len() == 2));
+        let b = blocks(chip);
+        assert!(matches!(&b[0], Block::Flow { runs } if runs.len() == 2 && !plain(runs)));
     }
 
     // POP-009: ruby flows wrap like Japanese text
@@ -1684,13 +1544,22 @@ mod tests {
         ]}]);
         let b = blocks(g);
         assert_eq!(b.len(), 3, "{b:?}");
-        let Block::Text { html, links } = &b[0] else {
-            panic!("{b:?}")
-        };
-        assert_eq!(html, r#"to go<br>to move<br><a href="0">来る</a>"#);
-        assert_eq!(links, &[Target::Lookup("来る".into())]);
+        assert_eq!(
+            b[0],
+            Block::Flow {
+                runs: vec![
+                    text("to go"),
+                    Run::Br,
+                    text("to move"),
+                    Run::Br,
+                    link("来る", Target::Lookup("来る".into()))
+                ]
+            }
+        );
         assert!(matches!(&b[1], Block::Box { blocks, .. } if blocks.len() == 1));
-        assert!(matches!(&b[2], Block::Text { html, .. } if html == "<s>old</s>"));
+        assert!(
+            matches!(&b[2], Block::Flow { runs } if matches!(&runs[..], [Run::Text { t, s }] if t == "old" && s.strike == Some(true)))
+        );
     }
 
     #[test]

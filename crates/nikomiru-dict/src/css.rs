@@ -372,6 +372,7 @@ pub fn kebab(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::{ListMarker, color};
 
     fn data(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
@@ -397,17 +398,10 @@ mod tests {
         );
         let tag_data = data(&[("class", "tag")]);
         let tag = sheet.style_for(&[("span", &tag_data)]);
-        assert_eq!(
-            tag.color.as_deref(),
-            Some("#fff"),
-            "the more specific rule wins"
-        );
+        assert_eq!(tag.color, color("#fff"), "the more specific rule wins");
         assert_eq!((tag.bold, tag.italic), (Some(true), Some(true)));
         let x = data(&[("class", "x")]);
-        assert_eq!(
-            sheet.style_for(&[("div", &x)]).color.as_deref(),
-            Some("red")
-        );
+        assert_eq!(sheet.style_for(&[("div", &x)]).color, color("red"));
         assert!(
             sheet.style_for(&[("span", &[])]).is_empty(),
             "pseudo-classes, siblings and @media are skipped"
@@ -415,8 +409,8 @@ mod tests {
         assert!(sheet.style_for(&[("li", &[])]).margin.left.is_some());
         let g = data(&[("content", "glossary")]);
         assert_eq!(
-            sheet.style_for(&[("ul", &g)]).list_marker.as_deref(),
-            Some("\"◦\"")
+            sheet.style_for(&[("ul", &g)]).list_marker,
+            Some(ListMarker::Text("◦".into()))
         );
     }
 
@@ -442,11 +436,11 @@ mod tests {
         let sense = data(&[("content", "sense")]);
         let gloss = data(&[("content", "glossary")]);
         let outside = sheet.style_for(&[("ul", &gloss)]);
-        assert_eq!(outside.list_marker.as_deref(), Some("disc"));
+        assert_eq!(outside.list_marker, Some(ListMarker::Disc));
         let inside = sheet.style_for(&[("ol", &[]), ("li", &sense), ("div", &[]), ("ul", &gloss)]);
         assert_eq!(
-            inside.list_marker.as_deref(),
-            Some("none"),
+            inside.list_marker,
+            Some(ListMarker::None),
             "the nested rule is more specific"
         );
         assert!(sheet.style_for(&[("li", &sense)]).padding.left.is_some());
@@ -454,7 +448,7 @@ mod tests {
         let xref = data(&[("content", "xref")]);
         let label = data(&[("content", "reference-label")]);
         let in_xref = sheet.style_for(&[("div", &xref), ("div", &[]), ("span", &label)]);
-        assert_eq!(in_xref.color.as_deref(), Some("#1a73e8"));
+        assert_eq!(in_xref.color, color("#1a73e8"));
         assert!(sheet.style_for(&[("span", &label)]).color.is_none());
 
         assert_eq!(
@@ -470,11 +464,8 @@ mod tests {
         );
         let pri = data(&[("class", "form-pri")]);
         assert_eq!(
-            sheet
-                .style_for(&[("td", &pri), ("span", &[])])
-                .color
-                .as_deref(),
-            Some("white")
+            sheet.style_for(&[("td", &pri), ("span", &[])]).color,
+            color("white")
         );
     }
 

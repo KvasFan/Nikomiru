@@ -27,5 +27,5 @@ pub mod view;
 
 pub use session::Services;
 pub use shortcuts::Modifiers;
-pub use ui::{Inbound, Key, Ui, Waker};
+pub use ui::{Inbound, Key, Ui, Waker, Wheel, is_web_address};
 pub use view::{Dialog, FileDialog};

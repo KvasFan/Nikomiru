@@ -1248,7 +1248,7 @@ impl Session {
         }
     }
 
-    /// QML drew popup `level` with its content.
+    /// Popup `level` is on screen with its content (T-PERF-06).
     pub fn popup_rendered(&mut self, level: usize) {
         let Some(p) = self.popups.stack().get(level) else {
             return;
@@ -1256,13 +1256,12 @@ impl Session {
         let headwords = p
             .reply
             .as_ref()
-            .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.content).ok())
-            .and_then(|v| {
-                v["entries"].as_array().map(|a| {
-                    a.iter()
-                        .filter_map(|e| e["expression"].as_str().map(String::from))
-                        .collect()
-                })
+            .map(|r| {
+                r.content
+                    .entries
+                    .iter()
+                    .map(|e| e.expression.clone())
+                    .collect()
             })
             .unwrap_or_default();
         self.events.push(UiEvent::PopupRendered {
@@ -1424,59 +1423,6 @@ impl Session {
             self.sync_highlight();
             self.popup_version += 1;
         }
-    }
-
-    /// The open popups for QML: level, query, anchor, content.
-    pub fn popups_json(&self) -> String {
-        #[derive(serde::Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Anchor {
-            x: f64,
-            y: f64,
-            w: f64,
-            h: f64,
-        }
-        #[derive(serde::Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct PopupView<'a> {
-            level: usize,
-            entry: usize,
-            from_subtitle: bool,
-            query: &'a str,
-            anchor: Anchor,
-            loading: bool,
-            empty: bool,
-            /// The content as a JSON string: each panel parses its own
-            /// once. As an object it would make the panels' model heavy (a
-            /// Repeater turns an array of objects into variants, deeply).
-            content: Option<&'a str>,
-        }
-        let views: Vec<PopupView<'_>> = self
-            .popups
-            .stack()
-            .iter()
-            .enumerate()
-            .map(|(level, p)| PopupView {
-                level,
-                entry: p.entry,
-                from_subtitle: matches!(p.origin, Origin::Subtitle { .. }),
-                query: &p.query,
-                anchor: Anchor {
-                    x: p.anchor.x,
-                    y: p.anchor.y,
-                    w: p.anchor.w,
-                    h: p.anchor.h,
-                },
-                loading: p.reply.is_none(),
-                empty: p.reply.as_ref().is_some_and(|r| r.empty),
-                content: p
-                    .reply
-                    .as_ref()
-                    .map(|r| r.content.as_str())
-                    .filter(|c| !c.is_empty()),
-            })
-            .collect();
-        serde_json::to_string(&views).unwrap_or_else(|_| "[]".into())
     }
 
     /// A click on the time of a list row: playback goes to the cue.

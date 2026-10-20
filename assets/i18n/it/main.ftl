@@ -134,6 +134,8 @@ popup-no-results = Nessun dizionario contiene questa parola. Importa i dizionari
 popup-pitch-accent = accento tonale
 popup-replay = Riascolta
 popup-goto = Vai alla frase
+kanji-strokes = tratti: { $count }
+kanji-radical = radicale: { $radical }
 
 # Pagina dei dizionari
 dict-page-title = Dizionari

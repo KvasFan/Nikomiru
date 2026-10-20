@@ -203,7 +203,7 @@ fn render(
     };
     let content = popup_view::content(&entries, &kanji, &dicts, &tags, &media);
     Ok(Reply {
-        content: content.to_string(),
+        content: Arc::new(content),
         best_length: nikomiru_dict::lookup::best_length(&entries),
         empty: entries.is_empty() && kanji.is_empty(),
         entries: entries.len(),

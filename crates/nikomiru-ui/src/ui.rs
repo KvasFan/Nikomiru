@@ -157,6 +157,8 @@ pub(crate) enum Command {
     PopupReplay,
     PopupGoto,
     PopupEntry(i64),
+    /// A web link in a popup (POP-011): opened by the system, never by egui.
+    OpenExternal(String),
     DictOpen,
     DictChoose(PathBuf),
     DictConfirm(bool),
@@ -174,6 +176,29 @@ pub struct Ui {
     pub(crate) view: View,
     waker: Arc<dyn Waker>,
     quit: bool,
+    /// Web links to open, taken by the app.
+    external: Vec<String>,
+    /// Points of an Alt+swipe not yet turned into an entry step.
+    swipe: f32,
+}
+
+/// A turn of the mouse wheel, in notches, or a swipe, in points: positive
+/// away from the user.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Wheel {
+    /// Notches.
+    Lines(f32),
+    /// Points.
+    Points(f32),
+}
+
+/// The points of swipe that make one step through the entries.
+const SWIPE_STEP: f32 = 50.0;
+
+/// Whether `url` is a web address, the only links a popup opens (POP-011).
+pub fn is_web_address(url: &str) -> bool {
+    let lower = url.get(..8).unwrap_or(url).to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
 }
 
 impl std::fmt::Debug for Ui {
@@ -194,6 +219,8 @@ impl Ui {
             view: View::default(),
             waker,
             quit: false,
+            external: Vec::new(),
+            swipe: 0.0,
         };
         #[cfg(feature = "test-harness")]
         crate::harness::install(ui.waker.clone());
@@ -287,6 +314,38 @@ impl Ui {
         }
         self.pump();
         taken
+    }
+
+    /// The mouse wheel at `pointer` (window points). Alt+wheel over a popup
+    /// moves through its entries, one notch a step (POP-014); returns whether
+    /// it did, and then egui must not scroll.
+    pub fn wheel(&mut self, pointer: Option<egui::Pos2>, delta: Wheel, alt: bool) -> bool {
+        let over = pointer.is_some_and(|p| self.view.popups.rects.iter().any(|r| r.contains(p)));
+        if !alt || !over || !self.session.popups.is_open() {
+            self.swipe = 0.0;
+            return false;
+        }
+        let steps = match delta {
+            Wheel::Lines(lines) if lines != 0.0 => -lines.signum() as i64,
+            Wheel::Lines(_) => 0,
+            Wheel::Points(points) => {
+                self.swipe += points;
+                let steps = (self.swipe / SWIPE_STEP).trunc();
+                self.swipe -= steps * SWIPE_STEP;
+                -steps as i64
+            }
+        };
+        if steps != 0 {
+            self.session.popup_entry(steps.signum());
+            self.pump();
+        }
+        true
+    }
+
+    /// The web links the user clicked since the last call: the app opens them
+    /// with the system's browser.
+    pub fn take_external(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.external)
     }
 
     /// The window lost the keyboard: the release of a held key will not come.
@@ -436,6 +495,11 @@ impl Ui {
             Command::PopupReplay => s.popup_replay(),
             Command::PopupGoto => s.popup_goto(),
             Command::PopupEntry(delta) => s.popup_entry(delta),
+            Command::OpenExternal(url) => {
+                if is_web_address(&url) {
+                    self.external.push(url);
+                }
+            }
             Command::DictOpen => s.dict_refresh(),
             Command::DictChoose(zip) => s.dict_choose(zip),
             Command::DictConfirm(update) => s.dict_confirm(update),
@@ -496,5 +560,33 @@ impl Ui {
         }
         #[cfg(not(feature = "test-harness"))]
         drop(events);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-POP-011
+    #[test]
+    fn only_web_addresses_are_opened() {
+        for good in [
+            "http://example.org",
+            "https://example.org/x?y",
+            "HTTPS://EXAMPLE.ORG",
+        ] {
+            assert!(is_web_address(good), "{good}");
+        }
+        for bad in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "ftp://example.org",
+            "httpx://example.org",
+            " https://example.org",
+            "",
+            "食べる",
+        ] {
+            assert!(!is_web_address(bad), "{bad}");
+        }
     }
 }

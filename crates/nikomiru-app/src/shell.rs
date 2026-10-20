@@ -14,9 +14,9 @@ use egui_glow::EguiGlow;
 use egui_winit::accesskit_winit;
 use nikomiru_player::Player;
 use nikomiru_player::render::VideoRenderer;
-use nikomiru_ui::{Inbound, Key, Modifiers, Services, Ui, Waker};
+use nikomiru_ui::{Inbound, Key, Modifiers, Services, Ui, Waker, Wheel};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::ModifiersState;
 use winit::platform::scancode::PhysicalKeyExtScancode;
@@ -209,6 +209,9 @@ impl<'a> Shell<'a> {
         if let Some(dialog) = ui.take_file_dialog() {
             crate::portal::open_file(dialog, self.waker.clone());
         }
+        for url in ui.take_external() {
+            crate::portal::open_uri(&url);
+        }
         gl.prepare_video();
         match renderer {
             Some(renderer) => {
@@ -274,6 +277,21 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                 open.gl.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
+            WindowEvent::MouseWheel { delta, .. } => {
+                let pointer = open.egui.egui_ctx.input(|i| i.pointer.latest_pos());
+                let wheel = match *delta {
+                    MouseScrollDelta::LineDelta(x, y) => Wheel::Lines(if y == 0.0 { x } else { y }),
+                    MouseScrollDelta::PixelDelta(p) => {
+                        let scale = open.gl.window.scale_factor();
+                        Wheel::Points((if p.y == 0.0 { p.x } else { p.y } / scale) as f32)
+                    }
+                };
+                // Alt+wheel over a popup moves through its entries (POP-014)
+                if open.ui.wheel(pointer, wheel, mods.alt_key()) {
+                    open.gl.window.request_redraw();
+                    return;
+                }
+            }
             WindowEvent::Focused(false) => open.ui.focus_lost(),
             WindowEvent::DroppedFile(path) => {
                 if !self.dropped {

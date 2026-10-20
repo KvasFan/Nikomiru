@@ -265,7 +265,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-007 | Header | View-model and AccessKit snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
 | T-POP-008 | Per-dictionary blocks | View-model snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
 | T-POP-009 | Structured content | View-model snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
-| T-POP-010 | Images | `img/a.png` of `mini-ja` becomes a `data:image/png` URL; a nonexistent path or a non-image type → alternative text only; `..` → rejected | L1 |
+| T-POP-010 | Images | A PNG from the media table is decoded to its pixels, once per path; a nonexistent path, an SVG or a damaged file → alternative text only; a large image is scaled down to 1280 pixels; `..` → rejected; the drawn size keeps the aspect and the flow's width | L1 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); an external link opens `xdg-open` (spy) | L1 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
 | T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |

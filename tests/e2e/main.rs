@@ -348,17 +348,13 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
         times[times.len() / 2]
     );
     assert!(p95 <= Duration::from_millis(100), "p95 {p95:?}");
-    // no QML warnings about the popup (bindings, missing properties)
+    // nothing went wrong in the interface while drawing them
     let log = desk.log();
-    for bad in [
-        "GlossaryBlocks.qml",
-        "GlossaryRuns.qml",
-        "PopupEntry.qml",
-        "DictionaryPopups.qml",
-        "Chip.qml",
-    ] {
-        assert!(!log.contains(bad), "QML warnings:\n{log}");
-    }
+    let bad: Vec<&str> = log
+        .lines()
+        .filter(|l| (l.contains("WARN") || l.contains("ERROR")) && l.contains("nikomiru_ui"))
+        .collect();
+    assert!(bad.is_empty(), "{bad:#?}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

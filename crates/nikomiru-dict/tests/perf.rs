@@ -209,8 +209,8 @@ fn l7_real_first_lookup() {
     }
 }
 
-/// How many blocks and runs the popup of a query draws, on a real dictionary
-/// (`NIKOMIRU_REAL_DICT`): the cost of the QML side.
+/// How many blocks and runs the popup of a query lays out, on a real
+/// dictionary (`NIKOMIRU_REAL_DICT`).
 #[test]
 #[ignore = "manual: needs a real dictionary"]
 fn l7_real_view_size() {
@@ -227,14 +227,12 @@ fn l7_real_view_size() {
         }],
         "ja",
     );
-    // blocks (a plain paragraph is one block) and the inline runs of the
-    // other blocks, each one a QML item
+    // blocks (a plain paragraph is one flow) and their inline runs
     fn count(v: &serde_json::Value, blocks: &mut usize, runs: &mut usize) {
         match v {
             serde_json::Value::Object(o) => {
                 match o.get("k").and_then(|k| k.as_str()) {
                     Some("flow" | "box" | "list" | "table" | "details" | "pairs") => *blocks += 1,
-                    Some("text") if o.contains_key("html") => *blocks += 1,
                     Some(_) => *runs += 1,
                     None => {}
                 }

@@ -134,6 +134,8 @@ popup-no-results = No dictionary has this word. Import dictionaries from the men
 popup-pitch-accent = pitch accent
 popup-replay = Replay
 popup-goto = Go to the sentence
+kanji-strokes = strokes: { $count }
+kanji-radical = radical: { $radical }
 
 # Dictionaries page
 dict-page-title = Dictionaries

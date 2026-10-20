@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The dictionary popups without Qt: the stack of nested popups (POP-012),
-//! the pause and resume of playback around them (POP-001, POP-004, POP-005)
-//! and where a popup goes on screen (POP-006).
+//! The dictionary popups, apart from their drawing: the stack of nested
+//! popups (POP-012), the pause and resume of playback around them (POP-001,
+//! POP-004, POP-005) and where a popup goes on screen (POP-006).
+
+use std::sync::Arc;
+
+use crate::popup_view::Content;
 
 /// Nested popups at most (POP-012).
 pub const MAX_DEPTH: usize = 8;
@@ -69,10 +73,10 @@ impl Rect {
 }
 
 /// The reply to a lookup.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Reply {
-    /// The popup content for QML (JSON).
-    pub content: String,
+    /// What the popup shows, built on the lookup thread.
+    pub content: Arc<Content>,
     /// Characters of the query that matched (POP-002).
     pub best_length: usize,
     /// No entry was found.
@@ -391,7 +395,7 @@ mod tests {
         assert!(p.deliver(
             generation,
             Reply {
-                content: "{}".into(),
+                content: Arc::default(),
                 best_length: 2,
                 empty: false,
                 entries: 1,
