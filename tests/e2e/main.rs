@@ -215,7 +215,10 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
         s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
     });
 
-    // Ctrl+→ goes 180 ms before the next cue
+    // Ctrl+→ goes 180 ms before the next cue; paused, so that the position
+    // stays there long enough to be read
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
     h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowRight", "mods": ["Ctrl"] }));
     let s = h.state_until("the jump to the next cue", |s| {
         (time_pos(s) - 4.82).abs() < 0.05

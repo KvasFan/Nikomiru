@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The mpv core (ARC-001): a [`Player`] owns the core; [`PlayerHandle`]s send
-//! commands; a thread turns mpv events into [`PlayerEvent`]s stamped with the
-//! [`LoadToken`] of their load (ARC-002), with `time-pos` throttled (ARC-004).
+//! The mpv core (ARC-001): a [`Player`] owns the core; [`PlayerHandle`]s queue
+//! commands, which the `mpv-commands` thread runs in order; the `mpv-events`
+//! thread turns mpv events into [`PlayerEvent`]s stamped with the [`LoadToken`]
+//! of their load (ARC-002), with `time-pos` throttled (ARC-004).
+//!
+//! The UI thread draws the video with the render API ([`crate::render`]), so
+//! it must never wait for the core (`<mpv/render.h>`, "Threading"): commands
+//! are queued, and their errors are logged by the command thread.
 //!
 //! The UI never reads mpv properties synchronously (ARC-003): its state comes
 //! from the events. `PlayerHandle::property_string` exists, with the
 //! `test-support` feature, for tests and the
-//! GUI harness only.
+//! GUI harness only, and never on the UI thread.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
@@ -35,8 +40,8 @@ pub enum PlayerError {
     /// mpv returned an error.
     #[error("mpv: {}", mpv_reason(.0))]
     Mpv(#[from] libmpv2::Error),
-    /// The events thread could not be started.
-    #[error("starting the mpv events thread: {0}")]
+    /// A thread of the player could not be started, or has stopped.
+    #[error("mpv thread: {0}")]
     Thread(std::io::Error),
 }
 
@@ -130,7 +135,7 @@ impl nikomiru_core::Localized for PlaybackError {
 /// Where the video goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoOutput {
-    /// The libmpv render API, drawn by the Qt Quick video item (the app).
+    /// The libmpv render API, drawn by the UI ([`crate::render`]).
     RenderApi,
     /// No video and no audio output (headless tests, L5).
     Null,
@@ -233,16 +238,23 @@ pub struct LoadRequest {
     pub speed: Option<f64>,
 }
 
-/// An option that mpv rejected (shown per line, PLY-006).
-#[derive(Debug, Clone, PartialEq)]
-pub struct OptionError {
-    /// The option.
-    pub option: MpvOption,
-    /// mpv's message.
-    pub message: String,
-}
-
 type Sink = Arc<dyn Fn(Stamped<PlayerEvent>) + Send + Sync>;
+
+/// A command for the core, run in order on the `mpv-commands` thread.
+enum Command {
+    /// Options, `start` and `loadfile` of a load.
+    Load {
+        token: LoadToken,
+        path: String,
+        request: LoadRequest,
+    },
+    /// Sets a property.
+    Set(String, String),
+    /// Runs a command.
+    Run(&'static str, Vec<String>),
+    /// Ends the thread ([`Player::shutdown`]).
+    Stop,
+}
 
 /// Shared between the handles and the events thread.
 struct Shared {
@@ -257,10 +269,12 @@ impl Shared {
     }
 }
 
-/// Sends commands to the player. Cheap to clone; usable from any thread.
+/// Sends commands to the player. Cheap to clone; usable from any thread, and
+/// never blocks on the core.
 #[derive(Clone)]
 pub struct PlayerHandle {
     shared: Arc<Shared>,
+    commands: mpsc::Sender<Command>,
 }
 
 impl std::fmt::Debug for PlayerHandle {
@@ -271,9 +285,11 @@ impl std::fmt::Debug for PlayerHandle {
     }
 }
 
-/// Owns the mpv core and its events thread.
+/// Owns the mpv core and its command and events threads.
 pub struct Player {
     shared: Arc<Shared>,
+    commands: mpsc::Sender<Command>,
+    command_thread: Option<JoinHandle<()>>,
     events: Option<JoinHandle<()>>,
 }
 
@@ -345,7 +361,7 @@ const OBSERVED: [(&str, Format); 14] = [
 
 impl Player {
     /// Creates the mpv core with the fixed options (PLY-005) and starts the
-    /// events thread; `sink` receives every event.
+    /// command and events threads; `sink` receives every event.
     pub fn new(
         output: VideoOutput,
         sink: impl Fn(Stamped<PlayerEvent>) + Send + Sync + 'static,
@@ -381,6 +397,13 @@ impl Player {
             pending: Mutex::new(None),
         });
         let sink: Sink = Arc::new(sink);
+        let (commands, queue) = mpsc::channel();
+        let command_shared = shared.clone();
+        let command_sink = sink.clone();
+        let command_thread = std::thread::Builder::new()
+            .name("mpv-commands".into())
+            .spawn(move || command_loop(&command_shared, &queue, &command_sink))
+            .map_err(PlayerError::Thread)?;
         let thread_shared = shared.clone();
         let events = std::thread::Builder::new()
             .name("mpv-events".into())
@@ -388,6 +411,8 @@ impl Player {
             .map_err(PlayerError::Thread)?;
         Ok(Self {
             shared,
+            commands,
+            command_thread: Some(command_thread),
             events: Some(events),
         })
     }
@@ -396,22 +421,28 @@ impl Player {
     pub fn handle(&self) -> PlayerHandle {
         PlayerHandle {
             shared: self.shared.clone(),
+            commands: self.commands.clone(),
         }
     }
 
-    /// The raw `mpv_handle`, for the video item's render context. The item MUST
-    /// free its render context before [`Player::shutdown`] (SPECIFICATION §5.2.2).
+    /// The raw `mpv_handle`, for the render context ([`crate::render`]), which
+    /// MUST be freed before [`Player::shutdown`] (SPECIFICATION §5.2.2).
     pub fn raw_handle(&self) -> *mut std::ffi::c_void {
         self.shared.mpv.ctx.as_ptr().cast()
     }
 
-    /// Stops the core in the required order: `quit`, then the join of the events
-    /// thread; the core itself goes when the last handle is dropped.
+    /// Stops the core in the required order: the commands already queued, then
+    /// `quit`, then the join of the events thread; the core itself goes when the
+    /// last handle is dropped. Commands sent afterwards fail.
     pub fn shutdown(mut self) {
         self.stop();
     }
 
     fn stop(&mut self) {
+        if let Some(t) = self.command_thread.take() {
+            let _ = self.commands.send(Command::Stop);
+            let _ = t.join();
+        }
         let _ = self.shared.mpv.command("quit", &[]);
         if let Some(t) = self.events.take() {
             let _ = t.join();
@@ -426,12 +457,21 @@ impl Drop for Player {
 }
 
 impl PlayerHandle {
-    fn set(&self, name: &str, value: &str) -> Result<(), PlayerError> {
-        Ok(self.shared.mpv.set_property(name, value)?)
+    fn send(&self, command: Command) -> Result<(), PlayerError> {
+        self.commands.send(command).map_err(|_| {
+            PlayerError::Thread(std::io::Error::other("the command thread has stopped"))
+        })
     }
 
-    fn cmd(&self, name: &str, args: &[&str]) -> Result<(), PlayerError> {
-        Ok(self.shared.mpv.command(name, args)?)
+    fn set(&self, name: &str, value: &str) -> Result<(), PlayerError> {
+        self.send(Command::Set(name.to_string(), value.to_string()))
+    }
+
+    fn cmd(&self, name: &'static str, args: &[&str]) -> Result<(), PlayerError> {
+        self.send(Command::Run(
+            name,
+            args.iter().map(|a| (*a).to_string()).collect(),
+        ))
     }
 
     /// The token of the current load.
@@ -439,39 +479,18 @@ impl PlayerHandle {
         self.shared.token()
     }
 
-    /// Loads a file, replacing the current one but keeping the core (PLY-009).
-    /// Applies the options first (PLY-006) and returns the ones mpv rejected.
-    pub fn load(
-        &self,
-        path: &str,
-        request: LoadRequest,
-    ) -> Result<(LoadToken, Vec<OptionError>), PlayerError> {
+    /// Loads a file, replacing the current one but keeping the core (PLY-009),
+    /// after its options (PLY-006); returns the token of the load at once. The
+    /// options mpv rejects are logged by name; if mpv refuses the load itself,
+    /// an [`EndFile::Error`] with this token follows.
+    pub fn load(&self, path: &str, request: LoadRequest) -> Result<LoadToken, PlayerError> {
         let token = LoadToken(self.shared.token.fetch_add(1, Ordering::SeqCst) + 1);
-        let mut errors = Vec::new();
-        for option in &request.options {
-            let result = if option.key == "profile" {
-                self.cmd("apply-profile", &[&option.value])
-            } else {
-                self.set(&option.key, &option.value)
-            };
-            if let Err(e) = result {
-                errors.push(OptionError {
-                    option: option.clone(),
-                    message: e.to_string(),
-                });
-            }
-        }
-        // PLY-007: resume through `start`, never with a seek after loading.
-        let start = request
-            .start
-            .filter(|s| *s > 0.0)
-            .map_or_else(|| "none".to_string(), |s| format!("{s:.3}"));
-        self.set("start", &start)?;
-        if let Ok(mut p) = self.shared.pending.lock() {
-            *p = Some((token, request));
-        }
-        self.cmd("loadfile", &[path, "replace"])?;
-        Ok((token, errors))
+        self.send(Command::Load {
+            token,
+            path: path.to_string(),
+            request,
+        })?;
+        Ok(token)
     }
 
     /// Play or pause.
@@ -569,12 +588,83 @@ impl PlayerHandle {
         self.set(&format!("user-data/nikomiru/{key}"), value)
     }
 
-    /// Reads a property as a string. Only with the `test-support` feature, for
-    /// the tests and the GUI harness: the UI gets its state from events (ARC-003).
+    /// Reads a property as a string, synchronously. Only with the `test-support`
+    /// feature, for the tests and the GUI harness, and never on the UI thread: the
+    /// UI gets its state from events (ARC-003).
     #[cfg(feature = "test-support")]
     pub fn property_string(&self, name: &str) -> Option<String> {
         self.shared.mpv.get_property::<String>(name).ok()
     }
+}
+
+/// Runs the queued commands in order until [`Command::Stop`] or the last sender
+/// goes. Errors are logged: the caller does not wait for them.
+fn command_loop(shared: &Shared, queue: &mpsc::Receiver<Command>, sink: &Sink) {
+    let mpv = &shared.mpv;
+    for command in queue {
+        match command {
+            Command::Stop => break,
+            Command::Set(name, value) => {
+                if let Err(e) = mpv.set_property(&name, value.as_str()) {
+                    tracing::warn!(target: "mpv", "setting {name}: {}", mpv_reason(&e));
+                }
+            }
+            Command::Run(name, args) => {
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                if let Err(e) = mpv.command(name, &args) {
+                    tracing::warn!(target: "mpv", "{name}: {}", mpv_reason(&e));
+                }
+            }
+            Command::Load {
+                token,
+                path,
+                request,
+            } => {
+                if let Err(e) = load(shared, token, &path, request) {
+                    tracing::error!(target: "mpv", "loadfile: {}", mpv_reason(&e));
+                    let code = match e {
+                        libmpv2::Error::Raw(code) => code,
+                        _ => -13,
+                    };
+                    sink(Stamped {
+                        token,
+                        value: PlayerEvent::EndFile(EndFile::Error(PlaybackError::from_code(code))),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// A load: options (PLY-006), `start` (PLY-007: resume through `start`, never
+/// with a seek after loading), then `loadfile`.
+fn load(
+    shared: &Shared,
+    token: LoadToken,
+    path: &str,
+    request: LoadRequest,
+) -> Result<(), libmpv2::Error> {
+    let mpv = &shared.mpv;
+    for option in &request.options {
+        let result = if option.key == "profile" {
+            mpv.command("apply-profile", &[&option.value])
+        } else {
+            mpv.set_property(&option.key, option.value.as_str())
+        };
+        if let Err(e) = result {
+            // Names only: a raw option's value may hold a token (PRV-002).
+            tracing::warn!(target: "mpv", "mpv rejected option {}: {}", option.key, mpv_reason(&e));
+        }
+    }
+    let start = request
+        .start
+        .filter(|s| *s > 0.0)
+        .map_or_else(|| "none".to_string(), |s| format!("{s:.3}"));
+    mpv.set_property("start", start.as_str())?;
+    if let Ok(mut p) = shared.pending.lock() {
+        *p = Some((token, request));
+    }
+    mpv.command("loadfile", &[path, "replace"])
 }
 
 fn opt_string(mpv: &Mpv, name: &str) -> Option<String> {

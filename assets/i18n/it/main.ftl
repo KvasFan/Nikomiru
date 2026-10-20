@@ -15,6 +15,9 @@ volume = Volume
 mute = Disattiva l'audio
 unmute = Riattiva l'audio
 speed = Velocità
+speed-up = Più veloce
+speed-down = Più lento
+position = Posizione
 audio-track = Traccia audio
 no-audio = Nessun audio
 track-unknown-language = Lingua sconosciuta
@@ -47,6 +50,7 @@ error-library-schema = Il file della libreria è danneggiato: non ha una version
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = Il player non può farlo ({ $reason }).
 error-player-thread = Il player non riesce ad avviarsi ({ $reason }).
+error-video-output = Il video non può essere mostrato: { $reason }
 playback-loading-failed = il file manca, non è leggibile o è danneggiato
 playback-audio-output = non c'è un'uscita audio disponibile
 playback-video-output = l'uscita video non riesce ad avviarsi

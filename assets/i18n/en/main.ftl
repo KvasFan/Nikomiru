@@ -15,6 +15,9 @@ volume = Volume
 mute = Mute
 unmute = Unmute
 speed = Speed
+speed-up = Faster
+speed-down = Slower
+position = Position
 audio-track = Audio track
 no-audio = No audio
 track-unknown-language = Unknown language
@@ -47,6 +50,7 @@ error-library-schema = The library file is damaged: it has no valid version. Nik
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = The player cannot do this ({ $reason }).
 error-player-thread = The player cannot start ({ $reason }).
+error-video-output = The video cannot be shown: { $reason }
 playback-loading-failed = the file is missing, unreadable or damaged
 playback-audio-output = no audio output is available
 playback-video-output = the video output cannot start

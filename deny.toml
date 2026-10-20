@@ -16,7 +16,14 @@ feature-depth = 1
 
 [advisories]
 yanked = "deny"
-ignore = []
+# Not vulnerabilities: crates merged into zbus 6, reached only through AccessKit's
+# AT-SPI stack (accesskit_unix → atspi → zbus 5), which has no zbus 6 release yet.
+# Revisit on every update of egui and AccessKit (D-13).
+ignore = [
+    { id = "RUSTSEC-2026-0370", reason = "zvariant, merged into zbus 6: through accesskit_unix" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names, merged into zbus 6: through accesskit_unix" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive, merged into zbus 6: through accesskit_unix" },
+]
 
 [licenses]
 allow = [

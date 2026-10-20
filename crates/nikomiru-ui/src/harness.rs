@@ -1,23 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The GUI test harness (TEST §2.1), compiled only with the `test-harness`
-//! feature. Commands go through the controller's invokables and the QML key
-//! handler, like the user's input; load milestones arrive as events.
+//! feature: never in release builds (T-SEC-004). Each command runs on the UI
+//! thread through the entry points of the user's input: [`Ui::key`] for keys,
+//! [`Ui::dropped`] for drops, the overlay's click command for graphemes, the
+//! close path for `quit`. Load milestones arrive as events.
 
 use std::collections::VecDeque;
-use std::sync::{Condvar, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use cxx_qt::CxxQtType;
-use cxx_qt_lib::QString;
 use serde_json::{Value, json};
 
-use crate::bridge::player::harness_call;
+use crate::popup::Rect;
 use crate::session::UiEvent;
-use crate::shortcuts::evdev_code;
+use crate::shortcuts::{Modifiers, evdev_code};
+use crate::ui::{Command, Inbound, Key, Ui, Waker};
 
 static EVENTS: Mutex<VecDeque<(&'static str, Value)>> = Mutex::new(VecDeque::new());
 static ARRIVED: Condvar = Condvar::new();
+static RELAY: Mutex<Option<Arc<dyn Waker>>> = Mutex::new(None);
+
+/// The UI exists: commands can reach it.
+pub(crate) fn install(waker: Arc<dyn Waker>) {
+    if let Ok(mut relay) = RELAY.lock() {
+        *relay = Some(waker);
+    }
+}
+
+/// The UI is closing: later commands fail.
+pub(crate) fn uninstall() {
+    if let Ok(mut relay) = RELAY.lock() {
+        *relay = None;
+    }
+}
 
 /// Records a load milestone for [`wait`].
 pub(crate) fn push(event: UiEvent) {
@@ -70,151 +87,165 @@ pub fn wait(event: &str, timeout: Duration) -> Result<Value, String> {
     }
 }
 
+/// Runs `f` on the UI thread and returns its result, waiting up to 10 s for
+/// the window to exist and up to 10 s for the answer.
+fn call<T: Send + 'static>(f: impl FnOnce(&mut Ui) -> T + Send + 'static) -> Result<T, String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let waker = loop {
+        if let Some(waker) = RELAY.lock().ok().and_then(|r| r.clone()) {
+            break waker;
+        }
+        if Instant::now() >= deadline {
+            return Err("the window did not appear".into());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let (tx, rx) = mpsc::channel();
+    waker.wake(Inbound::Harness(Box::new(move |ui| {
+        let _ = tx.send(f(ui));
+    })));
+    rx.recv_timeout(Duration::from_secs(10))
+        .map_err(|_| "the UI did not answer".to_string())
+}
+
 /// Opens a file as the file dialog does.
 pub fn open(path: &str) -> Result<(), String> {
     let path = path.to_string();
-    harness_call(move |c| c.open_file(&QString::from(path.as_str())))
+    call(move |ui| {
+        ui.handle(Inbound::Open(path));
+    })
 }
 
-/// Drops files on the window, as `file://` URLs, through the QML drop handler.
+/// Drops files on the window, through the drop handler (the first counts).
 pub fn drop(paths: &[String]) -> Result<(), String> {
-    let url = paths
+    let path = paths
         .first()
-        .map(|p| file_url(p))
+        .map(PathBuf::from)
         .ok_or_else(|| "drop: no paths".to_string())?;
-    harness_call(move |c| c.drop_requested(&QString::from(url.as_str())))
-}
-
-/// A `file://` URL for an absolute path, percent-encoded like a desktop drop.
-fn file_url(path: &str) -> String {
-    let mut url = String::from("file://");
-    for b in path.bytes() {
-        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
-            url.push(char::from(b));
-        } else {
-            url.push_str(&format!("%{b:02X}"));
-        }
-    }
-    url
+    call(move |ui| ui.dropped(&path))
 }
 
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
-/// (`Ctrl`, `Shift`, `Alt`).
+/// (`Ctrl`, `Shift`, `Alt`), through the window's key handler.
 pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
     let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
-    let mut bits = 0u32;
+    let mut held = Modifiers::default();
     for m in mods {
-        bits |= match m.as_str() {
-            "Shift" => 0x0200_0000,
-            "Ctrl" => 0x0400_0000,
-            "Alt" => 0x0800_0000,
+        match m.as_str() {
+            "Shift" => held.shift = true,
+            "Ctrl" => held.ctrl = true,
+            "Alt" => held.alt = true,
             other => return Err(format!("unknown modifier {other}")),
-        };
+        }
     }
-    // XKB keycodes are evdev codes + 8, as in QKeyEvent::nativeScanCode
-    harness_call(move |c| c.key_requested(evdev + 8, bits))
+    call(move |ui| {
+        let key = |pressed| Key {
+            evdev,
+            mods: held,
+            pressed,
+            repeat: false,
+        };
+        ui.key(key(true), false);
+        ui.key(key(false), false);
+    })
 }
 
 /// Clicks grapheme `grapheme` of cue `cue` (layer `main`, the only one before
-/// M7), through the overlay's click invokable.
+/// M7) through the overlay's click command. The anchor is empty, so the popup
+/// takes the fallback place.
 pub fn click_grapheme(layer: &str, cue: usize, grapheme: usize) -> Result<(), String> {
     if layer != "main" {
         return Err(format!("no subtitle layer {layer}"));
     }
-    harness_call(move |mut c| {
-        let offset = c
-            .rust()
+    call(move |ui| {
+        let offset = ui
             .session
-            .as_ref()
-            .and_then(|s| s.subs.cue(cue))
+            .subs
+            .cue(cue)
             .and_then(|q| q.graphemes().get(grapheme).map(|g| g.offset))
             .ok_or_else(|| format!("no grapheme {grapheme} in cue {cue}"))?;
-        c.as_mut()
-            .grapheme_clicked(cue as i32, offset as i32, 0.0, 0.0, 0.0, 0.0);
+        ui.run(Command::GraphemeClicked {
+            cue,
+            offset,
+            anchor: Rect::default(),
+        });
         Ok(())
     })?
 }
 
 /// The player state as the page shows it.
 pub fn state() -> Result<Value, String> {
-    harness_call(|c| {
+    call(|ui| {
+        let s = &ui.session;
+        let v = &s.view;
+        let visible: Vec<Value> = s
+            .subs
+            .active()
+            .iter()
+            .filter_map(|&i| {
+                s.subs
+                    .cue(i)
+                    .map(|q| json!({ "index": i, "text": q.plain_text }))
+            })
+            .collect();
         json!({
-            "loaded": *c.loaded(),
-            "title": c.title().to_string(),
-            "time_pos": *c.time_pos(),
-            "duration": *c.duration(),
-            "paused": *c.paused(),
-            "volume": *c.volume(),
-            "muted": *c.muted(),
-            "speed": *c.speed(),
-            "aid": *c.aid(),
-            "error": c.error_text().to_string(),
-            "toast": c.toast().to_string(),
-            "controls_visible": *c.controls_visible(),
-            "fullscreen": *c.window_fullscreen(),
-            "subtitles": c.rust().session.as_ref().map(|s| {
-                let visible: Vec<Value> = s
-                    .subs
-                    .active()
-                    .iter()
-                    .filter_map(|&i| s.subs.cue(i).map(|q| json!({ "index": i, "text": q.plain_text })))
-                    .collect();
-                json!({
-                    "source": s.subs.source.as_ref().map(|x| x.key()),
-                    "encoding": s.subs.encoding,
-                    "delay_ms": s.subs.timeline().delay_ms,
-                    "cues": s.subs.timeline().cues().len(),
-                    "visible": visible,
-                    "selected": s.subs.selection.map(|(c, o)| json!([c, o])),
-                    "obscure": s.obscure_now().name(),
-                    "disabled": s.subs.disabled,
-                    "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
-                })
-            }),
-            "popups": c.rust().session.as_ref().map(|s| {
-                s.popups
-                    .stack()
-                    .iter()
-                    .map(|p| json!({
-                        "query": p.query,
-                        "entry": p.entry,
-                        "entries": p.reply.as_ref().map_or(0, |r| r.entries),
-                        "loading": p.reply.is_none(),
-                        "empty": p.reply.as_ref().is_some_and(|r| r.empty),
-                    }))
-                    .collect::<Vec<_>>()
-            }),
-            "paused_for_lookup": c.rust().session.as_ref().map(|s| s.popups.paused_for_lookup()),
-            "dictionaries": c.rust().session.as_ref().map(|s| s.dict_page.json()),
+            "loaded": v.loaded,
+            "title": v.title,
+            "time_pos": v.time_pos,
+            "duration": v.duration,
+            "paused": v.paused,
+            "volume": v.volume,
+            "muted": v.muted,
+            "speed": v.speed,
+            "aid": v.aid.unwrap_or(0),
+            "error": v.error.clone().unwrap_or_default(),
+            "toast": ui.view.last_toast,
+            "controls_visible": s.controls_visible(),
+            "fullscreen": ui.view.fullscreen,
+            "subtitles": {
+                "source": s.subs.source.as_ref().map(|x| x.key()),
+                "encoding": s.subs.encoding,
+                "delay_ms": s.subs.timeline().delay_ms,
+                "cues": s.subs.timeline().cues().len(),
+                "visible": visible,
+                "selected": s.subs.selection.map(|(c, o)| json!([c, o])),
+                "obscure": s.obscure_now().name(),
+                "disabled": s.subs.disabled,
+                "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
+            },
+            "popups": s.popups.stack().iter().map(|p| json!({
+                "query": p.query,
+                "entry": p.entry,
+                "entries": p.reply.as_ref().map_or(0, |r| r.entries),
+                "loading": p.reply.is_none(),
+                "empty": p.reply.as_ref().is_some_and(|r| r.empty),
+            })).collect::<Vec<_>>(),
+            "paused_for_lookup": s.popups.paused_for_lookup(),
+            "dictionaries": s.dict_page.json(),
         })
     })
 }
 
 /// A button of the root popup, like the user's click (POP-015).
 pub fn popup_button(button: &str) -> Result<(), String> {
-    match button {
-        "replay" => harness_call(|c| c.popup_replay()),
-        "goto" => harness_call(|c| c.popup_goto()),
-        other => Err(format!("no popup button {other}")),
-    }
+    let command = match button {
+        "replay" => Command::PopupReplay,
+        "goto" => Command::PopupGoto,
+        other => return Err(format!("no popup button {other}")),
+    };
+    call(move |ui| ui.run(command))
 }
 
-/// An mpv property, read-only, for metrics.
+/// An mpv property, read-only, for metrics. Read on this thread: a
+/// synchronous read must never run on the UI thread, which renders the video.
 pub fn mpv_get(property: &str) -> Result<Value, String> {
-    let property = property.to_string();
-    harness_call(move |c| {
-        c.rust()
-            .session
-            .as_ref()
-            .and_then(|s| s.player().property_string(&property))
-            .map_or(Value::Null, Value::String)
-    })
+    let player = call(|ui| ui.session.player().clone())?;
+    Ok(player
+        .property_string(property)
+        .map_or(Value::Null, Value::String))
 }
 
 /// Closes the window like the user does.
 pub fn quit() -> Result<(), String> {
-    harness_call(|mut c| {
-        c.as_mut().shutdown();
-        c.quit_requested();
-    })
+    call(Ui::quit)
 }

@@ -333,24 +333,16 @@ pub struct Modifiers {
 }
 
 impl Modifiers {
-    /// From Qt's `Qt::KeyboardModifiers` bits.
-    pub fn from_qt(bits: u32) -> Self {
-        Self {
-            shift: bits & 0x0200_0000 != 0,
-            ctrl: bits & 0x0400_0000 != 0,
-            alt: bits & 0x0800_0000 != 0,
-        }
-    }
-
     fn any(self) -> bool {
         self.ctrl || self.alt || self.shift
     }
 }
 
-/// The chord of a key event: Qt's `nativeScanCode` (XKB keycode) and modifiers.
-/// `None` for keys without a name or for a bare modifier.
-pub fn chord(native_scan_code: u32, mods: Modifiers) -> Option<String> {
-    let name = code_name(native_scan_code.checked_sub(8)?)?;
+/// The chord of a key event: the physical key as a Linux evdev code (what winit
+/// reports on Linux, KEY-002) and the modifiers. `None` for keys without a name
+/// or for a bare modifier.
+pub fn chord(evdev: u32, mods: Modifiers) -> Option<String> {
+    let name = code_name(evdev)?;
     let mut s = String::new();
     if mods.ctrl {
         s.push_str("Ctrl+");
@@ -503,22 +495,16 @@ mod tests {
     // T-KEY-002
     #[test]
     fn keys_are_identified_by_scan_code() {
-        // evdev KEY_Q = 16, XKB keycode = 24: "KeyQ" whatever the layout prints
-        // (on AZERTY that key types "a").
-        assert_eq!(chord(24, NO).as_deref(), Some("KeyQ"));
-        assert_eq!(chord(65, NO).as_deref(), Some("Space"));
+        // evdev KEY_Q = 16: "KeyQ" whatever the layout prints (on AZERTY that
+        // key types "a")
+        assert_eq!(chord(16, NO).as_deref(), Some("KeyQ"));
+        assert_eq!(chord(57, NO).as_deref(), Some("Space"));
         let ctrl = Modifiers { ctrl: true, ..NO };
-        assert_eq!(chord(113, ctrl).as_deref(), Some("Ctrl+ArrowLeft"));
-        assert_eq!(chord(3, NO), None);
+        assert_eq!(chord(105, ctrl).as_deref(), Some("Ctrl+ArrowLeft"));
+        // reserved code, bare Ctrl
+        assert_eq!(chord(0, NO), None);
+        assert_eq!(chord(29, ctrl), None);
         assert_eq!(normalize("shift+ctrl+keyq"), "Ctrl+Shift+KeyQ");
-        assert_eq!(
-            Modifiers::from_qt(0x0400_0000 | 0x0200_0000),
-            Modifiers {
-                ctrl: true,
-                shift: true,
-                alt: false
-            }
-        );
     }
 
     // T-KEY-001

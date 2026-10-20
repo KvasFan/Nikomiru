@@ -1,31 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The Nikomiru binary: `QGuiApplication`, the QML engine, single instance and the
-//! wiring between the crates (D-10).
-//!
-//! The pieces that do not need Qt live in the library half of this crate.
+//! The Nikomiru binary: the event loop and its window (egui, D-13), single
+//! instance and the wiring between the crates.
 
 #![deny(unsafe_code)]
 
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 use nikomiru_app::inhibit::PortalInhibitor;
+use nikomiru_app::shell::{ProxyWaker, Shell, UserEvent};
 use nikomiru_app::{cli, instance, linux, logging};
 use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
 use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_player::{Player, VideoOutput};
-use nikomiru_ui::Services;
 use nikomiru_ui::dictionaries::{DictionaryService, Done};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::popup::Reply;
+use nikomiru_ui::{Inbound, Services, Waker};
+use winit::event_loop::EventLoop;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// The main window, compiled into the `Nikomiru.UI` QML module.
-const MAIN_QML: &str = "qrc:/qt/qml/Nikomiru/UI/qml/Main.qml";
 
 fn main() -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -49,7 +44,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    linux::prepare_environment();
+    let token = linux::take_activation_token();
 
     let debug = options.debug || std::env::var("NIKOMIRU_LOG").is_ok_and(|v| v == "debug");
     let paths = Paths::from_env();
@@ -86,12 +81,12 @@ fn main() -> ExitCode {
             }
         },
     };
-    run(&paths, &options, server)
+    run(&paths, &options, server, token)
 }
 
 /// The first termination signal closes the window like the user would, so the
 /// position is saved (LIB-006); a second one exits at once.
-fn watch_termination_signals() {
+fn watch_termination_signals(waker: Arc<dyn Waker>) {
     let mut signals = match linux::catch_termination_signals() {
         Ok(s) => s,
         Err(e) => {
@@ -109,7 +104,7 @@ fn watch_termination_signals() {
                     std::process::exit(128 + signal);
                 }
                 tracing::info!("signal {signal}: quitting");
-                nikomiru_ui::request_quit();
+                waker.wake(Inbound::Quit);
                 asked = true;
             }
         });
@@ -292,18 +287,21 @@ impl DictionaryService for NoDictionaries {
     }
 }
 
-fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) -> ExitCode {
-    let mut app = QGuiApplication::new();
-    if let Some(mut app) = app.as_mut() {
-        app.as_mut()
-            .set_application_name(&QString::from("nikomiru"));
-        app.as_mut()
-            .set_application_display_name(&QString::from("Nikomiru"));
-        app.as_mut()
-            .set_application_version(&QString::from(VERSION));
-    }
+fn run(
+    paths: &Paths,
+    options: &cli::Options,
+    server: Option<instance::Server>,
+    token: Option<String>,
+) -> ExitCode {
+    // The event loop first: the player, the instance server, the signal thread
+    // and the harness all send to it; on X11 winit sets LC_CTYPE here.
+    let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
+        Ok(event_loop) => event_loop,
+        Err(e) => return fatal(&format!("window system: {e}")),
+    };
     linux::force_c_numeric_locale();
-    nikomiru_player::video::init();
+    let proxy = event_loop.create_proxy();
+    let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
     let (config, config_notice) = load_config(paths);
     check_ffmpeg(&config.paths.ffmpeg);
@@ -345,7 +343,10 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
         }
     });
 
-    let player = match Player::new(VideoOutput::RenderApi, nikomiru_ui::deliver) {
+    let sink = waker.clone();
+    let player = match Player::new(VideoOutput::RenderApi, move |e| {
+        sink.wake(Inbound::Player(e))
+    }) {
         Ok(player) => player,
         Err(e) => {
             tracing::error!("{e}");
@@ -353,7 +354,6 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
             return ExitCode::FAILURE;
         }
     };
-    nikomiru_player::video::set_core(&player);
     let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));
     let subtitle_source = nikomiru_app::subtitles::Loader::start(
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok()),
@@ -363,7 +363,7 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
     let config_language = config.general.ui_language.clone();
     let max_results = config.lookup.max_results;
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
-    nikomiru_ui::install(Services {
+    let services = Services {
         player: player.handle(),
         config,
         library,
@@ -380,49 +380,39 @@ fn run(paths: &Paths, options: &cli::Options, server: Option<instance::Server>) 
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
-    });
+    };
     let instance = server.map(|server| {
-        server.serve(|request| {
+        let waker = waker.clone();
+        server.serve(move |request| {
             if let Some(target) = request.open.into_iter().next() {
-                nikomiru_ui::request_open(target);
+                waker.wake(Inbound::Open(target));
             }
-            nikomiru_ui::request_activate();
+            waker.wake(Inbound::Activate);
         })
     });
     if let Some(target) = options.targets.first() {
-        nikomiru_ui::request_open(target.clone());
+        waker.wake(Inbound::Open(target.clone()));
     }
-    watch_termination_signals();
+    watch_termination_signals(waker.clone());
     #[cfg(feature = "test-harness")]
     if let Some(socket) = &options.harness {
         nikomiru_app::harness::start(socket);
     }
 
-    let failed = Arc::new(AtomicBool::new(false));
-    let mut engine = QQmlApplicationEngine::new();
-    let connection = engine.as_mut().map(|mut engine| {
-        let failed = failed.clone();
-        let connection = engine.as_mut().on_object_creation_failed(move |_, url| {
-            tracing::error!("QML: cannot create {url}");
-            failed.store(true, Ordering::SeqCst);
-        });
-        engine.as_mut().load(&QUrl::from(MAIN_QML));
-        connection
-    });
-    let code = match app.as_mut() {
-        Some(app) if connection.is_some() && !failed.load(Ordering::SeqCst) => app.exec(),
-        _ => 1,
+    let mut shell = Shell::new(&player, services, proxy, waker, token);
+    let code = match event_loop.run_app(&mut shell) {
+        Ok(()) => shell.code,
+        Err(e) => {
+            tracing::error!("event loop: {e}");
+            1
+        }
     };
-
-    // Shutdown order (SPECIFICATION §5.2.2): the window, the controller and the
-    // video item's render context go first, then the mpv core.
-    drop(connection);
-    drop(engine);
-    // if the window never loaded, the services (library included) are still
-    // waiting for it: they must be closed too
-    nikomiru_ui::uninstall();
+    // Shutdown order (SPECIFICATION §5.2.2 #7): mpv's render context, the window
+    // and the session went when the loop ended (`Shell::exiting`); the services of
+    // a window that never opened go with the shell; then the mpv core.
+    drop(shell);
     player.shutdown();
     drop(instance);
     tracing::info!("exit {code}");
-    ExitCode::from(u8::try_from(code).unwrap_or(1))
+    ExitCode::from(code)
 }

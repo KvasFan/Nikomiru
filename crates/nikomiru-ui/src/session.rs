@@ -258,15 +258,21 @@ pub fn url_to_path(url: &str) -> PathBuf {
     let Some(rest) = url.strip_prefix("file://") else {
         return PathBuf::from(url);
     };
+    // bytes, not `&str` slices: a `%` before a multibyte character must not panic
+    let hex = |b: u8| {
+        char::from(b)
+            .to_digit(16)
+            .and_then(|d| u8::try_from(d).ok())
+    };
     let bytes = rest.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(b) = u8::from_str_radix(&rest[i + 1..i + 3], 16)
+            && let (Some(high), Some(low)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
         {
-            out.push(b);
+            out.push(high << 4 | low);
             i += 3;
             continue;
         }
@@ -342,7 +348,7 @@ impl Session {
     }
 
     /// The player, for the GUI test harness's `mpv_get`.
-    #[cfg(feature = "test_harness")]
+    #[cfg(feature = "test-harness")]
     pub fn player(&self) -> &nikomiru_player::PlayerHandle {
         &self.services.player
     }
@@ -443,13 +449,9 @@ impl Session {
             path.display(),
             request.start
         );
+        // the options mpv rejects are logged by the player's command thread
         match self.services.player.load(&path.to_string_lossy(), request) {
-            Ok((token, rejected)) => {
-                self.token = token;
-                for e in rejected {
-                    tracing::warn!("mpv rejected option {}: {}", e.option.key, e.message);
-                }
-            }
+            Ok(token) => self.token = token,
             Err(e) => {
                 tracing::error!("load failed: {e}");
                 self.view.error = Some(self.services.translator.error(&e));
@@ -648,22 +650,22 @@ impl Session {
         !self.view.loaded || self.controls.visible(self.services.clock.monotonic())
     }
 
-    /// A key event from the QML layer (KEY-002: Qt's `nativeScanCode`).
+    /// A key event: the physical key as an evdev code (KEY-002) and the
+    /// modifiers. `text_focus`: a text field has the keyboard (KEY-004). Returns
+    /// the effect and whether a binding took the key.
     pub fn key(
         &mut self,
-        native_scan_code: u32,
-        qt_modifiers: u32,
+        evdev: u32,
+        mods: Modifiers,
         pressed: bool,
         auto_repeat: bool,
         text_focus: bool,
-    ) -> UiEffect {
-        let Some(chord) =
-            crate::shortcuts::chord(native_scan_code, Modifiers::from_qt(qt_modifiers))
-        else {
+    ) -> (UiEffect, bool) {
+        let Some(chord) = crate::shortcuts::chord(evdev, mods) else {
             if pressed {
-                tracing::debug!("key: scan code {native_scan_code} has no name");
+                tracing::debug!("key: evdev code {evdev} has no name");
             }
-            return UiEffect::None;
+            return (UiEffect::None, false);
         };
         // a popup's keys first, then the player's (KEY-003)
         let action = if self.popups.is_open() {
@@ -677,23 +679,29 @@ impl Session {
             tracing::debug!("key {chord} → {}", action.map_or("nothing", Action::name));
         }
         let Some(action) = action else {
-            return UiEffect::None;
+            return (UiEffect::None, false);
         };
         if !pressed {
-            if action == Action::HoldSpeed
-                && let Some(speed) = self.hold.key_up()
-            {
-                let _ = self.services.player.set_speed(speed);
+            if action == Action::HoldSpeed {
+                self.release_hold();
             }
-            return UiEffect::None;
+            return (UiEffect::None, true);
         }
         if action == Action::HoldSpeed {
             if let Some(speed) = self.hold.key_down(self.view.speed, auto_repeat) {
                 let _ = self.services.player.set_speed(speed);
             }
-            return UiEffect::None;
+            return (UiEffect::None, true);
         }
-        self.action(action)
+        (self.action(action), true)
+    }
+
+    /// Ends hold-to-speed (PLY-002): on the key's release, or when the window
+    /// loses the keyboard and the release will never arrive.
+    pub fn release_hold(&mut self) {
+        if let Some(speed) = self.hold.key_up() {
+            let _ = self.services.player.set_speed(speed);
+        }
     }
 
     /// Runs an action (from a key or a button).
@@ -1164,10 +1172,10 @@ impl Session {
         self.run_popup_commands(commands);
     }
 
-    /// A click in the text of a list row, at a QML (UTF-16) position.
-    pub fn select_in_list(&mut self, cue: usize, utf16_pos: usize, anchor: Rect) {
+    /// A click in the text of a list row, on the character at index `pos`.
+    pub fn select_in_list(&mut self, cue: usize, pos: usize, anchor: Rect) {
         if let Some(c) = self.subs.cue(cue) {
-            let offset = crate::subtitles::utf16_to_byte(&c.plain_text, utf16_pos);
+            let offset = crate::subtitles::char_to_byte(&c.plain_text, pos);
             self.select_grapheme(cue, offset, anchor);
         }
     }
@@ -1529,6 +1537,11 @@ mod tests {
         assert_eq!(
             url_to_path("file:///bad%zz.mkv"),
             PathBuf::from("/bad%zz.mkv")
+        );
+        // a `%` and one hex digit before a multibyte character (ERR-002)
+        assert_eq!(
+            url_to_path("file:///x%a日.mkv"),
+            PathBuf::from("/x%a日.mkv")
         );
     }
 }

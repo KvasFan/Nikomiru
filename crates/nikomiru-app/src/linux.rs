@@ -1,33 +1,39 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! What needs `unsafe` in the application (ARC-011): the environment Qt reads at
-//! startup, the numeric locale libmpv requires, the termination signals, and
-//! glibc's `iconv` for subtitle encodings (SUB-005).
+//! What needs `unsafe` in the application for the system (ARC-011): the
+//! environment at startup, the numeric locale libmpv requires, the termination
+//! signals, and glibc's `iconv` for subtitle encodings (SUB-005).
 
 use std::fs::File;
 use std::io::Read;
 use std::os::fd::FromRawFd;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-/// Sets the variables Qt reads when it starts. MUST run before any other thread
-/// exists, because changing the environment is not thread-safe.
-pub fn prepare_environment() {
-    // X11 with EGL, so that the video item gets the same GL path as on Wayland
-    // (ADR 0003). The xcb platform plugin is the only reader of this variable.
-    if std::env::var_os("QT_XCB_GL_INTEGRATION").is_none() {
-        // SAFETY: called at the start of `main`, before any thread is spawned, so
-        // nothing reads the environment concurrently.
-        unsafe { std::env::set_var("QT_XCB_GL_INTEGRATION", "xcb_egl") };
+/// Takes the launcher's startup-notification token out of the environment
+/// (`XDG_ACTIVATION_TOKEN` on Wayland, `DESKTOP_STARTUP_ID` on X11): the window
+/// uses it to come forward, and the processes Nikomiru starts (ffmpeg) must not
+/// inherit it. MUST run before any other thread exists, because changing the
+/// environment is not thread-safe.
+pub fn take_activation_token() -> Option<String> {
+    let token = std::env::var("XDG_ACTIVATION_TOKEN")
+        .or_else(|_| std::env::var("DESKTOP_STARTUP_ID"))
+        .ok()
+        .filter(|t| !t.is_empty());
+    // SAFETY: called at the start of `main`, before any thread is spawned, so
+    // nothing reads the environment concurrently.
+    unsafe {
+        std::env::remove_var("XDG_ACTIVATION_TOKEN");
+        std::env::remove_var("DESKTOP_STARTUP_ID");
     }
+    token
 }
 
-/// libmpv refuses to create a core unless `LC_NUMERIC` is `C`, and
-/// `QGuiApplication` sets every category from the environment. Call it after
-/// `QGuiApplication` exists and before the player is created.
+/// libmpv refuses to create a core unless `LC_NUMERIC` is `C`; on X11 winit sets
+/// `LC_CTYPE` when its event loop starts. Call it after the event loop exists and
+/// before the player is created.
 pub fn force_c_numeric_locale() {
     // SAFETY: `setlocale` is called on the main thread before the threads that
-    // format numbers (mpv, the Qt render thread) start; the argument is a static
-    // NUL-terminated string.
+    // format numbers (mpv) start; the argument is a static NUL-terminated string.
     unsafe {
         libc::setlocale(libc::LC_NUMERIC, c"C".as_ptr());
     }

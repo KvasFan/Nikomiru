@@ -355,16 +355,12 @@ pub fn clock(ms: i64) -> String {
     }
 }
 
-/// The byte offset in `text` of the UTF-16 position `pos` (QML text positions).
-pub fn utf16_to_byte(text: &str, pos: usize) -> usize {
-    let mut units = 0;
-    for (byte, c) in text.char_indices() {
-        if units >= pos {
-            return byte;
-        }
-        units += c.len_utf16();
-    }
-    text.len()
+/// The byte offset in `text` of the character at index `pos` (egui's text
+/// cursors count characters).
+pub fn char_to_byte(text: &str, pos: usize) -> usize {
+    text.char_indices()
+        .nth(pos)
+        .map_or(text.len(), |(byte, _)| byte)
 }
 
 #[cfg(test)]
@@ -464,14 +460,14 @@ mod tests {
     }
 
     #[test]
-    fn clocks_and_utf16_positions() {
+    fn clocks_and_character_positions() {
         assert_eq!(clock(65_000), "1:05");
         assert_eq!(clock(3_725_000), "1:02:05");
         let text = "a😀日本";
-        assert_eq!(utf16_to_byte(text, 0), 0);
-        assert_eq!(utf16_to_byte(text, 1), 1);
-        assert_eq!(utf16_to_byte(text, 3), 5);
-        assert_eq!(utf16_to_byte(text, 4), 8);
-        assert_eq!(utf16_to_byte(text, 99), text.len());
+        assert_eq!(char_to_byte(text, 0), 0);
+        assert_eq!(char_to_byte(text, 1), 1);
+        assert_eq!(char_to_byte(text, 2), 5);
+        assert_eq!(char_to_byte(text, 3), 8);
+        assert_eq!(char_to_byte(text, 99), text.len());
     }
 }

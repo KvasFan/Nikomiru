@@ -56,9 +56,7 @@ impl Harness {
     }
 
     fn load(&mut self, name: &str, request: LoadRequest) {
-        let (token, errors) = self.h.load(&fixture(name), request).expect("load");
-        assert!(errors.is_empty(), "{errors:?}");
-        self.token = token;
+        self.token = self.h.load(&fixture(name), request).expect("load");
     }
 
     /// Events of the current load until `pred` matches or the timeout expires.
@@ -299,8 +297,7 @@ fn the_core_is_reused_and_speed_never_adds_scaletempo() {
 fn errors_are_reported_and_the_player_stays_usable() {
     let mut t = Harness::new();
     let missing = fixture("av_basic.mkv").replace("av_basic", "does_not_exist");
-    let (token, _) = t.h.load(&missing, LoadRequest::default()).unwrap();
-    t.token = token;
+    t.token = t.h.load(&missing, LoadRequest::default()).unwrap();
     let seen = t.wait(Duration::from_secs(10), |e| {
         matches!(e, PlayerEvent::EndFile(_))
     });
