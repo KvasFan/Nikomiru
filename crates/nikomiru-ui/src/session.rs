@@ -548,7 +548,11 @@ impl Session {
     /// "Go to sentence" (POP-015): the popups close and playback goes to the
     /// start of the cue.
     pub fn popup_goto(&mut self) {
-        let Some(cue) = self.popups.root_cue() else {
+        let Some(cue) = self
+            .popups
+            .root_cue()
+            .filter(|&c| c < self.subs.timeline().cues().len())
+        else {
             return;
         };
         let start = self.subs.timeline().start_pos(cue);
@@ -857,6 +861,16 @@ impl Session {
 
 /// Subtitles (SUB-005…SUB-016).
 impl Session {
+    /// The cues were replaced or removed: the list starts over, and the popups
+    /// close, since they looked up words of the cues that were (and replay or
+    /// go to them).
+    fn cues_changed(&mut self) {
+        self.sub_list_version += 1;
+        if self.popups.is_open() {
+            self.close_all_popups();
+        }
+    }
+
     fn reset_subtitles(&mut self) {
         self.subs.clear(None);
         self.sub_sources.clear();
@@ -864,7 +878,7 @@ impl Session {
         self.sub_generation += 1;
         self.sub_loads.clear();
         self.sub_auto_done = false;
-        self.sub_list_version += 1;
+        self.cues_changed();
     }
 
     /// The subtitle sources of the current file: external files next to it
@@ -946,7 +960,7 @@ impl Session {
             Source::Bitmap(id) => {
                 let _ = self.services.player.show_bitmap_subtitles(Some(*id));
                 self.subs.clear(Some(source));
-                self.sub_list_version += 1;
+                self.cues_changed();
             }
             Source::File(_) | Source::Embedded { .. } => {
                 let _ = self.services.player.show_bitmap_subtitles(None);
@@ -996,7 +1010,7 @@ impl Session {
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
-                self.sub_list_version += 1;
+                self.cues_changed();
                 let text = match encoding {
                     Some(e) => self.tr(
                         "toast-sub-loaded-encoding",
@@ -1009,7 +1023,7 @@ impl Session {
             Err(reason) => {
                 tracing::warn!("subtitles: {reason}");
                 self.subs.clear(None);
-                self.sub_list_version += 1;
+                self.cues_changed();
                 self.toasts
                     .push(self.tr("error-subtitles", &[("reason", reason)]));
             }
@@ -1022,7 +1036,7 @@ impl Session {
             self.sub_generation += 1;
             let _ = self.services.player.show_bitmap_subtitles(None);
             self.subs.clear(None);
-            self.sub_list_version += 1;
+            self.cues_changed();
             return;
         }
         if let Some(source) = self.sub_sources.iter().find(|s| s.key() == key).cloned() {
