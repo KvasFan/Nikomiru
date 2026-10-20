@@ -133,6 +133,9 @@ fn gui_tests() -> Result<()> {
         "e2e",
         "--",
         "--include-ignored",
+        // L7 needs a real Anki: `cargo xtask test --anki-e2e`
+        "--skip",
+        "l7_",
         "--test-threads",
         "1",
     ]))
