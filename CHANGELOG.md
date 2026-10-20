@@ -19,6 +19,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Spike S1q (Qt 6 Quick + cxx-qt + mpv render on the scene graph thread) and ADR 0003: Qt Quick as the UI toolkit instead of Dioxus.
 - Spike S5 (the video overlay and the dictionary popup with iced and with egui, measured against S1q's Qt Quick) and ADR 0006.
 - T-SEC-001 tests the hostile entry of `mini-ja` for real: looked up through the real import, lookup and popup content builder, its view model walked against the allowlist, drawn with `egui_kittest`, and opened in the real app, where a spy proxy sees no request. The GUI test harness has `lookup {text}` and `popup_content {level}` for it.
+- Conformance with every fushidicts test (TEST §5.3): `tests/conformance/import.json` and its runner (45 import cases: wrapper folders, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, media, styles, damaged dictionary files), 14 more lookup cases (kanji stats, glossary round trip, pitch patterns, score and frequency order, non-ASCII titles, malformed kanji rows) and an import that reaches a file size limit halfway. Five import cases are known failures of the importer, listed in TEST §5.3.
 
 ### Changed
 

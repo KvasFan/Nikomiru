@@ -258,11 +258,11 @@ const CHILD_DICTS: &str = "NIKOMIRU_TEST_IMPORT_DICTS";
 const CHILD_MODE: &str = "NIKOMIRU_TEST_IMPORT_MODE";
 const HALFWAY: &str = "nikomiru-import-halfway";
 
-/// Runs only as the child of the two tests below: imports `CHILD_ZIP` into
-/// `CHILD_DICTS`, either stalling halfway (`stall`, to be killed) or expecting
-/// a full disk (`full`).
+/// Runs only as the child of the tests below: imports `CHILD_ZIP` into
+/// `CHILD_DICTS`, either stalling halfway (`stall`, to be killed), expecting
+/// a full disk (`full`) or any failed write (`limit`).
 #[test]
-#[ignore = "child process of the L4 crash and disk-full tests"]
+#[ignore = "child process of the L4 crash, disk-full and write-limit tests"]
 fn child_import() {
     let (Ok(zip), Ok(dicts), Ok(mode)) = (
         std::env::var(CHILD_ZIP),
@@ -278,9 +278,14 @@ fn child_import() {
             std::thread::sleep(std::time::Duration::from_secs(60));
         }
     });
-    assert_eq!(mode, "full", "the stalled import must be killed");
-    let err = result.unwrap_err();
-    assert!(matches!(err, ImportError::StorageFull), "{err}");
+    match mode.as_str() {
+        "full" => {
+            let err = result.unwrap_err();
+            assert!(matches!(err, ImportError::StorageFull), "{err}");
+        }
+        "limit" => assert!(result.is_err(), "the import wrote past the limit"),
+        _ => panic!("the stalled import must be killed"),
+    }
     assert!(leftovers(dicts).is_empty(), "{:?}", leftovers(dicts));
 }
 
@@ -361,6 +366,34 @@ fn a_full_disk_fails_with_storage_full_and_cleans_up() {
         stdout.contains("1 passed"),
         "the child test did not run: {stdout}"
     );
+}
+
+// T-DIC-014: a write that fails halfway, as on a full disk; ported from
+// Fushi's import_failure_boundary_test.cpp, case 6 (ac8034e)
+#[test]
+fn an_import_that_cannot_write_fails_and_leaves_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let zip = synthetic(tmp.path(), 4000, 1000);
+    let dicts = tmp.path().join("dicts");
+    // the file size limit stands for the full disk: every write past it fails
+    // (EFBIG); SIGXFSZ, which would kill the child first, is ignored
+    let inner = child("limit", &zip, &dicts);
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(r#"trap '' XFSZ && ulimit -f 64 && exec "$@""#)
+        .arg("sh")
+        .arg(inner.get_program())
+        .args(inner.get_args())
+        .envs(inner.get_envs().filter_map(|(k, v)| Some((k, v?))))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(leftovers(&dicts).is_empty(), "{:?}", leftovers(&dicts));
 }
 
 fn fixture(name: &str) -> PathBuf {

@@ -125,7 +125,8 @@ Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_eng
 | Mixed orthography, Kansai | `native/fushidicts/tests/ja_mixed_orthography_lookup_test.cpp`, `ja_kansai_ta_boundary_test.cpp` | T-LKP-031, T-LKP-033 |
 | Frequencies and pitch accent | `native/fushidicts/tests/freq_pitch_import_query_test.cpp`, `freq_pitch_merge_query_test.cpp`, `lookup_freq_pitch_enrichment_test.cpp`, `ipa_import_query_test.cpp` | T-LKP-035, T-LKP-040…043 |
 | Korean (future) | `native/fushidicts/tests/korean_hangul_lookup_test.cpp` | T-LKP-012 |
-| Import robustness | `native/fushidicts/tests/import_failure_boundary_test.cpp`, `import_memory_bound_test.cpp`, `hash_truncated_table_guard_test.cpp` | T-DIC-011…014 |
+| Import robustness | `native/fushidicts/tests/import_failure_boundary_test.cpp`, `import_memory_bound_test.cpp`, `hash_truncated_table_guard_test.cpp`, the `zip_*` tests, `media_import_query_test.cpp`, `simple_dict_css_test.cpp` (§5.3) | T-DIC-001, T-DIC-011…015 |
+| Kanji, formats, titles | `native/fushidicts/tests/kanji_import_query_test.cpp`, `format_v2_upstream_sync_test.cpp`, `dict_name_uaf_e2e_test.cpp`, `yomitan_redirect_lookup_test.cpp` | T-LKP-032, T-LKP-034, T-LKP-037, T-DIC-003 |
 | Sentence extraction | `fushi/test/lookup/sentence_extraction_test.dart` | T-TXT-007 |
 | Character count | `fushi/test/stats/study_char_count_test.dart`, `study_char_count_parity_test.dart` | T-STA-003 |
 | Interval coverage | `fushi/test/stats/interval_coverage_test.dart` | T-STA-001 |
@@ -141,6 +142,56 @@ Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_eng
 2. One Rust test per area reads the JSON and runs all the cases. A failing case shows its `provenance` in the message.
 3. Cases that depend on **intentionally different** behaviors (SPECIFICATION §6.6.8) have `"divergence": "<requirement ID>"` and an updated expected output.
 4. The dictionaries of Fushi's C++ tests are built in code: they are rewritten as Yomitan dictionaries in the `dictionaries` section of `tests/conformance/lookup.json`, which the runner zips and imports like any other dictionary.
+5. The import-robustness cases (`tests/conformance/import.json`, run by `crates/nikomiru-dict/tests/conformance_import.rs`) describe their zip entry by entry: raw names, extra fields, ZIP64 sentinels, broken deflate streams, lying sizes. The runner writes the zip field by field, imports it and checks the error, or the title, types, counts, styles, media and terms; a damaged dictionary file must open or fail without a panic or a hang.
+6. A case that fails because of a bug in a file that another work track owns gets `"known_failure": {"owner", "note"}`: the runner expects it to fail and fails as soon as it passes, so the mark goes with the fix. The open ones are listed in §5.3.
+7. A Fushi case that cannot be expressed (source scans, internal APIs, Fushi's storage files, MDX) stays in the file with `"skip": true` and a note saying why, or where it went.
+
+### 5.3 Coverage of fushidicts
+
+Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of §5.1 for the M3 areas. The prefixes are the case ids in the conformance files; skipped cases are counted apart.
+
+| Fushi file | Nikomiru test, or why it does not apply |
+|---|---|
+| `word_scan_test.cpp` | `text.json` `scan-*` (9) |
+| `text_processor_test.cpp` | `text.json` `tp-*` (35) |
+| `korean_hangul_lookup_test.cpp` | `text.json` `ko-*` (46, 2 skipped: their lookups are the next ones), `lookup.json` `khl-*` (2) |
+| `en_apostrophe_lookup_test.cpp` | `lookup.json` `eal-*` (6, 1 skipped: an asset guard) |
+| `en_inflection_lookup_test.cpp` | `lookup.json` `eil-*` (43, 6 skipped: Fushi's `term_rules.flag` file) |
+| `simple_dict_deinflection_test.cpp` | `lookup.json` `sdd-*` (8) |
+| `popup_json_deinflection_test.cpp` | `lookup.json` `pjd-*` (4, 1 skipped: an engine state no lookup produces) |
+| `popup_json_reading_merge_test.cpp` | `lookup.json` `prm-*` (2, 2 skipped: the MDX empty-reading merge) |
+| `ja_mixed_orthography_lookup_test.cpp` | `lookup.json` `jmo-*` (10) |
+| `ja_kansai_ta_boundary_test.cpp` | `lookup.json` `jkb-*` (25) |
+| `yomitan_redirect_lookup_test.cpp` | `lookup.json` `yrl-*` (8) |
+| `freq_pitch_import_query_test.cpp` | `lookup.json` `fpi-*` (1) |
+| `freq_pitch_merge_query_test.cpp` | `lookup.json` `fpm-*` (3, 2 skipped: one dictionary registered in one role only) |
+| `lookup_freq_pitch_enrichment_test.cpp` | `lookup.json` `lfe-*` (6) |
+| `ipa_import_query_test.cpp` | `lookup.json` `iiq-*` (1) |
+| `pitch_duplicate_notation_test.cpp` | `lookup.json` `pdn-*` (2) |
+| `kanji_import_query_test.cpp` | `lookup.json` `kiq-*` (4) |
+| `format_v2_upstream_sync_test.cpp` | `lookup.json` `fv2-*` (7: kanji stats, glossary round trip, pitch pattern, score, frequency order, the last a divergence (DIC-003); 4 skipped: the completion marker, the separate Bloom file, `primary_reading` and the frequency options) |
+| `dict_name_uaf_e2e_test.cpp` | `lookup.json` `dnu-titles` |
+| `dict_name_lifetime_test.cpp` | Not self-contained (a dictionary folder on its command line); `dict_name_uaf_e2e_test.cpp` is its successor |
+| `import_failure_boundary_test.cpp` | `lookup.json` `ifb-kanji-malformed-*` (2), `import.json` `ifb-invalid-utf8-title`, `import_l4.rs` `an_import_that_cannot_write_fails_and_leaves_nothing` (the write limit, in a child process); the memory mapping, errno and MDX cases do not apply (skipped) |
+| `import_memory_bound_test.cpp` | `import.json` `imb-*` (4: members byte for byte, a corrupt member, banks and media; the low-RAM mode does not exist); C is MDict (skipped) |
+| `hash_truncated_table_guard_test.cpp` | `import.json` `htg-*` (4): the damaged file is the redb dictionary file |
+| `media_import_query_test.cpp` | `import.json` `miq-media` |
+| `zip64_central_dir_test.cpp` | `import.json` `z64-*` (2) |
+| `zip_high_ratio_bank_test.cpp` | `import.json` `zhr-*` (5; 3 divergences, DIC-011: the 200:1 ratio limit and the 512 MiB cap) |
+| `zip_malformed_deflate_test.cpp` | `import.json` `zmd-*` (4) |
+| `zip_unicode_path_extra_test.cpp` | `import.json` `zup-*` (8; 4 known failures) |
+| `zip_wrapper_directory_test.cpp` | `import.json` `zwd-*` (8; 1 known failure) |
+| `simple_dict_css_test.cpp` | `import.json` `sdc-styles`: the Yomitan counterpart, `styles.css` kept byte for byte; the `.css` next to an MDX file does not apply |
+| `win_utf8_import_test.cpp` | `import.json` `wui-non-ascii-paths`: non-ASCII zip, folder and title (the Windows ANSI path bug itself does not apply) |
+| `ffi_guard_coverage_test.cpp`, `decompressor_null_guard_test.cpp` | Do not apply: source scans of Fushi's C ABI and of its libdeflate calls; Nikomiru has no C ABI and inflates with `flate2` |
+| `import_breadcrumb_test.cpp` | Does not apply: Fushi's crash breadcrumb file; a crashed import leaves its `.importing` folder, removed at the next start (DIC-013, T-DIC-013) |
+| `mdd_*_test.cpp`, `mdx_*_test.cpp` (8 files) | Out of scope: MDict (DIC-004, post-1.0) |
+| `fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart` | `text.json` `q2056-*` (62, 2 skipped: source guards) |
+| `fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart` | `text.json` `q3453-*`, `sent-3453-*` (7, 1 skipped: the reader's drag selection) |
+| `fushi/test/dictionary/deinflection_grammar_tags_test.dart` | `lookup.json` `dgt-*` (5, 7 skipped: Fushi's stored extras, its second result builder, an engine state no lookup produces, source guards) |
+| `fushi/test/lookup/sentence_extraction_test.dart` | `text.json` `sent-*` (9, 2 skipped: a negative click offset and a source guard) |
+
+Known failures, owner `crates/nikomiru-dict/src/import.rs`: `zwd-nested-twice` (one wrapper folder is stripped, not two); `zup-bit11`, `zup-unknown-version`, `zup-overrun`, `zup-empty-name` (the importer takes the `zip` crate's Unicode Path handling, which applies the field with bit 11 set or with any version, refuses an archive whose field overruns its block and takes an empty name).
 
 ---
 
@@ -220,10 +271,10 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-002 | Tag bank and `sequence` | The `v5k` tag has category and notes; `sequence` preserved | L4 |
 | T-DIC-003 | `mini-freq-occ` | String values read; inverted ordering (higher = better) | L4 |
 | T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files. A cancel inside one large bank (60k entries, while it is read, parsed or written) or in the final step stops the import in < 1 s; the parser, the writes and the final step stop at their next check | L1, L4 |
-| T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted | L4 |
+| T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted. The zips of `import.json` (§5.3): wrapper folders, macOS files, directory entries, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, a damaged dictionary file | L4 |
 | T-DIC-012 | Limits | A glossary > 10 MiB makes the import fail cleanly | L4 |
 | T-DIC-013 | Crash during import | Child process killed with SIGKILL halfway → on restart, no partial dictionary; the `.importing` folder is deleted | L4 |
-| T-DIC-014 | Disk full | Small tmpfs filesystem → `ERR_STORAGE_FULL`, full cleanup | L4 (Linux) |
+| T-DIC-014 | Disk full | Small tmpfs filesystem → `ERR_STORAGE_FULL`, full cleanup; a file size limit reached halfway (`ulimit -f`, child process) → failed import, full cleanup | L4 (Linux) |
 | T-DIC-015 | Type detection | Vectors: term, kanji, freq, pitch, term+kanji | L1 |
 | T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement. The registration checks the registry again: the same dictionary imported twice at once is registered once; an update whose old dictionary was deleted meanwhile is added; an old folder that cannot be removed does not fail the update (the lookup cache is dropped, the next start removes the folder) | L4 |
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
