@@ -424,6 +424,66 @@ fn screenshots_of_the_interface() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-ANKI-001 (L7): a real Anki with AnkiConnect, on a throwaway profile
+// named by NIKOMIRU_ANKI_URL (`cargo xtask test --anki-e2e`)
+#[test]
+#[ignore = "L7: needs a running Anki with AnkiConnect (NIKOMIRU_ANKI_URL) and the L6 tools"]
+fn l7_a_card_in_a_real_anki() {
+    let url = std::env::var("NIKOMIRU_ANKI_URL")
+        .expect("NIKOMIRU_ANKI_URL: the AnkiConnect of a throwaway Anki profile");
+    let client = nikomiru_anki::Client::new(&url, "").unwrap();
+    // Create Lapis deck, twice: idempotent
+    nikomiru_anki::lapis::create(&client).unwrap();
+    assert_eq!(
+        nikomiru_anki::lapis::create(&client),
+        Ok(nikomiru_anki::lapis::Setup::AlreadyExists)
+    );
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{url}\"\n"
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] != "unknown");
+    // add anyway: the profile may hold the card of an earlier run
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "add-anyway" }));
+    let id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let note = client.notes_info(&[id]).unwrap().remove(0).unwrap();
+    assert_eq!(note.model, "Lapis");
+    let field = |name: &str| {
+        note.fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(field("Expression"), "食べる");
+    assert_eq!(field("Sentence"), "<b>食べました</b>");
+    assert!(
+        field("MiscInfo").contains("nikomiru://source?v=1"),
+        "{}",
+        field("MiscInfo")
+    );
+    // the media are in collection.media
+    let names: Vec<String> = [field("SentenceAudio"), field("Picture")]
+        .iter()
+        .filter_map(|v| {
+            let start = v.find("nikomiru_")?;
+            let end = v[start..].find([']', '"'])?;
+            Some(v[start..start + end].to_string())
+        })
+        .collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert_eq!(client.media_exist(&names).unwrap(), [true, true]);
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

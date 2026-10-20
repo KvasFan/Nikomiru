@@ -404,7 +404,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |
 | T-ANK-052 | Opening the link | `nikomiru://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
 | T-ANK-053 | Timestamp | Vectors from Fushi `handlebar_clip_timestamp_test.dart`: 754000/758000 → `00:12:34 - 00:12:38`, 1999/2999 → `00:00:01 - 00:00:02`, end ≤ start → empty | L1 |
-| T-E2E-ANKI-001 | Real Anki | Anki in Xvfb with AnkiConnect, empty profile → "Create Lapis deck" → mining from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media` | L7 |
+| T-E2E-ANKI-001 | Real Anki | A running Anki with AnkiConnect on a throwaway profile, its address in `NIKOMIRU_ANKI_URL` (`cargo xtask test --anki-e2e`; the L6 desktop runs Nikomiru) → "Create Lapis deck" twice (the second: already there) → a card from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media`. To run against Anki ≤ 26.07 with AnkiConnect 25.11.9.0 and Anki ≥ 26.08 with 26.10.x | L7 |
 
 ### 6.10 Library and word audio
 
