@@ -47,6 +47,12 @@ pub const FIELDS: [&str; 22] = [
     "MiscInfo",
 ];
 
+/// The fields the templates read through Anki's `text:` filter inside a
+/// script (`{{text:Expression}}`, `{{text:PitchPosition}}`): the filter decodes
+/// entities, so their values need [`crate::html::script_text`]. A test keeps
+/// the list in step with the templates.
+pub const SCRIPT_TEXT_FIELDS: [&str; 2] = ["Expression", "PitchPosition"];
+
 /// The front template, as upstream.
 pub const FRONT: &str = include_str!("../../../assets/anki/lapis/front.html");
 

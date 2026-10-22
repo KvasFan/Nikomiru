@@ -461,19 +461,42 @@ pub fn clip_timestamp(start_ms: i64, end_ms: i64) -> String {
 
 /// The tags of a card (ANK-027): the user's, then `nikomiru` and `video`,
 /// without repeats, in order. The series tag waits for series (M5).
+/// Templates paste the tags into scripts unescaped (Lapis' `{{Tags}}`), so the
+/// characters that would end a literal or a script there are left out.
 pub fn tags(user: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for t in user
         .iter()
         .flat_map(|t| t.split_whitespace())
-        .map(str::to_string)
+        .map(|t| {
+            t.chars()
+                .filter(|c| !"`$\\<>".contains(*c))
+                .collect::<String>()
+        })
         .chain(["nikomiru".to_string(), "video".to_string()])
     {
-        if !out.contains(&t) {
+        if !t.is_empty() && !out.contains(&t) {
             out.push(t);
         }
     }
     out
+}
+
+/// The field values of a Lapis-like note type made safe for its scripts: the
+/// fields its templates read through `text:` inside a script
+/// ([`crate::lapis::SCRIPT_TEXT_FIELDS`]) get [`crate::html::script_text`].
+pub fn lapis_safe(fields: Vec<(String, String)>) -> Vec<(String, String)> {
+    fields
+        .into_iter()
+        .map(|(name, value)| {
+            if crate::lapis::SCRIPT_TEXT_FIELDS.contains(&name.as_str()) {
+                let safe = crate::html::script_text(&value);
+                (name, safe)
+            } else {
+                (name, value)
+            }
+        })
+        .collect()
 }
 
 /// The value of placeholder `name` (without braces); unknown → empty.
@@ -649,6 +672,11 @@ mod tests {
         assert_eq!(
             tags(&["mine nikomiru".into(), "jp::vocab".into(), "mine".into()]),
             ["mine", "nikomiru", "jp::vocab", "video"]
+        );
+        // nothing that would end the script Lapis pastes them into
+        assert_eq!(
+            tags(&["a`b ${c} </script> `".into()]),
+            ["ab", "{c}", "/script", "nikomiru", "video"]
         );
     }
 

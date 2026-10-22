@@ -550,6 +550,8 @@ impl Worker {
             },
         };
         let keep_empty = matches!(r.action, CardAction::Overwrite(_));
+        // a Lapis-like note reads some fields through `text:` in its scripts
+        let lapis_like = lapis::is_lapis(&self.parts.config.note_type, &fields);
         let render = |audio: Option<&str>, image: Option<&str>, fields: &[String]| {
             let scene = scene(audio, image);
             compose::fields(
@@ -558,6 +560,13 @@ impl Worker {
                 &|name| compose::value(name, &dict, &scene),
                 keep_empty,
             )
+            .map(|values| {
+                if lapis_like {
+                    compose::lapis_safe(values)
+                } else {
+                    values
+                }
+            })
         };
         // the fields must hold before anything goes to Anki (ANK-026)
         render(
