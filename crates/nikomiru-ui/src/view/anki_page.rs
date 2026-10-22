@@ -127,14 +127,22 @@ fn choice(ui: &mut Ui, id: &str, name: &str, value: &mut String, options: &[(Str
 /// defaults.
 fn update(s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let page = s.page;
-    let draft = state.draft.get_or_insert_with(|| s.saved.clone());
-    if state.tags.is_empty() && !draft.tags.is_empty() {
-        state.tags = draft.tags.join(" ");
+    if state.draft.is_none() {
+        // the page opens on the saved settings; a Lapis deck made before
+        // is in them already
+        state.draft = Some(s.saved.clone());
+        state.tags = s.saved.tags.join(" ");
+        state.seen_lapis = page.lapis_created;
     }
+    let Some(draft) = state.draft.as_mut() else {
+        return;
+    };
     if page.lapis_created != state.seen_lapis {
         state.seen_lapis = page.lapis_created;
-        draft.deck = nikomiru_anki::lapis::DECK.to_string();
-        draft.note_type = nikomiru_anki::lapis::NAME.to_string();
+        if let Some((deck, note_type)) = &page.lapis {
+            draft.deck = deck.clone();
+            draft.note_type = note_type.clone();
+        }
         out.push(Command::AnkiTest(draft.clone()));
     }
     if let Some(lists) = &page.lists
@@ -457,6 +465,10 @@ mod tests {
     }
 
     fn harness(page: AnkiPage) -> Harness<'static, Test> {
+        with_saved(page, AnkiConfig::default())
+    }
+
+    fn with_saved(page: AnkiPage, saved: AnkiConfig) -> Harness<'static, Test> {
         Harness::builder()
             .with_size(vec2(1280.0, 900.0))
             .allow_missing_glyphs()
@@ -473,7 +485,7 @@ mod tests {
                 },
                 Test {
                     page,
-                    saved: AnkiConfig::default(),
+                    saved,
                     state: State::default(),
                     out: Vec::new(),
                 },
@@ -491,6 +503,7 @@ mod tests {
             version: 6,
             decks: vec!["Default".into(), "Lapis".into()],
             models: vec!["Basic".into(), "Lapis".into()],
+            deck: "Lapis".into(),
             model: "Lapis".into(),
             fields: nikomiru_anki::lapis::FIELDS
                 .iter()
@@ -536,6 +549,36 @@ mod tests {
 
     // T-ANK-011
     #[test]
+    fn reopening_the_page_does_not_choose_lapis_again_and_tags_can_be_cleared() {
+        let page = AnkiPage {
+            lapis_created: 3,
+            lapis: Some(("Lapis".into(), "Lapis".into())),
+            ..AnkiPage::default()
+        };
+        let saved = AnkiConfig {
+            deck: "Mining".into(),
+            tags: vec!["mine".into()],
+            ..AnkiConfig::default()
+        };
+        let mut h = with_saved(page, saved);
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(out.is_empty(), "{out:?}");
+        let draft = h.state().state.draft.clone().unwrap();
+        assert_eq!(draft.deck, "Mining");
+        assert_eq!(h.state().state.tags, "mine");
+        // emptied, the field stays empty
+        h.state_mut().state.tags.clear();
+        h.run();
+        assert_eq!(h.state().state.tags, "");
+        match &click(&mut h, "anki-save")[..] {
+            [Command::AnkiSave(saved)] => assert!(saved.tags.is_empty()),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    // T-ANK-011
+    #[test]
     fn a_lapis_deck_just_made_is_chosen() {
         let mut h = harness(AnkiPage::default());
         h.state_mut().saved.deck = "Mining".into();
@@ -546,6 +589,7 @@ mod tests {
             "no fields yet"
         );
         h.state_mut().page.lapis_created = 1;
+        h.state_mut().page.lapis = Some(("Lapis".into(), "Lapis".into()));
         h.run();
         let out = std::mem::take(&mut h.state_mut().out);
         assert!(

@@ -119,11 +119,30 @@ pub enum Setup {
     AlreadyExists,
 }
 
+/// What "Create Lapis deck" leaves: how it ended, and the names Anki has for
+/// the note type and the deck (Anki compares names without case: an existing
+/// `lapis` deck is the Lapis deck).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Made {
+    /// How it ended.
+    pub setup: Setup,
+    /// The note type's name in Anki.
+    pub note_type: String,
+    /// The deck's name in Anki.
+    pub deck: String,
+}
+
+/// The name in `names` equal to `wanted` but for case, as Anki finds it.
+fn find(names: &[String], wanted: &str) -> Option<String> {
+    let wanted = wanted.to_lowercase();
+    names.iter().find(|n| n.to_lowercase() == wanted).cloned()
+}
+
 /// "Create Lapis deck" (ANK-011): the note type if Anki has none named Lapis,
 /// the deck if it is missing, then a check that both exist. Idempotent.
-pub fn create(client: &Client) -> Result<Setup, AnkiError> {
+pub fn create(client: &Client) -> Result<Made, AnkiError> {
     let mut created = false;
-    if !client.model_names()?.iter().any(|m| m == NAME) {
+    if find(&client.model_names()?, NAME).is_none() {
         client.create_model(&NewModel {
             name: NAME,
             fields: &FIELDS,
@@ -134,19 +153,23 @@ pub fn create(client: &Client) -> Result<Setup, AnkiError> {
         })?;
         created = true;
     }
-    if !client.deck_names()?.iter().any(|d| d == DECK) {
+    if find(&client.deck_names()?, DECK).is_none() {
         client.create_deck(DECK)?;
         created = true;
     }
-    let has_model = client.model_names()?.iter().any(|m| m == NAME);
-    let has_deck = client.deck_names()?.iter().any(|d| d == DECK);
-    if !(has_model && has_deck) {
+    let note_type = find(&client.model_names()?, NAME);
+    let deck = find(&client.deck_names()?, DECK);
+    let (Some(note_type), Some(deck)) = (note_type, deck) else {
         return Err(AnkiError::LapisMissing);
-    }
-    Ok(if created {
-        Setup::Created
-    } else {
-        Setup::AlreadyExists
+    };
+    Ok(Made {
+        setup: if created {
+            Setup::Created
+        } else {
+            Setup::AlreadyExists
+        },
+        note_type,
+        deck,
     })
 }
 

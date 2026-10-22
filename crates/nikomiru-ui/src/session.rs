@@ -167,6 +167,10 @@ pub struct Services {
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
+    /// The settings came from `config.toml` (or there is none yet): saving may
+    /// write it. When it could not be read, the settings in memory are the
+    /// defaults, and writing them would lose the user's file.
+    pub config_writable: bool,
 }
 
 impl std::fmt::Debug for Services {
@@ -241,6 +245,12 @@ pub struct Session {
     pub anki_page: crate::mining::AnkiPage,
     /// The settings to write, taken by the UI layer.
     config_save: Option<Config>,
+    /// A write of the settings is running: the next one waits for it.
+    config_saving: bool,
+    /// The settings "Create Lapis deck" was asked with.
+    lapis_request: Option<nikomiru_core::config::AnkiConfig>,
+    /// The page's message stays when the settings it saved are written.
+    keep_status: bool,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -365,6 +375,9 @@ impl Session {
             start_at: None,
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
+            config_saving: false,
+            lapis_request: None,
+            keep_status: false,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -720,69 +733,134 @@ impl Session {
     /// "Create Lapis deck" with the settings being edited (ANK-011).
     pub fn anki_create_lapis(&mut self, config: nikomiru_core::config::AnkiConfig) {
         self.anki_page.busy = true;
+        self.lapis_request = Some(config.clone());
         self.anki_jobs
             .push(crate::mining::AnkiJob::CreateLapis(config));
     }
 
-    /// Saves the Anki settings: `config.toml` and the worker (SET-002).
+    /// Saves the Anki settings: they apply at once, to the session and the
+    /// worker (SET-002), and go to `config.toml` unless it could not be read,
+    /// which writing the defaults over would lose.
     pub fn anki_save(&mut self, config: nikomiru_core::config::AnkiConfig) {
         self.services.config.anki = config.clone();
-        self.config_save = Some(self.services.config.clone());
         self.anki_jobs
             .push(crate::mining::AnkiJob::Configure(config));
+        self.keep_status = false;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("anki-config-not-saved", &[]);
+            self.anki_page.status = Some((text, false));
+        }
     }
 
-    /// What Anki has, or why it could not be read.
+    /// What Anki has, or why it could not be read; a deck or a note type of
+    /// the settings that Anki does not have is reported (ANK-006).
     pub fn anki_lists(&mut self, result: Result<crate::mining::AnkiLists, String>) {
         self.anki_page.busy = false;
         match result {
             Ok(lists) => {
-                let text = self.tr(
-                    "anki-connected",
-                    &[
-                        ("version", lists.version.to_string()),
-                        ("decks", lists.decks.len().to_string()),
-                        ("models", lists.models.len().to_string()),
-                    ],
-                );
-                self.anki_page.status = Some((text, true));
+                let missing = if !lists.decks.contains(&lists.deck) {
+                    Some(self.tr("anki-deck-missing", &[("name", lists.deck.clone())]))
+                } else if !lists.models.contains(&lists.model) {
+                    Some(self.tr("anki-note-type-missing", &[("name", lists.model.clone())]))
+                } else {
+                    None
+                };
+                let status = match missing {
+                    Some(text) => (text, false),
+                    None => (
+                        self.tr(
+                            "anki-connected",
+                            &[
+                                ("version", lists.version.to_string()),
+                                ("decks", lists.decks.len().to_string()),
+                                ("models", lists.models.len().to_string()),
+                            ],
+                        ),
+                        true,
+                    ),
+                };
+                if !self.keep_status {
+                    self.anki_page.status = Some(status);
+                }
                 self.anki_page.lists = Some(lists);
             }
             Err(message) => self.anki_page.status = Some((message, false)),
         }
     }
 
-    /// "Create Lapis deck" ended (ANK-011).
-    pub fn lapis_done(&mut self, result: Result<bool, String>) {
+    /// "Create Lapis deck" ended (ANK-011): the settings it was asked with
+    /// choose the Lapis note type and deck, with the default mapping, and are
+    /// saved.
+    pub fn lapis_done(&mut self, result: Result<crate::mining::LapisMade, String>) {
         self.anki_page.busy = false;
+        let request = self.lapis_request.take();
         match result {
-            Ok(created) => {
-                let key = if created {
+            Ok(made) => {
+                let key = if made.created {
                     "anki-lapis-created"
                 } else {
                     "anki-lapis-exists"
                 };
-                self.anki_page.status = Some((self.tr(key, &[]), true));
+                let text = self.tr(key, &[]);
+                let mut config = request.unwrap_or_else(|| self.services.config.anki.clone());
+                config.deck = made.deck.clone();
+                config.note_type = made.note_type.clone();
+                let fields: Vec<String> = nikomiru_anki::lapis::FIELDS
+                    .iter()
+                    .map(|f| (*f).to_string())
+                    .collect();
+                let mapping = config
+                    .field_mapping
+                    .entry(made.note_type.clone())
+                    .or_default();
+                if mapping.is_empty() {
+                    *mapping = nikomiru_anki::lapis::with_defaults(
+                        &made.note_type,
+                        &fields,
+                        &std::collections::BTreeMap::new(),
+                    );
+                }
+                self.anki_page.lapis = Some((made.deck, made.note_type));
                 self.anki_page.lapis_created += 1;
+                self.anki_save(config);
+                // a save that cannot be written keeps its own message
+                if self.services.config_writable {
+                    self.anki_page.status = Some((text, true));
+                    self.keep_status = true;
+                }
             }
             Err(message) => self.anki_page.status = Some((message, false)),
         }
     }
 
-    /// The settings to write, taken by the UI layer with their file.
+    /// The settings to write, taken by the UI layer with their file: one
+    /// write at a time, the latest settings when it ends.
     pub fn take_config_save(&mut self) -> Option<(Config, PathBuf)> {
-        self.config_save
-            .take()
-            .map(|c| (c, self.services.config_file.clone()))
+        if self.config_saving {
+            return None;
+        }
+        let config = self.config_save.take()?;
+        self.config_saving = true;
+        Some((config, self.services.config_file.clone()))
     }
 
     /// The settings were written, or not.
     pub fn config_saved(&mut self, result: Result<(), String>) {
-        let status = match result {
-            Ok(()) => (self.tr("settings-saved", &[]), true),
-            Err(message) => (message, false),
-        };
-        self.anki_page.status = Some(status);
+        self.config_saving = false;
+        if self.config_save.is_some() {
+            // newer settings wait: their write tells how it went
+            return;
+        }
+        match result {
+            Ok(()) if std::mem::take(&mut self.keep_status) => {}
+            Ok(()) => {
+                let text = self.tr("settings-saved", &[]);
+                self.anki_page.status = Some((text, true));
+            }
+            Err(message) => self.anki_page.status = Some((message, false)),
+        }
     }
 
     /// The Anki jobs to start, taken by the UI layer.

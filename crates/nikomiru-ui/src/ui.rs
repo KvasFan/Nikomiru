@@ -92,7 +92,7 @@ pub enum Inbound {
     /// What Anki has, for the settings page (ANK-006).
     AnkiLists(Result<crate::mining::AnkiLists, String>),
     /// "Create Lapis deck" ended (ANK-011).
-    LapisDone(Result<bool, String>),
+    LapisDone(Result<crate::mining::LapisMade, String>),
     /// `config.toml` was written, or not.
     ConfigSaved(Result<(), String>),
     /// Saves the position and quits (a termination signal).

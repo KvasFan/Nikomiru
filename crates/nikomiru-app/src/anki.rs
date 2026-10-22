@@ -29,7 +29,8 @@ use nikomiru_media::process::run;
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, Tools, probe};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
-    AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, MineFailure, MineRequest, Mined,
+    AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, LapisMade, MineFailure,
+    MineRequest, Mined,
 };
 
 /// The pause of the duplicate checks after a transport error (ANK-030).
@@ -89,7 +90,7 @@ type Checked = Box<dyn FnOnce(Option<Vec<bool>>) + Send>;
 type MineDone = Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>;
 type Browsed = Box<dyn FnOnce(Result<(), String>) + Send>;
 type Listed = Box<dyn FnOnce(Result<AnkiLists, String>) + Send>;
-type LapisMade = Box<dyn FnOnce(Result<bool, String>) + Send>;
+type LapisDone = Box<dyn FnOnce(Result<LapisMade, String>) + Send>;
 /// Renders the field values for a list of note fields.
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
@@ -98,7 +99,7 @@ enum Job {
     Mine(Box<MineRequest>, MineDone),
     Browse(BrowseTarget, Browsed),
     Refresh(Box<AnkiConfig>, Listed),
-    CreateLapis(Box<AnkiConfig>, LapisMade),
+    CreateLapis(Box<AnkiConfig>, LapisDone),
     Configure(Box<AnkiConfig>),
 }
 
@@ -206,7 +207,7 @@ impl AnkiService for Anki {
         }
     }
 
-    fn create_lapis(&self, config: AnkiConfig, done: LapisMade) {
+    fn create_lapis(&self, config: AnkiConfig, done: LapisDone) {
         if let Some(job) = self.send(Job::CreateLapis(Box::new(config), done)) {
             self.refuse(job);
         }
@@ -749,16 +750,21 @@ impl Worker {
             version: state.version,
             decks: state.decks,
             models: state.models,
+            deck: config.deck.clone(),
             model: config.note_type.clone(),
             fields: state.fields,
         })
     }
 
     /// "Create Lapis deck" (ANK-011), with the settings' address.
-    fn create_lapis(&mut self, config: &AnkiConfig) -> Result<bool, String> {
+    fn create_lapis(&mut self, config: &AnkiConfig) -> Result<LapisMade, String> {
         let client = Client::new(&config.url, &config.api_key).map_err(|e| self.message(&e))?;
-        let setup = lapis::create(&client).map_err(|e| self.message(&e))?;
-        Ok(setup == lapis::Setup::Created)
+        let made = lapis::create(&client).map_err(|e| self.message(&e))?;
+        Ok(LapisMade {
+            created: made.setup == lapis::Setup::Created,
+            deck: made.deck,
+            note_type: made.note_type,
+        })
     }
 
     /// New settings: a new client, the note type's fields asked again, the

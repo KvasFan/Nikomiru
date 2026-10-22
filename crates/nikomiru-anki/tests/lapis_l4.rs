@@ -15,7 +15,7 @@ use serde_json::json;
 fn create_lapis_deck_makes_what_is_missing_once() {
     let fake = FakeAnki::start().unwrap();
     let c = Client::new(&fake.url(), "").unwrap();
-    assert_eq!(lapis::create(&c), Ok(Setup::Created));
+    assert_eq!(lapis::create(&c).map(|m| m.setup), Ok(Setup::Created));
     assert_eq!(
         fake.actions(),
         [
@@ -44,7 +44,7 @@ fn create_lapis_deck_makes_what_is_missing_once() {
     }
     // a second run only reads
     fake.clear_requests();
-    assert_eq!(lapis::create(&c), Ok(Setup::AlreadyExists));
+    assert_eq!(lapis::create(&c).map(|m| m.setup), Ok(Setup::AlreadyExists));
     assert_eq!(
         fake.actions(),
         ["modelNames", "deckNames", "modelNames", "deckNames"]
@@ -66,7 +66,7 @@ fn an_existing_lapis_note_type_gets_only_the_deck() {
     })
     .unwrap();
     fake.clear_requests();
-    assert_eq!(lapis::create(&c), Ok(Setup::Created));
+    assert_eq!(lapis::create(&c).map(|m| m.setup), Ok(Setup::Created));
     assert!(!fake.actions().contains(&"createModel".to_string()));
     assert_eq!(fake.collection().models[1].css, "/* the user's */");
 }
@@ -88,6 +88,20 @@ fn a_deck_that_does_not_appear_is_reported() {
     fake.then(Behaviour::Json(json!({"result": null,
         "error": "Close the affected editor before this API write, even if its content is saved."})));
     assert_eq!(lapis::create(&c), Err(AnkiError::EditorOpen));
+}
+
+// T-ANK-011: Anki compares deck and note type names without case
+#[test]
+fn a_lapis_deck_under_another_case_is_the_lapis_deck() {
+    let fake = FakeAnki::start().unwrap();
+    let c = Client::new(&fake.url(), "").unwrap();
+    fake.collection().decks.push("lapis".into());
+    let made = lapis::create(&c).unwrap();
+    assert_eq!(
+        (made.deck.as_str(), made.note_type.as_str()),
+        ("lapis", "Lapis")
+    );
+    assert!(!fake.actions().contains(&"createDeck".to_string()));
 }
 
 // T-ANK-006

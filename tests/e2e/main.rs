@@ -333,6 +333,26 @@ fn the_anki_settings_test_create_lapis_and_save() {
         s["anki_page"]["models"],
         serde_json::json!(["Basic", "Lapis"])
     );
+    // the choice of Lapis is saved (ANK-011)
+    let file = desk.path("config/nikomiru/config.toml");
+    let saved = support::until(Duration::from_secs(10), "the Lapis choice saved", || {
+        let text = std::fs::read_to_string(&file).ok()?;
+        let config = nikomiru_core::Config::from_toml(&text).ok()?;
+        (config.anki.deck == "Lapis").then_some(config)
+    });
+    assert_eq!(saved.anki.note_type, "Lapis");
+    assert_eq!(
+        saved.anki.field_mapping["Lapis"]["Expression"],
+        "{expression}"
+    );
+    // a deck Anki does not have is reported (ANK-006)
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "test", "config": format!("url = \"{}\"\ndeck = \"Nowhere\"", fake.url()) }));
+    h.state_until("the missing deck", |s| {
+        s["anki_page"]["status"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("Nowhere"))
+            && s["anki_page"]["status"]["ok"] == false
+    });
     // Save: the file, readable by the user only
     let url = fake.url();
     h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": format!(
@@ -343,7 +363,6 @@ fn the_anki_settings_test_create_lapis_and_save() {
             .as_str()
             .is_some_and(|t| t.contains("saved"))
     });
-    let file = desk.path("config/nikomiru/config.toml");
     let text = std::fs::read_to_string(&file).unwrap();
     let config = nikomiru_core::Config::from_toml(&text).unwrap();
     assert_eq!(
@@ -435,7 +454,7 @@ fn l7_a_card_in_a_real_anki() {
     // Create Lapis deck, twice: idempotent
     nikomiru_anki::lapis::create(&client).unwrap();
     assert_eq!(
-        nikomiru_anki::lapis::create(&client),
+        nikomiru_anki::lapis::create(&client).map(|m| m.setup),
         Ok(nikomiru_anki::lapis::Setup::AlreadyExists)
     );
     let mut desk = Desktop::start();
@@ -482,6 +501,27 @@ fn l7_a_card_in_a_real_anki() {
         .collect();
     assert_eq!(names.len(), 2, "{names:?}");
     assert_eq!(client.media_exist(&names).unwrap(), [true, true]);
+}
+
+// SET-002, T-SEC-008: a config.toml that cannot be read is never written over
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn anki_settings_do_not_overwrite_a_config_file_that_did_not_load() {
+    let mut desk = Desktop::start();
+    let broken = "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\"\n# the user's comment\n";
+    desk.write_config(broken);
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": "deck = \"Mining\"" }));
+    h.state_until("not saved", |s| {
+        s["anki_page"]["status"]["ok"] == false
+            && s["anki_page"]["status"]["text"]
+                .as_str()
+                .is_some_and(|t| t.contains("config.toml"))
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let text = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).unwrap();
+    assert_eq!(text, broken, "the user's file is untouched");
 }
 
 // T-PRV-002

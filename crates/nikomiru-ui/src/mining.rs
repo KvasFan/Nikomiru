@@ -205,10 +205,23 @@ pub struct AnkiLists {
     pub decks: Vec<String>,
     /// The note types.
     pub models: Vec<String>,
-    /// The note type the fields belong to.
+    /// The deck of the settings tested.
+    pub deck: String,
+    /// The note type of the settings tested: the fields are its.
     pub model: String,
     /// Its fields, empty if Anki does not have it.
     pub fields: Vec<String>,
+}
+
+/// What "Create Lapis deck" left in Anki (ANK-011).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LapisMade {
+    /// The note type or the deck was made.
+    pub created: bool,
+    /// The deck's name in Anki.
+    pub deck: String,
+    /// The note type's name in Anki.
+    pub note_type: String,
 }
 
 /// Mining, away from the UI thread: the `anki` worker of the app. `done`
@@ -228,8 +241,12 @@ pub trait AnkiService: Send {
     /// test of the settings.
     fn refresh(&self, config: AnkiConfig, done: Box<dyn FnOnce(Result<AnkiLists, String>) + Send>);
 
-    /// "Create Lapis deck" (ANK-011): `true` if something was made.
-    fn create_lapis(&self, config: AnkiConfig, done: Box<dyn FnOnce(Result<bool, String>) + Send>);
+    /// "Create Lapis deck" (ANK-011).
+    fn create_lapis(
+        &self,
+        config: AnkiConfig,
+        done: Box<dyn FnOnce(Result<LapisMade, String>) + Send>,
+    );
 
     /// The settings changed: cards follow them from now on.
     fn configure(&self, config: AnkiConfig);
@@ -259,7 +276,7 @@ impl AnkiService for NoAnki {
         done(Err(self.0.clone()));
     }
 
-    fn create_lapis(&self, _: AnkiConfig, done: Box<dyn FnOnce(Result<bool, String>) + Send>) {
+    fn create_lapis(&self, _: AnkiConfig, done: Box<dyn FnOnce(Result<LapisMade, String>) + Send>) {
         done(Err(self.0.clone()));
     }
 
@@ -305,8 +322,10 @@ pub struct AnkiPage {
     /// A request is running.
     pub busy: bool,
     /// Grows with each "Create Lapis deck" that worked: the page then chooses
-    /// Lapis.
+    /// [`AnkiPage::lapis`].
     pub lapis_created: u64,
+    /// The deck and note type the last "Create Lapis deck" left.
+    pub lapis: Option<(String, String)>,
 }
 
 /// The last card made since Nikomiru started (ANK-030, ANK-037).

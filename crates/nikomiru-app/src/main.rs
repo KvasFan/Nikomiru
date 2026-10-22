@@ -307,6 +307,8 @@ fn run(
     let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
     let (config, config_notice) = load_config(paths);
+    // a file that could not be read is never written over with the defaults
+    let config_writable = config_notice.is_none();
     check_ffmpeg(&config.paths.ffmpeg);
     let translator =
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
@@ -397,6 +399,7 @@ fn run(
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
         config_file: paths.config_file(),
+        config_writable,
     };
     let instance = server.map(|server| {
         let waker = waker.clone();
