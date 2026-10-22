@@ -3,15 +3,17 @@
 //! The `anki` worker ([ADR 0007]): AnkiConnect requests one at a time on a
 //! thread of their own — the duplicate checks of the popup (ANK-030), the
 //! mining of a card (ANK-031…ANK-039), "Open in Anki" (ANK-038). A card is
-//! the popup entry composed again from the dictionaries, the frame on screen
-//! and the sentence audio made in parallel, the media uploaded, then
+//! the popup entry composed again from the dictionaries, the frame saved at
+//! the click and the sentence audio made in parallel, the media uploaded, then
 //! `addNote` or the overwrite of the last card.
 //!
 //! [ADR 0007]: ../../../docs/adr/0007-mining-to-anki.md
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -30,30 +32,18 @@ use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, Tools, probe};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
     AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, LapisMade, MineFailure,
-    MineRequest, Mined,
+    MineRequest, Mined, PendingFrame,
 };
 
 /// The pause of the duplicate checks after a transport error (ANK-030).
 pub const CHECK_PAUSE: Duration = Duration::from_secs(30);
 
-/// How long mpv may take to save the frame.
-const FRAME_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the player may take to save the frame of a card.
+pub const FRAME_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Saves the frame on screen, without subtitles, as a PNG (ANK-034).
-pub trait Frames: Send {
-    /// Writes `path` and returns once it is written.
-    fn save(&self, path: &Path) -> Result<(), String>;
-}
-
-impl Frames for nikomiru_player::PlayerHandle {
-    fn save(&self, path: &Path) -> Result<(), String> {
-        let reply = self.screenshot(path).map_err(|e| e.to_string())?;
-        match reply.recv_timeout(FRAME_TIMEOUT) {
-            Ok(result) => result.map_err(|e| e.to_string()),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-}
+/// The age from which a file in the media folder is left from an attempt cut
+/// short (ADR 0007 §20): no attempt lasts as long.
+pub const STALE_MEDIA: Duration = Duration::from_secs(600);
 
 /// What the worker needs.
 pub struct Parts {
@@ -68,9 +58,8 @@ pub struct Parts {
     /// Headword groups of a lookup, as the popup asks (the entry indexes
     /// must match).
     pub max_results: usize,
-    /// The frame on screen.
-    pub frames: Box<dyn Frames>,
-    /// Where the media are made (`$XDG_CACHE_HOME/nikomiru/mining`).
+    /// Where the media are made (`$XDG_CACHE_HOME/nikomiru/mining`), the
+    /// frames of the clicks among them.
     pub cache_dir: PathBuf,
     /// The library, for `mined_cards`.
     pub library: Option<Arc<Library>>,
@@ -96,7 +85,7 @@ type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::Fi
 
 enum Job {
     Check(CheckRequest, Checked),
-    Mine(Box<MineRequest>, MineDone),
+    Mine(Box<MineRequest>, Option<PendingFrame>, MineDone),
     Browse(BrowseTarget, Browsed),
     Refresh(Box<AnkiConfig>, Listed),
     CreateLapis(Box<AnkiConfig>, LapisDone),
@@ -107,6 +96,8 @@ enum Job {
 pub struct Anki {
     jobs: Option<mpsc::Sender<Job>>,
     worker: Option<JoinHandle<()>>,
+    /// Set when Nikomiru closes: the jobs still queued are not run.
+    closing: Arc<AtomicBool>,
     unavailable: String,
 }
 
@@ -117,8 +108,11 @@ impl std::fmt::Debug for Anki {
 }
 
 impl Drop for Anki {
-    /// The worker may hold the library: it ends before the process does.
+    /// The worker may hold the library: it ends before the process does,
+    /// after the job it is on; the queued ones are dropped, so the window
+    /// does not wait for them.
     fn drop(&mut self) {
+        self.closing.store(true, Ordering::SeqCst);
         drop(self.jobs.take());
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -130,15 +124,21 @@ impl Anki {
     /// Starts the worker.
     pub fn start(parts: Parts) -> Self {
         let unavailable = parts.translator.tr("error-anki-unavailable", &[]);
+        let closing = Arc::new(AtomicBool::new(false));
         let (jobs, rx) = mpsc::channel::<Job>();
+        let stop = Arc::clone(&closing);
         let spawned = std::thread::Builder::new()
             .name("nikomiru-anki".into())
             .spawn(move || {
+                sweep(&parts.cache_dir);
                 let mut worker = Worker::new(parts);
                 for job in rx {
+                    if stop.load(Ordering::SeqCst) {
+                        break;
+                    }
                     match job {
                         Job::Check(request, done) => done(worker.check(&request)),
-                        Job::Mine(request, done) => done(worker.mine(&request)),
+                        Job::Mine(request, frame, done) => done(worker.mine(&request, frame)),
                         Job::Browse(target, done) => done(worker.browse(&target)),
                         Job::Refresh(config, done) => done(worker.refresh(&config)),
                         Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
@@ -156,6 +156,7 @@ impl Anki {
         Self {
             jobs,
             worker,
+            closing,
             unavailable,
         }
     }
@@ -170,7 +171,7 @@ impl Anki {
     fn refuse(&self, job: Job) {
         match job {
             Job::Check(_, done) => done(None),
-            Job::Mine(_, done) => done(Err(MineFailure {
+            Job::Mine(_, _, done) => done(Err(MineFailure {
                 message: self.unavailable.clone(),
                 duplicate: false,
             })),
@@ -189,8 +190,8 @@ impl AnkiService for Anki {
         }
     }
 
-    fn mine(&self, request: MineRequest, done: MineDone) {
-        if let Some(job) = self.send(Job::Mine(Box::new(request), done)) {
+    fn mine(&self, request: MineRequest, frame: Option<PendingFrame>, done: MineDone) {
+        if let Some(job) = self.send(Job::Mine(Box::new(request), frame, done)) {
             self.refuse(job);
         }
     }
@@ -225,7 +226,7 @@ struct Worker {
     parts: Parts,
     client: Result<Client, AnkiError>,
     /// The checks are paused until then, after a transport error (ANK-030).
-    paused_until: Option<Duration>,
+    paused_until: Cell<Option<Duration>>,
     /// The fields of the note type, once asked.
     note_fields: Option<Vec<String>>,
     tools: Option<Tools>,
@@ -240,7 +241,7 @@ impl Worker {
         Self {
             parts,
             client,
-            paused_until: None,
+            paused_until: Cell::new(None),
             note_fields: None,
             tools: None,
         }
@@ -283,7 +284,8 @@ impl Worker {
         }
         let fields = self
             .client()?
-            .model_field_names(&self.parts.config.note_type)?;
+            .model_field_names(&self.parts.config.note_type);
+        let fields = self.heard(fields)?;
         self.note_fields = Some(fields.clone());
         Ok(fields)
     }
@@ -333,11 +335,26 @@ impl Worker {
         Ok(Some((first, value)))
     }
 
-    fn pause_after(&mut self, e: &AnkiError) {
-        if e.is_transport() {
-            self.paused_until = Some(self.parts.clock.monotonic() + CHECK_PAUSE);
+    /// Notes how a request to Anki ended, for the pause of the checks
+    /// (ANK-030, ADR 0007 §22): an error that left Anki unanswered starts it,
+    /// any answer ends it.
+    fn heard<T>(&self, result: Result<T, AnkiError>) -> Result<T, AnkiError> {
+        let unanswered = result
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.is_transport() || matches!(e, AnkiError::CommitUnknown { .. }));
+        self.paused_until
+            .set(unanswered.then(|| self.parts.clock.monotonic() + CHECK_PAUSE));
+        result
+    }
+
+    /// [`Worker::heard`] for a request of the settings, if it went to the
+    /// AnkiConnect the worker uses.
+    fn heard_from<T>(&self, client: &Client, result: Result<T, AnkiError>) -> Result<T, AnkiError> {
+        if self.client.as_ref().is_ok_and(|c| c.url() == client.url()) {
+            self.heard(result)
         } else {
-            self.paused_until = None;
+            result
         }
     }
 
@@ -349,6 +366,7 @@ impl Worker {
         }
         if self
             .paused_until
+            .get()
             .is_some_and(|until| self.parts.clock.monotonic() < until)
         {
             return None;
@@ -366,20 +384,15 @@ impl Worker {
                 Ok(None) => return None,
                 Err(e) => {
                     tracing::info!("Anki check: {e}");
-                    self.pause_after(&e);
                     return None;
                 }
             }
         }
-        let result = self.client().and_then(|c| c.duplicates(&notes));
-        match result {
-            Ok(found) => {
-                self.paused_until = None;
-                Some(found)
-            }
+        let found = self.client().map(|c| c.duplicates(&notes));
+        match found.and_then(|found| self.heard(found)) {
+            Ok(found) => Some(found),
             Err(e) => {
                 tracing::info!("Anki check: {e}");
-                self.pause_after(&e);
                 None
             }
         }
@@ -456,37 +469,39 @@ impl Worker {
         self.tools.as_ref()
     }
 
-    /// Makes the card image from the frame on screen (ANK-034).
-    fn image(&self, tools: &Tools, stem: &str) -> Result<Media, String> {
-        let png = self.parts.cache_dir.join(format!("{stem}.png"));
-        let saved = self.parts.frames.save(&png);
+    /// Makes the card image from the frame of the click (ANK-034); the PNG
+    /// goes with `frame`.
+    fn image(
+        &self,
+        tools: &Tools,
+        frame: Option<PendingFrame>,
+        stem: &str,
+    ) -> Result<Media, String> {
+        let mut frame = frame.ok_or_else(|| "the player was not asked".to_string())?;
+        let png = frame.written(FRAME_TIMEOUT)?;
         let preferred =
             ImageFormat::from_config(&self.parts.config.image_format).unwrap_or(ImageFormat::Jpeg);
-        let result = saved.and_then(|()| {
-            let format = tools
-                .image_format(preferred)
-                .ok_or_else(|| "ffmpeg has no image encoder".to_string())?;
-            let ext = clip::image_extension(format);
-            let out = self.parts.cache_dir.join(format!("{stem}.{ext}"));
-            let job = clip::image_job(
-                &tools.ffmpeg,
-                &png,
-                &out,
-                format,
-                self.parts.config.image_quality_level,
-            );
-            run(&job, &Cancel::new()).map_err(|e| e.to_string())?;
-            let bytes = std::fs::read(&out).map_err(|e| e.to_string());
-            let _ = std::fs::remove_file(&out);
-            let bytes = bytes?;
-            Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
-        });
-        let _ = std::fs::remove_file(&png);
-        result
+        let format = tools
+            .image_format(preferred)
+            .ok_or_else(|| "ffmpeg has no image encoder".to_string())?;
+        let ext = clip::image_extension(format);
+        let out = self.parts.cache_dir.join(format!("{stem}.{ext}"));
+        let job = clip::image_job(
+            &tools.ffmpeg,
+            png,
+            &out,
+            format,
+            self.parts.config.image_quality_level,
+        );
+        run(&job, &Cancel::new()).map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(&out).map_err(|e| e.to_string());
+        let _ = std::fs::remove_file(&out);
+        let bytes = bytes?;
+        Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
     }
 
     /// Makes, or overwrites, a card (ANK-031…ANK-039).
-    fn mine(&mut self, r: &MineRequest) -> Result<Mined, MineFailure> {
+    fn mine(&mut self, r: &MineRequest, frame: Option<PendingFrame>) -> Result<Mined, MineFailure> {
         let dict = self.dictionary_fields(r)?;
         if let Err(e) = std::fs::create_dir_all(&self.parts.cache_dir) {
             return Err(self.fail_with("error-mining-media", &[("reason", e.to_string())]));
@@ -503,7 +518,7 @@ impl Worker {
                 let (tools, stem) = (&tools, &stem);
                 s.spawn(move || sentence_audio(tools, config, cache_dir, r, clip, stem))
             });
-            let image = self.image(&tools, &stem);
+            let image = self.image(&tools, frame, &stem);
             let audio = audio.map(|a| a.join().unwrap_or_else(|_| Err("audio thread".into())));
             (audio, image)
         });
@@ -540,10 +555,11 @@ impl Worker {
                 .unwrap_or_default(),
             audio: String::new(),
             document_title: nikomiru_anki::html::escape(&r.title),
-            source_link: link
-                .as_ref()
-                .map(|l| l.to_html(&r.title))
-                .unwrap_or_default(),
+            // without the library there is no link: the title, as in Fushi
+            source_link: link.as_ref().map_or_else(
+                || nikomiru_anki::html::escape(&r.title),
+                |l| l.to_html(&r.title),
+            ),
             clip_timestamp: if r.clip.is_some() {
                 compose::clip_timestamp(start_ms, end_ms)
             } else {
@@ -583,10 +599,12 @@ impl Worker {
         media.extend(image.clone());
         let client = self.client().map_err(|e| self.fail(&e))?;
         let names: Vec<String> = media.iter().map(|(n, _)| n.clone()).collect();
-        let existed = client.media_exist(&names).map_err(|e| self.fail(&e))?;
+        let existed = self
+            .heard(client.media_exist(&names))
+            .map_err(|e| self.fail(&e))?;
         let mut stored: Vec<(String, String, bool)> = Vec::new();
         for ((name, bytes), existed) in media.iter().zip(existed) {
-            match client.store_media(name, bytes) {
+            match self.heard(client.store_media(name, bytes)) {
                 Ok(actual) => stored.push((name.clone(), actual, !existed)),
                 Err(e) => {
                     rollback(client, &stored);
@@ -605,20 +623,25 @@ impl Worker {
         let tags = compose::tags(&self.parts.config.tags);
         let outcome = match r.action {
             CardAction::Add | CardAction::AddAnyway => {
-                let values = render(audio_name.as_deref(), image_name.as_deref(), &fields)
-                    .map_err(|e| self.fields_failure(&e))?;
-                let values = renamed(values, &stored);
-                let note = Note {
-                    deck: self.parts.config.deck.clone(),
-                    model: self.parts.config.note_type.clone(),
-                    fields: values,
-                    tags,
-                    scope: self.scope(),
-                };
-                client
-                    .add_note(&note, r.action == CardAction::AddAnyway)
-                    .map(|id| (id, false))
-                    .map_err(OverwriteError::Anki)
+                match render(audio_name.as_deref(), image_name.as_deref(), &fields) {
+                    Ok(values) => {
+                        let note = Note {
+                            deck: self.parts.config.deck.clone(),
+                            model: self.parts.config.note_type.clone(),
+                            fields: renamed(values, &stored),
+                            tags,
+                            scope: self.scope(),
+                        };
+                        let added =
+                            self.heard(client.add_note(&note, r.action == CardAction::AddAnyway));
+                        // the client knows when the note may exist (ANK-003)
+                        added.map(|id| (id, false)).map_err(|e| match e {
+                            AnkiError::CommitUnknown { .. } => NoteError::Unknown(self.fail(&e)),
+                            _ => NoteError::Unchanged(self.fail(&e)),
+                        })
+                    }
+                    Err(e) => Err(NoteError::Unchanged(self.fields_failure(&e))),
+                }
             }
             CardAction::Overwrite(id) => self.overwrite(
                 client,
@@ -632,24 +655,12 @@ impl Worker {
         };
         let (note_id, overwritten) = match outcome {
             Ok(done) => done,
-            Err(OverwriteError::Fields(e)) => {
+            Err(NoteError::Unchanged(failure)) => {
                 rollback(client, &stored);
-                return Err(self.fields_failure(&e));
+                return Err(failure);
             }
-            Err(OverwriteError::Other(id, args)) => {
-                rollback(client, &stored);
-                return Err(self.fail_with(id, &args));
-            }
-            Err(OverwriteError::Anki(e)) => {
-                // the note may exist: its media stay (ANK-003)
-                if !matches!(e, AnkiError::CommitUnknown { .. }) {
-                    rollback(client, &stored);
-                }
-                if e.is_transport() || matches!(e, AnkiError::CommitUnknown { .. }) {
-                    self.pause_after(&e);
-                }
-                return Err(self.fail(&e));
-            }
+            // the note may exist, or have changed: its media stay (ANK-003)
+            Err(NoteError::Unknown(failure)) => return Err(failure),
         };
         self.record(note_id, r, &source_id, (start_ms, end_ms));
         Ok(Mined {
@@ -667,36 +678,49 @@ impl Worker {
     }
 
     /// Overwrites the last card (ANK-037): every field of the note, then its
-    /// tags, then a check that the first field was written.
+    /// tags, then a check that the first field was written. Once
+    /// `updateNoteFields` may have reached Anki, a failure leaves the outcome
+    /// unknown.
     fn overwrite(
         &self,
         client: &Client,
         id: u64,
         render: &Render<'_>,
         tags: &[String],
-    ) -> Result<(u64, bool), OverwriteError> {
-        let note = client
-            .notes_info(&[id])
-            .map_err(OverwriteError::Anki)?
+    ) -> Result<(u64, bool), NoteError> {
+        let unchanged = |e: AnkiError| NoteError::Unchanged(self.fail(&e));
+        let note = self
+            .heard(client.notes_info(&[id]))
+            .map_err(unchanged)?
             .into_iter()
             .next()
             .flatten()
-            .ok_or(OverwriteError::Other("error-mining-note-gone", Vec::new()))?;
+            .ok_or_else(|| NoteError::Unchanged(self.fail_with("error-mining-note-gone", &[])))?;
         if note.model != self.parts.config.note_type {
-            return Err(OverwriteError::Other(
+            return Err(NoteError::Unchanged(self.fail_with(
                 "error-mining-other-note-type",
-                vec![("name", note.model)],
-            ));
+                &[("name", note.model)],
+            )));
         }
         let names: Vec<String> = note.fields.iter().map(|(n, _)| n.clone()).collect();
-        let values = render(&names).map_err(OverwriteError::Fields)?;
-        client
-            .update_note_fields(id, &values)
-            .map_err(OverwriteError::Anki)?;
-        client.add_tags(&[id], tags).map_err(OverwriteError::Anki)?;
-        let after = client
-            .notes_info(&[id])
-            .map_err(OverwriteError::Anki)?
+        let values = render(&names).map_err(|e| NoteError::Unchanged(self.fields_failure(&e)))?;
+        let unknown = |e: AnkiError| {
+            tracing::warn!("overwriting note {id}: {e}");
+            NoteError::Unknown(self.fail_with("error-mining-overwrite-unknown", &[]))
+        };
+        self.heard(client.update_note_fields(id, &values))
+            .map_err(|e| {
+                if may_have_changed(&e) {
+                    unknown(e)
+                } else {
+                    unchanged(e)
+                }
+            })?;
+        // the fields are written from here
+        self.heard(client.add_tags(&[id], tags)).map_err(unknown)?;
+        let after = self
+            .heard(client.notes_info(&[id]))
+            .map_err(unknown)?
             .into_iter()
             .next()
             .flatten();
@@ -708,9 +732,10 @@ impl Worker {
             _ => false,
         };
         if !first_written {
-            return Err(OverwriteError::Other(
-                "error-mining-overwrite-lost",
-                Vec::new(),
+            // Anki's editor may write the old fields back, or keep some new
+            // ones: the media stay
+            return Err(NoteError::Unknown(
+                self.fail_with("error-mining-overwrite-lost", &[]),
             ));
         }
         Ok((id, true))
@@ -745,7 +770,10 @@ impl Worker {
     /// The connection test of the settings (ANK-006), with their address.
     fn refresh(&mut self, config: &AnkiConfig) -> Result<AnkiLists, String> {
         let client = Client::new(&config.url, &config.api_key).map_err(|e| self.message(&e))?;
-        let state = lapis::refresh(&client, &config.note_type).map_err(|e| self.message(&e))?;
+        let state = lapis::refresh(&client, &config.note_type);
+        let state = self
+            .heard_from(&client, state)
+            .map_err(|e| self.message(&e))?;
         Ok(AnkiLists {
             version: state.version,
             decks: state.decks,
@@ -759,7 +787,10 @@ impl Worker {
     /// "Create Lapis deck" (ANK-011), with the settings' address.
     fn create_lapis(&mut self, config: &AnkiConfig) -> Result<LapisMade, String> {
         let client = Client::new(&config.url, &config.api_key).map_err(|e| self.message(&e))?;
-        let made = lapis::create(&client).map_err(|e| self.message(&e))?;
+        let made = lapis::create(&client);
+        let made = self
+            .heard_from(&client, made)
+            .map_err(|e| self.message(&e))?;
         Ok(LapisMade {
             created: made.setup == lapis::Setup::Created,
             deck: made.deck,
@@ -773,7 +804,7 @@ impl Worker {
         self.client = Client::new(&config.url, &config.api_key);
         self.parts.config = config;
         self.note_fields = None;
-        self.paused_until = None;
+        self.paused_until.set(None);
     }
 
     /// "Open in Anki" (ANK-038).
@@ -789,7 +820,9 @@ impl Worker {
                     .map_err(|e| self.message(&e))?
                     .ok_or_else(|| self.parts.translator.tr("error-mining-not-found", &[]))?;
                 let client = self.client().map_err(|e| self.message(&e))?;
-                let models = client.model_names_and_ids().map_err(|e| self.message(&e))?;
+                let models = self
+                    .heard(client.model_names_and_ids())
+                    .map_err(|e| self.message(&e))?;
                 let value = first.1.replace('\\', "\\\\").replace('"', "\\\"");
                 let dupes: Vec<String> = models
                     .iter()
@@ -800,7 +833,9 @@ impl Worker {
                     query.push(' ');
                     query.push_str(&nikomiru_anki::client::deck_query(&self.parts.config.deck));
                 }
-                let ids = client.find_notes(&query).map_err(|e| self.message(&e))?;
+                let ids = self
+                    .heard(client.find_notes(&query))
+                    .map_err(|e| self.message(&e))?;
                 if ids.is_empty() {
                     return Err(self.parts.translator.tr("error-mining-not-found", &[]));
                 }
@@ -809,14 +844,30 @@ impl Worker {
             }
         };
         let client = self.client().map_err(|e| self.message(&e))?;
-        client.gui_browse(&query).map_err(|e| self.message(&e))
+        self.heard(client.gui_browse(&query))
+            .map_err(|e| self.message(&e))
     }
 }
 
-enum OverwriteError {
-    Fields(compose::FieldsError),
-    Other(&'static str, Vec<(&'static str, String)>),
-    Anki(AnkiError),
+/// Why a note was not made or overwritten.
+enum NoteError {
+    /// Anki has it as it was: the new media are deleted again (ANK-036).
+    Unchanged(MineFailure),
+    /// It may exist, or have changed: its media stay (ANK-003).
+    Unknown(MineFailure),
+}
+
+/// Whether an idempotent request that failed with `e` may still have been
+/// carried out: it may have reached Anki, and no answer of AnkiConnect says
+/// otherwise.
+fn may_have_changed(e: &AnkiError) -> bool {
+    matches!(
+        e,
+        AnkiError::Timeout { .. }
+            | AnkiError::Http { .. }
+            | AnkiError::Protocol { .. }
+            | AnkiError::CommitUnknown { .. }
+    )
 }
 
 /// The field values with the names Anki gave the media, where it changed
@@ -848,6 +899,27 @@ fn rollback(client: &Client, stored: &[(String, String, bool)]) {
     }
 }
 
+/// Removes what attempts cut short left in the media folder (ADR 0007 §20):
+/// the files older than any attempt lasts. Newer ones may be another
+/// window's.
+fn sweep(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > STALE_MEDIA));
+        if stale
+            && entry.file_type().is_ok_and(|t| t.is_file())
+            && let Err(e) = std::fs::remove_file(entry.path())
+        {
+            tracing::warn!("{}: {e}", entry.path().display());
+        }
+    }
+}
+
 /// Makes the sentence audio (ANK-033): its Anki name and bytes.
 fn sentence_audio(
     tools: &Tools,
@@ -858,6 +930,9 @@ fn sentence_audio(
     stem: &str,
 ) -> Result<Media, String> {
     let stream = r.audio_stream.ok_or_else(|| "no audio track".to_string())?;
+    if end <= start.max(0) {
+        return Err("the clip is empty".to_string());
+    }
     let preferred = AudioFormat::from_config(&config.audio_format).unwrap_or(AudioFormat::AacM4a);
     let format = tools
         .audio_format(preferred)
@@ -865,7 +940,7 @@ fn sentence_audio(
     let ext = clip::audio_extension(format);
     let out = cache_dir.join(format!("{stem}.{ext}"));
     let job = AudioClip {
-        input: r.video.clone(),
+        input: r.audio_input.clone(),
         stream: Some(stream),
         start_ms: start,
         end_ms: end,

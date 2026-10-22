@@ -6,7 +6,8 @@
 //!
 //! [ADR 0007]: ../../../docs/adr/0007-mining-to-anki.md
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use nikomiru_core::config::AnkiConfig;
 
@@ -147,7 +148,11 @@ pub struct MineRequest {
     pub offset: Option<usize>,
     /// The video.
     pub video: PathBuf,
-    /// The ff-index of the active audio track; `None` without audio.
+    /// Where the sentence audio is cut from: the video, or the file of an
+    /// external audio track.
+    pub audio_input: PathBuf,
+    /// The ff-index of the active audio track in `audio_input`; `None`
+    /// without audio.
     pub audio_stream: Option<i64>,
     /// The clip of ANK-032 in player milliseconds; `None` without a cue.
     pub clip: Option<(i64, i64)>,
@@ -180,6 +185,57 @@ pub struct MineFailure {
     pub message: String,
     /// Anki has the card already.
     pub duplicate: bool,
+}
+
+/// Waits at most the given time for the player to write a frame; if it gives
+/// up first, the file is removed once the player has written it.
+pub type WaitFrame = Box<dyn FnOnce(Duration) -> Result<(), String> + Send>;
+
+/// The frame on screen being saved for a card (ANK-034). The player is asked
+/// when the card is asked for, in order with its other commands, so the frame
+/// is the one of the click even if playback resumes before the card is made.
+/// The file goes with it, however the attempt ends (ADR 0007 §20).
+pub struct PendingFrame {
+    path: PathBuf,
+    wait: Option<WaitFrame>,
+}
+
+impl PendingFrame {
+    /// The frame the player is writing to `path`.
+    pub fn new(path: PathBuf, wait: WaitFrame) -> Self {
+        Self {
+            path,
+            wait: Some(wait),
+        }
+    }
+
+    /// The PNG, once the player has written it: waits at most `timeout`.
+    pub fn written(&mut self, timeout: Duration) -> Result<&Path, String> {
+        let wait = self
+            .wait
+            .take()
+            .ok_or_else(|| "the frame was waited for already".to_string())?;
+        wait(timeout)?;
+        Ok(&self.path)
+    }
+}
+
+impl Drop for PendingFrame {
+    fn drop(&mut self) {
+        // not waited for: a file still to come goes when it comes
+        if let Some(wait) = self.wait.take() {
+            let _ = wait(Duration::ZERO);
+        }
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+impl std::fmt::Debug for PendingFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingFrame")
+            .field("path", &self.path)
+            .finish_non_exhaustive()
+    }
 }
 
 /// What "Open in Anki" shows (ANK-038).
@@ -231,8 +287,14 @@ pub trait AnkiService: Send {
     /// (not on this computer, or paused after a failure).
     fn check(&self, request: CheckRequest, done: Box<dyn FnOnce(Option<Vec<bool>>) + Send>);
 
-    /// Makes, or overwrites, a card.
-    fn mine(&self, request: MineRequest, done: Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>);
+    /// Makes, or overwrites, a card, with the frame of the click if the player
+    /// could be asked for it.
+    fn mine(
+        &self,
+        request: MineRequest,
+        frame: Option<PendingFrame>,
+        done: Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>,
+    );
 
     /// Opens Anki's browser.
     fn browse(&self, target: BrowseTarget, done: Box<dyn FnOnce(Result<(), String>) + Send>);
@@ -261,7 +323,12 @@ impl AnkiService for NoAnki {
         done(None);
     }
 
-    fn mine(&self, _: MineRequest, done: Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>) {
+    fn mine(
+        &self,
+        _: MineRequest,
+        _: Option<PendingFrame>,
+        done: Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>,
+    ) {
         done(Err(MineFailure {
             message: self.0.clone(),
             duplicate: false,
@@ -301,6 +368,8 @@ pub enum AnkiJob {
         entry: usize,
         /// The card.
         request: Box<MineRequest>,
+        /// The frame of the click, being saved.
+        frame: Option<PendingFrame>,
     },
     /// Open Anki's browser.
     Browse(BrowseTarget),

@@ -168,6 +168,9 @@ pub struct Track {
     pub selected: bool,
     /// From an external file.
     pub external: bool,
+    /// That file, for an external track: its `ff_index` counts the streams
+    /// of that file, not of the video.
+    pub external_filename: Option<String>,
 }
 
 /// A chapter (PLY-001).
@@ -724,6 +727,7 @@ fn read_tracks(mpv: &Mpv) -> Vec<Track> {
                 ff_index: mpv.get_property::<i64>(&p("ff-index")).ok(),
                 selected: mpv.get_property::<bool>(&p("selected")).unwrap_or(false),
                 external: mpv.get_property::<bool>(&p("external")).unwrap_or(false),
+                external_filename: opt_string(mpv, &p("external-filename")),
             }
         })
         .collect()

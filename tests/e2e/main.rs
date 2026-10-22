@@ -246,6 +246,44 @@ fn a_card_is_made_from_the_popup() {
     assert_eq!(library.mined_card_count().unwrap(), 2);
 }
 
+// T-ANK-037: a card made after its popup closed is still the last card
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_finished_after_its_popup_closed_is_the_last_card() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    // the card is asked for, the popup closes before Anki answers
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.key("Escape");
+    h.state_until("no popup", |s| s["popups"] == serde_json::json!([]));
+    let note_id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    // the word again: ✓↩ on that card
+    h.cmd(serde_json::json!({ "cmd": "lookup", "text": "食べました" }));
+    h.wait("popup-rendered");
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "overwrite" }));
+    assert_eq!(h.wait("card-created")["note_id"].as_u64(), Some(note_id));
+    assert_eq!(fake.collection().notes.len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-ANK-052, T-APP-001 with a link
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

@@ -167,6 +167,7 @@ error-mining-mapping = No field of the note type has a template: check the field
 error-mining-note-gone = The last card is no longer in Anki.
 error-mining-other-note-type = The last card is a { $name } note, not of the chosen note type: it was not overwritten.
 error-mining-overwrite-lost = Anki did not keep the new fields: close the card in Anki's browser and try again.
+error-mining-overwrite-unknown = Anki did not confirm the overwrite of the last card: check it in Anki before trying again.
 error-mining-not-found = Anki has no card for this word.
 
 # Single instance (nikomiru-app InstanceError)

@@ -378,8 +378,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | ID | Check | Expected | L |
 |---|---|---|---|
 | T-ANK-001 | Request shape | JSON snapshot of each action; `key` absent if empty, present in every `multi` child otherwise; `Connection: close`; no proxy | L3 |
-| T-ANK-002 | Error mapping | Non-200, non-JSON, missing `result`/`error`, duplicate message → the right typed error | L4 |
-| T-ANK-003 | Retry | `deckNames` whose connection closes before the reply → retried once (the fake counts 2 requests); a reply timeout is not retried. `addNote` with the response lost after sending → `CommitUnknown`, only **1** request. Connection refused → one more attempt for any action | L4 |
+| T-ANK-002 | Error mapping | Non-200, non-JSON, missing `result`/`error`, duplicate message → the right typed error; an address that is not AnkiConnect's names no user name or password | L4 |
+| T-ANK-003 | Retry | `deckNames` whose connection closes before the reply → retried once (the fake counts 2 requests); a reply timeout is not retried. `addNote` with the response lost after sending → `CommitUnknown`, only **1** request; so are a 502/504 status and a reply that is not AnkiConnect's, while a 403 is an HTTP error. Connection refused → one more attempt for any action | L4 |
 | T-ANK-004 | Error messages | Every error of ANK-004 has its message in English and Italian, and none quotes the API key (T-ERR-001, T-PRV-002) | L1 |
 | T-ANK-005 | Actions | Only the actions of ANK-005, each with documented parameters only (snapshots of T-ANK-001) | L3 |
 | T-ANK-006 | Refresh | `version`, `deckNames`, `modelNames`, `modelFieldNames` of the selected model; a selection whose list position changed is kept by name; a missing one is reported | L4 |
@@ -391,14 +391,14 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
 | T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; from M5 with the series tag (`Sousou_no_Frieren`) | L1 |
-| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock); a remote URL is not checked | L4 |
+| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock), started also by a card with an unknown outcome and ended by any answer ("Open in Anki"); a URL that is not loopback (`0.0.0.0`, which Linux connects here) is never checked, while a card goes through | L4 |
 | T-ANK-031 | Reference cue | The cue the lookup started from, else the current one, else the one at the position | L1 |
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
-| T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345) | L3/L4 |
-| T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution | L4/L5 |
-| T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request | L4 |
-| T-ANK-036 | Media | Stable content-based name; always base64 `data`; the name AnkiConnect returns goes into the fields; if `addNote` fails with a known error → `deleteMediaFile` only for the names that did not exist before the attempt; after `CommitUnknown` nothing is deleted | L4 |
-| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`), `addTags`, `notesInfo` again; different note type → rejection; "editor open" → its message | L4 |
+| T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345); an external audio track is cut from its own file | L3/L4 |
+| T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution; the frame asked at the click is the picture; without it (the player failed, or was not asked) the card is made without a picture | L4/L5 |
+| T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request; the same for a track ffmpeg cannot cut and for an empty clip | L4 |
+| T-ANK-036 | Media | Stable content-based name; always base64 `data`; the name AnkiConnect returns goes into the fields; if `addNote` fails with a known error → `deleteMediaFile` only for the names that did not exist before the attempt; after `CommitUnknown` nothing is deleted; after every attempt `cache/mining` is empty, and at start its files older than ten minutes are removed | L4 |
+| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`, a mapped one changed), `addTags`, `notesInfo` again; different note type → rejection; "editor open" → its message and the new media deleted; `addTags` failing or the reply to `updateNoteFields` lost → unknown outcome, media kept. L6: a card finished after its popup closed is the last card | L4/L6 |
 | T-ANK-038 | Open in Anki | `guiBrowse nid:<id>` for the last card; for a word, `findNotes` with `dupe:` for each note type, within the deck | L4 |
 | T-ANK-039 | Record | A created card adds its `mined_cards` record; an overwrite replaces it | L4 |
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |

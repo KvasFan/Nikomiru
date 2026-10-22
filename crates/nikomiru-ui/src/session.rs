@@ -167,6 +167,9 @@ pub struct Services {
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
+    /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
+    /// the frame of the click is saved there.
+    pub mining_dir: PathBuf,
     /// The settings came from `config.toml` (or there is none yet): saving may
     /// write it. When it could not be read, the settings in memory are the
     /// defaults, and writing them would lose the user's file.
@@ -1010,25 +1013,31 @@ impl Session {
             (0, Some(Origin::Subtitle { cue: c, start })) if Some(*c) == cue => Some(*start),
             _ => None,
         };
-        let clip = cue.map(|c| {
-            let (start, end) = t.clip(
-                c,
-                i64::from(anki.audio_pad_head_ms),
-                i64::from(anki.audio_pad_tail_ms),
-            );
-            (start, end.min(start + nikomiru_media::clip::MAX_AUDIO_MS))
-        });
-        let tracks = &self.view.audio_tracks;
-        let selected = tracks.iter().find(|tr| Some(tr.id) == self.view.aid);
-        let audio_stream = match selected {
-            Some(tr) if !tr.external => tr.ff_index,
-            // an external track: the video's own first one
-            _ => tracks
-                .iter()
-                .find(|tr| tr.kind == "audio" && !tr.external)
-                .and_then(|tr| tr.ff_index),
-        }
-        .filter(|_| selected.is_some());
+        // a cue of no length gives no audio
+        let clip = cue
+            .map(|c| {
+                let (start, end) = t.clip(
+                    c,
+                    i64::from(anki.audio_pad_head_ms),
+                    i64::from(anki.audio_pad_tail_ms),
+                );
+                (start, end.min(start + nikomiru_media::clip::MAX_AUDIO_MS))
+            })
+            .filter(|(start, end)| end > start);
+        // the active audio track: an external one is cut from its own file
+        let selected = self
+            .view
+            .audio_tracks
+            .iter()
+            .find(|tr| Some(tr.id) == self.view.aid);
+        let (audio_input, audio_stream) = match selected {
+            Some(tr) if tr.external => match &tr.external_filename {
+                Some(file) => (PathBuf::from(file), tr.ff_index),
+                None => (current.path.clone(), None),
+            },
+            Some(tr) => (current.path.clone(), tr.ff_index),
+            None => (current.path.clone(), None),
+        };
         let request = MineRequest {
             query: p.query.clone(),
             entry,
@@ -1038,6 +1047,7 @@ impl Session {
             sentence,
             offset,
             video: current.path.clone(),
+            audio_input,
             audio_stream,
             clip,
             position_ms: (self.view.time_pos * 1000.0) as i64,
@@ -1058,40 +1068,74 @@ impl Session {
         {
             *card = CardState::Busy;
         }
+        let frame = self.ask_frame();
         self.anki_jobs.push(AnkiJob::Mine {
             generation,
             entry,
             request: Box::new(request),
+            frame,
         });
     }
 
-    /// A card was made, or not.
+    /// Asks the player for the frame on screen now, for a card (ANK-034): it
+    /// is saved in order with the player's other commands, before a resume.
+    fn ask_frame(&self) -> Option<crate::mining::PendingFrame> {
+        use std::sync::mpsc::RecvTimeoutError;
+        let dir = &self.services.mining_dir;
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            tracing::warn!("{}: {e}", dir.display());
+            return None;
+        }
+        let path = dir.join(format!("{}.png", nikomiru_anki::link::new_source_id()));
+        let reply = match self.services.player.screenshot(&path) {
+            Ok(reply) => reply,
+            Err(e) => {
+                tracing::warn!("card frame: {e}");
+                return None;
+            }
+        };
+        let late = path.clone();
+        Some(crate::mining::PendingFrame::new(
+            path,
+            Box::new(move |timeout| match reply.recv_timeout(timeout) {
+                Ok(result) => result.map_err(|e| e.to_string()),
+                Err(RecvTimeoutError::Timeout) => {
+                    // the file may still come: it goes when it does
+                    let spawned =
+                        std::thread::Builder::new()
+                            .name("late-frame".into())
+                            .spawn(move || {
+                                let _ = reply.recv();
+                                let _ = std::fs::remove_file(&late);
+                            });
+                    if let Err(e) = spawned {
+                        tracing::warn!("late frame: {e}");
+                    }
+                    Err("the player did not save the frame in time".into())
+                }
+                Err(RecvTimeoutError::Disconnected) => Err("the player stopped".into()),
+            }),
+        ))
+    }
+
+    /// A card was made, or not (ANK-030…ANK-039): `headword` is the entry's
+    /// expression and reading, the last card even if its popup has closed.
     pub fn mined(
         &mut self,
         generation: u64,
         entry: usize,
+        headword: (String, String),
         result: Result<crate::mining::Mined, crate::mining::MineFailure>,
     ) {
         use crate::mining::{CardState, LastCard};
-        let popup = self
-            .popups
-            .stack_mut()
-            .iter_mut()
-            .find(|p| p.generation == generation);
-        let entry_view = popup
-            .as_ref()
-            .and_then(|p| p.reply.as_ref())
-            .and_then(|r| r.content.entries.get(entry))
-            .map(|e| (e.expression.clone(), e.reading.clone()));
         match result {
             Ok(mined) => {
-                if let Some((expression, reading)) = entry_view {
-                    self.last_card = Some(LastCard {
-                        note_id: mined.note_id,
-                        expression,
-                        reading,
-                    });
-                }
+                let (expression, reading) = headword;
+                self.last_card = Some(LastCard {
+                    note_id: mined.note_id,
+                    expression,
+                    reading,
+                });
                 if let Some(card) = self
                     .popups
                     .stack_mut()
@@ -1112,7 +1156,13 @@ impl Session {
                 self.events.push(UiEvent::CardCreated(mined.note_id));
             }
             Err(failure) => {
-                if let Some(card) = popup.and_then(|p| p.cards.get_mut(entry)) {
+                if let Some(card) = self
+                    .popups
+                    .stack_mut()
+                    .iter_mut()
+                    .find(|p| p.generation == generation)
+                    .and_then(|p| p.cards.get_mut(entry))
+                {
                     *card = if failure.duplicate {
                         CardState::Exists
                     } else {

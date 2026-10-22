@@ -167,6 +167,7 @@ error-mining-mapping = Nessun campo del tipo di nota ha un modello: controlla la
 error-mining-note-gone = L'ultima carta non è più in Anki.
 error-mining-other-note-type = L'ultima carta è una nota { $name }, non del tipo scelto: non è stata sovrascritta.
 error-mining-overwrite-lost = Anki non ha tenuto i nuovi campi: chiudi la carta nel browser di Anki e riprova.
+error-mining-overwrite-unknown = Anki non ha confermato la sovrascrittura dell'ultima carta: controllala in Anki prima di riprovare.
 error-mining-not-found = Anki non ha carte per questa parola.
 
 # Single instance (nikomiru-app InstanceError)

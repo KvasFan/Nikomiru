@@ -122,11 +122,31 @@ fn replies_that_are_not_anki_connects_are_protocol_errors() {
     }
     fake.then(Behaviour::Json(json!({"result": "x", "error": null})));
     assert!(matches!(c.deck_names(), Err(AnkiError::Protocol { .. })));
-    fake.then(Behaviour::Json(json!({"result": null, "error": null})));
+    // T-ANK-003: addNote was sent, so a reply that cannot be read, or a
+    // proxy's error, leaves its outcome unknown; a refusal does not
+    let unknown = Err(AnkiError::CommitUnknown {
+        action: "addNote".into(),
+    });
+    for behaviour in [
+        Behaviour::Json(json!({"result": null, "error": null})),
+        Behaviour::Body("<html>".into()),
+        Behaviour::Json(json!({"apiVersion": "AnkiConnect v.6"})),
+        Behaviour::Status(502),
+        Behaviour::Status(504),
+    ] {
+        fake.then(behaviour);
+        assert_eq!(c.add_note(&lapis_note("x"), false), unknown);
+    }
+    fake.then(Behaviour::Status(403));
     assert!(matches!(
         c.add_note(&lapis_note("x"), false),
-        Err(AnkiError::Protocol { .. })
+        Err(AnkiError::Http { .. })
     ));
+    assert_eq!(
+        fake.actions().iter().filter(|a| *a == "addNote").count(),
+        6,
+        "never sent twice"
+    );
     // the duplicate answer of addNote
     c.add_note(&lapis_note("日"), false).unwrap();
     assert_eq!(

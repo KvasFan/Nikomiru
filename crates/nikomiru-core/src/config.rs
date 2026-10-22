@@ -276,11 +276,22 @@ impl AnkiConfig {
     }
 }
 
+/// `url` without the user name and password it may hold, for messages and
+/// logs (PRV-002): all before its last `@` after the scheme goes, whether it
+/// parses or not.
+pub fn without_userinfo(url: &str) -> String {
+    let authority = url.find("://").map_or(0, |i| i + 3);
+    match url[authority..].rfind('@') {
+        Some(at) => format!("{}{}", &url[..authority], &url[authority + at + 1..]),
+        None => url.to_string(),
+    }
+}
+
 impl std::fmt::Debug for AnkiConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // never the API key (PRV-002)
+        // never the API key or a password in the address (PRV-002)
         f.debug_struct("AnkiConfig")
-            .field("url", &self.url)
+            .field("url", &without_userinfo(&self.url))
             .field("api_key", &if self.api_key.is_empty() { "" } else { "…" })
             .field("deck", &self.deck)
             .field("note_type", &self.note_type)

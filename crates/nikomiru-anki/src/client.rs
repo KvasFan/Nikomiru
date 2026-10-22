@@ -167,7 +167,7 @@ impl Client {
         connect: Duration,
         request: Duration,
     ) -> Result<Self, AnkiError> {
-        let bad = || AnkiError::BadUrl(url.trim().to_string());
+        let bad = || AnkiError::BadUrl(nikomiru_core::config::without_userinfo(url.trim()));
         let parsed = reqwest::Url::parse(url.trim()).map_err(|_| bad())?;
         let host = match parsed.host_str() {
             Some(h) if matches!(parsed.scheme(), "http" | "https") => h.to_string(),
@@ -228,8 +228,11 @@ impl Client {
     /// Sends `action` with `params` and returns its `result` (ANK-002, ANK-003).
     pub fn call(&self, action: &str, params: Option<Value>) -> Result<Value, AnkiError> {
         let body = self.body(action, params.as_ref());
-        let raw = self.send(action, &body, !NOT_IDEMPOTENT.contains(&action))?;
-        let (error, result) = self.envelope(raw)?;
+        let idempotent = !NOT_IDEMPOTENT.contains(&action);
+        let raw = self.send(action, &body, idempotent)?;
+        let (error, result) = self
+            .envelope(raw)
+            .map_err(|e| unread(action, idempotent, e))?;
         answer(action, error, result)
     }
 
@@ -246,12 +249,16 @@ impl Client {
         let params = json!({ "actions": children });
         let body = self.body("multi", Some(&params));
         let raw = self.send("multi", &body, idempotent)?;
-        let (error, result) = self.envelope(raw)?;
+        let (error, result) = self
+            .envelope(raw)
+            .map_err(|e| unread("multi", idempotent, e))?;
         let Value::Array(replies) = answer("multi", error, result)? else {
-            return Err(self.protocol("multi did not return a list"));
+            let e = self.protocol("multi did not return a list");
+            return Err(unread("multi", idempotent, e));
         };
         if replies.len() != actions.len() {
-            return Err(self.protocol("multi returned a different number of results"));
+            let e = self.protocol("multi returned a different number of results");
+            return Err(unread("multi", idempotent, e));
         }
         Ok(replies
             .into_iter()
@@ -262,7 +269,11 @@ impl Client {
                     let result = o.remove("result").unwrap_or(Value::Null);
                     answer(action, error, result)
                 }
-                _ => Err(self.protocol("a result of multi has no result or error")),
+                _ => Err(unread(
+                    action,
+                    !NOT_IDEMPOTENT.contains(action),
+                    self.protocol("a result of multi has no result or error"),
+                )),
             })
             .collect())
     }
@@ -294,6 +305,12 @@ impl Client {
         loop {
             let failure = match self.attempt(&bytes) {
                 Ok((200, text)) => return Ok(text),
+                // a proxy in front may have passed the request on (ANK-003)
+                Ok((500.., _)) if !idempotent => {
+                    return Err(AnkiError::CommitUnknown {
+                        action: action.to_string(),
+                    });
+                }
                 Ok((status, _)) => {
                     return Err(AnkiError::Http {
                         url: self.shown.clone(),
@@ -472,8 +489,10 @@ impl Client {
             }
         });
         let id = self.call("addNote", Some(params))?;
-        id.as_u64()
-            .ok_or_else(|| self.protocol("addNote returned no note id"))
+        // a reply without the id: whether the note was added is unknown
+        id.as_u64().ok_or_else(|| AnkiError::CommitUnknown {
+            action: "addNote".into(),
+        })
     }
 
     /// `notesInfo`: `None` for a note that does not exist.
@@ -599,6 +618,18 @@ pub struct NewModel<'a> {
     pub back: &'a str,
 }
 
+/// A reply that cannot be read: for an action that changes Anki, whether it
+/// was carried out is unknown (ANK-003).
+fn unread(action: &str, idempotent: bool, e: AnkiError) -> AnkiError {
+    if idempotent {
+        e
+    } else {
+        AnkiError::CommitUnknown {
+            action: action.to_string(),
+        }
+    }
+}
+
 /// `result` if `error` is null, else the typed error.
 fn answer(action: &str, error: Value, result: Value) -> Result<Value, AnkiError> {
     match error {
@@ -682,6 +713,17 @@ mod tests {
         let c = Client::new("http://user:secret@127.0.0.1:8765/", "").unwrap();
         assert_eq!(c.url(), "http://127.0.0.1:8765");
         assert!(!format!("{c:?}").contains("secret"));
+        for bad in [
+            "htps://user:secret@anki.example.org",
+            "https://user:secret@anki.example.org:87650",
+            "user:secret@127.0.0.1:8765",
+        ] {
+            let e = Client::new(bad, "").unwrap_err();
+            assert!(!e.to_string().contains("secret"), "{e}");
+            assert!(
+                e.to_string().contains("anki.example.org") || e.to_string().contains("127.0.0.1")
+            );
+        }
     }
 
     // T-ANK-001

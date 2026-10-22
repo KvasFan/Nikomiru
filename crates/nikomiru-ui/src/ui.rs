@@ -84,6 +84,10 @@ pub enum Inbound {
         generation: u64,
         /// The entry.
         entry: usize,
+        /// Its headword, for "Open last card" if the popup has closed.
+        expression: String,
+        /// Its reading.
+        reading: String,
         /// The card, or why not.
         result: Result<crate::mining::Mined, crate::mining::MineFailure>,
     },
@@ -363,9 +367,12 @@ impl Ui {
             Inbound::Mined {
                 generation,
                 entry,
+                expression,
+                reading,
                 result,
             } => {
-                self.session.mined(generation, entry, result);
+                self.session
+                    .mined(generation, entry, (expression, reading), result);
                 true
             }
             Inbound::Browsed(result) => {
@@ -666,16 +673,24 @@ impl Ui {
                     generation,
                     entry,
                     request,
-                } => self.session.anki().mine(
-                    *request,
-                    Box::new(move |result| {
-                        waker.wake(Inbound::Mined {
-                            generation,
-                            entry,
-                            result,
-                        });
-                    }),
-                ),
+                    frame,
+                } => {
+                    let (expression, reading) =
+                        (request.expression.clone(), request.reading.clone());
+                    self.session.anki().mine(
+                        *request,
+                        frame,
+                        Box::new(move |result| {
+                            waker.wake(Inbound::Mined {
+                                generation,
+                                entry,
+                                expression,
+                                reading,
+                                result,
+                            });
+                        }),
+                    );
+                }
                 crate::mining::AnkiJob::Browse(target) => self
                     .session
                     .anki()
