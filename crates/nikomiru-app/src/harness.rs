@@ -6,7 +6,8 @@
 //! for answer: `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
 //!
 //! Commands: `{"cmd":"open","path":…}`, `{"cmd":"wait","event":…,"timeout_ms":…}`,
-//! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
+//! `{"cmd":"key","code":"Space","mods":["Ctrl"],"repeat":0}` (`repeat`: auto-repeats
+//! while held), `{"cmd":"drop","paths":[…]}`,
 //! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
 //! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
@@ -78,7 +79,8 @@ fn run(command: &Value) -> Result<Value, String> {
                 .flatten()
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
-            harness::key(text(command, "code")?, &mods).map(|()| Value::Null)
+            let repeats = command["repeat"].as_u64().unwrap_or(0);
+            harness::key(text(command, "code")?, &mods, repeats).map(|()| Value::Null)
         }
         Some("drop") => {
             let paths: Vec<String> = command["paths"]

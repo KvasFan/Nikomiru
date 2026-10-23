@@ -189,6 +189,30 @@ impl Action {
         }
     }
 
+    /// Whether a held key runs the action again at each repeat (KEY-005): the
+    /// actions that step do; the others run once per press.
+    pub fn repeats(self) -> bool {
+        matches!(
+            self,
+            Action::SeekBack
+                | Action::SeekForward
+                | Action::VolumeUp
+                | Action::VolumeDown
+                | Action::SpeedUp
+                | Action::SpeedDown
+                | Action::FramePrev
+                | Action::FrameNext
+                | Action::ChapterPrev
+                | Action::ChapterNext
+                | Action::SubPrev
+                | Action::SubNext
+                | Action::SubDelayMinus
+                | Action::SubDelayPlus
+                | Action::PopupNext
+                | Action::PopupPrev
+        )
+    }
+
     /// Default keys (SPECIFICATION §6.3).
     pub fn default_keys(self) -> &'static [&'static str] {
         match self {
@@ -501,6 +525,35 @@ mod tests {
         alt: false,
         shift: false,
     };
+
+    // T-KEY-005
+    #[test]
+    fn only_the_actions_that_step_repeat() {
+        for once in [
+            Action::PlayPause,
+            Action::Screenshot,
+            Action::CreateCard,
+            Action::Back,
+            Action::Fullscreen,
+            Action::OpenFile,
+            Action::Mute,
+            Action::SubToggle,
+            Action::ReplayCue,
+            Action::SubAlignNext,
+        ] {
+            assert!(!once.repeats(), "{}", once.name());
+        }
+        for step in [
+            Action::SeekForward,
+            Action::VolumeDown,
+            Action::FrameNext,
+            Action::SubNext,
+            Action::SubDelayPlus,
+            Action::PopupNext,
+        ] {
+            assert!(step.repeats(), "{}", step.name());
+        }
+    }
 
     // T-KEY-002
     #[test]

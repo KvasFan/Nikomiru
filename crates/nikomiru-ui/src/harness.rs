@@ -132,7 +132,7 @@ pub fn drop(paths: &[String]) -> Result<(), String> {
 
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
 /// (`Ctrl`, `Shift`, `Alt`), through the window's key handler.
-pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
+pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
     let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
     let mut held = Modifiers::default();
     for m in mods {
@@ -144,14 +144,18 @@ pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
         }
     }
     call(move |ui| {
-        let key = |pressed| Key {
+        let key = |pressed, repeat| Key {
             evdev,
             mods: held,
             pressed,
-            repeat: false,
+            repeat,
         };
-        ui.key(key(true), false);
-        ui.key(key(false), false);
+        ui.key(key(true, false), false);
+        // held: the auto-repeats of the window system
+        for _ in 0..repeats {
+            ui.key(key(true, true), false);
+        }
+        ui.key(key(false, false), false);
     })
 }
 

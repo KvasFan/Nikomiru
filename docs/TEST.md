@@ -330,7 +330,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); a click on a link asks for a nested lookup next to it, or for the browser; only `http(s)` addresses are opened (L1); an external link reaches the `OpenURI` portal (spy portal on a private bus, L4) | L1, L4 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children. A drag across glossary text (one paragraph, or a line of runs with ruby, chips and links, the readings left out) looks the selection up in a child popup next to it and stays lit while that popup is open; a click still follows a link; the summary of a `details` does not select; a drag on text does not scroll the popup (`egui_kittest`) | L1 |
 | T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |
-| T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness) | L6 |
+| T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness); with the Anki page over a popup, Ctrl+Enter makes no card and Esc closes the page, then the popup | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
 ### 6.7 Security
@@ -362,13 +362,14 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-008 | After loading | `sid = no`, `sub-visibility = no`; `aid` adopted | L5 |
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
-| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles | L5 |
+| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles; a taken name gets ` (2)`…, and 16 screenshots at once get 16 names | L1/L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
 | T-PLY-013 | Screensaver | During playback the inhibition is active; when paused for > 1 min it is released (spy portal) | L4 |
 | T-PLY-016 | `mpv.conf` presets | Round trip: option set from the UI → saved preset → loaded → identical option set, with UI controls and raw options filled as before. A sample `mpv.conf` with comments, a flag (`deband`), `no-` prefix, `--key=value`, quoted values, `profile=high-quality`, a `[section]` and `include=` → preview with applied / ignored / invalid for each line, and no option reaches mpv before confirmation (spy on the option setter). A saved preset is accepted by a real mpv (`mpv --no-config --include=<file> --idle=once` exits with 0) | L1/L5 |
 | T-PLY-017 | Blocked options | Every entry of the blocked table, in the raw options and in a preset, is rejected with its reason and never reaches mpv (spy). `script=x.lua`, `input-ipc-server=<tmp>/s`, `log-file=<tmp>/l`, `include=<tmp>/i.conf` → no file created and no socket opened (inotify on the temporary folder, see T-SEC-003); `sub-font=…` and `gpu-api=…` → ignored with a warning | L1/L5 |
 | T-PLY-018 | Render and audio settings | Each control sets the expected mpv option (`mpv_get`); runtime options (`deband`, `scale`, `brightness`…) change during playback without reloading the file; `hwdec` shows the "from the next file" note and takes effect on the next `loadfile`; reset of a group restores only that group | L5/L6 |
 | T-KEY-001…004 | Shortcuts | Remapping saved and reloaded; binding by scan code (with a simulated AZERTY layout, the physical key of evdev `KEY_Q` still triggers the action bound to it); conflict in the same context rejected; single-key shortcuts disabled in a text field | L1/L6 |
+| T-KEY-005 | Auto-repeat | Only the actions that step repeat; `S` held with 10 repeats saves one screenshot | L1/L6 |
 | T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/nikomiru` and the video types; `Exec=nikomiru %U` | L4 |
 | T-APP-001 | Single instance | Second start with a file → the file opens in the first instance; the second process exits with 0 | L6 |
 | T-E2E-001 | M1 flow | open → play → seek → close → reopen → resumes from the saved position | L6 |
@@ -386,9 +387,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-010 | Lapis files | SHA-256 of the three vendored files as in `PROVENANCE.md`; 22 fields in order; template `Mining` | L1 |
 | T-ANK-011 | "Create Lapis deck" | Model absent → `createModel` + `createDeck`; model present → only `createDeck`; failed check → `LapisSetupMissing`; second run → `already exists` | L4 |
 | T-ANK-012/013 | Default mapping and Lapis recognition | Vectors from `lapis_preset_test.dart` | L1 |
-| T-ANK-020 | Templates | Unknown placeholder → empty; literal text kept (`x`); the mapping of one note type does not change another's | L1 |
+| T-ANK-020 | Templates | Unknown placeholder → empty; literal text kept (`x`); from a `{` to the next `}` is one placeholder (`{{expression}}` → `}`), as the regex; the mapping of one note type does not change another's | L1 |
 | T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense, scoped `<style>`, `data-sc-*` attributes, the hostile `mini-ja` entry reduced to the allowlist), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja`; every value escaped | L3 |
-| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
+| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; an offset that is not a character boundary, out of the text or on another word → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
 | T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; from M5 with the series tag (`Sousou_no_Frieren`) | L1 |
 | T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock), started also by a card with an unknown outcome and ended by any answer ("Open in Anki"); a URL that is not loopback (`0.0.0.0`, which Linux connects here) is never checked, while a card goes through | L4 |

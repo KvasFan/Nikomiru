@@ -29,19 +29,31 @@ pub fn file_name(video: &Path, seconds: f64) -> String {
     format!("{} {h:02}-{m:02}-{s:02}.{:03}.png", &stem[..end], ms % 1000)
 }
 
-/// `path`, or `name (2).png`, `name (3).png`… if it is taken.
-fn free(path: PathBuf) -> PathBuf {
-    if !path.exists() {
-        return path;
-    }
+/// Takes `path`, or `name (2).png`, `name (3).png`… if it is taken: the file
+/// is made at once, empty, so two screenshots never get the same name; mpv
+/// then writes over it.
+fn reserve(path: &Path) -> std::io::Result<PathBuf> {
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    (2..)
-        .map(|n| path.with_file_name(format!("{stem} ({n}).png")))
-        .find(|p| !p.exists())
-        .unwrap_or(path)
+    let mut n = 1u32;
+    loop {
+        let candidate = if n == 1 {
+            path.to_path_buf()
+        } else {
+            path.with_file_name(format!("{stem} ({n}).png"))
+        };
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(_) => return Ok(candidate),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && n < u32::MAX => n += 1,
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Saves the frame shown as `dir/name` (or a free name next to it) on a
@@ -63,13 +75,19 @@ pub fn start(
 
 fn save(player: &PlayerHandle, dir: &Path, name: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let path = free(dir.join(name));
-    let reply = player.screenshot(&path).map_err(|e| e.to_string())?;
-    match reply.recv_timeout(TIMEOUT) {
-        Ok(Ok(())) => Ok(path),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(e) => Err(e.to_string()),
+    let path = reserve(&dir.join(name)).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let written = player
+        .screenshot(&path)
+        .map_err(|e| e.to_string())
+        .and_then(|reply| match reply.recv_timeout(TIMEOUT) {
+            Ok(result) => result.map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        });
+    if written.is_err() && std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
+        // the empty file that held the name
+        let _ = std::fs::remove_file(&path);
     }
+    written.map(|()| path)
 }
 
 #[cfg(test)]
@@ -93,11 +111,29 @@ mod tests {
     fn a_taken_name_gets_a_number() {
         let dir = tempfile::tempdir().unwrap();
         let first = dir.path().join("a 00-00-01.000.png");
-        assert_eq!(free(first.clone()), first);
-        std::fs::write(&first, b"x").unwrap();
-        let second = free(first.clone());
-        assert_eq!(second, dir.path().join("a 00-00-01.000 (2).png"));
-        std::fs::write(&second, b"x").unwrap();
-        assert_eq!(free(first), dir.path().join("a 00-00-01.000 (3).png"));
+        assert_eq!(reserve(&first).unwrap(), first);
+        assert_eq!(
+            reserve(&first).unwrap(),
+            dir.path().join("a 00-00-01.000 (2).png")
+        );
+        assert_eq!(
+            reserve(&first).unwrap(),
+            dir.path().join("a 00-00-01.000 (3).png")
+        );
+        assert!(reserve(&dir.path().join("missing/a.png")).is_err());
+    }
+
+    #[test]
+    fn screenshots_at_once_never_share_a_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a 00-00-01.000.png");
+        let names: Vec<PathBuf> = std::thread::scope(|s| {
+            let threads: Vec<_> = (0..16)
+                .map(|_| s.spawn(|| reserve(&path).unwrap()))
+                .collect();
+            threads.into_iter().map(|t| t.join().unwrap()).collect()
+        });
+        let distinct: std::collections::BTreeSet<&PathBuf> = names.iter().collect();
+        assert_eq!(distinct.len(), 16, "{names:?}");
     }
 }

@@ -544,8 +544,7 @@ impl Worker {
             end_ms: u32::try_from(end_ms.max(0)).unwrap_or(u32::MAX),
             source_id: source_id.clone(),
         });
-        let length = r.matched.chars().count();
-        let sentence = compose::sentence(&r.sentence, r.offset, length, &r.matched);
+        let sentence = compose::sentence(&r.sentence, r.offset, &r.matched);
         let scene = |audio: Option<&str>, image: Option<&str>| SceneFields {
             sentence: sentence.clone(),
             cue_sentence: sentence.clone(),

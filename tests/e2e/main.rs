@@ -124,6 +124,14 @@ fn s_saves_the_frame_shown_in_the_pictures_folder() {
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     let int = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
     assert_eq!((int(16), int(20)), (1280, 720), "the video's own size");
+    // T-KEY-005: S held down saves one picture, not one per repeat
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "KeyS", "repeat": 10 }));
+    h.wait("screenshot-saved");
+    std::thread::sleep(Duration::from_millis(1500));
+    let files = std::fs::read_dir(pictures.join("Nikomiru"))
+        .unwrap()
+        .count();
+    assert_eq!(files, 2);
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -280,6 +288,44 @@ fn a_card_finished_after_its_popup_closed_is_the_last_card() {
     h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "overwrite" }));
     assert_eq!(h.wait("card-created")["note_id"].as_u64(), Some(note_id));
     assert_eq!(fake.collection().notes.len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-POP-014: a settings page over the popups takes their keys
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_page_over_the_popups_takes_their_keys() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    h.state_until("the page", |s| s["anki_page"]["open"] == true);
+    // Ctrl+Enter belongs to the popup under the page: no card
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    // Esc closes the page; the popup and its pause wait under it
+    h.key("Escape");
+    let s = h.state_until("the page closed", |s| s["anki_page"]["open"] == false);
+    assert_eq!(s["popups"].as_array().map(Vec::len), Some(1), "{s}");
+    assert_eq!(s["popups"][0]["cards"][0], "add", "{s}");
+    assert_eq!(s["paused"], true, "{s}");
+    assert!(!fake.actions().contains(&"addNote".to_string()));
+    // the keys are the popup's again
+    h.key("Escape");
+    h.state_until("the popup closed", |s| s["popups"] == serde_json::json!([]));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

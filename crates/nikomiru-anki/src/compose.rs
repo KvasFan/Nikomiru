@@ -82,7 +82,8 @@ pub struct DictionaryFields {
     pub media: Vec<(String, Vec<u8>)>,
 }
 
-/// The kind of an image file, from its first bytes: its extension.
+/// The kind of an image file, from its first bytes: its extension. Besides
+/// the types of POP-010, SVG and AVIF, which Anki shows (ADR 0007 §13).
 pub fn image_extension(bytes: &[u8]) -> Option<&'static str> {
     let starts = |sig: &[u8]| bytes.starts_with(sig);
     if starts(b"\x89PNG\r\n\x1a\n") {
@@ -101,8 +102,41 @@ pub fn image_extension(bytes: &[u8]) -> Option<&'static str> {
     {
         Some("avif")
     } else {
-        let head = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]).to_lowercase();
-        head.contains("<svg").then_some("svg")
+        is_svg(bytes).then_some("svg")
+    }
+}
+
+/// Whether `bytes` are an SVG document: after a byte order mark, an XML
+/// declaration, comments and a doctype, the root element is `<svg>`.
+fn is_svg(bytes: &[u8]) -> bool {
+    fn past<'a>(bytes: &'a [u8], end: &[u8]) -> Option<&'a [u8]> {
+        bytes
+            .windows(end.len())
+            .position(|w| w == end)
+            .map(|i| &bytes[i + end.len()..])
+    }
+    let mut rest = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    loop {
+        rest = rest.trim_ascii_start();
+        let skipped = if let Some(after) = rest.strip_prefix(b"<?") {
+            past(after, b"?>")
+        } else if let Some(after) = rest.strip_prefix(b"<!--") {
+            past(after, b"-->")
+        } else if let Some(after) = rest.strip_prefix(b"<!") {
+            past(after, b">")
+        } else {
+            let root = rest
+                .get(..4)
+                .is_some_and(|t| t.eq_ignore_ascii_case(b"<svg"));
+            let end = rest
+                .get(4)
+                .is_some_and(|c| c.is_ascii_whitespace() || matches!(c, b'>' | b'/'));
+            return root && end;
+        };
+        match skipped {
+            Some(after) => rest = after,
+            None => return false,
+        }
     }
 }
 
@@ -418,23 +452,17 @@ pub struct SceneFields {
 }
 
 /// `{sentence}` (ANK-024): the text escaped, lines joined by `<br>`, and the
-/// `length` characters of the looked-up word in `<b>` at byte `offset`, or at
-/// the first occurrence of `word` when the offset does not hold it.
-pub fn sentence(text: &str, offset: Option<usize>, length: usize, word: &str) -> String {
-    let at_offset = offset
-        .filter(|&o| o < text.len() && text.is_char_boundary(o) && length > 0)
-        .and_then(|o| {
-            let end = text[o..]
-                .char_indices()
-                .nth(length)
-                .map_or(text.len(), |(i, _)| o + i);
-            (end > o).then_some((o, end))
-        });
-    let span = at_offset.or_else(|| {
-        (!word.is_empty())
-            .then(|| text.find(word).map(|o| (o, o + word.len())))
-            .flatten()
-    });
+/// looked-up `word` in `<b>` at byte `offset`, or at its first occurrence when
+/// the offset does not hold it.
+pub fn sentence(text: &str, offset: Option<usize>, word: &str) -> String {
+    let span = (!word.is_empty())
+        .then(|| {
+            offset
+                .filter(|&o| text.get(o..).is_some_and(|rest| rest.starts_with(word)))
+                .or_else(|| text.find(word))
+        })
+        .flatten()
+        .map(|o| (o, o + word.len()));
     match span {
         Some((start, end)) => format!(
             "{}<b>{}</b>{}",
@@ -540,25 +568,21 @@ pub fn value(name: &str, dict: &DictionaryFields, scene: &SceneFields) -> String
     }
 }
 
-/// A field template with its `{placeholders}` filled (ANK-020): an unknown
-/// placeholder becomes empty, the rest stays as written; the result is
-/// trimmed.
+/// A field template with its `{placeholders}` filled (ANK-020): from each
+/// `{` to the next `}` is a placeholder, as the regex `\{[^}]*\}` of Fushi
+/// finds them; an unknown one becomes empty, the rest stays as written; the
+/// result is trimmed.
 pub fn render(template: &str, value: &dyn Fn(&str) -> String) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
     while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
         let after = &rest[open + 1..];
-        match after.find(['}', '{']) {
-            Some(close) if after.as_bytes()[close] == b'}' => {
-                out.push_str(&value(&after[..close]));
-                rest = &after[close + 1..];
-            }
-            _ => {
-                out.push('{');
-                rest = after;
-            }
-        }
+        let Some(close) = after.find('}') else {
+            break;
+        };
+        out.push_str(&rest[..open]);
+        out.push_str(&value(&after[..close]));
+        rest = &after[close + 1..];
     }
     out.push_str(rest);
     out.trim().to_string()
@@ -633,19 +657,24 @@ mod tests {
         let text = "食べ物と食べ物";
         let second = text.rfind("食べ物").unwrap();
         assert_eq!(
-            sentence(text, Some(second), 3, "食べ物"),
+            sentence(text, Some(second), "食べ物"),
             "食べ物と<b>食べ物</b>"
         );
         // an offset that is not a character boundary: the first occurrence
+        assert_eq!(sentence(text, Some(1), "食べ物"), "<b>食べ物</b>と食べ物");
+        // an offset that holds another word: the first occurrence
+        let other = "飲み物と食べ物";
+        assert_eq!(sentence(other, Some(0), "食べ物"), "飲み物と<b>食べ物</b>");
         assert_eq!(
-            sentence(text, Some(1), 3, "食べ物"),
-            "<b>食べ物</b>と食べ物"
+            sentence(other, Some(100), "食べ物"),
+            "飲み物と<b>食べ物</b>"
         );
-        assert_eq!(sentence(text, None, 3, "食べ物"), "<b>食べ物</b>と食べ物");
-        assert_eq!(sentence(text, None, 0, "飲み物"), "食べ物と食べ物");
+        assert_eq!(sentence(text, None, "食べ物"), "<b>食べ物</b>と食べ物");
+        assert_eq!(sentence(text, None, "飲み物"), "食べ物と食べ物");
+        assert_eq!(sentence(text, Some(0), ""), "食べ物と食べ物");
         // lines and markup in the cue
         assert_eq!(
-            sentence("<i>a</i>\nb", None, 1, "b"),
+            sentence("<i>a</i>\nb", None, "b"),
             "&lt;i&gt;a&lt;/i&gt;<br><b>b</b>"
         );
     }
@@ -695,7 +724,11 @@ mod tests {
         );
         assert_eq!(render("x", &value), "x");
         assert_eq!(render("{unknown}{expression}", &value), "語");
-        assert_eq!(render("a { b {expression} }", &value), "a { b 語 }");
+        // from a `{` to the next `}`, as Fushi's regex
+        assert_eq!(render("a { b {expression} }", &value), "a  }");
+        assert_eq!(render("{{expression}}", &value), "}");
+        assert_eq!(render("{expression} {", &value), "語 {");
+        assert_eq!(render("}{expression}", &value), "}語");
         assert_eq!(render("{", &value), "{");
     }
 
@@ -750,6 +783,23 @@ mod tests {
             image_extension(b"<?xml version=\"1.0\"?><svg/>"),
             Some("svg")
         );
+        assert_eq!(
+            image_extension(
+                b"\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<!-- gaiji -->\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"x.dtd\">\n<SVG xmlns=\"http://www.w3.org/2000/svg\"></SVG>"
+            ),
+            Some("svg")
+        );
+        assert_eq!(image_extension(b"\0\0\0\x1cftypavif\0\0\0\0"), Some("avif"));
+        // the root element decides: an HTML page with an <svg> inside is not one
+        for not_svg in [
+            &b"<html><body><svg/></body></html>"[..],
+            b"<svgx/>",
+            b"<svg",
+            b"<?xml version=\"1.0\"?",
+            b"text <svg/>",
+        ] {
+            assert_eq!(image_extension(not_svg), None, "{not_svg:?}");
+        }
         assert_eq!(image_extension(b"MZ\x90\0"), None);
     }
 }

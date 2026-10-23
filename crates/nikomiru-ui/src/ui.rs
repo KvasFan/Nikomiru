@@ -428,6 +428,7 @@ impl Ui {
     /// must not see it (it would move the focus with Tab or arrows, or press the
     /// focused button with Space).
     pub fn key(&mut self, key: Key, text_focus: bool) -> bool {
+        self.cover_popups();
         let (effect, taken) =
             self.session
                 .key(key.evdev, key.mods, key.pressed, key.repeat, text_focus);
@@ -569,7 +570,13 @@ impl Ui {
         self.pump();
     }
 
+    /// Tells the session whether a settings page covers the popups.
+    fn cover_popups(&mut self) {
+        self.session.popups_covered = self.view.dict_page_open || self.view.anki_page_open;
+    }
+
     pub(crate) fn apply(&mut self, command: Command) {
+        self.cover_popups();
         let s = &mut self.session;
         match command {
             Command::Action(action) => {

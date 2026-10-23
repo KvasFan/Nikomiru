@@ -198,6 +198,15 @@ pub struct MissingLink {
     pub path: Option<String>,
 }
 
+/// The clip of a link being opened (ANK-052), and the subtitle load whose
+/// cues it goes to: the automatic choice for its video, once queued.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LinkClip {
+    start_ms: i64,
+    end_ms: i64,
+    load: Option<u64>,
+}
+
 /// The playback session.
 pub struct Session {
     services: Services,
@@ -239,9 +248,12 @@ pub struct Session {
     /// A link whose video cannot be found: the view offers to locate it
     /// (ANK-052).
     pub missing_link: Option<MissingLink>,
-    /// The clip of the link being opened: once the subtitles are there,
+    /// A settings page covers the popups (the view says so): they wait under
+    /// it, and their keys with them (POP-014).
+    pub popups_covered: bool,
+    /// The clip of the link being opened: once its subtitles are there,
     /// playback goes to its first cue (ANK-052).
-    link_clip: Option<(i64, i64)>,
+    link_clip: Option<LinkClip>,
     /// Where the next file opens, instead of where it was left.
     start_at: Option<f64>,
     /// The Anki settings page (ANK-006, ANK-011).
@@ -374,6 +386,7 @@ impl Session {
             anki_jobs: Vec::new(),
             last_card: None,
             missing_link: None,
+            popups_covered: false,
             link_clip: None,
             start_at: None,
             anki_page: crate::mining::AnkiPage::default(),
@@ -668,16 +681,18 @@ impl Session {
         self.missing_link = None;
         let _ = self.services.player.set_pause(true);
         self.start_at = Some(f64::from(link.start_ms) / 1000.0);
-        self.link_clip = Some((i64::from(link.start_ms), i64::from(link.end_ms)));
+        self.link_clip = Some(LinkClip {
+            start_ms: i64::from(link.start_ms),
+            end_ms: i64::from(link.end_ms),
+            load: None,
+        });
         self.open(path);
     }
 
     /// With the subtitles of the link's video there, playback goes to the
     /// first cue that overlaps the clip, still paused (ANK-052).
-    fn go_to_link_cue(&mut self) {
-        let Some((start, end)) = self.link_clip.take() else {
-            return;
-        };
+    fn go_to_link_cue(&mut self, link: LinkClip) {
+        let (start, end) = (link.start_ms, link.end_ms);
         let t = self.subs.timeline();
         let cue = (0..t.cues().len()).find(|&i| {
             let c = &t.cues()[i];
@@ -1271,7 +1286,7 @@ impl Session {
             return (UiEffect::None, false);
         };
         // a popup's keys first, then the player's (KEY-003)
-        let action = if self.popups.is_open() {
+        let action = if self.popups.is_open() && !self.popups_covered {
             self.bindings
                 .action(Context::Popup, &chord, text_focus)
                 .or_else(|| self.bindings.action(Context::Player, &chord, text_focus))
@@ -1294,6 +1309,9 @@ impl Session {
             if let Some(speed) = self.hold.key_down(self.view.speed, auto_repeat) {
                 let _ = self.services.player.set_speed(speed);
             }
+            return (UiEffect::None, true);
+        }
+        if auto_repeat && !action.repeats() {
             return (UiEffect::None, true);
         }
         (self.action(action), true)
@@ -1330,7 +1348,7 @@ impl Session {
                 }
                 Ok(())
             }
-            Action::ReplayCue if self.popups.is_open() => {
+            Action::ReplayCue if self.popups.is_open() && !self.popups_covered => {
                 self.popup_replay();
                 Ok(())
             }
@@ -1456,7 +1474,7 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
-            Action::Back if self.popups.is_open() => {
+            Action::Back if self.popups.is_open() && !self.popups_covered => {
                 self.close_popup();
                 return UiEffect::None;
             }
@@ -1582,6 +1600,16 @@ impl Session {
         if let Some(source) = source {
             self.use_subtitles(source);
         }
+        // a link's cue comes with this load or not at all (ANK-052)
+        let load = self.sub_loads.last().map(|(generation, _)| *generation);
+        self.link_clip = self
+            .link_clip
+            .take()
+            .zip(load)
+            .map(|(link, load)| LinkClip {
+                load: Some(load),
+                ..link
+            });
     }
 
     /// Shows `source`: mpv draws graphic tracks; text ones are loaded in the
@@ -1637,6 +1665,8 @@ impl Session {
         if generation != self.sub_generation {
             return;
         }
+        // any other load ends the wait of a link: the user chose another
+        let link = self.link_clip.take().filter(|l| l.load == Some(generation));
         match result {
             Ok(loaded) => {
                 let name = source_name(&source);
@@ -1644,7 +1674,9 @@ impl Session {
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
                 self.cues_changed();
-                self.go_to_link_cue();
+                if let Some(link) = link {
+                    self.go_to_link_cue(link);
+                }
                 let text = match encoding {
                     Some(e) => self.tr(
                         "toast-sub-loaded-encoding",

@@ -128,7 +128,7 @@ fn hostile_text_cannot_change_the_lapis_scripts() {
         frequency_rank: "120".into(),
         ..DictionaryFields::default()
     };
-    let sentence = compose::sentence(hostile, Some(0), 1, "猫");
+    let sentence = compose::sentence(hostile, Some(0), "猫");
     let scene = SceneFields {
         sentence: sentence.clone(),
         cue_sentence: sentence,
