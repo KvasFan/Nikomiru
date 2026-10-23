@@ -495,9 +495,16 @@ mod tests {
             {"tag": "img", "path": "img/a.png", "alt": "<alt>"},
             {"tag": "span", "lang": "en\" onload=\"x", "title": "\"><b>", "content": "t"},
         ]}]);
-        let out = html(g);
+        let mut asked = Vec::new();
+        let out = definitions(&g, &mut |image| {
+            asked.push(image.path.clone());
+            Some(format!("nikomiru_{}.png", image.path.len()))
+        });
+        // a path out of the dictionary is never read, and makes no image
+        assert_eq!(asked, ["img/a.png"]);
+        assert_eq!(out.matches("<img").count(), 1, "{out}");
         for bad in [
-            "<script", "<iframe", "onclick", "url(", "onload", "<marquee", "passwd", "<b>",
+            "<script", "<iframe", "onclick", "url(", "onload", "<marquee", "<b>",
         ] {
             assert!(!out.contains(bad), "{bad} in {out}");
         }

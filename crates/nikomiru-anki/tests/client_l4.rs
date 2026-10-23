@@ -67,6 +67,58 @@ fn the_requests_have_anki_connects_shape() {
         text.push('\n');
     }
     insta::assert_snapshot!(text);
+    // every request asks for its connection to close, and is JSON
+    let headers = fake.headers();
+    assert_eq!(headers.len(), fake.requests().len());
+    for h in headers {
+        let has = |name: &str, value: &str| h.iter().any(|(n, v)| n == name && v == value);
+        assert!(has("connection", "close"), "{h:?}");
+        assert!(has("content-type", "application/json"), "{h:?}");
+    }
+}
+
+// T-ANK-001: AnkiConnect 25.11.9.0 closes the connection after each reply
+// without saying so; a connection is never used twice (Fushi's BUG-065)
+#[test]
+fn a_closed_connection_is_never_reused() {
+    let fake = FakeAnki::start().unwrap();
+    fake.close_silently();
+    let c = client(&fake);
+    for word in ["一", "二", "三"] {
+        c.add_note(&lapis_note(word), false).unwrap();
+        // the next request comes while the last connection is still open
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(fake.actions(), ["addNote", "addNote", "addNote"]);
+}
+
+// T-ANK-001: the proxies of the environment are not used (SET-007)
+#[test]
+fn the_proxies_of_the_environment_are_ignored() {
+    if std::env::var_os("NIKOMIRU_TEST_PROXY_CHILD").is_some() {
+        let fake = FakeAnki::start().unwrap();
+        assert_eq!(client(&fake).version().unwrap(), 6);
+        return;
+    }
+    // the same test in a process of its own, with every proxy on a dead port
+    let dead = "http://127.0.0.1:1";
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+    child
+        .args(["--exact", "the_proxies_of_the_environment_are_ignored"])
+        .args(["--test-threads", "1", "--nocapture"])
+        .env("NIKOMIRU_TEST_PROXY_CHILD", "1")
+        .env_remove("no_proxy")
+        .env_remove("NO_PROXY");
+    for name in ["http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"] {
+        child.env(name, dead);
+    }
+    let out = child.output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 // T-ANK-001
@@ -186,6 +238,9 @@ fn a_reply_timeout_is_not_retried() {
     .unwrap();
     fake.then(Behaviour::Hang);
     assert_eq!(c.deck_names(), Err(AnkiError::Timeout { url: fake.url() }));
+    // the fake may read the request after the client gave up
+    let wait = Duration::from_secs(10);
+    assert_eq!(fake.wait_requests(1, wait).map(|r| r.len()), Some(1));
     assert_eq!(fake.actions(), ["deckNames"]);
     // addNote with no reply: the note may exist
     fake.clear_requests();
@@ -196,6 +251,7 @@ fn a_reply_timeout_is_not_retried() {
             action: "addNote".into()
         })
     );
+    assert_eq!(fake.wait_requests(1, wait).map(|r| r.len()), Some(1));
     assert_eq!(fake.actions(), ["addNote"]);
 }
 
@@ -231,11 +287,8 @@ fn add_note_with_the_reply_lost_is_commit_unknown_after_one_request() {
 // T-ANK-003, T-ANK-004
 #[test]
 fn nothing_listening_is_connection_refused() {
-    let port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    let url = format!("http://127.0.0.1:{port}");
+    // port 1: no test can take it, nothing listens there without root
+    let url = "http://127.0.0.1:1".to_string();
     let c = Client::new(&url, "").unwrap();
     assert_eq!(c.version(), Err(AnkiError::Refused { url: url.clone() }));
     // addNote too: nothing reached Anki, so the outcome is known
@@ -243,6 +296,34 @@ fn nothing_listening_is_connection_refused() {
         c.add_note(&lapis_note("x"), false),
         Err(AnkiError::Refused { url })
     );
+}
+
+// T-ANK-003: a connection that cannot be made is tried once more, even
+// for addNote, since nothing reached Anki
+#[test]
+fn a_failed_connection_is_tried_once_more_for_any_action() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    // a server that drops every connection: the TLS handshake fails
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&accepted);
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            count.fetch_add(1, Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+    let url = format!("https://127.0.0.1:{port}");
+    let c = Client::new(&url, "").unwrap();
+    assert_eq!(
+        c.add_note(&lapis_note("x"), false),
+        Err(AnkiError::Refused { url: url.clone() })
+    );
+    assert_eq!(accepted.load(Ordering::SeqCst), 2);
+    assert_eq!(c.version(), Err(AnkiError::Refused { url }));
+    assert_eq!(accepted.load(Ordering::SeqCst), 4);
 }
 
 // T-ANK-030

@@ -209,6 +209,7 @@ pub fn refresh(client: &Client, model: &str) -> Result<AnkiState, AnkiError> {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    use std::collections::BTreeSet;
 
     fn hex(bytes: &[u8]) -> String {
         Sha256::digest(bytes)
@@ -232,17 +233,60 @@ mod tests {
             hex(CSS.as_bytes()),
             "51590e7545d43896cb15e494db49b611a9c6e7bbf05c8e0debbf1f98f7ae8920"
         );
-        // every field the templates use is a field of the note type
-        for field in FIELDS {
+        // every field the templates name is a field of the note type (or one
+        // of Anki's own), by its whole name, and every field is named
+        const ANKI: [&str; 7] = [
+            "Tags",
+            "Type",
+            "Deck",
+            "Subdeck",
+            "Card",
+            "CardFlag",
+            "FrontSide",
+        ];
+        let named: BTreeSet<String> = template_fields(FRONT)
+            .union(&template_fields(BACK))
+            .cloned()
+            .collect();
+        for name in &named {
             assert!(
-                FRONT.contains(field) || BACK.contains(field),
-                "{field} is not in the templates"
+                FIELDS.contains(&name.as_str()) || ANKI.contains(&name.as_str()),
+                "{name} is not a field of the note type"
             );
+        }
+        for field in FIELDS {
+            assert!(named.contains(field), "{field} is not in the templates");
         }
         assert_eq!(FIELDS.len(), 22);
         assert_eq!(
             FIELDS[0], "Expression",
             "the first field is the one Anki checks"
+        );
+    }
+
+    /// The fields a template names: `{{Field}}`, `{{#Field}}`, `{{/Field}}`,
+    /// `{{^Field}}`, and `{{filter:Field}}`.
+    fn template_fields(template: &str) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        let mut rest = template;
+        while let Some(open) = rest.find("{{") {
+            let after = &rest[open + 2..];
+            let Some(close) = after.find("}}") else {
+                break;
+            };
+            let inner = after[..close].trim().trim_start_matches(['#', '/', '^']);
+            let name = inner.rsplit(':').next().unwrap_or(inner).trim();
+            names.insert(name.to_string());
+            rest = &after[close + 2..];
+        }
+        names
+    }
+
+    #[test]
+    fn template_fields_are_whole_names() {
+        assert_eq!(
+            template_fields("{{#A}}{{text:B}}{{/A}} {{^C}}{{furigana:D}}{{/C}} {{E}}"),
+            BTreeSet::from(["A", "B", "C", "D", "E"].map(String::from))
         );
     }
 

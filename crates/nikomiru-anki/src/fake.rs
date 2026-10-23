@@ -2,10 +2,12 @@
 
 //! A fake AnkiConnect for the tests (feature `test-support`, [ADR 0007] §7):
 //! an HTTP server on `127.0.0.1` that answers the legacy API from a small
-//! collection kept in memory, records every request, and can answer what the
-//! test queues instead: an HTTP status, a body that is not AnkiConnect's, a
-//! connection closed before the reply (with or without applying the action)
-//! or no reply at all.
+//! collection kept in memory, records every request with its headers, and can
+//! answer what the test queues instead: an HTTP status, a body that is not
+//! AnkiConnect's, a connection closed before the reply (with or without
+//! applying the action) or no reply at all. Like AnkiConnect, it closes the
+//! connection after each reply; it can also do so without saying it, as
+//! AnkiConnect 25.11.9.0 does.
 //!
 //! [ADR 0007]: ../../../docs/adr/0007-mining-to-anki.md
 
@@ -15,12 +17,16 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
 /// The id of the first note the fake creates.
 pub const FIRST_NOTE_ID: u64 = 1_760_000_000_000;
+
+/// How long a connection stays open after a reply that does not say
+/// `Connection: close` ([`FakeAnki::close_silently`]): it reads nothing more.
+pub const QUIET_CLOSE_AFTER: Duration = Duration::from_millis(250);
 
 /// What the fake does with one request, instead of answering it.
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +118,10 @@ impl Default for Collection {
 struct Shared {
     collection: Mutex<Collection>,
     requests: Mutex<Vec<Value>>,
+    /// The headers of each request, in order with `requests`.
+    headers: Mutex<Vec<Vec<(String, String)>>>,
+    /// The replies do not say `Connection: close`.
+    quiet_close: AtomicBool,
     script: Mutex<VecDeque<(Option<String>, Behaviour)>>,
     key: Mutex<String>,
     unsupported: Mutex<Vec<String>>,
@@ -208,9 +218,43 @@ impl FakeAnki {
             .collect()
     }
 
+    /// The requests, once there are at least `n`: a request the client gave
+    /// up on may be read after it returned. `None` if they do not come in
+    /// `timeout`.
+    pub fn wait_requests(&self, n: usize, timeout: Duration) -> Option<Vec<Value>> {
+        let start = Instant::now();
+        loop {
+            let requests = self.requests();
+            if requests.len() >= n {
+                return Some(requests);
+            }
+            if start.elapsed() > timeout {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// The headers of each request so far, in order with
+    /// [`FakeAnki::requests`]: names in lower case, values trimmed.
+    pub fn headers(&self) -> Vec<Vec<(String, String)>> {
+        lock(&self.shared.headers).clone()
+    }
+
+    /// From now on the replies do not say `Connection: close`, though the
+    /// connection still closes after each, [`QUIET_CLOSE_AFTER`] later and
+    /// without reading another request: AnkiConnect 25.11.9.0, with which a
+    /// client that keeps connections sends requests that never arrive
+    /// (Fushi's BUG-065).
+    pub fn close_silently(&self) {
+        self.shared.quiet_close.store(true, Ordering::SeqCst);
+    }
+
     /// Forgets the requests so far.
     pub fn clear_requests(&self) {
-        lock(&self.shared.requests).clear();
+        let mut requests = lock(&self.shared.requests);
+        requests.clear();
+        lock(&self.shared.headers).clear();
     }
 
     /// The collection, to look at or to prepare.
@@ -230,8 +274,11 @@ impl Drop for FakeAnki {
     }
 }
 
-/// Reads one HTTP request: its body, or `None` with the status to answer.
-fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>, u16> {
+/// A request: its headers and its body.
+type Request = (Vec<(String, String)>, Vec<u8>);
+
+/// Reads one HTTP request, or the status to answer.
+fn read_request(stream: &mut TcpStream) -> Result<Request, u16> {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 8192];
     let head_end = loop {
@@ -246,14 +293,24 @@ fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>, u16> {
             Ok(n) => buffer.extend_from_slice(&chunk[..n]),
         }
     };
-    let head = String::from_utf8_lossy(&buffer[..head_end]).to_lowercase();
-    if head.contains("transfer-encoding: chunked") {
+    let head = String::from_utf8_lossy(&buffer[..head_end]);
+    let headers: Vec<(String, String)> = head
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split_once(':'))
+        .map(|(name, value)| (name.trim().to_lowercase(), value.trim().to_string()))
+        .collect();
+    let header = |name: &str| {
+        headers
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+    };
+    if header("transfer-encoding").is_some_and(|v| v.eq_ignore_ascii_case("chunked")) {
         return Err(400);
     }
-    let length = head
-        .lines()
-        .find_map(|l| l.strip_prefix("content-length:"))
-        .and_then(|v| v.trim().parse::<usize>().ok())
+    let length = header("content-length")
+        .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0);
     if length > 64 << 20 {
         return Err(413);
@@ -266,14 +323,19 @@ fn read_request(stream: &mut TcpStream) -> Result<Vec<u8>, u16> {
         }
     }
     body.truncate(length);
-    Ok(body)
+    Ok((headers, body))
 }
 
-fn respond(stream: &mut TcpStream, status: u16, body: &str) {
+fn respond(shared: &Shared, stream: &mut TcpStream, status: u16, body: &str) {
     let reason = if status == 200 { "OK" } else { "Error" };
+    let close = if shared.quiet_close.load(Ordering::SeqCst) {
+        ""
+    } else {
+        "Connection: close\r\n"
+    };
     let _ = write!(
         stream,
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{close}\r\n{body}",
         body.len()
     );
     let _ = stream.flush();
@@ -281,13 +343,18 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
 
 fn serve(shared: &Shared, mut stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(60)));
-    let body = match read_request(&mut stream) {
-        Ok(body) => body,
-        Err(status) => return respond(&mut stream, status, ""),
+    let (headers, body) = match read_request(&mut stream) {
+        Ok(request) => request,
+        Err(status) => return respond(shared, &mut stream, status, ""),
     };
     let request: Value = serde_json::from_slice(&body)
         .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&body).into_owned()));
-    lock(&shared.requests).push(request.clone());
+    {
+        // one lock order for both: requests, then headers
+        let mut requests = lock(&shared.requests);
+        requests.push(request.clone());
+        lock(&shared.headers).push(headers);
+    }
     let behaviour = {
         let mut script = lock(&shared.script);
         let action = request["action"].as_str().unwrap_or_default();
@@ -300,11 +367,11 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
     match behaviour {
         None => {
             let reply = answer(shared, &request);
-            respond(&mut stream, 200, &reply.to_string());
+            respond(shared, &mut stream, 200, &reply.to_string());
         }
-        Some(Behaviour::Json(v)) => respond(&mut stream, 200, &v.to_string()),
-        Some(Behaviour::Status(status)) => respond(&mut stream, status, ""),
-        Some(Behaviour::Body(text)) => respond(&mut stream, 200, &text),
+        Some(Behaviour::Json(v)) => respond(shared, &mut stream, 200, &v.to_string()),
+        Some(Behaviour::Status(status)) => respond(shared, &mut stream, status, ""),
+        Some(Behaviour::Body(text)) => respond(shared, &mut stream, 200, &text),
         Some(Behaviour::Close) => {
             let _ = stream.shutdown(Shutdown::Both);
         }
@@ -317,6 +384,9 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
             let mut sink = [0u8; 64];
             while matches!(stream.read(&mut sink), Ok(n) if n > 0) {}
         }
+    }
+    if shared.quiet_close.load(Ordering::SeqCst) {
+        std::thread::sleep(QUIET_CLOSE_AFTER);
     }
 }
 

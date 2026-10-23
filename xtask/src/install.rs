@@ -33,21 +33,35 @@ pub fn installed_entry(entry: &str, bin: &Path) -> String {
 }
 
 /// A program path as the desktop entry specification wants it in `Exec`:
-/// quoted when it holds a reserved character, with `" ` $ \` escaped.
+/// quoted when it holds a reserved character, with `" ` $ \` escaped; then
+/// written as a string value, whose escapes are undone first when the file
+/// is read (so a `$` in quotes is `\\$` in the file).
 fn quote(path: &str) -> String {
     let reserved = |c: char| c.is_whitespace() || "\"'\\><~|&;$*?#()`".contains(c);
-    if !path.contains(reserved) {
-        return path.to_string();
-    }
-    let mut out = String::from("\"");
-    for c in path.chars() {
-        if matches!(c, '"' | '`' | '$' | '\\') {
-            out.push('\\');
+    let quoted = if path.contains(reserved) {
+        let mut out = String::from("\"");
+        for c in path.chars() {
+            if matches!(c, '"' | '`' | '$' | '\\') {
+                out.push('\\');
+            }
+            out.push(c);
         }
-        out.push(c);
+        out.push('"');
+        out
+    } else {
+        path.to_string()
+    };
+    let mut value = String::with_capacity(quoted.len());
+    for c in quoted.chars() {
+        match c {
+            '\\' => value.push_str("\\\\"),
+            '\n' => value.push_str("\\n"),
+            '\t' => value.push_str("\\t"),
+            '\r' => value.push_str("\\r"),
+            c => value.push(c),
+        }
     }
-    out.push('"');
-    out
+    value
 }
 
 fn prefix(args: &[String]) -> Result<PathBuf> {
@@ -110,7 +124,11 @@ mod tests {
             installed_entry("Exec=nikomiru %U", Path::new("/home/my user/bin/nikomiru")),
             "Exec=\"/home/my user/bin/nikomiru\" %U\n"
         );
-        assert_eq!(quote(r#"/a"$b"#), r#""/a\"\$b""#);
+        // the quoting escapes, then the string escapes: `\\$` for `$`, four
+        // backslashes for one
+        assert_eq!(quote(r#"/a"$b"#), r#""/a\\"\\$b""#);
+        assert_eq!(quote(r"/a b\c`"), r#""/a b\\\\c\\`""#);
+        assert_eq!(quote("/a\tb"), r#""/a\tb""#);
     }
 
     #[test]

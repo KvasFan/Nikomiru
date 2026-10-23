@@ -631,6 +631,82 @@ pub fn fields(
 mod tests {
     use super::*;
 
+    // T-ANK-023: the label names a dictionary on its first sense only, and
+    // leaves out a part of speech the sense before had
+    #[test]
+    fn labels_name_each_dictionary_once_and_skip_a_repeated_part_of_speech() {
+        use nikomiru_dict::lookup::Glossary;
+        use nikomiru_dict::store::StoredTerm;
+        use nikomiru_dict::yomitan::Term;
+        let sense = |dictionary, tags: &str, gloss: &str| Glossary {
+            dictionary,
+            term: StoredTerm::new(
+                0,
+                Term {
+                    expression: "見る".into(),
+                    reading: "みる".into(),
+                    definition_tags: tags.into(),
+                    rules: "v1".into(),
+                    score: 0.0,
+                    glossary: serde_json::to_string(&[gloss]).unwrap(),
+                    sequence: 0,
+                    term_tags: String::new(),
+                },
+            ),
+        };
+        let entry = Entry {
+            expression: "見る".into(),
+            reading: "みる".into(),
+            matched: "見る".into(),
+            deinflected: "見る".into(),
+            trace: Vec::new(),
+            preprocessor_steps: 0,
+            rules: "v1".into(),
+            score: 0.0,
+            glossaries: vec![
+                sense(0, "v1 vt 1", "to see"),
+                sense(0, "vt v1 P", "to look"),
+                sense(0, "v1 vt", "to watch"),
+                sense(0, "n", "a look"),
+                sense(1, "v1 vt", "to view"),
+            ],
+            frequencies: Vec::new(),
+            pitches: Vec::new(),
+        };
+        let sheet = Sheet::parse("");
+        let sources = [
+            Source {
+                title: "Mini",
+                name: "mini",
+                sheet: &sheet,
+            },
+            Source {
+                title: "Other <b>",
+                name: "other",
+                sheet: &sheet,
+            },
+        ];
+        let fields = dictionary_fields(&entry, &sources, &mut |_, _| None);
+        let labels: Vec<&str> = fields
+            .glossary
+            .split("<i>")
+            .skip(1)
+            .filter_map(|s| s.split("</i>").next())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "(v1, vt, Mini)",
+                "(P)",
+                "",
+                "(n)",
+                "(v1, vt, Other &lt;b&gt;)"
+            ],
+            "{}",
+            fields.glossary
+        );
+    }
+
     // T-ANK-022: Fushi popup.js `constructFuriganaPlain`, trimmed
     #[test]
     fn furigana_plain_vectors() {
