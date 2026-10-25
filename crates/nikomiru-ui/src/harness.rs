@@ -333,7 +333,11 @@ pub fn state() -> Result<Value, String> {
 /// with no cue behind it; the popup takes the fallback place.
 pub fn lookup(text: &str) -> Result<(), String> {
     let text = text.to_string();
-    call(move |ui| ui.session.look_up_text(&text))
+    call(move |ui| {
+        // as a click on the video's text, which the Library page covers
+        ui.view.close_library_page();
+        ui.session.look_up_text(&text);
+    })
 }
 
 /// The view model of popup `level` (POP-009), as drawn: `null` while its
