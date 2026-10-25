@@ -1593,6 +1593,10 @@ impl Session {
         if let Some(next) = self.next_up.take() {
             self.opening = nikomiru_library::policy::Opening::FromStart;
             self.open(&next.path);
+            // the end paused the last one (`keep-open`): this one plays
+            if let Err(e) = self.services.player.set_pause(false) {
+                tracing::warn!("next episode: {e}");
+            }
         }
     }
 

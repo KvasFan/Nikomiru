@@ -1064,9 +1064,10 @@ fn the_next_episode_starts_after_a_countdown() {
     h.wait("next-up");
     let loaded = h.wait("file-loaded");
     assert!(loaded.is_object());
-    let s = h.state_until("episode 2", |s| s["title"] == "Show - 02.mkv");
-    // from its beginning (LIB-007), with the series' offset (LIB-010)
-    assert!(time_pos(&s) < 2.0, "{s}");
+    // from its beginning (LIB-007), playing, with the series' offset (LIB-010)
+    let s = h.state_until("episode 2 playing", |s| {
+        s["title"] == "Show - 02.mkv" && s["paused"] == false && time_pos(s) < 2.0
+    });
     assert_eq!(subs(&s)["delay_ms"], delay, "{s}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
