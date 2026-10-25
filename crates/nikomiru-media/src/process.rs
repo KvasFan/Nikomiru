@@ -138,8 +138,20 @@ pub(crate) fn spawn(cmd: &mut Command) -> std::io::Result<std::process::Child> {
 /// Keeps the last `limit` bytes of standard error.
 const STDERR_TAIL: usize = 2048;
 
+/// The standard output kept by [`output`] at most.
+const STDOUT_LIMIT: u64 = 64 * 1024;
+
 /// Runs `job` until it exits, times out or `cancel` fires.
 pub fn run(job: &Job, cancel: &Cancel) -> Result<(), JobError> {
+    execute(job, cancel, false).map(drop)
+}
+
+/// Like [`run`], and returns the first 64 KiB of its standard output.
+pub fn output(job: &Job, cancel: &Cancel) -> Result<String, JobError> {
+    execute(job, cancel, true)
+}
+
+fn execute(job: &Job, cancel: &Cancel, capture: bool) -> Result<String, JobError> {
     let remove_outputs = || {
         for o in &job.outputs {
             let _ = std::fs::remove_file(o);
@@ -149,13 +161,27 @@ pub fn run(job: &Job, cancel: &Cancel) -> Result<(), JobError> {
         Command::new(&job.program)
             .args(&job.args)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(if capture {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stderr(Stdio::piped()),
     )
     .map_err(|source| JobError::Spawn {
         program: job.program.clone(),
         source,
     })?;
+    let stdout = child.stdout.take();
+    let out_reader = std::thread::spawn(move || {
+        let mut text = Vec::new();
+        if let Some(mut s) = stdout {
+            let _ = (&mut s).take(STDOUT_LIMIT).read_to_end(&mut text);
+            // the rest is read and dropped: a full pipe would stop the program
+            let _ = std::io::copy(&mut s, &mut std::io::sink());
+        }
+        String::from_utf8_lossy(&text).into_owned()
+    });
     let mut stderr = child.stderr.take();
     let reader = std::thread::spawn(move || {
         let mut text = Vec::new();
@@ -191,8 +217,9 @@ pub fn run(job: &Job, cancel: &Cancel) -> Result<(), JobError> {
         std::thread::sleep(Duration::from_millis(20));
     };
     let stderr = reader.join().unwrap_or_default();
+    let stdout = out_reader.join().unwrap_or_default();
     if status.success() {
-        Ok(())
+        Ok(stdout)
     } else {
         remove_outputs();
         Err(JobError::Failed {
