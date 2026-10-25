@@ -189,6 +189,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | Need | Rejected choice (license) | Adopted choice |
 |---|---|---|
 | Local database | SQLite (public domain: not in the list) | `redb` (MIT OR Apache-2.0) |
+| Reading the local audio database (AUD-003) | SQLite (public domain); `turso` (BSD-3-Clause `subtle`, Unicode-3.0 ICU collation in its graph, S3) | Own read-only reader of the SQLite file format ([ADR 0004](adr/0004-local-audio-db.md)) |
 | Glossary compression | zstd C (BSD-3 / GPL-2.0-only) | `lz4_flex` (MIT) |
 | Fast hash | `xxhash-rust` (BSL-1.0) | `twox-hash` (MIT) if needed; otherwise the `redb` hasher |
 | Subtitle encoding detection | `encoding_rs` (`… AND BSD-3-Clause`) | glibc `iconv` via FFI (LGPL) + own heuristics |
@@ -627,7 +628,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 |---|---|---|
 | AUD-001 | Audio sources in an ordered, configurable list; each one can be enabled or disabled. | `audio_source_config.dart` |
 | AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded (as `encodeURIComponent`; an empty reading is the term). The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` (relative addresses resolved against the source's) or, unlike Fushi, direct audio (`Content-Type: audio/*`). Only HTTPS, or HTTP on loopback (a local audio server), as for the online subtitles; at most 8 MiB per file; through `[network] proxy` (SET-007). | `word_audio_resolver.dart` |
-| AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (nhk16, forvo, jpod, …). The format is SQLite: it is read with `turso` (MIT), to be validated in spike S3 (D-2). | `local_audio_db.dart` |
+| AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (default `nhk16`, `forvo`, `jpod`, then the others; settable per source). The format is SQLite: it is read read-only by Nikomiru's own reader of the file format, with no library ([ADR 0004](adr/0004-local-audio-db.md), D-2 (d)). | `local_audio_db.dart` |
 | AUD-004 | Resolution: for playback the first valid result in order is enough; the menu (right click on ♪) queries all sources in parallel and shows them all. Timeouts: 8 s for the connection, 10 s for the response. A 4xx response = "no audio"; a connection error pauses the host for 45 s. | |
 | AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`, no configuration or scripts), independent of the player, with the player's audio output (`ao`) if set. Configurable volume. | |
 | AUD-006 | Option "play automatically when the popup opens", default yes: it does not overlap the dialogue because the lookup already pauses the video (POP-001). It can be disabled. | |
@@ -877,7 +878,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | ID | Decision | Outcome |
 |---|---|---|
 | D-1 | Class B exceptions (§3.2), needed to use Dioxus desktop | **Approved**: closed list; CI blocks any addition. Superseded by D-10: the exceptions forced by Dioxus are gone (§3.2) |
-| D-2 | Reading the local audio DB (SQLite, public domain) | **Approved** option (a): `turso` (MIT, a Rust rewrite of SQLite), to be validated in spike S3. If S3 fails, the decision is reopened between (b) an exception for the system SQLite library and (c) dropping AUD-003 |
+| D-2 | Reading the local audio DB (SQLite, public domain) | **Reopened, (d) proposed** (2026-10-25): spike S3 ([ADR 0004](adr/0004-local-audio-db.md)) found `turso` fast enough (p95 under 1 ms) but its graph outside the license policy (BSD-3-Clause `subtle`, Unicode-3.0 ICU collation, both unconditional). Proposed and implemented: (d) Nikomiru's own read-only reader of the SQLite file format, no dependency, no exception. Was: (a) `turso` (MIT), to be validated in S3; (b) an exception for the system SQLite library; (c) dropping AUD-003 |
 | D-3 | GPL-3.0-only or GPL-3.0-or-later | **Approved**: GPL-3.0-only (§3.1) |
 | D-4 | Default audio format for cards | **Approved**: AAC in M4A, compatible with Anki desktop, AnkiDroid and AnkiMobile |
 | D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**freedesktop runtime**, with libmpv and ffmpeg included in the manifest; runtime updated by D-10, then by D-13: the KDE runtime and Qt are no longer needed) |
