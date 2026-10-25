@@ -461,8 +461,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-007 | Proxy | The online requests go through the proxy of `[network] proxy` (the fake online server as the proxy, the service on a port where nothing listens); an invalid proxy is refused; AnkiConnect never uses a proxy (T-ANK-001) | L4 |
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en` with the same `{ $var }` arguments (L1); every key is used and every key the code asks for exists, keys built from a prefix aside (`cargo xtask check-i18n`, in `ci`) | L1/L4 |
 | T-I18N-002 | No strings in code | `cargo xtask check-i18n`: no text literal shown by a widget in the views of `nikomiru-ui` (explicit exception list: examples to type, names of standards) | L4 |
-| T-A11Y-001 | Focus and accessibility | AccessKit tree snapshot of the player controls (role and name of each); visible focus | L3 |
-| T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup → mining → settings → back, without a mouse (harness) | L6 |
+| T-A11Y-001 | Focus and accessibility | The player's controls as a screen reader finds them: an AT-SPI bus and registry started in the L6 desktop (at-spi2-core, GSettings in memory), the tree walked with the project's D-Bus client; every button, slider, combo box, check box and radio button has a name, and the bar's are all there | L6 |
+| T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |
 
 ### 6.13 Online (M7)
 

@@ -2181,3 +2181,188 @@ fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-E2E-A11Y-001: from the library to a card and back with the keyboard alone
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_keyboard_alone_goes_from_the_library_to_a_card_and_back() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let root = desk.path("videos");
+    let link = root.join("Show/Show - 01.mkv");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(fixture("av_basic.mkv"), &link).unwrap();
+    let (mut app, mut h) = desk.launch();
+    // the setting up, not part of the tour: the folder in the library
+    h.state_until("the page", |s| s["library_page"]["series"].is_array());
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    h.state_until("the series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 1)
+    });
+    // Enter on the first card, which has the keyboard: the series
+    h.key("Enter");
+    h.state_until("its episodes", |s| {
+        s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    // Enter on its first episode
+    h.key("Enter");
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    // Enter looks up the subtitle shown; → and ← move the lookup
+    h.key("Enter");
+    let s = h.state_until("the popup", |s| s["popups"][0]["query"].is_string());
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.key("ArrowRight");
+    h.state_until("a character later", |s| {
+        s["popups"][0]["query"] == "べました"
+    });
+    h.key("ArrowLeft");
+    h.state_until("back", |s| s["popups"][0]["query"] == "食べました");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    // Ctrl+Enter makes the card
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.wait("card-created");
+    assert_eq!(fake.collection().notes.len(), 1);
+    // Ctrl+, opens the settings; Tab and the arrows are theirs there
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Comma", "mods": ["Ctrl"] }));
+    h.state_until("the settings", |s| s["settings_open"] == true);
+    h.key("Tab");
+    h.key("ArrowLeft");
+    let s = h.state();
+    assert!(
+        !s["popups"].as_array().unwrap().is_empty(),
+        "the popup waits: {s}"
+    );
+    // Esc: the settings, then the popup, then back to the library
+    h.key("Escape");
+    h.state_until("the settings closed", |s| s["settings_open"] == false);
+    h.key("Escape");
+    h.state_until("the popup closed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty)
+    });
+    h.key("Escape");
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+/// The objects of the accessibility tree on the bus at `address`, from the
+/// registry's root: their AT-SPI role (`AtspiRole`) and name.
+fn accessible_tree(address: &str) -> Vec<(u32, String)> {
+    use nikomiru_app::dbus::{Connection, Message, Value};
+    let mut conn = Connection::open(address).unwrap();
+    let mut call = |bus: &str, path: &str, iface: &str, member: &str, body: Vec<Value>| {
+        conn.call(Message::call(bus, path, iface, member).with_body(body))
+            .map(|r| r.body)
+            .unwrap_or_default()
+    };
+    let mut todo = vec![(
+        "org.a11y.atspi.Registry".to_string(),
+        "/org/a11y/atspi/accessible/root".to_string(),
+    )];
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    while let Some((bus, path)) = todo.pop() {
+        if seen.len() > 3000 || !seen.insert((bus.clone(), path.clone())) {
+            continue;
+        }
+        let role = match &call(&bus, &path, "org.a11y.atspi.Accessible", "GetRole", vec![])[..] {
+            [Value::U32(r)] => *r,
+            _ => 0,
+        };
+        let name = match &call(
+            &bus,
+            &path,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            vec![
+                Value::Str("org.a11y.atspi.Accessible".into()),
+                Value::Str("Name".into()),
+            ],
+        )[..]
+        {
+            [Value::Variant(v)] => match v.as_ref() {
+                Value::Str(n) => n.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        out.push((role, name));
+        if let [Value::Array(_, children)] = &call(
+            &bus,
+            &path,
+            "org.a11y.atspi.Accessible",
+            "GetChildren",
+            vec![],
+        )[..]
+        {
+            for child in children {
+                if let Value::Struct(f) = child
+                    && let [Value::Str(b), Value::Path(p)] = &f[..]
+                {
+                    todo.push((b.clone(), p.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+// T-A11Y-001: the player's controls as a screen reader finds them
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, at-spi2-core and `cargo xtask fixtures`"]
+fn a_screen_reader_finds_every_control_named() {
+    let mut desk = Desktop::start();
+    let a11y = desk.start_accessibility();
+    // in English, whatever the system's language
+    desk.write_config(
+        "[general]\nui_language = \"en\"\n[player]\nmpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
+    std::thread::sleep(Duration::from_millis(800));
+    let tree = accessible_tree(&a11y);
+    // AtspiRole: check box, combo box, push button, radio button, slider
+    const CONTROLS: [u32; 5] = [7, 11, 43, 44, 51];
+    let unnamed: Vec<&(u32, String)> = tree
+        .iter()
+        .filter(|(role, name)| CONTROLS.contains(role) && name.trim().is_empty())
+        .collect();
+    assert!(
+        unnamed.is_empty(),
+        "controls without a name: {unnamed:?}\n{tree:?}"
+    );
+    let names: Vec<&str> = tree.iter().map(|(_, n)| n.as_str()).collect();
+    for name in [
+        "← Library",
+        "Play",
+        "Position",
+        "Mute",
+        "Volume",
+        "Subtitles",
+        "Settings",
+        "Anki settings",
+        "Dictionaries",
+        "Open file…",
+        "Fullscreen",
+        "Video",
+    ] {
+        assert!(names.contains(&name), "{name} is missing: {tree:?}");
+    }
+    let button = |name: &str| tree.iter().any(|(r, n)| *r == 43 && n == name);
+    assert!(button("Play") && button("Settings"), "{tree:?}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

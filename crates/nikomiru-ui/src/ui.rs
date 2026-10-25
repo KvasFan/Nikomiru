@@ -410,6 +410,8 @@ pub struct Ui {
     external: Vec<String>,
     /// Points of an Alt+swipe not yet turned into an entry step.
     swipe: f32,
+    /// Input for egui from the test harness, as the window would give it.
+    injected: Vec<egui::Event>,
 }
 
 /// A turn of the mouse wheel, in notches, or a swipe, in points: positive
@@ -449,6 +451,7 @@ impl Ui {
             view: View::default(),
             waker,
             quit: false,
+            injected: Vec::new(),
             external: Vec::new(),
             swipe: 0.0,
         };
@@ -698,6 +701,23 @@ impl Ui {
             self.pump();
         }
         true
+    }
+
+    /// Whether a page or a dialog covers the video: its controls take the
+    /// keys no shortcut took (NFR-A11Y-01).
+    pub fn page_open(&self) -> bool {
+        self.session.popups_covered
+    }
+
+    /// Input for egui that the test harness made, for the next frame.
+    pub fn take_injected(&mut self) -> Vec<egui::Event> {
+        std::mem::take(&mut self.injected)
+    }
+
+    /// Queues input for egui (the test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn inject(&mut self, event: egui::Event) {
+        self.injected.push(event);
     }
 
     /// The web links the user clicked since the last call: the app opens them

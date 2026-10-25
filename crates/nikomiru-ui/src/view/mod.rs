@@ -172,6 +172,8 @@ pub(crate) struct View {
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
+    /// Ctrl+, asked for the settings: they open at the next frame.
+    settings_requested: bool,
     /// The General, Subtitles, Lookup, Shortcuts, Advanced or About tab is
     /// shown.
     pub prefs_open: Option<settings::SettingsTab>,
@@ -246,6 +248,9 @@ impl View {
             }
             UiEffect::OpenDialog => self.dialog = Some(Dialog::Video),
             UiEffect::ToggleSubList => self.sub_list_open = !self.sub_list_open,
+            UiEffect::OpenSettings => {
+                self.settings_requested = true;
+            }
             UiEffect::SubSearch => {
                 self.sub_list_open = true;
                 self.sub_search_focus = true;
@@ -333,6 +338,17 @@ impl View {
         }
     }
 
+    /// Whether a tab of the settings is shown.
+    #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
+    pub fn settings_open(&self) -> bool {
+        self.player_page_open
+            || self.anki_page_open
+            || self.dict_page_open
+            || self.services_page_open
+            || self.audio_page_open
+            || self.prefs_open.is_some()
+    }
+
     /// Closes the settings, whichever tab is shown.
     pub fn close_settings(&mut self) {
         self.close_player_page();
@@ -389,6 +405,9 @@ impl View {
         if std::mem::take(&mut self.library_asked) {
             self.open_library_page(&mut out);
         }
+        if std::mem::take(&mut self.settings_requested) {
+            self.open_settings(self.settings_tab, &mut out);
+        }
         self.window(&ctx, s);
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             out.push(Command::MouseMoved);
@@ -399,6 +418,8 @@ impl View {
         // the video: a click plays or pauses (or closes the popups), a double
         // click toggles fullscreen (PLY-001)
         let video = ui.interact(screen, Id::unique("video"), Sense::click());
+        let name = s.translator().tr("video-area", &[]);
+        video.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Video, true, &name));
         if video.double_clicked() {
             self.fullscreen_request = Some(!self.fullscreen);
         } else if video.clicked() {

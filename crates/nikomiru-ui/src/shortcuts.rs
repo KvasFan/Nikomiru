@@ -96,11 +96,19 @@ pub enum Action {
     CreateCard,
     /// Opens the "Advanced mining" dialog for that entry (ANK-040).
     CreateCardAdvanced,
+    /// Looks up the first word of the subtitle shown (NFR-A11Y-01).
+    LookupSubtitle,
+    /// The lookup starts a character earlier in its subtitle.
+    LookupPrev,
+    /// The lookup starts a character later.
+    LookupNext,
+    /// Opens the settings (SET-008).
+    Settings,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 35] = [
+    pub const ALL: [Action; 39] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -136,6 +144,10 @@ impl Action {
         Action::PopupPrev,
         Action::CreateCard,
         Action::CreateCardAdvanced,
+        Action::LookupSubtitle,
+        Action::LookupPrev,
+        Action::LookupNext,
+        Action::Settings,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the log.
@@ -176,6 +188,10 @@ impl Action {
             Action::PopupPrev => "popup_prev",
             Action::CreateCard => "create_card",
             Action::CreateCardAdvanced => "create_card_advanced",
+            Action::LookupSubtitle => "lookup_subtitle",
+            Action::LookupPrev => "lookup_prev",
+            Action::LookupNext => "lookup_next",
+            Action::Settings => "settings",
         }
     }
 
@@ -192,11 +208,14 @@ impl Action {
     /// The context of the action.
     pub fn context(self) -> Context {
         match self {
-            Action::OpenFile => Context::Global,
+            // Back and these work on the pages too (NFR-A11Y-01)
+            Action::OpenFile | Action::Back | Action::Settings => Context::Global,
             Action::PopupNext
             | Action::PopupPrev
             | Action::CreateCard
-            | Action::CreateCardAdvanced => Context::Popup,
+            | Action::CreateCardAdvanced
+            | Action::LookupPrev
+            | Action::LookupNext => Context::Popup,
             _ => Context::Player,
         }
     }
@@ -222,6 +241,8 @@ impl Action {
                 | Action::SubDelayPlus
                 | Action::PopupNext
                 | Action::PopupPrev
+                | Action::LookupPrev
+                | Action::LookupNext
         )
     }
 
@@ -263,6 +284,10 @@ impl Action {
             Action::PopupPrev => &["Shift+Tab"],
             Action::CreateCard => &["Ctrl+Enter"],
             Action::CreateCardAdvanced => &["Ctrl+Shift+Enter"],
+            Action::LookupSubtitle => &["Enter"],
+            Action::LookupPrev => &["ArrowLeft"],
+            Action::LookupNext => &["ArrowRight"],
+            Action::Settings => &["Ctrl+Comma"],
         }
     }
 }

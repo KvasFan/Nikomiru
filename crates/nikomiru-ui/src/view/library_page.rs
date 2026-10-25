@@ -45,6 +45,11 @@ pub(crate) struct State {
     statistics: bool,
     /// What it keeps.
     stats: super::stats_view::State,
+    /// The view (home, or a series) whose first card or episode got the
+    /// keyboard when it appeared (NFR-A11Y-01).
+    focused_view: Option<Option<u64>>,
+    /// This frame gives the keyboard to the first card or episode.
+    focus_first: bool,
 }
 
 impl State {
@@ -212,8 +217,24 @@ pub(crate) fn draw(
                     &mut state.stats,
                     out,
                 ),
-                Some((id, episodes)) => series(ui, s, state, *id, episodes.as_deref(), out),
-                None => home(ui, s, state, out),
+                Some((id, episodes)) => {
+                    // the first episode takes the keyboard once listed
+                    state.focus_first = episodes.is_some() && state.focused_view != Some(Some(*id));
+                    if state.focus_first {
+                        state.focused_view = Some(Some(*id));
+                    }
+                    series(ui, s, state, *id, episodes.as_deref(), out);
+                }
+                None => {
+                    state.focus_first =
+                        s.page.home.as_ref().is_some_and(|h| {
+                            !h.continue_watching.is_empty() || !h.series.is_empty()
+                        }) && state.focused_view != Some(None);
+                    if state.focus_first {
+                        state.focused_view = Some(None);
+                    }
+                    home(ui, s, state, out);
+                }
             });
     });
     close
@@ -244,6 +265,7 @@ fn card(
     width: f32,
     texture: Option<&TextureHandle>,
     name: &str,
+    focus: &mut bool,
     body: impl FnOnce(&mut Ui),
 ) -> bool {
     let inner = Frame::new()
@@ -280,7 +302,18 @@ fn card(
         egui::Id::unique(("library-card", name)),
         Sense::click(),
     );
-    if response.hovered() {
+    if std::mem::take(focus) {
+        response.request_focus();
+    }
+    // the keyboard's place is always visible (NFR-A11Y-01)
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            inner.response.rect,
+            8.0,
+            Stroke::new(2.0, palette::current().accent),
+            egui::StrokeKind::Outside,
+        );
+    } else if response.hovered() {
         ui.painter().rect_stroke(
             inner.response.rect,
             8.0,
@@ -314,7 +347,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 .join(" · ");
             let texture = v.series.and_then(|id| state.textures.get(&id));
             let name = format!("{title} {}", episode_label(v));
-            let clicked = card(ui, WIDE, texture, &name, |ui| {
+            let clicked = card(ui, WIDE, texture, &name, &mut state.focus_first, |ui| {
                 ui.add(egui::Label::new(RichText::new(&title).family(theme::bold())).truncate());
                 ui.label(RichText::new(detail).color(palette::current().details));
                 let share = v
@@ -338,6 +371,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             NARROW,
             state.textures.get(&summary.id),
             &summary.record.title,
+            &mut state.focus_first,
             |ui| {
                 ui.add(
                     egui::Label::new(RichText::new(&summary.record.title).family(theme::bold()))
@@ -498,6 +532,9 @@ fn series(
                     ui.add(egui::Label::new(file_title(&v.path)).truncate());
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let play = ui.button(tr(s, "library-play"));
+                        if std::mem::take(&mut state.focus_first) {
+                            play.request_focus();
+                        }
                         play.widget_info(|| {
                             WidgetInfo::labeled(
                                 Role::Button,

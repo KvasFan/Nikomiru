@@ -13,11 +13,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - The interface language and scale change without a restart (SET-004, SET-005); the subtitles keep their size on the screen.
 - A shortcut editor (KEY-001…KEY-004): a key is added by pressing it, refused when another action has it, removed with ×; an action goes back to its default keys with ↺.
 - A card made by hand (ANK-040, ANK-041): Shift+click on the card button, or Ctrl+Shift+Enter, opens a dialog where the lines before and after join the sentence, the clip's start and end can be changed and listened to, the picture is the frame of the click, the one at the start of the sentence or none, and the sentence audio can be left out.
+- The whole way with the keyboard (NFR-A11Y-01): Enter looks up the first word of the subtitle shown and ← → move the lookup a character; Ctrl+, opens the settings; on a page or a dialog the keys drive its controls (Tab, the arrows, Enter, Space) and only the global shortcuts run, Esc included; the library gives the keyboard to its first card, with the focus drawn.
 
 ### Changed
 
 - `config.toml` keeps the comments, order and layout of a file edited by hand: saving changes only the values that changed. A value of the wrong kind takes its default and is named in a notice, instead of the whole file being set aside (SET-001).
 - A global shortcut can no longer share its key with an action of another context (KEY-003).
+- Back (Esc, Alt+←) is a global shortcut: it closes a page or a dialog wherever the keyboard is.
 
 ### Fixed
 

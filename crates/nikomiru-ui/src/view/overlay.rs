@@ -68,6 +68,8 @@ pub(crate) struct Scene<'a> {
     pub obscure: Obscure,
     /// The secondary subtitle, when one is loaded (SUB-017).
     pub secondary: Option<Secondary<'a>>,
+    /// A lookup asked from the keyboard: the cue and the grapheme's offset.
+    pub keyboard: Option<(usize, usize)>,
 }
 
 /// The secondary subtitle as the overlay draws it (SUB-017).
@@ -95,6 +97,7 @@ impl<'a> Scene<'a> {
                 obscure: s.secondary_obscure_now(),
                 bottom: s.secondary_at_bottom(),
             }),
+            keyboard: s.keyboard_lookup(),
         }
     }
 }
@@ -226,6 +229,17 @@ pub(crate) fn draw(
         } else {
             id.with(cue.index)
         };
+        // a lookup from the keyboard opens as a click on its grapheme would
+        if let Some((index, at)) = scene.keyboard
+            && !cue.secondary
+            && index == cue.index
+        {
+            out.push(Command::GraphemeClicked {
+                cue: cue.index,
+                offset: at,
+                anchor,
+            });
+        }
         let over = ui.interact(rect, cue_id, Sense::hover());
         over.widget_info(|| WidgetInfo::labeled(Role::Label, true, cue.text));
         inside |= over.contains_pointer();
@@ -1063,6 +1077,7 @@ mod tests {
                             obscure: *o,
                             bottom: *bottom,
                         }),
+                        keyboard: None,
                     };
                     draw(ui.ctx(), &scene, state, 0.0, out);
                 },

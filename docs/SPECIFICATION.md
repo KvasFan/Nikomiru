@@ -450,9 +450,12 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | Subtitle offset −100 / +100 ms | Z / X | M2 |
 | Align the start of the previous / next cue to the position | Ctrl+Shift+← / Ctrl+Shift+→ | M2 |
 | Previous / next chapter | PageUp / PageDown | M1 |
-| Character cursor for keyboard lookup | Enter | M3 |
-| Create card from the popup entry | Ctrl+Enter | M4 |
-| Back (closes popup → leaves fullscreen → returns to the library) | Esc, Alt+← | M1 |
+| Look up the first word of the subtitle shown; with the popup open, the lookup a character earlier / later | Enter; ← / → | M6 |
+| Create card from the popup entry; the "Advanced mining" dialog | Ctrl+Enter; Ctrl+Shift+Enter | M4, M6 |
+| Back (closes a dialog or a page → a popup → leaves fullscreen → returns to the library), everywhere | Esc, Alt+← | M1 |
+| Settings, everywhere | Ctrl+, | M6 |
+
+While a page or a dialog covers the video (the library, the settings, the dialogs), only the shortcuts of the global context run: the other keys drive the page's controls (Tab, the arrows, Enter, Space), with the focus always drawn (NFR-A11Y-01). The library gives the keyboard to its first card, and a series to its first episode.
 
 ### 6.4 Subtitles (SUB)
 
@@ -759,7 +762,7 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
 | NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: the interface lays them out as literal text from a typed view model (allowlisted blocks and runs, POP-009); no markup is ever parsed from them for display, never raw HTML or scripts; the interface never loads a URL from them (images are decoded from the dictionary's own media, POP-010; external links open only `http`/`https` in the browser, POP-011) | T-SEC-* |
 | NFR-SEC-02 | No file written outside Nikomiru's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
-| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; AccessKit roles and names on the controls (AT-SPI on Linux) | T-A11Y-* |
+| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; AccessKit roles and names on the controls (AT-SPI on Linux) | T-A11Y-*, T-E2E-A11Y-001 |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |
 | NFR-MAINT-01 | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; `///` documentation on every `pub` item of the library crates | T-MAINT-001 |
 | NFR-MAINT-02 | Line coverage ≥ 80% for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |

@@ -124,7 +124,7 @@ cargo install --locked cargo-about --features cli
 | Command | What it does |
 |---|---|
 | `cargo xtask ci` | fmt, clippy `-D warnings`, architecture checks, licenses (`cargo deny`), traceability, tests |
-| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests, the release build, the GUI end-to-end tests (L6, in an off-screen `kwin_wayland` on a private `dbus-daemon`) and `THIRD_PARTY_LICENSES.html` |
+| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests, the release build, the GUI end-to-end tests (L6, in an off-screen `kwin_wayland` on a private `dbus-daemon`; the accessibility test also needs at-spi2-core) and `THIRD_PARTY_LICENSES.html` |
 | `cargo xtask fixtures [--large] [--perf]` | generates test media and dictionaries in `target/fixtures/` (requires `ffmpeg`) |
 | `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
 | `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |

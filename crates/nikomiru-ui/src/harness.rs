@@ -145,6 +145,7 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             other => return Err(format!("unknown modifier {other}")),
         }
     }
+    let name = code.to_string();
     call(move |ui| {
         let key = |pressed, repeat| Key {
             evdev,
@@ -152,12 +153,37 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             pressed,
             repeat,
         };
-        ui.key(key(true, false), false);
+        let taken = ui.key(key(true, false), false);
         // held: the auto-repeats of the window system
         for _ in 0..repeats {
             ui.key(key(true, true), false);
         }
         ui.key(key(false, false), false);
+        // what the window gives egui: a key no shortcut took, on a page
+        if !taken && (ui.page_open() || held.ctrl) {
+            let short = name
+                .strip_prefix("Key")
+                .or_else(|| name.strip_prefix("Digit"))
+                .unwrap_or(&name);
+            if let Some(k) = egui::Key::from_name(short) {
+                let modifiers = egui::Modifiers {
+                    alt: held.alt,
+                    ctrl: held.ctrl,
+                    shift: held.shift,
+                    command: held.ctrl,
+                    mac_cmd: false,
+                };
+                for pressed in [true, false] {
+                    ui.inject(egui::Event::Key {
+                        key: k,
+                        physical_key: Some(k),
+                        pressed,
+                        repeat: false,
+                        modifiers,
+                    });
+                }
+            }
+        }
     })
 }
 
@@ -199,6 +225,52 @@ pub fn state() -> Result<Value, String> {
                     .map(|q| json!({ "index": i, "text": q.plain_text }))
             })
             .collect();
+        // apart from the big json! below, whose macro would recurse too deep
+        let results = s.online_page.results.as_ref().map(|r| {
+            let files: Vec<Value> = r
+                .candidates
+                .iter()
+                .map(|c| {
+                    json!({
+                        "provider": c.provider.name(), "name": c.file_name,
+                        "language": c.language, "episode": c.episode,
+                    })
+                })
+                .collect();
+            json!({ "files": files, "failed": r.failed })
+        });
+        let online_page = json!({
+            "open": ui.view.online_page_open,
+            "busy": s.online_page.busy,
+            "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+            "query": s.online_page.query.as_ref().map(|q| json!({
+                "title": q.title, "season": q.season, "episode": q.episode,
+            })),
+            "results": results,
+        });
+        let advanced = s.advanced_card().map(|a| {
+            json!({
+                "sentence": a.sentence,
+                "offset": a.offset,
+                "first": a.first,
+                "last": a.last,
+                "clip": a.clip.map(|(s, e)| [s, e]),
+                "frame": format!("{:?}", a.frame),
+                "audio": a.audio,
+            })
+        });
+        let settings_status = s
+            .settings_status
+            .as_ref()
+            .map(|(t, ok)| json!({ "text": t, "ok": ok }));
+        let look = json!({
+            "dark": s.look().dark,
+            "accent": s.look().accent,
+            "scale": s.look().scale,
+            "zoom": ui.view.zoom,
+            "language": s.translator().language(),
+            "subtitle_px": ui.view.overlay.font_px,
+        });
         let library_page = {
             let page = &s.library_page;
             let home = page.home.as_ref();
@@ -290,25 +362,11 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
-            "advanced": s.advanced_card().map(|a| json!({
-                "sentence": a.sentence,
-                "offset": a.offset,
-                "first": a.first,
-                "last": a.last,
-                "clip": a.clip.map(|(s, e)| [s, e]),
-                "frame": format!("{:?}", a.frame),
-                "audio": a.audio,
-            })),
+            "advanced": advanced,
             "settings_tab": ui.view.settings_tab.key(),
-            "settings_status": s.settings_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
-            "look": {
-                "dark": s.look().dark,
-                "accent": s.look().accent,
-                "scale": s.look().scale,
-                "zoom": ui.view.zoom,
-                "language": s.translator().language(),
-                "subtitle_px": ui.view.overlay.font_px,
-            },
+            "settings_open": ui.view.settings_open(),
+            "settings_status": settings_status,
+            "look": look,
             "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
             "library_page": library_page,
             "sub_list_open": ui.view.sub_list_open,
@@ -332,21 +390,7 @@ pub fn state() -> Result<Value, String> {
                 "raw": s.player_set().raw,
                 "preset": s.player_preset(),
             }),
-            "online_page": json!({
-                "open": ui.view.online_page_open,
-                "busy": s.online_page.busy,
-                "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
-                "query": s.online_page.query.as_ref().map(|q| json!({
-                    "title": q.title, "season": q.season, "episode": q.episode,
-                })),
-                "results": s.online_page.results.as_ref().map(|r| json!({
-                    "files": r.candidates.iter().map(|c| json!({
-                        "provider": c.provider.name(), "name": c.file_name,
-                        "language": c.language, "episode": c.episode,
-                    })).collect::<Vec<_>>(),
-                    "failed": r.failed,
-                })),
-            }),
+            "online_page": online_page,
             "missing_link": s.missing_link.as_ref().map(|m| json!({
                 "uid": m.link.uid,
                 "path": m.path,

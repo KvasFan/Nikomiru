@@ -41,6 +41,8 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
+    /// Open the settings on the tab shown last (SET-008).
+    OpenSettings,
 }
 
 /// Milestones of a load, for the GUI test harness (TEST §2.1).
@@ -323,9 +325,14 @@ pub struct Session {
     /// A link whose video cannot be found: the view offers to locate it
     /// (ANK-052).
     pub missing_link: Option<MissingLink>,
-    /// A settings page covers the popups (the view says so): they wait under
-    /// it, and their keys with them (POP-014).
+    /// A page or a dialog covers the video and the popups (the view says
+    /// so): the popups wait under it, and the keys go to its controls but
+    /// the global shortcuts' (POP-014, NFR-A11Y-01).
     pub popups_covered: bool,
+    /// A lookup asked from the keyboard (NFR-A11Y-01): the cue and the byte
+    /// offset of its grapheme; the overlay, which knows where the cue is,
+    /// opens it as a click would.
+    keyboard_lookup: Option<(usize, usize)>,
     /// The clip of the link being opened: once its subtitles are there,
     /// playback goes to its first cue (ANK-052).
     link_clip: Option<LinkClip>,
@@ -534,6 +541,7 @@ impl Session {
             last_card: None,
             missing_link: None,
             popups_covered: false,
+            keyboard_lookup: None,
             link_clip: None,
             start_at: None,
             opening: nikomiru_library::policy::Opening::Chosen,
@@ -2360,6 +2368,31 @@ impl Session {
         }
     }
 
+    /// The lookup asked from the keyboard, until the overlay opens it.
+    pub fn keyboard_lookup(&self) -> Option<(usize, usize)> {
+        self.keyboard_lookup
+    }
+
+    /// The root popup's lookup starts a grapheme later or earlier in its cue.
+    fn step_lookup(&mut self, forward: bool) {
+        let Some(Origin::Subtitle { cue, start }) =
+            self.popups.stack().first().map(|p| p.origin.clone())
+        else {
+            return;
+        };
+        let Some(q) = self.subs.cue(cue) else {
+            return;
+        };
+        let offsets: Vec<usize> = q.graphemes().iter().map(|g| g.offset).collect();
+        let Some(i) = offsets.iter().position(|&o| o == start) else {
+            return;
+        };
+        let j = if forward { i + 1 } else { i.wrapping_sub(1) };
+        if let Some(&offset) = offsets.get(j) {
+            self.keyboard_lookup = Some((cue, offset));
+        }
+    }
+
     /// The "Advanced mining" dialog open, if it is (ANK-040).
     pub fn advanced_card(&self) -> Option<&crate::mining::AdvancedCard> {
         self.advanced.as_ref()
@@ -2836,8 +2869,11 @@ impl Session {
             }
             return (UiEffect::None, true);
         }
-        // a popup's keys first, then the player's (KEY-003)
-        let action = if self.popups.is_open() && !self.popups_covered {
+        // a page over the video: its controls get the keys, but the global
+        // ones; a popup's keys first, then the player's (KEY-003)
+        let action = if self.popups_covered {
+            self.bindings.action(Context::Global, &chord, text_focus)
+        } else if self.popups.is_open() {
             self.bindings
                 .action(Context::Popup, &chord, text_focus)
                 .or_else(|| self.bindings.action(Context::Player, &chord, text_focus))
@@ -2899,6 +2935,16 @@ impl Session {
                 }
                 Ok(())
             }
+            // NFR-A11Y-01: the first word of the subtitle shown
+            Action::LookupSubtitle => {
+                self.keyboard_lookup = self.subs.active().first().map(|&cue| (cue, 0));
+                Ok(())
+            }
+            Action::LookupPrev | Action::LookupNext => {
+                self.step_lookup(action == Action::LookupNext);
+                Ok(())
+            }
+            Action::Settings => return UiEffect::OpenSettings,
             Action::CreateCardAdvanced => {
                 let top = self.popups.stack().len().checked_sub(1);
                 if let Some((level, entry)) =
@@ -3570,6 +3616,7 @@ impl Session {
     /// text from there (LKP-001…LKP-003) is looked up in a popup next to
     /// `anchor`; playback pauses if it was going.
     pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        self.keyboard_lookup = None;
         // a click: the popup does not close when the pointer leaves
         self.hover.reset();
         self.look_up_grapheme(cue, offset, anchor);
