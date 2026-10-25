@@ -7,6 +7,7 @@
 #![deny(missing_docs)]
 
 pub mod clip;
+pub mod energy;
 pub mod extract;
 pub mod process;
 pub mod tools;

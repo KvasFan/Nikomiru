@@ -123,6 +123,14 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         view.open_online_page(out);
         ui.close();
     }
+    // SUB-018
+    if ui
+        .add_enabled(!current.is_empty(), egui::Button::new(tr("subtitle-align")))
+        .clicked()
+    {
+        out.push(Command::AlignSubtitles);
+        ui.close();
+    }
     if ui
         .selectable_label(s.subs.disabled, format!("{}  (V)", tr("subtitles-disable")))
         .clicked()

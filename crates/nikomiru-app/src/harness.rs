@@ -14,7 +14,7 @@
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
-//! `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
+//! `{"cmd":"align"}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
 //! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
@@ -131,6 +131,7 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
+        Some("align") => harness::align().map(|()| Value::Null),
         Some("player") => harness::player(
             text(command, "action")?,
             command["path"].as_str().map(str::to_string),

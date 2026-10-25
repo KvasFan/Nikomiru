@@ -1396,3 +1396,37 @@ fn an_mpv_conf_is_previewed_applied_saved_and_exported() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-SUB-018: subtitles written 1.2 s early are put back on the audio
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_are_aligned_with_the_audio() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let early = desk.path("early.srt");
+    std::fs::write(
+        &early,
+        "1\n00:00:00,800 --> 00:00:01,300\n食べました\n\n2\n00:00:03,800 --> 00:00:04,300\n日本語\n\n3\n00:00:06,800 --> 00:00:07,300\nラーメン\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.cmd(serde_json::json!({ "cmd": "drop", "paths": [early] }));
+    h.state_until("the early subtitles", |s| {
+        s["subtitles"]["source"]
+            .as_str()
+            .is_some_and(|k| k.contains("early.srt"))
+            && s["subtitles"]["cues"] == 3
+    });
+    h.cmd(serde_json::json!({ "cmd": "align" }));
+    let s = h.state_until("aligned", |s| s["subtitles"]["delay_ms"] != 0);
+    let delay = s["subtitles"]["delay_ms"].as_i64().unwrap();
+    assert!((delay - 1_200).abs() <= 100, "{s}");
+    assert!(
+        s["toast"].as_str().unwrap_or_default().contains("ms"),
+        "{s}"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

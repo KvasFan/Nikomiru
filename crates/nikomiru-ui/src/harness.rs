@@ -442,6 +442,11 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
     })?
 }
 
+/// "Align with the audio" in the subtitle menu (SUB-018).
+pub fn align() -> Result<(), String> {
+    call(|ui| ui.run(Command::AlignSubtitles))
+}
+
 /// The Online subtitles page (MET-009): `open`, `close`, `search` (with the
 /// title, season and episode given or as filled), `use` (a result's index).
 pub fn online(

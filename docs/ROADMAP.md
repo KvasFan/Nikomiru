@@ -246,13 +246,14 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7.
 
-**Requirements**: MET-003, MET-004, MET-005, MET-007…MET-010, SET-007, PLY-016, PLY-018.
+**Requirements**: MET-003, MET-004, MET-005, MET-007…MET-010, SUB-018, SET-007, PLY-016, PLY-018.
 
 **Deliverables**
 
 - Crate `nikomiru-online` ([ADR 0008](adr/0008-online-subtitles.md)): Jimaku and OpenSubtitles clients behind one trait, the file-name parser (MET-010), language detection, the OpenSubtitles hash, ZIP archives, the ranking; a fake server for the tests.
 - The `online` worker; the Online subtitles page ("Search online…" in the subtitle menu) with the online settings; automatic subtitles (MET-007); downloaded subtitles kept in the data folder and offered like files next to the video (MET-008).
 - Settings → Player: render and audio controls (PLY-018) and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch, import and export through the file dialogs (PLY-016).
+- Alignment of the subtitles with the audio (SUB-018): from the subtitle menu, and by itself after downloaded subtitles load.
 
 **Exit criteria**
 
@@ -303,15 +304,15 @@ The proxy setting and the mpv presets with their settings page moved to M4b (D-1
 
 ## M7 — Online metadata and subtitles → 0.4.0
 
-**Requirements**: MET-001, MET-002, SUB-017, SUB-018.
+**Requirements**: MET-001, MET-002, SUB-017.
 
-The online subtitles moved to M4b (D-14).
+The online subtitles and their alignment with the audio moved to M4b (D-14).
 
 **Deliverables**
 
 - `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, behind a trait and with tests against a fake server; Jimaku searched by `anilist_id` first.
 - UI: series identification (automatic if unique, otherwise chosen by the user).
-- Secondary subtitle; automatic alignment with the waveform.
+- Secondary subtitle.
 
 **Exit criteria**
 

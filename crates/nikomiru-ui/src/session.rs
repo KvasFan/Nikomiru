@@ -138,6 +138,13 @@ pub trait IdleInhibitor: Send {
 pub trait SubtitleSource: Send {
     /// Loads `request` and calls `done` with the result or a translated error.
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
+
+    /// Aligns cues with the audio (SUB-018); a new load cancels it.
+    fn align(
+        &self,
+        request: crate::subtitles::AlignRequest,
+        done: Box<dyn FnOnce(Result<nikomiru_subs::align::AlignResult, String>) + Send>,
+    );
 }
 
 /// Everything the session needs from the application.
@@ -297,6 +304,11 @@ pub struct Session {
     auto_online: Option<u64>,
     /// The Player settings page (PLY-016, PLY-018).
     pub player_page: crate::player_settings::PlayerPage,
+    /// Alignments with the audio to start: the subtitle load they are for,
+    /// whether they were asked automatically, the request (SUB-018).
+    align_jobs: Vec<(u64, bool, crate::subtitles::AlignRequest)>,
+    /// The subtitle load that downloaded subtitles are aligned after.
+    align_after: Option<u64>,
     /// Presets and exports to write, taken by the UI layer.
     file_writes: Vec<crate::player_settings::FileWrite>,
     /// The answers of the options set now, for the UI layer to wait on.
@@ -437,6 +449,8 @@ impl Session {
             online_generation: 0,
             auto_online: None,
             player_page: crate::player_settings::PlayerPage::default(),
+            align_jobs: Vec::new(),
+            align_after: None,
             file_writes: Vec::new(),
             option_replies: Vec::new(),
             pending_export: None,
@@ -1074,6 +1088,8 @@ impl Session {
                     self.sub_sources.push(source.clone());
                 }
                 self.use_subtitles(source);
+                // a downloaded file may be timed for another release (SUB-018)
+                self.align_after = Some(self.sub_generation);
                 let text = self.tr(
                     "online-loaded",
                     &[
@@ -1574,20 +1590,7 @@ impl Session {
                 (start, end.min(start + nikomiru_media::clip::MAX_AUDIO_MS))
             })
             .filter(|(start, end)| end > start);
-        // the active audio track: an external one is cut from its own file
-        let selected = self
-            .view
-            .audio_tracks
-            .iter()
-            .find(|tr| Some(tr.id) == self.view.aid);
-        let (audio_input, audio_stream) = match selected {
-            Some(tr) if tr.external => match &tr.external_filename {
-                Some(file) => (PathBuf::from(file), tr.ff_index),
-                None => (current.path.clone(), None),
-            },
-            Some(tr) => (current.path.clone(), tr.ff_index),
-            None => (current.path.clone(), None),
-        };
+        let (audio_input, audio_stream) = self.audio_source(&current.path);
         let request = MineRequest {
             query: p.query.clone(),
             entry,
@@ -1625,6 +1628,125 @@ impl Session {
             request: Box::new(request),
             frame,
         });
+    }
+
+    /// The active audio track: the file it is in (an external track's own
+    /// file) and its ff-index there; `None` without one.
+    fn audio_source(&self, video: &Path) -> (PathBuf, Option<i64>) {
+        let selected = self
+            .view
+            .audio_tracks
+            .iter()
+            .find(|tr| Some(tr.id) == self.view.aid);
+        match selected {
+            Some(tr) if tr.external => match &tr.external_filename {
+                Some(file) => (PathBuf::from(file), tr.ff_index),
+                None => (video.to_path_buf(), None),
+            },
+            Some(tr) => (video.to_path_buf(), tr.ff_index),
+            None => (video.to_path_buf(), None),
+        }
+    }
+
+    /// Aligns the subtitles shown with the audio (SUB-018): asked from the
+    /// menu, or `automatic`ally after downloaded subtitles load.
+    pub fn align_subtitles(&mut self, automatic: bool) {
+        let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
+            return;
+        };
+        let cues: Vec<(i64, i64)> = self
+            .subs
+            .timeline()
+            .cues()
+            .iter()
+            .map(|c| (c.start_ms, c.end_ms))
+            .collect();
+        if cues.is_empty() {
+            if !automatic {
+                self.toasts.push(self.tr("toast-sub-align-none", &[]));
+            }
+            return;
+        }
+        let (input, stream) = self.audio_source(&video);
+        if !automatic {
+            self.toasts.push(self.tr("toast-sub-aligning", &[]));
+        }
+        self.align_jobs.push((
+            self.sub_generation,
+            automatic,
+            crate::subtitles::AlignRequest {
+                input,
+                stream,
+                cues,
+            },
+        ));
+    }
+
+    /// The alignments to start, taken by the UI layer.
+    pub fn take_align_jobs(&mut self) -> Vec<(u64, bool, crate::subtitles::AlignRequest)> {
+        std::mem::take(&mut self.align_jobs)
+    }
+
+    /// Starts an alignment on the loader.
+    pub fn start_align(
+        &self,
+        request: crate::subtitles::AlignRequest,
+        done: Box<dyn FnOnce(Result<nikomiru_subs::align::AlignResult, String>) + Send>,
+    ) {
+        self.services.subtitle_source.align(request, done);
+    }
+
+    /// The answer of an alignment: the offset applied when it is sure, for
+    /// the subtitles it was asked for (SUB-018).
+    pub fn aligned(
+        &mut self,
+        generation: u64,
+        automatic: bool,
+        result: Result<nikomiru_subs::align::AlignResult, String>,
+    ) {
+        use nikomiru_subs::align::AlignResult;
+        if generation != self.sub_generation {
+            return;
+        }
+        let percent = |c: f64| format!("{:.0}", (c * 100.0).max(0.0));
+        match result {
+            Ok(AlignResult::Aligned(a)) => {
+                tracing::info!("aligned with the audio: {a:?}");
+                self.subs.timeline_mut().delay_ms = a.offset_ms;
+                self.subs.update((self.view.time_pos * 1000.0) as i64);
+                self.sub_list_version += 1;
+                self.toasts.push(self.tr(
+                    "toast-sub-aligned",
+                    &[
+                        ("value", format!("{:+}", a.offset_ms)),
+                        ("confidence", percent(a.confidence)),
+                    ],
+                ));
+            }
+            Ok(AlignResult::Unsure(a)) => {
+                tracing::info!("not aligned, unsure: {a:?}");
+                if !automatic {
+                    self.toasts.push(self.tr(
+                        "toast-sub-align-unsure",
+                        &[
+                            ("value", format!("{:+}", a.offset_ms)),
+                            ("confidence", percent(a.confidence)),
+                        ],
+                    ));
+                }
+            }
+            Ok(AlignResult::NoData) => {
+                if !automatic {
+                    self.toasts.push(self.tr("toast-sub-align-none", &[]));
+                }
+            }
+            Err(message) => {
+                tracing::warn!("alignment: {message}");
+                if !automatic {
+                    self.toasts.push(message);
+                }
+            }
+        }
     }
 
     /// Asks the player for the frame on screen now, for a card (ANK-034): it
@@ -2229,6 +2351,9 @@ impl Session {
                 self.cues_changed();
                 if let Some(link) = link {
                     self.go_to_link_cue(link);
+                }
+                if self.align_after.take() == Some(generation) {
+                    self.align_subtitles(true);
                 }
                 let text = match encoding {
                     Some(e) => self.tr(

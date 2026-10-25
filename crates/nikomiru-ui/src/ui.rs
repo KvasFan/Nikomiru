@@ -116,6 +116,15 @@ pub enum Inbound {
         /// The file kept, or why not.
         result: Result<Option<crate::online::Downloaded>, String>,
     },
+    /// An alignment with the audio ended (SUB-018).
+    Aligned {
+        /// The subtitle load it was for.
+        generation: u64,
+        /// Asked automatically.
+        automatic: bool,
+        /// The offset found, or why not.
+        result: Result<nikomiru_subs::align::AlignResult, String>,
+    },
     /// The options mpv refused when they were set now: name and reason.
     OptionsApplied(Vec<(String, String)>),
     /// A preset or an export was written, or not.
@@ -157,6 +166,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::OnlineFound { .. } => "OnlineFound",
             Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
             Inbound::OptionsApplied(_) => "OptionsApplied",
+            Inbound::Aligned { .. } => "Aligned",
             Inbound::FileWritten { .. } => "FileWritten",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
@@ -277,6 +287,8 @@ pub(crate) enum Command {
             nikomiru_core::config::NetworkConfig,
         )>,
     ),
+    /// "Align with the audio" (SUB-018).
+    AlignSubtitles,
     /// The Player settings page opened (PLY-016, PLY-018).
     PlayerOpen,
     /// Apply this option set, and remember the preset it comes from.
@@ -467,6 +479,14 @@ impl Ui {
             } => {
                 self.session
                     .online_downloaded(generation, automatic, result);
+                true
+            }
+            Inbound::Aligned {
+                generation,
+                automatic,
+                result,
+            } => {
+                self.session.aligned(generation, automatic, result);
                 true
             }
             Inbound::OptionsApplied(refused) => {
@@ -740,6 +760,7 @@ impl Ui {
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
+            Command::AlignSubtitles => s.align_subtitles(false),
             Command::PlayerOpen => s.player_open(),
             Command::PlayerApply(settings) => {
                 let (set, preset) = *settings;
@@ -832,6 +853,19 @@ impl Ui {
                     .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
                 crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
             }
+        }
+        for (generation, automatic, request) in self.session.take_align_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_align(
+                request,
+                Box::new(move |result| {
+                    waker.wake(Inbound::Aligned {
+                        generation,
+                        automatic,
+                        result,
+                    });
+                }),
+            );
         }
         for job in self.session.take_online_jobs() {
             let waker = self.waker.clone();
