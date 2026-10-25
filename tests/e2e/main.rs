@@ -1314,3 +1314,85 @@ fn subtitles_are_searched_and_used_on_the_online_page() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-PLY-016, T-PLY-018
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn an_mpv_conf_is_previewed_applied_saved_and_exported() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let conf = desk.path("mpv.conf");
+    std::fs::write(
+        &conf,
+        "# a user's mpv.conf\nbrightness=10\ndeband\nscript=evil.lua\nvideo-zoom=0.25\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("first-frame");
+    let mpv = |h: &mut support::Harness, p: &str| {
+        h.cmd(serde_json::json!({ "cmd": "mpv_get", "property": p }))
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    h.state_until("the page", |s| s["player_page"]["open"] == true);
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "import", "path": conf }));
+    let s = h.state_until("the preview", |s| !s["player_page"]["preview"].is_null());
+    let lines = s["player_page"]["preview"]["lines"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let status = |text: &str| {
+        lines
+            .iter()
+            .find(|l| l["text"] == text)
+            .map(|l| l["status"].as_str().unwrap_or_default().to_string())
+            .unwrap_or_default()
+    };
+    assert_eq!(status("brightness=10"), "Control", "{lines:?}");
+    assert_eq!(status("video-zoom=0.25"), "Raw", "{lines:?}");
+    assert!(status("script").starts_with("Ignored"), "{lines:?}");
+    // nothing changes before it is applied
+    let number = |v: String| v.parse::<f64>().unwrap_or(f64::NAN);
+    assert_eq!(number(mpv(&mut h, "brightness")), 0.0);
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-apply" }));
+    h.state_until("applied", |s| s["player_page"]["set"]["brightness"] == "10");
+    support::until(Duration::from_secs(10), "mpv takes the options", || {
+        (number(mpv(&mut h, "brightness")) == 10.0 && number(mpv(&mut h, "video-zoom")) == 0.25)
+            .then_some(())
+    });
+    assert_eq!(mpv(&mut h, "deband"), "yes");
+    // saved in config.toml: the whole set replaced (PLY-016), `ao` gone
+    let file = desk.path("config/nikomiru/config.toml");
+    support::until(Duration::from_secs(10), "the settings saved", || {
+        let text = std::fs::read_to_string(&file).ok()?;
+        let c = nikomiru_core::Config::from_toml(&text).ok()?;
+        (c.player.mpv_options.get("brightness").map(String::as_str) == Some("10")).then_some(c)
+    });
+    // a preset, and an export mpv reads
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "save-preset", "name": "anime" }));
+    h.state_until("the preset", |s| {
+        s["player_page"]["presets"] == serde_json::json!(["anime"])
+    });
+    let preset = std::fs::read_to_string(desk.path("config/nikomiru/mpv/anime.conf")).unwrap();
+    assert!(preset.starts_with("# Nikomiru "), "{preset}");
+    let out = desk.path("exported.conf");
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "export", "path": out }));
+    let text = support::until(Duration::from_secs(10), "the export", || {
+        std::fs::read_to_string(&out).ok()
+    });
+    for line in ["brightness=10", "deband=yes", "video-zoom=0.25"] {
+        assert!(text.lines().any(|l| l == line), "{line} in {text}");
+    }
+    assert!(!text.contains("script") && !text.contains("ao="), "{text}");
+    // the brightness unset: mpv's own value again
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "load-preset", "name": "anime" }));
+    h.state_until("the preset's preview", |s| {
+        !s["player_page"]["preview"].is_null()
+    });
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-cancel" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

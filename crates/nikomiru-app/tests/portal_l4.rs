@@ -90,8 +90,10 @@ enum Seen {
         path: String,
     },
     OpenFile {
+        method: String,
         title: String,
         token: String,
+        current_name: String,
     },
     OpenUri {
         uri: String,
@@ -141,12 +143,13 @@ fn spy_portal(mut conn: Connection) -> mpsc::Receiver<Seen> {
             }
             let answer = match msg.member.as_deref() {
                 // the user picks a file, or cancels when the title says so
-                Some("OpenFile") => {
+                Some(method @ ("OpenFile" | "SaveFile")) => {
                     let [Value::Str(_), Value::Str(title), Value::Array(_, options)] =
                         &msg.body[..]
                     else {
-                        panic!("OpenFile with body {:?}", msg.body);
+                        panic!("{method} with body {:?}", msg.body);
                     };
+                    let method = method.to_string();
                     let token = option(options, "handle_token");
                     let sender = msg
                         .sender
@@ -156,8 +159,10 @@ fn spy_portal(mut conn: Connection) -> mpsc::Receiver<Seen> {
                         .replace('.', "_");
                     let path = format!("/org/freedesktop/portal/desktop/request/{sender}/{token}");
                     let _ = tx.send(Seen::OpenFile {
+                        method,
                         title: title.clone(),
                         token,
+                        current_name: option(options, "current_name"),
                     });
                     let reply = Message::reply_to(&msg, vec![Value::Path(path.clone())]);
                     let (response, uris) = if title == "cancel" {
@@ -314,18 +319,52 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
         dialog: Dialog::Video,
         title: title.into(),
         filters: vec![("Video".into(), vec!["*.mkv"])],
+        save_as: None,
     };
     let path = nikomiru_app::portal::choose(&mut conn, &dialog("Open a video")).unwrap();
     assert_eq!(path, Some(PathBuf::from("/v/a b.mkv")));
-    let Seen::OpenFile { title, token } = next(&seen) else {
+    let Seen::OpenFile {
+        method,
+        title,
+        token,
+        ..
+    } = next(&seen)
+    else {
         panic!()
     };
-    assert_eq!(title, "Open a video");
+    assert_eq!(
+        (method.as_str(), title.as_str()),
+        ("OpenFile", "Open a video")
+    );
     assert!(token.starts_with("nikomiru"), "{token}");
     // cancelled: nothing, and the connection still works
     let path = nikomiru_app::portal::choose(&mut conn, &dialog("cancel")).unwrap();
     assert_eq!(path, None);
     assert!(matches!(next(&seen), Seen::OpenFile { .. }));
+    // T-PLY-016: a dialog that saves suggests a name
+    let save = FileDialog {
+        dialog: Dialog::MpvExport,
+        title: "Export".into(),
+        filters: vec![("mpv".into(), vec!["*.conf"])],
+        save_as: Some("mpv.conf".into()),
+    };
+    assert!(
+        nikomiru_app::portal::choose(&mut conn, &save)
+            .unwrap()
+            .is_some()
+    );
+    let Seen::OpenFile {
+        method,
+        current_name,
+        ..
+    } = next(&seen)
+    else {
+        panic!()
+    };
+    assert_eq!(
+        (method.as_str(), current_name.as_str()),
+        ("SaveFile", "mpv.conf")
+    );
 }
 
 // T-POP-011: a web link goes to the portal, nothing else

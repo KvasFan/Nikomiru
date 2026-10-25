@@ -169,6 +169,8 @@ pub struct Services {
     pub online: Box<dyn crate::online::OnlineService>,
     /// Where downloaded subtitles are kept (MET-008).
     pub subtitles_dir: PathBuf,
+    /// Where the mpv presets are kept (PLY-016).
+    pub mpv_presets_dir: PathBuf,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
     /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
@@ -202,6 +204,7 @@ enum SavingPage {
     #[default]
     Anki,
     Online,
+    Player,
 }
 
 /// A link to a scene whose video cannot be found (ANK-052).
@@ -292,6 +295,14 @@ pub struct Session {
     /// The subtitle load current when automatic subtitles were asked for:
     /// any later choice of the user wins over them (MET-007).
     auto_online: Option<u64>,
+    /// The Player settings page (PLY-016, PLY-018).
+    pub player_page: crate::player_settings::PlayerPage,
+    /// Presets and exports to write, taken by the UI layer.
+    file_writes: Vec<crate::player_settings::FileWrite>,
+    /// The answers of the options set now, for the UI layer to wait on.
+    option_replies: Vec<(String, nikomiru_player::CommandReply)>,
+    /// The set to export, until the file is chosen.
+    pending_export: Option<nikomiru_player::settings::OptionSet>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -425,6 +436,10 @@ impl Session {
             online_page: crate::online::OnlinePage::default(),
             online_generation: 0,
             auto_online: None,
+            player_page: crate::player_settings::PlayerPage::default(),
+            file_writes: Vec::new(),
+            option_replies: Vec::new(),
+            pending_export: None,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -918,6 +933,7 @@ impl Session {
         match self.saving_page {
             SavingPage::Anki => self.anki_page.status = Some(status),
             SavingPage::Online => self.online_page.status = Some(status),
+            SavingPage::Player => self.player_page.status = Some(status),
         }
     }
 
@@ -1100,6 +1116,294 @@ impl Session {
             let text = self.tr("anki-config-not-saved", &[]);
             self.online_page.status = Some((text, false));
         }
+    }
+
+    /// The Player settings page opens: the saved presets.
+    pub fn player_open(&mut self) {
+        self.player_page.presets = self.presets();
+        self.player_page.preview = None;
+        self.player_page.status = None;
+    }
+
+    fn presets(&self) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(&self.services.mpv_presets_dir)
+            .map(|d| {
+                d.flatten()
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().into_owned();
+                        name.strip_suffix(".conf").map(str::to_string)
+                    })
+                    .filter(|n| !n.starts_with('.'))
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// The option set as saved (PLY-016).
+    pub fn player_set(&self) -> nikomiru_player::settings::OptionSet {
+        nikomiru_player::settings::OptionSet::from_config(&self.services.config.player)
+    }
+
+    /// The last preset loaded or saved.
+    pub fn player_preset(&self) -> &str {
+        &self.services.config.player.mpv_preset
+    }
+
+    fn apply_option_now(&mut self, key: &str, value: &str) {
+        let option = nikomiru_player::options::MpvOption {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        match self.services.player.apply_option(&option) {
+            Ok(reply) => self.option_replies.push((key.to_string(), reply)),
+            Err(e) => tracing::warn!("option {key}: {e}"),
+        }
+    }
+
+    /// Applies `set` (PLY-016, PLY-018): written to `config.toml` and set in
+    /// mpv now (SET-002), an option the user unset going back to mpv's own
+    /// value; the options mpv takes only later are named.
+    pub fn player_apply(
+        &mut self,
+        set: nikomiru_player::settings::OptionSet,
+        preset: Option<String>,
+    ) {
+        use nikomiru_player::options::{Line, parse_mpv_conf};
+        use nikomiru_player::settings::{OptionSet, control_of};
+        let old = OptionSet::from_config(&self.services.config.player);
+        let mut player = self.services.config.player.clone();
+        set.apply_to(&mut player);
+        if let Some(name) = preset {
+            player.mpv_preset = name;
+        }
+        self.services.config.player = player;
+        let mut later: Vec<String> = Vec::new();
+        for (key, value) in &set.values {
+            if old.values.get(key) == Some(value) {
+                continue;
+            }
+            if control_of(key).is_some_and(|c| c.next_file) {
+                later.push(key.clone());
+            } else {
+                self.apply_option_now(key, value);
+            }
+        }
+        let unset: Vec<String> = old
+            .values
+            .keys()
+            .filter(|k| !set.values.contains_key(*k))
+            .cloned()
+            .collect();
+        for key in unset {
+            match self.services.player.option_default(&key) {
+                Some(default) => self.apply_option_now(&key, &default),
+                None => later.push(key),
+            }
+        }
+        if set.raw != old.raw {
+            let applied = |raw: &str| -> Vec<(String, String)> {
+                parse_mpv_conf(raw)
+                    .into_iter()
+                    .filter_map(|l| match l {
+                        Line::Apply { option, .. } => Some((option.key, option.value)),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            let new = applied(&set.raw);
+            for (key, value) in &new {
+                self.apply_option_now(key, value);
+            }
+            // a raw option removed keeps its value until the next start
+            later.extend(
+                applied(&old.raw)
+                    .into_iter()
+                    .map(|(k, _)| k)
+                    .filter(|k| !new.iter().any(|(n, _)| n == k)),
+            );
+        }
+        self.player_page.applied += 1;
+        self.player_page.preview = None;
+        self.saving_page = SavingPage::Player;
+        self.keep_status = !later.is_empty();
+        if !later.is_empty() {
+            later.sort();
+            later.dedup();
+            let text = self.tr("player-later", &[("names", later.join(", "))]);
+            self.player_page.status = Some((text, true));
+        }
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("anki-config-not-saved", &[]);
+            self.player_page.status = Some((text, false));
+        }
+    }
+
+    /// The options mpv refused when they were set now.
+    pub fn options_applied(&mut self, refused: Vec<(String, String)>) {
+        if refused.is_empty() {
+            return;
+        }
+        let names: Vec<String> = refused.iter().map(|(k, e)| format!("{k} ({e})")).collect();
+        let text = self.tr("player-refused", &[("names", names.join(", "))]);
+        self.player_page.status = Some((text, false));
+    }
+
+    /// The answers to wait on, taken by the UI layer.
+    pub fn take_option_replies(&mut self) -> Vec<(String, nikomiru_player::CommandReply)> {
+        std::mem::take(&mut self.option_replies)
+    }
+
+    fn ignored_reason(&self, why: &nikomiru_player::options::Ignored) -> String {
+        use nikomiru_player::options::Ignored;
+        let id = match why {
+            Ignored::Fixed => "player-ignored-fixed",
+            Ignored::Blocked(_) => "player-ignored-blocked",
+            Ignored::NoEffect(_) => "player-ignored-no-effect",
+            Ignored::Section => "player-ignored-section",
+        };
+        self.tr(id, &[])
+    }
+
+    /// The preview of `text` from `source`.
+    fn preview(&mut self, source: String, preset: Option<String>, text: &str) {
+        let reason = |why: &nikomiru_player::options::Ignored| self.ignored_reason(why);
+        let preview = crate::player_settings::Preview::of(source, preset, text, &reason);
+        self.player_page.preview = Some(preview);
+        self.player_page.status = None;
+    }
+
+    /// Reads a preset or an `mpv.conf`, at most 1 MiB.
+    fn read_conf(&self, path: &Path) -> Result<String, String> {
+        use std::io::Read;
+        let mut text = String::new();
+        std::fs::File::open(path)
+            .and_then(|f| f.take(1 << 20).read_to_string(&mut text))
+            .map(|_| text)
+            .map_err(|e| {
+                self.tr(
+                    "player-read-error",
+                    &[
+                        ("path", path.display().to_string()),
+                        ("reason", e.to_string()),
+                    ],
+                )
+            })
+    }
+
+    /// A saved preset, shown in the preview (PLY-016).
+    pub fn player_load_preset(&mut self, name: &str) {
+        let Some(file) = nikomiru_player::settings::preset_file_name(name) else {
+            return;
+        };
+        match self.read_conf(&self.services.mpv_presets_dir.join(file)) {
+            Ok(text) => self.preview(name.to_string(), Some(name.to_string()), &text),
+            Err(message) => self.player_page.status = Some((message, false)),
+        }
+    }
+
+    /// An `mpv.conf` chosen in the file dialog, shown in the preview.
+    pub fn player_import(&mut self, path: &Path) {
+        let source = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match self.read_conf(path) {
+            Ok(text) => self.preview(source, None, &text),
+            Err(message) => self.player_page.status = Some((message, false)),
+        }
+    }
+
+    /// The preview applied.
+    pub fn player_preview_apply(&mut self) {
+        if let Some(p) = self.player_page.preview.take() {
+            self.player_apply(p.set, p.preset);
+        }
+    }
+
+    /// The preview dropped.
+    pub fn player_preview_cancel(&mut self) {
+        self.player_page.preview = None;
+    }
+
+    /// The header of a saved preset: the version and the date.
+    fn preset_header(&self) -> String {
+        let days = self
+            .services
+            .clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() / 86_400);
+        let (y, m, d) = civil_date(days as i64);
+        format!(
+            "Nikomiru {} mpv options
+{y:04}-{m:02}-{d:02}",
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+
+    /// Saves `set` as the preset `name` (PLY-016).
+    pub fn player_save_preset(&mut self, name: &str, set: nikomiru_player::settings::OptionSet) {
+        let Some(file) = nikomiru_player::settings::preset_file_name(name) else {
+            let text = self.tr("player-bad-name", &[]);
+            self.player_page.status = Some((text, false));
+            return;
+        };
+        self.file_writes.push(crate::player_settings::FileWrite {
+            path: self.services.mpv_presets_dir.join(file),
+            text: set.to_mpv_conf(&self.preset_header()),
+            mode: 0o600,
+            preset: Some(name.trim().to_string()),
+        });
+    }
+
+    /// The set to export, until the file dialog answers.
+    pub fn player_export(&mut self, set: nikomiru_player::settings::OptionSet) {
+        self.pending_export = Some(set);
+    }
+
+    /// The file chosen for the export.
+    pub fn player_export_to(&mut self, path: &Path) {
+        if let Some(set) = self.pending_export.take() {
+            self.file_writes.push(crate::player_settings::FileWrite {
+                path: path.to_path_buf(),
+                text: set.to_mpv_conf(&self.preset_header()),
+                mode: 0o644,
+                preset: None,
+            });
+        }
+    }
+
+    /// The files to write, taken by the UI layer.
+    pub fn take_file_writes(&mut self) -> Vec<crate::player_settings::FileWrite> {
+        std::mem::take(&mut self.file_writes)
+    }
+
+    /// A preset or an export was written, or not.
+    pub fn file_written(
+        &mut self,
+        path: PathBuf,
+        preset: Option<String>,
+        result: Result<(), String>,
+    ) {
+        let status = match (&result, &preset) {
+            (Ok(()), Some(name)) => (
+                self.tr("player-preset-saved", &[("name", name.clone())]),
+                true,
+            ),
+            (Ok(()), None) => (
+                self.tr("player-exported", &[("path", path.display().to_string())]),
+                true,
+            ),
+            (Err(message), _) => (message.clone(), false),
+        };
+        if result.is_ok() && preset.is_some() {
+            self.player_page.presets = self.presets();
+        }
+        self.player_page.status = Some(status);
     }
 
     /// The online jobs to start, taken by the UI layer.
@@ -2464,9 +2768,31 @@ fn source_name(source: &Source) -> String {
     }
 }
 
+/// The date of a day counted from 1970-01-01 (Howard Hinnant's
+/// `civil_from_days`).
+fn civil_date(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn days_become_dates() {
+        assert_eq!(civil_date(0), (1970, 1, 1));
+        assert_eq!(civil_date(20_386), (2025, 10, 25));
+        assert_eq!(civil_date(11_016), (2000, 2, 29));
+    }
 
     #[test]
     fn file_urls_become_paths() {

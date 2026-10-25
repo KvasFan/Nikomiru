@@ -116,6 +116,17 @@ pub enum Inbound {
         /// The file kept, or why not.
         result: Result<Option<crate::online::Downloaded>, String>,
     },
+    /// The options mpv refused when they were set now: name and reason.
+    OptionsApplied(Vec<(String, String)>),
+    /// A preset or an export was written, or not.
+    FileWritten {
+        /// Where.
+        path: PathBuf,
+        /// The preset's name, or `None` for an export.
+        preset: Option<String>,
+        /// How it went.
+        result: Result<(), String>,
+    },
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -145,6 +156,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::ConfigSaved(_) => "ConfigSaved",
             Inbound::OnlineFound { .. } => "OnlineFound",
             Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
+            Inbound::OptionsApplied(_) => "OptionsApplied",
+            Inbound::FileWritten { .. } => "FileWritten",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -264,6 +277,22 @@ pub(crate) enum Command {
             nikomiru_core::config::NetworkConfig,
         )>,
     ),
+    /// The Player settings page opened (PLY-016, PLY-018).
+    PlayerOpen,
+    /// Apply this option set, and remember the preset it comes from.
+    PlayerApply(Box<(nikomiru_player::settings::OptionSet, Option<String>)>),
+    /// Show a saved preset in the preview.
+    PlayerLoadPreset(String),
+    /// "Import mpv.conf…": the file dialog opens.
+    PlayerImport,
+    /// Apply the preview.
+    PlayerPreviewApply,
+    /// Drop the preview.
+    PlayerPreviewCancel,
+    /// Save this set as a preset.
+    PlayerSavePreset(String, Box<nikomiru_player::settings::OptionSet>),
+    /// Export this set: the file dialog opens.
+    PlayerExport(Box<nikomiru_player::settings::OptionSet>),
     /// "Locate the file" for a link whose video is missing (ANK-052).
     LinkLocate,
     /// The offer to locate it was declined.
@@ -440,6 +469,18 @@ impl Ui {
                     .online_downloaded(generation, automatic, result);
                 true
             }
+            Inbound::OptionsApplied(refused) => {
+                self.session.options_applied(refused);
+                true
+            }
+            Inbound::FileWritten {
+                path,
+                preset,
+                result,
+            } => {
+                self.session.file_written(path, preset, result);
+                true
+            }
             Inbound::Dropped(path) => {
                 self.dropped(&path);
                 true
@@ -455,6 +496,8 @@ impl Ui {
                     Dialog::Subtitles => self.session.open_subtitle_file(&path),
                     Dialog::Dictionary => self.session.dict_choose(path),
                     Dialog::Locate => self.session.located(&path),
+                    Dialog::MpvImport => self.session.player_import(&path),
+                    Dialog::MpvExport => self.session.player_export_to(&path),
                 }
                 true
             }
@@ -621,8 +664,10 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
-        self.session.popups_covered =
-            self.view.dict_page_open || self.view.anki_page_open || self.view.online_page_open;
+        self.session.popups_covered = self.view.dict_page_open
+            || self.view.anki_page_open
+            || self.view.online_page_open
+            || self.view.player_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -695,6 +740,20 @@ impl Ui {
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
+            Command::PlayerOpen => s.player_open(),
+            Command::PlayerApply(settings) => {
+                let (set, preset) = *settings;
+                s.player_apply(set, preset);
+            }
+            Command::PlayerLoadPreset(name) => s.player_load_preset(&name),
+            Command::PlayerImport => self.view.dialog = Some(Dialog::MpvImport),
+            Command::PlayerPreviewApply => s.player_preview_apply(),
+            Command::PlayerPreviewCancel => s.player_preview_cancel(),
+            Command::PlayerSavePreset(name, set) => s.player_save_preset(&name, *set),
+            Command::PlayerExport(set) => {
+                s.player_export(*set);
+                self.view.dialog = Some(Dialog::MpvExport);
+            }
             Command::OnlineOpen => s.online_open(),
             Command::OnlineSearch {
                 title,
@@ -813,6 +872,55 @@ impl Ui {
                     let (o, n) = *settings;
                     online.configure(o, n);
                 }
+            }
+        }
+        let writes = self.session.take_file_writes();
+        let replies = self.session.take_option_replies();
+        if !writes.is_empty() || !replies.is_empty() {
+            let waker = self.waker.clone();
+            let translator = self.session.translator().clone();
+            // files and mpv's answers wait for others: never on the UI thread
+            let spawned = std::thread::Builder::new()
+                .name("player-settings".into())
+                .spawn(move || {
+                    let refused: Vec<(String, String)> = replies
+                        .into_iter()
+                        .filter_map(|(key, reply)| {
+                            match reply.recv_timeout(std::time::Duration::from_secs(10)) {
+                                Ok(Err(e)) => Some((key, e.to_string())),
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    if !refused.is_empty() {
+                        waker.wake(Inbound::OptionsApplied(refused));
+                    }
+                    for w in writes {
+                        let result = w
+                            .path
+                            .parent()
+                            .map_or(Ok(()), std::fs::create_dir_all)
+                            .and_then(|()| {
+                                nikomiru_core::fs::write_atomic(&w.path, w.text.as_bytes(), w.mode)
+                            })
+                            .map_err(|e| {
+                                translator.tr(
+                                    "player-write-error",
+                                    &[
+                                        ("path", w.path.display().to_string()),
+                                        ("reason", e.to_string()),
+                                    ],
+                                )
+                            });
+                        waker.wake(Inbound::FileWritten {
+                            path: w.path,
+                            preset: w.preset,
+                            result,
+                        });
+                    }
+                });
+            if let Err(e) = spawned {
+                tracing::error!("cannot start the player settings thread: {e}");
             }
         }
         if let Some((config, file)) = self.session.take_config_save() {

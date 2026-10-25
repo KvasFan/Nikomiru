@@ -142,6 +142,11 @@ impl Paths {
         self.runtime_dir.as_ref().map(|d| d.join("nikomiru.sock"))
     }
 
+    /// Folder of the mpv option presets (PLY-016).
+    pub fn mpv_presets_dir(&self) -> PathBuf {
+        self.config_dir.join("mpv")
+    }
+
     /// Folder of the subtitles downloaded for the videos (MET-008).
     pub fn subtitles_dir(&self) -> PathBuf {
         self.data_dir.join("subtitles")

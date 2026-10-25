@@ -18,6 +18,7 @@ pub mod hover;
 pub mod i18n;
 pub mod mining;
 pub mod online;
+pub mod player_settings;
 pub mod popup;
 pub mod popup_view;
 pub mod screensaver;

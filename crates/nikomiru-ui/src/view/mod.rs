@@ -16,6 +16,7 @@ mod link;
 mod list;
 mod online_page;
 mod overlay;
+mod player_page;
 mod popups;
 pub(crate) mod theme;
 
@@ -37,6 +38,10 @@ pub enum Dialog {
     Dictionary,
     /// The moved video of a link to a scene (ANK-052).
     Locate,
+    /// An `mpv.conf` to load (PLY-016).
+    MpvImport,
+    /// Where to export the mpv options (PLY-016).
+    MpvExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -48,6 +53,8 @@ pub struct FileDialog {
     pub title: String,
     /// Named filters, as glob patterns (`*.mkv`).
     pub filters: Vec<(String, Vec<&'static str>)>,
+    /// A dialog that saves: the name it suggests.
+    pub save_as: Option<String>,
 }
 
 const VIDEO_PATTERNS: [&str; 14] = [
@@ -80,11 +87,20 @@ impl FileDialog {
                 tr("link-locate"),
                 vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
             ),
+            Dialog::MpvImport => (
+                tr("player-import"),
+                vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
+            ),
+            Dialog::MpvExport => (
+                tr("player-export"),
+                vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
+            ),
         };
         Self {
             dialog,
             title,
             filters,
+            save_as: (dialog == Dialog::MpvExport).then(|| "mpv.conf".to_string()),
         }
     }
 }
@@ -102,6 +118,10 @@ pub(crate) struct View {
     pub anki: anki_page::State,
     /// The Online subtitles page is shown (MET-009).
     pub online_page_open: bool,
+    /// The Player settings page is shown (PLY-016, PLY-018).
+    pub player_page_open: bool,
+    /// What it keeps.
+    pub player: player_page::State,
     /// What it keeps.
     pub online: online_page::State,
     /// The subtitle list is shown (SUB-015).
@@ -140,6 +160,8 @@ impl View {
                 // popups were closed by the session already (POP-012)
                 if self.online_page_open {
                     self.close_online_page();
+                } else if self.player_page_open {
+                    self.close_player_page();
                 } else if self.anki_page_open {
                     self.close_anki_page();
                 } else if self.dict_page_open {
@@ -194,6 +216,18 @@ impl View {
         self.online = online_page::State::default();
     }
 
+    pub fn open_player_page(&mut self, out: &mut Vec<Command>) {
+        if !self.player_page_open {
+            self.player_page_open = true;
+            out.push(Command::PlayerOpen);
+        }
+    }
+
+    pub fn close_player_page(&mut self) {
+        self.player_page_open = false;
+        self.player = player_page::State::default();
+    }
+
     pub fn close_dict_page(&mut self) {
         self.dict_page_open = false;
         self.dict = dict_page::State::default();
@@ -242,7 +276,11 @@ impl View {
             bar::show(&ctx, s, self, opacity, &mut out);
         }
         // the settings pages cover the popups: they wait under them
-        let drawn = if self.dict_page_open || self.anki_page_open || self.online_page_open {
+        let drawn = if self.dict_page_open
+            || self.anki_page_open
+            || self.online_page_open
+            || self.player_page_open
+        {
             self.popups.rects.clear();
             Vec::new()
         } else {
@@ -254,6 +292,9 @@ impl View {
         }
         if self.anki_page_open {
             anki_page::show(&ctx, s, self, &mut out);
+        }
+        if self.player_page_open {
+            player_page::show(&ctx, s, self, &mut out);
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);

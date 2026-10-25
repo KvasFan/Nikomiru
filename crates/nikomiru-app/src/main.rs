@@ -407,6 +407,7 @@ fn run(
         anki: Box::new(anki),
         online: Box::new(online),
         subtitles_dir: paths.subtitles_dir(),
+        mpv_presets_dir: paths.mpv_presets_dir(),
         config_file: paths.config_file(),
         mining_dir,
         config_writable,

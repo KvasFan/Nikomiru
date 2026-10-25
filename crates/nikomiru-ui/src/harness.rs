@@ -240,6 +240,20 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
+            "player_page": json!({
+                "open": ui.view.player_page_open,
+                "presets": s.player_page.presets,
+                "status": s.player_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "preview": s.player_page.preview.as_ref().map(|p| json!({
+                    "source": p.source,
+                    "lines": p.lines.iter().map(|l| json!({
+                        "line": l.line, "text": l.text, "status": format!("{:?}", l.status),
+                    })).collect::<Vec<_>>(),
+                })),
+                "set": s.player_set().values,
+                "raw": s.player_set().raw,
+                "preset": s.player_preset(),
+            }),
             "online_page": json!({
                 "open": ui.view.online_page_open,
                 "busy": s.online_page.busy,
@@ -324,6 +338,71 @@ pub fn locate(path: &str) -> Result<(), String> {
             path,
         });
     })
+}
+
+/// The Player settings page (PLY-016, PLY-018): `open`, `close`;
+/// `import` and `export` with the file the dialog would give (`path`);
+/// `preview-apply`, `preview-cancel`; `save-preset` and `load-preset` with a
+/// `name`; `apply` with the saved set and `raw` as its raw options.
+pub fn player(
+    action: &str,
+    path: Option<String>,
+    name: Option<String>,
+    raw: Option<String>,
+) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        use crate::view::Dialog;
+        let set = ui.session.player_set();
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_player_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_player_page();
+                return Ok(());
+            }
+            "import" => {
+                let path = PathBuf::from(path.ok_or("missing \"path\"")?);
+                ui.handle(Inbound::Chosen {
+                    dialog: Dialog::MpvImport,
+                    path,
+                });
+                return Ok(());
+            }
+            "export" => {
+                let path = PathBuf::from(path.ok_or("missing \"path\"")?);
+                ui.run(Command::PlayerExport(Box::new(set)));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: Dialog::MpvExport,
+                    path,
+                });
+                return Ok(());
+            }
+            "preview-apply" => Command::PlayerPreviewApply,
+            "preview-cancel" => Command::PlayerPreviewCancel,
+            "save-preset" => {
+                Command::PlayerSavePreset(name.ok_or("missing \"name\"")?, Box::new(set))
+            }
+            "load-preset" => Command::PlayerLoadPreset(name.ok_or("missing \"name\"")?),
+            "apply" => {
+                let mut set = set;
+                if let Some(raw) = raw {
+                    set.raw = raw;
+                }
+                Command::PlayerApply(Box::new((set, None)))
+            }
+            other => return Err(format!("no Player page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
 }
 
 /// The Anki settings page (ANK-006, ANK-011): `open` and `close` as its
