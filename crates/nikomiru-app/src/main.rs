@@ -408,6 +408,7 @@ fn run(
         online: Box::new(online),
         subtitles_dir: paths.subtitles_dir(),
         mpv_presets_dir: paths.mpv_presets_dir(),
+        user_mpv_conf: paths.user_mpv_conf(),
         config_file: paths.config_file(),
         mining_dir,
         config_writable,

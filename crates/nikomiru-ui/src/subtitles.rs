@@ -52,6 +52,21 @@ pub struct Request {
     pub encoding: Option<String>,
     /// Video duration, for the extraction timeout (EXT-003).
     pub duration_ms: i64,
+    /// For the secondary subtitle (SUB-017): it does not cancel the main
+    /// one's load, nor is cancelled by it.
+    pub secondary: bool,
+}
+
+/// An alignment of the cues with the audio (SUB-018): the audio stream to
+/// listen to, and the cues without their offset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlignRequest {
+    /// The video, or the file of an external audio track.
+    pub input: PathBuf,
+    /// The audio stream's ff-index in it; `None`: the first.
+    pub stream: Option<i64>,
+    /// The cues' start and end, in milliseconds, without the offset.
+    pub cues: Vec<(i64, i64)>,
 }
 
 /// A loaded track: the parsed file and the encoding that was detected.

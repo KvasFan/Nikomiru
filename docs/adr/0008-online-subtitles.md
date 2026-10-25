@@ -52,4 +52,5 @@ Without M5 there is no series record and no AniList id. The reference implementa
 - `nikomiru-online` depends on reqwest (already in the build for AnkiConnect) and on `zip` (already used by `nikomiru-dict`); no new license class.
 - SPECIFICATION: MET-003 and MET-004 as above; new MET-007 (automatic subtitles), MET-008 (where they are kept), MET-009 (the page), MET-010 (the file-name parser); SUB-006 and SUB-008 include the downloaded files; SET-007 is `[network] proxy`; §9 gets `[online]` and `[network]`.
 - ROADMAP: the new milestone M4b (D-14) holds these requirements and the mpv presets of PLY-016 and PLY-018, moved from M7 and M6.
+- Downloaded subtitles are often timed for another release: once they load, they are aligned with the audio (SUB-018, also in the subtitle menu), and the offset is applied only when the match is clear.
 - When M5 identifies series and M7 adds AniList, Jimaku is searched by `anilist_id` first, as in Fushi, and the downloaded subtitles stay where they are.

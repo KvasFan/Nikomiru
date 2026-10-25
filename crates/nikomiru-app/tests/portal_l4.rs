@@ -94,6 +94,7 @@ enum Seen {
         title: String,
         token: String,
         current_name: String,
+        current_folder: String,
     },
     OpenUri {
         uri: String,
@@ -108,6 +109,32 @@ fn option(options: &[Value], key: &str) -> String {
             Value::Entry(k, v) if **k == Value::Str(key.into()) => match v.as_ref() {
                 Value::Variant(s) => match s.as_ref() {
                     Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// The NUL-terminated byte string of an `a{sv}` option, by key.
+fn bytes_option(options: &[Value], key: &str) -> String {
+    options
+        .iter()
+        .find_map(|e| match e {
+            Value::Entry(k, v) if **k == Value::Str(key.into()) => match v.as_ref() {
+                Value::Variant(a) => match a.as_ref() {
+                    Value::Array(_, bytes) => Some(
+                        bytes
+                            .iter()
+                            .map_while(|b| match b {
+                                Value::Byte(0) => None,
+                                Value::Byte(b) => Some(char::from(*b)),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
                     _ => None,
                 },
                 _ => None,
@@ -163,6 +190,7 @@ fn spy_portal(mut conn: Connection) -> mpsc::Receiver<Seen> {
                         title: title.clone(),
                         token,
                         current_name: option(options, "current_name"),
+                        current_folder: bytes_option(options, "current_folder"),
                     });
                     let reply = Message::reply_to(&msg, vec![Value::Path(path.clone())]);
                     let (response, uris) = if title == "cancel" {
@@ -320,6 +348,7 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
         title: title.into(),
         filters: vec![("Video".into(), vec!["*.mkv"])],
         save_as: None,
+        folder: None,
     };
     let path = nikomiru_app::portal::choose(&mut conn, &dialog("Open a video")).unwrap();
     assert_eq!(path, Some(PathBuf::from("/v/a b.mkv")));
@@ -347,6 +376,7 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
         title: "Export".into(),
         filters: vec![("mpv".into(), vec!["*.conf"])],
         save_as: Some("mpv.conf".into()),
+        folder: Some(PathBuf::from("/home/u/.config/mpv")),
     };
     assert!(
         nikomiru_app::portal::choose(&mut conn, &save)
@@ -356,14 +386,19 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
     let Seen::OpenFile {
         method,
         current_name,
+        current_folder,
         ..
     } = next(&seen)
     else {
         panic!()
     };
     assert_eq!(
-        (method.as_str(), current_name.as_str()),
-        ("SaveFile", "mpv.conf")
+        (
+            method.as_str(),
+            current_name.as_str(),
+            current_folder.as_str()
+        ),
+        ("SaveFile", "mpv.conf", "/home/u/.config/mpv")
     );
 }
 

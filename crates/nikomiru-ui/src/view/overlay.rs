@@ -49,6 +49,8 @@ const AROUND: [(f32, f32); 8] = [
 ];
 /// Copies of the text that make up the blur (SUB-014).
 const BLUR_COPIES: usize = 24;
+/// The size of the secondary subtitle against the main one (SUB-017).
+const SECONDARY_SCALE: f32 = 0.85;
 
 /// What the overlay draws, read from the session every frame.
 #[derive(Debug)]
@@ -64,6 +66,19 @@ pub(crate) struct Scene<'a> {
     /// The obscuring that applies now (the session lifts it on hover and
     /// while a popup is open).
     pub obscure: Obscure,
+    /// The secondary subtitle, when one is loaded (SUB-017).
+    pub secondary: Option<Secondary<'a>>,
+}
+
+/// The secondary subtitle as the overlay draws it (SUB-017).
+#[derive(Debug)]
+pub(crate) struct Secondary<'a> {
+    /// Its cues.
+    pub subs: &'a Subtitles,
+    /// Its obscuring now.
+    pub obscure: Obscure,
+    /// Above the main subtitle at the bottom, or at the top of the video.
+    pub bottom: bool,
 }
 
 impl<'a> Scene<'a> {
@@ -75,6 +90,11 @@ impl<'a> Scene<'a> {
             font_size,
             respect_ass,
             obscure: s.obscure_now(),
+            secondary: s.secondary.source.is_some().then(|| Secondary {
+                subs: &s.secondary,
+                obscure: s.secondary_obscure_now(),
+                bottom: s.secondary_at_bottom(),
+            }),
         }
     }
 }
@@ -105,6 +125,8 @@ pub(crate) struct Drawn {
     pub highlighted: usize,
     /// Whether any text was painted.
     pub painted: bool,
+    /// A cue of the secondary subtitle.
+    pub secondary: bool,
 }
 
 pub(crate) fn show(
@@ -134,12 +156,33 @@ pub(crate) fn draw(
         scene.subs.play_res().map(|(_, y)| y),
     );
     let wrap = video.width().max(4.0 * units.font);
+    let secondary_units = Units {
+        font: units.font * SECONDARY_SCALE,
+        ..units
+    };
     let mut cues: Vec<Laid> = ctx.fonts_mut(|fonts| {
-        scene
-            .subs
-            .shown(scene.respect_ass)
-            .map(|shown| lay_out(fonts, &shown, &units, scene.respect_ass, wrap))
-            .collect()
+        // the secondary first: in a stack it goes above the main subtitle
+        let mut all: Vec<Laid> = Vec::new();
+        if let Some(sec) = scene.secondary.as_ref().filter(|_| !scene.subs.disabled) {
+            for shown in sec.subs.shown(false) {
+                let mut laid = lay_out(fonts, &shown, &secondary_units, false, wrap);
+                laid.place = if sec.bottom {
+                    Place::Bottom
+                } else {
+                    Place::Top
+                };
+                laid.graphemes.clear();
+                laid.secondary = true;
+                all.push(laid);
+            }
+        }
+        all.extend(
+            scene
+                .subs
+                .shown(scene.respect_ass)
+                .map(|shown| lay_out(fonts, &shown, &units, scene.respect_ass, wrap)),
+        );
+        all
     });
     // drawn bottom, middle, top, then the free ones; by layer and file order
     // inside each group (the order of `shown`)
@@ -174,13 +217,22 @@ pub(crate) fn draw(
             w: f64::from(rect.width()),
             h: f64::from(rect.height()),
         };
-        let over = ui.interact(rect, id.with(cue.index), Sense::hover());
+        let cue_id = if cue.secondary {
+            id.with(("secondary", cue.index))
+        } else {
+            id.with(cue.index)
+        };
+        let over = ui.interact(rect, cue_id, Sense::hover());
         over.widget_info(|| WidgetInfo::labeled(Role::Label, true, cue.text));
         inside |= over.contains_pointer();
+        let (mode, cue_units) = match &scene.secondary {
+            Some(sec) if cue.secondary => (sec.obscure, &secondary_units),
+            _ => (scene.obscure, &units),
+        };
         // hidden: not drawn, but still hoverable (which reveals it) and clickable
-        let painted = scene.obscure != Obscure::Hidden;
+        let painted = mode != Obscure::Hidden;
         if painted {
-            paint(painter, cue, offset, scene.obscure, &units, ppp);
+            paint(painter, cue, offset, mode, cue_units, ppp);
         }
         for hit in &cue.graphemes {
             let response = ui.interact(
@@ -221,6 +273,7 @@ pub(crate) fn draw(
                 .collect(),
             highlighted: cue.highlight.len(),
             painted,
+            secondary: cue.secondary,
         });
     }
     // also when the cue under the pointer goes away, or V turns them all off
@@ -522,6 +575,8 @@ struct Laid<'a> {
     rows: Vec<Rect>,
     graphemes: Vec<Hit>,
     highlight: Vec<Rect>,
+    /// A cue of the secondary subtitle: drawn, never clicked (SUB-017).
+    secondary: bool,
 }
 
 /// A line being laid out: its job, the byte offset and the chars (in the
@@ -623,6 +678,7 @@ fn lay_out<'a>(
         rows: Vec::new(),
         graphemes: Vec::new(),
         highlight: Vec::new(),
+        secondary: false,
     };
     // lines with nothing in them take no room, as in a column of rows
     let galleys: Vec<_> = lines
@@ -972,6 +1028,17 @@ mod tests {
         subs: Subtitles,
         obscure: Obscure,
     ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        with_secondary(subs, obscure, None)
+    }
+
+    /// The same, with a secondary subtitle: its cues, its obscuring, at the
+    /// bottom or not.
+    fn with_secondary(
+        subs: Subtitles,
+        obscure: Obscure,
+        secondary: Option<(Subtitles, Obscure, bool)>,
+    ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        let secondary: &'static Option<(Subtitles, Obscure, bool)> = Box::leak(Box::new(secondary));
         Harness::builder()
             .with_size(vec2(1280.0, 720.0))
             .allow_missing_glyphs()
@@ -987,6 +1054,11 @@ mod tests {
                         font_size: 36.0,
                         respect_ass: false,
                         obscure,
+                        secondary: secondary.as_ref().map(|(s, o, bottom)| Secondary {
+                            subs: s,
+                            obscure: *o,
+                            bottom: *bottom,
+                        }),
                     };
                     draw(ui.ctx(), &scene, state, 0.0, out);
                 },
@@ -999,6 +1071,59 @@ mod tests {
         h.drag_at(at);
         h.drop_at(at);
         h.run();
+    }
+
+    // T-SUB-017
+    #[test]
+    fn the_secondary_subtitle_is_drawn_apart_and_never_clicked() {
+        let main = || {
+            subtitles(
+                "1\n00:00:01,000 --> 00:00:03,000\n食べました\n",
+                Format::Srt,
+                1500,
+            )
+        };
+        let english = || {
+            subtitles(
+                "1\n00:00:01,200 --> 00:00:02,800\nI ate.\n",
+                Format::Srt,
+                1500,
+            )
+        };
+        // at the top of the video
+        let mut h = with_secondary(
+            main(),
+            Obscure::None,
+            Some((english(), Obscure::None, false)),
+        );
+        h.run();
+        let drawn = h.state().1.drawn.clone();
+        let (sec, prim): (Vec<_>, Vec<_>) = drawn.iter().partition(|d| d.secondary);
+        assert_eq!((sec.len(), prim.len()), (1, 1), "{drawn:?}");
+        assert!(sec[0].graphemes.is_empty(), "no lookups in a translation");
+        assert!(sec[0].rect.max.y < 360.0 && prim[0].rect.min.y > 360.0);
+        assert!(sec[0].rect.height() < prim[0].rect.height());
+        click(&mut h, sec[0].rect.center());
+        assert!(
+            !h.state()
+                .2
+                .iter()
+                .any(|c| matches!(c, Command::GraphemeClicked { .. })),
+            "{:?}",
+            h.state().2
+        );
+        // above the main one at the bottom, hidden on its own
+        let mut h = with_secondary(
+            main(),
+            Obscure::None,
+            Some((english(), Obscure::Hidden, true)),
+        );
+        h.run();
+        let drawn = h.state().1.drawn.clone();
+        let sec = drawn.iter().find(|d| d.secondary).unwrap();
+        let prim = drawn.iter().find(|d| !d.secondary).unwrap();
+        assert!(sec.rect.max.y <= prim.rect.min.y, "{drawn:?}");
+        assert!(!sec.painted && prim.painted);
     }
 
     // T-SUB-009

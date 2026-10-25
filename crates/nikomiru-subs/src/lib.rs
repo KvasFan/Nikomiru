@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod align;
 pub mod ass;
 pub mod cue;
 pub mod encoding;
