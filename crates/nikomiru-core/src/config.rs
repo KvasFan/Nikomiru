@@ -659,6 +659,21 @@ fn mask_quoted(message: &str) -> String {
     out
 }
 
+/// Whether Nikomiru can write in the settings folder `dir`: a file made and
+/// removed there. A folder not there yet is fine (saving makes it); one
+/// owned by another user (made with `sudo`) is not.
+pub fn check_writable(dir: &Path) -> std::io::Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let probe = dir.join(".nikomiru-write-check");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)?;
+    std::fs::remove_file(&probe)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -926,5 +941,23 @@ enabled = false
         assert_eq!(names, [("Local", true), ("Other", false)]);
         let again = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
         assert_eq!(again.word_audio, c.word_audio);
+    }
+
+    // the settings folder is checked at start
+    #[test]
+    fn a_folder_that_cannot_be_written_is_told() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_writable(dir.path()).is_ok());
+        assert!(check_writable(&dir.path().join("not yet")).is_ok());
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // root writes anywhere: the check only holds for a user
+        if std::fs::write(locked.join("x"), b"").is_err() {
+            assert!(check_writable(&locked).is_err());
+        }
+        assert!(!locked.join(".nikomiru-write-check").exists());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 }

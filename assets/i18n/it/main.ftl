@@ -93,6 +93,7 @@ error-file = Impossibile riprodurre “{ $file }”: { $reason }.
 error-config = Il file delle impostazioni { $path } non è valido alla riga { $line } ({ $reason }). Finché non lo correggi si usano i valori predefiniti.
 error-config-read = Il file delle impostazioni { $path } non si può leggere ({ $reason }). Si usano i valori predefiniti.
 error-config-write = Le impostazioni non si possono salvare in { $path } ({ $reason }). Controlla che la cartella sia scrivibile.
+error-config-dir = Nella cartella delle impostazioni { $path } non si può scrivere ({ $reason }): le impostazioni non verranno salvate. Se è stata creata con sudo, riprendila: sudo chown -R $USER: { $path }
 error-config-serialize = Le impostazioni non si possono salvare ({ $reason }).
 error-paths = HOME non è impostata: Nikomiru non trova le sue cartelle.
 

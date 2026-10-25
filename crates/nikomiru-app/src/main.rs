@@ -316,6 +316,17 @@ fn run(
     if let Some(e) = config_notice {
         notices.push(translator.error(&e));
     }
+    // a settings folder made with sudo belongs to root: saving would fail
+    if let Err(e) = nikomiru_core::config::check_writable(&paths.config_dir) {
+        tracing::warn!("{} cannot be written: {e}", paths.config_dir.display());
+        notices.push(translator.tr(
+            "error-config-dir",
+            &[
+                ("path", paths.config_dir.display().to_string()),
+                ("reason", e.to_string()),
+            ],
+        ));
+    }
     let library = match Library::open(&paths.library_db()) {
         Ok(library) => {
             if library.read_only() {

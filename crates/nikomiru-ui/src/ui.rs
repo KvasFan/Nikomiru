@@ -1148,7 +1148,10 @@ impl Ui {
             let spawned = std::thread::Builder::new()
                 .name("config-save".into())
                 .spawn(move || {
-                    let result = config.save(&file).map_err(|e| translator.error(&e));
+                    let result = config.save(&file).map_err(|e| {
+                        tracing::warn!("saving the settings: {e}");
+                        translator.error(&e)
+                    });
                     waker.wake(Inbound::ConfigSaved(result));
                 });
             if let Err(e) = spawned {

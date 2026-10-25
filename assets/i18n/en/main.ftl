@@ -93,6 +93,7 @@ error-file = Cannot play “{ $file }”: { $reason }.
 error-config = The settings file { $path } is not valid at line { $line } ({ $reason }). The defaults are in use until you fix it.
 error-config-read = The settings file { $path } cannot be read ({ $reason }). The defaults are in use.
 error-config-write = The settings cannot be saved to { $path } ({ $reason }). Check that the folder is writable.
+error-config-dir = The settings folder { $path } cannot be written ({ $reason }): the settings will not be saved. If it was made with sudo, give it back to yourself: sudo chown -R $USER: { $path }
 error-config-serialize = The settings cannot be saved ({ $reason }).
 error-paths = HOME is not set: Nikomiru cannot find its folders.
 
