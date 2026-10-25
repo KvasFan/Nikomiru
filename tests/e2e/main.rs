@@ -1459,6 +1459,43 @@ fn an_mpv_conf_is_previewed_applied_saved_and_exported() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-016: the user's own mpv.conf, while Nikomiru sets no option
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_users_mpv_conf_is_offered_on_the_player_page() {
+    let mut desk = Desktop::start();
+    // no video plays: no `ao=null` needed, and Nikomiru sets no option
+    desk.write_config("");
+    let folder = desk.path("config/mpv");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("mpv.conf"), "brightness=5\nscript=x.lua\n").unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    let s = h.state_until("the offer", |s| !s["player_page"]["preview"].is_null());
+    let page = &s["player_page"];
+    assert!(
+        page["preview"]["source"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("config/mpv/mpv.conf"),
+        "{page}"
+    );
+    assert_eq!(page["status"]["ok"], true, "{page}");
+    assert_eq!(
+        page["import_folder"].as_str(),
+        Some(folder.to_string_lossy().as_ref())
+    );
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-apply" }));
+    h.state_until("applied", |s| s["player_page"]["set"]["brightness"] == "5");
+    // now Nikomiru has its own set: the page opens on it, with no offer
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    let s = h.state_until("the page", |s| s["player_page"]["open"] == true);
+    assert!(s["player_page"]["preview"].is_null(), "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-SUB-018: subtitles written 1.2 s early are put back on the audio
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

@@ -178,6 +178,9 @@ pub struct Services {
     pub subtitles_dir: PathBuf,
     /// Where the mpv presets are kept (PLY-016).
     pub mpv_presets_dir: PathBuf,
+    /// The user's own `mpv.conf` (`$XDG_CONFIG_HOME/mpv/mpv.conf`), offered
+    /// when Nikomiru sets no mpv option yet (PLY-016).
+    pub user_mpv_conf: PathBuf,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
     /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
@@ -1143,11 +1146,33 @@ impl Session {
         }
     }
 
-    /// The Player settings page opens: the saved presets.
+    /// The Player settings page opens: the saved presets, and the option set
+    /// in use, which the page shows. While Nikomiru sets no mpv option, the
+    /// user's own `mpv.conf` is offered in the preview (PLY-016).
     pub fn player_open(&mut self) {
         self.player_page.presets = self.presets();
         self.player_page.preview = None;
         self.player_page.status = None;
+        let unset =
+            self.player_set().to_mpv_conf("").trim().is_empty() && self.player_preset().is_empty();
+        let path = self.services.user_mpv_conf.clone();
+        if unset
+            && path.is_file()
+            && let Ok(text) = self.read_conf(&path)
+        {
+            self.preview(path.display().to_string(), None, &text);
+            let text = self.tr("player-user-conf", &[]);
+            self.player_page.status = Some((text, true));
+        }
+    }
+
+    /// Where the import dialog starts: the folder of the user's `mpv.conf`.
+    pub fn mpv_conf_folder(&self) -> Option<PathBuf> {
+        self.services
+            .user_mpv_conf
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(Path::to_path_buf)
     }
 
     fn presets(&self) -> Vec<String> {

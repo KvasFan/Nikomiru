@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The Player settings page (PLY-016, PLY-018): the mpv options as controls
-//! in groups, the raw options, and presets in `mpv.conf` format, loaded with a
-//! preview of every line, saved, imported and exported.
+//! The Player settings page (PLY-016, PLY-018): the option set in use as
+//! `mpv.conf` text and as controls in groups, both editing the same set, and
+//! presets in `mpv.conf` format, loaded with a preview of every line, saved,
+//! imported and exported.
 
 use egui::{
     Align, Button, Color32, ComboBox, Frame, Layout, Margin, Rect, RichText, Role, ScrollArea,
     Stroke, TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
 };
 use nikomiru_player::options::{Line, parse_mpv_conf};
-use nikomiru_player::settings::{CONTROLS, Control, Group, Kind, OptionSet, control_of};
+use nikomiru_player::settings::{CONTROLS, Control, Group, Kind, OptionSet};
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
@@ -37,6 +38,13 @@ pub(crate) struct State {
     name: String,
     /// The sets applied when the draft was taken.
     seen_applied: Option<u64>,
+    /// The draft as `mpv.conf` text, as the user edits it.
+    text: String,
+    /// The draft the text was written from or read into: a draft changed by
+    /// the controls writes the text again.
+    text_of: Option<OptionSet>,
+    /// The text has the keyboard: it is not written again under the cursor.
+    text_focus: bool,
 }
 
 /// What the page shows.
@@ -158,6 +166,13 @@ pub(crate) fn draw(
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     ui.spacing_mut().item_spacing.y = 8.0;
     presets(ui, s, state, out);
+    if let Some(draft) = &state.draft
+        && state.text_of.as_ref() != Some(draft)
+        && !state.text_focus
+    {
+        state.text = draft.to_mpv_conf("");
+        state.text_of = Some(draft.clone());
+    }
     if let Some(preview) = &s.page.preview {
         Frame::new()
             .fill(PREVIEW)
@@ -194,6 +209,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 });
             });
     }
+    conf_text(ui, s, state);
     let Some(draft) = state.draft.as_mut() else {
         return;
     };
@@ -225,31 +241,30 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 }
             });
     }
-    let others: Vec<String> = draft
-        .values
-        .iter()
-        .filter(|(k, _)| control_of(k).is_none())
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect();
-    if !others.is_empty() {
-        ui.add(
-            egui::Label::new(
-                RichText::new((s.tr)("player-others", &[("options", others.join("  "))]))
-                    .color(DETAILS),
-            )
-            .wrap(),
-        );
+    ui.add(egui::Label::new(RichText::new(tr(s, "player-apply-note")).color(DETAILS)).wrap());
+}
+
+/// The option set in use as `mpv.conf` text (PLY-016): what the controls
+/// set, then the options they do not show. Edited, it becomes the draft; the
+/// lines that will not apply are named under it.
+fn conf_text(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
+    section(ui, &tr(s, "player-conf"));
+    let label = ui.label(tr(s, "player-conf-hint"));
+    let edit = ui
+        .add(
+            TextEdit::multiline(&mut state.text)
+                .font(egui::TextStyle::Monospace)
+                .desired_rows(8)
+                .desired_width(f32::INFINITY),
+        )
+        .labelled_by(label.id);
+    state.text_focus = edit.has_focus();
+    if edit.changed() {
+        let (set, _) = OptionSet::from_mpv_conf(&state.text);
+        state.draft = Some(set.clone());
+        state.text_of = Some(set);
     }
-    section(ui, &tr(s, "player-raw"));
-    let label = ui.label(tr(s, "player-raw-hint"));
-    ui.add(
-        TextEdit::multiline(&mut draft.raw)
-            .font(egui::TextStyle::Monospace)
-            .desired_rows(5)
-            .desired_width(f32::INFINITY),
-    )
-    .labelled_by(label.id);
-    for line in parse_mpv_conf(&draft.raw) {
+    for line in parse_mpv_conf(&state.text) {
         let text = match line {
             Line::Apply { .. } => continue,
             Line::Ignore { line, name, .. } => (s.tr)(
@@ -263,7 +278,6 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         };
         ui.label(RichText::new(text).color(BAD));
     }
-    ui.add(egui::Label::new(RichText::new(tr(s, "player-apply-note")).color(DETAILS)).wrap());
 }
 
 /// The presets: load one, save the set as one, import and export.
@@ -466,6 +480,51 @@ mod tests {
         assert!(matches!(out.as_slice(), [Command::PlayerExport(_)]));
         let out = click(&mut h, "player-import");
         assert!(matches!(out.as_slice(), [Command::PlayerImport]));
+    }
+
+    // T-PLY-016: the set in use as mpv.conf text, edited both ways
+    #[test]
+    fn the_set_in_use_is_shown_and_edited_as_mpv_conf() {
+        let mut cfg = nikomiru_core::config::PlayerConfig::default();
+        cfg.mpv_options.insert("deband".into(), "yes".into());
+        cfg.raw_mpv_options = "sharpen=0.5".into();
+        let mut h = harness(PlayerPage::default(), OptionSet::from_config(&cfg));
+        h.run();
+        let text = |h: &Harness<'_, Test>| h.get_by_label("player-conf-hint").value();
+        // preloaded: only what differs from the defaults
+        assert_eq!(text(&h).as_deref(), Some("deband=yes\nsharpen=0.5\n"));
+        // a control changed: the text follows
+        let resets: Vec<_> = h.query_all_by_label("player-reset").collect();
+        resets[0].click();
+        h.run();
+        h.run();
+        assert_eq!(text(&h).as_deref(), Some("sharpen=0.5\n"));
+        // the text typed: the controls follow, the text stays as typed
+        h.get_by_label("player-conf-hint").focus();
+        h.run();
+        h.get_by_label("player-conf-hint")
+            .type_text("brightness=7\n# mine\nscale=\n");
+        h.run();
+        h.run();
+        let typed = text(&h).unwrap_or_default();
+        assert!(
+            typed.contains("# mine") && typed.contains("scale="),
+            "{typed}"
+        );
+        assert_eq!(h.get_by_label("brightness").value().as_deref(), Some("7"));
+        let out = click(&mut h, "player-apply");
+        match out.as_slice() {
+            [Command::PlayerApply(settings)] => {
+                let (set, _) = settings.as_ref();
+                assert_eq!(set.values["brightness"], "7");
+                assert!(!set.values.contains_key("deband"), "{set:?}");
+                assert_eq!(set.raw, "sharpen=0.5", "{set:?}");
+            }
+            other => panic!("{other:?}"),
+        }
+        // the text left: written again from the set, the empty value gone
+        h.run();
+        assert_eq!(text(&h).as_deref(), Some("brightness=7\nsharpen=0.5\n"));
     }
 
     // T-PLY-016

@@ -259,6 +259,8 @@ pub fn state() -> Result<Value, String> {
                     })).collect::<Vec<_>>(),
                 })),
                 "set": s.player_set().values,
+                "preset": s.player_preset(),
+                "import_folder": s.mpv_conf_folder(),
                 "raw": s.player_set().raw,
                 "preset": s.player_preset(),
             }),

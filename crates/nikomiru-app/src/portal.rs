@@ -116,7 +116,8 @@ fn listen(conn: &mut Connection, path: &str) -> io::Result<()> {
 }
 
 /// The options of `OpenFile` and `SaveFile`: one file, the dialog's filters
-/// (glob patterns), the first one chosen; the name a save suggests.
+/// (glob patterns), the first one chosen; the name a save suggests and the
+/// folder to start in.
 pub fn options(dialog: &FileDialog, token: &str) -> Value {
     let filters: Vec<Value> = dialog
         .filters
@@ -141,6 +142,15 @@ pub fn options(dialog: &FileDialog, token: &str) -> Value {
     match &dialog.save_as {
         Some(name) => entries.push(("current_name", Value::Str(name.clone()))),
         None => entries.push(("multiple", Value::Bool(false))),
+    }
+    if let Some(folder) = &dialog.folder {
+        // a byte string ending in NUL (xdg-desktop-portal's FileChooser)
+        let mut bytes = folder.as_os_str().as_encoded_bytes().to_vec();
+        bytes.push(0);
+        entries.push((
+            "current_folder",
+            Value::Array("y".into(), bytes.into_iter().map(Value::Byte).collect()),
+        ));
     }
     if let Some(first) = filters.first() {
         entries.push(("current_filter", first.clone()));
@@ -236,6 +246,7 @@ mod tests {
                 ("All files".into(), vec!["*"]),
             ],
             save_as: None,
+            folder: None,
         }
     }
 

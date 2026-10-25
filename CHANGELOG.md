@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- The Player settings page opens on the mpv options in use, as `mpv.conf` text to edit in step with the controls (PLY-016); while Nikomiru sets no option, the user's own `~/.config/mpv/mpv.conf` is offered in the preview, and "Import mpv.conf…" starts in its folder.
 - A video opens with its local subtitles also when their names differ from its own (SUB-006): the files of its episode next to it or in a `Subs/`, `Sub/` or `Subtitles/` folder, all those of a folder named after it there, and, for a film alone in its folder, every subtitle file beside it. The language is read from the name (`Show 02.ja.srt`, `Japanese.srt`, `[JP]`).
 - A secondary subtitle (SUB-017), e.g. the translation under the Japanese line: chosen in the subtitle menu among the text tracks and files, at the top of the video or above the main subtitle, smaller, not clickable, with its own blur mode (shown, blurred or hidden until hovered), following the main subtitle's offset.
 - "Align with the audio" in the subtitle menu (SUB-018): the subtitle offset is found by matching the cues with the loud moments of the audio track (the first 20 minutes, ±15 s) and applied only when the match is clear. Downloaded subtitles are aligned by themselves once they load.

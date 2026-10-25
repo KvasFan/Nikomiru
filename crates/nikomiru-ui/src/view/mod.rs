@@ -21,6 +21,7 @@ mod popups;
 pub(crate) mod theme;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use egui::{CursorIcon, Id, Sense, ViewportCommand};
 
@@ -55,6 +56,8 @@ pub struct FileDialog {
     pub filters: Vec<(String, Vec<&'static str>)>,
     /// A dialog that saves: the name it suggests.
     pub save_as: Option<String>,
+    /// The folder it starts in, when not the portal's choice.
+    pub folder: Option<PathBuf>,
 }
 
 pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
@@ -101,6 +104,10 @@ impl FileDialog {
             title,
             filters,
             save_as: (dialog == Dialog::MpvExport).then(|| "mpv.conf".to_string()),
+            folder: match dialog {
+                Dialog::MpvImport => s.mpv_conf_folder(),
+                _ => None,
+            },
         }
     }
 }
