@@ -93,6 +93,99 @@ pub fn external_files(video: &Path, candidates: &[PathBuf]) -> Vec<External> {
     out
 }
 
+/// The folders next to a video where releases keep their subtitles.
+pub const SUBTITLE_FOLDERS: [&str; 6] = ["Subs", "subs", "Sub", "sub", "Subtitles", "subtitles"];
+
+/// How a file name is read: its episode and its language (SUB-006); given by
+/// the caller, which has the file-name parser.
+pub struct NameReader<'a> {
+    /// The episode a name states.
+    pub episode: &'a dyn Fn(&str) -> Option<u32>,
+    /// The language a subtitle name states (ISO 639-1).
+    pub language: &'a dyn Fn(&str) -> Option<String>,
+}
+
+impl std::fmt::Debug for NameReader<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NameReader").finish_non_exhaustive()
+    }
+}
+
+/// SUB-006: the subtitle files of `video` that do not share its base name,
+/// for when none does. `own` are the files of a folder named after the video
+/// (`Subs/<video name>/`): all of them are its. Otherwise, among `candidates`
+/// (its folder and its subtitle folders), the files of the video's episode;
+/// without an episode, every subtitle file when `only_video` (the folder
+/// holds no other video). The language from a suffix (`.ja.srt`) or from the
+/// name (`Japanese.srt`, `[JP]`).
+pub fn related_files(
+    video: &Path,
+    candidates: &[PathBuf],
+    own: &[PathBuf],
+    only_video: bool,
+    read: &NameReader<'_>,
+) -> Vec<External> {
+    let name = |p: &Path| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let external = |path: &PathBuf| {
+        let format = Format::from_extension(&path.extension()?.to_string_lossy())?;
+        let stem = path.file_stem()?.to_string_lossy().to_lowercase();
+        let language = stem
+            .rsplit_once('.')
+            .map(|(_, tag)| tag.to_string())
+            .filter(|tag| looks_like_language(tag))
+            .or_else(|| (read.language)(&name(path)))
+            .or_else(|| (read.language)(&format!("x.{stem}.srt")));
+        Some(External {
+            path: path.clone(),
+            format,
+            language,
+        })
+    };
+    let mut out: Vec<External> = if own.iter().any(|p| external(p).is_some()) {
+        own.iter().filter_map(external).collect()
+    } else {
+        let episode = (read.episode)(&name(video));
+        candidates
+            .iter()
+            .filter_map(external)
+            .filter(|e| match episode {
+                Some(ep) => (read.episode)(&name(&e.path)) == Some(ep),
+                None => only_video,
+            })
+            .collect()
+    };
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+/// MET-008: the subtitles downloaded for a video, kept in a folder of their
+/// own: every subtitle file there is the video's, whatever its base name, with
+/// the language of its suffix (`Show - 01.ja.srt`). Sorted by file name.
+pub fn downloaded_files(paths: &[PathBuf]) -> Vec<External> {
+    let mut out: Vec<External> = paths
+        .iter()
+        .filter_map(|path| {
+            let format = Format::from_extension(&path.extension()?.to_string_lossy())?;
+            let stem = path.file_stem()?.to_string_lossy().to_lowercase();
+            let language = stem
+                .rsplit_once('.')
+                .map(|(_, tag)| tag.to_string())
+                .filter(|tag| looks_like_language(tag));
+            Some(External {
+                path: path.clone(),
+                format,
+                language,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
 /// An embedded subtitle track, as the player lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddedTrack {
@@ -170,6 +263,106 @@ pub fn choose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reader() -> (
+        impl Fn(&str) -> Option<u32>,
+        impl Fn(&str) -> Option<String>,
+    ) {
+        // a stand-in for the file-name parser: the last number in the name
+        let episode = |name: &str| {
+            let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
+            let digits: String = stem
+                .chars()
+                .rev()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(char::is_ascii_digit)
+                .collect();
+            digits.chars().rev().collect::<String>().parse().ok()
+        };
+        let language = |name: &str| {
+            let lower = name.to_lowercase();
+            (lower.contains("japanese") || lower.contains("[jp]")).then(|| "ja".to_string())
+        };
+        (episode, language)
+    }
+
+    // T-SUB-006: subtitles that do not share the video's name
+    #[test]
+    fn related_files_by_episode_folder_or_only_video() {
+        let (episode, language) = reader();
+        let read = NameReader {
+            episode: &episode,
+            language: &language,
+        };
+        let paths = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(PathBuf::from).collect() };
+        let video = Path::new("/v/Show - 02.mkv");
+        let candidates = paths(&[
+            "/v/Show 01 [JP].srt",
+            "/v/Show 02 [JP].ass",
+            "/v/Show 02.en.srt",
+            "/v/Subs/Show 03.srt",
+            "/v/notes.txt",
+        ]);
+        let found = related_files(video, &candidates, &[], false, &read);
+        let got: Vec<(&str, Option<&str>)> = found
+            .iter()
+            .map(|e| (e.path.to_str().unwrap(), e.language.as_deref()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("/v/Show 02 [JP].ass", Some("ja")),
+                ("/v/Show 02.en.srt", Some("en"))
+            ]
+        );
+        assert_eq!(
+            choose(None, &found, &[], "ja"),
+            Some(Choice::External(PathBuf::from("/v/Show 02 [JP].ass")))
+        );
+        // a folder named after the video: all of it, whatever the names
+        let own = paths(&["/v/Subs/Ep/2_English.srt", "/v/Subs/Ep/3_Japanese.srt"]);
+        let found = related_files(Path::new("/v/Ep.mkv"), &candidates, &own, false, &read);
+        let langs: Vec<Option<&str>> = found.iter().map(|e| e.language.as_deref()).collect();
+        // the stand-in reads only Japanese
+        assert_eq!(langs, [None, Some("ja")]);
+        // a film alone in its folder: every subtitle file
+        let film = Path::new("/f/Movie.mkv");
+        let subs = paths(&["/f/movie.jpn.srt", "/f/readme.txt"]);
+        assert_eq!(related_files(film, &subs, &[], true, &read).len(), 1);
+        assert!(related_files(film, &subs, &[], false, &read).is_empty());
+    }
+
+    // T-MET-008
+    #[test]
+    fn downloaded_files_are_the_videos_whatever_their_name() {
+        let paths: Vec<PathBuf> = [
+            "/d/Old Name.ja.srt",
+            "/d/Old Name (2).ja.ass",
+            "/d/x.srt",
+            "/d/notes.txt",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        let files = downloaded_files(&paths);
+        let got: Vec<(&str, Option<&str>)> = files
+            .iter()
+            .map(|e| (e.path.to_str().unwrap(), e.language.as_deref()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("/d/Old Name (2).ja.ass", Some("ja")),
+                ("/d/Old Name.ja.srt", Some("ja")),
+                ("/d/x.srt", None),
+            ]
+        );
+        // the automatic choice takes one in the preferred language
+        assert_eq!(
+            choose(None, &files, &[], "ja"),
+            Some(Choice::External(PathBuf::from("/d/Old Name (2).ja.ass")))
+        );
+    }
 
     // T-SUB-006
     #[test]

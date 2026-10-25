@@ -825,6 +825,161 @@ impl Style {
     pub fn is_empty(&self) -> bool {
         *self == Style::default()
     }
+
+    /// The declarations of this style as CSS (`color:#112233;font-weight:bold;`),
+    /// written from the checked values: what a dictionary wrote outside the
+    /// subset is not there (the cards of ANK-023).
+    pub fn to_css(&self) -> String {
+        let mut out = String::new();
+        let mut decl = |name: &str, value: String| {
+            out.push_str(name);
+            out.push(':');
+            out.push_str(&value);
+            out.push(';');
+        };
+        if let Some(c) = self.color {
+            decl("color", css_color(c));
+        }
+        if let Some(c) = self.background {
+            decl("background-color", css_color(c));
+        }
+        if let Some(s) = self.font_scale.filter(|s| s.is_finite()) {
+            decl("font-size", format!("{}em", round(s)));
+        }
+        if let Some(b) = self.bold {
+            decl("font-weight", if b { "bold" } else { "normal" }.into());
+        }
+        if let Some(i) = self.italic {
+            decl("font-style", if i { "italic" } else { "normal" }.into());
+        }
+        if self.underline.is_some() || self.strike.is_some() {
+            let lines: Vec<&str> = [
+                (self.underline == Some(true)).then_some("underline"),
+                (self.strike == Some(true)).then_some("line-through"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let value = if lines.is_empty() {
+                "none".to_string()
+            } else {
+                lines.join(" ")
+            };
+            decl("text-decoration-line", value);
+        }
+        if let Some(v) = self.vertical_align {
+            let value = match v {
+                VerticalAlign::Sub => "sub",
+                VerticalAlign::Super => "super",
+            };
+            decl("vertical-align", value.into());
+        }
+        if let Some(t) = self.text_align {
+            let value = match t {
+                TextAlign::Left => "left",
+                TextAlign::Right => "right",
+                TextAlign::Center => "center",
+                TextAlign::Justify => "justify",
+            };
+            decl("text-align", value.into());
+        }
+        for (prefix, sides) in [("margin", &self.margin), ("padding", &self.padding)] {
+            for (side, value) in [
+                ("top", sides.top),
+                ("right", sides.right),
+                ("bottom", sides.bottom),
+                ("left", sides.left),
+            ] {
+                if let Some(css) = value.and_then(css_length) {
+                    decl(&format!("{prefix}-{side}"), css);
+                }
+            }
+        }
+        if let Some(c) = self.border_color {
+            decl("border-color", css_color(c));
+        }
+        if let Some(w) = self.border_width.and_then(css_length) {
+            decl("border-width", w);
+        }
+        if let Some(r) = self.border_radius.and_then(css_length) {
+            decl("border-radius", r);
+        }
+        let drawn = self
+            .border_width
+            .is_some_and(|w| w.px(16.0) > 0.0)
+            .then(|| self.border_sides.unwrap_or([true; 4]))
+            .or(self.border_sides);
+        if let Some(sides) = drawn {
+            let value: Vec<&str> = sides
+                .iter()
+                .map(|&on| if on { "solid" } else { "none" })
+                .collect();
+            decl("border-style", value.join(" "));
+        }
+        if let Some(m) = &self.list_marker {
+            let value = match m {
+                ListMarker::None => "none".to_string(),
+                ListMarker::Disc => "disc".into(),
+                ListMarker::Circle => "circle".into(),
+                ListMarker::Square => "square".into(),
+                ListMarker::Decimal => "decimal".into(),
+                ListMarker::LowerAlpha => "lower-alpha".into(),
+                ListMarker::UpperAlpha => "upper-alpha".into(),
+                ListMarker::LowerRoman => "lower-roman".into(),
+                ListMarker::UpperRoman => "upper-roman".into(),
+                ListMarker::CjkIdeographic => "cjk-ideographic".into(),
+                ListMarker::Text(t) => css_string(t),
+            };
+            decl("list-style-type", value);
+        }
+        out
+    }
+}
+
+/// A number as CSS writes it, to three decimals.
+fn round(v: f32) -> String {
+    let text = format!("{:.3}", v);
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    if text.is_empty() || text == "-0" {
+        "0".to_string()
+    } else {
+        text.to_string()
+    }
+}
+
+fn css_length(l: Length) -> Option<String> {
+    match l {
+        Length::Em(v) if v.is_finite() => Some(format!("{}em", round(v))),
+        Length::Px(v) if v.is_finite() => Some(format!("{}px", round(v))),
+        _ => None,
+    }
+}
+
+fn css_color(Rgba { r, g, b, a }: Rgba) -> String {
+    if a == 255 {
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+    }
+}
+
+/// `text` as a quoted CSS string, safe inside a `style` attribute and a
+/// `<style>` element.
+pub fn css_string(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '<' | '>' | '&' | '\'' => out.push_str(&format!("\\{:x} ", c as u32)),
+            c if c.is_control() => out.push_str(&format!("\\{:x} ", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]
@@ -950,5 +1105,59 @@ mod tests {
         assert_eq!(child.font_scale, Some(0.75));
         // a block's children keep the size
         assert_eq!(child.inherited().font_scale, Some(0.75));
+    }
+
+    // T-ANK-023
+    #[test]
+    fn the_css_written_back_reads_the_same() {
+        let mut style = Style::default();
+        for (property, value) in [
+            ("color", "rgb(255, 0, 0)"),
+            ("backgroundColor", "#00ff0080"),
+            ("fontSize", "0.8em"),
+            ("fontWeight", "bold"),
+            ("fontStyle", "italic"),
+            ("textDecorationLine", "underline line-through"),
+            ("verticalAlign", "super"),
+            ("textAlign", "center"),
+            ("marginTop", "0.5em"),
+            ("paddingLeft", "4px"),
+            ("borderColor", "blue"),
+            ("borderWidth", "1px"),
+            ("borderRadius", "3px"),
+            ("borderStyle", "none solid"),
+            ("listStyleType", "\"①\""),
+            ("position", "absolute"),
+            ("backgroundImage", "url(http://example.org/x.png)"),
+        ] {
+            style.set(property, value);
+        }
+        let css = style.to_css();
+        assert_eq!(
+            css,
+            "color:#ff0000;background-color:#00ff0080;font-size:0.8em;font-weight:bold;\
+             font-style:italic;text-decoration-line:underline line-through;\
+             vertical-align:super;text-align:center;margin-top:0.5em;padding-left:4px;\
+             border-color:#0000ff;border-width:1px;border-radius:3px;\
+             border-style:none solid none solid;list-style-type:\"①\";"
+        );
+        let mut again = Style::default();
+        for declaration in css.split(';').filter(|d| !d.is_empty()) {
+            let (property, value) = declaration.split_once(':').unwrap();
+            assert!(again.set(property, value), "{declaration}");
+        }
+        assert_eq!(again, style);
+        assert_eq!(Style::default().to_css(), "");
+    }
+
+    #[test]
+    fn css_strings_stay_strings() {
+        assert_eq!(css_string("①"), "\"①\"");
+        assert_eq!(css_string("a\"b\\"), r#""a\"b\\""#);
+        let hostile = css_string("</style><script>");
+        assert!(
+            !hostile.contains('<') && !hostile.contains('>'),
+            "{hostile}"
+        );
     }
 }

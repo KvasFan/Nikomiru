@@ -22,6 +22,7 @@ test-support = []
 [dev-dependencies]
 # the L5 tests read properties back
 nikomiru-player = { path = ".", features = ["test-support"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -446,6 +446,125 @@ impl Sheet {
     }
 }
 
+/// The HTML attribute of a structured-content `data` entry whose key is
+/// `kebab` (already in kebab case): `data-sc-<key>`, or `data-sc<key>` when
+/// the key starts with a CJK character, as Yomitan writes it.
+pub fn data_attribute(kebab: &str) -> String {
+    let cjk = kebab
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c as u32, 0x3000..=0x9FFF | 0xF900..=0xFAFF));
+    if cjk {
+        format!("data-sc{kebab}")
+    } else {
+        format!("data-sc-{kebab}")
+    }
+}
+
+impl Compound {
+    /// As CSS, or `None` if a name cannot be written safely.
+    fn to_css(&self) -> Option<String> {
+        let mut out = String::new();
+        if let Some(tag) = &self.tag {
+            if !is_ident(tag) {
+                return None;
+            }
+            out.push_str(tag);
+        }
+        for (name, value) in &self.attrs {
+            if let Some(of) = name.strip_prefix("\0tag:") {
+                if !is_ident(of) {
+                    return None;
+                }
+                out.push_str(&format!(".gloss-sc-{of}"));
+                continue;
+            }
+            if !is_ident(name) {
+                return None;
+            }
+            out.push('[');
+            out.push_str(&data_attribute(name));
+            if let Some(v) = value {
+                out.push('=');
+                out.push_str(&crate::style::css_string(v));
+            }
+            out.push(']');
+        }
+        (!out.is_empty()).then_some(out)
+    }
+}
+
+impl Selector {
+    fn to_css(&self) -> Option<String> {
+        let mut out = String::new();
+        for (i, part) in self.parts.iter().enumerate() {
+            if i > 0 {
+                out.push_str(match self.combinators[i - 1] {
+                    Combinator::Child => " > ",
+                    Combinator::Descendant => " ",
+                });
+            }
+            out.push_str(&part.to_css()?);
+        }
+        Some(out)
+    }
+}
+
+impl Compound {
+    /// Whether `html` holds every tag, class and attribute name this compound
+    /// asks for: if not, it matches nothing there.
+    fn may_match(&self, html: &str) -> bool {
+        let tag_ok = self.tag.as_ref().is_none_or(|t| {
+            html.match_indices(&format!("<{t}"))
+                .any(|(i, m)| matches!(html.as_bytes().get(i + m.len()), Some(b' ' | b'>')))
+        });
+        tag_ok
+            && self
+                .attrs
+                .iter()
+                .all(|(name, _)| match name.strip_prefix("\0tag:") {
+                    Some(of) => html.contains(&format!("gloss-sc-{of}")),
+                    None => html.contains(&data_attribute(name)),
+                })
+    }
+}
+
+impl Sheet {
+    /// The rules as CSS, each selector inside `scope` (`.yomitan-glossary
+    /// [data-dictionary="D"]`), in their order, written from the checked
+    /// values: no at-rule, no `url()`, nothing outside the subset (ANK-023).
+    pub fn to_css(&self, scope: &str) -> String {
+        self.to_css_for(scope, None)
+    }
+
+    /// [`Sheet::to_css`] without the rules that cannot match anything in
+    /// `html` (a card carries only the CSS its glossary uses).
+    pub fn to_css_used(&self, scope: &str, html: &str) -> String {
+        self.to_css_for(scope, Some(html))
+    }
+
+    fn to_css_for(&self, scope: &str, html: Option<&str>) -> String {
+        let mut rules: Vec<&Rule> = self.rules.iter().collect();
+        rules.sort_by_key(|r| r.order);
+        let mut out = String::new();
+        for r in rules {
+            if let Some(html) = html
+                && !r.selector.parts.iter().all(|p| p.may_match(html))
+            {
+                continue;
+            }
+            let (Some(selector), declarations) = (r.selector.to_css(), r.style.to_css()) else {
+                continue;
+            };
+            if declarations.is_empty() {
+                continue;
+            }
+            out.push_str(&format!("{scope} {selector} {{ {declarations} }}\n"));
+        }
+        out
+    }
+}
+
 /// `dataKey` → `data-key`, as the browser names `data` attributes.
 pub fn kebab(key: &str) -> String {
     let mut out = String::with_capacity(key.len() + 2);
@@ -616,5 +735,40 @@ mod tests {
         // a deep nest neither overflows nor takes long
         let deep = "a {".repeat(5000) + &"}".repeat(5000);
         let _ = Sheet::parse(&deep);
+    }
+
+    // T-ANK-023
+    #[test]
+    fn a_sheet_is_written_back_scoped_with_only_the_subset() {
+        let sheet = Sheet::parse(
+            r#"
+            @import url(http://example.org/x.css);
+            span[data-sc-content="tag"] { color: red; position: absolute }
+            .gloss-sc-div > li[data-sc用例] { font-weight: bold }
+            a:hover { color: blue }
+            div { background: url(http://example.org/x.png) }
+            [data-sc-x="</style><script>"] { color: green }
+            "#,
+        );
+        let css = sheet.to_css(r#".yomitan-glossary [data-dictionary="D"]"#);
+        assert_eq!(
+            css,
+            ".yomitan-glossary [data-dictionary=\"D\"] span[data-sc-content=\"tag\"] { color:#ff0000; }\n\
+             .yomitan-glossary [data-dictionary=\"D\"] .gloss-sc-div > li[data-sc用例] { font-weight:bold; }\n\
+             .yomitan-glossary [data-dictionary=\"D\"] [data-sc-x=\"\\3c /style\\3e \\3c script\\3e \"] { color:#008000; }\n"
+        );
+        assert!(!css.contains("url(") && !css.contains('@') && !css.contains('<'));
+        // only what the HTML can match
+        let used = sheet.to_css_used(
+            ".g",
+            r#"<li class="gloss-sc-li"><span class="gloss-sc-span" data-sc-content="tag">x</span></li>"#,
+        );
+        assert_eq!(
+            used,
+            ".g span[data-sc-content=\"tag\"] { color:#ff0000; }\n"
+        );
+        assert_eq!(sheet.to_css_used(".g", "<b>plain</b>"), "");
+        assert_eq!(data_attribute("content"), "data-sc-content");
+        assert_eq!(data_attribute("用例囲み-g"), "data-sc用例囲み-g");
     }
 }

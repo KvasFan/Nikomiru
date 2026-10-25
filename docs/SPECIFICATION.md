@@ -172,7 +172,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | Resource | License | Rule |
 |---|---|---|
 | Yomitan transform tables (JSON generated from Fushi `fushi/assets/transforms/`) | GPL-3.0 | Copied into `assets/transforms/` with a `PROVENANCE.md` file (Yomitan version and Fushi commit) |
-| Lapis note templates (donkuri/lapis) | GPL-3.0 | Copied into `assets/anki/lapis/` with a pinned version |
+| Lapis note templates (donkuri/lapis) | GPL-3.0 | Copied byte for byte into `assets/anki/lapis/` from a release tag, with a `PROVENANCE.md` (version, commit, hashes, authors); credited in the README and on the About screen, since `THIRD_PARTY_LICENSES.html` lists crates only |
 | Dictionaries (JMdict, JMnedict, KANJIDIC, frequency dictionaries, etc.) | Various (e.g. CC BY-SA 4.0) | **NOT** distributed. The user imports them. Tests use hand-written dictionaries (TEST §4.3) |
 | Fonts | — | **NO** fonts are distributed: system fonts are used (e.g. Noto CJK). An OFL font is not in the allowed list |
 | Icons and logo | GPL-3.0-only | Original works of the project; no Creative Commons license, for consistency with the policy |
@@ -219,7 +219,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | Serialization | `serde`, `serde_json`, `toml`, `postcard` | 1.x | MIT OR Apache-2.0 |
 | Compression | `lz4_flex` | 0.14 | MIT |
 | ZIP | `zip` (`default-features = false`, `deflate-flate2`; `flate2` with `miniz_oxide` backend) | 9.x | MIT |
-| HTTP | `reqwest` (`default-features = false`, `json`, `native-tls`) | 0.13 | MIT OR Apache-2.0 |
+| HTTP | `reqwest` (`default-features = false`, `blocking`, `native-tls`: the workers are threads, so the blocking client, with no proxy for AnkiConnect, [ADR 0007](adr/0007-mining-to-anki.md)) | 0.13 | MIT OR Apache-2.0 |
 | Unicode | `icu_normalizer`, `unicode-segmentation` | 2.3 / 1.13 | Unicode-3.0 (class B) / MIT OR Apache-2.0 |
 | Errors | `thiserror` (libraries), `anyhow` (binary and xtask only) | 2.x / 1.x | MIT OR Apache-2.0 |
 | Logging | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 | MIT |
@@ -230,7 +230,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
 | Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to the popup's view model | `ammonia` | 4.x | MIT OR Apache-2.0 |
-| Tests | `proptest`, `insta`, `criterion`, `wiremock`, `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
+| Tests | `proptest`, `insta`, `criterion`, `wiremock` (online services, M7; AnkiConnect has its own fake), `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
 
 Every new crate requires, in the PR: the license (verified by `cargo deny`), a justification and an assessment of the "write the code ourselves" alternative.
 
@@ -328,15 +328,15 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
  └──────────────────────▲───────────────────┘   (proxy)    └─────────────────────────────┘
                         │ messages (proxy)
  ┌──────────────────────┴──────────────────────────────────────────────────────────────┐
- │ workers: subtitles (ffmpeg), lookup, import, library writes, portal, single          │
- │ instance, signals, test harness                                                       │
+ │ workers: subtitles (ffmpeg), lookup, import, library writes, anki (mining), portal,   │
+ │ single instance, signals, test harness                                                │
  └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - The **UI thread** runs the winit event loop, egui and the session (the UI state), and renders the video in every frame (§5.2.2). It never waits for the mpv core.
-- The **`mpv-commands` thread** runs the player's commands in order with the synchronous libmpv API: `PlayerHandle` queues them and never waits for them. Their errors are logged; a refused `loadfile` becomes an `EndFile` error of its load.
+- The **`mpv-commands` thread** runs the player's commands in order with the synchronous libmpv API: `PlayerHandle` queues them and never waits for them. Their errors are logged; a refused `loadfile` becomes an `EndFile` error of its load. A command with a reply (the screenshots of PLY-011 and ANK-034) sends its result back on a channel, which only a worker waits on.
 - The **`mpv-events` thread** waits for mpv events and turns them into `PlayerEvent`s stamped with their load's token (ARC-002).
-- **Workers**, each on its own thread: subtitle loading and extraction, dictionary lookups and imports, library writes, the screensaver portal, the single-instance socket, the termination signals. Their results reach the UI thread as messages through the event loop's proxy, which also wakes it.
+- **Workers**, each on its own thread: subtitle loading and extraction, dictionary lookups and imports, library writes, the `anki` worker (AnkiConnect requests one at a time, and the mining of a card: the frame the session asked for at the click, ffmpeg jobs in parallel, composition, upload; on exit it finishes the job it is on and drops the queued ones; [ADR 0007](adr/0007-mining-to-anki.md)), the screensaver portal, the single-instance socket, the termination signals. Their results reach the UI thread as messages through the event loop's proxy, which also wakes it.
 
 - **ARC-001**: `nikomiru-player` exposes `PlayerHandle` (asynchronous commands) and a stream of `PlayerEvent`. The observed properties (`observe_property`) are: `time-pos`, `duration`, `pause`, `speed`, `volume`, `mute`, `track-list`, `aid`, `sid`, `chapter-list`, `eof-reached`, `seeking`, `paused-for-cache`, `video-params`, `demuxer-cache-state`.
 - **ARC-002**: every load has an increasing `LoadToken`. Events and asynchronous results with an old token are discarded. This is the equivalent of the Fushi bugs "re-check player and loadToken after every await".
@@ -368,12 +368,12 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 - **ERR-001**: libraries define typed errors with `thiserror`. The UI shows translated, actionable messages ("AnkiConnect is not responding on 127.0.0.1:8765: is Anki open?").
 - **ERR-002**: no `panic!`/`unwrap()` on external input (files, network, dictionaries). Clippy with `unwrap_used` and `expect_used` counts as an error in library crates.
 - **PRV-001**: zero telemetry. Without a user action or a feature the user has enabled, the only allowed connection is to AnkiConnect on loopback.
-- **PRV-002**: logs contain neither subtitle text nor API keys. Paths are allowed.
+- **PRV-002**: logs contain neither subtitle text nor API keys, nor a user name or password in a URL. Paths are allowed.
 
 ### 5.7 Single instance and URL scheme
 
 - **APP-001**: only one instance per user. A second launch passes its arguments (files to open, `nikomiru://` URLs) to the running instance through the Unix socket `$XDG_RUNTIME_DIR/nikomiru.sock`, then exits.
-- **APP-002**: the `.desktop` file registers `MimeType=x-scheme-handler/nikomiru;` and the video types, with `Exec=nikomiru %U`.
+- **APP-002**: the `.desktop` file (`assets/nikomiru.desktop`) registers `MimeType=x-scheme-handler/nikomiru;` and the video types, with `Exec=nikomiru %U`. Until the packages of 1.0, `cargo xtask install` installs it with the binary for the user and registers the scheme.
 
 ---
 
@@ -410,14 +410,14 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 | PLY-008 | After `file-loaded`: adopt the actual `aid`; disable mpv rendering for text tracks (`sid=no`, `sub-visibility=no`); apply the saved volume and speed | `video_player_controller.dart` `load()` |
 | PLY-009 | The player and the render context are **reused** from one episode to the next: only the content is recreated with `loadfile replace` | BUG-120 |
 | PLY-010 | Speed uses only the `speed` property, never the `scaletempo` filter | TODO-116 |
-| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) | |
+| PLY-011 | Screenshot (`S`): the frame without subtitles goes into the `Pictures/Nikomiru` folder (`$XDG_PICTURES_DIR/Nikomiru`) as `<file name> <HH-MM-SS.mmm>.png` (a taken name gets ` (2)`, ` (3)`…, reserved at once so two screenshots never share one), and a message names the file | |
 | PLY-012 | Playback errors (missing file, unsupported codec, `end-file` with an error) MUST show an understandable message and must not block the app | |
 | PLY-013 | Screensaver inhibition during playback, through the XDG `Inhibit` portal (flag *idle*), kept for one minute after a pause. Nikomiru talks to the portal with its own minimal D-Bus client (`nikomiru-app::dbus`): `zbus` would add about 45 crates for three fixed calls. If the portal is not available, a warning is logged: mpv's `stop-screensaver` has no effect under the render API, because mpv owns no window | |
 | PLY-014 | Thumbnails on the progress bar: post-1.0 | |
 | PLY-015 | Screenshot with the overlay subtitles (`Shift+S`): post-1.0, because it requires compositing the overlay onto the frame | |
-| PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/nikomiru/mpv/<name>.conf`, or to any file chosen in the file dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`); (c) switch between saved presets. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as applied, ignored (with the reason) or invalid (with mpv's error); nothing changes until the user confirms. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Nikomiru version, date) and only the options that differ from the defaults, so the file also works in mpv | |
+| PLY-016 | **mpv option presets in `mpv.conf` format.** The mpv options set from the UI (PLY-006, PLY-018) and the raw options form one *option set*. In Settings → Player (⚙ in the bar) the user MUST be able to: (a) **save** the option set as a named preset in `$XDG_CONFIG_HOME/nikomiru/mpv/<name>.conf`, or **export** it to any file chosen in the portal's save dialog; (b) **load** an `mpv.conf` file (a preset, or any file such as the user's own `~/.config/mpv/mpv.conf`, chosen in the portal's file dialog); (c) switch between saved presets; (d) see and edit the option set **in use**: the page opens on it, as `mpv.conf` text (only what differs from the defaults) kept in step with the controls, with the preset last loaded or saved selected. While Nikomiru sets no mpv option, the user's own `$XDG_CONFIG_HOME/mpv/mpv.conf`, which mpv reads and Nikomiru does not (`config=no`, PLY-005), is offered in the preview, and the import dialog starts in its folder. Loading replaces the whole option set: options that the UI exposes fill its controls, the others go to the raw options. Accepted syntax: `key=value`, `key` (flag = `yes`), `no-key`, `--key=value`, quoted values, `#` comments, blank lines, `profile=` with a built-in profile (`fast`, `high-quality`, `gpu-hq`). Before applying, a preview lists every line as a control, a raw option, ignored (with the reason) or invalid (with what is wrong); nothing changes until the user confirms, and the values mpv then refuses are named on the page. User-defined `[sections]`, `include=` and conditional profiles are ignored with a warning. Saving writes a header comment (Nikomiru version, date) and only the options that differ from the defaults, so the file also works in mpv | |
 | PLY-017 | **Options that the raw options and the presets can never set** (PLY-006, PLY-016): they are rejected with a reason and never reach mpv. (1) The fixed options of PLY-005. (2) Options that run code, load other configuration, open sockets or write files outside the XDG folders (NFR-SEC-02): `script*`, `scripts`, `load-*`, `include`, `config-dir`, `use-filedir-conf`, `input-*`, `log-file`, `dump-stats`, `stream-dump`, `stream-record`, `record-file`, `watch-later-*`, `write-filename-in-watch-later-config`, `screenshot-*` (Nikomiru owns screenshots, PLY-011), `ytdl*`. (3) Options with no effect under the libmpv render API (`gpu-api`, `gpu-context`, `vo-*`) are ignored with a warning, and so are `sub-*` options for text subtitles, which Nikomiru draws itself (§6.4). The list is a single table in `nikomiru-player`, covered by tests | |
-| PLY-018 | **Render and audio settings in the UI** (Settings → Player, groups Rendering, Audio and Advanced): profile (`default`, `fast`, `high-quality`), `scale`, `cscale`, `dscale`, `deband` (with `deband-iterations` and `deband-threshold`), `dither-depth`, `interpolation` (with `tscale` and `video-sync`), `tone-mapping`, `target-peak`, `hdr-compute-peak`, `deinterlace`, `brightness`, `contrast`, `saturation`, `gamma`, `hwdec`; audio: `audio-channels`, `audio-pitch-correction`, `volume-max`, `audio-normalize-downmix`. Each control writes the same mpv option that a preset contains (PLY-016). Options that mpv can change at runtime apply immediately (SET-002); the others apply from the next file, with a note next to the control. Each group has a reset to the defaults (SET-006) | |
+| PLY-018 | **Render and audio settings in the UI** (Settings → Player, groups Rendering, Audio and Advanced): profile (`default`, `fast`, `high-quality`), `scale`, `cscale`, `dscale`, `deband` (with `deband-iterations` and `deband-threshold`), `dither-depth`, `interpolation` (with `tscale` and `video-sync`), `tone-mapping`, `target-peak`, `hdr-compute-peak`, `deinterlace`, `brightness`, `contrast`, `saturation`, `gamma`, `hwdec`; audio: `audio-channels`, `audio-pitch-correction`, `volume-max`, `audio-normalize-downmix`. Each control writes the same mpv option that a preset contains (PLY-016); "default" leaves the option unset. Applying the page sets the options in mpv at once, without reloading the file (SET-002), and an option the user unset goes back to the value mpv had when it started; the profile, `hwdec` and a removed raw option take effect from the next file or the next start, and the page names them. Each group has a reset to the defaults (SET-006) | |
 
 ### 6.3 Shortcuts (KEY)
 
@@ -427,6 +427,7 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 | KEY-002 | Keys are recognized by their **physical key**, i.e. the scan code (winit's physical key, as a Linux evdev code), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
 | KEY-003 | Two actions in the same context (`global`, `library`, `player`, `popup`) cannot have the same key: the editor reports the conflict and does not save. |
 | KEY-004 | While a text field is focused, single-key shortcuts are disabled. |
+| KEY-005 | A held key repeats only the actions that step (seek, volume, speed up and down, frame, chapter, cue, subtitle offset, popup entry); the others run once per press. |
 
 Default player bindings, from Fushi `shortcut_defaults.dart`:
 
@@ -440,7 +441,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | Speed + / − / normal | ], = / [, - / Backspace | M1 |
 | Hold for 2× speed | E | M1 |
 | Previous / next frame | , / . | M1 |
-| Screenshot | S | M1 |
+| Screenshot | S | M4 |
 | Fullscreen | F, F11 | M1 |
 | Subtitle list / search | L / Ctrl+F | M2 |
 | Blur subtitle / hide subtitle | B / H | M2 |
@@ -463,7 +464,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-003 | **ASS/SSA** parser (basic for 1.0): `[Script Info]` (PlayResX/Y, default 384×288), `[V4+ Styles]`, `[Events]` (Dialogue with Layer, Start, End, Style, Text), overrides `\N \n \h \an1-9 \pos \b \i \u \s \c \1c \fs \fn \r` (`\n` is a line break only with `WrapStyle: 2`, a space otherwise, as in libass; a missing PlayResX or PlayResY is derived from the other at 4:3, as in libass). Other overrides are ignored without error. Lines with `\p1` drawings are excluded from the clickable text | `ass_parser.dart`, `subtitle_markup.dart` |
 | SUB-004 | Every cue has `start_ms`, `end_ms`, `plain_text` (used for lookup, mining and counts) and a separate `markup`, used only for drawing. In `plain_text` the lines of a cue are separated by `\n` (Fushi joins them with a space and keeps the break positions apart): lookup treats `\n` as a boundary, and mining (M4) joins the lines as the note type needs | |
 | SUB-005 | Encoding: UTF-8/UTF-16 BOM → otherwise UTF-8 validation → otherwise try Shift_JIS (CP932), EUC-JP, GB18030, Big5, CP1252 through `iconv`, choosing the first one that decodes without errors and with the highest score of plausible characters. The detected encoding is shown with a readable name ("Japanese — Shift_JIS (CP932)") and can be forced | `text_file_io.dart` |
-| SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`). They are loaded automatically according to the preferred language (default `ja`) | |
+| SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`), and the subtitles downloaded for it (MET-008). When no file has its base name, the files that belong to it by another name: those of a folder named after the video inside `Subs/`, `Sub/` or `Subtitles/` (any case of the first letter); otherwise the files of the video's episode (MET-010 parser) in its folder and in those subtitle folders; for a video without an episode, all of them when the folder holds no other video. Their language comes from a suffix or from the name (`Japanese.srt`, `[JP]`, MET-003). They are loaded automatically according to the preferred language (default `ja`), when the video opens | |
 | SUB-007 | Embedded text tracks: extracted with `ffmpeg -y -i file:<video> -map 0:<ff-index> -c:s <srt\|ass\|webvtt> <cache>`. Several tracks are extracted in a single pass; if the pass fails, it is retried track by track. The cache key is (path, size, mtime, ff-index) | `video_subtitle_source.dart` |
 | SUB-008 | Automatic subtitle selection: (1) the choice saved for the series; (2) an external file in the preferred language; (3) an embedded track in the preferred language (`lang` = ja/jpn, or a title that contains "Japanese" or "日本語"); (4) none | |
 | SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a hit target of the laid-out text carrying its byte offset in `plain_text` | `video_subtitle_overlay.dart` |
@@ -474,8 +475,8 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur is a soft blur of the text, with sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235). **V** turns the subtitles off and on: nothing is drawn, not even on hover, and the chosen track stays for when they come back (maintainer request after the M2 checklist) | |
 | SUB-015 | Subtitle list panel (`L`): list of all cues with time, text search (`Ctrl+F`), automatic scrolling that follows playback (in gaps between cues it stays on the previous cue), click on the time to jump, click on a word for lookup | `video_subtitle_jump_panel.dart` |
 | SUB-016 | Align the start of the previous or next cue to the current position (Ctrl+Shift+←/→), updating `delay_ms` | |
-| SUB-017 | **Secondary** subtitle (e.g. a translation): second layer with its own offset (default: follows the main one), its own blur mode and position. Milestone M7 | |
-| SUB-018 | Automatic alignment with the waveform: RMS envelope with ffmpeg `astats` and cross-correlation (100 ms bins, ±15 s search, minimum confidence 0.15). Milestone M7 | `subtitle_auto_align.dart`, `audio_energy_probe.dart` |
+| SUB-017 | **Secondary** subtitle (e.g. a translation), chosen among the text sources in the subtitle menu: a second layer at 85 % of the size, at the top of the video or above the main subtitle at the bottom (`[subtitles] secondary_position`), never clicked (no lookups), with its own obscuring mode (`secondary_obscure`, revealed with the main one on hover); it follows the main offset. Its load neither cancels nor is cancelled by the main one's. Milestone M4b (D-14) | |
+| SUB-018 | **Automatic alignment with the audio** ("Align with the audio" in the subtitle menu, and by itself after downloaded subtitles load, MET-007): the first 20 minutes of the active audio track decoded by ffmpeg to 8 kHz mono PCM, its RMS level every 100 ms; the bins in the loud part of the track's own range (≥ 35 %) and the cues become activity series, and the offset is the shift within ±15 s with the best Pearson correlation. It is applied as the subtitle offset (SUB-011) only when the correlation is ≥ 0.15 and at least 0.05 above the best one more than 1 s away; otherwise the menu says it is not sure and nothing changes. A new load cancels it. Milestone M4b (D-14) | `subtitle_auto_align.dart`, `audio_energy_probe.dart` |
 | SUB-019 | Advanced ASS (`\t`, `\move`, `\fad`, `\clip`, karaoke `\k`, rotations): post-1.0 | |
 
 ### 6.5 Dictionaries: import and management (DIC)
@@ -617,7 +618,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-011 | Internal links (`?query=` or the link text without `<rt>`, BUG-2456) → new lookup in a **nested popup**. External links (`http`/`https` only) → system browser through the OpenURI portal, or `xdg-open` with the URL as its only argument. | |
 | POP-012 | Nested popups: select text inside a glossary and a child popup opens. Esc or Back closes the last one; a click on the parent closes the children; a click outside closes everything. Maximum depth 8. | |
 | POP-013 | Kanji entries (LKP-037) shown with a dedicated card. | |
-| POP-014 | Keyboard navigation: Tab/Shift+Tab between entries, Enter = audio, Ctrl+Enter = create card, Esc = close. Alt+wheel = next or previous entry. | |
+| POP-014 | Keyboard navigation: Tab/Shift+Tab between entries, Enter = audio, Ctrl+Enter = create card, Esc = close. Alt+wheel = next or previous entry. While a settings page covers the popups, their keys wait with them: Esc closes the page. | |
 | POP-015 | "Replay sentence" and "go to sentence" from the popup (SUB-013). | |
 
 ### 6.8 Word audio (AUD)
@@ -639,20 +640,20 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement | Fushi |
 |---|---|---|
-| ANK-001 | Default endpoint `http://127.0.0.1:8765`, configurable (host, port, HTTPS, API key). Request body: `{"action", "version": 6, "params"?, "key"?}`; `key` only if not empty. Timeouts: 10 s per request, 5 s for the connection. | `ankiconnect_service.dart` |
+| ANK-001 | AnkiConnect's legacy API, version 6, at one configurable URL (default `http://127.0.0.1:8765`; HTTPS only for a reverse proxy) with an optional API key. Request body: `{"action", "version": 6, "params"?, "key"?}`, also inside every `multi` child; `key` only if not empty. No proxy, no pooled connections (`Connection: close`). Timeouts: 10 s per request, 5 s for the connection ([ADR 0007](adr/0007-mining-to-anki.md)). | `ankiconnect_service.dart` |
 | ANK-002 | Response: an HTTP status other than 200, a non-JSON body or a body without `result`/`error` → protocol error. A non-null `error` → error. For `addNote`, the text `cannot create note because it is a duplicate` → dedicated duplicate error. | |
-| ANK-003 | Retry: a single new attempt, if the pooled connection had expired. `addNote` and `createModel` are **not idempotent**: they are retried only if the connection phase failed. Otherwise the error is "unknown outcome, check in Anki", without retrying. | |
-| ANK-004 | Error codes shown to the user: connection refused, timeout (port probably taken by another program), HTTP error, invalid field mapping, empty first field, Lapis missing. | |
-| ANK-005 | Actions used: `version`, `deckNames`, `modelNames`, `modelFieldNames`, `addNote`, `canAddNotesWithErrorDetail`, `findNotes`, `notesInfo`, `updateNoteFields`, `addTags`, `storeMediaFile`, `getMediaFilesNames`, `deleteMediaFile`, `createModel`, `createDeck`, `guiBrowse`, `multi`. | |
+| ANK-003 | Retry by the phase that failed, once: a request that failed to connect is retried whatever the action; a read-only or idempotent action is also retried when the connection closes before the reply, never after a reply timeout. `addNote` and `createModel` (and a `multi` holding one) are **not idempotent**: once sent, a failure is "unknown outcome, check in Anki", without retrying and without deleting the media uploaded. An HTTP 5xx status or a reply that is not AnkiConnect's is the same unknown outcome for them (a reverse proxy may have passed the request on). | |
+| ANK-004 | Errors shown to the user, each with its own message: connection refused ("is Anki open?"), timeout (port probably taken by another program), HTTP or protocol error, wrong API key, AnkiConnect too old, no Anki profile open, deck or note type missing, invalid field mapping, empty first field, duplicate, unknown outcome, Lapis missing, an Anki editor window open (AnkiConnect 26.10), audio missing, the dictionaries changed. | |
+| ANK-005 | Actions used: `version`, `deckNames`, `modelNames`, `modelNamesAndIds`, `modelFieldNames`, `addNote`, `canAddNotesWithErrorDetail`, `findNotes`, `notesInfo`, `updateNoteFields`, `addTags`, `storeMediaFile`, `getMediaFilesNames`, `deleteMediaFile`, `createModel`, `createDeck`, `guiBrowse`, `multi`. Only documented parameters are sent (AnkiConnect 25.x fails on unknown ones). | |
 | ANK-006 | Refresh configuration: call `version`, `deckNames`, `modelNames` and `modelFieldNames` for the selected model. The selection is kept by name. | |
 
 #### 6.9.2 Lapis note
 
 | ID | Requirement |
 |---|---|
-| ANK-010 | Vendored Lapis templates (front, back, CSS) in `assets/anki/lapis/`, with a pinned version (Fushi uses v1.7.0). Fields, in order: Expression, ExpressionFurigana, ExpressionReading, ExpressionAudio, SelectionText, MainDefinition, DefinitionPicture, Sentence, SentenceFurigana, SentenceAudio, Picture, Glossary, Hint, IsWordAndSentenceCard, IsClickCard, IsSentenceCard, IsAudioCard, PitchPosition, PitchCategories, Frequency, FreqSort, MiscInfo. |
-| ANK-011 | "Create Lapis deck": `createModel` if no model named "Lapis" exists; `createDeck("Lapis")`; then refresh the configuration and check that both exist; select them and apply the default mapping. It is idempotent. Outcome: `created` / `already exists` / `failed`. |
-| ANK-012 | Default Lapis mapping: Expression `{expression}` · ExpressionFurigana `{furigana-plain}` · ExpressionReading `{reading}` · ExpressionAudio `{audio}` · MainDefinition `{glossary-first}` · Sentence `{sentence}` · SentenceAudio `{sentence-audio}` · Picture `{card-image}` · Glossary `{glossary}` · PitchPosition `{pitch-accent-positions}` · PitchCategories `{pitch-accent-categories}` · Frequency `{frequencies}` · FreqSort `{frequency-harmonic-rank}` · MiscInfo `{source-link} {clip-timestamp}` · IsWordAndSentenceCard `x`. |
+| ANK-010 | Lapis templates (front, back, CSS) of the upstream tag `1.7.0` copied byte for byte into `assets/anki/lapis/`, with a `PROVENANCE.md` and their SHA-256 pinned by a test; one card template named `Mining`. Fields, in order: Expression, ExpressionFurigana, ExpressionReading, ExpressionAudio, SelectionText, MainDefinition, DefinitionPicture, Sentence, SentenceFurigana, SentenceAudio, Picture, Glossary, Hint, IsWordAndSentenceCard, IsClickCard, IsSentenceCard, IsAudioCard, PitchPosition, PitchCategories, Frequency, FreqSort, MiscInfo. |
+| ANK-011 | "Create Lapis deck": `createModel` if no model named "Lapis" exists; `createDeck("Lapis")`; then refresh the configuration and check that both exist; select them and apply the default mapping. It is idempotent. Outcome: `created` (the model or the deck was new) / `already exists` / `failed`. |
+| ANK-012 | Default Lapis mapping: Expression `{expression}` · ExpressionFurigana `{furigana-plain}` · ExpressionReading `{reading}` · ExpressionAudio `{audio}` · MainDefinition `{glossary-first}` · Sentence `{sentence}` · SentenceAudio `{sentence-audio}` · Picture `{card-image}` · Glossary `{glossary}` · PitchPosition `{pitch-accent-positions}` · PitchCategories `{pitch-accent-categories}` · Frequency `{frequencies}` · FreqSort `{frequency-harmonic-rank}` · MiscInfo `{source-link} {clip-timestamp}` · IsWordAndSentenceCard `x`. SelectionText stays empty (Fushi fills it with the popup's selection text, which a video card does not have). |
 | ANK-013 | Lapis detection: the name contains "lapis" (case-insensitive), or the fields include Expression, MainDefinition and Sentence. |
 
 #### 6.9.3 Field composition
@@ -660,27 +661,27 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ID | Requirement |
 |---|---|
 | ANK-020 | Every note field has a template with `{name}` placeholders (regex `\{[^}]*\}`); an unknown placeholder becomes an empty string. The mapping is saved per note type. |
-| ANK-021 | Placeholders to implement: `{expression}` `{reading}` `{furigana-plain}` `{glossary}` `{glossary-first}` `{single-glossary-<dictionary>}` `{sentence}` `{cue-sentence}` `{frequencies}` `{frequency-harmonic-rank}` `{pitch-accent-positions}` `{pitch-accent-categories}` `{phonetic-transcriptions}` `{audio}` `{sentence-audio}` `{card-image}` `{document-title}` `{source-link}` `{clip-timestamp}` `{tags}`. The HTML format of each one must match Fushi `anki_note_composer.dart` and `popup.js` (test vectors in T-ANK-02x). |
+| ANK-021 | Placeholders to implement: `{expression}` `{reading}` `{furigana-plain}` `{glossary}` `{glossary-first}` `{single-glossary-<dictionary>}` `{sentence}` `{cue-sentence}` `{frequencies}` `{frequency-harmonic-rank}` `{pitch-accent-positions}` `{pitch-accent-categories}` `{phonetic-transcriptions}` `{audio}` `{sentence-audio}` `{card-image}` `{document-title}` `{source-link}` `{clip-timestamp}` `{tags}`. The HTML format of each one matches Fushi `anki_note_composer.dart` and `popup.js` (test vectors in T-ANK-02x), except that **every value from a subtitle, a dictionary, a file name or the user is HTML-escaped**, `` ` `` `$` `\` included (templates paste fields into JavaScript template literals); for a Lapis-like note the fields its scripts read through `text:` (Expression, PitchPosition) get the fullwidth forms of those characters and of `< >`, and tags lose them. `{document-title}` is the file name without extension until series exist (M5); `{tags}` the entry's term tags, comma-separated; `{audio}` is empty until word audio (M5); `{single-glossary-<dictionary>}` matches the title, then the name shown. |
 | ANK-022 | `{furigana-plain}`: a kanji group becomes ` 漢字[かんじ]`, a kana group stays the same; the result is trimmed (e.g. `食[た]べ 物[もの]`). |
-| ANK-023 | `{glossary}`: `<div style="text-align: left;" class="yomitan-glossary"><ol>`, then one `<li data-dictionary="D"><i>(tag, D)</i> <span>…</span></li>` per sense. The `(tag, D)` label appears only on the first sense of each dictionary, repeated part-of-speech tags are removed, disabled dictionaries and redirects are skipped. The dictionary CSS is added as a `<style>` scoped to `.yomitan-glossary [data-dictionary="D"]`. |
-| ANK-024 | `{sentence}`: the cue (or the merged cues, ANK-041) with the looked-up word wrapped in `<b>`, at the exact position of the click offset (or at the first occurrence, if the offset is not valid). |
+| ANK-023 | `{glossary}`: `<div style="text-align: left;" class="yomitan-glossary"><ol>`, then one `<li data-dictionary="D"><i>(tag, D)</i> <span>…</span></li>` per sense. The `(tag, D)` label appears only on the first sense of each dictionary, repeated part-of-speech tags are removed, disabled dictionaries and redirects are skipped. Structured content is written as Yomitan writes it (its tags, `data-sc-*` attributes, `gloss-sc-*` classes), through the allowlist of POP-009 and with inline styles limited to the CSS subset of DIC-035; images are uploaded with the card (PNG, JPEG, GIF, WebP, BMP, and SVG and AVIF, which Anki shows, recognised by their bytes: an SVG by its root element). The dictionary CSS and the user's (DIC-035) are added as a `<style>` rewritten from the rules the subset keeps and scoped to `.yomitan-glossary [data-dictionary="D"]`. |
+| ANK-024 | `{sentence}`: the cue (or the merged cues, ANK-041), escaped, with its lines joined by `<br>` and the looked-up word wrapped in `<b>` at the exact position of the click offset (or at the first occurrence, if the offset does not hold the word). |
 | ANK-025 | `{frequency-harmonic-rank}` as in LKP-040. `{frequencies}`: `<ul style="text-align: left;"><li>D: value</li>…</ul>`. |
 | ANK-026 | Empty fields: omitted on creation. The first field of the note type cannot be empty (dedicated error). Only fields that actually exist in the note type are sent. |
-| ANK-027 | Tags: user tags + `nikomiru` + `video` + cleaned-up series title (spaces → `_`). Deduplicated, in order. |
+| ANK-027 | Tags: user tags + `nikomiru` + `video` + cleaned-up series title (spaces → `_`, from M5, when series exist). Deduplicated, in order. |
 
 #### 6.9.4 Mining flow from video
 
 | ID | Requirement |
 |---|---|
-| ANK-030 | State of the button in the popup: `+` (can be added), `✓` (already exists: the click opens a menu with overwrite / open in Anki / add anyway), `✓↩` (last card of this session, can be overwritten). The check uses `canAddNotesWithErrorDetail` on the first field, with the same `duplicateScope` and `duplicateScopeOptions` as `addNote`; if AnkiConnect is old, it falls back to `findNotes`. After a transport error there is a 30 s pause for the whole process. |
+| ANK-030 | State of the button in the popup: `+` (can be added, or unknown), `✓` (already exists: the click opens a menu with open in Anki / add anyway), `✓↩` (last card made since Nikomiru started, wins over ✓: the same menu with overwrite first). The check runs when a popup's content arrives, for all its entries in one `canAddNotesWithErrorDetail`, on the first field rendered from its template with the headword's placeholders (`{expression}`, `{reading}`, `{furigana-plain}`; the others empty), with `allowDuplicate: false` and the same `duplicateScope` and `duplicateScopeOptions` as `addNote` (`deck`: `deckName`, `checkChildren` and `checkAllModels` true; `collection`: `checkChildren` false, `checkAllModels` true); only the exact duplicate text means ✓. If AnkiConnect is old (`unsupported action`), it falls back to `findNotes`. After a transport error or an unknown outcome of any request to that AnkiConnect there is a 30 s pause for the whole process; any answer ends it. Only a loopback URL is checked without an action of the user (PRV-001). |
 | ANK-031 | The reference cue is chosen in this order: the one the lookup started from, the current one, the one found by position. |
-| ANK-032 | Audio interval: `[start − pad_head, end + pad_tail]` (defaults 120 ms and 200 ms, maximum 1000 ms each), bounded by the adjacent cues, then shifted by `+delay_ms`. Maximum duration 30 s. |
-| ANK-033 | Sentence audio: `ffmpeg -y -ss S -t D -i file:IN -vn -sn -map_chapters -1 -map 0:<ff-index of the active audio track> -c:a aac -ac 1 -b:a 64k out.m4a`. Quality levels: mono 64k (default), stereo 128k, stereo 192k. Alternative formats: Opus/OGG, MP3. |
-| ANK-034 | Image: the exact frame at the moment of the click, captured by mpv (`screenshot-to-file <tmp>.png video`), then resized and encoded with ffmpeg. Levels: long side 720 px / q80, **1000 px / q90 (default)**, 2000 px / q95, original. Formats: JPEG (default), WebP. Alternative mode: frame at the start of the cue. |
+| ANK-032 | Audio interval: `[start − pad_head, end + pad_tail]` (defaults 120 ms and 200 ms, maximum 1000 ms each), bounded by the adjacent cues, then shifted by `+delay_ms`. Maximum duration 30 s: a longer clip keeps its first 30 s. The same clip is used for the link and the timestamp (ANK-050, ANK-053). A clip of no length counts as no cue. |
+| ANK-033 | Sentence audio: `ffmpeg -y -ss S -t D -i file:IN -vn -sn -map_chapters -1 -map 0:<ff-index of the active audio track> -c:a aac -ac 1 -b:a 64k out.m4a`. Quality levels (`audio_quality_level`): 0 = mono 64k (default), 1 = stereo 128k, 2 = stereo 192k. Alternative formats: Opus/OGG, MP3. An external audio track is cut from its own file (`IN`), with its ff-index in that file. |
+| ANK-034 | Image: the exact frame at the moment of the click, captured by mpv (`screenshot-to-file <tmp>.png video`, a player command with a reply) asked when the card is asked for, before any later resume or seek, then resized (never enlarged) and encoded with ffmpeg. Levels: long side 720 px / q80, **1000 px / q90 (default)**, 2000 px / q95, original. Formats: JPEG (default), WebP. A failed image still makes the card. Alternative mode, with the advanced mining of M6: frame at the start of the cue. |
 | ANK-035 | Audio and image are extracted in parallel. If the audio is missing, the card is cancelled with a message (as in Fushi). |
-| ANK-036 | Media in Anki: content-based name `nikomiru_<sha256[0..16]>.<ext>`. If the host is loopback, `storeMediaFile` is used with `path`; otherwise `data` in base64. If `addNote` fails, the media uploaded in that attempt are deleted. |
-| ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`) and `addTags`. Default scope: only the last card mined in the session. |
-| ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` on the first field and then `guiBrowse` with the ids found. |
+| ANK-036 | Media in Anki: content-based name `nikomiru_<first 16 hex digits of the SHA-256>.<ext>`, uploaded with `storeMediaFile` as base64 `data` (never `path`: a sandboxed Anki cannot read Nikomiru's files); the name AnkiConnect returns goes into the fields. Before uploading, `getMediaFilesNames` tells which names already exist. If `addNote` fails with a known error, the media new in that attempt are deleted; after an unknown outcome nothing is deleted. Temporary files live in `$XDG_CACHE_HOME/nikomiru/mining/`, removed however the attempt ends; at start, the ones older than ten minutes are removed. |
+| ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`), `addTags`, and `notesInfo` again to check the write. Once `updateNoteFields` may have reached Anki, a failure is an unknown outcome: the media stay and the message says to check the card. Scope: only the last card made since Nikomiru started, the one Anki confirmed last even if its popup has closed. `mined_cards` follows. |
+| ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` with Anki's duplicate search (`dupe:<model id>,<first field>` for each note type, from `modelNamesAndIds`, within the deck when the scope is `deck`) and then `guiBrowse` with the ids found. |
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
 | ANK-040 | "Advanced mining" dialog (Shift+click on +): editing of start/end with preview, frame choice, exclusion of audio or image. Milestone M6. |
 | ANK-041 | Adding the previous or next cues to the sentence (merging text and interval). Milestone M6. |
@@ -690,10 +691,10 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement |
 |---|---|
-| ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped). |
+| ANK-050 | `{source-link}` = `<a href="nikomiru://source?v=1&kind=video&uid=…&ep=…&startMs=…&endMs=…&sourceId=<uuid-v4>">Title</a>` (title HTML-escaped, the uid percent-encoded). `startMs`/`endMs` are the clip of ANK-032 in video time; `ep` is 0 until series exist (M5). Without the video's uid (no library) it is the title alone, HTML-escaped, as in Fushi. |
 | ANK-051 | Parsing is strict: unknown or duplicate parameters, absolute paths and `file:` uids are rejected; maximum length 16 KiB. |
-| ANK-052 | Opening the link (APP-001/002) opens the video, goes to `startMs` paused and highlights the cue. If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file". |
-| ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS`, only if `end > start`. |
+| ANK-052 | Opening the link (APP-001/002) opens the video paused at `startMs`, then, once the subtitles chosen automatically for it are loaded, at the start of the first cue that overlaps the clip, so the cue is on screen (no automatic choice, a failed load or another choice of the user: playback stays where it is). If the file cannot be found (unknown uid or moved file), a message is shown with the option "locate the file" (the portal's file chooser), which saves the new path in the video's record. |
+| ANK-053 | `{clip-timestamp}` = `HH:MM:SS - HH:MM:SS` of the clip of ANK-032 (seconds truncated), only if `end > start`. |
 
 ### 6.10 Statistics (STA)
 
@@ -715,18 +716,26 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
-| SET-007 | Configurable HTTP(S) proxy; used for all network requests except AnkiConnect on loopback. |
+| SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
+| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar). SET-001 adds the other sections as tabs. |
 
-### 6.12 Online subtitles and metadata (MET) — milestone M7
+### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
+
+Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 | ID | Requirement | Fushi |
 |---|---|---|
 | MET-001 | Metadata from **AniList** (GraphQL, no key): romaji/native/English title, cover, episodes, `anilist_id`. Identification from the series title obtained by LIB-003; it is accepted automatically only with an exact, unique match, otherwise the user is asked to choose. | — (Fushi uses Jikan/TMDB) |
 | MET-002 | **Jikan v4** (MAL) as an alternative source: limit of 1 request/s, cache, pause after a 429. | `mal_video_metadata_provider.dart` |
-| MET-003 | **Jimaku**: `https://jimaku.cc/api`, header `Authorization: <key>`. `GET /entries/search?anilist_id=…` (with fallback to `query=`), `GET /entries/{id}/files?episode=n`, download, zip archives extracted with the rules of DIC-011. Episode and language are inferred from the file name. | `jimaku_client.dart` |
-| MET-004 | **OpenSubtitles** (user key): `moviehash` + `moviebytesize`, then `query` + `season_number`/`episode_number`; files ≤ 64 MiB. | `open_subtitles_client.dart` |
-| MET-005 | API keys are saved in the config with permissions 0600 (the keyring is in the ROADMAP backlog). | |
+| MET-003 | **Jimaku**: `https://jimaku.cc/api`, header `Authorization: <key>`, sent only to the Jimaku host. `GET /entries/search?query=<title>&anime=true`, then `anime=false` when nothing is found (and `anilist_id=` first once M7 identifies series), `GET /entries/{id}/files` for the first two entries (all files: season packs carry no episode), download of each file's `url`; zip archives opened with the rules of DIC-011 (names only, ≤ 64 MiB unpacked, ≤ 1000 entries); RAR and 7z listed but not usable. Episode and language are inferred from the file name; a file of unknown language counts as Japanese. | `jimaku_client.dart` |
+| MET-004 | **OpenSubtitles** (user's consumer API key, header `Api-Key`, `User-Agent: Nikomiru/<version>`; optional user name and password for `POST /login`): `GET /subtitles` with `moviehash` + `moviebytesize`, then `query` + `season_number`/`episode_number`, always with `languages=<study language>`; `POST /download {file_id}` gives a temporary HTTPS link; files ≤ 64 MiB; machine-translated results marked. | `open_subtitles_client.dart` |
+| MET-005 | API keys (and the OpenSubtitles password) are saved in the config with permissions 0600 and never written to a log (the keyring is in the ROADMAP backlog). | |
 | MET-006 | File identification with AniDB ed2k: post-1.0 (requires registering an AniDB client). | `anidb_ed2k.dart` |
+| MET-007 | **Automatic subtitles** (`[online] auto_subtitles`, default off, PRV-001): when an opened video has no text subtitles in the preferred language (none next to it or downloaded, no embedded text track in that language) and a provider has a key, the best online file (ADR 0008 §9: the preferred language, or unknown on Jimaku; the episode asked for, or a film; never machine-translated) is downloaded and loaded, unless the user chose subtitles meanwhile; a toast names the file and the provider. One attempt per opening. | `subtitle_batch.dart` |
+| MET-008 | Downloaded subtitles are kept in `$XDG_DATA_HOME/nikomiru/subtitles/<hash>/<video name>.<language>.<ext>`, `<hash>` being the OpenSubtitles hash of the video, never next to the video (NFR-SEC-02); they are offered like files next to it (SUB-006), so the next opening needs no network. | |
+| MET-009 | **Online subtitles page** ("Search online…" in the subtitle menu): title, season and episode filled from the file name and editable, "Search", results (provider, file, language, episode, notes: machine translated, archive, not usable) ranked by ADR 0008 §9, "Use" downloads and loads one; "Services and keys…" opens Settings → Subtitle services (MET-011). HTTP 429 shows when to try again. | |
+| MET-011 | **Subtitle services in the settings** (Settings → Subtitle services, SET-008): the services that search for subtitles, ticked or not, in the order preferred (`[online] providers`, default `["jimaku", "opensubtitles"]`; one left out is never asked, MET-007 included); the order breaks the ties of the ranking (ADR 0008 §9). On the same tab: each service's key (Jimaku; OpenSubtitles key, user name, password), the automatic subtitles (MET-007) and the proxy (SET-007), saved atomically with permissions 0600 (MET-005). | |
+| MET-010 | File names are parsed Anitomy-style for the search (title, season, episode): bracketed blocks and technical tokens dropped; episode from `SxxEyy`, `第N話`, `EP N`, `#N`, ` - N` or a trailing number of two digits or with a leading zero; season from `SxxEyy`, `Season N`, `S N`, `Nth Season`, `第N期/季`, or the parent folder. LIB-003 (M5) reuses the parser. | `video_filename_parser.dart` |
 
 ---
 
@@ -766,7 +775,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | `watch_coverage` | `&str` uid | merged `[(start_ms, end_ms)]` intervals |
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
-| `mined_cards` | `u64` note id | expression, reading, sentence, media uid, start, end, `source_id`, date |
+| `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
 
@@ -799,6 +808,8 @@ preferred_languages = ["ja", "jpn"]
 font_size = 36
 respect_ass_styles = false
 obscure = "none"            # "none" | "blur" | "hidden"
+secondary_obscure = "none"  # the same for the secondary subtitle (SUB-017)
+secondary_position = "top"  # "top" | "bottom" (above the main subtitle)
 
 [lookup]
 max_results = 10
@@ -818,6 +829,7 @@ duplicate_scope = "deck"    # "deck" | "collection"
 audio_pad_head_ms = 120
 audio_pad_tail_ms = 200
 audio_format = "aac-m4a"    # "aac-m4a" | "opus-ogg" | "mp3"
+audio_quality_level = 0     # 0 = mono 64k, 1 = stereo 128k, 2 = stereo 192k
 image_format = "jpeg"       # "jpeg" | "webp"
 image_quality_level = 1     # 0..3
 tags = []
@@ -829,6 +841,18 @@ Sentence = "{sentence}"
 
 [paths]
 ffmpeg = ""                 # empty = search in PATH
+
+[network]
+proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
+
+[online]                    # ADR 0008
+providers = ["jimaku", "opensubtitles"]  # the services used, in the order preferred (MET-011)
+auto_subtitles = false      # MET-007
+jimaku_api_key = ""
+opensubtitles_api_key = ""
+opensubtitles_username = ""
+opensubtitles_password = ""
+# jimaku_url, opensubtitles_url: other base URLs, for the tests
 ```
 
 ---
@@ -837,7 +861,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 ### 10.1 Maintainer decisions
 
-Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q), D-13 on 2026-10-20 after spike S5. A decision is reopened only through an explicit change to this table.
+Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q), D-13 on 2026-10-20 after spike S5, D-14 on 2026-10-25. A decision is reopened only through an explicit change to this table.
 
 | ID | Decision | Outcome |
 |---|---|---|
@@ -854,6 +878,8 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
+| D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
+| D-15 | Contents of 0.1.0 | **Proposed** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria |
 
 ### 10.2 Risks
 

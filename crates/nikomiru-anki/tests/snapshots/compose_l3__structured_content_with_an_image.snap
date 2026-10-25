@@ -1,0 +1,16 @@
+---
+source: crates/nikomiru-anki/tests/compose_l3.rs
+expression: shown(&f)
+---
+expression: 漢字
+reading: かんじ
+furigana-plain: 漢字[かんじ]
+glossary: <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><ruby class="gloss-sc-ruby">漢字<rt class="gloss-sc-rt">かんじ</rt></ruby> — Chinese characters. <img src="nikomiru_a2c29557708db010.png" alt="" style="width:2px;height:2px;image-rendering:pixelated;"> See <span class="gloss-sc-a">字</span>.</span></span></li></ol></div>
+frequencies: 
+frequency-harmonic-rank: 9999999
+pitch-accent-positions: 
+pitch-accent-categories: 
+phonetic-transcriptions: 
+tags: P
+single-glossary-Nikomiru mini-ja (Nikomiru mini-ja (renamed)): <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><ruby class="gloss-sc-ruby">漢字<rt class="gloss-sc-rt">かんじ</rt></ruby> — Chinese characters. <img src="nikomiru_a2c29557708db010.png" alt="" style="width:2px;height:2px;image-rendering:pixelated;"> See <span class="gloss-sc-a">字</span>.</span></span></li></ol></div>
+media nikomiru_a2c29557708db010.png: 75 bytes

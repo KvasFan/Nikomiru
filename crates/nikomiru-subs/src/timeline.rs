@@ -124,6 +124,45 @@ impl Timeline {
         }
     }
 
+    /// The cue at `pos_ms`, or the last one that started before it, or the
+    /// first one: the reference cue found by position (ANK-031).
+    pub fn near(&self, pos_ms: i64) -> Option<usize> {
+        if let Some(&i) = self.active(pos_ms).first() {
+            return Some(i);
+        }
+        self.floor(self.cue_time(pos_ms))
+            .or_else(|| (!self.cues.is_empty()).then_some(0))
+    }
+
+    /// The audio of cue `i` for a card (ANK-032), in player positions: from
+    /// `pad_head_ms` before its start to `pad_tail_ms` after its end, never
+    /// before the end of a cue that ends before it starts nor after the start
+    /// of a cue that starts after it ends, never narrower than the cue, never
+    /// before 0. Fushi `padSentenceRange` (`mining_audio_clip.dart`, ac8034e).
+    pub fn clip(&self, i: usize, pad_head_ms: i64, pad_tail_ms: i64) -> (i64, i64) {
+        let cue = &self.cues[i];
+        let floor = self
+            .cues
+            .iter()
+            .filter(|c| c.end_ms <= cue.start_ms)
+            .map(|c| c.end_ms)
+            .max()
+            .unwrap_or(0)
+            .max(0);
+        let cap = self
+            .cues
+            .iter()
+            .filter(|c| c.start_ms >= cue.end_ms)
+            .map(|c| c.start_ms)
+            .min();
+        let start = (cue.start_ms - pad_head_ms.max(0))
+            .max(floor)
+            .min(cue.start_ms);
+        let end = cue.end_ms + pad_tail_ms.max(0);
+        let end = cap.map_or(end, |c| end.min(c)).max(cue.end_ms);
+        ((start + self.delay_ms).max(0), (end + self.delay_ms).max(0))
+    }
+
     /// "Next cue" (SUB-012): the first cue that starts after the position.
     pub fn next(&self, pos_ms: i64, seek_seconds: i64) -> Jump {
         let t = self.cue_time(pos_ms);
@@ -271,5 +310,39 @@ mod tests {
         assert_eq!(t.align(4900, true), Some(-100));
         assert_eq!(t.active(4900), [1]);
         assert_eq!(t.align(1500, false), Some(500));
+    }
+
+    // T-ANK-032
+    #[test]
+    fn the_clip_of_a_card() {
+        // the vector of TEST §6.9
+        let mut t = timeline(&[(5_000, 9_950), (10_000, 12_000), (12_100, 13_000)]);
+        t.delay_ms = 300;
+        assert_eq!(t.clip(1, 120, 200), (10_250, 12_400));
+        // Fushi `mining_audio_clip_test.dart`
+        let alone = timeline(&[(2_000, 4_000)]);
+        assert_eq!(alone.clip(0, 120, 200), (1_880, 4_200));
+        assert_eq!(alone.clip(0, 0, 0), (2_000, 4_000));
+        let next = timeline(&[(2_000, 4_000), (4_050, 5_000)]);
+        assert_eq!(next.clip(0, 120, 200), (1_880, 4_050));
+        let previous = timeline(&[(1_000, 1_970), (2_000, 4_000)]);
+        assert_eq!(previous.clip(1, 120, 200), (1_970, 4_200));
+        let early = timeline(&[(50, 1_000)]);
+        assert_eq!(early.clip(0, 120, 200), (0, 1_200));
+        // overlapping cues do not bound each other; a negative delay stops at 0
+        let mut overlap = timeline(&[(1_000, 3_000), (2_000, 4_000)]);
+        overlap.delay_ms = -5_000;
+        assert_eq!(overlap.clip(1, 120, 200), (0, 0));
+    }
+
+    // T-ANK-031
+    #[test]
+    fn the_cue_found_by_position() {
+        let t = timeline(&[(1_000, 2_000), (5_000, 6_000)]);
+        assert_eq!(t.near(1_500), Some(0));
+        assert_eq!(t.near(3_000), Some(0), "the last one that started");
+        assert_eq!(t.near(500), Some(0), "before the first: the first");
+        assert_eq!(t.near(9_000), Some(1));
+        assert_eq!(Timeline::default().near(0), None);
     }
 }

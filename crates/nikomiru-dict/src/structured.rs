@@ -21,12 +21,12 @@ use crate::css::{Sheet, kebab};
 use crate::style::{ListMarker, Style, VerticalAlign};
 
 /// Nesting deeper than this is flattened (hostile input).
-const MAX_DEPTH: usize = 48;
+pub const MAX_DEPTH: usize = 48;
 /// Nodes read per glossary at most.
-const MAX_NODES: usize = 20_000;
+pub const MAX_NODES: usize = 20_000;
 
 /// Tags whose content is never shown.
-const DROPPED: &[&str] = &[
+pub const DROPPED: &[&str] = &[
     "script", "style", "iframe", "object", "embed", "svg", "math", "template", "noscript", "link",
     "meta", "form", "input", "button", "select", "textarea", "frame", "frameset", "applet",
     "audio", "video", "source",
@@ -642,7 +642,8 @@ fn text_into(text: &str, style: &Style, out: &mut Out) {
     }
 }
 
-fn decode_entities(s: &str) -> String {
+/// `&amp;`, `&lt;`, `&#x3042;`… decoded; an unknown entity stays as it is.
+pub fn decode_entities(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
     while let Some(at) = rest.find('&') {
@@ -818,7 +819,9 @@ pub fn media_path(path: &str) -> Option<String> {
     Some(p.to_string())
 }
 
-fn image(o: &serde_json::Map<String, Value>) -> Option<Image> {
+/// An image node (`{"tag": "img"}` or `{"type": "image"}`), if its path is
+/// a safe media path.
+pub fn image(o: &serde_json::Map<String, Value>) -> Option<Image> {
     let path = media_path(o.get("path")?.as_str()?)?;
     let num = |k: &str| {
         o.get(k)
@@ -851,7 +854,8 @@ fn image(o: &serde_json::Map<String, Value>) -> Option<Image> {
     })
 }
 
-fn data_of(o: &serde_json::Map<String, Value>) -> Vec<(String, String)> {
+/// The `data` entries of an element, keys in kebab case.
+pub fn data_of(o: &serde_json::Map<String, Value>) -> Vec<(String, String)> {
     o.get("data")
         .and_then(Value::as_object)
         .map(|d| {
@@ -872,17 +876,22 @@ fn own_style(ctx: &Ctx<'_>, tag: &str, o: &serde_json::Map<String, Value>) -> St
         .collect();
     path.push((tag, &data));
     let mut style = ctx.sheet.style_for(&path);
+    style.merge(&inline_style(o));
+    style
+}
+
+/// The part of an element's `style` object that the subset of DIC-035 keeps.
+pub fn inline_style(o: &serde_json::Map<String, Value>) -> Style {
+    let mut style = Style::default();
     if let Some(inline) = o.get("style").and_then(Value::as_object) {
-        let mut s = Style::default();
         for (k, v) in inline {
             let value = match v {
                 Value::String(s) => s.clone(),
                 Value::Number(n) => n.to_string(),
                 _ => continue,
             };
-            s.set(k, &value);
+            style.set(k, &value);
         }
-        style.merge(&s);
     }
     style
 }

@@ -8,15 +8,22 @@
 //! subtitles, the subtitle list, the control bar, the dictionary popups, the
 //! dictionaries page, the toast.
 
+mod anki_page;
 mod bar;
 mod chrome;
 mod dict_page;
+mod link;
 mod list;
+mod online_page;
 mod overlay;
+mod player_page;
 mod popups;
+mod services_page;
+pub(crate) mod settings;
 pub(crate) mod theme;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use egui::{CursorIcon, Id, Sense, ViewportCommand};
 
@@ -32,6 +39,12 @@ pub enum Dialog {
     Subtitles,
     /// A Yomitan dictionary to import (DIC-001).
     Dictionary,
+    /// The moved video of a link to a scene (ANK-052).
+    Locate,
+    /// An `mpv.conf` to load (PLY-016).
+    MpvImport,
+    /// Where to export the mpv options (PLY-016).
+    MpvExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -43,9 +56,13 @@ pub struct FileDialog {
     pub title: String,
     /// Named filters, as glob patterns (`*.mkv`).
     pub filters: Vec<(String, Vec<&'static str>)>,
+    /// A dialog that saves: the name it suggests.
+    pub save_as: Option<String>,
+    /// The folder it starts in, when not the portal's choice.
+    pub folder: Option<PathBuf>,
 }
 
-const VIDEO_PATTERNS: [&str; 14] = [
+pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
@@ -71,11 +88,28 @@ impl FileDialog {
                 tr("dict-import"),
                 vec![(tr("dict-import-filter"), vec!["*.zip"])],
             ),
+            Dialog::Locate => (
+                tr("link-locate"),
+                vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
+            ),
+            Dialog::MpvImport => (
+                tr("player-import"),
+                vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
+            ),
+            Dialog::MpvExport => (
+                tr("player-export"),
+                vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
+            ),
         };
         Self {
             dialog,
             title,
             filters,
+            save_as: (dialog == Dialog::MpvExport).then(|| "mpv.conf".to_string()),
+            folder: match dialog {
+                Dialog::MpvImport => s.mpv_conf_folder(),
+                _ => None,
+            },
         }
     }
 }
@@ -87,6 +121,24 @@ pub(crate) struct View {
     pub activate: bool,
     /// The dictionaries page is shown.
     pub dict_page_open: bool,
+    /// The Anki settings page is shown.
+    pub anki_page_open: bool,
+    /// What the Anki settings page keeps.
+    pub anki: anki_page::State,
+    /// The Online subtitles page is shown (MET-009).
+    pub online_page_open: bool,
+    /// The Player settings page is shown (PLY-016, PLY-018).
+    pub player_page_open: bool,
+    /// What it keeps.
+    pub player: player_page::State,
+    /// What it keeps.
+    pub online: online_page::State,
+    /// The Subtitle services tab of the settings is shown (MET-011).
+    pub services_page_open: bool,
+    /// What it keeps.
+    pub services: services_page::State,
+    /// The tab of the settings shown last: ⚙ opens it again.
+    pub settings_tab: settings::SettingsTab,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
     /// Give the keyboard to the list's search field (Ctrl+F).
@@ -121,7 +173,15 @@ impl View {
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)
-                if self.dict_page_open {
+                if self.online_page_open {
+                    self.close_online_page();
+                } else if self.services_page_open {
+                    self.close_settings();
+                } else if self.player_page_open {
+                    self.close_player_page();
+                } else if self.anki_page_open {
+                    self.close_anki_page();
+                } else if self.dict_page_open {
                     self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
@@ -146,6 +206,76 @@ impl View {
         if !self.dict_page_open {
             self.dict_page_open = true;
             out.push(Command::DictOpen);
+        }
+    }
+
+    pub fn open_anki_page(&mut self, out: &mut Vec<Command>) {
+        if !self.anki_page_open {
+            self.anki_page_open = true;
+            out.push(Command::AnkiOpen);
+        }
+    }
+
+    pub fn close_anki_page(&mut self) {
+        self.anki_page_open = false;
+        self.anki = anki_page::State::default();
+    }
+
+    pub fn open_online_page(&mut self, out: &mut Vec<Command>) {
+        if !self.online_page_open {
+            self.online_page_open = true;
+            out.push(Command::OnlineOpen);
+        }
+    }
+
+    pub fn close_online_page(&mut self) {
+        self.online_page_open = false;
+        self.online = online_page::State::default();
+    }
+
+    pub fn open_player_page(&mut self, out: &mut Vec<Command>) {
+        if !self.player_page_open {
+            self.player_page_open = true;
+            out.push(Command::PlayerOpen);
+        }
+    }
+
+    pub fn close_player_page(&mut self) {
+        self.player_page_open = false;
+        self.player = player_page::State::default();
+    }
+
+    /// Opens the settings at `tab` (SET-008), in place of any other page
+    /// over the video but the dictionaries.
+    pub fn open_settings(&mut self, tab: settings::SettingsTab, out: &mut Vec<Command>) {
+        use settings::SettingsTab;
+        self.close_settings();
+        self.close_online_page();
+        self.settings_tab = tab;
+        match tab {
+            SettingsTab::Player => self.open_player_page(out),
+            SettingsTab::Services => {
+                self.services_page_open = true;
+                out.push(Command::ServicesOpen);
+            }
+            SettingsTab::Anki => self.open_anki_page(out),
+        }
+    }
+
+    /// Closes the settings, whichever tab is shown.
+    pub fn close_settings(&mut self) {
+        self.close_player_page();
+        self.close_anki_page();
+        self.services_page_open = false;
+        self.services = services_page::State::default();
+    }
+
+    /// What a page asked for after its frame.
+    pub(crate) fn leave(&mut self, leave: settings::Leave, out: &mut Vec<Command>) {
+        match leave {
+            settings::Leave::Stay => {}
+            settings::Leave::Close => self.close_settings(),
+            settings::Leave::To(tab) => self.open_settings(tab, out),
         }
     }
 
@@ -196,8 +326,13 @@ impl View {
         if opacity > 0.0 {
             bar::show(&ctx, s, self, opacity, &mut out);
         }
-        // the dictionaries page covers the popups: they wait under it
-        let drawn = if self.dict_page_open {
+        // the settings pages cover the popups: they wait under them
+        let drawn = if self.dict_page_open
+            || self.anki_page_open
+            || self.online_page_open
+            || self.player_page_open
+            || self.services_page_open
+        {
             self.popups.rects.clear();
             Vec::new()
         } else {
@@ -206,6 +341,21 @@ impl View {
         self.mark_presented(s, &drawn);
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
+        }
+        if self.anki_page_open {
+            anki_page::show(&ctx, s, self, &mut out);
+        }
+        if self.player_page_open {
+            player_page::show(&ctx, s, self, &mut out);
+        }
+        if self.services_page_open {
+            services_page::show(&ctx, s, self, &mut out);
+        }
+        if self.online_page_open {
+            online_page::show(&ctx, s, self, &mut out);
+        }
+        if let Some(missing) = &s.missing_link {
+            link::show(&ctx, s, missing, &mut out);
         }
         chrome::show(&ctx, s, self);
 

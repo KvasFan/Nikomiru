@@ -29,6 +29,7 @@ use nikomiru_dict::structured::{self, Block, Cell, Image, Pixels, Run, Target, U
 use nikomiru_dict::style::{Length, ListMarker, Rgba, Style, VerticalAlign};
 
 use super::theme;
+use crate::mining::{CardState, MenuItem};
 use crate::popup::{self, Origin, Popup, Side};
 use crate::popup_view::{Accent, EntryView, KanjiView, PitchRow, Section};
 use crate::session::Session;
@@ -945,9 +946,14 @@ fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
     }
     let follow = d.panel.entry.replace(p.entry).is_some_and(|e| e != p.entry);
     for (k, e) in content.entries.iter().enumerate() {
+        let card = Card {
+            level,
+            state: p.cards.get(k).copied().unwrap_or_default(),
+            menu: p.menu == Some(k),
+        };
         let inner = ui.horizontal_top(|ui| {
             ui.add_space(8.0);
-            ui.vertical(|ui| entry(ui, d, e, k));
+            ui.vertical(|ui| entry(ui, d, e, k, card));
         });
         let rect = inner.response.rect;
         // the entry the keyboard is on (POP-014)
@@ -964,28 +970,74 @@ fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
     }
 }
 
-fn entry(ui: &mut Ui, d: &mut Draw<'_>, e: &EntryView, k: usize) {
+/// The headword, a reading over each part (LKP-050).
+fn headword(ui: &mut Ui, e: &EntryView) {
+    ui.spacing_mut().item_spacing.x = 0.0;
+    for segment in &e.furigana {
+        let base = LayoutJob::single_section(
+            segment.t.clone(),
+            TextFormat::simple(FontId::proportional(26.0), Color32::WHITE),
+        );
+        let headword = &mut Selectable::default();
+        ruby(
+            ui,
+            base,
+            &segment.r,
+            12.0,
+            READING,
+            Sense::hover(),
+            headword,
+        );
+    }
+}
+
+/// The card button of an entry and its menu (ANK-030).
+#[derive(Debug, Clone, Copy)]
+struct Card {
+    level: usize,
+    state: CardState,
+    menu: bool,
+}
+
+fn entry(ui: &mut Ui, d: &mut Draw<'_>, e: &EntryView, k: usize, card: Card) {
     ui.spacing_mut().item_spacing.y = 6.0;
-    // the headword, a reading over each part (LKP-050)
+    // the headword, a reading over each part (LKP-050), and the card button
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        for segment in &e.furigana {
-            let base = LayoutJob::single_section(
-                segment.t.clone(),
-                TextFormat::simple(FontId::proportional(26.0), Color32::WHITE),
-            );
-            let headword = &mut Selectable::default();
-            ruby(
-                ui,
-                base,
-                &segment.r,
-                12.0,
-                READING,
-                Sense::hover(),
-                headword,
-            );
-        }
+        let button = format!("{} ({})", card.state.glyph(), d.tr("card-button"));
+        ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
+            let busy = card.state == CardState::Busy;
+            let response = chip(ui, card.state.glyph(), CHIP, 15.0, &d.tr("card-button"))
+                .interact(if busy { Sense::hover() } else { Sense::click() })
+                .on_hover_cursor(if busy {
+                    CursorIcon::Wait
+                } else {
+                    CursorIcon::PointingHand
+                });
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, !busy, &button));
+            if response.clicked() {
+                d.out.push(Command::CardButton {
+                    level: card.level,
+                    entry: k,
+                });
+            }
+            ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
+        });
     });
+    if card.menu {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
+            for &item in MenuItem::of(card.state) {
+                if chip_button(ui, &d.tr(item.label())) {
+                    d.out.push(Command::CardMenu {
+                        level: card.level,
+                        entry: k,
+                        item,
+                    });
+                }
+            }
+        });
+    }
     if !e.trace.is_empty() || !e.term_tags.is_empty() {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
@@ -1785,6 +1837,7 @@ mod tests {
     }
 
     fn popup(generation: u64, entries: Option<Vec<EntryView>>) -> Popup {
+        let n = entries.as_ref().map_or(0, Vec::len);
         Popup {
             query: "q".into(),
             origin: Origin::Subtitle { cue: 0, start: 0 },
@@ -1801,6 +1854,8 @@ mod tests {
                 }),
             }),
             entry: 0,
+            cards: vec![crate::mining::CardState::Unknown; n],
+            menu: None,
         }
     }
 

@@ -50,6 +50,8 @@ pub enum Action {
     FramePrev,
     /// Next frame.
     FrameNext,
+    /// Saves the frame shown, without subtitles (PLY-011).
+    Screenshot,
     /// Fullscreen on/off.
     Fullscreen,
     /// Previous chapter.
@@ -90,11 +92,13 @@ pub enum Action {
     PopupNext,
     /// The previous entry of the popup (POP-014).
     PopupPrev,
+    /// Makes the card of the entry the keyboard is on (ANK-030, POP-014).
+    CreateCard,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 32] = [
+    pub const ALL: [Action; 34] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -107,6 +111,7 @@ impl Action {
         Action::HoldSpeed,
         Action::FramePrev,
         Action::FrameNext,
+        Action::Screenshot,
         Action::Fullscreen,
         Action::ChapterPrev,
         Action::ChapterNext,
@@ -127,6 +132,7 @@ impl Action {
         Action::SubAlignNext,
         Action::PopupNext,
         Action::PopupPrev,
+        Action::CreateCard,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the log.
@@ -144,6 +150,7 @@ impl Action {
             Action::HoldSpeed => "hold_speed",
             Action::FramePrev => "frame_prev",
             Action::FrameNext => "frame_next",
+            Action::Screenshot => "screenshot",
             Action::Fullscreen => "fullscreen",
             Action::ChapterPrev => "chapter_prev",
             Action::ChapterNext => "chapter_next",
@@ -164,6 +171,7 @@ impl Action {
             Action::SubAlignNext => "sub_align_next",
             Action::PopupNext => "popup_next",
             Action::PopupPrev => "popup_prev",
+            Action::CreateCard => "create_card",
         }
     }
 
@@ -176,12 +184,36 @@ impl Action {
     pub fn context(self) -> Context {
         match self {
             Action::OpenFile => Context::Global,
-            Action::PopupNext | Action::PopupPrev => Context::Popup,
+            Action::PopupNext | Action::PopupPrev | Action::CreateCard => Context::Popup,
             _ => Context::Player,
         }
     }
 
-    /// Default keys (SPECIFICATION §6.3, M1 and M2 rows).
+    /// Whether a held key runs the action again at each repeat (KEY-005): the
+    /// actions that step do; the others run once per press.
+    pub fn repeats(self) -> bool {
+        matches!(
+            self,
+            Action::SeekBack
+                | Action::SeekForward
+                | Action::VolumeUp
+                | Action::VolumeDown
+                | Action::SpeedUp
+                | Action::SpeedDown
+                | Action::FramePrev
+                | Action::FrameNext
+                | Action::ChapterPrev
+                | Action::ChapterNext
+                | Action::SubPrev
+                | Action::SubNext
+                | Action::SubDelayMinus
+                | Action::SubDelayPlus
+                | Action::PopupNext
+                | Action::PopupPrev
+        )
+    }
+
+    /// Default keys (SPECIFICATION §6.3).
     pub fn default_keys(self) -> &'static [&'static str] {
         match self {
             Action::PlayPause => &["Space", "KeyP", "MediaPlayPause"],
@@ -196,6 +228,7 @@ impl Action {
             Action::HoldSpeed => &["KeyE"],
             Action::FramePrev => &["Comma"],
             Action::FrameNext => &["Period"],
+            Action::Screenshot => &["KeyS"],
             Action::Fullscreen => &["KeyF", "F11"],
             Action::ChapterPrev => &["PageUp"],
             Action::ChapterNext => &["PageDown"],
@@ -216,6 +249,7 @@ impl Action {
             Action::SubAlignNext => &["Ctrl+Shift+ArrowRight"],
             Action::PopupNext => &["Tab"],
             Action::PopupPrev => &["Shift+Tab"],
+            Action::CreateCard => &["Ctrl+Enter"],
         }
     }
 }
@@ -491,6 +525,35 @@ mod tests {
         alt: false,
         shift: false,
     };
+
+    // T-KEY-005
+    #[test]
+    fn only_the_actions_that_step_repeat() {
+        for once in [
+            Action::PlayPause,
+            Action::Screenshot,
+            Action::CreateCard,
+            Action::Back,
+            Action::Fullscreen,
+            Action::OpenFile,
+            Action::Mute,
+            Action::SubToggle,
+            Action::ReplayCue,
+            Action::SubAlignNext,
+        ] {
+            assert!(!once.repeats(), "{}", once.name());
+        }
+        for step in [
+            Action::SeekForward,
+            Action::VolumeDown,
+            Action::FrameNext,
+            Action::SubNext,
+            Action::SubDelayPlus,
+            Action::PopupNext,
+        ] {
+            assert!(step.repeats(), "{}", step.name());
+        }
+    }
 
     // T-KEY-002
     #[test]

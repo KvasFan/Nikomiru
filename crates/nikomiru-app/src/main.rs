@@ -307,6 +307,8 @@ fn run(
     let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
     let (config, config_notice) = load_config(paths);
+    // a file that could not be read is never written over with the defaults
+    let config_writable = config_notice.is_none();
     check_ffmpeg(&config.paths.ffmpeg);
     let translator =
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
@@ -365,6 +367,24 @@ fn run(
     );
     let config_language = config.general.ui_language.clone();
     let max_results = config.lookup.max_results;
+    let mining_dir = paths.cache_dir.join("mining");
+    let anki = nikomiru_app::anki::Anki::start(nikomiru_app::anki::Parts {
+        config: config.anki.clone(),
+        ffmpeg: config.paths.ffmpeg.clone(),
+        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        dictionaries: dictionaries.clone(),
+        max_results,
+        cache_dir: mining_dir.clone(),
+        library: library.clone(),
+        clock: Arc::new(SystemClock::new()),
+    });
+    let online = nikomiru_app::online::Online::start(nikomiru_app::online::Parts {
+        online: config.online.clone(),
+        network: config.network.clone(),
+        language: config.general.study_language.clone(),
+        subtitles_dir: paths.subtitles_dir(),
+        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+    });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -383,6 +403,15 @@ fn run(
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
+        screenshots_dir: paths.screenshots_dir(),
+        anki: Box::new(anki),
+        online: Box::new(online),
+        subtitles_dir: paths.subtitles_dir(),
+        mpv_presets_dir: paths.mpv_presets_dir(),
+        user_mpv_conf: paths.user_mpv_conf(),
+        config_file: paths.config_file(),
+        mining_dir,
+        config_writable,
     };
     let instance = server.map(|server| {
         let waker = waker.clone();

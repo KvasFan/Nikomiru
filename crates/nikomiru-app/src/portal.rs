@@ -65,15 +65,23 @@ pub fn choose(conn: &mut Connection, dialog: &FileDialog) -> io::Result<Option<P
     let sender = conn.unique_name().trim_start_matches(':').replace('.', "_");
     let expected = format!("{PORTAL_PATH}/request/{sender}/{token}");
     listen(conn, &expected)?;
+    // a dialog that saves asks for a new file (PLY-016)
+    let method = if dialog.save_as.is_some() {
+        "SaveFile"
+    } else {
+        "OpenFile"
+    };
     let reply = conn.call(
-        Message::call(PORTAL, PORTAL_PATH, FILE_CHOOSER, "OpenFile").with_body(vec![
+        Message::call(PORTAL, PORTAL_PATH, FILE_CHOOSER, method).with_body(vec![
             Value::Str(String::new()),
             Value::Str(dialog.title.clone()),
             options(dialog, &token),
         ]),
     )?;
     let Some(Value::Path(handle)) = reply.body.first() else {
-        return Err(io::Error::other("OpenFile answered without a request"));
+        return Err(io::Error::other(format!(
+            "{method} answered without a request"
+        )));
     };
     if *handle != expected {
         listen(conn, handle)?;
@@ -107,8 +115,9 @@ fn listen(conn: &mut Connection, path: &str) -> io::Result<()> {
     .map(drop)
 }
 
-/// The options of `OpenFile`: one file, the dialog's filters (glob patterns),
-/// the first one chosen.
+/// The options of `OpenFile` and `SaveFile`: one file, the dialog's filters
+/// (glob patterns), the first one chosen; the name a save suggests and the
+/// folder to start in.
 pub fn options(dialog: &FileDialog, token: &str) -> Value {
     let filters: Vec<Value> = dialog
         .filters
@@ -129,8 +138,20 @@ pub fn options(dialog: &FileDialog, token: &str) -> Value {
     let mut entries = vec![
         ("handle_token", Value::Str(token.into())),
         ("modal", Value::Bool(true)),
-        ("multiple", Value::Bool(false)),
     ];
+    match &dialog.save_as {
+        Some(name) => entries.push(("current_name", Value::Str(name.clone()))),
+        None => entries.push(("multiple", Value::Bool(false))),
+    }
+    if let Some(folder) = &dialog.folder {
+        // a byte string ending in NUL (xdg-desktop-portal's FileChooser)
+        let mut bytes = folder.as_os_str().as_encoded_bytes().to_vec();
+        bytes.push(0);
+        entries.push((
+            "current_folder",
+            Value::Array("y".into(), bytes.into_iter().map(Value::Byte).collect()),
+        ));
+    }
     if let Some(first) = filters.first() {
         entries.push(("current_filter", first.clone()));
     }
@@ -224,6 +245,8 @@ mod tests {
                 ("Subtitles".into(), vec!["*.srt", "*.ass"]),
                 ("All files".into(), vec!["*"]),
             ],
+            save_as: None,
+            folder: None,
         }
     }
 

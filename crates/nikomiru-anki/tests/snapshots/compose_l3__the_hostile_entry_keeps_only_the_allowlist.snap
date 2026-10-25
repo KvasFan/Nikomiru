@@ -1,0 +1,15 @@
+---
+source: crates/nikomiru-anki/tests/compose_l3.rs
+expression: shown(&f)
+---
+expression: 危険
+reading: きけん
+furigana-plain: 危険[きけん]
+glossary: <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><span class="gloss-sc-span" data-sc-onclick="steal()" style="color:#ff0000;">danger</span><span class="gloss-sc-a">click</span></span></span></li></ol></div>
+frequencies: 
+frequency-harmonic-rank: 9999999
+pitch-accent-positions: 
+pitch-accent-categories: 
+phonetic-transcriptions: 
+tags: 
+single-glossary-Nikomiru mini-ja (Nikomiru mini-ja (renamed)): <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><span class="gloss-sc-span" data-sc-onclick="steal()" style="color:#ff0000;">danger</span><span class="gloss-sc-a">click</span></span></span></li></ol></div>

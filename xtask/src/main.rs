@@ -11,6 +11,7 @@ mod arch;
 mod ci;
 mod evil;
 mod fixtures;
+mod install;
 mod licenses;
 mod synth;
 mod trace;
@@ -37,6 +38,11 @@ cargo xtask <command>
                        --canary: checks that a BSL-1.0 crate is rejected
   trace                requirements ↔ tests ↔ milestones matrix in target/trace.md
   about                generates target/THIRD_PARTY_LICENSES.html
+  test --anki-e2e      L7: the real Anki at NIKOMIRU_ANKI_URL (a throwaway profile
+                       with AnkiConnect): Create Lapis deck and a card from the app
+  install [--prefix DIR]
+                       release build in DIR/bin (default ~/.local) and the desktop
+                       entry in DIR/share/applications, registered for nikomiru://
 ";
 
 fn main() -> ExitCode {
@@ -65,12 +71,39 @@ fn run() -> Result<()> {
         "check-licenses" => licenses::check(&root, true),
         "trace" => trace::run(&root),
         "about" => licenses::about(&root).map(|_| ()),
+        "install" => install::run(&root, rest),
+        "test" if rest.iter().any(|a| a == "--anki-e2e") => anki_e2e(&root),
         "help" | "-h" | "--help" => {
             eprint!("{HELP}");
             Ok(())
         }
         other => bail!("unknown command: {other}\n\n{HELP}"),
     }
+}
+
+/// The L7 test against a real Anki (T-E2E-ANKI-001).
+fn anki_e2e(root: &std::path::Path) -> Result<()> {
+    if std::env::var_os("NIKOMIRU_ANKI_URL").is_none() {
+        bail!(
+            "set NIKOMIRU_ANKI_URL to the AnkiConnect of a throwaway Anki profile \
+             (e.g. http://127.0.0.1:8765): the test adds the Lapis note type and cards"
+        );
+    }
+    fixtures::run(root, &[])?;
+    util::run(util::cargo().args([
+        "test",
+        "--locked",
+        "-p",
+        "nikomiru-app",
+        "--features",
+        "test-harness",
+        "--test",
+        "e2e",
+        "--",
+        "--ignored",
+        "--exact",
+        "l7_a_card_in_a_real_anki",
+    ]))
 }
 
 /// The dictionary benchmarks (TEST §6.15): release build, one test thread.

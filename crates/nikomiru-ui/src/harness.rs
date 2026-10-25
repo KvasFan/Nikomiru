@@ -43,6 +43,11 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
         UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
+        UiEvent::CardCreated(note_id) => ("card-created", json!({ "note_id": note_id })),
+        UiEvent::ScreenshotSaved(path) => (
+            "screenshot-saved",
+            json!({ "path": path.to_string_lossy() }),
+        ),
         UiEvent::PopupRendered {
             level,
             query,
@@ -127,7 +132,7 @@ pub fn drop(paths: &[String]) -> Result<(), String> {
 
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
 /// (`Ctrl`, `Shift`, `Alt`), through the window's key handler.
-pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
+pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
     let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
     let mut held = Modifiers::default();
     for m in mods {
@@ -139,14 +144,18 @@ pub fn key(code: &str, mods: &[String]) -> Result<(), String> {
         }
     }
     call(move |ui| {
-        let key = |pressed| Key {
+        let key = |pressed, repeat| Key {
             evdev,
             mods: held,
             pressed,
-            repeat: false,
+            repeat,
         };
-        ui.key(key(true), false);
-        ui.key(key(false), false);
+        ui.key(key(true, false), false);
+        // held: the auto-repeats of the window system
+        for _ in 0..repeats {
+            ui.key(key(true, true), false);
+        }
+        ui.key(key(false, false), false);
     })
 }
 
@@ -204,6 +213,7 @@ pub fn state() -> Result<Value, String> {
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
                 "source": s.subs.source.as_ref().map(|x| x.key()),
+                "menu": s.subtitle_menu(),
                 "encoding": s.subs.encoding,
                 "delay_ms": s.subs.timeline().delay_ms,
                 "cues": s.subs.timeline().cues().len(),
@@ -213,14 +223,72 @@ pub fn state() -> Result<Value, String> {
                 "disabled": s.subs.disabled,
                 "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
             },
+            "secondary": {
+                "source": s.secondary.source.as_ref().map(|x| x.key()),
+                "cues": s.secondary.timeline().cues().len(),
+                "delay_ms": s.secondary.timeline().delay_ms,
+                "visible": s.secondary.shown(false).map(|q| q.cue.plain_text.clone()).collect::<Vec<_>>(),
+                "obscure": s.secondary_obscure_now().name(),
+            },
             "popups": s.popups.stack().iter().map(|p| json!({
                 "query": p.query,
                 "entry": p.entry,
                 "entries": p.reply.as_ref().map_or(0, |r| r.entries),
                 "loading": p.reply.is_none(),
                 "empty": p.reply.as_ref().is_some_and(|r| r.empty),
+                "cards": p.cards.iter().map(|c| c.name()).collect::<Vec<_>>(),
+                "menu": p.menu,
             })).collect::<Vec<_>>(),
             "paused_for_lookup": s.popups.paused_for_lookup(),
+            "anki_page": json!({
+                "open": ui.view.anki_page_open,
+                "busy": s.anki_page.busy,
+                "status": s.anki_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "decks": s.anki_page.lists.as_ref().map(|l| l.decks.clone()),
+                "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
+                "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
+            }),
+            "settings_tab": ui.view.settings_tab.key(),
+            "sub_list_open": ui.view.sub_list_open,
+            "services_page": json!({
+                "open": ui.view.services_page_open,
+                "status": s.services_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "providers": s.online_config().0.providers,
+            }),
+            "player_page": json!({
+                "open": ui.view.player_page_open,
+                "presets": s.player_page.presets,
+                "status": s.player_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "preview": s.player_page.preview.as_ref().map(|p| json!({
+                    "source": p.source,
+                    "lines": p.lines.iter().map(|l| json!({
+                        "line": l.line, "text": l.text, "status": format!("{:?}", l.status),
+                    })).collect::<Vec<_>>(),
+                })),
+                "set": s.player_set().values,
+                "import_folder": s.mpv_conf_folder(),
+                "raw": s.player_set().raw,
+                "preset": s.player_preset(),
+            }),
+            "online_page": json!({
+                "open": ui.view.online_page_open,
+                "busy": s.online_page.busy,
+                "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "query": s.online_page.query.as_ref().map(|q| json!({
+                    "title": q.title, "season": q.season, "episode": q.episode,
+                })),
+                "results": s.online_page.results.as_ref().map(|r| json!({
+                    "files": r.candidates.iter().map(|c| json!({
+                        "provider": c.provider.name(), "name": c.file_name,
+                        "language": c.language, "episode": c.episode,
+                    })).collect::<Vec<_>>(),
+                    "failed": r.failed,
+                })),
+            }),
+            "missing_link": s.missing_link.as_ref().map(|m| json!({
+                "uid": m.link.uid,
+                "path": m.path,
+            })),
             "dictionaries": s.dict_page.json(),
         })
     })
@@ -258,6 +326,232 @@ pub fn popup_button(button: &str) -> Result<(), String> {
         other => return Err(format!("no popup button {other}")),
     };
     call(move |ui| ui.run(command))
+}
+
+/// The card button of entry `entry` of popup `level`, or an item of its
+/// menu (`overwrite`, `open-in-anki`, `add-anyway`), like the user's click
+/// (ANK-030).
+pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String> {
+    let command = match item {
+        None => Command::CardButton { level, entry },
+        Some(name) => Command::CardMenu {
+            level,
+            entry,
+            item: crate::mining::MenuItem::from_name(name)
+                .ok_or_else(|| format!("no card menu item {name}"))?,
+        },
+    };
+    call(move |ui| ui.run(command))
+}
+
+/// Answers the file dialog of "Locate the file" with `path`, as the portal
+/// does (ANK-052).
+pub fn locate(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        ui.handle(Inbound::Chosen {
+            dialog: crate::view::Dialog::Locate,
+            path,
+        });
+    })
+}
+
+/// The Player settings page (PLY-016, PLY-018): `open`, `close`;
+/// `import` and `export` with the file the dialog would give (`path`);
+/// `preview-apply`, `preview-cancel`; `save-preset` and `load-preset` with a
+/// `name`; `apply` with the saved set and `raw` as its raw options.
+pub fn player(
+    action: &str,
+    path: Option<String>,
+    name: Option<String>,
+    raw: Option<String>,
+) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        use crate::view::Dialog;
+        let set = ui.session.player_set();
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_player_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_player_page();
+                return Ok(());
+            }
+            "import" => {
+                let path = PathBuf::from(path.ok_or("missing \"path\"")?);
+                ui.handle(Inbound::Chosen {
+                    dialog: Dialog::MpvImport,
+                    path,
+                });
+                return Ok(());
+            }
+            "export" => {
+                let path = PathBuf::from(path.ok_or("missing \"path\"")?);
+                ui.run(Command::PlayerExport(Box::new(set)));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: Dialog::MpvExport,
+                    path,
+                });
+                return Ok(());
+            }
+            "preview-apply" => Command::PlayerPreviewApply,
+            "preview-cancel" => Command::PlayerPreviewCancel,
+            "save-preset" => {
+                Command::PlayerSavePreset(name.ok_or("missing \"name\"")?, Box::new(set))
+            }
+            "load-preset" => Command::PlayerLoadPreset(name.ok_or("missing \"name\"")?),
+            "apply" => {
+                let mut set = set;
+                if let Some(raw) = raw {
+                    set.raw = raw;
+                }
+                Command::PlayerApply(Box::new((set, None)))
+            }
+            other => return Err(format!("no Player page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
+}
+
+/// The settings (SET-008): the tab `tab` (`player`, `services`, `anki`)
+/// opened as ⚙ or a tab does, or `close`d.
+pub fn settings(tab: &str) -> Result<(), String> {
+    let tab = tab.to_string();
+    call(move |ui| {
+        if tab == "close" {
+            ui.view.close_settings();
+            return Ok(());
+        }
+        let tab = crate::view::settings::SettingsTab::from_key(&tab)
+            .ok_or_else(|| format!("no settings tab {tab}"))?;
+        let mut out = Vec::new();
+        ui.view.open_settings(tab, &mut out);
+        for c in out {
+            ui.run(c);
+        }
+        Ok(())
+    })?
+}
+
+/// Saves the Subtitle services tab (MET-011) as its Save button does, with
+/// the services `providers` in their order and `auto` for the automatic
+/// subtitles, the rest as saved.
+pub fn services(providers: Vec<String>, auto: Option<bool>) -> Result<(), String> {
+    call(move |ui| {
+        let (online, network) = ui.session.online_config();
+        let (mut online, network) = (online.clone(), network.clone());
+        online.providers = providers;
+        if let Some(auto) = auto {
+            online.auto_subtitles = auto;
+        }
+        ui.run(Command::OnlineSave(Box::new((online, network))));
+    })
+}
+
+/// The Anki settings page (ANK-006, ANK-011): `open` and `close` as its
+/// button and Esc, `test`, `create-lapis` and `save` as its buttons, with the
+/// settings given (the saved ones changed by `config`, a TOML `[anki]` table).
+pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
+    let action = action.to_string();
+    let config = config.map(str::to_string);
+    call(move |ui| {
+        let mut draft = ui.session.anki_config().clone();
+        if let Some(text) = &config {
+            let table: nikomiru_core::Config =
+                nikomiru_core::Config::from_toml(&format!("[anki]\n{text}"))
+                    .map_err(|e| e.to_string())?;
+            draft = table.anki;
+        }
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_anki_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_anki_page();
+                return Ok(());
+            }
+            "test" => Command::AnkiTest(draft),
+            "create-lapis" => Command::AnkiCreateLapis(draft),
+            "save" => Command::AnkiSave(draft),
+            other => return Err(format!("no Anki page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
+}
+
+/// The secondary subtitle (SUB-017): a source key or `off`, and the
+/// obscuring mode if given.
+pub fn secondary(key: Option<String>, obscure: Option<String>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(key) = key {
+            ui.run(Command::SelectSecondary(key));
+        }
+        if let Some(mode) = obscure {
+            ui.run(Command::SecondaryObscure(
+                crate::subtitles::Obscure::from_config(&mode),
+            ));
+        }
+    })
+}
+
+/// "Align with the audio" in the subtitle menu (SUB-018).
+pub fn align() -> Result<(), String> {
+    call(|ui| ui.run(Command::AlignSubtitles))
+}
+
+/// The Online subtitles page (MET-009): `open`, `close`, `search` (with the
+/// title, season and episode given or as filled), `use` (a result's index).
+pub fn online(
+    action: &str,
+    title: Option<String>,
+    episode: Option<u32>,
+    index: Option<usize>,
+) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_online_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_online_page();
+                return Ok(());
+            }
+            "search" => {
+                let filled = ui.session.online_page.query.clone();
+                Command::OnlineSearch {
+                    title: title
+                        .or_else(|| filled.as_ref().map(|q| q.title.clone()))
+                        .unwrap_or_default(),
+                    season: filled.as_ref().and_then(|q| q.season),
+                    episode: episode.or_else(|| filled.as_ref().and_then(|q| q.episode)),
+                }
+            }
+            "use" => Command::OnlineUse(index.ok_or("missing \"index\"")?),
+            other => return Err(format!("no Online page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
 }
 
 /// Saves a dictionary's CSS like the Save button of its editor (DIC-035).

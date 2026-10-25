@@ -337,3 +337,44 @@ fn replaying_a_cue_pauses_at_its_end() {
     t.until("time-pos", |v| v.parse::<f64>().is_ok_and(|p| p > 5.8));
     assert!(t.time_pos() > 5.8, "{}", t.time_pos());
 }
+
+// T-PLY-011
+#[test]
+#[ignore = "L5: needs libmpv and `cargo xtask fixtures`"]
+fn a_screenshot_answers_once_the_frame_is_written() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut t = Harness::new();
+    t.load("av_basic.mkv", LoadRequest::default());
+    t.loaded();
+    t.h.set_pause(true).unwrap();
+    t.h.seek_absolute(2.2).unwrap();
+    t.until("time-pos", |v| {
+        v.parse::<f64>().is_ok_and(|p| (p - 2.2).abs() < 0.05)
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let png = dir.path().join("frame.png");
+    let reply = t.h.screenshot(&png).unwrap();
+    reply
+        .recv_timeout(Duration::from_secs(10))
+        .expect("a reply")
+        .expect("the screenshot");
+    let bytes = std::fs::read(&png).unwrap();
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+    let int = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+    assert_eq!((int(16), int(20)), (1280, 720), "the video's size");
+    // a failure comes back too, and the player goes on
+    let reply =
+        t.h.screenshot(&dir.path().join("missing/frame.png"))
+            .unwrap();
+    let failed = reply
+        .recv_timeout(Duration::from_secs(10))
+        .expect("a reply");
+    assert!(failed.is_err(), "{failed:?}");
+    let not_utf8 = dir.path().join(std::ffi::OsStr::from_bytes(b"\xff.png"));
+    assert!(t.h.screenshot(&not_utf8).is_err());
+    t.h.seek_absolute(3.0).unwrap();
+    t.until("time-pos", |v| {
+        v.parse::<f64>().is_ok_and(|p| (p - 3.0).abs() < 0.05)
+    });
+}
