@@ -242,6 +242,8 @@ pub(crate) struct Scene<'a> {
     /// (POP-006).
     pub size: (f64, f64),
     pub tr: &'a Translate<'a>,
+    /// A word audio source is on: the entries have ♪ (AUD-004).
+    pub word_audio: bool,
 }
 
 /// Draws the popups; returns the levels drawn with their content.
@@ -256,6 +258,7 @@ pub(crate) fn show(
         stack: s.popups.stack(),
         size: s.popups.size(),
         tr: &tr,
+        word_audio: s.word_audio_on(),
     };
     draw(ctx, &scene, state, out)
 }
@@ -453,6 +456,7 @@ pub(crate) fn draw(
                                     panel: &mut *panel,
                                     out: &mut *out,
                                     tr: scene.tr,
+                                    word_audio: scene.word_audio,
                                     #[cfg(test)]
                                     drawn: &mut state.drawn,
                                 };
@@ -502,6 +506,7 @@ struct Draw<'a> {
     panel: &'a mut Panel,
     out: &'a mut Vec<Command>,
     tr: &'a Translate<'a>,
+    word_audio: bool,
     #[cfg(test)]
     drawn: &'a mut Vec<Drawn>,
 }
@@ -951,9 +956,10 @@ fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
             state: p.cards.get(k).copied().unwrap_or_default(),
             menu: p.menu == Some(k),
         };
+        let audio = p.audio.as_ref().filter(|(e, _)| *e == k).map(|(_, m)| m);
         let inner = ui.horizontal_top(|ui| {
             ui.add_space(8.0);
-            ui.vertical(|ui| entry(ui, d, e, k, card));
+            ui.vertical(|ui| entry(ui, d, e, k, card, audio));
         });
         let rect = inner.response.rect;
         // the entry the keyboard is on (POP-014)
@@ -999,7 +1005,14 @@ struct Card {
     menu: bool,
 }
 
-fn entry(ui: &mut Ui, d: &mut Draw<'_>, e: &EntryView, k: usize, card: Card) {
+fn entry(
+    ui: &mut Ui,
+    d: &mut Draw<'_>,
+    e: &EntryView,
+    k: usize,
+    card: Card,
+    audio: Option<&crate::word_audio::AudioMenu>,
+) {
     ui.spacing_mut().item_spacing.y = 6.0;
     // the headword, a reading over each part (LKP-050), and the card button
     ui.horizontal(|ui| {
@@ -1021,9 +1034,49 @@ fn entry(ui: &mut Ui, d: &mut Draw<'_>, e: &EntryView, k: usize, card: Card) {
                     entry: k,
                 });
             }
+            // AUD-004: ♪ plays the first audio, a right click lists them all
+            if d.word_audio {
+                ui.add_space(4.0);
+                let name = d.tr("word-audio-button");
+                let sound = chip(ui, "♪", CHIP, 15.0, &d.tr("word-audio-hint"))
+                    .interact(Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand);
+                sound.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
+                if sound.clicked() {
+                    d.out.push(Command::WordAudio {
+                        level: card.level,
+                        entry: k,
+                    });
+                }
+                if sound.secondary_clicked() {
+                    d.out.push(Command::WordAudioMenu {
+                        level: card.level,
+                        entry: k,
+                    });
+                }
+            }
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
         });
     });
+    match audio {
+        Some(crate::word_audio::AudioMenu::Loading) => {
+            ui.label(RichText::new(d.tr("word-audio-loading")).color(WEAK));
+        }
+        Some(crate::word_audio::AudioMenu::Items(items)) if items.is_empty() => {
+            ui.label(RichText::new(d.tr("word-audio-none")).color(WEAK));
+        }
+        Some(crate::word_audio::AudioMenu::Items(items)) => {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
+                for item in items {
+                    if chip_button(ui, &format!("♪ {}", item.label)) {
+                        d.out.push(Command::WordAudioPlay(item.url.clone()));
+                    }
+                }
+            });
+        }
+        None => {}
+    }
     if card.menu {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
@@ -1374,8 +1427,21 @@ fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
     let layout = Layout::left_to_right(if ruby_flow { Align::Min } else { Align::Center })
         .with_main_wrap(true);
     let mut text = Selectable::default();
+    // a row high to start with, as `horizontal_wrapped`: a horizontal layout
+    // centres each item in all the height it is given, which would stretch a
+    // chip down the rest of the popup and push what follows out of sight
+    let row = Rect::from_min_size(
+        ui.cursor().min,
+        vec2(
+            ui.available_size_before_wrap().x,
+            ui.spacing().interact_size.y,
+        ),
+    );
     // under the runs: a link keeps its click, a drag from anywhere selects
-    let builder = UiBuilder::new().layout(layout).sense(selecting(select));
+    let builder = UiBuilder::new()
+        .max_rect(row)
+        .layout(layout)
+        .sense(selecting(select));
     let flow = ui.scope_builder(builder, |ui| {
         ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
         for (i, r) in runs.iter().enumerate() {
@@ -1800,6 +1866,8 @@ mod tests {
         /// frame.
         nest: bool,
         nested: Vec<String>,
+        /// A word audio source is on.
+        word_audio: bool,
     }
 
     fn word() -> popup::Rect {
@@ -1856,7 +1924,15 @@ mod tests {
             entry: 0,
             cards: vec![crate::mining::CardState::Unknown; n],
             menu: None,
+            audio: None,
         }
+    }
+
+    /// An entry whose glossary is drawn with `css` (a dictionary's).
+    fn styled_entry(expression: &str, glossary: serde_json::Value, css: &str) -> EntryView {
+        let mut e = entry(expression, serde_json::json!(""));
+        e.sections[0].glossaries[0].blocks = structured::render(&glossary, &Sheet::parse(css));
+        e
     }
 
     fn harness(stack: Vec<Popup>) -> Harness<'static, Test> {
@@ -1874,6 +1950,7 @@ mod tests {
                         stack: &t.stack,
                         size: t.size,
                         tr: &tr,
+                        word_audio: t.word_audio,
                     };
                     t.drawn = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                     // the session's part: the next popups take a dragged size
@@ -1911,6 +1988,7 @@ mod tests {
                     drawn: Vec::new(),
                     nest: false,
                     nested: Vec::new(),
+                    word_audio: false,
                 },
             )
     }
@@ -2035,6 +2113,81 @@ mod tests {
         }
     }
 
+    // T-POP-010: a tag at the start of a sense (Jitendex's part of speech)
+    // stays a line high, and the meanings follow right under it
+    #[test]
+    fn a_tag_before_a_list_stays_a_line_high() {
+        let css = r#"
+            span[data-sc-class="tag"] { border-radius: 0.3em; font-size: 0.8em; font-weight: bold;
+                margin-right: 0.5em; padding: 0.2em 0.3em; vertical-align: text-bottom; }
+            span[data-sc-content="part-of-speech-info"] { background-color: #565656; color: white; }
+            li[data-sc-content="sense-group"] { padding-left: 0.25em; }
+            ul[data-sc-content="sense-groups"] { list-style-type: "＊"; }
+        "#;
+        let glossary = serde_json::json!({"type": "structured-content", "content": [
+            {"tag": "ul", "data": {"content": "sense-groups"}, "content": {
+                "tag": "li", "data": {"content": "sense-group"}, "content": [
+                    {"tag": "span", "data": {"class": "tag", "content": "part-of-speech-info"}, "content": "noun"},
+                    {"tag": "ol", "content": [
+                        {"tag": "li", "style": {"listStyleType": "\"①\""}, "content": "the Horse"},
+                        {"tag": "li", "style": {"listStyleType": "\"②\""}, "content": "hour of the Horse"}
+                    ]}
+                ]
+            }}
+        ]});
+        let mut h = harness(vec![popup(
+            1,
+            Some(vec![styled_entry("午", glossary, css)]),
+        )]);
+        h.run();
+        let tag = h.get_by_label("noun").rect();
+        let first = h.get_by_label("the Horse").rect();
+        assert!(first.top() - tag.bottom() < 30.0, "{tag:?} {first:?}");
+        assert!(tag.height() < 30.0, "{tag:?}");
+    }
+
+    // T-AUD-004: ♪ plays, a right click opens the menu, an item plays
+    #[test]
+    fn the_sound_of_an_entry_plays_and_lists_its_audio() {
+        use crate::word_audio::{AudioMenu, WordAudioItem};
+        let mut p = popup(1, Some(vec![entry("食べる", serde_json::json!("to eat"))]));
+        p.audio = Some((
+            0,
+            AudioMenu::Items(vec![WordAudioItem {
+                label: "NHK".into(),
+                url: "http://localhost/1.mp3".into(),
+            }]),
+        ));
+        let mut h = harness(vec![p]);
+        h.state_mut().word_audio = true;
+        h.run();
+        let take = |h: &mut Harness<'_, Test>| {
+            let mut out = std::mem::take(&mut h.state_mut().out);
+            out.retain(|c| !matches!(c, Command::PopupHover(_)));
+            out
+        };
+        h.get_by_label("word-audio-button").click();
+        h.run();
+        assert!(matches!(
+            take(&mut h).as_slice(),
+            [Command::WordAudio { level: 0, entry: 0 }]
+        ));
+        h.get_by_label("word-audio-button").click_secondary();
+        h.run();
+        assert!(matches!(
+            take(&mut h).as_slice(),
+            [Command::WordAudioMenu { level: 0, entry: 0 }]
+        ));
+        h.get_by_role_and_label(Role::Button, "♪ NHK").click();
+        h.run();
+        assert!(
+            matches!(take(&mut h).as_slice(), [Command::WordAudioPlay(u)] if u == "http://localhost/1.mp3")
+        );
+        // no source: no ♪
+        h.state_mut().word_audio = false;
+        h.run();
+        assert!(h.query_by_label("word-audio-button").is_none());
+    }
     // T-POP-006
     #[test]
     fn a_popup_sits_above_its_word_and_is_drawn_once_it_has_content() {

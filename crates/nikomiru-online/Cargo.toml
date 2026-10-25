@@ -13,8 +13,8 @@ test-support = []
 
 [dependencies]
 nikomiru-core.workspace = true
+nikomiru-text.workspace = true
 reqwest.workspace = true
-regex.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

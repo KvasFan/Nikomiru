@@ -10,6 +10,7 @@
 #![deny(missing_docs)]
 
 pub mod archive;
+pub mod audio;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
@@ -17,7 +18,6 @@ pub mod hash;
 pub mod http;
 pub mod jimaku;
 pub mod language;
-pub mod name;
 pub mod opensubtitles;
 pub mod rank;
 pub mod search;

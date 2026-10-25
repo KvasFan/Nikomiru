@@ -316,6 +316,17 @@ fn run(
     if let Some(e) = config_notice {
         notices.push(translator.error(&e));
     }
+    // a settings folder made with sudo belongs to root: saving would fail
+    if let Err(e) = nikomiru_core::config::check_writable(&paths.config_dir) {
+        tracing::warn!("{} cannot be written: {e}", paths.config_dir.display());
+        notices.push(translator.tr(
+            "error-config-dir",
+            &[
+                ("path", paths.config_dir.display().to_string()),
+                ("reason", e.to_string()),
+            ],
+        ));
+    }
     let library = match Library::open(&paths.library_db()) {
         Ok(library) => {
             if library.read_only() {
@@ -385,6 +396,30 @@ fn run(
         subtitles_dir: paths.subtitles_dir(),
         translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
     });
+    // LIB-002…LIB-012
+    let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {
+        Some(library) => Box::new(nikomiru_app::catalog::Catalog::start(
+            nikomiru_app::catalog::Parts {
+                library: library.clone(),
+                ffmpeg: config.paths.ffmpeg.clone(),
+                cache_dir: paths.cache_dir.clone(),
+                translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+                clock: Arc::new(SystemClock::new()),
+            },
+        )),
+        None => Box::new(nikomiru_ui::catalog::NoLibrary(
+            translator.tr("error-library-unavailable", &[]),
+        )),
+    };
+    // AUD-001…AUD-008
+    let word_audio =
+        nikomiru_app::word_audio::WordAudioWorker::start(nikomiru_app::word_audio::Parts {
+            config: config.word_audio.clone(),
+            proxy: config.network.proxy.clone(),
+            cache_dir: paths.cache_dir.join("audio"),
+            ao: config.player.mpv_options.get("ao").cloned(),
+            translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -406,6 +441,8 @@ fn run(
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
         online: Box::new(online),
+        catalog,
+        word_audio: Box::new(word_audio),
         subtitles_dir: paths.subtitles_dir(),
         mpv_presets_dir: paths.mpv_presets_dir(),
         user_mpv_conf: paths.user_mpv_conf(),
@@ -422,8 +459,9 @@ fn run(
             waker.wake(Inbound::Activate);
         })
     });
-    if let Some(target) = options.targets.first() {
-        waker.wake(Inbound::Open(target.clone()));
+    match options.targets.first() {
+        Some(target) => waker.wake(Inbound::Open(target.clone())),
+        None => waker.wake(Inbound::ShowLibrary),
     }
     watch_termination_signals(waker.clone());
     #[cfg(feature = "test-harness")]

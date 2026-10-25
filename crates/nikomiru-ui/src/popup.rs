@@ -106,6 +106,8 @@ pub struct Popup {
     pub cards: Vec<crate::mining::CardState>,
     /// The entry whose card menu is open.
     pub menu: Option<usize>,
+    /// The entry whose audio menu is open, and the menu (AUD-004).
+    pub audio: Option<(usize, crate::word_audio::AudioMenu)>,
 }
 
 /// The open popups, root first.
@@ -175,6 +177,7 @@ impl Popups {
             entry: 0,
             cards: Vec::new(),
             menu: None,
+            audio: None,
         });
         Command::Lookup {
             generation: self.generation,
@@ -280,6 +283,7 @@ impl Popups {
             Some(p) => {
                 p.cards = vec![crate::mining::CardState::Unknown; reply.entries];
                 p.menu = None;
+                p.audio = None;
                 p.reply = Some(reply);
                 true
             }

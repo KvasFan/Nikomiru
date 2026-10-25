@@ -9,9 +9,11 @@
 //! dictionaries page, the toast.
 
 mod anki_page;
+mod audio_page;
 mod bar;
 mod chrome;
 mod dict_page;
+mod library_page;
 mod link;
 mod list;
 mod online_page;
@@ -45,6 +47,10 @@ pub enum Dialog {
     MpvImport,
     /// Where to export the mpv options (PLY-016).
     MpvExport,
+    /// A folder to import into the library (LIB-002).
+    LibraryFolder,
+    /// A database of the Local Audio Server (AUD-003).
+    AudioDatabase,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -60,6 +66,8 @@ pub struct FileDialog {
     pub save_as: Option<String>,
     /// The folder it starts in, when not the portal's choice.
     pub folder: Option<PathBuf>,
+    /// It chooses a folder, not a file.
+    pub directory: bool,
 }
 
 pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
@@ -100,6 +108,11 @@ impl FileDialog {
                 tr("player-export"),
                 vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
             ),
+            Dialog::LibraryFolder => (tr("library-add-folder"), Vec::new()),
+            Dialog::AudioDatabase => (
+                tr("audio-database-button"),
+                vec![(tr("audio-database-filter"), vec!["*.db"]), all],
+            ),
         };
         Self {
             dialog,
@@ -110,6 +123,7 @@ impl FileDialog {
                 Dialog::MpvImport => s.mpv_conf_folder(),
                 _ => None,
             },
+            directory: dialog == Dialog::LibraryFolder,
         }
     }
 }
@@ -135,10 +149,22 @@ pub(crate) struct View {
     pub online: online_page::State,
     /// The Subtitle services tab of the settings is shown (MET-011).
     pub services_page_open: bool,
+    /// The Word audio tab of the settings is shown (AUD-001).
+    pub audio_page_open: bool,
+    /// What it keeps.
+    pub audio: audio_page::State,
     /// What it keeps.
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
+    /// The Library page is shown (LIB-005).
+    pub library_page_open: bool,
+    /// The files opened as of the last frame.
+    opened: u64,
+    /// Esc over the bare video: the Library page opens at the next frame.
+    library_asked: bool,
+    /// What it keeps.
+    pub library: library_page::State,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
     /// Give the keyboard to the list's search field (Ctrl+F).
@@ -175,7 +201,9 @@ impl View {
                 // popups were closed by the session already (POP-012)
                 if self.online_page_open {
                     self.close_online_page();
-                } else if self.services_page_open {
+                } else if self.library_page_open {
+                    self.close_library_page();
+                } else if self.services_page_open || self.audio_page_open {
                     self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
@@ -185,6 +213,9 @@ impl View {
                     self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
+                } else {
+                    // nothing over the video: back to the library (LIB-005)
+                    self.library_asked = true;
                 }
             }
             UiEffect::OpenDialog => self.dialog = Some(Dialog::Video),
@@ -258,6 +289,10 @@ impl View {
                 self.services_page_open = true;
                 out.push(Command::ServicesOpen);
             }
+            SettingsTab::Audio => {
+                self.audio_page_open = true;
+                out.push(Command::AudioOpen);
+            }
             SettingsTab::Anki => self.open_anki_page(out),
         }
     }
@@ -268,6 +303,8 @@ impl View {
         self.close_anki_page();
         self.services_page_open = false;
         self.services = services_page::State::default();
+        self.audio_page_open = false;
+        self.audio = audio_page::State::default();
     }
 
     /// What a page asked for after its frame.
@@ -277,6 +314,18 @@ impl View {
             settings::Leave::Close => self.close_settings(),
             settings::Leave::To(tab) => self.open_settings(tab, out),
         }
+    }
+
+    pub fn open_library_page(&mut self, out: &mut Vec<Command>) {
+        if !self.library_page_open {
+            self.library_page_open = true;
+            out.push(Command::LibraryOpen);
+        }
+    }
+
+    pub fn close_library_page(&mut self) {
+        self.library_page_open = false;
+        self.library.reset();
     }
 
     pub fn close_dict_page(&mut self) {
@@ -291,8 +340,16 @@ impl View {
 
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
+        // a file opened, from the page or anywhere else: the video shows
+        if s.opened() != self.opened {
+            self.opened = s.opened();
+            self.close_library_page();
+        }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if std::mem::take(&mut self.library_asked) {
+            self.open_library_page(&mut out);
+        }
         self.window(&ctx, s);
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             out.push(Command::MouseMoved);
@@ -332,6 +389,8 @@ impl View {
             || self.online_page_open
             || self.player_page_open
             || self.services_page_open
+            || self.audio_page_open
+            || self.library_page_open
         {
             self.popups.rects.clear();
             Vec::new()
@@ -339,6 +398,9 @@ impl View {
             popups::show(&ctx, s, &mut self.popups, &mut out)
         };
         self.mark_presented(s, &drawn);
+        if self.library_page_open {
+            library_page::show(&ctx, s, self, &mut out);
+        }
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
         }
@@ -351,6 +413,9 @@ impl View {
         if self.services_page_open {
             services_page::show(&ctx, s, self, &mut out);
         }
+        if self.audio_page_open {
+            audio_page::show(&ctx, s, self, &mut out);
+        }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
         }
@@ -358,6 +423,7 @@ impl View {
             link::show(&ctx, s, missing, &mut out);
         }
         chrome::show(&ctx, s, self);
+        chrome::next_up(&ctx, s, bar_height, &mut out);
 
         // the cursor hides with the controls, over the video (PLY-004)
         if !controls && !s.popups.is_open() && video.hovered() {

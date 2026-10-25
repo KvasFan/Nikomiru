@@ -56,6 +56,9 @@ pub struct Data {
     pub os_subtitles: Vec<OsSubtitle>,
     /// OpenSubtitles downloads left.
     pub remaining: i64,
+    /// Word audio (AUD-002) by term: `/words/list` answers a Yomitan list of
+    /// `/words/file/<term>`, `/words/direct` the audio itself.
+    pub words: BTreeMap<String, Vec<u8>>,
 }
 
 /// A request the fake received.
@@ -240,10 +243,20 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
 }
 
 fn respond(stream: &mut TcpStream, status: u16, retry_after: Option<u64>, body: &[u8]) {
+    respond_as(stream, status, retry_after, "application/json", body);
+}
+
+fn respond_as(
+    stream: &mut TcpStream,
+    status: u16,
+    retry_after: Option<u64>,
+    content_type: &str,
+    body: &[u8],
+) {
     let retry = retry_after.map_or_else(String::new, |s| format!("Retry-After: {s}\r\n"));
     let _ = write!(
         stream,
-        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{retry}Connection: close\r\n\r\n",
+        "HTTP/1.1 {status} X\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n{retry}Connection: close\r\n\r\n",
         body.len()
     );
     let _ = stream.write_all(body);
@@ -259,8 +272,82 @@ fn serve(shared: &Shared, mut stream: TcpStream, port: u16) {
     if let Some((status, retry)) = lock(&shared.script).pop_front() {
         return respond(&mut stream, status, retry, b"{}");
     }
+    if request.target.contains("/words/") {
+        let (status, content_type, body) = word(shared, &request, port);
+        return respond_as(&mut stream, status, None, content_type, &body);
+    }
     let (status, body) = answer(shared, &request, port);
     respond(&mut stream, status, None, &body);
+}
+
+/// `%XX` sequences decoded as UTF-8.
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The word audio routes (AUD-002).
+fn word(shared: &Shared, r: &Request, port: u16) -> (u16, &'static str, Vec<u8>) {
+    let target = r.target.find("/words/").map_or("", |i| &r.target[i..]);
+    let Ok(url) = Url::parse(&format!("http://fake{target}")) else {
+        return (400, "text/plain", Vec::new());
+    };
+    let query: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
+    let term = query.get("term").cloned().unwrap_or_default();
+    let d = lock(&shared.data);
+    let segments: Vec<String> = url
+        .path_segments()
+        .map(|s| s.map(percent_decoded).collect())
+        .unwrap_or_default();
+    match segments
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["words", "list"] => {
+            let sources: Vec<Value> = d
+                .words
+                .contains_key(&term)
+                .then(|| {
+                    json!({
+                        "name": "fake",
+                        "url": format!("http://127.0.0.1:{port}/words/file/{}", crate::audio::encode_component(&term)),
+                    })
+                })
+                .into_iter()
+                .collect();
+            let body = json!({"type": "audioSourceList", "audioSources": sources});
+            (200, "application/json", json_body(&body))
+        }
+        ["words", "file", name] => match d.words.get(*name) {
+            Some(bytes) => (200, "audio/mpeg", bytes.clone()),
+            None => (404, "text/plain", Vec::new()),
+        },
+        ["words", "direct"] => match d.words.get(&term) {
+            Some(bytes) => (200, "audio/mpeg", bytes.clone()),
+            None => (404, "text/plain", Vec::new()),
+        },
+        _ => (404, "text/plain", Vec::new()),
+    }
 }
 
 fn json_body(v: &Value) -> Vec<u8> {

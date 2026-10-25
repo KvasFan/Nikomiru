@@ -59,6 +59,8 @@ pub enum Inbound {
     Open(String),
     /// Brings the window forward (second launch).
     Activate,
+    /// No file to open at start: the Library page (LIB-005).
+    ShowLibrary,
     /// The file the user chose in a file dialog.
     Chosen {
         /// The dialog that was open.
@@ -118,6 +120,21 @@ pub enum Inbound {
         /// The file kept, or why not.
         result: Result<Option<crate::online::Downloaded>, String>,
     },
+    /// What the library worker answered (LIB-002…LIB-012).
+    Library(crate::catalog::LibraryReply),
+    /// The audio menu of an entry (AUD-004).
+    WordAudioListed {
+        /// The popup.
+        level: usize,
+        /// Its lookup.
+        generation: u64,
+        /// The entry.
+        entry: usize,
+        /// The audio found, or why not.
+        result: Result<Vec<crate::word_audio::WordAudioItem>, String>,
+    },
+    /// A word played, or none was found.
+    WordAudioPlayed(Result<bool, String>),
     /// An alignment with the audio ended (SUB-018).
     Aligned {
         /// The subtitle load it was for.
@@ -155,6 +172,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::ImportDone { .. } => "ImportDone",
             Inbound::Open(_) => "Open",
             Inbound::Activate => "Activate",
+            Inbound::ShowLibrary => "ShowLibrary",
             Inbound::Chosen { .. } => "Chosen",
             Inbound::DialogFailed => "DialogFailed",
             Inbound::Dropped(_) => "Dropped",
@@ -170,6 +188,9 @@ impl std::fmt::Debug for Inbound {
             Inbound::OptionsApplied(_) => "OptionsApplied",
             Inbound::Aligned { .. } => "Aligned",
             Inbound::FileWritten { .. } => "FileWritten",
+            Inbound::Library(_) => "Library",
+            Inbound::WordAudioListed { .. } => "WordAudioListed",
+            Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -272,10 +293,44 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// ♪ of an entry: its first audio (AUD-004).
+    WordAudio {
+        level: usize,
+        entry: usize,
+    },
+    /// A right click on ♪: the audio menu of the entry.
+    WordAudioMenu {
+        level: usize,
+        entry: usize,
+    },
+    /// An audio of the menu.
+    WordAudioPlay(String),
+    /// Save the word audio settings (AUD-001).
+    WordAudioSave(Box<nikomiru_core::config::WordAudioConfig>),
+    /// "Database…" on a row of the Word audio tab (AUD-003).
+    AudioChooseDatabase(usize),
+    /// The next episode now (LIB-009).
+    NextNow,
+    /// The next episode not now.
+    NextCancel,
+    /// The Library page opened (LIB-005).
+    LibraryOpen,
+    /// "Add folder…": the folder dialog opens (LIB-002).
+    LibraryAddFolder,
+    /// A series opened on it, or closed.
+    LibrarySeries(Option<u64>),
+    /// A folder scanned again with a grouping (LIB-002, LIB-004).
+    LibraryScan(PathBuf, nikomiru_library::Grouping),
+    /// An edit of the library (LIB-011, LIB-012).
+    LibraryEdit(crate::catalog::LibraryEdit),
+    /// An episode played from the page.
+    LibraryPlay(PathBuf),
     /// The Online subtitles page opened (MET-009).
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
     ServicesOpen,
+    /// The Word audio tab of the settings opened (AUD-001).
+    AudioOpen,
     /// A search from it.
     OnlineSearch {
         title: String,
@@ -442,6 +497,14 @@ impl Ui {
                 }
                 true
             }
+            Inbound::ShowLibrary => {
+                let mut out = Vec::new();
+                self.view.open_library_page(&mut out);
+                for c in out {
+                    self.apply(c);
+                }
+                true
+            }
             Inbound::Activate => {
                 self.view.activate = true;
                 true
@@ -531,7 +594,29 @@ impl Ui {
                     Dialog::Locate => self.session.located(&path),
                     Dialog::MpvImport => self.session.player_import(&path),
                     Dialog::MpvExport => self.session.player_export_to(&path),
+                    Dialog::LibraryFolder => self
+                        .session
+                        .library_import(path, nikomiru_library::Grouping::BySeries),
+                    Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                 }
+                true
+            }
+            Inbound::Library(reply) => {
+                self.session.library_reply(reply);
+                true
+            }
+            Inbound::WordAudioListed {
+                level,
+                generation,
+                entry,
+                result,
+            } => {
+                self.session
+                    .word_audio_listed(level, generation, entry, result);
+                true
+            }
+            Inbound::WordAudioPlayed(result) => {
+                self.session.word_audio_played(result);
                 true
             }
             Inbound::Quit => {
@@ -701,7 +786,9 @@ impl Ui {
             || self.view.anki_page_open
             || self.view.online_page_open
             || self.view.player_page_open
-            || self.view.services_page_open;
+            || self.view.services_page_open
+            || self.view.audio_page_open
+            || self.view.library_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -792,7 +879,24 @@ impl Ui {
                 self.view.dialog = Some(Dialog::MpvExport);
             }
             Command::OnlineOpen => s.online_open(),
+            Command::WordAudio { level, entry } => s.word_audio(level, entry),
+            Command::WordAudioMenu { level, entry } => s.word_audio_menu(level, entry),
+            Command::WordAudioPlay(url) => s.word_audio_play(url),
+            Command::WordAudioSave(config) => s.word_audio_save(*config),
+            Command::AudioChooseDatabase(row) => {
+                s.audio_choose_database(row);
+                self.view.dialog = Some(Dialog::AudioDatabase);
+            }
+            Command::NextNow => s.play_next(),
+            Command::NextCancel => s.cancel_next(),
+            Command::LibraryOpen => s.library_open(),
+            Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
+            Command::LibrarySeries(id) => s.library_series(id),
+            Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
+            Command::LibraryEdit(edit) => s.library_edit(edit),
+            Command::LibraryPlay(path) => s.library_play(&path),
             Command::ServicesOpen => s.services_open(),
+            Command::AudioOpen => s.audio_status = None,
             Command::OnlineSearch {
                 title,
                 season,
@@ -885,6 +989,67 @@ impl Ui {
                     });
                 }),
             );
+        }
+        for job in self.session.take_word_audio_jobs() {
+            use crate::word_audio::WordAudioJob;
+            let waker = self.waker.clone();
+            let audio = self.session.word_audio_service();
+            match job {
+                WordAudioJob::Play { term, reading } => audio.play(
+                    term,
+                    reading,
+                    Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r))),
+                ),
+                WordAudioJob::List {
+                    level,
+                    generation,
+                    entry,
+                    term,
+                    reading,
+                } => audio.list(
+                    term,
+                    reading,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::WordAudioListed {
+                            level,
+                            generation,
+                            entry,
+                            result,
+                        });
+                    }),
+                ),
+                WordAudioJob::PlayUrl(url) => audio.play_url(
+                    url,
+                    Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r.map(|()| true)))),
+                ),
+                WordAudioJob::Configure(settings) => {
+                    let (config, proxy) = *settings;
+                    audio.configure(config, proxy);
+                }
+            }
+        }
+        for job in self.session.take_library_jobs() {
+            use crate::catalog::{LibraryJob, LibraryReply};
+            let waker = self.waker.clone();
+            let reply = move |r: LibraryReply| waker.wake(Inbound::Library(r));
+            let catalog = self.session.catalog();
+            match job {
+                LibraryJob::Home => catalog.home(Box::new(move |r| reply(LibraryReply::Home(r)))),
+                LibraryJob::Episodes(id) => {
+                    catalog.episodes(id, Box::new(move |r| reply(LibraryReply::Episodes(id, r))))
+                }
+                LibraryJob::Import(root, grouping) => catalog.import(
+                    root,
+                    grouping,
+                    Box::new(move |r| reply(LibraryReply::Imported(r))),
+                ),
+                LibraryJob::Edit(edit) => {
+                    catalog.edit(edit, Box::new(move |r| reply(LibraryReply::Edited(r))));
+                }
+                LibraryJob::Cover(id) => {
+                    catalog.cover(id, Box::new(move |r| reply(LibraryReply::Cover(id, r))));
+                }
+            }
         }
         for job in self.session.take_online_jobs() {
             let waker = self.waker.clone();
@@ -983,7 +1148,10 @@ impl Ui {
             let spawned = std::thread::Builder::new()
                 .name("config-save".into())
                 .spawn(move || {
-                    let result = config.save(&file).map_err(|e| translator.error(&e));
+                    let result = config.save(&file).map_err(|e| {
+                        tracing::warn!("saving the settings: {e}");
+                        translator.error(&e)
+                    });
                     waker.wake(Inbound::ConfigSaved(result));
                 });
             if let Err(e) = spawned {

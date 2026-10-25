@@ -189,6 +189,7 @@ They are loaded at runtime or invoked as processes. They are not distributed wit
 | Need | Rejected choice (license) | Adopted choice |
 |---|---|---|
 | Local database | SQLite (public domain: not in the list) | `redb` (MIT OR Apache-2.0) |
+| Reading the local audio database (AUD-003) | SQLite (public domain); `turso` (BSD-3-Clause `subtle`, Unicode-3.0 ICU collation in its graph, S3) | Own read-only reader of the SQLite file format ([ADR 0004](adr/0004-local-audio-db.md)) |
 | Glossary compression | zstd C (BSD-3 / GPL-2.0-only) | `lz4_flex` (MIT) |
 | Fast hash | `xxhash-rust` (BSL-1.0) | `twox-hash` (MIT) if needed; otherwise the `redb` hasher |
 | Subtitle encoding detection | `encoding_rs` (`… AND BSD-3-Clause`) | glibc `iconv` via FFI (LGPL) + own heuristics |
@@ -248,15 +249,15 @@ nikomiru/
 ├── xtask/                  # cargo xtask: ci, fixtures, about, bench
 ├── crates/
 │   ├── nikomiru-core/       # shared types, config, paths, errors, clock
-│   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count
+│   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count, file names
 │   ├── nikomiru-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
 │   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
 │   ├── nikomiru-player/     # libmpv core (libmpv2): init, properties, commands, events;
 │   │                       # the OpenGL render context of the video
 │   ├── nikomiru-anki/       # AnkiConnect client, note composer, Lapis, return link
-│   ├── nikomiru-library/    # library, file names, progress, statistics
-│   ├── nikomiru-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
+│   ├── nikomiru-library/    # library: folders, series, progress, statistics, cards, dictionary registry
+│   ├── nikomiru-online/     # Jimaku, OpenSubtitles (M4b); AniList/Jikan (M7)
 │   ├── nikomiru-ui/         # egui interface: player page, subtitle overlay, popup, pages, controls
 │   └── nikomiru-app/        # binary: winit event loop, glutin (EGL) window, egui_glow, wiring, single instance
 ├── assets/                 # transforms/, anki/lapis/, i18n/*.ftl, icons
@@ -385,7 +386,7 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 |---|---|---|
 | LIB-001 | MUST open a single video file: from the file dialog, by drag & drop onto the window or as a command-line argument. Extensions offered in the dialog: mp4 mkv avi mov webm m4v ts m2ts mts flv wmv mpg mpeg ogv; the dialog MUST also allow "all files" | `kVideoExtensions` |
 | LIB-002 | MUST import a folder recursively, in two modes: **by series** (default) and **by folder** | `video_library_import.dart` |
-| LIB-003 | By series: the file name is parsed Anitomy-style (series, season, episode, group, resolution). If the season is missing, it is derived from the folder (`Season 2`, `S02`, `第2季`, trailing number). If a name cannot be parsed, the episode number is inferred by comparing it with neighboring files | `video_filename_parser.dart` |
+| LIB-003 | By series: the file name is parsed Anitomy-style (series, season, episode, group, resolution). If the season is missing, it is derived from the folder (`Season 2`, `S02`, `第2季`, trailing number). If a name cannot be parsed, the episode number is inferred by comparing it with neighboring files. A name that is only an episode (`01.mkv`, `第01集.mp4`) takes the series of its folder, or of the folder above a season folder (`Show/Season 2/01.mkv` is season 2 of `Show`; Fushi keeps `Season 2` as a series) | `video_filename_parser.dart` |
 | LIB-004 | Changing mode or rescanning MUST NOT lose progress, chosen subtitles or metadata. A scan MUST NOT recreate series the user has deleted | spec `2026-09-07-video-library-workflow.md` |
 | LIB-005 | The home page shows "Continue watching" (latest episodes started and not finished) and the series grid with covers. The cover is the frame at 10% of the first episode (ffmpeg, cached) until metadata are available | |
 | LIB-006 | Episode progress: saved at most once per second, only after the file is open and the resume seek has happened. On exit and on episode change it is saved immediately | `video_player_controller.dart` |
@@ -626,10 +627,10 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ID | Requirement | Fushi |
 |---|---|---|
 | AUD-001 | Audio sources in an ordered, configurable list; each one can be enabled or disabled. | `audio_source_config.dart` |
-| AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded. The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` or, unlike Fushi, direct audio (`Content-Type: audio/*`). | `word_audio_resolver.dart` |
-| AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (nhk16, forvo, jpod, …). The format is SQLite: it is read with `turso` (MIT), to be validated in spike S3 (D-2). | `local_audio_db.dart` |
+| AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded (as `encodeURIComponent`; an empty reading is the term). The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` (relative addresses resolved against the source's) or, unlike Fushi, direct audio (`Content-Type: audio/*`). Only HTTPS, or HTTP on loopback (a local audio server), as for the online subtitles; at most 8 MiB per file; through `[network] proxy` (SET-007). | `word_audio_resolver.dart` |
+| AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (default `nhk16`, `forvo`, `jpod`, then the others; settable per source). The format is SQLite: it is read read-only by Nikomiru's own reader of the file format, with no library ([ADR 0004](adr/0004-local-audio-db.md), D-2 (d)). | `local_audio_db.dart` |
 | AUD-004 | Resolution: for playback the first valid result in order is enough; the menu (right click on ♪) queries all sources in parallel and shows them all. Timeouts: 8 s for the connection, 10 s for the response. A 4xx response = "no audio"; a connection error pauses the host for 45 s. | |
-| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. Configurable volume. | |
+| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`, no configuration or scripts), independent of the player, with the player's audio output (`ao`) if set. Configurable volume. | |
 | AUD-006 | Option "play automatically when the popup opens", default yes: it does not overlap the dialogue because the lookup already pauses the video (POP-001). It can be disabled. | |
 | AUD-007 | There are no default JapanesePod101 or Forvo URLs (terms of service). The user adds their own templates. | |
 | AUD-008 | On-disk cache of downloaded audio (key = URL), limited to 500 MiB with an LRU policy. | |
@@ -717,7 +718,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
-| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar). SET-001 adds the other sections as tabs. |
+| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 
@@ -769,9 +770,10 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 | Table | Key | Value (main fields) |
 |---|---|---|
-| `meta` | `&str` | `schema_version`, `created_with` |
-| `series` | `u64` | title, native title, `anilist_id?`, `mal_id?`, cover, grouping mode, added on, deleted (tombstone, for LIB-004), preferences (audio, subtitle, `delay_ms`) |
-| `videos` | `&str` uid | `series_id?`, path, size, mtime, season, episode, title, duration, `last_position_ms`, `last_played_at`, `completed_at`, chosen audio, main and secondary `SubtitleChoice`, `delay_ms?`, `secondary_delay_ms?`, `speed?`, `volume?` |
+| `meta` | `&str` | `schema_version` (2 from 0.2), `created_with` |
+| `folders` | `&str` path | an imported folder (LIB-002): grouping mode, added on, last scan |
+| `series` | `u64` | title, grouping key (the series name in lower case, or the folder's path), grouping mode, folder, added on, deleted (tombstone, for LIB-004), `merged_into?` (LIB-011), cover, preferences (audio language, subtitle, `delay_ms`; LIB-010); from M7: native title, `anilist_id?`, `mal_id?` |
+| `videos` | `&str` uid | `series_id?`, path, size, mtime, season, episode, duration, `last_position_ms`, `last_played_at`, `completed_at`, chosen audio, main and secondary `SubtitleChoice`, `delay_ms?`, `speed?`, `volume?`, `moved_to?` (moved by hand, LIB-011), removed (LIB-012) |
 | `watch_coverage` | `&str` uid | merged `[(start_ms, end_ms)]` intervals |
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
@@ -779,7 +781,9 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
 
-`SubtitleChoice = File(path) | Embedded { ff_index, lang, title } | Online { provider, id, path } | Off`
+`SubtitleChoice = File(path) | Embedded { ff_index, lang, title } | Off` (a downloaded file is a `File`, MET-008)
+
+A scan of a folder keeps what the library knows (LIB-004): a file is found again by its path, or, moved, by its name, size and time; a series by its grouping key, so a renamed one keeps its name, a merged one gathers its episodes where it was merged, a deleted one is not made again; an episode moved by hand stays where it was put, a removed one stays out. Changing a folder's grouping hides the series of the other grouping without deleting them, so changing back loses nothing.
 
 ---
 
@@ -845,6 +849,15 @@ ffmpeg = ""                 # empty = search in PATH
 [network]
 proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
 
+[word_audio]                # AUD-001…AUD-008
+autoplay = true             # AUD-006
+volume = 100                # AUD-005, 0–100
+# [[word_audio.sources]]    # none by default (AUD-007), asked in order (AUD-001)
+# name = "Local"
+# url = "http://localhost:5050/?term={term}&reading={reading}"   # or the path of an android.db (AUD-003)
+# enabled = true
+# priority = ["nhk16", "forvo", "jpod"]                          # a database's sub-sources, in order
+
 [online]                    # ADR 0008
 providers = ["jimaku", "opensubtitles"]  # the services used, in the order preferred (MET-011)
 auto_subtitles = false      # MET-007
@@ -866,7 +879,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | ID | Decision | Outcome |
 |---|---|---|
 | D-1 | Class B exceptions (§3.2), needed to use Dioxus desktop | **Approved**: closed list; CI blocks any addition. Superseded by D-10: the exceptions forced by Dioxus are gone (§3.2) |
-| D-2 | Reading the local audio DB (SQLite, public domain) | **Approved** option (a): `turso` (MIT, a Rust rewrite of SQLite), to be validated in spike S3. If S3 fails, the decision is reopened between (b) an exception for the system SQLite library and (c) dropping AUD-003 |
+| D-2 | Reading the local audio DB (SQLite, public domain) | **Reopened, (d) proposed** (2026-10-25): spike S3 ([ADR 0004](adr/0004-local-audio-db.md)) found `turso` fast enough (p95 under 1 ms) but its graph outside the license policy (BSD-3-Clause `subtle`, Unicode-3.0 ICU collation, both unconditional). Proposed and implemented: (d) Nikomiru's own read-only reader of the SQLite file format, no dependency, no exception. Was: (a) `turso` (MIT), to be validated in S3; (b) an exception for the system SQLite library; (c) dropping AUD-003 |
 | D-3 | GPL-3.0-only or GPL-3.0-or-later | **Approved**: GPL-3.0-only (§3.1) |
 | D-4 | Default audio format for cards | **Approved**: AAC in M4A, compatible with Anki desktop, AnkiDroid and AnkiMobile |
 | D-5 | Packages for 1.0 | **Approved**: PKGBUILD (AUR) + Flatpak (**freedesktop runtime**, with libmpv and ffmpeg included in the manifest; runtime updated by D-10, then by D-13: the KDE runtime and Qt are no longer needed) |
@@ -879,7 +892,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
 | D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
-| D-15 | Contents of 0.1.0 | **Proposed** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria |
+| D-15 | Contents of 0.1.0 | **Approved** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria. The logo in `assets/brand/` is approved too |
 
 ### 10.2 Risks
 

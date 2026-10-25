@@ -261,6 +261,17 @@ pub(crate) fn show(
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
+                        // LIB-005: back to the library, in words
+                        let back = ui
+                            .add(
+                                Button::new(RichText::new(tr("library-back")).size(15.0))
+                                    .min_size(egui::vec2(34.0, 30.0)),
+                            )
+                            .on_hover_text(tr("library-title"));
+                        named(&back, true, &tr("library-back"));
+                        if back.clicked() {
+                            view.open_library_page(out);
+                        }
                         let (glyph, name) = if v.paused {
                             ("▶", tr("play"))
                         } else {

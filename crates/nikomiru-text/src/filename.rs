@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! File names parsed Anitomy-style for the subtitle search (MET-010): title,
-//! season and episode. LIB-003 (M5) reuses it.
+//! File names parsed Anitomy-style (MET-010, LIB-003): title, season and
+//! episode, for the subtitle search and the library.
 //!
 //! A subset of Fushi `packages/fushi_engine/lib/media/video/scraper/filename_parser.dart`
 //! and `video_filename_parser.dart` (commit `ac8034e`), with their test vectors.
@@ -20,6 +20,23 @@ pub struct NameInfo {
     pub season: Option<u32>,
     /// The episode.
     pub episode: Option<u32>,
+    /// The name states a title; otherwise `title` is the whole name
+    /// (`01.mkv`, `第01集.mp4`), and a folder may name the series (LIB-003).
+    pub named: bool,
+}
+
+/// The video extensions (LIB-001), in lower case.
+pub const VIDEO_EXTENSIONS: [&str; 14] = [
+    "mp4", "mkv", "avi", "mov", "webm", "m4v", "ts", "m2ts", "mts", "flv", "wmv", "mpg", "mpeg",
+    "ogv",
+];
+
+/// Whether `path` has a video extension (LIB-001), in any case.
+pub fn is_video(path: &Path) -> bool {
+    path.extension().is_some_and(|e| {
+        let e = e.to_string_lossy().to_lowercase();
+        VIDEO_EXTENSIONS.contains(&e.as_str())
+    })
 }
 
 /// Extensions removed from the end of a name.
@@ -210,13 +227,11 @@ pub fn parse_name(name: &str) -> NameInfo {
         title = title_of(&text[start..]);
     }
     let (title, title_season) = season_of_title(&title);
-    let title = if title.is_empty() {
-        trim_title(stem)
-    } else {
-        title
-    };
+    let named = !title.is_empty();
+    let title = if named { title } else { trim_title(stem) };
     NameInfo {
         title,
+        named,
         season: explicit_number(&EXPLICIT_SEASON)
             .or(season)
             .or(title_season),
@@ -374,5 +389,18 @@ mod tests {
         assert_eq!(info.season, None);
         assert_eq!(folder_season("第3季"), Some(3));
         assert_eq!(folder_season("Specials"), None);
+    }
+
+    // T-LIB-003: a name that is only the episode states no title
+    #[test]
+    fn a_name_without_a_title_says_so() {
+        for name in ["01.mp4", "第01集.mp4", "S01E01.mkv"] {
+            let info = parse_name(name);
+            assert!(!info.named, "{name}: {info:?}");
+            assert!(info.episode.is_some(), "{name}");
+        }
+        for name in ["Alpha - 01.mkv", "Standalone Movie.mkv"] {
+            assert!(parse_name(name).named, "{name}");
+        }
     }
 }

@@ -34,6 +34,8 @@ pub struct Response {
     pub body: Vec<u8>,
     /// `Retry-After`, in seconds.
     pub retry_after: Option<u64>,
+    /// `Content-Type`, in lower case.
+    pub content_type: Option<String>,
 }
 
 impl Response {
@@ -114,11 +116,20 @@ fn failure(url: &Url, e: &reqwest::Error) -> OnlineError {
 impl Http {
     /// The clients, through `proxy` if it is not empty (SET-007).
     pub fn new(proxy: &str) -> Result<Self, OnlineError> {
+        Self::with_timeouts(proxy, CONNECT_TIMEOUT, REQUEST_TIMEOUT)
+    }
+
+    /// Like [`Http::new`], with other timeouts (AUD-004).
+    pub fn with_timeouts(
+        proxy: &str,
+        connect: Duration,
+        request: Duration,
+    ) -> Result<Self, OnlineError> {
         let build = |redirects: reqwest::redirect::Policy| {
             let mut builder = reqwest::blocking::Client::builder()
                 .user_agent(concat!("Nikomiru/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(CONNECT_TIMEOUT)
-                .timeout(REQUEST_TIMEOUT)
+                .connect_timeout(connect)
+                .timeout(request)
                 .redirect(redirects);
             builder = if proxy.trim().is_empty() {
                 builder.no_proxy()
@@ -147,6 +158,11 @@ impl Http {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.trim().parse().ok());
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_lowercase());
         if response.content_length().is_some_and(|n| n > limit as u64) {
             return Err(OnlineError::TooLarge {
                 limit_mib: (limit >> 20) as u64,
@@ -169,6 +185,7 @@ impl Http {
             status,
             body,
             retry_after,
+            content_type,
         })
     }
 
@@ -235,6 +252,7 @@ mod tests {
             status,
             body: Vec::new(),
             retry_after,
+            content_type: None,
         };
         assert!(r(200, None).ok("P").is_ok());
         assert_eq!(

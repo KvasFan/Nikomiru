@@ -533,7 +533,29 @@ fn screenshots_of_the_interface() {
         .status()
         .unwrap();
     assert!(status.success(), "ffmpeg: {status}");
+    // a library of links to the scene
+    let root = desk.path("videos");
+    for name in [
+        "Frieren/Season 1/Frieren - 01.mkv",
+        "Frieren/Season 1/Frieren - 02.mkv",
+        "Frieren/Season 1/Frieren - 03.mkv",
+        "Dandadan/Dandadan - 01.mkv",
+        "Dandadan/Dandadan - 02.mkv",
+        "Perfect Days (2023).mkv",
+    ] {
+        let link = root.join(name);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&scene, &link).unwrap();
+    }
     let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    h.state_until("the covers", |s| {
+        s["library_page"]["covers"]
+            .as_array()
+            .is_some_and(|a| a.len() == 3)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("library.png"));
     h.open(&scene.to_string_lossy());
     h.wait("file-loaded");
     h.wait("cue-shown");
@@ -580,6 +602,14 @@ fn screenshots_of_the_interface() {
     h.state_until("the list", |s| s["sub_list_open"] == true);
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("subtitle-list.png"));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.state_until("continue watching", |s| {
+        s["library_page"]["continue"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("library-continue.png"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -903,6 +933,256 @@ fn subtitles_of_the_same_episode_open_with_the_video() {
     let s = h.state();
     assert_eq!(visible_text(&s), ["映画の字幕"], "{s}");
     assert_eq!(menu(&s).len(), 2, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-LIB-002, T-LIB-005: a folder imported from the Library page
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_folder_is_imported_and_played_from_the_library() {
+    let mut desk = Desktop::start();
+    let root = desk.path("videos");
+    for name in [
+        "Show/Season 1/Show - 01.mkv",
+        "Show/Season 1/Show - 02.mkv",
+        "Film.mkv",
+    ] {
+        let link = root.join(name);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(fixture("av_basic.mkv"), &link).unwrap();
+    }
+    let (mut app, mut h) = desk.launch();
+    // no file given: the Library page, empty
+    let s = h.state_until("the page", |s| s["library_page"]["series"].is_array());
+    assert_eq!(s["library_page"]["open"], true);
+    assert_eq!(s["library_page"]["series"], serde_json::json!([]));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    let s = h.state_until("the series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 2)
+    });
+    let series = s["library_page"]["series"].as_array().unwrap().clone();
+    let titles: Vec<&str> = series
+        .iter()
+        .map(|x| x["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["Film", "Show"], "{s}");
+    let show = series[1]["id"].as_u64().unwrap();
+    assert_eq!(series[1]["episodes"], 2);
+    // the covers, made with ffmpeg and kept
+    h.state_until("the covers", |s| {
+        s["library_page"]["covers"]
+            .as_array()
+            .is_some_and(|a| a.len() == 2)
+    });
+    let covers = std::fs::read_dir(desk.path("cache/nikomiru/covers"))
+        .unwrap()
+        .count();
+    assert_eq!(covers, 2);
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "series", "id": show }));
+    let s = h.state_until("the episodes", |s| {
+        s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    let episodes = s["library_page"]["open_series"]["episodes"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (
+            episodes[0]["season"].as_u64(),
+            episodes[0]["episode"].as_u64()
+        ),
+        (Some(1), Some(1))
+    );
+    let first = episodes[0]["path"].as_str().unwrap().to_string();
+    // played from the page: it closes, the video shows
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "play", "path": first }));
+    h.wait("file-loaded");
+    h.state_until("the page closed", |s| s["library_page"]["open"] == false);
+    h.wait("first-frame");
+    std::thread::sleep(Duration::from_millis(1_500));
+    // Esc over the video: back to the library, where it is to continue
+    h.key("Escape");
+    let s = h.state_until("continue watching", |s| {
+        s["library_page"]["continue"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    });
+    assert_eq!(s["library_page"]["continue"][0], "video/Show - 01", "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-LIB-009, T-LIB-007, T-LIB-010: the next episode after a countdown Esc
+// cancels, with the series' choices
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_next_episode_starts_after_a_countdown() {
+    let mut desk = Desktop::start();
+    let root = desk.path("videos");
+    std::fs::create_dir_all(&root).unwrap();
+    for name in ["Show - 01.mkv", "Show - 02.mkv"] {
+        std::os::unix::fs::symlink(fixture("av_basic.mkv"), root.join(name)).unwrap();
+    }
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    h.state_until("the series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 1)
+    });
+    h.cmd(serde_json::json!({
+        "cmd": "library", "action": "play", "path": root.join("Show - 01.mkv")
+    }));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    // LIB-010: an offset set on episode 1 is the series'
+    h.key("KeyX");
+    let delay =
+        h.state_until("the offset", |s| subs(s)["delay_ms"] != 0)["subtitles"]["delay_ms"].clone();
+    // to the end: a countdown, Esc stops it
+    for _ in 0..4 {
+        h.key("ArrowRight");
+    }
+    h.wait("next-up");
+    let s = h.state();
+    assert_eq!(s["next_up"]["title"], "Show - 02", "{s}");
+    h.key("Escape");
+    h.state_until("cancelled", |s| s["next_up"].is_null());
+    std::thread::sleep(Duration::from_secs(6));
+    assert_eq!(h.state()["title"], "Show - 01.mkv");
+    // back a little and played (the end paused it), to the end again: this
+    // time it goes on
+    h.key("ArrowLeft");
+    h.key("Space");
+    h.wait("next-up");
+    let loaded = h.wait("file-loaded");
+    assert!(loaded.is_object());
+    let s = h.state_until("episode 2", |s| s["title"] == "Show - 02.mkv");
+    // from its beginning (LIB-007), with the series' offset (LIB-010)
+    assert!(time_pos(&s) < 2.0, "{s}");
+    assert_eq!(subs(&s)["delay_ms"], delay, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-AUD-002, T-AUD-004, T-AUD-006: the word of the popup, played by itself
+// and from its menu, from a source of the user's
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_word_is_played_from_the_popup() {
+    let fake = nikomiru_online::fake::FakeOnline::start().unwrap();
+    let mut desk = Desktop::start();
+    // half a second of a tone, as a word's audio
+    let wav = desk.path("word.wav");
+    let status = std::process::Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=d=0.5",
+        ])
+        .args(["-ar", "8000", "-ac", "1"])
+        .arg(&wav)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    fake.data()
+        .words
+        .insert("食べる".into(), std::fs::read(&wav).unwrap());
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[[word_audio.sources]]\nname = \"Fake\"\n\
+         url = \"{}/words/list?term={{term}}&reading={{reading}}\"\n",
+        fake.proxy_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    // by itself, when the popup opens (AUD-006)
+    let played = h.wait("word-audio");
+    assert_eq!(played["found"], true, "{played}");
+    let asked: Vec<String> = fake.requests().into_iter().map(|r| r.target).collect();
+    assert!(
+        asked.iter().any(|t| t.contains(
+            "/words/list?term=%E9%A3%9F%E3%81%B9%E3%82%8B&reading=%E3%81%9F%E3%81%B9%E3%82%8B"
+        )),
+        "{asked:?}"
+    );
+    assert!(
+        asked.iter().any(|t| t.contains("/words/file/")),
+        "{asked:?}"
+    );
+    // the menu: every source, then one of them played, from the cache
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "menu", "level": 0, "entry": 0 }));
+    let s = h.state_until("the menu", |s| s["popups"][0]["audio"]["items"].is_array());
+    let items = s["popups"][0]["audio"]["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), 1, "{s}");
+    assert_eq!(items[0]["label"], "Fake: fake");
+    let files_before = fake
+        .requests()
+        .iter()
+        .filter(|r| r.target.contains("/words/file/"))
+        .count();
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "url", "url": items[0]["url"] }));
+    assert_eq!(h.wait("word-audio")["found"], true);
+    let files_after = fake
+        .requests()
+        .iter()
+        .filter(|r| r.target.contains("/words/file/"))
+        .count();
+    assert_eq!(files_before, files_after, "played from the cache (AUD-008)");
+    // the video stays paused for the lookup
+    assert_eq!(h.state()["paused"], true);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-AUD-003: the word from a database of the Local Audio Server
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_word_is_played_from_a_local_database() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[[word_audio.sources]]\nname = \"Local\"\n\
+         url = \"{}\"\npriority = [\"jpod\", \"nhk16\"]\n",
+        fixture("audio/android.db")
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    assert_eq!(h.wait("word-audio")["found"], true);
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "menu", "level": 0, "entry": 0 }));
+    let s = h.state_until("the menu", |s| s["popups"][0]["audio"]["items"].is_array());
+    let labels: Vec<String> = s["popups"][0]["audio"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["label"].as_str().unwrap().to_string())
+        .collect();
+    // the sub-sources of the settings first, then the others
+    assert_eq!(
+        labels,
+        [
+            "Local: jpod",
+            "Local: nhk16",
+            "Local: forvo",
+            "Local: forvo"
+        ],
+        "{s}"
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

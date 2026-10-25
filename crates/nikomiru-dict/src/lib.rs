@@ -14,12 +14,14 @@ pub mod css;
 pub mod deinflect;
 pub mod frequency;
 pub mod import;
+pub mod local_audio;
 pub mod lookup;
 #[cfg(any(test, feature = "test-support"))]
 pub mod memory;
 pub mod mixed;
 pub mod pitch;
 pub mod present;
+pub mod sqlite;
 pub mod store;
 pub mod structured;
 pub mod style;

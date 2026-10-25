@@ -14,6 +14,7 @@ pub mod options;
 pub mod player;
 pub mod render;
 pub mod settings;
+pub mod word;
 
 pub use player::{
     CommandReply, LoadRequest, PlaybackError, Player, PlayerError, PlayerEvent, PlayerHandle,

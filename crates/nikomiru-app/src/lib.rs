@@ -13,6 +13,7 @@
 #![deny(missing_docs)]
 
 pub mod anki;
+pub mod catalog;
 pub mod cli;
 pub mod dbus;
 pub mod dictionaries;
@@ -29,3 +30,4 @@ pub mod shell;
 pub mod subtitles;
 #[allow(unsafe_code)]
 pub mod window;
+pub mod word_audio;

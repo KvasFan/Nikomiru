@@ -77,6 +77,7 @@ settings-saved = Settings saved.
 settings-title = Settings
 settings-player = Player
 settings-services = Subtitle services
+settings-audio = Word audio
 settings-anki = Anki
 anki-config-not-saved = config.toml could not be read, so it was not written: these settings last until Nikomiru closes. Fix the file and save again.
 anki-deck-missing = Anki has no deck { $name }: choose another, or create it.
@@ -92,6 +93,7 @@ error-file = Cannot play “{ $file }”: { $reason }.
 error-config = The settings file { $path } is not valid at line { $line } ({ $reason }). The defaults are in use until you fix it.
 error-config-read = The settings file { $path } cannot be read ({ $reason }). The defaults are in use.
 error-config-write = The settings cannot be saved to { $path } ({ $reason }). Check that the folder is writable.
+error-config-dir = The settings folder { $path } cannot be written ({ $reason }): the settings will not be saved. If it was made with sudo, give it back to yourself: sudo chown -R $USER: { $path }
 error-config-serialize = The settings cannot be saved ({ $reason }).
 error-paths = HOME is not set: Nikomiru cannot find its folders.
 
@@ -101,6 +103,7 @@ error-library-record = A library record is damaged ({ $reason }).
 error-library-io = The library file { $path } cannot be used ({ $reason }).
 error-library-read-only = The library was written by a newer version of Nikomiru: it is open read-only.
 error-library-schema = The library file is damaged: it has no valid version. Nikomiru leaves it as it is.
+error-library-unavailable = The library cannot be used: see the log.
 
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = The player cannot do this ({ $reason }).
@@ -379,3 +382,67 @@ player-write-error = { $path } cannot be written ({ $reason }).
 player-bad-name = A preset name is letters, digits, spaces, - _ and . only.
 player-preset-saved = Preset { $name } saved.
 player-exported = Exported to { $path }.
+
+# Library page (LIB-002…LIB-012)
+library-title = Library
+library-close = Close
+library-add-folder = Add folder…
+library-continue = Continue watching
+library-left = { $time } left
+library-series = Series
+library-empty = No videos yet: add a folder with your series and films.
+library-watched = { $watched } of { $total } watched
+library-folders = Folders
+library-grouping = Grouping
+library-by-series = By series
+library-by-folder = By folder
+library-rescan = Scan again
+library-back = ← Library
+library-name = Name
+library-rename = Rename
+library-merge-into = Merge into
+library-merge = Merge
+library-delete = Delete from the library (the files stay)
+library-episodes = Episodes ({ $count })
+library-play = Play
+library-move-to = Move to
+library-move = Move
+library-split-name = New series from the ticked episodes
+library-split = Make it
+library-remove = Remove the ticked episodes from the library (the files stay)
+library-scanning = Looking for videos in { $path }…
+library-imported = { $added } new videos, { $series } new series.
+library-no-folder = { $path } is not a folder that can be read.
+
+# Next episode (LIB-009)
+next-up = Next episode in { $seconds } s
+next-up-play = Play now
+next-up-cancel = Cancel
+
+# Word audio (AUD-001…AUD-008)
+word-audio-button = Word audio
+word-audio-hint = Play the word; right click: every source
+word-audio-loading = Asking the sources…
+word-audio-none = No audio for this word.
+word-audio-unavailable = Word audio cannot play: see the log.
+
+# Word audio tab (AUD-001, AUD-005, AUD-006)
+audio-close = Close
+audio-save = Save
+audio-sources = Sources, in the order they are asked
+audio-sources-hint = A source is an address with {"{"}term{"}"} and {"{"}reading{"}"}, such as a local audio server for Yomitan, which answers with a Yomitan list of audio files or with the audio itself (only HTTPS, or HTTP on this computer); or the android.db of the Local Audio Server for Yomichan, read from disk. None is built in.
+audio-source-n = Source { $n }
+audio-name = Name
+audio-url = Address
+audio-up = Move source { $n } up
+audio-down = Move source { $n } down
+audio-remove = Remove source { $n }
+audio-add = Add a source
+audio-playing = Playing
+audio-autoplay = Play the word by itself when a popup opens
+audio-volume = Volume
+audio-database = Choose the database of source { $n }
+audio-database-button = Database…
+audio-database-filter = Databases of audio
+audio-priority = Sub-sources, in order
+word-audio-database = The audio database { $path } cannot be used ({ $reason }).

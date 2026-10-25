@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! `library.redb` (SPECIFICATION §5.4, §8). M1 has only the `videos` table.
+//! `library.redb` (SPECIFICATION §5.4, §8): the videos, and from schema 2 the
+//! series and the imported folders (M5).
 //!
 //! - DAT-001: schema migrations go forward only, are numbered and idempotent;
 //!   before migrating, the file is copied to `library.redb.bak-v<N>`.
@@ -15,10 +16,14 @@ use serde::{Deserialize, Serialize};
 use crate::uid;
 
 /// Schema version written by this version of Nikomiru.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
-const META: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
-const VIDEOS: TableDefinition<&str, &[u8]> = TableDefinition::new("videos");
+pub(crate) const META: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
+pub(crate) const VIDEOS: TableDefinition<&str, &[u8]> = TableDefinition::new("videos");
+/// Series by id (schema 2, LIB-002).
+pub(crate) const SERIES: TableDefinition<u64, &[u8]> = TableDefinition::new("series");
+/// Imported folders by path (schema 2, LIB-002).
+pub(crate) const FOLDERS: TableDefinition<&str, &[u8]> = TableDefinition::new("folders");
 
 /// Errors of the library database.
 #[derive(Debug, thiserror::Error)]
@@ -71,8 +76,85 @@ impl nikomiru_core::Localized for LibraryError {
 
 macro_rules! db_err {
     ($e:expr) => {
-        $e.map_err(|e| LibraryError::Db(e.into()))
+        $e.map_err(|e| $crate::db::LibraryError::Db(e.into()))
     };
+}
+pub(crate) use db_err;
+
+/// A subtitle chosen for a video or a series (SUB-008, LIB-010).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubtitleChoice {
+    /// A file: next to the video, downloaded or opened by hand.
+    File(String),
+    /// An embedded track, found again by its index, else by its language and
+    /// title (another episode numbers its tracks its own way).
+    Embedded {
+        /// Its FFmpeg index in the file it was chosen in.
+        ff_index: Option<i64>,
+        /// Its language tag.
+        language: Option<String>,
+        /// Its title.
+        title: Option<String>,
+    },
+    /// No subtitles.
+    Off,
+}
+
+/// How an imported folder is grouped (LIB-002).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Grouping {
+    /// By the series the file names give (LIB-003).
+    #[default]
+    BySeries,
+    /// One collection per folder.
+    ByFolder,
+}
+
+/// What a series remembers for its episodes (LIB-010); an episode's own
+/// values win.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SeriesPrefs {
+    /// The audio track, by language.
+    pub audio_language: Option<String>,
+    /// The main subtitle.
+    pub subtitle: Option<SubtitleChoice>,
+    /// The subtitle offset.
+    pub delay_ms: Option<i64>,
+}
+
+/// A series, or a collection of a folder (§8).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SeriesRecord {
+    /// Its name, as shown; the user may rename it (LIB-011).
+    pub title: String,
+    /// What a scan matches it by: the grouping key ([`crate::grouping::Group::key`]).
+    pub key: String,
+    /// The grouping that made it.
+    pub grouping: Grouping,
+    /// The imported folder it comes from.
+    pub root: String,
+    /// When it was added (Unix ms).
+    pub added_at: i64,
+    /// Deleted by the user: a scan does not make it again (LIB-004).
+    pub deleted: bool,
+    /// Its cover image, once made (LIB-005).
+    pub cover: Option<String>,
+    /// What its episodes inherit (LIB-010).
+    pub prefs: SeriesPrefs,
+    /// Merged by the user into this series (LIB-011): a scan puts its
+    /// episodes there.
+    pub merged_into: Option<u64>,
+}
+
+/// An imported folder (LIB-002).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct FolderRecord {
+    /// How it is grouped.
+    pub grouping: Grouping,
+    /// When it was added (Unix ms).
+    pub added_at: i64,
+    /// Its last scan (Unix ms).
+    pub scanned_at: i64,
 }
 
 /// A video of the library (§8; the fields of later milestones are added by
@@ -99,13 +181,85 @@ pub struct VideoRecord {
     pub volume: Option<f64>,
     /// Playback speed.
     pub speed: Option<f64>,
+    /// The series it belongs to (schema 2, LIB-002).
+    pub series: Option<u64>,
+    /// The season, from its name or folder (LIB-003) or set by hand.
+    pub season: Option<u32>,
+    /// The episode, from its name or its siblings (LIB-003) or set by hand.
+    pub episode: Option<u32>,
+    /// The main subtitle chosen for it (SUB-008, LIB-010).
+    pub subtitle: Option<SubtitleChoice>,
+    /// The secondary subtitle chosen for it (SUB-017).
+    pub secondary: Option<SubtitleChoice>,
+    /// Its own subtitle offset (LIB-010).
+    pub delay_ms: Option<i64>,
+    /// Moved by the user to this series (LIB-011): a scan with the series'
+    /// grouping keeps it there.
+    pub moved_to: Option<u64>,
+    /// Removed from the library by the user: a scan does not bring it back
+    /// (LIB-012). The file stays.
+    pub removed: bool,
+}
+
+/// The video record of schema 1, read once by the migration to schema 2.
+#[derive(Deserialize)]
+struct VideoRecordV1 {
+    path: String,
+    size: u64,
+    mtime: i64,
+    duration_ms: Option<u64>,
+    last_position_ms: u64,
+    last_played_at: Option<i64>,
+    completed_at: Option<i64>,
+    aid: Option<i64>,
+    volume: Option<f64>,
+    speed: Option<f64>,
+}
+
+impl From<VideoRecordV1> for VideoRecord {
+    fn from(v: VideoRecordV1) -> Self {
+        Self {
+            path: v.path,
+            size: v.size,
+            mtime: v.mtime,
+            duration_ms: v.duration_ms,
+            last_position_ms: v.last_position_ms,
+            last_played_at: v.last_played_at,
+            completed_at: v.completed_at,
+            aid: v.aid,
+            volume: v.volume,
+            speed: v.speed,
+            ..Self::default()
+        }
+    }
 }
 
 /// A migration from schema `from` to `from + 1`. It MUST be idempotent.
 pub type Migration = fn(&redb::WriteTransaction) -> Result<(), LibraryError>;
 
-/// The migrations of this version, by starting schema (none yet: schema 1).
-const MIGRATIONS: &[(u32, Migration)] = &[];
+/// Schema 1 → 2: the videos rewritten with the fields of M5, the series and
+/// folder tables made. A record already rewritten is kept as it is.
+fn migrate_1(tx: &redb::WriteTransaction) -> Result<(), LibraryError> {
+    let mut videos = db_err!(tx.open_table(VIDEOS))?;
+    let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
+    for row in db_err!(videos.iter())? {
+        let (k, v) = db_err!(row)?;
+        rows.push((k.value().to_string(), v.value().to_vec()));
+    }
+    for (uid, bytes) in rows {
+        if postcard::from_bytes::<VideoRecord>(&bytes).is_ok() {
+            continue;
+        }
+        let record: VideoRecord = postcard::from_bytes::<VideoRecordV1>(&bytes)?.into();
+        db_err!(videos.insert(uid.as_str(), postcard::to_stdvec(&record)?.as_slice()))?;
+    }
+    db_err!(tx.open_table(SERIES))?;
+    db_err!(tx.open_table(FOLDERS))?;
+    Ok(())
+}
+
+/// The migrations of this version, by starting schema.
+const MIGRATIONS: &[(u32, Migration)] = &[(1, migrate_1)];
 
 enum Handle {
     ReadWrite(redb::Database),
@@ -145,6 +299,14 @@ fn write_schema(tx: &redb::WriteTransaction, version: u32) -> Result<(), Library
     let mut meta = db_err!(tx.open_table(META))?;
     db_err!(meta.insert("schema_version", version.to_le_bytes().as_slice()))?;
     db_err!(meta.insert("created_with", env!("CARGO_PKG_VERSION").as_bytes()))?;
+    Ok(())
+}
+
+/// The tables of the current schema, made empty.
+fn create_tables(tx: &redb::WriteTransaction) -> Result<(), LibraryError> {
+    db_err!(tx.open_table(VIDEOS))?;
+    db_err!(tx.open_table(SERIES))?;
+    db_err!(tx.open_table(FOLDERS))?;
     Ok(())
 }
 
@@ -234,7 +396,7 @@ impl Library {
             if from == 0 {
                 let tx = db_err!(db.begin_write())?;
                 write_schema(&tx, current)?;
-                db_err!(tx.open_table(VIDEOS))?;
+                create_tables(&tx)?;
                 db_err!(tx.commit())?;
             }
             return Ok(Self {
@@ -251,7 +413,7 @@ impl Library {
         let db = db_err!(redb::Database::create(path))?;
         let tx = db_err!(db.begin_write())?;
         write_schema(&tx, current)?;
-        db_err!(tx.open_table(VIDEOS))?;
+        create_tables(&tx)?;
         db_err!(tx.commit())?;
         Ok(Self {
             db: Handle::ReadWrite(db),
@@ -309,16 +471,23 @@ impl Library {
         db_err!(tx.commit())
     }
 
-    /// Saves only the playback position of a video, if it exists (LIB-006).
+    /// Saves the playback position of a video, if it exists (LIB-006), and
+    /// its duration when known; the first time it reaches 90% it is watched
+    /// (LIB-008).
     pub fn save_position(
         &self,
         uid: &str,
         position_ms: u64,
+        duration_ms: Option<u64>,
         at_ms: i64,
     ) -> Result<(), LibraryError> {
         if let Some(mut rec) = self.video(uid)? {
             rec.last_position_ms = position_ms;
             rec.last_played_at = Some(at_ms);
+            if let Some(d) = duration_ms.filter(|d| *d > 0) {
+                rec.duration_ms = Some(d);
+            }
+            crate::policy::mark_watched(&mut rec, at_ms);
             self.put_video(uid, &rec)?;
         }
         Ok(())
@@ -409,7 +578,8 @@ mod tests {
             let uid = lib.uid_for_path(Path::new("/v/Ep01.mkv")).unwrap();
             assert_eq!(uid, "video/Ep01");
             lib.put_video(&uid, &record("/v/Ep01.mkv")).unwrap();
-            lib.save_position(&uid, 61_000, 1_700_000_000_000).unwrap();
+            lib.save_position(&uid, 61_000, None, 1_700_000_000_000)
+                .unwrap();
         }
         let lib = Library::open(&path).unwrap();
         let rec = lib.video("video/Ep01").unwrap().unwrap();
@@ -451,6 +621,67 @@ mod tests {
         let lib = Library::open_with(&path, 2, migrations).unwrap();
         assert_eq!(lib.schema(), 2);
         assert!(!dir.path().join("library.redb.bak-v2").exists());
+    }
+
+    // T-DAT-001: schema 1 → 2, the videos written by 0.0.0
+    #[test]
+    fn a_schema_1_library_keeps_its_videos() {
+        #[derive(Serialize)]
+        struct V1 {
+            path: String,
+            size: u64,
+            mtime: i64,
+            duration_ms: Option<u64>,
+            last_position_ms: u64,
+            last_played_at: Option<i64>,
+            completed_at: Option<i64>,
+            aid: Option<i64>,
+            volume: Option<f64>,
+            speed: Option<f64>,
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.redb");
+        drop(Library::open_with(&path, 1, &[]).unwrap());
+        {
+            let db = redb::Database::open(&path).unwrap();
+            let tx = db.begin_write().unwrap();
+            {
+                let mut t = tx.open_table(VIDEOS).unwrap();
+                let old = V1 {
+                    path: "/v/Ep01.mkv".into(),
+                    size: 10,
+                    mtime: 20,
+                    duration_ms: Some(1_440_000),
+                    last_position_ms: 61_000,
+                    last_played_at: Some(5),
+                    completed_at: None,
+                    aid: Some(2),
+                    volume: Some(80.0),
+                    speed: Some(1.25),
+                };
+                t.insert("video/Ep01", postcard::to_stdvec(&old).unwrap().as_slice())
+                    .unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        for _ in 0..2 {
+            let lib = Library::open(&path).unwrap();
+            assert_eq!(lib.schema(), 2);
+            let v = lib.video("video/Ep01").unwrap().unwrap();
+            assert_eq!(
+                (
+                    v.path.as_str(),
+                    v.last_position_ms,
+                    v.aid,
+                    v.speed,
+                    v.series
+                ),
+                ("/v/Ep01.mkv", 61_000, Some(2), Some(1.25), None)
+            );
+            assert!(lib.series_list().unwrap().is_empty());
+            assert!(lib.folders().unwrap().is_empty());
+        }
+        assert!(dir.path().join("library.redb.bak-v1").exists());
     }
 
     // T-DAT-002

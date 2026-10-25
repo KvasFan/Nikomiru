@@ -349,6 +349,7 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
         filters: vec![("Video".into(), vec!["*.mkv"])],
         save_as: None,
         folder: None,
+        directory: false,
     };
     let path = nikomiru_app::portal::choose(&mut conn, &dialog("Open a video")).unwrap();
     assert_eq!(path, Some(PathBuf::from("/v/a b.mkv")));
@@ -377,6 +378,7 @@ fn the_file_chooser_gives_the_chosen_file_or_nothing() {
         filters: vec![("mpv".into(), vec!["*.conf"])],
         save_as: Some("mpv.conf".into()),
         folder: Some(PathBuf::from("/home/u/.config/mpv")),
+        directory: false,
     };
     assert!(
         nikomiru_app::portal::choose(&mut conn, &save)

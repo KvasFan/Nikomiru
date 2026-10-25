@@ -68,6 +68,8 @@ pub struct Config {
     pub network: NetworkConfig,
     /// `[online]` (ADR 0008).
     pub online: OnlineConfig,
+    /// `[word_audio]` (AUD-001…AUD-008).
+    pub word_audio: WordAudioConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
@@ -321,6 +323,64 @@ fn is_opensubtitles_url(url: &str) -> bool {
     url == OPENSUBTITLES_URL
 }
 
+/// `[word_audio]` (AUD-001…AUD-008).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WordAudioConfig {
+    /// Play the first entry's audio when a popup opens (AUD-006).
+    pub autoplay: bool,
+    /// The volume of the word audio, 0–100 (AUD-005).
+    pub volume: u8,
+    /// The sources, in the order they are asked (AUD-001); none by default:
+    /// no third-party address is built in (AUD-007).
+    pub sources: Vec<AudioSourceConfig>,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for WordAudioConfig {
+    fn default() -> Self {
+        Self {
+            autoplay: true,
+            volume: 100,
+            sources: Vec::new(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
+/// A word audio source: a URL template (AUD-002), or the path of a
+/// database of the Local Audio Server (AUD-003).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioSourceConfig {
+    /// Its name, shown in the menu.
+    pub name: String,
+    /// The address, with `{term}` and `{reading}`; or the database's path
+    /// (`/…` or `file://…`).
+    pub url: String,
+    /// Asked, or not.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+    /// For a database, its sub-sources in the order preferred (AUD-003);
+    /// empty: `nhk16`, `forvo`, `jpod`, then the others.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub priority: Vec<String>,
+}
+
+impl AudioSourceConfig {
+    /// The database's path, when the source is one (AUD-003).
+    pub fn database(&self) -> Option<&str> {
+        let url = self.url.trim();
+        url.strip_prefix("file://")
+            .or_else(|| url.starts_with('/').then_some(url))
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
 /// `[online]` (ADR 0008, MET-005).
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -476,6 +536,7 @@ impl Default for Config {
             paths: PathsConfig::default(),
             network: NetworkConfig::default(),
             online: OnlineConfig::default(),
+            word_audio: WordAudioConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
         }
@@ -596,6 +657,21 @@ fn mask_quoted(message: &str) -> String {
         }
     }
     out
+}
+
+/// Whether Nikomiru can write in the settings folder `dir`: a file made and
+/// removed there. A folder not there yet is fine (saving makes it); one
+/// owned by another user (made with `sudo`) is not.
+pub fn check_writable(dir: &Path) -> std::io::Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let probe = dir.join(".nikomiru-write-check");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)?;
+    std::fs::remove_file(&probe)
 }
 
 #[cfg(test)]
@@ -838,5 +914,50 @@ opensubtitles_password = "pw-s3cret"
         all.push(&crate::PathsError::NoHome);
         let problems = crate::error::message_problems(crate::error::I18N_DIR.as_ref(), &all);
         assert!(problems.is_empty(), "{problems:#?}");
+    }
+
+    // T-AUD-001, T-AUD-007: the sources in order, on or off; none built in
+    #[test]
+    fn word_audio_sources_keep_their_order() {
+        assert!(Config::default().word_audio.sources.is_empty());
+        assert!(Config::default().word_audio.autoplay);
+        let text = r#"
+[[word_audio.sources]]
+name = "Local"
+url = "http://localhost:5050/?term={term}&reading={reading}"
+
+[[word_audio.sources]]
+name = "Other"
+url = "https://audio.example.org/{term}"
+enabled = false
+"#;
+        let c = Config::from_toml(text).unwrap();
+        let names: Vec<(&str, bool)> = c
+            .word_audio
+            .sources
+            .iter()
+            .map(|s| (s.name.as_str(), s.enabled))
+            .collect();
+        assert_eq!(names, [("Local", true), ("Other", false)]);
+        let again = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(again.word_audio, c.word_audio);
+    }
+
+    // the settings folder is checked at start
+    #[test]
+    fn a_folder_that_cannot_be_written_is_told() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_writable(dir.path()).is_ok());
+        assert!(check_writable(&dir.path().join("not yet")).is_ok());
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // root writes anywhere: the check only holds for a user
+        if std::fs::write(locked.join("x"), b"").is_err() {
+            assert!(check_writable(&locked).is_err());
+        }
+        assert!(!locked.join(".nikomiru-write-check").exists());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 }

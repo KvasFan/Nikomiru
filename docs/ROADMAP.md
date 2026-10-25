@@ -20,7 +20,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
         └──► M3 Dictionaries and lookup ────┴───────────────────┘
                 (pure logic: can proceed in parallel with M1/M2)
 
-0.1.0 ◄── M4b Online subtitles + mpv presets (D-14; in 0.1.0 if D-15 is approved)
+0.1.0 ◄── M4b Online subtitles + mpv presets (D-14, D-15)
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
 ```
@@ -31,9 +31,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M1 | Minimal player | M | — | in progress |
 | M2 | Own subtitle rendering | L | — | done |
 | M3 | Dictionaries and lookup | XL | — | in progress |
-| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
-| M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15, proposed) | in progress |
-| M5 | Library and word audio | L | 0.2.0 | not started |
+| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | released (manual checks open) |
+| M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15) | released (manual checks open) |
+| M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
 | M7 | Online metadata | M | 0.4.0 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
@@ -231,7 +231,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - Done: the AnkiConnect client and its fake (T-ANK-001…005), Lapis 1.7.0 vendored and "Create Lapis deck" (ANK-010…013), the field composer with the Yomitan-shaped glossary, its images and the scoped CSS of the subset (ANK-020…027), the sentence audio and the card image (ANK-033, ANK-034; the player's commands with a reply, also for `S`, PLY-011), the + / ✓ / ✓↩ buttons with their menu and Ctrl+Enter, the `anki` worker (checks, mining, overwrite, rollback, Open in Anki), `mined_cards`, the `[anki]` settings and their page, `nikomiru://source` links with "Locate the file" (ANK-050…053), `assets/nikomiru.desktop` and `cargo xtask install` (APP-002). Every M4 requirement has its tests.
 - Measured: T-PERF-08, Ctrl+Enter → `card-created` against the fake AnkiConnect with the real ffmpeg and mpv, 276 ms (limit 3 s).
 - Open: T-E2E-ANKI-001 against a real Anki (`cargo xtask test --anki-e2e`, needs Anki with AnkiConnect, not installed on the development machine), the manual "Mining" checklist with real episodes and AnkiDroid, the tag.
-- Release tasks done on 2026-10-25: the workspace at 0.1.0, the CHANGELOG, the repository page restyled with a proposed logo (`assets/brand/`) and screenshots from the GUI harness (`docs/images/`), `THIRD_PARTY_LICENSES.html` from `cargo xtask ci --full`.
+- Release tasks done on 2026-10-25: the workspace at 0.1.0, the CHANGELOG, the repository page restyled with the logo (`assets/brand/`, approved with D-15) and screenshots from the GUI harness (`docs/images/`), `THIRD_PARTY_LICENSES.html` from `cargo xtask ci --full`.
 
 **Exit criteria**
 
@@ -239,13 +239,13 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
 - [x] T-PERF-08 ≤ 3 s (276 ms against the fake AnkiConnect).
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
-- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
+- [x] **Release 0.1.0** (2026-10-25, tag `v0.1.0`): tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
 
 ---
 
-## M4b — Online subtitles and mpv presets → 0.1.0 with M4 (D-15, proposed)
+## M4b — Online subtitles and mpv presets → 0.1.0 with M4 (D-15)
 
-Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7. D-15 (proposed): neither M4 nor M4b is released yet, so 0.1.0 ships both.
+Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7. D-15 (approved 2026-10-25): neither M4 nor M4b was released, so 0.1.0 ships both.
 
 **Requirements**: MET-003, MET-004, MET-005, MET-007…MET-011, SUB-017, SUB-018, SET-007, SET-008, PLY-016, PLY-018.
 
@@ -282,13 +282,20 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 - `nikomiru-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
 - Home: "Continue watching", series grid, series detail, generated covers.
 - Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
-- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
+- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met. Done: reopened, own reader proposed.
+
+**Status as of 2026-10-25**
+
+- Done: the library (LIB-002…LIB-012): schema 2 with series and folders, the import by series or by folder with Fushi's grouping vectors, scans that keep progress, choices and the user's edits, the covers, the Library page ("← Library" in the bar, Esc over the video, and at start without a file), the next episode with its countdown, the start rule, the watched state, the series' choices. The file-name parser moved to `nikomiru-text`.
+- Done too: word audio from URL templates (AUD-001, AUD-002, AUD-004…AUD-008): sources in the settings (a Word audio tab), ♪ and its menu in the popup, playing by itself, a second audio-only mpv core, an LRU cache.
+- Spike S3 done ([ADR 0004](adr/0004-local-audio-db.md), proposed): on a synthetic `android.db` of 300 000 entries `turso` is fast enough but its graph is outside the license policy; Nikomiru reads the SQLite file format itself, and AUD-003 works through it (a source of the Word audio tab can be an `android.db`, with its sub-sources in order).
+- Open: the maintainer's decision on ADR 0004 (D-2 (d)); the import of a real library of ≥ 200 episodes by hand.
 
 **Exit criteria**
 
-- [ ] T-LIB-*, T-AUD-* green.
+- [x] T-LIB-*, T-AUD-* green.
 - [ ] Import of a real library of ≥ 200 episodes in ≤ 30 s (without online metadata), with the correct groupings checked by hand.
-- [ ] **Release 0.2.0**.
+- [x] **Release 0.2.0** (2026-10-25, tag `v0.2.0`, at the maintainer's request; the manual check above and the decision on ADR 0004 follow it).
 
 ---
 

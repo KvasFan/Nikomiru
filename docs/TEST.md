@@ -414,25 +414,25 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | ID | Check | Expected | L |
 |---|---|---|---|
 | T-LIB-001 | Opening a file | From the command line and with simulated drag & drop (`drop {paths}` in the harness); on Wayland a real drag from another client (a layer-shell surface and KWin's fake input) of a video and of a dictionary, copied and never moved; the XDG FileChooser request and its answer, chosen or cancelled, against a spy portal on a private bus (L4); the desktop's dialog by hand (§9.1) | L4, L6 |
-| T-LIB-002 | Folder import | Temporary tree with 2 series, season subfolders and non-video files: per-series mode → 2 series with the correct episodes; per-folder mode → one collection per subfolder plus the root one | L4 |
-| T-LIB-003 | File names | Vectors from `video_filename_parser_test.dart`. E.g.: `[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv` → series `Sousou no Frieren`, ep. 1; `Show.S02E05.1080p.mkv` → s2 e5; `Season 2/03.mkv` → s2 e3; `第2季/03.mkv` → s2 e3 | L1 |
-| T-LIB-004 | Rescan | Progress, subtitles and offsets preserved; a deleted series is not recreated; mode change reversible without losses | L4 |
-| T-LIB-005 | Home | "Continue watching" sorted by `last_played_at`, without completed episodes; cover generated at 10% of the duration and served from the cache on the second request | L1/L4 |
+| T-LIB-002 | Folder import | Temporary tree with 2 series, season subfolders and non-video files: per-series mode → 2 series with the correct episodes; per-folder mode → one collection per subfolder plus the root one; hidden entries skipped, a link to a video kept under its own name, a link to a folder not followed. L6: launched without a file, the Library page; a folder imported from it, its series, covers and episodes, one played | L1/L6 |
+| T-LIB-003 | File names | Vectors from `video_filename_parser_test.dart`. E.g.: `[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCD1234].mkv` → series `Sousou no Frieren`, ep. 1; `Show.S02E05.1080p.mkv` → s2 e5; `Season 2/03.mkv` → s2 e3; `第2季/03.mkv` → s2 e3. The grouping vectors of `groupVideosIntoPlaylists` and of the siblings (`Show 1 … Show 12`, numbers only completed, a year or an OVA giving nothing), season folders as seasons of one series | L1 |
+| T-LIB-004 | Rescan | Progress, subtitles and offsets preserved; a renamed series keeps its name; a deleted series is not recreated; mode change reversible without losses; a file moved on disk found again by name, size and time | L1 |
+| T-LIB-005 | Home | "Continue watching" sorted by `last_played_at`, without completed episodes; cover generated at 10% of the duration and served from the cache on the second request (no program runs); kittest: a card of "Continue watching" plays, a series card opens it, scan again, add folder | L1/L3/L4 |
 | T-LIB-006 | Progress saving | With the fake clock, ≤ 1 write/s; no write before the resume seek; synchronous write on exit | L1 |
 | T-LIB-007 | Resume rule | (90% → 0), (2.9 s remaining → 0), (previous episode → 0), (50% → saved position) | L1 |
 | T-LIB-008 | Completion | `completed_at` set the first time 90% is passed and never overwritten; state watched / in progress / new | L1 |
-| T-LIB-009 | Next episode | The 5 s countdown is cancelled with Esc | L6 |
-| T-LIB-010 | Per-series preferences | An episode without its own values inherits audio, subtitle and offset from the series; a value set on the episode wins | L1 |
-| T-LIB-011 | Library edits | Renaming, merging, splitting, moving episodes: progress and preferences preserved | L4 |
-| T-LIB-012 | Removal | The file on disk stays | L4 |
-| T-DAT-001/002 | Migrations | A fixture v1 DB → migrated with a `.bak-v1` backup; a DB with a future schema → opened read-only | L4 |
+| T-LIB-009 | Next episode | At the end, a 5 s countdown to the next episode of the series, cancelled with Esc; the next end starts it, from its beginning | L1/L6 |
+| T-LIB-010 | Per-series preferences | An episode without its own values inherits audio, subtitle and offset from the series; a value set on the episode wins; a choice made while watching goes to the series. L6: the offset set on episode 1 is that of episode 2 | L1/L6 |
+| T-LIB-011 | Library edits | Renaming, merging, splitting, moving episodes: progress and preferences preserved, also after a scan; kittest: the page's rename, split, remove, delete | L1/L3 |
+| T-LIB-012 | Removal | The file on disk stays; a removed episode stays out after a scan | L1 |
+| T-DAT-001/002 | Migrations | A fixture v1 DB → migrated with a `.bak-v1` backup; the videos of schema 1 kept through the migration to schema 2 (0.2), twice; a DB with a future schema → opened read-only | L1 |
 | T-DAT-003 | uid | Stable `sanitize`; two files with the same name in different folders → ` (2)` | L1 |
-| T-AUD-001 | Source list | Order and enabled state saved and read back; a disabled source is not queried | L1 |
-| T-AUD-002 | URL template | Yomitan JSON response → first entry; direct `audio/mpeg` response → played; 404 → "no audio"; connection refused → 45 s pause for the host | L4 |
-| T-AUD-003 | Local DB | Fixture `android.db` (generated by xtask, only after ADR 0003) → exact pair, then expression only, sub-source priority | L4 |
-| T-AUD-004 | Source menu | Parallel queries, configuration order, deduplication | L4 |
+| T-AUD-001 | Source list | Order and enabled state saved and read back (`config.toml`, L1); kittest: sources added, moved, turned off, an empty one not saved | L1/L3 |
+| T-AUD-002 | URL template | The template filled as `encodeURIComponent`; Yomitan JSON response → its files, relative addresses resolved; direct `audio/mpeg` response → the audio; 404 → "no audio"; connection refused → the host paused for 45 s; HTTP outside loopback refused (L1, and L4 against the fake). L6: a word of the popup played from a fake source | L1/L4/L6 |
+| T-AUD-003 | Local DB | Fixtures written by SQLite itself (`cargo xtask fixtures`, Python's `sqlite3`): exact pair, then expression only, sub-source priority (default and set), a blob on an overflow chain of 1 KiB pages, the same answers without indexes, other files refused; files cut short and 300 with random bytes changed give errors, never a panic or a hang; the synthetic database of spike S3 (300 000 entries) at p95 < 20 ms when present. kittest: a database chosen for a row of the Word audio tab, its sub-sources saved in order. L6: the word of the popup played from the fixture database, the menu in the order of the settings | L1/L3/L4/L6 |
+| T-AUD-004 | Source menu | Parallel queries, configuration order, deduplication; kittest: ♪ plays, a right click opens the menu, an item plays, no ♪ without a source. L6: the menu of an entry, an item played from the cache | L3/L6 |
 | T-AUD-005 | Separate audio instance | Playing a word does not change `time-pos`, `pause` or `volume` of the main player | L5 |
-| T-AUD-006 | Autoplay | On → the audio starts when the popup opens; off → only with ♪ | L1 |
+| T-AUD-006 | Autoplay | On → the audio starts when the popup opens (L6, the video still paused); off → only with ♪ | L1/L6 |
 | T-AUD-007 | No third-party default URL | The default configuration contains no remote sources | L1 |
 | T-AUD-008 | Cache | Above 500 MiB, LRU eviction | L1 |
 

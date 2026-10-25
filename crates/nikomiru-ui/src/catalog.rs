@@ -1,0 +1,185 @@
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! The library from the player (LIB-002…LIB-012): the jobs the app's
+//! `library` worker runs off the UI thread (scans, covers, the reads of the
+//! home page, the user's edits) and the Library page.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use nikomiru_library::home::SeriesSummary;
+use nikomiru_library::import::ImportReport;
+use nikomiru_library::{FolderRecord, Grouping, VideoRecord};
+
+/// What the home page shows (LIB-005).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Home {
+    /// "Continue watching": the last played first.
+    pub continue_watching: Vec<(String, VideoRecord)>,
+    /// The series, by name.
+    pub series: Vec<SeriesSummary>,
+    /// The imported folders, by path.
+    pub folders: Vec<(String, FolderRecord)>,
+}
+
+impl Home {
+    /// The title of a series on the page.
+    pub fn series_title(&self, id: u64) -> Option<&str> {
+        self.series
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| s.record.title.as_str())
+    }
+}
+
+/// A cover decoded off the UI thread.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Cover {
+    /// Width and height.
+    pub size: [usize; 2],
+    /// The pixels, RGBA.
+    pub rgba: Vec<u8>,
+}
+
+impl std::fmt::Debug for Cover {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cover").field("size", &self.size).finish()
+    }
+}
+
+impl Cover {
+    /// Decodes a JPEG or PNG cover.
+    pub fn decode(bytes: &[u8]) -> Result<Self, String> {
+        let image = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
+        let rgba = image.to_rgba8();
+        Ok(Self {
+            size: [rgba.width() as usize, rgba.height() as usize],
+            rgba: rgba.into_raw(),
+        })
+    }
+}
+
+/// An edit of the library by the user (LIB-011, LIB-012).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LibraryEdit {
+    /// A series renamed.
+    Rename(u64, String),
+    /// A series deleted from the library; its files stay.
+    Delete(u64),
+    /// A series merged into another.
+    Merge {
+        /// The one merged.
+        from: u64,
+        /// The one it goes into.
+        into: u64,
+    },
+    /// Episodes moved to another series.
+    Move {
+        /// The episodes.
+        uids: Vec<String>,
+        /// Where.
+        to: u64,
+    },
+    /// Episodes split off into a new series.
+    Split {
+        /// The episodes.
+        uids: Vec<String>,
+        /// The new series' name.
+        title: String,
+    },
+    /// Episodes removed from the library; their files stay.
+    Remove(Vec<String>),
+}
+
+type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
+
+/// The library worker (the app's `library` thread).
+pub trait LibraryService: Send {
+    /// The home page.
+    fn home(&self, done: Done<Home>);
+    /// The episodes of a series, in order.
+    fn episodes(&self, series: u64, done: Done<Vec<(String, VideoRecord)>>);
+    /// Imports `root`, or scans it again, with `grouping`.
+    fn import(&self, root: PathBuf, grouping: Grouping, done: Done<ImportReport>);
+    /// Applies an edit.
+    fn edit(&self, edit: LibraryEdit, done: Done<()>);
+    /// The cover of `series`: the one kept, or the frame of its first
+    /// episode, made and kept.
+    fn cover(&self, series: u64, done: Done<Cover>);
+}
+
+/// No library (it could not be opened): every job fails with the reason.
+#[derive(Debug, Default)]
+pub struct NoLibrary(pub String);
+
+impl LibraryService for NoLibrary {
+    fn home(&self, done: Done<Home>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn episodes(&self, _: u64, done: Done<Vec<(String, VideoRecord)>>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn import(&self, _: PathBuf, _: Grouping, done: Done<ImportReport>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn edit(&self, _: LibraryEdit, done: Done<()>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn cover(&self, _: u64, done: Done<Cover>) {
+        done(Err(self.0.clone()));
+    }
+}
+
+/// A job for the library worker, taken from the session by the UI layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LibraryJob {
+    /// Read the home page.
+    Home,
+    /// Read the episodes of a series.
+    Episodes(u64),
+    /// Import or scan a folder.
+    Import(PathBuf, Grouping),
+    /// Apply an edit.
+    Edit(LibraryEdit),
+    /// Make or read the cover of a series.
+    Cover(u64),
+}
+
+/// What the library worker answers, back on the UI thread.
+#[derive(Debug)]
+pub enum LibraryReply {
+    /// The home page.
+    Home(Result<Home, String>),
+    /// The episodes of a series.
+    Episodes(u64, Result<Vec<(String, VideoRecord)>, String>),
+    /// A folder imported or scanned.
+    Imported(Result<ImportReport, String>),
+    /// An edit applied.
+    Edited(Result<(), String>),
+    /// The cover of a series.
+    Cover(u64, Result<Cover, String>),
+}
+
+/// Episodes by uid, in order.
+pub type Episodes = Vec<(String, VideoRecord)>;
+
+/// The Library page in the session.
+#[derive(Debug, Default)]
+pub struct LibraryPage {
+    /// The home page, once read.
+    pub home: Option<Home>,
+    /// The series open, and its episodes once read.
+    pub series: Option<(u64, Option<Episodes>)>,
+    /// The covers decoded, by series.
+    pub covers: BTreeMap<u64, Cover>,
+    /// The covers asked for, made or not.
+    pub covers_asked: Vec<u64>,
+    /// A scan or an edit is running.
+    pub busy: bool,
+    /// The last message, and whether it is good news.
+    pub status: Option<(String, bool)>,
+}

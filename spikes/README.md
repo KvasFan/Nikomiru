@@ -7,6 +7,7 @@ Time-boxed prototypes that reduce technical risks before the features are writte
 | [`s1-composition/`](s1-composition/) | mpv video (GtkGLArea) and Dioxus UI (transparent webview) in the same window, with a `GtkOverlay` | [ADR 0001](../docs/adr/0001-video-composition.md) — superseded by S1q (D-10) |
 | [`s1q-qt/`](s1q-qt/) | The same, with Qt 6 Quick instead of Dioxus: mpv in a `QQuickFramebufferObject` rendered on Qt Quick's render thread, QML overlay, Rust through cxx-qt | [ADR 0003](../docs/adr/0003-qt-quick-ui.md) — accepted (D-10), then superseded by S5 (D-13) |
 | [`s2-storage/`](s2-storage/) | Can redb handle dictionary import and lookup within NFR-PERF-04/05? | [ADR 0002](../docs/adr/0002-dictionary-storage.md) |
+| [`s3-local-audio/`](s3-local-audio/) | Can a local audio `android.db` (SQLite) be read for AUD-003 within D-2's criteria with `turso`? | [ADR 0004](../docs/adr/0004-local-audio-db.md) — fast enough, outside the license policy: own reader proposed |
 | [`s5-toolkits/`](s5-toolkits/) | The video overlay and the dictionary popup with iced and with egui (eframe), measured against S1q's Qt Quick | [ADR 0006](../docs/adr/0006-toolkit-comparison.md) — egui accepted (D-13) |
 
 ## How to run them

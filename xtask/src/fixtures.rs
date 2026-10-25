@@ -37,11 +37,29 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         &out.join("dicts"),
         &root.join("tests/fixtures/dicts/mini-ja"),
     )?;
+    audio_databases(root, &out.join("audio"))?;
     if large {
         synth::generate(&out.join("dicts/synth"))?;
     }
     eprintln!("ok: fixtures in {}", rel(&out));
     Ok(())
+}
+
+/// The databases of the Local Audio Server for AUD-003, written by SQLite
+/// itself through Python's `sqlite3` (TEST §4): only if the script changed.
+fn audio_databases(root: &Path, out: &Path) -> Result<()> {
+    let script = root.join("xtask/scripts/android_db.py");
+    let recipe = std::fs::read_to_string(&script)?;
+    let target = out.join("android.db");
+    if fresh(&target, &recipe) {
+        return Ok(());
+    }
+    if !util::have_program("python3") {
+        eprintln!("  skipped: python3 is not in PATH (the audio databases of AUD-003)");
+        return Ok(());
+    }
+    util::run(Command::new("python3").arg("-I").arg(&script).arg(out))?;
+    stamp(&target, &recipe)
 }
 
 fn stamp_path(target: &Path) -> PathBuf {

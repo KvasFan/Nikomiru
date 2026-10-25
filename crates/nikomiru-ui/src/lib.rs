@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod catalog;
 pub mod controls;
 pub mod dictionaries;
 #[cfg(feature = "test-harness")]
@@ -28,6 +29,7 @@ pub mod shortcuts;
 pub mod subtitles;
 mod ui;
 pub mod view;
+pub mod word_audio;
 
 pub use session::Services;
 pub use shortcuts::Modifiers;

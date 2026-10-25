@@ -152,10 +152,14 @@ pub fn options(dialog: &FileDialog, token: &str) -> Value {
             Value::Array("y".into(), bytes.into_iter().map(Value::Byte).collect()),
         ));
     }
+    // a folder (LIB-002): portal version 3 and later
+    if dialog.directory {
+        entries.push(("directory", Value::Bool(true)));
+    }
     if let Some(first) = filters.first() {
         entries.push(("current_filter", first.clone()));
+        entries.push(("filters", Value::Array("(sa(us))".into(), filters)));
     }
-    entries.push(("filters", Value::Array("(sa(us))".into(), filters)));
     Value::dict(&entries)
 }
 
@@ -247,6 +251,7 @@ mod tests {
             ],
             save_as: None,
             folder: None,
+            directory: false,
         }
     }
 

@@ -77,6 +77,7 @@ settings-saved = Impostazioni salvate.
 settings-title = Impostazioni
 settings-player = Player
 settings-services = Servizi sottotitoli
+settings-audio = Audio delle parole
 settings-anki = Anki
 anki-config-not-saved = config.toml non si è potuto leggere, quindi non è stato scritto: queste impostazioni valgono fino alla chiusura di Nikomiru. Correggi il file e salva di nuovo.
 anki-deck-missing = Anki non ha il mazzo { $name }: scegline un altro o crealo.
@@ -92,6 +93,7 @@ error-file = Impossibile riprodurre “{ $file }”: { $reason }.
 error-config = Il file delle impostazioni { $path } non è valido alla riga { $line } ({ $reason }). Finché non lo correggi si usano i valori predefiniti.
 error-config-read = Il file delle impostazioni { $path } non si può leggere ({ $reason }). Si usano i valori predefiniti.
 error-config-write = Le impostazioni non si possono salvare in { $path } ({ $reason }). Controlla che la cartella sia scrivibile.
+error-config-dir = Nella cartella delle impostazioni { $path } non si può scrivere ({ $reason }): le impostazioni non verranno salvate. Se è stata creata con sudo, riprendila: sudo chown -R $USER: { $path }
 error-config-serialize = Le impostazioni non si possono salvare ({ $reason }).
 error-paths = HOME non è impostata: Nikomiru non trova le sue cartelle.
 
@@ -101,6 +103,7 @@ error-library-record = Un record della libreria è danneggiato ({ $reason }).
 error-library-io = Il file della libreria { $path } non si può usare ({ $reason }).
 error-library-read-only = La libreria è stata scritta da una versione più recente di Nikomiru: è aperta in sola lettura.
 error-library-schema = Il file della libreria è danneggiato: non ha una versione valida. Nikomiru lo lascia com'è.
+error-library-unavailable = La libreria non si può usare: vedi il log.
 
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = Il player non può farlo ({ $reason }).
@@ -379,3 +382,67 @@ player-write-error = Non si può scrivere { $path } ({ $reason }).
 player-bad-name = Il nome di un preset ha solo lettere, cifre, spazi, - _ e .
 player-preset-saved = Preset { $name } salvato.
 player-exported = Esportato in { $path }.
+
+# Library page (LIB-002…LIB-012)
+library-title = Libreria
+library-close = Chiudi
+library-add-folder = Aggiungi cartella…
+library-continue = Continua a guardare
+library-left = mancano { $time }
+library-series = Serie
+library-empty = Ancora nessun video: aggiungi una cartella con le tue serie e i tuoi film.
+library-watched = { $watched } di { $total } visti
+library-folders = Cartelle
+library-grouping = Raggruppamento
+library-by-series = Per serie
+library-by-folder = Per cartella
+library-rescan = Analizza di nuovo
+library-back = ← Libreria
+library-name = Nome
+library-rename = Rinomina
+library-merge-into = Unisci a
+library-merge = Unisci
+library-delete = Togli dalla libreria (i file restano)
+library-episodes = Episodi ({ $count })
+library-play = Riproduci
+library-move-to = Sposta in
+library-move = Sposta
+library-split-name = Nuova serie dagli episodi spuntati
+library-split = Crea
+library-remove = Togli gli episodi spuntati dalla libreria (i file restano)
+library-scanning = Cerco video in { $path }…
+library-imported = { $added } video nuovi, { $series } serie nuove.
+library-no-folder = { $path } non è una cartella leggibile.
+
+# Next episode (LIB-009)
+next-up = Prossimo episodio fra { $seconds } s
+next-up-play = Riproduci ora
+next-up-cancel = Annulla
+
+# Word audio (AUD-001…AUD-008)
+word-audio-button = Audio della parola
+word-audio-hint = Riproduci la parola; clic destro: tutte le fonti
+word-audio-loading = Chiedo alle fonti…
+word-audio-none = Nessun audio per questa parola.
+word-audio-unavailable = L'audio delle parole non si può riprodurre: vedi il log.
+
+# Word audio tab (AUD-001, AUD-005, AUD-006)
+audio-close = Chiudi
+audio-save = Salva
+audio-sources = Fonti, nell'ordine in cui vengono chieste
+audio-sources-hint = Una fonte è un indirizzo con {"{"}term{"}"} e {"{"}reading{"}"}, come un server audio locale per Yomitan, che risponde con una lista Yomitan di file audio o con l'audio stesso (solo HTTPS, o HTTP su questo computer); oppure l'android.db del Local Audio Server for Yomichan, letto dal disco. Nessuna è predefinita.
+audio-source-n = Fonte { $n }
+audio-name = Nome
+audio-url = Indirizzo
+audio-up = Sposta su la fonte { $n }
+audio-down = Sposta giù la fonte { $n }
+audio-remove = Togli la fonte { $n }
+audio-add = Aggiungi una fonte
+audio-playing = Riproduzione
+audio-autoplay = Riproduci la parola da sola quando si apre un popup
+audio-volume = Volume
+audio-database = Scegli il database della fonte { $n }
+audio-database-button = Database…
+audio-database-filter = Database di audio
+audio-priority = Sotto-fonti, in ordine
+word-audio-database = Il database audio { $path } non si può usare ({ $reason }).
