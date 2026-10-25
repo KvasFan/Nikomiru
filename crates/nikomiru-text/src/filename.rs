@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! File names parsed Anitomy-style for the subtitle search (MET-010): title,
-//! season and episode. LIB-003 (M5) reuses it.
+//! File names parsed Anitomy-style (MET-010, LIB-003): title, season and
+//! episode, for the subtitle search and the library.
 //!
 //! A subset of Fushi `packages/fushi_engine/lib/media/video/scraper/filename_parser.dart`
 //! and `video_filename_parser.dart` (commit `ac8034e`), with their test vectors.

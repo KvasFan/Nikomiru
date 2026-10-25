@@ -17,7 +17,6 @@ pub mod hash;
 pub mod http;
 pub mod jimaku;
 pub mod language;
-pub mod name;
 pub mod opensubtitles;
 pub mod rank;
 pub mod search;

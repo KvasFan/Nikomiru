@@ -2310,7 +2310,7 @@ dependencies = [
  "flate2",
  "nikomiru-core",
  "nikomiru-online",
- "regex",
+ "nikomiru-text",
  "reqwest",
  "serde_json",
  "tempfile",
@@ -2347,6 +2347,7 @@ version = "0.1.0"
 dependencies = [
  "icu_normalizer",
  "proptest",
+ "regex",
  "serde_json",
  "unicode-segmentation",
 ]

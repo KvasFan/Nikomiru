@@ -28,7 +28,7 @@ pub struct OnlineQuery {
 impl OnlineQuery {
     /// The query of a video, from its file name (MET-010).
     pub fn of_video(video: PathBuf) -> Self {
-        let info = nikomiru_online::name::parse_path(&video);
+        let info = nikomiru_text::filename::parse_path(&video);
         Self {
             video,
             title: info.title,

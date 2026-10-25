@@ -4,7 +4,7 @@
 //! §8). Translated from Fushi `jimaku_client.dart` (`detectSubtitleLanguage`,
 //! `parseSubtitleEpisode`, commit `ac8034e`).
 
-use crate::name::parse_name;
+use nikomiru_text::filename::parse_name;
 
 /// Subtitle extensions.
 const SUBTITLE_EXTENSIONS: [&str; 4] = ["srt", "ass", "ssa", "vtt"];
