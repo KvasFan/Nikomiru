@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The `word-audio` worker (AUD-001…AUD-008): the sources asked in their
-//! order, or all at once for the menu, the files kept in the cache, and the
-//! word played on an audio-only mpv core of its own, one job at a time, off
-//! the UI thread.
+//! order, or all at once for the menu (URL templates over HTTP, databases of
+//! the Local Audio Server read from disk), the files kept in the cache, and
+//! the word played on an audio-only mpv core of its own, one job at a time,
+//! off the UI thread.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use nikomiru_core::config::{AudioSourceConfig, WordAudioConfig};
+use nikomiru_dict::local_audio::{AudioFile, LocalAudio};
 use nikomiru_online::audio::{CACHE_LIMIT, Cache, Resolver, WordAudio};
 use nikomiru_player::word::WordPlayer;
 use nikomiru_ui::i18n::Translator;
@@ -78,6 +81,27 @@ struct Worker {
     resolver: Result<Resolver, String>,
     cache: Cache,
     player: Option<WordPlayer>,
+    /// The databases opened, by path (AUD-003).
+    databases: HashMap<String, Result<LocalAudio, String>>,
+}
+
+/// The key of an audio of a database, for the menu and the cache.
+const LOCAL: &str = "localdb:";
+
+fn local_key(path: &str, file: &AudioFile) -> String {
+    format!("{LOCAL}{}\u{1f}{}\u{1f}{path}", file.source, file.file)
+}
+
+fn local_file(key: &str) -> Option<(String, AudioFile)> {
+    let mut parts = key.strip_prefix(LOCAL)?.splitn(3, '\u{1f}');
+    let (source, file, path) = (parts.next()?, parts.next()?, parts.next()?);
+    Some((
+        path.to_string(),
+        AudioFile {
+            file: file.to_string(),
+            source: source.to_string(),
+        },
+    ))
 }
 
 fn sources(config: &WordAudioConfig) -> Vec<AudioSourceConfig> {
@@ -98,7 +122,58 @@ impl Worker {
             resolver,
             cache,
             player: None,
+            databases: HashMap::new(),
         }
+    }
+
+    /// Opens the databases of the sources once (AUD-003).
+    fn open_databases(&mut self) {
+        for source in sources(&self.parts.config) {
+            if let Some(path) = source.database()
+                && !self.databases.contains_key(path)
+            {
+                let opened = LocalAudio::open(Path::new(path)).map_err(|e| {
+                    let reason = e.to_string();
+                    self.parts.translator.tr(
+                        "word-audio-database",
+                        &[("path", path.to_string()), ("reason", reason)],
+                    )
+                });
+                self.databases.insert(path.to_string(), opened);
+            }
+        }
+    }
+
+    /// What a source has for the word.
+    fn query(
+        &self,
+        source: &AudioSourceConfig,
+        term: &str,
+        reading: &str,
+    ) -> Result<Vec<WordAudio>, String> {
+        let Some(path) = source.database() else {
+            return self
+                .resolver()?
+                .query(&source.name, &source.url, term, reading)
+                .map_err(|e| self.parts.translator.error(&e));
+        };
+        let db = match self.databases.get(path) {
+            Some(Ok(db)) => db,
+            Some(Err(e)) => return Err(e.clone()),
+            None => return Ok(Vec::new()),
+        };
+        let files = db
+            .files(term, reading, &source.priority)
+            .map_err(|e| e.to_string())?;
+        Ok(files
+            .iter()
+            .map(|f| WordAudio {
+                source: source.name.clone(),
+                name: f.source.clone(),
+                url: local_key(path, f),
+                bytes: None,
+            })
+            .collect())
     }
 
     fn resolver(&self) -> Result<&Resolver, String> {
@@ -110,9 +185,16 @@ impl Worker {
         if let Some(path) = self.cache.get(&audio.url) {
             return Ok(path);
         }
-        let bytes = match &audio.bytes {
-            Some(bytes) => bytes.clone(),
-            None => self
+        let bytes = match (&audio.bytes, local_file(&audio.url)) {
+            (Some(bytes), _) => bytes.clone(),
+            (None, Some((path, file))) => match self.databases.get(&path) {
+                Some(Ok(db)) => db
+                    .audio(&file)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| self.parts.translator.tr("word-audio-none", &[]))?,
+                _ => return Err(self.parts.translator.tr("word-audio-none", &[])),
+            },
+            (None, None) => self
                 .resolver()?
                 .fetch(&audio.url)
                 .map_err(|e| self.parts.translator.error(&e))?,
@@ -139,11 +221,9 @@ impl Worker {
 
     /// AUD-004: the first audio of the first source that has one.
     fn play(&mut self, term: &str, reading: &str) -> Result<bool, String> {
+        self.open_databases();
         for source in sources(&self.parts.config) {
-            let found = match self
-                .resolver()?
-                .query(&source.name, &source.url, term, reading)
-            {
+            let found = match self.query(&source, term, reading) {
                 Ok(found) => found,
                 Err(e) => {
                     tracing::info!("word audio, {}: {e}", source.name);
@@ -165,13 +245,14 @@ impl Worker {
 
     /// AUD-004: every source at once, their audio in their order; an audio
     /// a source gave itself is kept at once, so the menu can play it.
-    fn list(&self, term: &str, reading: &str) -> Result<Vec<WordAudioItem>, String> {
-        let resolver = self.resolver()?;
+    fn list(&mut self, term: &str, reading: &str) -> Result<Vec<WordAudioItem>, String> {
+        self.open_databases();
         let sources = sources(&self.parts.config);
+        let this = &*self;
         let answers: Vec<Vec<WordAudio>> = std::thread::scope(|scope| {
             let asks: Vec<_> = sources
                 .iter()
-                .map(|s| scope.spawn(move || resolver.query(&s.name, &s.url, term, reading)))
+                .map(|s| scope.spawn(move || this.query(s, term, reading)))
                 .collect();
             asks.into_iter()
                 .zip(&sources)
@@ -241,6 +322,8 @@ impl WordAudioWorker {
                         Job::PlayUrl(url, done) => done(worker.play_url(&url)),
                         Job::Configure(settings) => {
                             let (config, proxy) = *settings;
+                            // a database changed on disk or in the settings: opened again
+                            worker.databases.clear();
                             if proxy != worker.parts.proxy {
                                 worker.resolver = Resolver::new(&proxy)
                                     .map_err(|e| worker.parts.translator.error(&e));

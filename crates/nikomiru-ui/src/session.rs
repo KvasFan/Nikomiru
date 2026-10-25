@@ -339,6 +339,10 @@ pub struct Session {
     pub library_page: crate::catalog::LibraryPage,
     /// The last message of the Word audio tab, and whether it is good news.
     pub audio_status: Option<(String, bool)>,
+    /// The row of the Word audio tab a database is being chosen for.
+    audio_database_row: Option<usize>,
+    /// A database chosen for the tab (AUD-003): a number, its row, its path.
+    pub audio_database: Option<(u64, usize, String)>,
     /// The next episode about to start (LIB-009).
     next_up: Option<NextUp>,
     /// What the current video plays with: its own choices, else its
@@ -507,6 +511,8 @@ impl Session {
             services_status: None,
             library_page: crate::catalog::LibraryPage::default(),
             audio_status: None,
+            audio_database_row: None,
+            audio_database: None,
             next_up: None,
             prefs: Default::default(),
             own_audio: false,
@@ -1342,6 +1348,19 @@ impl Session {
     /// The library worker.
     pub fn catalog(&self) -> &dyn crate::catalog::LibraryService {
         self.services.catalog.as_ref()
+    }
+
+    /// "Database…" on a row of the Word audio tab (AUD-003).
+    pub fn audio_choose_database(&mut self, row: usize) {
+        self.audio_database_row = Some(row);
+    }
+
+    /// The database chosen in the file dialog, for its row.
+    pub fn audio_database_chosen(&mut self, path: &Path) {
+        if let Some(row) = self.audio_database_row.take() {
+            let n = self.audio_database.as_ref().map_or(1, |(n, _, _)| n + 1);
+            self.audio_database = Some((n, row, path.to_string_lossy().into_owned()));
+        }
     }
 
     /// `[word_audio]` as saved.

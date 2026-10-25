@@ -854,8 +854,9 @@ autoplay = true             # AUD-006
 volume = 100                # AUD-005, 0–100
 # [[word_audio.sources]]    # none by default (AUD-007), asked in order (AUD-001)
 # name = "Local"
-# url = "http://localhost:5050/?term={term}&reading={reading}"
+# url = "http://localhost:5050/?term={term}&reading={reading}"   # or the path of an android.db (AUD-003)
 # enabled = true
+# priority = ["nhk16", "forvo", "jpod"]                          # a database's sub-sources, in order
 
 [online]                    # ADR 0008
 providers = ["jimaku", "opensubtitles"]  # the services used, in the order preferred (MET-011)

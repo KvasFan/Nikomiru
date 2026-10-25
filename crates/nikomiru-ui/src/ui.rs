@@ -307,6 +307,8 @@ pub(crate) enum Command {
     WordAudioPlay(String),
     /// Save the word audio settings (AUD-001).
     WordAudioSave(Box<nikomiru_core::config::WordAudioConfig>),
+    /// "Database…" on a row of the Word audio tab (AUD-003).
+    AudioChooseDatabase(usize),
     /// The next episode now (LIB-009).
     NextNow,
     /// The next episode not now.
@@ -595,6 +597,7 @@ impl Ui {
                     Dialog::LibraryFolder => self
                         .session
                         .library_import(path, nikomiru_library::Grouping::BySeries),
+                    Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                 }
                 true
             }
@@ -880,6 +883,10 @@ impl Ui {
             Command::WordAudioMenu { level, entry } => s.word_audio_menu(level, entry),
             Command::WordAudioPlay(url) => s.word_audio_play(url),
             Command::WordAudioSave(config) => s.word_audio_save(*config),
+            Command::AudioChooseDatabase(row) => {
+                s.audio_choose_database(row);
+                self.view.dialog = Some(Dialog::AudioDatabase);
+            }
             Command::NextNow => s.play_next(),
             Command::NextCancel => s.cancel_next(),
             Command::LibraryOpen => s.library_open(),

@@ -282,13 +282,14 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 - `nikomiru-library`: folder import, file name parser (port of `video_filename_parser.dart` with its vectors), series and episodes, tombstones, per-series preferences, automatic advance.
 - Home: "Continue watching", series grid, series detail, generated covers.
 - Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
-- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
+- **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met. Done: reopened, own reader proposed.
 
 **Status as of 2026-10-25**
 
 - Done: the library (LIB-002…LIB-012): schema 2 with series and folders, the import by series or by folder with Fushi's grouping vectors, scans that keep progress, choices and the user's edits, the covers, the Library page (🎞, and at start without a file), the next episode with its countdown, the start rule, the watched state, the series' choices. The file-name parser moved to `nikomiru-text`.
 - Done too: word audio from URL templates (AUD-001, AUD-002, AUD-004…AUD-008): sources in the settings (a Word audio tab), ♪ and its menu in the popup, playing by itself, a second audio-only mpv core, an LRU cache.
-- Open: the local audio database (AUD-003) and spike S3, which need a real `android.db`; the import of a real library of ≥ 200 episodes by hand.
+- Spike S3 done ([ADR 0004](adr/0004-local-audio-db.md), proposed): on a synthetic `android.db` of 300 000 entries `turso` is fast enough but its graph is outside the license policy; Nikomiru reads the SQLite file format itself, and AUD-003 works through it (a source of the Word audio tab can be an `android.db`, with its sub-sources in order).
+- Open: the maintainer's decision on ADR 0004 (D-2 (d)); the import of a real library of ≥ 200 episodes by hand.
 
 **Exit criteria**
 

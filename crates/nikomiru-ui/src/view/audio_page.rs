@@ -30,6 +30,10 @@ const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 pub(crate) struct State {
     /// The settings being edited.
     draft: Option<WordAudioConfig>,
+    /// The database chosen last in the file dialog, once put in its row.
+    picked: u64,
+    /// The sub-sources typed for each database row.
+    priorities: Vec<String>,
 }
 
 /// What the page shows.
@@ -38,6 +42,8 @@ pub(crate) struct Scene<'a> {
     pub saved: &'a WordAudioConfig,
     /// The last message, and whether it is good news.
     pub status: Option<&'a (String, bool)>,
+    /// A database chosen in the file dialog: its number, its row, its path.
+    pub picked: Option<&'a (u64, usize, String)>,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -47,6 +53,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let scene = Scene {
         saved: s.word_audio_config(),
         status: s.audio_status.as_ref(),
+        picked: s.audio_database.as_ref(),
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.audio, out);
@@ -76,6 +83,21 @@ pub(crate) fn draw(
 ) -> Leave {
     if state.draft.is_none() {
         state.draft = Some(s.saved.clone());
+        state.priorities = s
+            .saved
+            .sources
+            .iter()
+            .map(|x| x.priority.join(", "))
+            .collect();
+    }
+    // AUD-003: the database chosen goes in its row
+    if let Some((n, row, path)) = s.picked
+        && *n != state.picked
+    {
+        state.picked = *n;
+        if let Some(source) = state.draft.as_mut().and_then(|d| d.sources.get_mut(*row)) {
+            source.url.clone_from(path);
+        }
     }
     let screen = ctx.content_rect();
     let width = 820.0_f32.min(screen.width() - 32.0).max(0.0);
@@ -110,10 +132,22 @@ pub(crate) fn draw(
                             && let Some(draft) = &state.draft
                         {
                             let mut config = draft.clone();
+                            for (source, typed) in config.sources.iter_mut().zip(&state.priorities)
+                            {
+                                source.priority = typed
+                                    .split([',', ' '])
+                                    .map(str::trim)
+                                    .filter(|p| !p.is_empty())
+                                    .map(str::to_string)
+                                    .collect();
+                            }
                             config.sources.retain(|x| !x.url.trim().is_empty());
                             for source in &mut config.sources {
                                 source.name = source.name.trim().to_string();
                                 source.url = source.url.trim().to_string();
+                                if source.database().is_none() {
+                                    source.priority.clear();
+                                }
                             }
                             out.push(Command::WordAudioSave(Box::new(config)));
                         }
@@ -128,16 +162,17 @@ pub(crate) fn draw(
                 ScrollArea::vertical()
                     .id_salt("audio-page")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| body(ui, s, state));
+                    .show(ui, |ui| body(ui, s, state, out));
             });
     });
     leave
 }
 
-fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
+fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let Some(draft) = state.draft.as_mut() else {
         return;
     };
+    state.priorities.resize(draft.sources.len(), String::new());
     ui.spacing_mut().item_spacing.y = 8.0;
     section(ui, &tr(s, "audio-sources"));
     ui.add(egui::Label::new(RichText::new(tr(s, "audio-sources-hint")).color(DETAILS)).wrap());
@@ -180,20 +215,42 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
                 });
                 ui.horizontal(|ui| {
                     let label = ui.label(tr(s, "audio-url"));
-                    ui.add(
-                        TextEdit::singleline(&mut source.url)
-                            .hint_text("http://localhost:5050/?term={term}&reading={reading}")
-                            .desired_width(f32::INFINITY),
-                    )
-                    .labelled_by(label.id);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        // AUD-003: a database of the Local Audio Server
+                        let name = (s.tr)("audio-database", &[("n", (i + 1).to_string())]);
+                        let pick = ui.button(tr(s, "audio-database-button"));
+                        pick.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
+                        if pick.clicked() {
+                            out.push(Command::AudioChooseDatabase(i));
+                        }
+                        ui.add(
+                            TextEdit::singleline(&mut source.url)
+                                .hint_text("http://localhost:5050/?term={term}&reading={reading}")
+                                .desired_width(f32::INFINITY),
+                        )
+                        .labelled_by(label.id);
+                    });
                 });
+                if source.database().is_some() {
+                    ui.horizontal(|ui| {
+                        let label = ui.label(tr(s, "audio-priority"));
+                        ui.add(
+                            TextEdit::singleline(&mut state.priorities[i])
+                                .hint_text("nhk16, forvo, jpod")
+                                .desired_width(320.0),
+                        )
+                        .labelled_by(label.id);
+                    });
+                }
             });
     }
     if let Some((a, b)) = swap {
         draft.sources.swap(a, b);
+        state.priorities.swap(a, b);
     }
     if let Some(i) = remove {
         draft.sources.remove(i);
+        state.priorities.remove(i);
     }
     if ui.button(tr(s, "audio-add")).clicked() {
         let n = draft.sources.len() + 1;
@@ -201,6 +258,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
             name: (s.tr)("audio-source-n", &[("n", n.to_string())]),
             url: String::new(),
             enabled: true,
+            priority: Vec::new(),
         });
     }
     section(ui, &tr(s, "audio-playing"));
@@ -223,6 +281,7 @@ mod tests {
         saved: WordAudioConfig,
         state: State,
         out: Vec<Command>,
+        picked: Option<(u64, usize, String)>,
     }
 
     fn harness(saved: WordAudioConfig) -> Harness<'static, Test> {
@@ -243,6 +302,7 @@ mod tests {
                     let scene = Scene {
                         saved: &t.saved,
                         status: None,
+                        picked: t.picked.as_ref(),
                         tr: &tr,
                     };
                     let _ = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -251,6 +311,7 @@ mod tests {
                     saved,
                     state: State::default(),
                     out: Vec::new(),
+                    picked: None,
                 },
             )
     }
@@ -307,5 +368,33 @@ mod tests {
             ]
         );
         assert!(config.autoplay);
+    }
+
+    // T-AUD-003: a database chosen for a row, its sub-sources in order
+    #[test]
+    fn a_database_is_chosen_with_its_sub_sources() {
+        let mut h = harness(WordAudioConfig::default());
+        h.run();
+        h.get_by_label("audio-add").click();
+        h.run();
+        h.get_by_label("audio-database 1").click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            matches!(out.as_slice(), [Command::AudioChooseDatabase(0)]),
+            "{out:?}"
+        );
+        // the file dialog answers
+        h.state_mut().picked = Some((1, 0, "/data/android.db".into()));
+        h.run();
+        h.run();
+        h.get_by_label("audio-priority").focus();
+        h.run();
+        h.get_by_label("audio-priority").type_text("forvo, nhk16");
+        h.run();
+        let config = saved(&mut h);
+        assert_eq!(config.sources[0].url, "/data/android.db");
+        assert_eq!(config.sources[0].priority, ["forvo", "nhk16"]);
+        assert_eq!(config.sources[0].database(), Some("/data/android.db"));
     }
 }

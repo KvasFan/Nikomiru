@@ -350,16 +350,31 @@ impl Default for WordAudioConfig {
     }
 }
 
-/// A word audio source: a URL template (AUD-002).
+/// A word audio source: a URL template (AUD-002), or the path of a
+/// database of the Local Audio Server (AUD-003).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioSourceConfig {
     /// Its name, shown in the menu.
     pub name: String,
-    /// The address, with `{term}` and `{reading}`.
+    /// The address, with `{term}` and `{reading}`; or the database's path
+    /// (`/…` or `file://…`).
     pub url: String,
     /// Asked, or not.
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// For a database, its sub-sources in the order preferred (AUD-003);
+    /// empty: `nhk16`, `forvo`, `jpod`, then the others.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub priority: Vec<String>,
+}
+
+impl AudioSourceConfig {
+    /// The database's path, when the source is one (AUD-003).
+    pub fn database(&self) -> Option<&str> {
+        let url = self.url.trim();
+        url.strip_prefix("file://")
+            .or_else(|| url.starts_with('/').then_some(url))
+    }
 }
 
 fn yes() -> bool {

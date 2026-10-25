@@ -49,6 +49,8 @@ pub enum Dialog {
     MpvExport,
     /// A folder to import into the library (LIB-002).
     LibraryFolder,
+    /// A database of the Local Audio Server (AUD-003).
+    AudioDatabase,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -107,6 +109,10 @@ impl FileDialog {
                 vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
             ),
             Dialog::LibraryFolder => (tr("library-add-folder"), Vec::new()),
+            Dialog::AudioDatabase => (
+                tr("audio-database-button"),
+                vec![(tr("audio-database-filter"), vec!["*.db"]), all],
+            ),
         };
         Self {
             dialog,

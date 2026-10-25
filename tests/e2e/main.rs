@@ -1146,6 +1146,47 @@ fn a_word_is_played_from_the_popup() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-AUD-003: the word from a database of the Local Audio Server
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_word_is_played_from_a_local_database() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[[word_audio.sources]]\nname = \"Local\"\n\
+         url = \"{}\"\npriority = [\"jpod\", \"nhk16\"]\n",
+        fixture("audio/android.db")
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    assert_eq!(h.wait("word-audio")["found"], true);
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "menu", "level": 0, "entry": 0 }));
+    let s = h.state_until("the menu", |s| s["popups"][0]["audio"]["items"].is_array());
+    let labels: Vec<String> = s["popups"][0]["audio"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["label"].as_str().unwrap().to_string())
+        .collect();
+    // the sub-sources of the settings first, then the others
+    assert_eq!(
+        labels,
+        [
+            "Local: jpod",
+            "Local: nhk16",
+            "Local: forvo",
+            "Local: forvo"
+        ],
+        "{s}"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PERF-07
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
