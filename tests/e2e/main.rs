@@ -1205,3 +1205,112 @@ fn quitting_during_an_import_leaves_nothing_behind() {
         .unwrap_or_default();
     assert!(left.is_empty(), "{left:?}");
 }
+
+/// A Japanese subtitle file the fake online service gives.
+const ONLINE_SRT: &str =
+    "1\n00:00:00,500 --> 00:00:04,000\n食べました\n\n2\n00:00:05,000 --> 00:00:08,000\n猫です\n";
+
+fn online_fake() -> nikomiru_online::fake::FakeOnline {
+    let fake = nikomiru_online::fake::FakeOnline::start().unwrap();
+    {
+        let mut d = fake.data();
+        d.entries = vec![(1, "av long".into(), true)];
+        d.files.insert(
+            1,
+            vec![("av long.ja.srt".into(), ONLINE_SRT.as_bytes().to_vec())],
+        );
+    }
+    fake
+}
+
+/// The files kept under `subtitles/<hash>/` of the data folder.
+fn kept_subtitles(desk: &Desktop) -> Vec<std::path::PathBuf> {
+    let root = desk.data_file("subtitles");
+    let mut out = Vec::new();
+    for dir in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        for f in std::fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            out.push(f.path());
+        }
+    }
+    out
+}
+
+// T-MET-007, T-MET-008
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_come_online_for_a_video_without_them() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\nauto_subtitles = true\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.jimaku_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    let s = h.state_until("the online subtitles", |s| s["subtitles"]["cues"] == 2);
+    let source = s["subtitles"]["source"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(source.contains("/subtitles/"), "{s}");
+    let kept = kept_subtitles(&desk);
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(kept[0].file_name().unwrap(), "av_long.ja.srt");
+    assert!(
+        fake.requests()
+            .iter()
+            .all(|r| r.header("authorization") == Some("jimaku-key"))
+    );
+    // the next opening finds them without the network
+    fake.clear_requests();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    h.state_until("the kept subtitles", |s| s["subtitles"]["cues"] == 2);
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-MET-009, PRV-001
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_are_searched_and_used_on_the_online_page() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.jimaku_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    // automatic subtitles are off: nothing was asked
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+    let s = h.state_until("the page", |s| s["online_page"]["open"] == true);
+    assert_eq!(s["online_page"]["query"]["title"], "av long", "{s}");
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+    let s = h.state_until("the results", |s| {
+        s["online_page"]["results"]["files"]
+            .as_array()
+            .is_some_and(|f| !f.is_empty())
+    });
+    let first = &s["online_page"]["results"]["files"][0];
+    assert_eq!(
+        (first["provider"].as_str(), first["name"].as_str()),
+        (Some("Jimaku"), Some("av long.ja.srt"))
+    );
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "use", "index": 0 }));
+    h.state_until("loaded, the page closed", |s| {
+        s["subtitles"]["cues"] == 2 && s["online_page"]["open"] == false
+    });
+    assert_eq!(kept_subtitles(&desk).len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

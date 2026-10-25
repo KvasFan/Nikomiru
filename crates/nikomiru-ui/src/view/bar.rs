@@ -118,6 +118,11 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         view.dialog = Some(Dialog::Subtitles);
         ui.close();
     }
+    // MET-009
+    if ui.button(tr("subtitle-search-online")).clicked() {
+        view.open_online_page(out);
+        ui.close();
+    }
     if ui
         .selectable_label(s.subs.disabled, format!("{}  (V)", tr("subtitles-disable")))
         .clicked()

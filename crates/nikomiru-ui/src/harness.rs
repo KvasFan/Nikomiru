@@ -240,6 +240,21 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
+            "online_page": json!({
+                "open": ui.view.online_page_open,
+                "busy": s.online_page.busy,
+                "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "query": s.online_page.query.as_ref().map(|q| json!({
+                    "title": q.title, "season": q.season, "episode": q.episode,
+                })),
+                "results": s.online_page.results.as_ref().map(|r| json!({
+                    "files": r.candidates.iter().map(|c| json!({
+                        "provider": c.provider.name(), "name": c.file_name,
+                        "language": c.language, "episode": c.episode,
+                    })).collect::<Vec<_>>(),
+                    "failed": r.failed,
+                })),
+            }),
             "missing_link": s.missing_link.as_ref().map(|m| json!({
                 "uid": m.link.uid,
                 "path": m.path,
@@ -342,6 +357,47 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
             "create-lapis" => Command::AnkiCreateLapis(draft),
             "save" => Command::AnkiSave(draft),
             other => return Err(format!("no Anki page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
+}
+
+/// The Online subtitles page (MET-009): `open`, `close`, `search` (with the
+/// title, season and episode given or as filled), `use` (a result's index).
+pub fn online(
+    action: &str,
+    title: Option<String>,
+    episode: Option<u32>,
+    index: Option<usize>,
+) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_online_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_online_page();
+                return Ok(());
+            }
+            "search" => {
+                let filled = ui.session.online_page.query.clone();
+                Command::OnlineSearch {
+                    title: title
+                        .or_else(|| filled.as_ref().map(|q| q.title.clone()))
+                        .unwrap_or_default(),
+                    season: filled.as_ref().and_then(|q| q.season),
+                    episode: episode.or_else(|| filled.as_ref().and_then(|q| q.episode)),
+                }
+            }
+            "use" => Command::OnlineUse(index.ok_or("missing \"index\"")?),
+            other => return Err(format!("no Online page action {other}")),
         };
         ui.run(command);
         Ok(())

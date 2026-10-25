@@ -157,6 +157,12 @@ impl FakeOnline {
         format!("http://127.0.0.1:{}/os/api/v1", self.port)
     }
 
+    /// Its own address, to use it as an HTTP proxy: a request in absolute
+    /// form (`GET http://host/path`) is answered like one for `/path`.
+    pub fn proxy_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
     /// The data, to prepare or to look at.
     pub fn data(&self) -> MutexGuard<'_, Data> {
         lock(&self.shared.data)
@@ -262,7 +268,12 @@ fn json_body(v: &Value) -> Vec<u8> {
 }
 
 fn answer(shared: &Shared, r: &Request, port: u16) -> (u16, Vec<u8>) {
-    let Ok(url) = Url::parse(&format!("http://fake{}", r.target)) else {
+    // through a proxy the target is a whole URL
+    let target = match r.target.split_once("://") {
+        Some((_, rest)) => rest.find('/').map_or("/", |i| &rest[i..]),
+        None => r.target.as_str(),
+    };
+    let Ok(url) = Url::parse(&format!("http://fake{target}")) else {
         return (400, Vec::new());
     };
     let query: BTreeMap<String, String> = url.query_pairs().into_owned().collect();

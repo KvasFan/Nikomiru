@@ -93,6 +93,30 @@ pub fn external_files(video: &Path, candidates: &[PathBuf]) -> Vec<External> {
     out
 }
 
+/// MET-008: the subtitles downloaded for a video, kept in a folder of their
+/// own: every subtitle file there is the video's, whatever its base name, with
+/// the language of its suffix (`Show - 01.ja.srt`). Sorted by file name.
+pub fn downloaded_files(paths: &[PathBuf]) -> Vec<External> {
+    let mut out: Vec<External> = paths
+        .iter()
+        .filter_map(|path| {
+            let format = Format::from_extension(&path.extension()?.to_string_lossy())?;
+            let stem = path.file_stem()?.to_string_lossy().to_lowercase();
+            let language = stem
+                .rsplit_once('.')
+                .map(|(_, tag)| tag.to_string())
+                .filter(|tag| looks_like_language(tag));
+            Some(External {
+                path: path.clone(),
+                format,
+                language,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
 /// An embedded subtitle track, as the player lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddedTrack {
@@ -170,6 +194,38 @@ pub fn choose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-MET-008
+    #[test]
+    fn downloaded_files_are_the_videos_whatever_their_name() {
+        let paths: Vec<PathBuf> = [
+            "/d/Old Name.ja.srt",
+            "/d/Old Name (2).ja.ass",
+            "/d/x.srt",
+            "/d/notes.txt",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        let files = downloaded_files(&paths);
+        let got: Vec<(&str, Option<&str>)> = files
+            .iter()
+            .map(|e| (e.path.to_str().unwrap(), e.language.as_deref()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("/d/Old Name (2).ja.ass", Some("ja")),
+                ("/d/Old Name.ja.srt", Some("ja")),
+                ("/d/x.srt", None),
+            ]
+        );
+        // the automatic choice takes one in the preferred language
+        assert_eq!(
+            choose(None, &files, &[], "ja"),
+            Some(Choice::External(PathBuf::from("/d/Old Name (2).ja.ass")))
+        );
+    }
 
     // T-SUB-006
     #[test]

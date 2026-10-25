@@ -453,7 +453,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-004 | Language | `LANG=it_IT.UTF-8` → Italian; `LANG=de_DE.UTF-8` → fallback to English; the choice in the settings wins | L1 |
 | T-SET-005 | Interface scale | 75% and 200%: the UI scale changes, the subtitle size does not (harness) | L6 |
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values | L1 |
-| T-SET-007 | Proxy | HTTP requests go through the proxy (wiremock as proxy); AnkiConnect on loopback does not | L4 |
+| T-SET-007 | Proxy | The online requests go through the proxy of `[network] proxy` (the fake online server as the proxy, the service on a port where nothing listens); an invalid proxy is refused; AnkiConnect never uses a proxy (T-ANK-001) | L4 |
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en`; no unused key; same `{ $var }` arguments in all languages | L1 |
 | T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in the views of `nikomiru-ui` (explicit exception list) | L4 |
 | T-A11Y-001 | Focus and accessibility | AccessKit tree snapshot of the player controls (role and name of each); visible focus | L3 |
@@ -465,9 +465,13 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-MET-001 | AniList | Fake GraphQL response → series identified only if there is an exact and unique result; otherwise chosen by the user | L4 |
 | T-MET-002 | Jikan | At most 1 request/s; after a 429, pause and cache respected (fake clock) | L4 |
-| T-MET-003 | Jimaku | `Authorization` header; search by `anilist_id` and then by `query`; zip extracted with the rules of DIC-011 | L4 |
-| T-MET-004 | OpenSubtitles | Query order; file > 64 MiB rejected | L4 |
-| T-MET-005 | API keys | Saved with permissions 0600 (see T-SEC-008); never in the logs (see T-PRV-002) | L4 |
+| T-MET-003 | Jimaku | The key in `Authorization`, only to the Jimaku host; search by `query` with `anime=true`, then `anime=false`; every file of the first two entries; answers read leniently (Fushi's vectors); zip opened by names only (no `../`, no hidden files), the episode taken out of a season pack; RAR listed, never downloaded; 401 and 429 (`Retry-After`) named; HTTPS only outside loopback; language and episode of subtitle names (Fushi's vectors) | L1/L4 |
+| T-MET-004 | OpenSubtitles | By hash and size, then by title, season and episode, the parameters sorted; `languages` always; the download link fetched without the key; the login when a user name is set, a wrong one refused; the quota used up (406); the hash: the size plus the first and last 64 KiB | L1/L4 |
+| T-MET-005 | API keys | Saved with permissions 0600 (see T-SEC-008); never in a debug print or the logs (see T-PRV-002), nor the proxy's password | L1 |
+| T-MET-007 | Automatic subtitles | Ranking and choice (the language, unknown on Jimaku as Japanese; the episode; never machine translated or RAR; a season pack); every provider failing is an error. L6: a video without subtitles gets them from the fake Jimaku, loaded and kept | L1/L4/L6 |
+| T-MET-008 | Downloaded subtitles | `<hash>/<video name>.<language>.<ext>`, ` (2)` when taken, odd characters replaced; offered like files next to the video whatever their name; L6: the next opening loads them with no request | L1/L6 |
+| T-MET-009 | Online subtitles page | kittest: the fields from the file name, Search, the providers' errors, Use (not on a RAR), Save, the page closing when a file is loaded. L6: open, search, use; with automatic subtitles off, opening a video asks nothing (PRV-001) | L3/L6 |
+| T-MET-010 | File names | Fushi's vectors (groups, `SxxEyy`, `第N話`, `EP`, `#`, ` - N`, trailing numbers, Netflix-style dotted names, titles only in brackets, tilde secondary titles, explicit `{[s=…;e=…]}` blocks) and the season of the folder | L1 |
 | T-MET-LIVE-* | Real services | Smoke tests with keys from environment variables | L7 |
 
 ### 6.14 Reliability and fuzzing

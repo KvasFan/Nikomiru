@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use crate::VideoHash;
 use crate::language::{extension, is_subtitle};
 
-/// The folder of the subtitles downloaded for the video of `hash`, under the
-/// data folder `data_dir`.
-pub fn folder(data_dir: &Path, hash: &VideoHash) -> PathBuf {
-    data_dir.join("subtitles").join(hash.hex())
+/// The folder of the subtitles downloaded for the video of `hash`, in the
+/// folder of the downloaded subtitles (`$XDG_DATA_HOME/nikomiru/subtitles`).
+pub fn folder(subtitles_dir: &Path, hash: &VideoHash) -> PathBuf {
+    subtitles_dir.join(hash.hex())
 }
 
 /// A file name part without the characters file systems or shells mind.
@@ -107,7 +107,7 @@ mod tests {
             hash: 0xabc,
             size: 1,
         };
-        let f = folder(dir.path(), &hash);
+        let f = folder(&dir.path().join("subtitles"), &hash);
         assert_eq!(f, dir.path().join("subtitles/0000000000000abc"));
         let video = Path::new("/v/Show - 01.mkv");
         let a = save(&f, video, "ja", "x.ass", b"a").unwrap();

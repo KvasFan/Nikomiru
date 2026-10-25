@@ -13,6 +13,7 @@
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
+//! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
 //! `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
@@ -129,6 +130,17 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
+        Some("online") => harness::online(
+            text(command, "action")?,
+            command["title"].as_str().map(str::to_string),
+            command["episode"]
+                .as_u64()
+                .and_then(|e| u32::try_from(e).ok()),
+            command["index"]
+                .as_u64()
+                .and_then(|i| usize::try_from(i).ok()),
+        )
+        .map(|()| Value::Null),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),
         Some("quit") => harness::quit().map(|()| Value::Null),
         _ => Err(format!("unknown command {command}")),

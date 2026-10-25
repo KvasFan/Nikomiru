@@ -282,7 +282,9 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 
 ## M6 — Statistics, full settings, i18n, advanced mining → 0.3.0
 
-**Requirements**: STA-001…STA-005, SET-001…SET-006, ANK-040, ANK-041, NFR-A11Y-01 (SET-007, PLY-016 and PLY-018 moved to M4b, D-14).
+**Requirements**: STA-001…STA-005, SET-001…SET-006, ANK-040, ANK-041, NFR-A11Y-01.
+
+The proxy setting and the mpv presets with their settings page moved to M4b (D-14).
 
 **Deliverables**
 
@@ -301,7 +303,9 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 
 ## M7 — Online metadata and subtitles → 0.4.0
 
-**Requirements**: MET-001, MET-002, SUB-017, SUB-018 (the online subtitles, MET-003…MET-005 and MET-007…MET-010, moved to M4b, D-14).
+**Requirements**: MET-001, MET-002, SUB-017, SUB-018.
+
+The online subtitles moved to M4b (D-14).
 
 **Deliverables**
 

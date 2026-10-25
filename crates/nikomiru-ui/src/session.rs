@@ -165,6 +165,10 @@ pub struct Services {
     pub screenshots_dir: PathBuf,
     /// Mining to Anki (ADR 0007).
     pub anki: Box<dyn crate::mining::AnkiService>,
+    /// Online subtitles (ADR 0008).
+    pub online: Box<dyn crate::online::OnlineService>,
+    /// Where downloaded subtitles are kept (MET-008).
+    pub subtitles_dir: PathBuf,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
     /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
@@ -187,6 +191,17 @@ impl std::fmt::Debug for Services {
 struct Current {
     uid: Option<String>,
     path: PathBuf,
+    /// The OpenSubtitles hash: the folder of its downloaded subtitles
+    /// (MET-008).
+    hash: Option<nikomiru_online::VideoHash>,
+}
+
+/// The settings page whose settings are being written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SavingPage {
+    #[default]
+    Anki,
+    Online,
 }
 
 /// A link to a scene whose video cannot be found (ANK-052).
@@ -266,6 +281,17 @@ pub struct Session {
     lapis_request: Option<nikomiru_core::config::AnkiConfig>,
     /// The page's message stays when the settings it saved are written.
     keep_status: bool,
+    /// The page that asked for the write of the settings.
+    saving_page: SavingPage,
+    /// Online jobs, started by the UI layer (ADR 0008).
+    online_jobs: Vec<crate::online::OnlineJob>,
+    /// The Online subtitles page (MET-009).
+    pub online_page: crate::online::OnlinePage,
+    /// Videos opened so far: an online answer for another one is dropped.
+    online_generation: u64,
+    /// The subtitle load current when automatic subtitles were asked for:
+    /// any later choice of the user wins over them (MET-007).
+    auto_online: Option<u64>,
     /// The dictionaries page.
     pub dict_page: DictionaryPage,
     dict_imports: Vec<DictImport>,
@@ -394,6 +420,11 @@ impl Session {
             config_saving: false,
             lapis_request: None,
             keep_status: false,
+            saving_page: SavingPage::default(),
+            online_jobs: Vec::new(),
+            online_page: crate::online::OnlinePage::default(),
+            online_generation: 0,
+            auto_online: None,
             dict_page: DictionaryPage::default(),
             dict_imports: Vec::new(),
             writer,
@@ -523,7 +554,14 @@ impl Session {
                 self.view.error = Some(self.services.translator.error(&e));
             }
         }
-        self.current = Some(Current { uid, path });
+        // the downloaded subtitles of this video, and online answers for it only
+        let hash = nikomiru_online::hash::video_hash(&path)
+            .inspect_err(|e| tracing::warn!("{}: {e}", path.display()))
+            .ok();
+        self.online_generation += 1;
+        self.auto_online = None;
+        self.online_page.busy = false;
+        self.current = Some(Current { uid, path, hash });
     }
 
     /// A player event; returns whether the view changed.
@@ -764,6 +802,7 @@ impl Session {
         self.anki_jobs
             .push(crate::mining::AnkiJob::Configure(config));
         self.keep_status = false;
+        self.saving_page = SavingPage::Anki;
         if self.services.config_writable {
             self.config_save = Some(self.services.config.clone());
         } else {
@@ -871,13 +910,14 @@ impl Session {
             // newer settings wait: their write tells how it went
             return;
         }
-        match result {
-            Ok(()) if std::mem::take(&mut self.keep_status) => {}
-            Ok(()) => {
-                let text = self.tr("settings-saved", &[]);
-                self.anki_page.status = Some((text, true));
-            }
-            Err(message) => self.anki_page.status = Some((message, false)),
+        let status = match result {
+            Ok(()) if std::mem::take(&mut self.keep_status) => return,
+            Ok(()) => (self.tr("settings-saved", &[]), true),
+            Err(message) => (message, false),
+        };
+        match self.saving_page {
+            SavingPage::Anki => self.anki_page.status = Some(status),
+            SavingPage::Online => self.online_page.status = Some(status),
         }
     }
 
@@ -889,6 +929,197 @@ impl Session {
     /// The Anki service.
     pub fn anki(&self) -> &dyn crate::mining::AnkiService {
         self.services.anki.as_ref()
+    }
+
+    /// Asks for automatic subtitles for `video` (MET-007), when they are on
+    /// and a provider has a key.
+    fn ask_online_subtitles(&mut self, video: &Path) {
+        let online = &self.services.config.online;
+        let keys = !online.jimaku_api_key.trim().is_empty()
+            || !online.opensubtitles_api_key.trim().is_empty();
+        if !online.auto_subtitles || !keys {
+            return;
+        }
+        self.auto_online = Some(self.sub_generation);
+        self.online_jobs.push(crate::online::OnlineJob::Automatic {
+            generation: self.online_generation,
+            query: crate::online::OnlineQuery::of_video(video.to_path_buf()),
+        });
+    }
+
+    /// The Online subtitles page opens (MET-009): the search of the video
+    /// playing, filled from its file name.
+    pub fn online_open(&mut self) {
+        let video = self.current.as_ref().map(|c| c.path.clone());
+        let other = match (&self.online_page.query, &video) {
+            (Some(q), Some(v)) => &q.video != v,
+            _ => true,
+        };
+        if other {
+            self.online_page.query = video.map(crate::online::OnlineQuery::of_video);
+            self.online_page.results = None;
+        }
+        self.online_page.status = None;
+    }
+
+    /// A search from the page.
+    pub fn online_search(&mut self, title: String, season: Option<u32>, episode: Option<u32>) {
+        let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
+            self.online_page.status = Some((self.tr("online-no-video", &[]), false));
+            return;
+        };
+        let query = crate::online::OnlineQuery {
+            video,
+            title,
+            season,
+            episode,
+        };
+        self.online_page.query = Some(query.clone());
+        self.online_page.results = None;
+        self.online_page.status = None;
+        self.online_page.busy = true;
+        self.online_jobs.push(crate::online::OnlineJob::Search {
+            generation: self.online_generation,
+            query,
+        });
+    }
+
+    /// "Use" on the result `index` of the page.
+    pub fn online_use(&mut self, index: usize) {
+        let page = &self.online_page;
+        let (Some(query), Some(candidate)) = (
+            page.query.clone(),
+            page.results
+                .as_ref()
+                .and_then(|r| r.candidates.get(index))
+                .cloned(),
+        ) else {
+            return;
+        };
+        let text = self.tr(
+            "online-downloading",
+            &[("name", candidate.file_name.clone())],
+        );
+        self.online_page.status = Some((text, true));
+        self.online_page.busy = true;
+        self.online_jobs.push(crate::online::OnlineJob::Download {
+            generation: self.online_generation,
+            query,
+            candidate: Box::new(candidate),
+        });
+    }
+
+    /// The answer of a search.
+    pub fn online_found(
+        &mut self,
+        generation: u64,
+        result: Result<crate::online::OnlineResults, String>,
+    ) {
+        if generation != self.online_generation {
+            return;
+        }
+        self.online_page.busy = false;
+        match result {
+            Ok(results) => {
+                if results.candidates.is_empty() && results.failed.is_empty() {
+                    let text = self.tr("online-nothing-found", &[]);
+                    self.online_page.status = Some((text, false));
+                }
+                self.online_page.results = Some(results);
+            }
+            Err(message) => self.online_page.status = Some((message, false)),
+        }
+    }
+
+    /// A file downloaded from the page (`automatic` false) or for automatic
+    /// subtitles: kept for its video, loaded if that video is still open and,
+    /// for automatic subtitles, the user did not choose others meanwhile.
+    pub fn online_downloaded(
+        &mut self,
+        generation: u64,
+        automatic: bool,
+        result: Result<Option<crate::online::Downloaded>, String>,
+    ) {
+        if generation != self.online_generation {
+            // the file is kept for its video: the next opening finds it
+            return;
+        }
+        if automatic && self.auto_online.take() != Some(self.sub_generation) {
+            tracing::info!("automatic subtitles: the user chose others meanwhile");
+            return;
+        }
+        if !automatic {
+            self.online_page.busy = false;
+        }
+        match result {
+            Ok(Some(d)) => {
+                let source = Source::File(d.path.clone());
+                if !self.sub_sources.contains(&source) {
+                    self.sub_sources.push(source.clone());
+                }
+                self.use_subtitles(source);
+                let text = self.tr(
+                    "online-loaded",
+                    &[
+                        ("name", d.file_name.clone()),
+                        ("provider", d.provider.name().to_string()),
+                    ],
+                );
+                if !automatic {
+                    self.online_page.status = Some((text.clone(), true));
+                    self.online_page.loaded += 1;
+                }
+                self.toasts.push(text);
+            }
+            Ok(None) => {
+                tracing::info!("automatic subtitles: nothing fits");
+                self.toasts.push(self.tr("online-auto-none", &[]));
+            }
+            Err(message) if automatic => self.toasts.push(message),
+            Err(message) => self.online_page.status = Some((message, false)),
+        }
+    }
+
+    /// Save on the Online subtitles page: the settings written to
+    /// `config.toml` (MET-005) and given to the `online` worker.
+    pub fn online_save(
+        &mut self,
+        online: nikomiru_core::config::OnlineConfig,
+        network: nikomiru_core::config::NetworkConfig,
+    ) {
+        self.services.config.online = online.clone();
+        self.services.config.network = network.clone();
+        self.online_jobs
+            .push(crate::online::OnlineJob::Configure(Box::new((
+                online, network,
+            ))));
+        self.saving_page = SavingPage::Online;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("anki-config-not-saved", &[]);
+            self.online_page.status = Some((text, false));
+        }
+    }
+
+    /// The online jobs to start, taken by the UI layer.
+    pub fn take_online_jobs(&mut self) -> Vec<crate::online::OnlineJob> {
+        std::mem::take(&mut self.online_jobs)
+    }
+
+    /// The online service.
+    pub fn online(&self) -> &dyn crate::online::OnlineService {
+        self.services.online.as_ref()
+    }
+
+    /// The online settings as saved.
+    pub fn online_config(
+        &self,
+    ) -> (
+        &nikomiru_core::config::OnlineConfig,
+        &nikomiru_core::config::NetworkConfig,
+    ) {
+        (&self.services.config.online, &self.services.config.network)
     }
 
     /// Marks the last card's entries `✓↩` (ANK-030).
@@ -1544,7 +1775,20 @@ impl Session {
             .and_then(|dir| std::fs::read_dir(dir).ok())
             .map(|rd| rd.flatten().map(|e| e.path()).collect())
             .unwrap_or_default();
-        let externals = select::external_files(&video, &entries);
+        // and the subtitles downloaded for it (MET-008)
+        let downloaded = self
+            .current
+            .as_ref()
+            .and_then(|c| c.hash)
+            .map(|h| {
+                nikomiru_online::store::list(&nikomiru_online::store::folder(
+                    &self.services.subtitles_dir,
+                    &h,
+                ))
+            })
+            .unwrap_or_default();
+        let mut externals = select::external_files(&video, &entries);
+        externals.extend(select::downloaded_files(&downloaded));
         let mut sources: Vec<Source> = externals
             .iter()
             .map(|e| Source::File(e.path.clone()))
@@ -1597,8 +1841,13 @@ impl Session {
                 .cloned(),
             None => None,
         };
+        // no text subtitles in the preferred language: online ones (MET-007)
+        let online = matches!(source, None | Some(Source::Bitmap(_)));
         if let Some(source) = source {
             self.use_subtitles(source);
+        }
+        if online {
+            self.ask_online_subtitles(&video);
         }
         // a link's cue comes with this load or not at all (ANK-052)
         let load = self.sub_loads.last().map(|(generation, _)| *generation);

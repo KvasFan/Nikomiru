@@ -122,6 +122,32 @@ fn jimaku_finds_ranks_and_downloads() {
     ));
 }
 
+// T-SET-007: the proxy of the settings carries the requests
+#[test]
+fn the_proxy_of_the_settings_is_used() {
+    let fake = FakeOnline::start().unwrap();
+    frieren(&fake);
+    // nothing listens on port 1: only the proxy can answer
+    let through = Jimaku::new(
+        Http::new(&fake.proxy_url()).unwrap(),
+        "http://localhost:1/jimaku/api",
+        "jimaku-key",
+    )
+    .unwrap();
+    let mut providers: Vec<Box<dyn Provider>> = vec![Box::new(through)];
+    let found = search_all(&mut providers, &request("Sousou no Frieren", Some(1)));
+    assert!(found.failed.is_empty(), "{:?}", found.failed);
+    assert!(!found.candidates.is_empty());
+    assert!(
+        fake.requests()[0]
+            .target
+            .starts_with("http://localhost:1/jimaku/api/"),
+        "{:?}",
+        fake.requests()[0]
+    );
+    assert!(Http::new("not a proxy").is_err());
+}
+
 // T-MET-003: live action is searched when no anime entry matches (BUG-1694)
 #[test]
 fn jimaku_searches_live_action_after_anime() {

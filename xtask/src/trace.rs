@@ -153,8 +153,8 @@ pub struct Milestone {
 
 /// Reads the milestones from ROADMAP.md; `problems` receives the IDs that do not exist.
 pub fn parse_roadmap(md: &str, spec: &Spec, problems: &mut Vec<String>) -> Result<Vec<Milestone>> {
-    let status_row = Regex::new(r"^\|\s*(M\d+)\s*\|")?;
-    let heading = Regex::new(r"^##\s+(M\d+)\b")?;
+    let status_row = Regex::new(r"^\|\s*(M\d+[a-z]?)\s*\|")?;
+    let heading = Regex::new(r"^##\s+(M\d+[a-z]?)\b")?;
     let range = Regex::new(&format!(r"({REQ_ID})\s*(?:…|\.\.\.)\s*({REQ_ID})"))?;
     let wildcard = Regex::new(r"\b(NFR-[A-Z0-9]+)-\*")?;
     let single = Regex::new(&format!(r"\b({REQ_ID})\b"))?;

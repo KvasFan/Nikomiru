@@ -23,6 +23,7 @@ pub mod instance;
 #[allow(unsafe_code)]
 pub mod linux;
 pub mod logging;
+pub mod online;
 pub mod portal;
 pub mod shell;
 pub mod subtitles;

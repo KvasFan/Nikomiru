@@ -99,6 +99,23 @@ pub enum Inbound {
     LapisDone(Result<crate::mining::LapisMade, String>),
     /// `config.toml` was written, or not.
     ConfigSaved(Result<(), String>),
+    /// What an online search found (MET-009).
+    OnlineFound {
+        /// The video it was for.
+        generation: u64,
+        /// The results, or why not.
+        result: Result<crate::online::OnlineResults, String>,
+    },
+    /// A file downloaded for a video, from the page or automatically
+    /// (MET-007): `None` when automatic subtitles found nothing that fits.
+    OnlineDownloaded {
+        /// The video it was for.
+        generation: u64,
+        /// For automatic subtitles.
+        automatic: bool,
+        /// The file kept, or why not.
+        result: Result<Option<crate::online::Downloaded>, String>,
+    },
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -126,6 +143,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
             Inbound::ConfigSaved(_) => "ConfigSaved",
+            Inbound::OnlineFound { .. } => "OnlineFound",
+            Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -228,6 +247,23 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// The Online subtitles page opened (MET-009).
+    OnlineOpen,
+    /// A search from it.
+    OnlineSearch {
+        title: String,
+        season: Option<u32>,
+        episode: Option<u32>,
+    },
+    /// "Use" on one of its results.
+    OnlineUse(usize),
+    /// Save these online settings.
+    OnlineSave(
+        Box<(
+            nikomiru_core::config::OnlineConfig,
+            nikomiru_core::config::NetworkConfig,
+        )>,
+    ),
     /// "Locate the file" for a link whose video is missing (ANK-052).
     LinkLocate,
     /// The offer to locate it was declined.
@@ -389,6 +425,19 @@ impl Ui {
             }
             Inbound::ConfigSaved(result) => {
                 self.session.config_saved(result);
+                true
+            }
+            Inbound::OnlineFound { generation, result } => {
+                self.session.online_found(generation, result);
+                true
+            }
+            Inbound::OnlineDownloaded {
+                generation,
+                automatic,
+                result,
+            } => {
+                self.session
+                    .online_downloaded(generation, automatic, result);
                 true
             }
             Inbound::Dropped(path) => {
@@ -572,7 +621,8 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
-        self.session.popups_covered = self.view.dict_page_open || self.view.anki_page_open;
+        self.session.popups_covered =
+            self.view.dict_page_open || self.view.anki_page_open || self.view.online_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -645,6 +695,17 @@ impl Ui {
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
+            Command::OnlineOpen => s.online_open(),
+            Command::OnlineSearch {
+                title,
+                season,
+                episode,
+            } => s.online_search(title, season, episode),
+            Command::OnlineUse(index) => s.online_use(index),
+            Command::OnlineSave(settings) => {
+                let (online, network) = *settings;
+                s.online_save(online, network);
+            }
             Command::CardMenu { level, entry, item } => s.card_menu(level, entry, item),
         }
     }
@@ -711,6 +772,47 @@ impl Ui {
                     .anki()
                     .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
                 crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
+            }
+        }
+        for job in self.session.take_online_jobs() {
+            let waker = self.waker.clone();
+            let online = self.session.online();
+            match job {
+                crate::online::OnlineJob::Search { generation, query } => online.search(
+                    query,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineFound { generation, result });
+                    }),
+                ),
+                crate::online::OnlineJob::Download {
+                    generation,
+                    query,
+                    candidate,
+                } => online.download(
+                    query,
+                    *candidate,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineDownloaded {
+                            generation,
+                            automatic: false,
+                            result: result.map(Some),
+                        });
+                    }),
+                ),
+                crate::online::OnlineJob::Automatic { generation, query } => online.automatic(
+                    query,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineDownloaded {
+                            generation,
+                            automatic: true,
+                            result,
+                        });
+                    }),
+                ),
+                crate::online::OnlineJob::Configure(settings) => {
+                    let (o, n) = *settings;
+                    online.configure(o, n);
+                }
             }
         }
         if let Some((config, file)) = self.session.take_config_save() {
