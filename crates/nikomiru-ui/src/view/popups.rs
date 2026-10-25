@@ -1427,8 +1427,21 @@ fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
     let layout = Layout::left_to_right(if ruby_flow { Align::Min } else { Align::Center })
         .with_main_wrap(true);
     let mut text = Selectable::default();
+    // a row high to start with, as `horizontal_wrapped`: a horizontal layout
+    // centres each item in all the height it is given, which would stretch a
+    // chip down the rest of the popup and push what follows out of sight
+    let row = Rect::from_min_size(
+        ui.cursor().min,
+        vec2(
+            ui.available_size_before_wrap().x,
+            ui.spacing().interact_size.y,
+        ),
+    );
     // under the runs: a link keeps its click, a drag from anywhere selects
-    let builder = UiBuilder::new().layout(layout).sense(selecting(select));
+    let builder = UiBuilder::new()
+        .max_rect(row)
+        .layout(layout)
+        .sense(selecting(select));
     let flow = ui.scope_builder(builder, |ui| {
         ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
         for (i, r) in runs.iter().enumerate() {
@@ -1915,6 +1928,13 @@ mod tests {
         }
     }
 
+    /// An entry whose glossary is drawn with `css` (a dictionary's).
+    fn styled_entry(expression: &str, glossary: serde_json::Value, css: &str) -> EntryView {
+        let mut e = entry(expression, serde_json::json!(""));
+        e.sections[0].glossaries[0].blocks = structured::render(&glossary, &Sheet::parse(css));
+        e
+    }
+
     fn harness(stack: Vec<Popup>) -> Harness<'static, Test> {
         Harness::builder()
             .with_size(vec2(1280.0, 720.0))
@@ -2091,6 +2111,39 @@ mod tests {
             ] => Some((text, *anchor)),
             _ => None,
         }
+    }
+
+    // T-POP-010: a tag at the start of a sense (Jitendex's part of speech)
+    // stays a line high, and the meanings follow right under it
+    #[test]
+    fn a_tag_before_a_list_stays_a_line_high() {
+        let css = r#"
+            span[data-sc-class="tag"] { border-radius: 0.3em; font-size: 0.8em; font-weight: bold;
+                margin-right: 0.5em; padding: 0.2em 0.3em; vertical-align: text-bottom; }
+            span[data-sc-content="part-of-speech-info"] { background-color: #565656; color: white; }
+            li[data-sc-content="sense-group"] { padding-left: 0.25em; }
+            ul[data-sc-content="sense-groups"] { list-style-type: "＊"; }
+        "#;
+        let glossary = serde_json::json!({"type": "structured-content", "content": [
+            {"tag": "ul", "data": {"content": "sense-groups"}, "content": {
+                "tag": "li", "data": {"content": "sense-group"}, "content": [
+                    {"tag": "span", "data": {"class": "tag", "content": "part-of-speech-info"}, "content": "noun"},
+                    {"tag": "ol", "content": [
+                        {"tag": "li", "style": {"listStyleType": "\"①\""}, "content": "the Horse"},
+                        {"tag": "li", "style": {"listStyleType": "\"②\""}, "content": "hour of the Horse"}
+                    ]}
+                ]
+            }}
+        ]});
+        let mut h = harness(vec![popup(
+            1,
+            Some(vec![styled_entry("午", glossary, css)]),
+        )]);
+        h.run();
+        let tag = h.get_by_label("noun").rect();
+        let first = h.get_by_label("the Horse").rect();
+        assert!(first.top() - tag.bottom() < 30.0, "{tag:?} {first:?}");
+        assert!(tag.height() < 30.0, "{tag:?}");
     }
 
     // T-AUD-004: ♪ plays, a right click opens the menu, an item plays
