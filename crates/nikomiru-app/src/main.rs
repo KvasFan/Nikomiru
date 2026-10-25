@@ -150,19 +150,23 @@ fn fatal(e: &dyn std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// The settings, or the defaults and the error to show (ERR-001).
-fn load_config(paths: &Paths) -> (Config, Option<ConfigError>) {
+/// The settings, or the defaults and the error to show (ERR-001); the keys
+/// whose wrong values took their defaults (SET-001).
+fn load_config(paths: &Paths) -> (Config, Option<ConfigError>, Vec<String>) {
     match Config::load(&paths.config_file()) {
-        Ok(config) => {
+        Ok((config, invalid)) => {
             let unknown = config.unknown_keys();
             if !unknown.is_empty() {
                 tracing::info!("settings this version does not know: {unknown:?}");
             }
-            (config, None)
+            if !invalid.is_empty() {
+                tracing::warn!("settings with a wrong value, used with their default: {invalid:?}");
+            }
+            (config, None, invalid)
         }
         Err(e) => {
             tracing::warn!("{e}");
-            (Config::default(), Some(e))
+            (Config::default(), Some(e), Vec::new())
         }
     }
 }
@@ -170,7 +174,7 @@ fn load_config(paths: &Paths) -> (Config, Option<ConfigError>) {
 /// `--import-dictionary`: imports into the registry and the dictionaries
 /// folder, then exits (the running app must be closed: the library is locked).
 fn import_dictionaries(paths: &Paths, zips: &[std::path::PathBuf]) -> ExitCode {
-    let (config, _) = load_config(paths);
+    let (config, ..) = load_config(paths);
     let translator =
         Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok());
     let library = match Library::open(&paths.library_db()) {
@@ -306,7 +310,7 @@ fn run(
     let proxy = event_loop.create_proxy();
     let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
-    let (config, config_notice) = load_config(paths);
+    let (config, config_notice, invalid) = load_config(paths);
     // a file that could not be read is never written over with the defaults
     let config_writable = config_notice.is_none();
     check_ffmpeg(&config.paths.ffmpeg);
@@ -315,6 +319,15 @@ fn run(
     let mut notices = Vec::new();
     if let Some(e) = config_notice {
         notices.push(translator.error(&e));
+    }
+    if !invalid.is_empty() {
+        notices.push(translator.tr(
+            "error-config-values",
+            &[
+                ("path", paths.config_file().display().to_string()),
+                ("keys", invalid.join(", ")),
+            ],
+        ));
     }
     // a settings folder made with sudo belongs to root: saving would fail
     if let Err(e) = nikomiru_core::config::check_writable(&paths.config_dir) {

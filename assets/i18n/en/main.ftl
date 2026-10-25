@@ -95,6 +95,7 @@ error-config-read = The settings file { $path } cannot be read ({ $reason }). Th
 error-config-write = The settings cannot be saved to { $path } ({ $reason }). Check that the folder is writable.
 error-config-dir = The settings folder { $path } cannot be written ({ $reason }): the settings will not be saved. If it was made with sudo, give it back to yourself: sudo chown -R $USER: { $path }
 error-config-serialize = The settings cannot be saved ({ $reason }).
+error-config-values = Some settings in { $path } have a value of the wrong kind and use their default: { $keys }. Saving the settings writes the defaults over them.
 error-paths = HOME is not set: Nikomiru cannot find its folders.
 
 # Library (nikomiru-library LibraryError)

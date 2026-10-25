@@ -602,7 +602,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         cfg.save(&path).unwrap();
-        nikomiru_core::Config::load(&path).unwrap()
+        nikomiru_core::Config::load(&path).unwrap().0
     }
 
     // T-KEY-003

@@ -711,12 +711,12 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement |
 |---|---|
-| SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). |
+| SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). `config.toml`: a key this version does not know is kept and written back; a value of the wrong kind takes its default and is named in a notice at startup (a file that is not TOML keeps the defaults in use and is never written over); saving changes only the values that changed, so a file edited by hand keeps its comments, order and layout; the write is atomic, with permissions 0600. |
 | SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file). |
 | SET-003 | Light / dark / system theme (the system theme follows the desktop's `color-scheme`, read from the XDG settings portal), with a configurable accent color. Design tokens in a single Rust `Theme`, applied to egui's visuals. |
 | SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
-| SET-006 | Reset to default settings per section. |
+| SET-006 | Reset to default settings per section: the tab's keys go back to their defaults in the page, and are saved with the page. What the user has rather than how Nikomiru behaves stays: the keys and logins of the services, the AnkiConnect key, the word audio sources, the keys `config.toml` has that this version does not know. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
 | SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
 
@@ -792,7 +792,9 @@ A scan of a folder keeps what the library knows (LIB-004): a file is found again
 ```toml
 [general]
 ui_language = "system"      # "it", "en", …
-theme = "system"            # "light" | "dark" | "system"
+theme = "system"            # "light" | "dark" | "system" (SET-003)
+accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
+ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
 study_language = "ja"
 
 [player]
