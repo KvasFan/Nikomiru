@@ -77,6 +77,7 @@ settings-saved = Settings saved.
 settings-title = Settings
 settings-player = Player
 settings-services = Subtitle services
+settings-audio = Word audio
 settings-anki = Anki
 anki-config-not-saved = config.toml could not be read, so it was not written: these settings last until Nikomiru closes. Fix the file and save again.
 anki-deck-missing = Anki has no deck { $name }: choose another, or create it.
@@ -416,3 +417,26 @@ library-no-folder = { $path } is not a folder that can be read.
 next-up = Next episode in { $seconds } s
 next-up-play = Play now
 next-up-cancel = Cancel
+
+# Word audio (AUD-001…AUD-008)
+word-audio-button = Word audio
+word-audio-hint = Play the word; right click: every source
+word-audio-loading = Asking the sources…
+word-audio-none = No audio for this word.
+word-audio-unavailable = Word audio cannot play: see the log.
+
+# Word audio tab (AUD-001, AUD-005, AUD-006)
+audio-close = Close
+audio-save = Save
+audio-sources = Sources, in the order they are asked
+audio-sources-hint = A source is an address with {"{"}term{"}"} and {"{"}reading{"}"}, such as a local audio server for Yomitan. It may answer with a Yomitan list of audio files, or with the audio itself. Only HTTPS, or HTTP on this computer. None is built in.
+audio-source-n = Source { $n }
+audio-name = Name
+audio-url = Address
+audio-up = Move source { $n } up
+audio-down = Move source { $n } down
+audio-remove = Remove source { $n }
+audio-add = Add a source
+audio-playing = Playing
+audio-autoplay = Play the word by itself when a popup opens
+audio-volume = Volume

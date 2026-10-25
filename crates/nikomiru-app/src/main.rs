@@ -400,6 +400,15 @@ fn run(
             translator.tr("error-library-unavailable", &[]),
         )),
     };
+    // AUD-001…AUD-008
+    let word_audio =
+        nikomiru_app::word_audio::WordAudioWorker::start(nikomiru_app::word_audio::Parts {
+            config: config.word_audio.clone(),
+            proxy: config.network.proxy.clone(),
+            cache_dir: paths.cache_dir.join("audio"),
+            ao: config.player.mpv_options.get("ao").cloned(),
+            translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -422,6 +431,7 @@ fn run(
         anki: Box::new(anki),
         online: Box::new(online),
         catalog,
+        word_audio: Box::new(word_audio),
         subtitles_dir: paths.subtitles_dir(),
         mpv_presets_dir: paths.mpv_presets_dir(),
         user_mpv_conf: paths.user_mpv_conf(),

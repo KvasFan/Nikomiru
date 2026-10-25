@@ -626,10 +626,10 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ID | Requirement | Fushi |
 |---|---|---|
 | AUD-001 | Audio sources in an ordered, configurable list; each one can be enabled or disabled. | `audio_source_config.dart` |
-| AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded. The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` or, unlike Fushi, direct audio (`Content-Type: audio/*`). | `word_audio_resolver.dart` |
+| AUD-002 | **URL template** source with `{term}` and `{reading}` URI-encoded (as `encodeURIComponent`; an empty reading is the term). The response can be Yomitan JSON `{type:"audioSourceList", audioSources:[{name,url}]}` (relative addresses resolved against the source's) or, unlike Fushi, direct audio (`Content-Type: audio/*`). Only HTTPS, or HTTP on loopback (a local audio server), as for the online subtitles; at most 8 MiB per file; through `[network] proxy` (SET-007). | `word_audio_resolver.dart` |
 | AUD-003 | **Local database** source in the "Local Audio Server for Yomichan" format (`entries(expression, reading, file, source)`, `android(file, source, data)`): first the exact pair, then the expression only, with priority by sub-source (nhk16, forvo, jpod, …). The format is SQLite: it is read with `turso` (MIT), to be validated in spike S3 (D-2). | `local_audio_db.dart` |
 | AUD-004 | Resolution: for playback the first valid result in order is enough; the menu (right click on ♪) queries all sources in parallel and shows them all. Timeouts: 8 s for the connection, 10 s for the response. A 4xx response = "no audio"; a connection error pauses the host for 45 s. | |
-| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`), independent of the player. Configurable volume. | |
+| AUD-005 | Playback uses a **second audio-only libmpv instance** (`vid=no`, `video=no`, no configuration or scripts), independent of the player, with the player's audio output (`ao`) if set. Configurable volume. | |
 | AUD-006 | Option "play automatically when the popup opens", default yes: it does not overlap the dialogue because the lookup already pauses the video (POP-001). It can be disabled. | |
 | AUD-007 | There are no default JapanesePod101 or Forvo URLs (terms of service). The user adds their own templates. | |
 | AUD-008 | On-disk cache of downloaded audio (key = URL), limited to 500 MiB with an LRU policy. | |
@@ -717,7 +717,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
-| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar). SET-001 adds the other sections as tabs. |
+| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 
@@ -847,6 +847,14 @@ ffmpeg = ""                 # empty = search in PATH
 
 [network]
 proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
+
+[word_audio]                # AUD-001…AUD-008
+autoplay = true             # AUD-006
+volume = 100                # AUD-005, 0–100
+# [[word_audio.sources]]    # none by default (AUD-007), asked in order (AUD-001)
+# name = "Local"
+# url = "http://localhost:5050/?term={term}&reading={reading}"
+# enabled = true
 
 [online]                    # ADR 0008
 providers = ["jimaku", "opensubtitles"]  # the services used, in the order preferred (MET-011)

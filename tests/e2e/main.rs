@@ -1068,6 +1068,84 @@ fn the_next_episode_starts_after_a_countdown() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-AUD-002, T-AUD-004, T-AUD-006: the word of the popup, played by itself
+// and from its menu, from a source of the user's
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_word_is_played_from_the_popup() {
+    let fake = nikomiru_online::fake::FakeOnline::start().unwrap();
+    let mut desk = Desktop::start();
+    // half a second of a tone, as a word's audio
+    let wav = desk.path("word.wav");
+    let status = std::process::Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=d=0.5",
+        ])
+        .args(["-ar", "8000", "-ac", "1"])
+        .arg(&wav)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    fake.data()
+        .words
+        .insert("食べる".into(), std::fs::read(&wav).unwrap());
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[[word_audio.sources]]\nname = \"Fake\"\n\
+         url = \"{}/words/list?term={{term}}&reading={{reading}}\"\n",
+        fake.proxy_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    // by itself, when the popup opens (AUD-006)
+    let played = h.wait("word-audio");
+    assert_eq!(played["found"], true, "{played}");
+    let asked: Vec<String> = fake.requests().into_iter().map(|r| r.target).collect();
+    assert!(
+        asked.iter().any(|t| t.contains(
+            "/words/list?term=%E9%A3%9F%E3%81%B9%E3%82%8B&reading=%E3%81%9F%E3%81%B9%E3%82%8B"
+        )),
+        "{asked:?}"
+    );
+    assert!(
+        asked.iter().any(|t| t.contains("/words/file/")),
+        "{asked:?}"
+    );
+    // the menu: every source, then one of them played, from the cache
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "menu", "level": 0, "entry": 0 }));
+    let s = h.state_until("the menu", |s| s["popups"][0]["audio"]["items"].is_array());
+    let items = s["popups"][0]["audio"]["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), 1, "{s}");
+    assert_eq!(items[0]["label"], "Fake: fake");
+    let files_before = fake
+        .requests()
+        .iter()
+        .filter(|r| r.target.contains("/words/file/"))
+        .count();
+    h.cmd(serde_json::json!({ "cmd": "word_audio", "action": "url", "url": items[0]["url"] }));
+    assert_eq!(h.wait("word-audio")["found"], true);
+    let files_after = fake
+        .requests()
+        .iter()
+        .filter(|r| r.target.contains("/words/file/"))
+        .count();
+    assert_eq!(files_before, files_after, "played from the cache (AUD-008)");
+    // the video stays paused for the lookup
+    assert_eq!(h.state()["paused"], true);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PERF-07
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

@@ -29,6 +29,7 @@ pub mod shortcuts;
 pub mod subtitles;
 mod ui;
 pub mod view;
+pub mod word_audio;
 
 pub use session::Services;
 pub use shortcuts::Modifiers;

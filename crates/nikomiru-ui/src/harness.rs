@@ -42,6 +42,7 @@ pub(crate) fn push(event: UiEvent) {
         UiEvent::FileLoaded => ("file-loaded", json!({})),
         UiEvent::FirstFrame => ("first-frame", json!({})),
         UiEvent::NextUp => ("next-up", json!({})),
+        UiEvent::WordAudio { found } => ("word-audio", json!({ "found": found })),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
         UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
         UiEvent::CardCreated(note_id) => ("card-created", json!({ "note_id": note_id })),
@@ -263,6 +264,13 @@ pub fn state() -> Result<Value, String> {
                 "empty": p.reply.as_ref().is_some_and(|r| r.empty),
                 "cards": p.cards.iter().map(|c| c.name()).collect::<Vec<_>>(),
                 "menu": p.menu,
+                "audio": p.audio.as_ref().map(|(entry, menu)| match menu {
+                    crate::word_audio::AudioMenu::Loading => json!({ "entry": entry, "loading": true }),
+                    crate::word_audio::AudioMenu::Items(items) => json!({
+                        "entry": entry,
+                        "items": items.iter().map(|i| json!({ "label": i.label, "url": i.url })).collect::<Vec<_>>(),
+                    }),
+                }),
             })).collect::<Vec<_>>(),
             "paused_for_lookup": s.popups.paused_for_lookup(),
             "anki_page": json!({
@@ -367,6 +375,23 @@ pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String
             item: crate::mining::MenuItem::from_name(name)
                 .ok_or_else(|| format!("no card menu item {name}"))?,
         },
+    };
+    call(move |ui| ui.run(command))
+}
+
+/// ♪ of an entry (`action` `play`), its right click (`menu`), or an audio
+/// of the menu (`url`) (AUD-004).
+pub fn word_audio(
+    action: &str,
+    level: usize,
+    entry: usize,
+    url: Option<String>,
+) -> Result<(), String> {
+    let command = match action {
+        "play" => Command::WordAudio { level, entry },
+        "menu" => Command::WordAudioMenu { level, entry },
+        "url" => Command::WordAudioPlay(url.ok_or("missing \"url\"")?),
+        other => return Err(format!("no word audio action {other}")),
     };
     call(move |ui| ui.run(command))
 }

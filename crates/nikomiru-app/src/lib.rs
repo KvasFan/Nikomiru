@@ -30,3 +30,4 @@ pub mod shell;
 pub mod subtitles;
 #[allow(unsafe_code)]
 pub mod window;
+pub mod word_audio;

@@ -122,6 +122,19 @@ pub enum Inbound {
     },
     /// What the library worker answered (LIB-002…LIB-012).
     Library(crate::catalog::LibraryReply),
+    /// The audio menu of an entry (AUD-004).
+    WordAudioListed {
+        /// The popup.
+        level: usize,
+        /// Its lookup.
+        generation: u64,
+        /// The entry.
+        entry: usize,
+        /// The audio found, or why not.
+        result: Result<Vec<crate::word_audio::WordAudioItem>, String>,
+    },
+    /// A word played, or none was found.
+    WordAudioPlayed(Result<bool, String>),
     /// An alignment with the audio ended (SUB-018).
     Aligned {
         /// The subtitle load it was for.
@@ -176,6 +189,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::Aligned { .. } => "Aligned",
             Inbound::FileWritten { .. } => "FileWritten",
             Inbound::Library(_) => "Library",
+            Inbound::WordAudioListed { .. } => "WordAudioListed",
+            Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -278,6 +293,20 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// ♪ of an entry: its first audio (AUD-004).
+    WordAudio {
+        level: usize,
+        entry: usize,
+    },
+    /// A right click on ♪: the audio menu of the entry.
+    WordAudioMenu {
+        level: usize,
+        entry: usize,
+    },
+    /// An audio of the menu.
+    WordAudioPlay(String),
+    /// Save the word audio settings (AUD-001).
+    WordAudioSave(Box<nikomiru_core::config::WordAudioConfig>),
     /// The next episode now (LIB-009).
     NextNow,
     /// The next episode not now.
@@ -298,6 +327,8 @@ pub(crate) enum Command {
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
     ServicesOpen,
+    /// The Word audio tab of the settings opened (AUD-001).
+    AudioOpen,
     /// A search from it.
     OnlineSearch {
         title: String,
@@ -571,6 +602,20 @@ impl Ui {
                 self.session.library_reply(reply);
                 true
             }
+            Inbound::WordAudioListed {
+                level,
+                generation,
+                entry,
+                result,
+            } => {
+                self.session
+                    .word_audio_listed(level, generation, entry, result);
+                true
+            }
+            Inbound::WordAudioPlayed(result) => {
+                self.session.word_audio_played(result);
+                true
+            }
             Inbound::Quit => {
                 self.quit();
                 true
@@ -739,6 +784,7 @@ impl Ui {
             || self.view.online_page_open
             || self.view.player_page_open
             || self.view.services_page_open
+            || self.view.audio_page_open
             || self.view.library_page_open;
     }
 
@@ -830,6 +876,10 @@ impl Ui {
                 self.view.dialog = Some(Dialog::MpvExport);
             }
             Command::OnlineOpen => s.online_open(),
+            Command::WordAudio { level, entry } => s.word_audio(level, entry),
+            Command::WordAudioMenu { level, entry } => s.word_audio_menu(level, entry),
+            Command::WordAudioPlay(url) => s.word_audio_play(url),
+            Command::WordAudioSave(config) => s.word_audio_save(*config),
             Command::NextNow => s.play_next(),
             Command::NextCancel => s.cancel_next(),
             Command::LibraryOpen => s.library_open(),
@@ -839,6 +889,7 @@ impl Ui {
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
             Command::ServicesOpen => s.services_open(),
+            Command::AudioOpen => s.audio_status = None,
             Command::OnlineSearch {
                 title,
                 season,
@@ -931,6 +982,44 @@ impl Ui {
                     });
                 }),
             );
+        }
+        for job in self.session.take_word_audio_jobs() {
+            use crate::word_audio::WordAudioJob;
+            let waker = self.waker.clone();
+            let audio = self.session.word_audio_service();
+            match job {
+                WordAudioJob::Play { term, reading } => audio.play(
+                    term,
+                    reading,
+                    Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r))),
+                ),
+                WordAudioJob::List {
+                    level,
+                    generation,
+                    entry,
+                    term,
+                    reading,
+                } => audio.list(
+                    term,
+                    reading,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::WordAudioListed {
+                            level,
+                            generation,
+                            entry,
+                            result,
+                        });
+                    }),
+                ),
+                WordAudioJob::PlayUrl(url) => audio.play_url(
+                    url,
+                    Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r.map(|()| true)))),
+                ),
+                WordAudioJob::Configure(settings) => {
+                    let (config, proxy) = *settings;
+                    audio.configure(config, proxy);
+                }
+            }
         }
         for job in self.session.take_library_jobs() {
             use crate::catalog::{LibraryJob, LibraryReply};

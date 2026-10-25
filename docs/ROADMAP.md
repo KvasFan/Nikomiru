@@ -287,7 +287,8 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 **Status as of 2026-10-25**
 
 - Done: the library (LIB-002…LIB-012): schema 2 with series and folders, the import by series or by folder with Fushi's grouping vectors, scans that keep progress, choices and the user's edits, the covers, the Library page (🎞, and at start without a file), the next episode with its countdown, the start rule, the watched state, the series' choices. The file-name parser moved to `nikomiru-text`.
-- Open: word audio (AUD-001…AUD-008) and spike S3; the import of a real library of ≥ 200 episodes by hand.
+- Done too: word audio from URL templates (AUD-001, AUD-002, AUD-004…AUD-008): sources in the settings (a Word audio tab), ♪ and its menu in the popup, playing by itself, a second audio-only mpv core, an LRU cache.
+- Open: the local audio database (AUD-003) and spike S3, which need a real `android.db`; the import of a real library of ≥ 200 episodes by hand.
 
 **Exit criteria**
 

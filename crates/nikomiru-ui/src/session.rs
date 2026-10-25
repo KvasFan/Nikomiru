@@ -50,6 +50,11 @@ pub enum UiEvent {
     FileLoaded,
     /// The next episode's countdown started (LIB-009).
     NextUp,
+    /// A word was played, or none was found (AUD-004).
+    WordAudio {
+        /// An audio was found.
+        found: bool,
+    },
     /// The first position after the load: the video is moving.
     FirstFrame,
     /// The file could not be played: the message id of the error.
@@ -178,6 +183,8 @@ pub struct Services {
     pub online: Box<dyn crate::online::OnlineService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
+    /// The word audio worker (AUD-001…AUD-008).
+    pub word_audio: Box<dyn crate::word_audio::WordAudioService>,
     /// Where downloaded subtitles are kept (MET-008).
     pub subtitles_dir: PathBuf,
     /// Where the mpv presets are kept (PLY-016).
@@ -219,6 +226,7 @@ enum SavingPage {
     Anki,
     Services,
     Player,
+    Audio,
 }
 
 /// How long the next episode waits (LIB-009).
@@ -329,6 +337,8 @@ pub struct Session {
     pub services_status: Option<(String, bool)>,
     /// The Library page (LIB-005).
     pub library_page: crate::catalog::LibraryPage,
+    /// The last message of the Word audio tab, and whether it is good news.
+    pub audio_status: Option<(String, bool)>,
     /// The next episode about to start (LIB-009).
     next_up: Option<NextUp>,
     /// What the current video plays with: its own choices, else its
@@ -339,6 +349,8 @@ pub struct Session {
     own_audio: bool,
     /// The library jobs to start.
     library_jobs: Vec<crate::catalog::LibraryJob>,
+    /// The word audio jobs to start.
+    word_audio_jobs: Vec<crate::word_audio::WordAudioJob>,
     /// Videos opened so far: an online answer for another one is dropped.
     online_generation: u64,
     /// The subtitle load current when automatic subtitles were asked for:
@@ -494,10 +506,12 @@ impl Session {
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
             library_page: crate::catalog::LibraryPage::default(),
+            audio_status: None,
             next_up: None,
             prefs: Default::default(),
             own_audio: false,
             library_jobs: Vec::new(),
+            word_audio_jobs: Vec::new(),
             online_generation: 0,
             auto_online: None,
             player_page: crate::player_settings::PlayerPage::default(),
@@ -1034,6 +1048,7 @@ impl Session {
         match self.saving_page {
             SavingPage::Anki => self.anki_page.status = Some(status),
             SavingPage::Services => self.services_status = Some(status),
+            SavingPage::Audio => self.audio_status = Some(status),
             SavingPage::Player => self.player_page.status = Some(status),
         }
     }
@@ -1327,6 +1342,135 @@ impl Session {
     /// The library worker.
     pub fn catalog(&self) -> &dyn crate::catalog::LibraryService {
         self.services.catalog.as_ref()
+    }
+
+    /// `[word_audio]` as saved.
+    pub fn word_audio_config(&self) -> &nikomiru_core::config::WordAudioConfig {
+        &self.services.config.word_audio
+    }
+
+    /// Whether a word audio source is on: the ♪ of the entries shows.
+    pub fn word_audio_on(&self) -> bool {
+        self.services
+            .config
+            .word_audio
+            .sources
+            .iter()
+            .any(|s| s.enabled)
+    }
+
+    fn play_word(&mut self, term: &str, reading: &str) {
+        if self.word_audio_on() {
+            self.word_audio_jobs
+                .push(crate::word_audio::WordAudioJob::Play {
+                    term: term.to_string(),
+                    reading: reading.to_string(),
+                });
+        }
+    }
+
+    fn entry_word(&self, level: usize, entry: usize) -> Option<(u64, String, String)> {
+        let p = self.popups.stack().get(level)?;
+        let e = p.reply.as_ref()?.content.entries.get(entry)?;
+        Some((p.generation, e.expression.clone(), e.reading.clone()))
+    }
+
+    /// ♪ of an entry (AUD-004): its first audio.
+    pub fn word_audio(&mut self, level: usize, entry: usize) {
+        if let Some((_, term, reading)) = self.entry_word(level, entry) {
+            self.play_word(&term, &reading);
+        }
+    }
+
+    /// The audio menu of an entry (AUD-004): every source asked; again, it
+    /// closes.
+    pub fn word_audio_menu(&mut self, level: usize, entry: usize) {
+        use crate::word_audio::{AudioMenu, WordAudioJob};
+        let Some((generation, term, reading)) = self.entry_word(level, entry) else {
+            return;
+        };
+        let Some(p) = self.popups.stack_mut().get_mut(level) else {
+            return;
+        };
+        if p.audio.as_ref().is_some_and(|(e, _)| *e == entry) {
+            p.audio = None;
+            return;
+        }
+        p.audio = Some((entry, AudioMenu::Loading));
+        self.word_audio_jobs.push(WordAudioJob::List {
+            level,
+            generation,
+            entry,
+            term,
+            reading,
+        });
+    }
+
+    /// An audio of the menu chosen.
+    pub fn word_audio_play(&mut self, url: String) {
+        self.word_audio_jobs
+            .push(crate::word_audio::WordAudioJob::PlayUrl(url));
+    }
+
+    /// What the sources gave for an entry's menu.
+    pub fn word_audio_listed(
+        &mut self,
+        level: usize,
+        generation: u64,
+        entry: usize,
+        result: Result<Vec<crate::word_audio::WordAudioItem>, String>,
+    ) {
+        use crate::word_audio::AudioMenu;
+        let items = result.unwrap_or_else(|e| {
+            self.toasts.push(e);
+            Vec::new()
+        });
+        if let Some(p) = self.popups.stack_mut().get_mut(level)
+            && p.generation == generation
+            && p.audio.as_ref().is_some_and(|(e, _)| *e == entry)
+        {
+            p.audio = Some((entry, AudioMenu::Items(items)));
+        }
+    }
+
+    /// A word played, or not.
+    pub fn word_audio_played(&mut self, result: Result<bool, String>) {
+        self.events.push(UiEvent::WordAudio {
+            found: result == Ok(true),
+        });
+        match result {
+            Ok(true) => {}
+            Ok(false) => self.toasts.push(self.tr("word-audio-none", &[])),
+            Err(e) => self.toasts.push(e),
+        }
+    }
+
+    /// The word audio jobs to start, taken by the UI layer.
+    pub fn take_word_audio_jobs(&mut self) -> Vec<crate::word_audio::WordAudioJob> {
+        std::mem::take(&mut self.word_audio_jobs)
+    }
+
+    /// The word audio worker.
+    pub fn word_audio_service(&self) -> &dyn crate::word_audio::WordAudioService {
+        self.services.word_audio.as_ref()
+    }
+
+    /// Saves the word audio settings (AUD-001): `config.toml`, and the
+    /// worker.
+    pub fn word_audio_save(&mut self, config: nikomiru_core::config::WordAudioConfig) {
+        self.services.config.word_audio = config.clone();
+        self.word_audio_jobs
+            .push(crate::word_audio::WordAudioJob::Configure(Box::new((
+                config,
+                self.services.config.network.proxy.clone(),
+            ))));
+        self.saving_page = SavingPage::Audio;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("anki-config-not-saved", &[]);
+            self.audio_status = Some((text, false));
+        }
     }
 
     /// LIB-009: the episode ended; with `auto_next`, the next one of its
@@ -3330,6 +3474,13 @@ impl Session {
         if self.popups.deliver(generation, reply) {
             self.sync_highlight();
             self.apply_last_card();
+            // AUD-006: the word of the first entry, without overlapping the
+            // line, which the lookup paused
+            if self.services.config.word_audio.autoplay
+                && let Some((term, reading)) = entries.first()
+            {
+                self.play_word(term, reading);
+            }
             if !entries.is_empty() {
                 self.anki_jobs.push(crate::mining::AnkiJob::Check {
                     generation,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The settings (⚙ in the bar, SET-008): one page per tab, Player, Subtitle
-//! services and Anki, with the tabs at the top of each.
+//! services, Word audio and Anki, with the tabs at the top of each.
 
 use egui::{RichText, Ui};
 
@@ -15,13 +15,15 @@ pub enum SettingsTab {
     Player,
     /// The subtitle services, their keys and the proxy (MET-011).
     Services,
+    /// The word audio sources (AUD-001).
+    Audio,
     /// Mining to Anki.
     Anki,
 }
 
 impl SettingsTab {
     /// Every tab, in the order shown.
-    pub const ALL: [SettingsTab; 3] = [Self::Player, Self::Services, Self::Anki];
+    pub const ALL: [SettingsTab; 4] = [Self::Player, Self::Services, Self::Audio, Self::Anki];
 
     /// Its name for the test harness.
     #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
@@ -29,6 +31,7 @@ impl SettingsTab {
         match self {
             Self::Player => "player",
             Self::Services => "services",
+            Self::Audio => "audio",
             Self::Anki => "anki",
         }
     }
@@ -43,6 +46,7 @@ impl SettingsTab {
         match self {
             Self::Player => "settings-player",
             Self::Services => "settings-services",
+            Self::Audio => "settings-audio",
             Self::Anki => "settings-anki",
         }
     }

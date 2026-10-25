@@ -9,6 +9,7 @@
 //! dictionaries page, the toast.
 
 mod anki_page;
+mod audio_page;
 mod bar;
 mod chrome;
 mod dict_page;
@@ -142,6 +143,10 @@ pub(crate) struct View {
     pub online: online_page::State,
     /// The Subtitle services tab of the settings is shown (MET-011).
     pub services_page_open: bool,
+    /// The Word audio tab of the settings is shown (AUD-001).
+    pub audio_page_open: bool,
+    /// What it keeps.
+    pub audio: audio_page::State,
     /// What it keeps.
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
@@ -190,7 +195,7 @@ impl View {
                     self.close_online_page();
                 } else if self.library_page_open {
                     self.close_library_page();
-                } else if self.services_page_open {
+                } else if self.services_page_open || self.audio_page_open {
                     self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
@@ -273,6 +278,10 @@ impl View {
                 self.services_page_open = true;
                 out.push(Command::ServicesOpen);
             }
+            SettingsTab::Audio => {
+                self.audio_page_open = true;
+                out.push(Command::AudioOpen);
+            }
             SettingsTab::Anki => self.open_anki_page(out),
         }
     }
@@ -283,6 +292,8 @@ impl View {
         self.close_anki_page();
         self.services_page_open = false;
         self.services = services_page::State::default();
+        self.audio_page_open = false;
+        self.audio = audio_page::State::default();
     }
 
     /// What a page asked for after its frame.
@@ -364,6 +375,7 @@ impl View {
             || self.online_page_open
             || self.player_page_open
             || self.services_page_open
+            || self.audio_page_open
             || self.library_page_open
         {
             self.popups.rects.clear();
@@ -386,6 +398,9 @@ impl View {
         }
         if self.services_page_open {
             services_page::show(&ctx, s, self, &mut out);
+        }
+        if self.audio_page_open {
+            audio_page::show(&ctx, s, self, &mut out);
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);

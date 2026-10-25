@@ -885,4 +885,31 @@ opensubtitles_password = "pw-s3cret"
         let problems = crate::error::message_problems(crate::error::I18N_DIR.as_ref(), &all);
         assert!(problems.is_empty(), "{problems:#?}");
     }
+
+    // T-AUD-001, T-AUD-007: the sources in order, on or off; none built in
+    #[test]
+    fn word_audio_sources_keep_their_order() {
+        assert!(Config::default().word_audio.sources.is_empty());
+        assert!(Config::default().word_audio.autoplay);
+        let text = r#"
+[[word_audio.sources]]
+name = "Local"
+url = "http://localhost:5050/?term={term}&reading={reading}"
+
+[[word_audio.sources]]
+name = "Other"
+url = "https://audio.example.org/{term}"
+enabled = false
+"#;
+        let c = Config::from_toml(text).unwrap();
+        let names: Vec<(&str, bool)> = c
+            .word_audio
+            .sources
+            .iter()
+            .map(|s| (s.name.as_str(), s.enabled))
+            .collect();
+        assert_eq!(names, [("Local", true), ("Other", false)]);
+        let again = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(again.word_audio, c.word_audio);
+    }
 }
