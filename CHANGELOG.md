@@ -4,7 +4,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-The workspace is at 0.1.0: this section becomes 0.1.0 when the maintainer tags it, with M4 and M4b (D-15).
+## [0.1.0] - 2026-10-25
+
+The first release: M0–M4 and M4b (D-15). A video player with clickable Japanese subtitles, Yomitan dictionaries in a popup and one-click Anki cards, online subtitles and mpv presets.
 
 ### Changed (rename)
 

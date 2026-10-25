@@ -239,7 +239,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
 - [x] T-PERF-08 ≤ 3 s (276 ms against the fake AnkiConnect).
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
-- [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
+- [x] **Release 0.1.0** (2026-10-25, tag `v0.1.0`): tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
 
 ---
 
