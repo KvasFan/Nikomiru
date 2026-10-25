@@ -378,3 +378,30 @@ fn a_screenshot_answers_once_the_frame_is_written() {
         v.parse::<f64>().is_ok_and(|p| (p - 3.0).abs() < 0.05)
     });
 }
+
+// T-AUD-005: a word plays on a core of its own
+#[test]
+#[ignore = "L5: needs libmpv and `cargo xtask fixtures`"]
+fn a_word_plays_without_touching_the_player() {
+    let mut t = Harness::new();
+    t.load("av_long.mkv", LoadRequest::default());
+    t.loaded();
+    t.h.set_pause(true).unwrap();
+    t.h.set_volume(70.0).unwrap();
+    t.until("pause", |v| v == "yes");
+    t.until("volume", |v| v.starts_with("70"));
+    let before = t.time_pos();
+    let word = nikomiru_player::word::WordPlayer::new(Some("null")).expect("word core");
+    word.play(std::path::Path::new(&fixture("av_basic.mkv")), 40.0)
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !word.playing() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(word.playing());
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(t.prop("pause"), "yes");
+    assert!(t.prop("volume").starts_with("70"), "{}", t.prop("volume"));
+    assert!((t.time_pos() - before).abs() < 0.05);
+    word.stop();
+}

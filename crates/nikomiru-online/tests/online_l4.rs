@@ -338,3 +338,60 @@ fn automatic_takes_the_first_file_that_fits() {
     )];
     assert!(automatic(&mut wrong, &request("Frieren", Some(1))).is_err());
 }
+
+// T-AUD-002, T-AUD-004: the sources of word audio against the fake
+#[test]
+fn word_audio_from_a_list_from_the_audio_itself_or_none() {
+    use nikomiru_online::audio::Resolver;
+    let fake = FakeOnline::start().unwrap();
+    fake.data()
+        .words
+        .insert("食べる".into(), b"ID3 taberu".to_vec());
+    let base = fake.proxy_url();
+    let resolver = Resolver::new("").unwrap();
+    // a Yomitan list, then its file
+    let list = format!("{base}/words/list?term={{term}}&reading={{reading}}");
+    let found = resolver.query("Local", &list, "食べる", "たべる").unwrap();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        (found[0].source.as_str(), found[0].name.as_str()),
+        ("Local", "fake")
+    );
+    assert!(found[0].bytes.is_none());
+    assert_eq!(resolver.fetch(&found[0].url).unwrap(), b"ID3 taberu");
+    // the audio itself
+    let direct = format!("{base}/words/direct?term={{term}}");
+    let found = resolver.query("Direct", &direct, "食べる", "").unwrap();
+    assert_eq!(found[0].bytes.as_deref(), Some(&b"ID3 taberu"[..]));
+    // a 404: no audio, no error
+    assert!(
+        resolver
+            .query("Direct", &direct, "飲む", "")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        resolver
+            .query("Local", &list, "飲む", "")
+            .unwrap()
+            .is_empty()
+    );
+    // a host that cannot be reached is left alone: the second query sends nothing
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = closed.local_addr().unwrap().port();
+    drop(closed);
+    let dead = format!("http://127.0.0.1:{port}/?t={{term}}");
+    assert!(resolver.query("Dead", &dead, "x", "").is_err());
+    let start = std::time::Instant::now();
+    let e = resolver.query("Dead", &dead, "x", "").unwrap_err();
+    assert!(
+        e.to_string().contains("paused") || start.elapsed() < std::time::Duration::from_millis(50),
+        "{e}"
+    );
+    // only HTTPS outside this computer
+    assert!(
+        resolver
+            .query("Bad", "http://example.org/{term}", "x", "")
+            .is_err()
+    );
+}

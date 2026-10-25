@@ -68,6 +68,8 @@ pub struct Config {
     pub network: NetworkConfig,
     /// `[online]` (ADR 0008).
     pub online: OnlineConfig,
+    /// `[word_audio]` (AUD-001…AUD-008).
+    pub word_audio: WordAudioConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
@@ -321,6 +323,49 @@ fn is_opensubtitles_url(url: &str) -> bool {
     url == OPENSUBTITLES_URL
 }
 
+/// `[word_audio]` (AUD-001…AUD-008).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WordAudioConfig {
+    /// Play the first entry's audio when a popup opens (AUD-006).
+    pub autoplay: bool,
+    /// The volume of the word audio, 0–100 (AUD-005).
+    pub volume: u8,
+    /// The sources, in the order they are asked (AUD-001); none by default:
+    /// no third-party address is built in (AUD-007).
+    pub sources: Vec<AudioSourceConfig>,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for WordAudioConfig {
+    fn default() -> Self {
+        Self {
+            autoplay: true,
+            volume: 100,
+            sources: Vec::new(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
+/// A word audio source: a URL template (AUD-002).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioSourceConfig {
+    /// Its name, shown in the menu.
+    pub name: String,
+    /// The address, with `{term}` and `{reading}`.
+    pub url: String,
+    /// Asked, or not.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
 /// `[online]` (ADR 0008, MET-005).
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -476,6 +521,7 @@ impl Default for Config {
             paths: PathsConfig::default(),
             network: NetworkConfig::default(),
             online: OnlineConfig::default(),
+            word_audio: WordAudioConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
         }

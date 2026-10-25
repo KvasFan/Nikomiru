@@ -10,6 +10,7 @@
 #![deny(missing_docs)]
 
 pub mod archive;
+pub mod audio;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
