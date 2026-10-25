@@ -2280,8 +2280,10 @@ version = "0.1.0"
 dependencies = [
  "nikomiru-core",
  "nikomiru-dict",
+ "nikomiru-text",
  "postcard",
  "redb",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

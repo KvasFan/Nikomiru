@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 nikomiru-core.workspace = true
 nikomiru-dict.workspace = true
+nikomiru-text.workspace = true
+regex.workspace = true
 redb.workspace = true
 postcard.workspace = true
 serde.workspace = true

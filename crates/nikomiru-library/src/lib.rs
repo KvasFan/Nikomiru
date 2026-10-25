@@ -11,6 +11,7 @@
 pub mod cards;
 pub mod db;
 pub mod dictionaries;
+pub mod grouping;
 pub mod progress;
 pub mod uid;
 pub mod writer;
