@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod catalog;
 pub mod controls;
 pub mod dictionaries;
 #[cfg(feature = "test-harness")]

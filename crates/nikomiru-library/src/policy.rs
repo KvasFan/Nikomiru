@@ -61,7 +61,46 @@ pub struct Effective {
     pub delay_ms: Option<i64>,
 }
 
+/// A choice made while watching (LIB-010).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Remember {
+    /// The main subtitle.
+    Subtitle(SubtitleChoice),
+    /// The subtitle offset.
+    Delay(i64),
+    /// The audio track's language.
+    AudioLanguage(String),
+}
+
 impl Library {
+    /// Remembers a choice made on `uid` (LIB-010): for its series, where its
+    /// own value of the same kind gives way so the series' applies; for the
+    /// video alone when it has no series (the audio track is its `aid`).
+    pub fn remember(&self, uid: &str, choice: Remember) -> Result<(), LibraryError> {
+        let Some(series) = self.video(uid)?.map(|v| v.series) else {
+            return Ok(());
+        };
+        match series {
+            Some(id) => {
+                self.edit_video(uid, |v| match &choice {
+                    Remember::Subtitle(_) => v.subtitle = None,
+                    Remember::Delay(_) => v.delay_ms = None,
+                    Remember::AudioLanguage(_) => {}
+                })?;
+                self.edit_series(id, |s| match choice {
+                    Remember::Subtitle(c) => s.prefs.subtitle = Some(c),
+                    Remember::Delay(d) => s.prefs.delay_ms = Some(d),
+                    Remember::AudioLanguage(l) => s.prefs.audio_language = Some(l),
+                })
+            }
+            None => self.edit_video(uid, |v| match choice {
+                Remember::Subtitle(c) => v.subtitle = Some(c),
+                Remember::Delay(d) => v.delay_ms = Some(d),
+                Remember::AudioLanguage(_) => {}
+            }),
+        }
+    }
+
     /// The episode after `uid` in its series (LIB-009).
     pub fn next_episode(&self, uid: &str) -> Result<Option<(String, VideoRecord)>, LibraryError> {
         self.neighbour(uid, 1)
@@ -211,5 +250,20 @@ mod tests {
             lib.effective("video/Show - 02").unwrap().delay_ms,
             Some(-100)
         );
+
+        // a choice while watching goes to the series, and episode 2 follows it
+        lib.remember("video/Show - 02", Remember::Delay(250))
+            .unwrap();
+        let file = || SubtitleChoice::File("/v/a.srt".into());
+        lib.remember("video/Show - 01", Remember::Subtitle(file()))
+            .unwrap();
+        for uid in ["video/Show - 01", "video/Show - 02", "video/Show - 03"] {
+            let e = lib.effective(uid).unwrap();
+            assert_eq!((e.delay_ms, e.subtitle), (Some(250), Some(file())), "{uid}");
+        }
+        // a video of no series keeps its own
+        lib.put_video("video/x", &VideoRecord::default()).unwrap();
+        lib.remember("video/x", Remember::Delay(-50)).unwrap();
+        assert_eq!(lib.effective("video/x").unwrap().delay_ms, Some(-50));
     }
 }

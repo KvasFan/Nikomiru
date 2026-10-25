@@ -385,6 +385,21 @@ fn run(
         subtitles_dir: paths.subtitles_dir(),
         translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
     });
+    // LIB-002…LIB-012
+    let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {
+        Some(library) => Box::new(nikomiru_app::catalog::Catalog::start(
+            nikomiru_app::catalog::Parts {
+                library: library.clone(),
+                ffmpeg: config.paths.ffmpeg.clone(),
+                cache_dir: paths.cache_dir.clone(),
+                translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+                clock: Arc::new(SystemClock::new()),
+            },
+        )),
+        None => Box::new(nikomiru_ui::catalog::NoLibrary(
+            translator.tr("error-library-unavailable", &[]),
+        )),
+    };
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -406,6 +421,7 @@ fn run(
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
         online: Box::new(online),
+        catalog,
         subtitles_dir: paths.subtitles_dir(),
         mpv_presets_dir: paths.mpv_presets_dir(),
         user_mpv_conf: paths.user_mpv_conf(),
@@ -422,8 +438,9 @@ fn run(
             waker.wake(Inbound::Activate);
         })
     });
-    if let Some(target) = options.targets.first() {
-        waker.wake(Inbound::Open(target.clone()));
+    match options.targets.first() {
+        Some(target) => waker.wake(Inbound::Open(target.clone())),
+        None => waker.wake(Inbound::ShowLibrary),
     }
     watch_termination_signals(waker.clone());
     #[cfg(feature = "test-harness")]

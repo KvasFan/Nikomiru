@@ -18,12 +18,31 @@ pub struct Scanned {
     pub mtime: i64,
 }
 
+/// The path a file is known by in the library: its folder with the links
+/// resolved, and its own name as it is, so a link with an episode's name
+/// stays that episode; `path` itself when its folder cannot be resolved.
+pub fn identity(path: &Path) -> PathBuf {
+    match (path.parent(), path.file_name()) {
+        (Some(dir), Some(name)) => {
+            let dir = if dir.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                dir
+            };
+            std::fs::canonicalize(dir).map_or_else(|_| path.to_path_buf(), |d| d.join(name))
+        }
+        _ => path.to_path_buf(),
+    }
+}
+
 /// The video files under `root`, sorted by path. A link to a video counts; a
 /// link to a folder is not followed (a loop would never end). Hidden entries
 /// are skipped, and a folder that cannot be read is left out.
 pub fn video_files(root: &Path) -> Vec<Scanned> {
     let mut out = Vec::new();
-    let mut folders = vec![root.to_path_buf()];
+    // the folders below are reached without links: theirs are resolved here
+    let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let mut folders = vec![root];
     while let Some(folder) = folders.pop() {
         let Ok(entries) = std::fs::read_dir(&folder) else {
             tracing::debug!("{} cannot be read", folder.display());
@@ -117,5 +136,29 @@ mod tests {
             ]
         );
         assert!(video_files(&dir.path().join("missing")).is_empty());
+    }
+
+    // T-LIB-002: a link keeps its name, a linked folder is resolved
+    #[test]
+    fn a_file_is_known_by_its_folder_resolved_and_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("video.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(real.join("video.mkv"), real.join("Show - 01.mkv")).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("alias")).unwrap();
+        let canonical = std::fs::canonicalize(&real).unwrap();
+        assert_eq!(
+            identity(&dir.path().join("alias/Show - 01.mkv")),
+            canonical.join("Show - 01.mkv")
+        );
+        let found: Vec<PathBuf> = video_files(&dir.path().join("alias"))
+            .into_iter()
+            .map(|s| s.path)
+            .collect();
+        assert_eq!(
+            found,
+            [canonical.join("Show - 01.mkv"), canonical.join("video.mkv")]
+        );
     }
 }

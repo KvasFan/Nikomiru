@@ -13,6 +13,7 @@
 #![deny(missing_docs)]
 
 pub mod anki;
+pub mod catalog;
 pub mod cli;
 pub mod dbus;
 pub mod dictionaries;

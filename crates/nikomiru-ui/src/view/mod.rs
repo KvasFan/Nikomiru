@@ -12,6 +12,7 @@ mod anki_page;
 mod bar;
 mod chrome;
 mod dict_page;
+mod library_page;
 mod link;
 mod list;
 mod online_page;
@@ -45,6 +46,8 @@ pub enum Dialog {
     MpvImport,
     /// Where to export the mpv options (PLY-016).
     MpvExport,
+    /// A folder to import into the library (LIB-002).
+    LibraryFolder,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -60,6 +63,8 @@ pub struct FileDialog {
     pub save_as: Option<String>,
     /// The folder it starts in, when not the portal's choice.
     pub folder: Option<PathBuf>,
+    /// It chooses a folder, not a file.
+    pub directory: bool,
 }
 
 pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
@@ -100,6 +105,7 @@ impl FileDialog {
                 tr("player-export"),
                 vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
             ),
+            Dialog::LibraryFolder => (tr("library-add-folder"), Vec::new()),
         };
         Self {
             dialog,
@@ -110,6 +116,7 @@ impl FileDialog {
                 Dialog::MpvImport => s.mpv_conf_folder(),
                 _ => None,
             },
+            directory: dialog == Dialog::LibraryFolder,
         }
     }
 }
@@ -139,6 +146,12 @@ pub(crate) struct View {
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
+    /// The Library page is shown (LIB-005).
+    pub library_page_open: bool,
+    /// The files opened as of the last frame.
+    opened: u64,
+    /// What it keeps.
+    pub library: library_page::State,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
     /// Give the keyboard to the list's search field (Ctrl+F).
@@ -175,6 +188,8 @@ impl View {
                 // popups were closed by the session already (POP-012)
                 if self.online_page_open {
                     self.close_online_page();
+                } else if self.library_page_open {
+                    self.close_library_page();
                 } else if self.services_page_open {
                     self.close_settings();
                 } else if self.player_page_open {
@@ -279,6 +294,18 @@ impl View {
         }
     }
 
+    pub fn open_library_page(&mut self, out: &mut Vec<Command>) {
+        if !self.library_page_open {
+            self.library_page_open = true;
+            out.push(Command::LibraryOpen);
+        }
+    }
+
+    pub fn close_library_page(&mut self) {
+        self.library_page_open = false;
+        self.library.reset();
+    }
+
     pub fn close_dict_page(&mut self) {
         self.dict_page_open = false;
         self.dict = dict_page::State::default();
@@ -291,6 +318,11 @@ impl View {
 
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
+        // a file opened, from the page or anywhere else: the video shows
+        if s.opened() != self.opened {
+            self.opened = s.opened();
+            self.close_library_page();
+        }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
         self.window(&ctx, s);
@@ -332,6 +364,7 @@ impl View {
             || self.online_page_open
             || self.player_page_open
             || self.services_page_open
+            || self.library_page_open
         {
             self.popups.rects.clear();
             Vec::new()
@@ -339,6 +372,9 @@ impl View {
             popups::show(&ctx, s, &mut self.popups, &mut out)
         };
         self.mark_presented(s, &drawn);
+        if self.library_page_open {
+            library_page::show(&ctx, s, self, &mut out);
+        }
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
         }
@@ -358,6 +394,7 @@ impl View {
             link::show(&ctx, s, missing, &mut out);
         }
         chrome::show(&ctx, s, self);
+        chrome::next_up(&ctx, s, bar_height, &mut out);
 
         // the cursor hides with the controls, over the video (PLY-004)
         if !controls && !s.popups.is_open() && video.hovered() {

@@ -120,7 +120,7 @@ impl Library {
         db_err!(tx.commit())
     }
 
-    fn edit_series(
+    pub(crate) fn edit_series(
         &self,
         id: u64,
         edit: impl FnOnce(&mut SeriesRecord),
@@ -132,7 +132,7 @@ impl Library {
         Ok(())
     }
 
-    fn edit_video(
+    pub(crate) fn edit_video(
         &self,
         uid: &str,
         edit: impl FnOnce(&mut VideoRecord),

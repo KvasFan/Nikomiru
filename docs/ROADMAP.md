@@ -33,7 +33,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M3 | Dictionaries and lookup | XL | — | in progress |
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
 | M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15) | in progress |
-| M5 | Library and word audio | L | 0.2.0 | not started |
+| M5 | Library and word audio | L | 0.2.0 | in progress |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
 | M7 | Online metadata | M | 0.4.0 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
@@ -283,6 +283,11 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 - Home: "Continue watching", series grid, series detail, generated covers.
 - Word audio: URL templates, Yomitan JSON response or direct audio, second audio-only libmpv instance, LRU cache.
 - **Spike S3**: read-only access to a real `android.db` with `turso` (MIT). Criteria: query (expression, reading) p95 ≤ 20 ms; no license outside Class A/B in the graph. ADR `0004-local-audio-db.md` confirms D-2, or reopens it if the criteria are not met.
+
+**Status as of 2026-10-25**
+
+- Done: the library (LIB-002…LIB-012): schema 2 with series and folders, the import by series or by folder with Fushi's grouping vectors, scans that keep progress, choices and the user's edits, the covers, the Library page (🎞, and at start without a file), the next episode with its countdown, the start rule, the watched state, the series' choices. The file-name parser moved to `nikomiru-text`.
+- Open: word audio (AUD-001…AUD-008) and spike S3; the import of a real library of ≥ 200 episodes by hand.
 
 **Exit criteria**
 

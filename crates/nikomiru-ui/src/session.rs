@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use nikomiru_core::{Clock, Config};
 use nikomiru_library::progress::ProgressSaver;
-use nikomiru_library::{Library, VideoRecord, Writer};
+use nikomiru_library::{Library, SubtitleChoice, VideoRecord, Writer};
 use nikomiru_player::control::{self, HoldToSpeed, LoadToken, Stamped};
 use nikomiru_player::player::{EndFile, Track};
 use nikomiru_player::{LoadRequest, PlayerEvent, PlayerHandle, options};
@@ -48,6 +48,8 @@ pub enum UiEffect {
 pub enum UiEvent {
     /// The file is open.
     FileLoaded,
+    /// The next episode's countdown started (LIB-009).
+    NextUp,
     /// The first position after the load: the video is moving.
     FirstFrame,
     /// The file could not be played: the message id of the error.
@@ -174,6 +176,8 @@ pub struct Services {
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
     pub online: Box<dyn crate::online::OnlineService>,
+    /// The library worker (LIB-002…LIB-012).
+    pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// Where downloaded subtitles are kept (MET-008).
     pub subtitles_dir: PathBuf,
     /// Where the mpv presets are kept (PLY-016).
@@ -215,6 +219,18 @@ enum SavingPage {
     Anki,
     Services,
     Player,
+}
+
+/// How long the next episode waits (LIB-009).
+const NEXT_COUNTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The next episode about to start (LIB-009).
+#[derive(Debug, Clone)]
+struct NextUp {
+    path: PathBuf,
+    title: String,
+    /// When it starts (the monotonic clock).
+    at: std::time::Duration,
 }
 
 /// A link to a scene whose video cannot be found (ANK-052).
@@ -311,6 +327,18 @@ pub struct Session {
     /// The last message of the Subtitle services tab, and whether it is good
     /// news (MET-011).
     pub services_status: Option<(String, bool)>,
+    /// The Library page (LIB-005).
+    pub library_page: crate::catalog::LibraryPage,
+    /// The next episode about to start (LIB-009).
+    next_up: Option<NextUp>,
+    /// What the current video plays with: its own choices, else its
+    /// series' (LIB-010).
+    prefs: nikomiru_library::policy::Effective,
+    /// The video has its own audio track: the series' language does not
+    /// choose one.
+    own_audio: bool,
+    /// The library jobs to start.
+    library_jobs: Vec<crate::catalog::LibraryJob>,
     /// Videos opened so far: an online answer for another one is dropped.
     online_generation: u64,
     /// The subtitle load current when automatic subtitles were asked for:
@@ -465,6 +493,11 @@ impl Session {
             online_jobs: Vec::new(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
+            library_page: crate::catalog::LibraryPage::default(),
+            next_up: None,
+            prefs: Default::default(),
+            own_audio: false,
+            library_jobs: Vec::new(),
             online_generation: 0,
             auto_online: None,
             player_page: crate::player_settings::PlayerPage::default(),
@@ -523,7 +556,7 @@ impl Session {
             w.wait();
         }
         self.view.error = None;
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let path = nikomiru_library::scan::identity(path);
         let meta = std::fs::metadata(&path).ok();
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = VideoRecord::default();
@@ -551,6 +584,15 @@ impl Session {
             }
             Some(uid)
         });
+        // LIB-010
+        self.prefs = match (&uid, library) {
+            (Some(uid), Some(lib)) => lib
+                .effective(uid)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .unwrap_or_default(),
+            _ => Default::default(),
+        };
+        self.own_audio = record.aid.is_some();
         if let (Some(uid), Some(w)) = (&uid, &self.writer) {
             let (uid, record) = (uid.clone(), record.clone());
             w.run(move |lib| {
@@ -586,8 +628,12 @@ impl Session {
             speed: record.speed,
         };
         self.saver.reset();
+        self.next_up = None;
         self.first_frame = false;
         self.reset_subtitles();
+        if let Some(delay) = self.prefs.delay_ms {
+            self.subs.timeline_mut().delay_ms = delay;
+        }
         self.view.loaded = false;
         self.view.title = path
             .file_name()
@@ -658,11 +704,25 @@ impl Session {
             PlayerEvent::Tracks(t) => {
                 self.sub_tracks = t.iter().filter(|t| t.kind == "sub").cloned().collect();
                 self.view.audio_tracks = t.into_iter().filter(|t| t.kind == "audio").collect();
+                // LIB-010: the series' audio language, once
+                if !std::mem::replace(&mut self.own_audio, true)
+                    && let Some(lang) = self.prefs.audio_language.clone()
+                    && let Some(track) = self.view.audio_tracks.iter().find(|t| {
+                        t.lang
+                            .as_deref()
+                            .is_some_and(|l| select::same_language(&lang, l))
+                    })
+                {
+                    let _ = self.services.player.set_aid(Some(track.id));
+                }
                 self.discover_subtitles();
             }
             PlayerEvent::VideoSize(w, h) => self.view.video_size = (w, h),
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c.len(),
+            // LIB-009: the episode ended (`keep-open` holds its last frame)
+            PlayerEvent::EofReached(true) => self.episode_ended(now),
+            PlayerEvent::EofReached(false) => self.cancel_next(),
             PlayerEvent::EndFile(EndFile::Error(e)) => {
                 tracing::warn!("playback error: {e}");
                 let file = self.view.title.clone();
@@ -684,6 +744,9 @@ impl Session {
     pub fn tick(&mut self) {
         self.update_screensaver();
         let now = self.services.clock.monotonic();
+        if self.next_up.as_ref().is_some_and(|n| now >= n.at) {
+            self.play_next();
+        }
         if self
             .hover
             .expired(now, self.services.config.lookup.resume_on_leave)
@@ -802,7 +865,7 @@ impl Session {
             return;
         };
         if let Some(lib) = self.services.library.as_ref().filter(|l| !l.read_only()) {
-            let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            let path = nikomiru_library::scan::identity(path);
             let mut record = lib
                 .video(&missing.link.uid)
                 .ok()
@@ -1161,6 +1224,171 @@ impl Session {
     /// The Subtitle services tab of the settings opened (MET-011).
     pub fn services_open(&mut self) {
         self.services_status = None;
+    }
+
+    /// The Library page opened (LIB-005): the home page read again, and the
+    /// series open.
+    pub fn library_open(&mut self) {
+        use crate::catalog::LibraryJob;
+        self.library_page.status = None;
+        self.library_jobs.push(LibraryJob::Home);
+        if let Some((id, _)) = self.library_page.series {
+            self.library_jobs.push(LibraryJob::Episodes(id));
+        }
+    }
+
+    /// A series opened on the page, or closed (`None`).
+    pub fn library_series(&mut self, series: Option<u64>) {
+        self.library_page.series = series.map(|id| (id, None));
+        if let Some(id) = series {
+            self.library_jobs
+                .push(crate::catalog::LibraryJob::Episodes(id));
+        }
+    }
+
+    /// A folder to import (LIB-002), or to scan again with a grouping.
+    pub fn library_import(&mut self, root: PathBuf, grouping: nikomiru_library::Grouping) {
+        self.library_page.busy = true;
+        let text = self.tr("library-scanning", &[("path", root.display().to_string())]);
+        self.library_page.status = Some((text, true));
+        self.library_jobs
+            .push(crate::catalog::LibraryJob::Import(root, grouping));
+    }
+
+    /// An edit of the library (LIB-011, LIB-012).
+    pub fn library_edit(&mut self, edit: crate::catalog::LibraryEdit) {
+        self.library_page.busy = true;
+        self.library_jobs
+            .push(crate::catalog::LibraryJob::Edit(edit));
+    }
+
+    /// An episode played from the page.
+    pub fn library_play(&mut self, path: &Path) {
+        self.open(path);
+    }
+
+    /// What the library worker answered.
+    pub fn library_reply(&mut self, reply: crate::catalog::LibraryReply) {
+        use crate::catalog::{LibraryJob, LibraryReply};
+        let page = &mut self.library_page;
+        match reply {
+            LibraryReply::Home(Ok(home)) => {
+                for s in &home.series {
+                    if !page.covers_asked.contains(&s.id) {
+                        page.covers_asked.push(s.id);
+                        self.library_jobs.push(LibraryJob::Cover(s.id));
+                    }
+                }
+                page.home = Some(home);
+            }
+            LibraryReply::Episodes(id, Ok(list)) => {
+                if let Some((open, episodes)) = &mut page.series
+                    && *open == id
+                {
+                    *episodes = Some(list);
+                }
+            }
+            LibraryReply::Imported(Ok(report)) => {
+                page.busy = false;
+                let text = self.tr(
+                    "library-imported",
+                    &[
+                        ("added", report.added.to_string()),
+                        ("series", report.series_added.to_string()),
+                    ],
+                );
+                self.library_page.status = Some((text, true));
+                self.library_open();
+            }
+            LibraryReply::Edited(Ok(())) => {
+                page.busy = false;
+                self.library_open();
+            }
+            LibraryReply::Cover(id, Ok(cover)) => {
+                page.covers.insert(id, cover);
+            }
+            // a cover that cannot be made: the card keeps its placeholder
+            LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
+            LibraryReply::Home(Err(e))
+            | LibraryReply::Episodes(_, Err(e))
+            | LibraryReply::Imported(Err(e))
+            | LibraryReply::Edited(Err(e)) => {
+                page.busy = false;
+                page.status = Some((e, false));
+            }
+        }
+    }
+
+    /// The library jobs to start, taken by the UI layer.
+    pub fn take_library_jobs(&mut self) -> Vec<crate::catalog::LibraryJob> {
+        std::mem::take(&mut self.library_jobs)
+    }
+
+    /// The library worker.
+    pub fn catalog(&self) -> &dyn crate::catalog::LibraryService {
+        self.services.catalog.as_ref()
+    }
+
+    /// LIB-009: the episode ended; with `auto_next`, the next one of its
+    /// series starts in 5 s, unless cancelled.
+    fn episode_ended(&mut self, now: std::time::Duration) {
+        if !self.services.config.player.auto_next || self.next_up.is_some() {
+            return;
+        }
+        let uid = self.current.as_ref().and_then(|c| c.uid.clone());
+        let next = uid.and_then(|uid| {
+            self.services
+                .library
+                .as_ref()?
+                .next_episode(&uid)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .ok()
+                .flatten()
+        });
+        let Some((_, record)) = next else {
+            return;
+        };
+        let path = PathBuf::from(record.path);
+        let title = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.next_up = Some(NextUp {
+            path,
+            title,
+            at: now + NEXT_COUNTDOWN,
+        });
+        self.events.push(UiEvent::NextUp);
+    }
+
+    /// The episode coming next (LIB-009), and the seconds left before it.
+    pub fn next_up(&self) -> Option<(&str, u64)> {
+        let now = self.services.clock.monotonic();
+        self.next_up.as_ref().map(|n| {
+            (
+                n.title.as_str(),
+                n.at.saturating_sub(now).as_secs_f64().ceil() as u64,
+            )
+        })
+    }
+
+    /// The countdown stopped: Esc, "Cancel", or playback went on.
+    pub fn cancel_next(&mut self) {
+        self.next_up = None;
+    }
+
+    /// The next episode now, from its beginning (LIB-007).
+    pub fn play_next(&mut self) {
+        if let Some(next) = self.next_up.take() {
+            self.opening = nikomiru_library::policy::Opening::FromStart;
+            self.open(&next.path);
+        }
+    }
+
+    /// How many files were opened so far: the Library page closes when one
+    /// opens, from wherever.
+    pub fn opened(&self) -> u64 {
+        self.online_generation
     }
 
     /// The Player settings page opens: the saved presets, and the option set
@@ -2189,6 +2417,11 @@ impl Session {
                 self.close_popup();
                 return UiEffect::None;
             }
+            // LIB-009: Esc stops the next episode
+            Action::Back if self.next_up.is_some() => {
+                self.cancel_next();
+                return UiEffect::None;
+            }
             Action::Back => return UiEffect::Back,
             Action::OpenFile => return UiEffect::OpenDialog,
             Action::HoldSpeed => Ok(()),
@@ -2210,9 +2443,19 @@ impl Session {
         let _ = self.services.player.set_volume(volume);
     }
 
-    /// Audio track from the menu.
+    /// Audio track from the menu; its language is remembered for the series
+    /// (LIB-010).
     pub fn select_audio(&self, id: i64) {
         let _ = self.services.player.set_aid((id > 0).then_some(id));
+        if let Some(lang) = self
+            .view
+            .audio_tracks
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.lang.clone())
+        {
+            self.remember(nikomiru_library::policy::Remember::AudioLanguage(lang));
+        }
     }
 
     /// Current file, if any.
@@ -2348,9 +2591,13 @@ impl Session {
         }
         self.sub_auto_done = true;
         let preferred = self.services.config.subtitles.preferred_languages.clone();
+        // SUB-008 (1), LIB-010: the choice remembered, if it is still there
+        let saved = self.saved_choice();
+        let off = matches!(self.prefs.subtitle, Some(SubtitleChoice::Off));
         let choice = preferred
             .iter()
-            .find_map(|lang| select::choose(None, &externals, &embedded, lang));
+            .find_map(|lang| select::choose(saved.as_ref(), &externals, &embedded, lang))
+            .filter(|_| !off);
         let source = match choice {
             Some(Choice::External(p)) => Some(Source::File(p)),
             Some(Choice::Embedded(id)) => self
@@ -2363,7 +2610,7 @@ impl Session {
             None => None,
         };
         // no text subtitles in the preferred language: online ones (MET-007)
-        let online = matches!(source, None | Some(Source::Bitmap(_)));
+        let online = !off && matches!(source, None | Some(Source::Bitmap(_)));
         if let Some(source) = source {
             self.use_subtitles(source);
         }
@@ -2470,8 +2717,64 @@ impl Session {
         }
     }
 
+    /// The subtitle remembered for this video (LIB-010) as a choice among
+    /// its sources: an embedded track found again by its index and language,
+    /// else by its language and title.
+    fn saved_choice(&self) -> Option<Choice> {
+        match self.prefs.subtitle.as_ref()? {
+            SubtitleChoice::File(p) => Some(Choice::External(PathBuf::from(p))),
+            SubtitleChoice::Embedded {
+                ff_index,
+                language,
+                title,
+            } => {
+                let embedded = || self.sub_tracks.iter().filter(|t| !t.external);
+                embedded()
+                    .find(|t| ff_index.is_some() && t.ff_index == *ff_index && t.lang == *language)
+                    .or_else(|| embedded().find(|t| t.lang == *language && t.title == *title))
+                    .map(|t| Choice::Embedded(t.id))
+            }
+            SubtitleChoice::Off => None,
+        }
+    }
+
+    /// Remembers a choice for this video's series, or for the video
+    /// (LIB-010).
+    fn remember(&self, choice: nikomiru_library::policy::Remember) {
+        let (Some(w), Some(Current { uid: Some(uid), .. })) =
+            (self.writer.as_ref(), self.current.as_ref())
+        else {
+            return;
+        };
+        let uid = uid.clone();
+        w.run(move |lib| {
+            if let Err(e) = lib.remember(&uid, choice) {
+                tracing::warn!("library: {e}");
+            }
+        });
+    }
+
+    /// The choice of `source`, as the library keeps it.
+    fn choice_of(&self, source: &Source) -> SubtitleChoice {
+        let track = |id: i64| self.sub_tracks.iter().find(|t| t.id == id);
+        match source {
+            Source::File(p) => SubtitleChoice::File(p.to_string_lossy().into_owned()),
+            Source::Embedded { id, .. } | Source::Bitmap(id) => SubtitleChoice::Embedded {
+                ff_index: track(*id).and_then(|t| t.ff_index),
+                language: track(*id).and_then(|t| t.lang.clone()),
+                title: track(*id).and_then(|t| t.title.clone()),
+            },
+        }
+    }
+
     /// Menu choice: a source key, or `"off"`.
     pub fn select_subtitles(&mut self, key: &str) {
+        use nikomiru_library::policy::Remember;
+        let remembered = match self.sub_sources.iter().find(|s| s.key() == key) {
+            Some(source) => self.choice_of(source),
+            None => SubtitleChoice::Off,
+        };
+        self.remember(Remember::Subtitle(remembered));
         if key == "off" {
             self.sub_generation += 1;
             let _ = self.services.player.show_bitmap_subtitles(None);
@@ -2487,6 +2790,9 @@ impl Session {
     /// A subtitle file chosen by the user.
     pub fn open_subtitle_file(&mut self, path: &Path) {
         let source = Source::File(path.to_path_buf());
+        self.remember(nikomiru_library::policy::Remember::Subtitle(
+            self.choice_of(&source),
+        ));
         if !self.sub_sources.contains(&source) {
             self.sub_sources.push(source.clone());
         }
@@ -2617,6 +2923,7 @@ impl Session {
     }
 
     fn after_delay_change(&mut self, delay_ms: i64) {
+        self.remember(nikomiru_library::policy::Remember::Delay(delay_ms));
         self.subs.update((self.view.time_pos * 1000.0) as i64);
         self.update_secondary();
         self.sub_list_version += 1;

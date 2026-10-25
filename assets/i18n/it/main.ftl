@@ -101,6 +101,7 @@ error-library-record = Un record della libreria è danneggiato ({ $reason }).
 error-library-io = Il file della libreria { $path } non si può usare ({ $reason }).
 error-library-read-only = La libreria è stata scritta da una versione più recente di Nikomiru: è aperta in sola lettura.
 error-library-schema = Il file della libreria è danneggiato: non ha una versione valida. Nikomiru lo lascia com'è.
+error-library-unavailable = La libreria non si può usare: vedi il log.
 
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = Il player non può farlo ({ $reason }).
@@ -379,3 +380,39 @@ player-write-error = Non si può scrivere { $path } ({ $reason }).
 player-bad-name = Il nome di un preset ha solo lettere, cifre, spazi, - _ e .
 player-preset-saved = Preset { $name } salvato.
 player-exported = Esportato in { $path }.
+
+# Library page (LIB-002…LIB-012)
+library-title = Libreria
+library-close = Chiudi
+library-add-folder = Aggiungi cartella…
+library-continue = Continua a guardare
+library-left = mancano { $time }
+library-series = Serie
+library-empty = Ancora nessun video: aggiungi una cartella con le tue serie e i tuoi film.
+library-watched = { $watched } di { $total } visti
+library-folders = Cartelle
+library-grouping = Raggruppamento
+library-by-series = Per serie
+library-by-folder = Per cartella
+library-rescan = Analizza di nuovo
+library-back = ← Libreria
+library-name = Nome
+library-rename = Rinomina
+library-merge-into = Unisci a
+library-merge = Unisci
+library-delete = Togli dalla libreria (i file restano)
+library-episodes = Episodi ({ $count })
+library-play = Riproduci
+library-move-to = Sposta in
+library-move = Sposta
+library-split-name = Nuova serie dagli episodi spuntati
+library-split = Crea
+library-remove = Togli gli episodi spuntati dalla libreria (i file restano)
+library-scanning = Cerco video in { $path }…
+library-imported = { $added } video nuovi, { $series } serie nuove.
+library-no-folder = { $path } non è una cartella leggibile.
+
+# Next episode (LIB-009)
+next-up = Prossimo episodio fra { $seconds } s
+next-up-play = Riproduci ora
+next-up-cancel = Annulla

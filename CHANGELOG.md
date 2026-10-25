@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 The workspace is at 0.1.0: this section becomes 0.1.0 when the maintainer tags it, with M4 and M4b (D-15).
 
+### Added (M5, after 0.1.0)
+
+- The Library (🎞 in the bar, and at start without a file; LIB-002…LIB-012): add a folder, and its videos are grouped into series by their names (Anitomy-style, the episode numbers completed from the files beside them, season folders as seasons), or by folder. "Continue watching", the series with a cover made from their first episode and how many are watched, the episodes of a series with their state. A scan again keeps progress and choices, and so do the user's edits: rename, merge, split, move or remove episodes, delete a series; the files are never touched.
+- The next episode starts by itself after a 5 s countdown that Esc or "Cancel" stops (LIB-009); an episode opened again near its end, or as the next one, starts from the beginning (LIB-007); one played to 90% is watched (LIB-008).
+- A series remembers its subtitle, offset and audio language for all its episodes (LIB-010).
+
+### Changed (M5)
+
+- `library.redb` has schema 2: series and imported folders; the videos of 0.1 are migrated, with a backup (`library.redb.bak-v1`).
+
 ### Changed (rename)
 
 - **The project is now called Nikomiru** (D-11): "Anikoto" was already taken. Crates `nikomiru-*`, binary `nikomiru`, URL scheme `nikomiru://`, XDG folders `nikomiru`, environment variables `NIKOMIRU_*`, GitHub repository `nikomiru`.

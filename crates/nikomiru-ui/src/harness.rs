@@ -41,6 +41,7 @@ pub(crate) fn push(event: UiEvent) {
     let entry = match event {
         UiEvent::FileLoaded => ("file-loaded", json!({})),
         UiEvent::FirstFrame => ("first-frame", json!({})),
+        UiEvent::NextUp => ("next-up", json!({})),
         UiEvent::Error(code) => ("error", json!({ "code": code })),
         UiEvent::DictionaryImported => ("dictionary-imported", json!({})),
         UiEvent::CardCreated(note_id) => ("card-created", json!({ "note_id": note_id })),
@@ -197,6 +198,30 @@ pub fn state() -> Result<Value, String> {
                     .map(|q| json!({ "index": i, "text": q.plain_text }))
             })
             .collect();
+        let library_page = {
+            let page = &s.library_page;
+            let home = page.home.as_ref();
+            json!({
+                "open": ui.view.library_page_open,
+                "busy": page.busy,
+                "status": page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "continue": home.map(|h| h.continue_watching.iter().map(|(u, _)| u.clone()).collect::<Vec<_>>()),
+                "series": home.map(|h| h.series.iter().map(|x| json!({
+                    "id": x.id, "title": x.record.title, "episodes": x.episodes,
+                    "watched": x.watched, "started": x.started,
+                })).collect::<Vec<_>>()),
+                "folders": home.map(|h| h.folders.iter().map(|(p, f)| json!({
+                    "path": p, "grouping": format!("{:?}", f.grouping),
+                })).collect::<Vec<_>>()),
+                "open_series": page.series.as_ref().map(|(id, eps)| json!({
+                    "id": id,
+                    "episodes": eps.as_ref().map(|e| e.iter().map(|(u, v)| json!({
+                        "uid": u, "path": v.path, "season": v.season, "episode": v.episode,
+                    })).collect::<Vec<_>>()),
+                })),
+                "covers": page.covers.keys().collect::<Vec<_>>(),
+            })
+        };
         json!({
             "loaded": v.loaded,
             "title": v.title,
@@ -249,6 +274,8 @@ pub fn state() -> Result<Value, String> {
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
             "settings_tab": ui.view.settings_tab.key(),
+            "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
+            "library_page": library_page,
             "sub_list_open": ui.view.sub_list_open,
             "services_page": json!({
                 "open": ui.view.services_page_open,
@@ -454,6 +481,56 @@ pub fn services(providers: Vec<String>, auto: Option<bool>) -> Result<(), String
         }
         ui.run(Command::OnlineSave(Box::new((online, network))));
     })
+}
+
+/// The Library page (LIB-002…LIB-012): `open`, `close`, `import` (`path`,
+/// `grouping` `by-series` or `by-folder`), `series` (`id`, none to go
+/// back), `play` (`path`), `rename` (`id`, `title`), `delete` (`id`).
+pub fn library(
+    action: &str,
+    path: Option<String>,
+    grouping: Option<String>,
+    id: Option<u64>,
+    title: Option<String>,
+) -> Result<(), String> {
+    use crate::catalog::LibraryEdit;
+    use nikomiru_library::Grouping;
+    let action = action.to_string();
+    call(move |ui| {
+        let path = || path.clone().map(PathBuf::from).ok_or("missing \"path\"");
+        let id = || id.ok_or("missing \"id\"");
+        let command = match action.as_str() {
+            "open" => {
+                let mut out = Vec::new();
+                ui.view.open_library_page(&mut out);
+                for c in out {
+                    ui.run(c);
+                }
+                return Ok(());
+            }
+            "close" => {
+                ui.view.close_library_page();
+                return Ok(());
+            }
+            "import" => {
+                let grouping = match grouping.as_deref() {
+                    Some("by-folder") => Grouping::ByFolder,
+                    _ => Grouping::BySeries,
+                };
+                Command::LibraryScan(path()?, grouping)
+            }
+            "series" => Command::LibrarySeries(id().ok()),
+            "play" => Command::LibraryPlay(path()?),
+            "rename" => Command::LibraryEdit(LibraryEdit::Rename(
+                id()?,
+                title.clone().unwrap_or_default(),
+            )),
+            "delete" => Command::LibraryEdit(LibraryEdit::Delete(id()?)),
+            other => return Err(format!("no Library page action {other}")),
+        };
+        ui.run(command);
+        Ok(())
+    })?
 }
 
 /// The Anki settings page (ANK-006, ANK-011): `open` and `close` as its

@@ -101,6 +101,7 @@ error-library-record = A library record is damaged ({ $reason }).
 error-library-io = The library file { $path } cannot be used ({ $reason }).
 error-library-read-only = The library was written by a newer version of Nikomiru: it is open read-only.
 error-library-schema = The library file is damaged: it has no valid version. Nikomiru leaves it as it is.
+error-library-unavailable = The library cannot be used: see the log.
 
 # Player (nikomiru-player PlayerError, PlaybackError)
 error-player = The player cannot do this ({ $reason }).
@@ -379,3 +380,39 @@ player-write-error = { $path } cannot be written ({ $reason }).
 player-bad-name = A preset name is letters, digits, spaces, - _ and . only.
 player-preset-saved = Preset { $name } saved.
 player-exported = Exported to { $path }.
+
+# Library page (LIB-002…LIB-012)
+library-title = Library
+library-close = Close
+library-add-folder = Add folder…
+library-continue = Continue watching
+library-left = { $time } left
+library-series = Series
+library-empty = No videos yet: add a folder with your series and films.
+library-watched = { $watched } of { $total } watched
+library-folders = Folders
+library-grouping = Grouping
+library-by-series = By series
+library-by-folder = By folder
+library-rescan = Scan again
+library-back = ← Library
+library-name = Name
+library-rename = Rename
+library-merge-into = Merge into
+library-merge = Merge
+library-delete = Delete from the library (the files stay)
+library-episodes = Episodes ({ $count })
+library-play = Play
+library-move-to = Move to
+library-move = Move
+library-split-name = New series from the ticked episodes
+library-split = Make it
+library-remove = Remove the ticked episodes from the library (the files stay)
+library-scanning = Looking for videos in { $path }…
+library-imported = { $added } new videos, { $series } new series.
+library-no-folder = { $path } is not a folder that can be read.
+
+# Next episode (LIB-009)
+next-up = Next episode in { $seconds } s
+next-up-play = Play now
+next-up-cancel = Cancel

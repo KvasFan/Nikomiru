@@ -255,7 +255,7 @@ nikomiru/
 │   ├── nikomiru-player/     # libmpv core (libmpv2): init, properties, commands, events;
 │   │                       # the OpenGL render context of the video
 │   ├── nikomiru-anki/       # AnkiConnect client, note composer, Lapis, return link
-│   ├── nikomiru-library/    # library, file names, progress, statistics
+│   ├── nikomiru-library/    # library: folders, series, progress, statistics, cards, dictionary registry
 │   ├── nikomiru-online/     # Jimaku, OpenSubtitles (M4b); AniList/Jikan (M7)
 │   ├── nikomiru-ui/         # egui interface: player page, subtitle overlay, popup, pages, controls
 │   └── nikomiru-app/        # binary: winit event loop, glutin (EGL) window, egui_glow, wiring, single instance

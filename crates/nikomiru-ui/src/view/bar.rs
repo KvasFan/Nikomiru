@@ -289,6 +289,10 @@ pub(crate) fn show(
                             if icon(ui, true, "📂", &tr("open-file")) {
                                 view.dialog = Some(Dialog::Video);
                             }
+                            // LIB-005
+                            if icon(ui, true, "🎞", &tr("library-title")) {
+                                view.open_library_page(out);
+                            }
                             if icon(ui, true, "📚", &tr("dict-page-title")) {
                                 view.open_dict_page(out);
                             }

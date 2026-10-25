@@ -7,6 +7,7 @@ use egui::{Align2, Area, Color32, CornerRadius, Frame, Id, Margin, Order, RichTe
 
 use super::View;
 use crate::session::Session;
+use crate::ui::Command;
 
 /// How long a toast stays, and how long it fades in and out.
 const TOAST_SECONDS: f64 = 1.5;
@@ -31,7 +32,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
                         ui.label(RichText::new(error).size(16.0).color(Color32::WHITE));
                     });
             });
-    } else if !s.view.loaded {
+    } else if !s.view.loaded && !view.library_page_open {
         Area::new(Id::unique("drop-hint"))
             .order(Order::Background)
             .interactable(false)
@@ -78,4 +79,46 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
                 });
         });
     ctx.request_repaint();
+}
+
+/// LIB-009: the next episode about to start, with "Play now" and "Cancel"
+/// (Esc cancels too), over the bottom right of the video.
+pub(crate) fn next_up(ctx: &egui::Context, s: &Session, bar_height: f32, out: &mut Vec<Command>) {
+    let Some((title, seconds)) = s.next_up() else {
+        return;
+    };
+    let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
+    let screen = ctx.content_rect();
+    Area::new(Id::unique("next-up"))
+        .order(Order::Foreground)
+        .pivot(Align2::RIGHT_BOTTOM)
+        .fixed_pos(pos2(
+            screen.right() - 24.0,
+            screen.bottom() - bar_height - 24.0,
+        ))
+        .show(ctx, |ui| {
+            Frame::new()
+                .fill(Color32::from_black_alpha(0xdd))
+                .corner_radius(CornerRadius::same(8))
+                .inner_margin(Margin::symmetric(16, 12))
+                .show(ui, |ui| {
+                    ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                    ui.label(
+                        RichText::new(tr("next-up", &[("seconds", seconds.to_string())]))
+                            .size(15.0)
+                            .color(Color32::from_gray(0xbb)),
+                    );
+                    ui.label(RichText::new(title).size(18.0));
+                    ui.horizontal(|ui| {
+                        if ui.button(tr("next-up-play", &[])).clicked() {
+                            out.push(Command::NextNow);
+                        }
+                        if ui.button(tr("next-up-cancel", &[])).clicked() {
+                            out.push(Command::NextCancel);
+                        }
+                    });
+                });
+        });
+    // the seconds go down by themselves
+    ctx.request_repaint_after(std::time::Duration::from_millis(250));
 }

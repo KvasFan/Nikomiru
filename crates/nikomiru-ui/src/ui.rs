@@ -59,6 +59,8 @@ pub enum Inbound {
     Open(String),
     /// Brings the window forward (second launch).
     Activate,
+    /// No file to open at start: the Library page (LIB-005).
+    ShowLibrary,
     /// The file the user chose in a file dialog.
     Chosen {
         /// The dialog that was open.
@@ -118,6 +120,8 @@ pub enum Inbound {
         /// The file kept, or why not.
         result: Result<Option<crate::online::Downloaded>, String>,
     },
+    /// What the library worker answered (LIB-002…LIB-012).
+    Library(crate::catalog::LibraryReply),
     /// An alignment with the audio ended (SUB-018).
     Aligned {
         /// The subtitle load it was for.
@@ -155,6 +159,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::ImportDone { .. } => "ImportDone",
             Inbound::Open(_) => "Open",
             Inbound::Activate => "Activate",
+            Inbound::ShowLibrary => "ShowLibrary",
             Inbound::Chosen { .. } => "Chosen",
             Inbound::DialogFailed => "DialogFailed",
             Inbound::Dropped(_) => "Dropped",
@@ -170,6 +175,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::OptionsApplied(_) => "OptionsApplied",
             Inbound::Aligned { .. } => "Aligned",
             Inbound::FileWritten { .. } => "FileWritten",
+            Inbound::Library(_) => "Library",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -272,6 +278,22 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// The next episode now (LIB-009).
+    NextNow,
+    /// The next episode not now.
+    NextCancel,
+    /// The Library page opened (LIB-005).
+    LibraryOpen,
+    /// "Add folder…": the folder dialog opens (LIB-002).
+    LibraryAddFolder,
+    /// A series opened on it, or closed.
+    LibrarySeries(Option<u64>),
+    /// A folder scanned again with a grouping (LIB-002, LIB-004).
+    LibraryScan(PathBuf, nikomiru_library::Grouping),
+    /// An edit of the library (LIB-011, LIB-012).
+    LibraryEdit(crate::catalog::LibraryEdit),
+    /// An episode played from the page.
+    LibraryPlay(PathBuf),
     /// The Online subtitles page opened (MET-009).
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
@@ -442,6 +464,14 @@ impl Ui {
                 }
                 true
             }
+            Inbound::ShowLibrary => {
+                let mut out = Vec::new();
+                self.view.open_library_page(&mut out);
+                for c in out {
+                    self.apply(c);
+                }
+                true
+            }
             Inbound::Activate => {
                 self.view.activate = true;
                 true
@@ -531,7 +561,14 @@ impl Ui {
                     Dialog::Locate => self.session.located(&path),
                     Dialog::MpvImport => self.session.player_import(&path),
                     Dialog::MpvExport => self.session.player_export_to(&path),
+                    Dialog::LibraryFolder => self
+                        .session
+                        .library_import(path, nikomiru_library::Grouping::BySeries),
                 }
+                true
+            }
+            Inbound::Library(reply) => {
+                self.session.library_reply(reply);
                 true
             }
             Inbound::Quit => {
@@ -701,7 +738,8 @@ impl Ui {
             || self.view.anki_page_open
             || self.view.online_page_open
             || self.view.player_page_open
-            || self.view.services_page_open;
+            || self.view.services_page_open
+            || self.view.library_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -792,6 +830,14 @@ impl Ui {
                 self.view.dialog = Some(Dialog::MpvExport);
             }
             Command::OnlineOpen => s.online_open(),
+            Command::NextNow => s.play_next(),
+            Command::NextCancel => s.cancel_next(),
+            Command::LibraryOpen => s.library_open(),
+            Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
+            Command::LibrarySeries(id) => s.library_series(id),
+            Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
+            Command::LibraryEdit(edit) => s.library_edit(edit),
+            Command::LibraryPlay(path) => s.library_play(&path),
             Command::ServicesOpen => s.services_open(),
             Command::OnlineSearch {
                 title,
@@ -885,6 +931,29 @@ impl Ui {
                     });
                 }),
             );
+        }
+        for job in self.session.take_library_jobs() {
+            use crate::catalog::{LibraryJob, LibraryReply};
+            let waker = self.waker.clone();
+            let reply = move |r: LibraryReply| waker.wake(Inbound::Library(r));
+            let catalog = self.session.catalog();
+            match job {
+                LibraryJob::Home => catalog.home(Box::new(move |r| reply(LibraryReply::Home(r)))),
+                LibraryJob::Episodes(id) => {
+                    catalog.episodes(id, Box::new(move |r| reply(LibraryReply::Episodes(id, r))))
+                }
+                LibraryJob::Import(root, grouping) => catalog.import(
+                    root,
+                    grouping,
+                    Box::new(move |r| reply(LibraryReply::Imported(r))),
+                ),
+                LibraryJob::Edit(edit) => {
+                    catalog.edit(edit, Box::new(move |r| reply(LibraryReply::Edited(r))));
+                }
+                LibraryJob::Cover(id) => {
+                    catalog.cover(id, Box::new(move |r| reply(LibraryReply::Cover(id, r))));
+                }
+            }
         }
         for job in self.session.take_online_jobs() {
             let waker = self.waker.clone();
