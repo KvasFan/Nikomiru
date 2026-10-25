@@ -170,6 +170,21 @@ error-mining-overwrite-lost = Anki non ha tenuto i nuovi campi: chiudi la carta 
 error-mining-overwrite-unknown = Anki non ha confermato la sovrascrittura dell'ultima carta: controllala in Anki prima di riprovare.
 error-mining-not-found = Anki non ha carte per questa parola.
 
+# Sottotitoli online (nikomiru-online OnlineError, ADR 0008)
+error-online-no-key = { $provider } non ha una chiave API: aggiungila nella pagina Sottotitoli online.
+error-online-bad-url = { $url } non è un indirizzo che Nikomiru usa: solo HTTPS.
+error-online-unreachable = { $host } non è raggiungibile ({ $reason }).
+error-online-timeout = Nessuna risposta da { $host } in tempo.
+error-online-unauthorized = { $provider } ha rifiutato la chiave API o l'accesso: controllali nella pagina Sottotitoli online.
+error-online-rate-limited = Troppe richieste a { $provider }: riprova tra { $seconds } s.
+error-online-quota = I download di oggi da { $provider } sono finiti.
+error-online-http = { $provider } non ha potuto rispondere (HTTP { $status }).
+error-online-protocol = { $provider } ha dato una risposta inattesa ({ $reason }).
+error-online-too-large = Il file è più grande di { $limit } MiB.
+error-online-archive = L'archivio non si può usare ({ $reason }).
+error-online-unusable = { $name } non si può usare: solo file SRT, ASS, SSA, WebVTT e ZIP.
+error-online-io = Non si possono salvare i sottotitoli ({ $reason }).
+
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } non si può usare ({ $reason }): potrebbero aprirsi più finestre di Nikomiru.
 error-instance-no-answer = Nikomiru è già aperto ma non risponde. Chiudilo e riprova.

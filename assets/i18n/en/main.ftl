@@ -170,6 +170,21 @@ error-mining-overwrite-lost = Anki did not keep the new fields: close the card i
 error-mining-overwrite-unknown = Anki did not confirm the overwrite of the last card: check it in Anki before trying again.
 error-mining-not-found = Anki has no card for this word.
 
+# Online subtitles (nikomiru-online OnlineError, ADR 0008)
+error-online-no-key = { $provider } has no API key: add it on the Online subtitles page.
+error-online-bad-url = { $url } is not an address Nikomiru uses: only HTTPS.
+error-online-unreachable = { $host } cannot be reached ({ $reason }).
+error-online-timeout = No answer from { $host } in time.
+error-online-unauthorized = { $provider } refused the API key or the login: check them on the Online subtitles page.
+error-online-rate-limited = Too many requests to { $provider }: try again in { $seconds } s.
+error-online-quota = The { $provider } downloads of today are used up.
+error-online-http = { $provider } could not answer (HTTP { $status }).
+error-online-protocol = { $provider } gave an unexpected answer ({ $reason }).
+error-online-too-large = The file is larger than { $limit } MiB.
+error-online-archive = The archive cannot be used ({ $reason }).
+error-online-unusable = { $name } cannot be used: only SRT, ASS, SSA, WebVTT and ZIP files.
+error-online-io = The subtitles cannot be saved ({ $reason }).
+
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
 error-instance-no-answer = Nikomiru is already running but does not answer. Close it and try again.

@@ -2305,6 +2305,18 @@ dependencies = [
 [[package]]
 name = "nikomiru-online"
 version = "0.0.0"
+dependencies = [
+ "flate2",
+ "nikomiru-core",
+ "nikomiru-online",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "zip",
+]
 
 [[package]]
 name = "nikomiru-player"

@@ -464,7 +464,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-003 | **ASS/SSA** parser (basic for 1.0): `[Script Info]` (PlayResX/Y, default 384×288), `[V4+ Styles]`, `[Events]` (Dialogue with Layer, Start, End, Style, Text), overrides `\N \n \h \an1-9 \pos \b \i \u \s \c \1c \fs \fn \r` (`\n` is a line break only with `WrapStyle: 2`, a space otherwise, as in libass; a missing PlayResX or PlayResY is derived from the other at 4:3, as in libass). Other overrides are ignored without error. Lines with `\p1` drawings are excluded from the clickable text | `ass_parser.dart`, `subtitle_markup.dart` |
 | SUB-004 | Every cue has `start_ms`, `end_ms`, `plain_text` (used for lookup, mining and counts) and a separate `markup`, used only for drawing. In `plain_text` the lines of a cue are separated by `\n` (Fushi joins them with a space and keeps the break positions apart): lookup treats `\n` as a boundary, and mining (M4) joins the lines as the note type needs | |
 | SUB-005 | Encoding: UTF-8/UTF-16 BOM → otherwise UTF-8 validation → otherwise try Shift_JIS (CP932), EUC-JP, GB18030, Big5, CP1252 through `iconv`, choosing the first one that decodes without errors and with the highest score of plausible characters. The detected encoding is shown with a readable name ("Japanese — Shift_JIS (CP932)") and can be forced | `text_file_io.dart` |
-| SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`). They are loaded automatically according to the preferred language (default `ja`) | |
+| SUB-006 | External files next to the video: same base name with `.srt .ass .ssa .vtt`, also with a language suffix (`.ja.srt`, `.jpn.ass`, `.jp.srt`), and the subtitles downloaded for it (MET-008). They are loaded automatically according to the preferred language (default `ja`) | |
 | SUB-007 | Embedded text tracks: extracted with `ffmpeg -y -i file:<video> -map 0:<ff-index> -c:s <srt\|ass\|webvtt> <cache>`. Several tracks are extracted in a single pass; if the pass fails, it is retried track by track. The cache key is (path, size, mtime, ff-index) | `video_subtitle_source.dart` |
 | SUB-008 | Automatic subtitle selection: (1) the choice saved for the series; (2) an external file in the preferred language; (3) an embedded track in the preferred language (`lang` = ja/jpn, or a title that contains "Japanese" or "日本語"); (4) none | |
 | SUB-009 | Overlay: several cues active at once are allowed (sorted by Layer and then by order in the file). Text is split into **graphemes** (`unicode-segmentation`); each grapheme is a hit target of the laid-out text carrying its byte offset in `plain_text` | `video_subtitle_overlay.dart` |
@@ -716,18 +716,24 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
-| SET-007 | Configurable HTTP(S) proxy; used for all network requests except AnkiConnect on loopback. |
+| SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
 
-### 6.12 Online subtitles and metadata (MET) — milestone M7
+### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
+
+Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 | ID | Requirement | Fushi |
 |---|---|---|
 | MET-001 | Metadata from **AniList** (GraphQL, no key): romaji/native/English title, cover, episodes, `anilist_id`. Identification from the series title obtained by LIB-003; it is accepted automatically only with an exact, unique match, otherwise the user is asked to choose. | — (Fushi uses Jikan/TMDB) |
 | MET-002 | **Jikan v4** (MAL) as an alternative source: limit of 1 request/s, cache, pause after a 429. | `mal_video_metadata_provider.dart` |
-| MET-003 | **Jimaku**: `https://jimaku.cc/api`, header `Authorization: <key>`. `GET /entries/search?anilist_id=…` (with fallback to `query=`), `GET /entries/{id}/files?episode=n`, download, zip archives extracted with the rules of DIC-011. Episode and language are inferred from the file name. | `jimaku_client.dart` |
-| MET-004 | **OpenSubtitles** (user key): `moviehash` + `moviebytesize`, then `query` + `season_number`/`episode_number`; files ≤ 64 MiB. | `open_subtitles_client.dart` |
-| MET-005 | API keys are saved in the config with permissions 0600 (the keyring is in the ROADMAP backlog). | |
+| MET-003 | **Jimaku**: `https://jimaku.cc/api`, header `Authorization: <key>`, sent only to the Jimaku host. `GET /entries/search?query=<title>&anime=true`, then `anime=false` when nothing is found (and `anilist_id=` first once M7 identifies series), `GET /entries/{id}/files` for the first two entries (all files: season packs carry no episode), download of each file's `url`; zip archives opened with the rules of DIC-011 (names only, ≤ 64 MiB unpacked, ≤ 1000 entries); RAR and 7z listed but not usable. Episode and language are inferred from the file name; a file of unknown language counts as Japanese. | `jimaku_client.dart` |
+| MET-004 | **OpenSubtitles** (user's consumer API key, header `Api-Key`, `User-Agent: Nikomiru/<version>`; optional user name and password for `POST /login`): `GET /subtitles` with `moviehash` + `moviebytesize`, then `query` + `season_number`/`episode_number`, always with `languages=<study language>`; `POST /download {file_id}` gives a temporary HTTPS link; files ≤ 64 MiB; machine-translated results marked. | `open_subtitles_client.dart` |
+| MET-005 | API keys (and the OpenSubtitles password) are saved in the config with permissions 0600 and never written to a log (the keyring is in the ROADMAP backlog). | |
 | MET-006 | File identification with AniDB ed2k: post-1.0 (requires registering an AniDB client). | `anidb_ed2k.dart` |
+| MET-007 | **Automatic subtitles** (`[online] auto_subtitles`, default off, PRV-001): when an opened video has no text subtitles in the preferred language (none next to it or downloaded, no embedded text track in that language) and a provider has a key, the best online file (ADR 0008 §9: the preferred language, or unknown on Jimaku; the episode asked for, or a film; never machine-translated) is downloaded and loaded, unless the user chose subtitles meanwhile; a toast names the file and the provider. One attempt per opening. | `subtitle_batch.dart` |
+| MET-008 | Downloaded subtitles are kept in `$XDG_DATA_HOME/nikomiru/subtitles/<hash>/<video name>.<language>.<ext>`, `<hash>` being the OpenSubtitles hash of the video, never next to the video (NFR-SEC-02); they are offered like files next to it (SUB-006), so the next opening needs no network. | |
+| MET-009 | **Online subtitles page** ("Search online…" in the subtitle menu): title, season and episode filled from the file name and editable, "Search", results (provider, file, language, episode, notes: machine translated, archive, not usable) ranked by ADR 0008 §9, "Use" downloads and loads one; the online settings (Jimaku key; OpenSubtitles key, user name, password; automatic subtitles; proxy), saved atomically with permissions 0600. HTTP 429 shows when to try again. | |
+| MET-010 | File names are parsed Anitomy-style for the search (title, season, episode): bracketed blocks and technical tokens dropped; episode from `SxxEyy`, `第N話`, `EP N`, `#N`, ` - N` or a trailing number of two digits or with a leading zero; season from `SxxEyy`, `Season N`, `S N`, `Nth Season`, `第N期/季`, or the parent folder. LIB-003 (M5) reuses the parser. | `video_filename_parser.dart` |
 
 ---
 
@@ -831,6 +837,17 @@ Sentence = "{sentence}"
 
 [paths]
 ffmpeg = ""                 # empty = search in PATH
+
+[network]
+proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
+
+[online]                    # ADR 0008
+auto_subtitles = false      # MET-007
+jimaku_api_key = ""
+opensubtitles_api_key = ""
+opensubtitles_username = ""
+opensubtitles_password = ""
+# jimaku_url, opensubtitles_url: other base URLs, for the tests
 ```
 
 ---
@@ -839,7 +856,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 ### 10.1 Maintainer decisions
 
-Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q), D-13 on 2026-10-20 after spike S5. A decision is reopened only through an explicit change to this table.
+Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after the M0 spikes, D-10 after spike S1q), D-13 on 2026-10-20 after spike S5, D-14 on 2026-10-25. A decision is reopened only through an explicit change to this table.
 
 | ID | Decision | Outcome |
 |---|---|---|
@@ -856,6 +873,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
+| D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
 
 ### 10.2 Risks
 
