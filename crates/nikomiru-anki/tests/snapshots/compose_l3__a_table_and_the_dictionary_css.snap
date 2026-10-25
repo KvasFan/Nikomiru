@@ -1,0 +1,19 @@
+---
+source: crates/nikomiru-anki/tests/compose_l3.rs
+expression: "shown(&fields(&d, \"表\"))"
+---
+expression: 表
+reading: ひょう
+furigana-plain: 表[ひょう]
+glossary: <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><div style="display:block;max-width:100%;overflow-x:auto;"><table class="gloss-sc-table" style="table-layout:auto;border-collapse:collapse;"><tr class="gloss-sc-tr"><th class="gloss-sc-th" style="font-weight:bold;border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">form</th><th class="gloss-sc-th" style="font-weight:bold;border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">reading</th></tr><tr class="gloss-sc-tr"><td class="gloss-sc-td" style="border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">表</td><td class="gloss-sc-td" style="border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">ひょう</td></tr></table></div><span class="gloss-sc-span" data-sc-class="note">a table</span></span></span></li></ol><style>.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] .gloss-sc-td { padding-top:2px;padding-right:4px;padding-bottom:2px;padding-left:4px;border-color:#808080;border-width:1px;border-style:solid solid solid solid; }
+.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] .gloss-sc-th { padding-top:2px;padding-right:4px;padding-bottom:2px;padding-left:4px;border-color:#808080;border-width:1px;border-style:solid solid solid solid; }
+.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] span[data-sc-class="note"] { color:#808080;font-style:italic; }</style></div>
+frequencies: 
+frequency-harmonic-rank: 9999999
+pitch-accent-positions: 
+pitch-accent-categories: 
+phonetic-transcriptions: 
+tags: 
+single-glossary-Nikomiru mini-ja (Nikomiru mini-ja (renamed)): <div style="text-align: left;" class="yomitan-glossary"><ol><li data-dictionary="Nikomiru mini-ja"><i>(n, Nikomiru mini-ja)</i> <span><span><div style="display:block;max-width:100%;overflow-x:auto;"><table class="gloss-sc-table" style="table-layout:auto;border-collapse:collapse;"><tr class="gloss-sc-tr"><th class="gloss-sc-th" style="font-weight:bold;border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">form</th><th class="gloss-sc-th" style="font-weight:bold;border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">reading</th></tr><tr class="gloss-sc-tr"><td class="gloss-sc-td" style="border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">表</td><td class="gloss-sc-td" style="border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;">ひょう</td></tr></table></div><span class="gloss-sc-span" data-sc-class="note">a table</span></span></span></li></ol><style>.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] .gloss-sc-td { padding-top:2px;padding-right:4px;padding-bottom:2px;padding-left:4px;border-color:#808080;border-width:1px;border-style:solid solid solid solid; }
+.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] .gloss-sc-th { padding-top:2px;padding-right:4px;padding-bottom:2px;padding-left:4px;border-color:#808080;border-width:1px;border-style:solid solid solid solid; }
+.yomitan-glossary [data-dictionary="Nikomiru mini-ja"] span[data-sc-class="note"] { color:#808080;font-style:italic; }</style></div>

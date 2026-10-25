@@ -24,7 +24,7 @@
 | L1 Unit | Functions and types, specific cases | `#[cfg(test)]` in the crate | Every push |
 | L2 Property | Invariants with generated inputs (`proptest`) | `#[cfg(test)]`, `tests/` | Every push (256 cases); nightly 100k cases |
 | L3 Snapshot | Structured outputs compared with approved files (`insta`): the popup's view model, Anki field HTML, ffmpeg argv, the AccessKit trees of the views (roles and names, through `egui_kittest`) | `tests/snapshots/` | Every push |
-| L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`wiremock`) | `crates/*/tests/` | Every PR |
+| L4 Integration | Crates against real local dependencies: ffmpeg, filesystem, redb, fake AnkiConnect (`nikomiru_anki::fake`, [ADR 0007](adr/0007-mining-to-anki.md)) | `crates/*/tests/` | Every PR |
 | L5 mpv integration | Headless libmpv (`vo=null`, `ao=null`) on the generated fixtures | `crates/nikomiru-player/tests/` | Every PR |
 | L6 GUI end-to-end | Real app driven by the **test harness** (§2.1), under Xvfb (X11) and headless Weston or virtual KWin (Wayland), with Mesa llvmpipe | `tests/e2e/` | Every PR (smoke); nightly (full) |
 | L7 External | Real Anki desktop with AnkiConnect; real online services (AniList, Jimaku); real user data (JMdict, …) | `#[ignore]`, name starting with `l7_`, + `cargo xtask test --anki-e2e / --live / --realdata` | Nightly or by hand |
@@ -39,11 +39,17 @@
 - Commands:
   - `open {path}`, `wait {event, timeout_ms}`, `key {code, mods}` (`code` is a W3C key name such as `Space`, `mods` a list of `Ctrl`, `Shift`, `Alt`; the key goes through the window's key handler, as a real one does), `drop {paths}` (paths; the first goes through the window's drop handler);
   - `click_grapheme {layer, cue_index, grapheme_index}` (through the overlay's click command, with the popup's fallback place), `popup_button {replay | goto}`;
-  - `state {}`: player state, open popups, visible cues, toasts, dictionaries page;
+  - `lookup {text}`: a root popup for `text`, opened as a click on a subtitle word opens one but with no cue behind it (fallback place); `popup_content {level}`: the view model of that popup as JSON (POP-009), `null` while it looks up;
+  - `state {}`: player state, open popups (with the card button of each entry, `add`, `exists`, `last`, `busy` or `unknown`, and the entry whose card menu is open), visible cues, toasts, dictionaries page;
+  - `anki {action, config?}`: the Anki settings page — `open`, `close`, and its buttons `test`, `create-lapis`, `save` with the saved settings changed by `config` (a TOML `[anki]` body); `state` shows the page (`anki_page`: open, busy, status, decks, note types, fields);
+  - `locate {path}`: answers the file dialog of "Locate the file" (ANK-052);
+  - `card {level, entry, item?}`: an entry's card button, or with `item` (`overwrite`, `open-in-anki`, `add-anyway`) an item of its menu, through the view's commands (ANK-030);
+  - `dict_css {id, css}`: a dictionary's CSS saved through the command of its editor's Save button;
   - `mpv_get {property}`: read-only, for metrics; read on the harness thread, never on the UI thread, which renders the video;
   - `quit {}`;
   - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
-- Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5), `card-created {note_id}` (M4). `wait` drops the events before the one it waits for and fails on an `error`.
+- Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `screenshot-saved {path}`, `card-created {note_id}` (a card made or overwritten in Anki), `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5). `wait` drops the events before the one it waits for and fails on an `error`.
+- Screenshots for review and for the repository page come from the L6 test `screenshots_of_the_interface`: with `NIKOMIRU_SCREENSHOTS=<folder>` it drives the app with the project's media and test dictionaries and saves the off-screen desktop with `spectacle` (KWin started with `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS`).
 - The harness runs its commands on the UI thread through the same entry points as the user's input (the key and drop handlers, the view's commands, the close path), not through internal shortcuts that skip the logic under test.
 
 ---
@@ -56,12 +62,13 @@
 | `proptest` | MIT OR Apache-2.0 | L2 and structured fuzzing |
 | `insta`, `cargo-insta` | Apache-2.0 | L3 |
 | `egui_kittest` | MIT OR Apache-2.0 | Tests of the egui views through AccessKit, with no renderer |
-| `wiremock` | MIT/Apache-2.0 | Fake AnkiConnect, fake online services |
+| `wiremock` | MIT/Apache-2.0 | Fake online services (M7). AnkiConnect has its own fake, `nikomiru_anki::fake` (feature `test-support`): a `std::net` server that answers from a script, records the requests and can close a connection before replying or never reply |
 | `tempfile` | MIT OR Apache-2.0 | Isolated XDG directories for each test |
 | `criterion` | Apache-2.0 OR MIT | L8 |
 | `cargo-llvm-cov` | Apache-2.0 OR MIT | Coverage (NFR-MAINT-02) |
 | `cargo-deny`, `cargo-about` | MIT OR Apache-2.0 | Licenses (T-LIC-*) |
 | Xvfb, Weston, Mesa llvmpipe | MIT/X11 | Headless display for L6 |
+| `desktop-file-validate` (desktop-file-utils) | GPL-2.0-or-later | T-APP-002 |
 | KWin (`kwin_wayland --virtual`) | GPL-2.0-or-later | Off-screen Wayland compositor for L6 and for the S1, S1q and S5 measurements (ADR 0001, ADR 0003, ADR 0006); **only as an external program** |
 | ffmpeg, ffprobe, libmpv | LGPL/GPL | Generating and checking the fixtures |
 | Anki desktop + AnkiConnect | AGPL-3.0 / GPL | **Only as external programs** in L7: they are neither linked nor distributed |
@@ -124,7 +131,8 @@ Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_eng
 | Mixed orthography, Kansai | `native/fushidicts/tests/ja_mixed_orthography_lookup_test.cpp`, `ja_kansai_ta_boundary_test.cpp` | T-LKP-031, T-LKP-033 |
 | Frequencies and pitch accent | `native/fushidicts/tests/freq_pitch_import_query_test.cpp`, `freq_pitch_merge_query_test.cpp`, `lookup_freq_pitch_enrichment_test.cpp`, `ipa_import_query_test.cpp` | T-LKP-035, T-LKP-040…043 |
 | Korean (future) | `native/fushidicts/tests/korean_hangul_lookup_test.cpp` | T-LKP-012 |
-| Import robustness | `native/fushidicts/tests/import_failure_boundary_test.cpp`, `import_memory_bound_test.cpp`, `hash_truncated_table_guard_test.cpp` | T-DIC-011…014 |
+| Import robustness | `native/fushidicts/tests/import_failure_boundary_test.cpp`, `import_memory_bound_test.cpp`, `hash_truncated_table_guard_test.cpp`, the `zip_*` tests, `media_import_query_test.cpp`, `simple_dict_css_test.cpp` (§5.3) | T-DIC-001, T-DIC-011…015 |
+| Kanji, formats, titles | `native/fushidicts/tests/kanji_import_query_test.cpp`, `format_v2_upstream_sync_test.cpp`, `dict_name_uaf_e2e_test.cpp`, `yomitan_redirect_lookup_test.cpp` | T-LKP-032, T-LKP-034, T-LKP-037, T-DIC-003 |
 | Sentence extraction | `fushi/test/lookup/sentence_extraction_test.dart` | T-TXT-007 |
 | Character count | `fushi/test/stats/study_char_count_test.dart`, `study_char_count_parity_test.dart` | T-STA-003 |
 | Interval coverage | `fushi/test/stats/interval_coverage_test.dart` | T-STA-001 |
@@ -140,6 +148,56 @@ Variable `NIKOMIRU_REALDATA=/path`, with files provided by the user: `jmdict_eng
 2. One Rust test per area reads the JSON and runs all the cases. A failing case shows its `provenance` in the message.
 3. Cases that depend on **intentionally different** behaviors (SPECIFICATION §6.6.8) have `"divergence": "<requirement ID>"` and an updated expected output.
 4. The dictionaries of Fushi's C++ tests are built in code: they are rewritten as Yomitan dictionaries in the `dictionaries` section of `tests/conformance/lookup.json`, which the runner zips and imports like any other dictionary.
+5. The import-robustness cases (`tests/conformance/import.json`, run by `crates/nikomiru-dict/tests/conformance_import.rs`) describe their zip entry by entry: raw names, extra fields, ZIP64 sentinels, broken deflate streams, lying sizes. The runner writes the zip field by field, imports it and checks the error, or the title, types, counts, styles, media and terms; a damaged dictionary file must open or fail without a panic or a hang.
+6. A case that fails because of a bug in a file that another work track owns gets `"known_failure": {"owner", "note"}`: the runner expects it to fail and fails as soon as it passes, so the mark goes with the fix. The open ones are listed in §5.3.
+7. A Fushi case that cannot be expressed (source scans, internal APIs, Fushi's storage files, MDX) stays in the file with `"skip": true` and a note saying why, or where it went.
+
+### 5.3 Coverage of fushidicts
+
+Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of §5.1 for the M3 areas. The prefixes are the case ids in the conformance files; skipped cases are counted apart.
+
+| Fushi file | Nikomiru test, or why it does not apply |
+|---|---|
+| `word_scan_test.cpp` | `text.json` `scan-*` (9) |
+| `text_processor_test.cpp` | `text.json` `tp-*` (35) |
+| `korean_hangul_lookup_test.cpp` | `text.json` `ko-*` (46, 2 skipped: their lookups are the next ones), `lookup.json` `khl-*` (2) |
+| `en_apostrophe_lookup_test.cpp` | `lookup.json` `eal-*` (6, 1 skipped: an asset guard) |
+| `en_inflection_lookup_test.cpp` | `lookup.json` `eil-*` (43, 6 skipped: Fushi's `term_rules.flag` file) |
+| `simple_dict_deinflection_test.cpp` | `lookup.json` `sdd-*` (8) |
+| `popup_json_deinflection_test.cpp` | `lookup.json` `pjd-*` (4, 1 skipped: an engine state no lookup produces) |
+| `popup_json_reading_merge_test.cpp` | `lookup.json` `prm-*` (2, 2 skipped: the MDX empty-reading merge) |
+| `ja_mixed_orthography_lookup_test.cpp` | `lookup.json` `jmo-*` (10) |
+| `ja_kansai_ta_boundary_test.cpp` | `lookup.json` `jkb-*` (25) |
+| `yomitan_redirect_lookup_test.cpp` | `lookup.json` `yrl-*` (8) |
+| `freq_pitch_import_query_test.cpp` | `lookup.json` `fpi-*` (1) |
+| `freq_pitch_merge_query_test.cpp` | `lookup.json` `fpm-*` (3, 2 skipped: one dictionary registered in one role only) |
+| `lookup_freq_pitch_enrichment_test.cpp` | `lookup.json` `lfe-*` (6) |
+| `ipa_import_query_test.cpp` | `lookup.json` `iiq-*` (1) |
+| `pitch_duplicate_notation_test.cpp` | `lookup.json` `pdn-*` (2) |
+| `kanji_import_query_test.cpp` | `lookup.json` `kiq-*` (4) |
+| `format_v2_upstream_sync_test.cpp` | `lookup.json` `fv2-*` (7: kanji stats, glossary round trip, pitch pattern, score, frequency order, the last a divergence (DIC-003); 4 skipped: the completion marker, the separate Bloom file, `primary_reading` and the frequency options) |
+| `dict_name_uaf_e2e_test.cpp` | `lookup.json` `dnu-titles` |
+| `dict_name_lifetime_test.cpp` | Not self-contained (a dictionary folder on its command line); `dict_name_uaf_e2e_test.cpp` is its successor |
+| `import_failure_boundary_test.cpp` | `lookup.json` `ifb-kanji-malformed-*` (2), `import.json` `ifb-invalid-utf8-title`, `import_l4.rs` `an_import_that_cannot_write_fails_and_leaves_nothing` (the write limit, in a child process); the memory mapping, errno and MDX cases do not apply (skipped) |
+| `import_memory_bound_test.cpp` | `import.json` `imb-*` (4: members byte for byte, a corrupt member, banks and media; the low-RAM mode does not exist); C is MDict (skipped) |
+| `hash_truncated_table_guard_test.cpp` | `import.json` `htg-*` (4): the damaged file is the redb dictionary file |
+| `media_import_query_test.cpp` | `import.json` `miq-media` |
+| `zip64_central_dir_test.cpp` | `import.json` `z64-*` (2) |
+| `zip_high_ratio_bank_test.cpp` | `import.json` `zhr-*` (5; 3 divergences, DIC-011: the 200:1 ratio limit and the 512 MiB cap) |
+| `zip_malformed_deflate_test.cpp` | `import.json` `zmd-*` (4) |
+| `zip_unicode_path_extra_test.cpp` | `import.json` `zup-*` (8; 4 known failures) |
+| `zip_wrapper_directory_test.cpp` | `import.json` `zwd-*` (8) |
+| `simple_dict_css_test.cpp` | `import.json` `sdc-styles`: the Yomitan counterpart, `styles.css` kept byte for byte; the `.css` next to an MDX file does not apply |
+| `win_utf8_import_test.cpp` | `import.json` `wui-non-ascii-paths`: non-ASCII zip, folder and title (the Windows ANSI path bug itself does not apply) |
+| `ffi_guard_coverage_test.cpp`, `decompressor_null_guard_test.cpp` | Do not apply: source scans of Fushi's C ABI and of its libdeflate calls; Nikomiru has no C ABI and inflates with `flate2` |
+| `import_breadcrumb_test.cpp` | Does not apply: Fushi's crash breadcrumb file; a crashed import leaves its `.importing` folder, removed at the next start (DIC-013, T-DIC-013) |
+| `mdd_*_test.cpp`, `mdx_*_test.cpp` (8 files) | Out of scope: MDict (DIC-004, post-1.0) |
+| `fushi/test/lookup/apostrophe_word_scan_bug2056_test.dart` | `text.json` `q2056-*` (62, 2 skipped: source guards) |
+| `fushi/test/lookup/reader_cue_gap_word_scan_bug3453_test.dart` | `text.json` `q3453-*`, `sent-3453-*` (7, 1 skipped: the reader's drag selection) |
+| `fushi/test/dictionary/deinflection_grammar_tags_test.dart` | `lookup.json` `dgt-*` (5, 7 skipped: Fushi's stored extras, its second result builder, an engine state no lookup produces, source guards) |
+| `fushi/test/lookup/sentence_extraction_test.dart` | `text.json` `sent-*` (9, 2 skipped: a negative click offset and a source guard) |
+
+Known failures, owner `crates/nikomiru-dict/src/import.rs`: `zup-bit11`, `zup-unknown-version`, `zup-overrun`, `zup-empty-name` (the importer takes the `zip` crate's Unicode Path handling, which applies the field with bit 11 set or with any version, refuses an archive whose field overruns its block and takes an empty name).
 
 ---
 
@@ -198,7 +256,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-003 | ASS | `no_playres.ass` → 384×288; `\N` → line break; `\p1` lines excluded from the clickable text; sorting by Layer | L1 |
 | T-SUB-004 | Text / markup separation | `plain_text` never contains tags or overrides (property over all fixture files) | L2 |
 | T-SUB-005 | Encodings | Each file in `shift_jis`, `euc_jp`, `utf16le_bom`, `gb18030`, `cp1252` produces the expected text; a forced encoding takes precedence | L4 |
-| T-SUB-006 | External files | `Ep01.mkv` ↔ `Ep01.ja.srt` yes, `Ep01.jpn.ass` yes, `Ep011.srt` no, `ep01.SRT` yes | L1 |
+| T-SUB-006 | External files | `Ep01.mkv` ↔ `Ep01.ja.srt` yes, `Ep01.jpn.ass` yes, `Ep011.srt` no, `ep01.SRT` yes. By another name: `[Group] Show - 02 [1080p].mkv` opens with `Show 02.ja.srt` drawn and `Subs/Show_E02.en.srt` in the menu, not the files of episode 3; `Movie (2016).mkv` with `Subs/Movie (2016)/Japanese.srt` and `English.srt`, the Japanese one drawn (L6); the folder rules in L1 | L1/L6 |
 | T-SUB-007 | Extraction of embedded tracks (`av_basic.mkv`) | 2 tracks extracted in a single invocation; 3 cues with the expected text; second request served from the cache (no ffmpeg process started) | L4 |
 | T-SUB-008 | Automatic selection | The 4 rules in the order given in SPECIFICATION | L1 |
 | T-SUB-009 | Clickable overlay | `av_basic.mkv` in L6: the Japanese embedded track is extracted and drawn; `click_grapheme` on the second grapheme selects byte offset 3 and pauses | L6 |
@@ -209,6 +267,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-014 | Blur | Sigma = max(12, 0.45 · font_size); absent while paused and with the popup open (state machine) | L1/L3 |
 | T-SUB-015 | List that follows playback | In the gaps between cues, it stays on the previous cue; search filters without losing the position | L1 |
 | T-SUB-016 | Alignment to the playhead | `pos` = 4900, next [5000–6000] → `delay_ms` decreases by 100 | L1 |
+| T-SUB-017 | Secondary subtitle | kittest: at the top, or above the main one at the bottom; smaller; no grapheme to click, a click on it looks nothing up; hidden on its own. L6: an embedded track chosen as the secondary, blurred while the main one is not, following the main offset (X), off again | L3/L6 |
+| T-SUB-018 | Alignment with the audio | Cues and levels on the grid (Fushi's vectors: a cue past the end left out, silence as 0); 20 minutes of speech-like audio and its cues moved by 0, +1.2, −3.4, +9.9, −14.8 s → the offset ±100 ms; audio unrelated to the cues → not applied; the PCM levels and the ffmpeg arguments; L4: the tones of `av_basic.mkv` put its cues moved by +1.2 and −0.7 s back; L6: an SRT written 1.2 s early, dropped on `av_basic.mkv`, aligned from the menu → offset +1200 ± 100 ms | L1/L4/L6 |
 | T-FUZZ-001…003 | SRT / VTT / ASS parsers on arbitrary bytes | No panic; for every cue produced, `start ≤ end` | L2 |
 
 ### 6.4 Dictionaries: import and management
@@ -218,16 +278,19 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-001 | Import of `mini-ja` | The counts of terms, meta, kanji, tags and media match the source; `styles.css` preserved | L4 |
 | T-DIC-002 | Tag bank and `sequence` | The `v5k` tag has category and notes; `sequence` preserved | L4 |
 | T-DIC-003 | `mini-freq-occ` | String values read; inverted ordering (higher = better) | L4 |
-| T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files | L4 |
-| T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted | L4 |
+| T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files. A cancel inside one large bank (60k entries, while it is read, parsed or written) or in the final step stops the import in < 1 s; the parser, the writes and the final step stop at their next check | L1, L4 |
+| T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted. The zips of `import.json` (§5.3): wrapper folders, macOS files, directory entries, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, a damaged dictionary file | L4 |
 | T-DIC-012 | Limits | A glossary > 10 MiB makes the import fail cleanly | L4 |
 | T-DIC-013 | Crash during import | Child process killed with SIGKILL halfway → on restart, no partial dictionary; the `.importing` folder is deleted | L4 |
-| T-DIC-014 | Disk full | Small tmpfs filesystem → `ERR_STORAGE_FULL`, full cleanup | L4 (Linux) |
+| T-DIC-014 | Disk full | Small tmpfs filesystem → `ERR_STORAGE_FULL`, full cleanup; a file size limit reached halfway (`ulimit -f`, child process) → failed import, full cleanup | L4 (Linux) |
 | T-DIC-015 | Type detection | Vectors: term, kanji, freq, pitch, term+kanji | L1 |
-| T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement | L4 |
+| T-DIC-016 | Same revision / new revision | Rejection / update offer with atomic replacement. The registration checks the registry again: the same dictionary imported twice at once is registered once; an update whose old dictionary was deleted meanwhile is added; an old folder that cannot be removed does not fail the update (the lookup cache is dropped, the next start removes the folder) | L4 |
 | T-DIC-021 | Deletion | The file is closed and deleted; the registry is updated; the lookup cache is invalidated | L4 |
+| T-DIC-022 | Concurrent registry edits | 8 threads edit the registry at once while one dictionary is deleted → no edit is lost and the deleted one does not come back | L4 |
+| T-DIC-030 | Dictionaries by type | Each dictionary is under its main type (terms, kanji, frequencies, pitch accent, in this order), with a reference row under each of its other types; title, revision, language, entries, size and import date shown; a reference has no controls | L1 |
+| T-DIC-031 | Order by drag and drop | A row dragged by its handle over the upper or lower half of a row of its type (a reference too) shows the marker there and moves just above or below it; next to itself or over another type nothing is marked or sent; in the order only the dragged dictionary moves, and ▲/▼ step over the rows of its type; the order decides the glossaries (L4) | L1, L4 |
 | T-DIC-032 | Disabled dictionary | It is not queried (spy store) and does not consume the budget | L1 |
-| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot and L6 check) | L3/L6 |
+| T-DIC-035 | Per-dictionary style subset | The style subset of dictionary A does not affect dictionary B (view-model snapshot); the check of a stylesheet reports the rules applied, the properties left out and the rules ignored (L1); the page's editor shows that report, saves, reverts and clears the user's CSS of a term dictionary (L1); the registry keeps it across an update and a restart and drops the cached lookup (L4); saved on the page, it restyles the popup after the dictionary's `styles.css`, and stays after a restart (L6) | L1/L3/L4/L6 |
 
 ### 6.5 Lookup
 
@@ -261,22 +324,22 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-001/004/005 | Pause/resume state machine | (playing) click → pause and `paused_for_lookup`; close → resume. (paused) click → no change; close → stays paused. Click on another word with the popup open → replacement, stays paused. Nested: resume only when the stack is empty | L1 |
 | T-POP-002 | Highlighting | Overlay snapshot: exactly `best_length` graphemes marked starting from the clicked one, even with composite graphemes (emoji, combining marks) | L3 |
 | T-POP-003 | Hover | Shift + movement ≥ 8 px → lookup; no new lookup on the same character; leaving for 320 ms → close and resume (fake clock) | L1 |
-| T-POP-006 | Positioning | Property: for every word rectangle and every window ≥ 320×240, the popup does not cover the word and fits inside the window | L2 |
+| T-POP-006 | Positioning and size | Property: for every word rectangle and every window ≥ 320×240, the popup does not cover the word and fits inside the window (L2). A popup is as wide as the configured maximum (`[popup]`) and as tall as its content up to it; sizes out of range in `config.toml` are brought within it, and values that are not numbers take the default (L1). Dragging the border (L1, `egui_kittest`): the edge away from the word and the side edges follow the pointer, the popup keeps its side of the word (also once small enough for the other side) and stays centred on it; dragged past the window it stops at the window's edges and at the configured bounds; the next popups take the dragged size, and a size that was not dragged keeps its value. Property (L2): a popup kept on either side, at any size, does not cover the word and fits inside the window | L1, L2 |
 | T-POP-007 | Header | View-model and AccessKit snapshot of the entry `食べました` → headword `食べる` with furigana, trace chip, frequencies, pitch accent, tags | L3 |
 | T-POP-008 | Per-dictionary blocks | View-model snapshot: numeric tags hidden; a part-of-speech tag repeated on consecutive senses is omitted; collapsed state respected | L3 |
 | T-POP-009 | Structured content | View-model snapshot for table, ruby, list, details. Disallowed tags (`script`, `iframe`, `style`) and `on*` attributes removed; disallowed style properties removed | L3 |
 | T-POP-010 | Images | A PNG from the media table is decoded to its pixels, once per path; a nonexistent path, an SVG or a damaged file → alternative text only; a large image is scaled down to 1280 pixels; `..` → rejected; the drawn size keeps the aspect and the flow's width | L1 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); a click on a link asks for a nested lookup next to it, or for the browser; only `http(s)` addresses are opened (L1); an external link reaches the `OpenURI` portal (spy portal on a private bus, L4) | L1, L4 |
-| T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children | L1 |
+| T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children. A drag across glossary text (one paragraph, or a line of runs with ruby, chips and links, the readings left out) looks the selection up in a child popup next to it and stays lit while that popup is open; a click still follows a link; the summary of a `details` does not select; a drag on text does not scroll the popup (`egui_kittest`) | L1 |
 | T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |
-| T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness) | L6 |
+| T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness); with the Anki page over a popup, Ctrl+Enter makes no card and Esc closes the page, then the popup | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
 ### 6.7 Security
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-SEC-001 | `mini-ja` entry with `<script>`, `on*` attributes and a remote `<img>` | Only allowlisted view-model nodes are produced; no network request (spy proxy) | L6 |
+| T-SEC-001 | `mini-ja` entry `危険` with `<script>`, `on*` attributes, a remote `<img>` and a `javascript:` link, through the real import, lookup and popup content builder | Only allowlisted view-model nodes are produced: exactly the span's text and colour and a lookup link, every link a lookup or `http(s)`, every image a path inside the dictionary with decoded pixels, every style within the bounds of DIC-035 (L1); drawn with `egui_kittest` it opens nothing until the link is clicked, and the click is a lookup (L3); in the real app (`lookup`, `popup_content`) the same view model, and no network request (spy proxy, no internet socket held, L6) | L1/L3/L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
 | T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
 | T-SEC-004 | Release build | `cargo tree -e normal,build,features -p nikomiru-app` without `test-harness`, `test_harness` or `test-support`; the release binary contains none of the harness's strings and starts, opens a file and quits on SIGTERM (L6) | L4 |
@@ -301,14 +364,15 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-008 | After loading | `sid = no`, `sub-visibility = no`; `aid` adopted | L5 |
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
-| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles | L5 |
+| T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles; a taken name gets ` (2)`…, and 16 screenshots at once get 16 names | L1/L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
 | T-PLY-013 | Screensaver | During playback the inhibition is active; when paused for > 1 min it is released (spy portal) | L4 |
-| T-PLY-016 | `mpv.conf` presets | Round trip: option set from the UI → saved preset → loaded → identical option set, with UI controls and raw options filled as before. A sample `mpv.conf` with comments, a flag (`deband`), `no-` prefix, `--key=value`, quoted values, `profile=high-quality`, a `[section]` and `include=` → preview with applied / ignored / invalid for each line, and no option reaches mpv before confirmation (spy on the option setter). A saved preset is accepted by a real mpv (`mpv --no-config --include=<file> --idle=once` exits with 0) | L1/L5 |
+| T-PLY-016 | `mpv.conf` presets | Round trip: option set → saved preset (a header, only what differs from the defaults) → loaded → identical option set, controls and raw options filled as before; a sample `mpv.conf` with comments, a flag, `--key=value`, quoted values, `profile=high-quality`, a `[section]`, a blocked option and an invalid line → the preview of every line (kittest), Apply and Cancel. Presets saved for every value of every control are read by a real mpv without a message (`mpv --no-config --include=<file> --idle=no --msg-level=all=warn`). The export dialog is `SaveFile` with a suggested name, the import dialog starts in the folder given (portal spy). The page shows the set in use as `mpv.conf` text, only what differs from the defaults; a control changed rewrites the text, text typed fills the controls and stays as typed (comments, an empty value) until the text is left (kittest). L6: a user's `mpv.conf` imported, nothing set in mpv before it is applied, then the values in mpv (`mpv_get`), `config.toml`, a preset and an export; `$XDG_CONFIG_HOME/mpv/mpv.conf` offered in the preview while Nikomiru sets no option, not once it does | L1/L3/L4/L5/L6 |
 | T-PLY-017 | Blocked options | Every entry of the blocked table, in the raw options and in a preset, is rejected with its reason and never reaches mpv (spy). `script=x.lua`, `input-ipc-server=<tmp>/s`, `log-file=<tmp>/l`, `include=<tmp>/i.conf` → no file created and no socket opened (inotify on the temporary folder, see T-SEC-003); `sub-font=…` and `gpu-api=…` → ignored with a warning | L1/L5 |
-| T-PLY-018 | Render and audio settings | Each control sets the expected mpv option (`mpv_get`); runtime options (`deband`, `scale`, `brightness`…) change during playback without reloading the file; `hwdec` shows the "from the next file" note and takes effect on the next `loadfile`; reset of a group restores only that group | L5/L6 |
+| T-PLY-018 | Render and audio settings | Every control is an option a preset may hold; the reset of a group unsets only its options, other options kept (kittest); during playback `brightness`, `deband` and a raw option change in mpv without reloading the file (`mpv_get`, L6); every value offered is accepted by mpv (L5) | L1/L3/L5/L6 |
 | T-KEY-001…004 | Shortcuts | Remapping saved and reloaded; binding by scan code (with a simulated AZERTY layout, the physical key of evdev `KEY_Q` still triggers the action bound to it); conflict in the same context rejected; single-key shortcuts disabled in a text field | L1/L6 |
-| T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/nikomiru` and the video types; `Exec=nikomiru %U` | L4 |
+| T-KEY-005 | Auto-repeat | Only the actions that step repeat; `S` held with 10 repeats saves one screenshot | L1/L6 |
+| T-APP-002 | `.desktop` file | `desktop-file-validate` without errors; `MimeType` contains `x-scheme-handler/nikomiru` and the video types; `Exec=nikomiru %U`; the entry `cargo xtask install` writes names its program quoted as the specification asks (`\\$` for `$` in quotes, four backslashes for one) | L1/L4 |
 | T-APP-001 | Single instance | Second start with a file → the file opens in the first instance; the second process exits with 0 | L6 |
 | T-E2E-001 | M1 flow | open → play → seek → close → reopen → resumes from the saved position | L6 |
 
@@ -316,25 +380,34 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-ANK-001 | Request shape | JSON snapshot of each action; `key` absent if empty | L3 |
-| T-ANK-002 | Error mapping | Non-200, non-JSON, missing `result`/`error`, duplicate message → the right typed error | L4 |
-| T-ANK-003 | Retry | `deckNames` with a timed-out connection → retried once (wiremock counts 2 requests). `addNote` with the response lost after sending → `CommitUnknown`, only **1** request | L4 |
+| T-ANK-001 | Request shape | JSON snapshot of each action; `key` absent if empty, present in every `multi` child otherwise; every request says `Connection: close` (the fake records the headers); against a fake that, like 25.11.9.0, closes the connection a moment after a reply that does not say so, three `addNote` in a row all succeed (a client that keeps connections fails, BUG-065); with every proxy variable on a dead port (a child process) the requests still arrive | L3/L4 |
+| T-ANK-002 | Error mapping | Non-200, non-JSON, missing `result`/`error`, duplicate message → the right typed error; an address that is not AnkiConnect's names no user name or password | L4 |
+| T-ANK-003 | Retry | `deckNames` whose connection closes before the reply → retried once (the fake counts 2 requests); a reply timeout is not retried. `addNote` with the response lost after sending → `CommitUnknown`, only **1** request; so are a 502/504 status and a reply that is not AnkiConnect's, while a 403 is an HTTP error. A connection that cannot be made (a server that drops it during the TLS handshake counts the attempts) → one more attempt for any action, `addNote` included; nothing listening (port 1) → refused | L4 |
+| T-ANK-004 | Error messages | Every error of ANK-004 has its message in English and Italian, and none quotes the API key (T-ERR-001, T-PRV-002) | L1 |
+| T-ANK-005 | Actions | Only the actions of ANK-005, each with documented parameters only (snapshots of T-ANK-001) | L3 |
+| T-ANK-006 | Refresh | `version`, `deckNames`, `modelNames`, `modelFieldNames` of the selected model; a selection whose list position changed is kept by name; a missing one is reported | L4 |
+| T-ANK-010 | Lapis files | SHA-256 of the three vendored files as in `PROVENANCE.md`; 22 fields in order; template `Mining`; every field the templates name (`{{#…}}`, `{{text:…}}`…, by whole name) is one of the 22 or Anki's own, and each of the 22 is named | L1 |
 | T-ANK-011 | "Create Lapis deck" | Model absent → `createModel` + `createDeck`; model present → only `createDeck`; failed check → `LapisSetupMissing`; second run → `already exists` | L4 |
 | T-ANK-012/013 | Default mapping and Lapis recognition | Vectors from `lapis_preset_test.dart` | L1 |
-| T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense, scoped `<style>`), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja` | L3 |
-| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; invalid offset → first occurrence | L1 |
+| T-ANK-020 | Templates | Unknown placeholder → empty; literal text kept (`x`); from a `{` to the next `}` is one placeholder (`{{expression}}` → `}`), as the regex; the mapping of one note type does not change another's | L1 |
+| T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense of each dictionary and a repeated part of speech left out, on an entry of five senses from two dictionaries; scoped `<style>`, `data-sc-*` attributes, the hostile `mini-ja` entry reduced to the allowlist), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja`; every value escaped | L3 |
+| T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; an offset that is not a character boundary, out of the text or on another word → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
-| T-ANK-027 | Tags | `["mine", "nikomiru", "video", "Sousou_no_Frieren"]` deduplicated and in order | L1 |
-| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock) | L4 |
+| T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; from M5 with the series tag (`Sousou_no_Frieren`) | L1 |
+| T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock), started also by a card with an unknown outcome and ended by any answer ("Open in Anki"); a URL that is not loopback (`0.0.0.0`, which Linux connects here) is never checked, while a card goes through | L4 |
+| T-ANK-031 | Reference cue | The cue the lookup started from, else the current one, else the one at the position | L1 |
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
-| T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345) | L3/L4 |
-| T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution | L4/L5 |
-| T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request | L4 |
-| T-ANK-036 | Media | Stable content-based name; loopback host → `path`, remote host → base64 `data`; if `addNote` fails → `deleteMediaFile` only for the media uploaded in that attempt | L4 |
-| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`); different note type → rejection | L4 |
+| T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345); an external audio track is cut from its own file | L3/L4 |
+| T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution; the frame asked at the click is the picture; without it (the player failed, or was not asked) the card is made without a picture | L4/L5 |
+| T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request; the same for a track ffmpeg cannot cut and for an empty clip | L4 |
+| T-ANK-036 | Media | Stable content-based name; always base64 `data`; the name AnkiConnect returns goes into the fields; if `addNote` fails with a known error → `deleteMediaFile` only for the names that did not exist before the attempt; after `CommitUnknown` nothing is deleted; after every attempt `cache/mining` is empty, and at start its files older than ten minutes are removed | L4 |
+| T-ANK-037 | Overwrite | `updateNoteFields` with all fields (unmapped ones = `''`, a mapped one changed), `addTags`, `notesInfo` again; different note type → rejection; "editor open" → its message and the new media deleted; `addTags` failing or the reply to `updateNoteFields` lost → unknown outcome, media kept. L6: a card finished after its popup closed is the last card | L4/L6 |
+| T-ANK-038 | Open in Anki | `guiBrowse nid:<id>` for the last card; for a word, `findNotes` with `dupe:` for each note type, within the deck | L4 |
+| T-ANK-039 | Record | A created card adds its `mined_cards` record; an overwrite replaces it | L4 |
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |
 | T-ANK-052 | Opening the link | `nikomiru://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
-| T-E2E-ANKI-001 | Real Anki | Anki in Xvfb with AnkiConnect, empty profile → "Create Lapis deck" → mining from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media` | L7 |
+| T-ANK-053 | Timestamp | Vectors from Fushi `handlebar_clip_timestamp_test.dart`: 754000/758000 → `00:12:34 - 00:12:38`, 1999/2999 → `00:00:01 - 00:00:02`, end ≤ start → empty | L1 |
+| T-E2E-ANKI-001 | Real Anki | A running Anki with AnkiConnect on a throwaway profile, its address in `NIKOMIRU_ANKI_URL` (`cargo xtask test --anki-e2e`; the L6 desktop runs Nikomiru) → "Create Lapis deck" twice (the second: already there) → a card from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media`. To run against Anki ≤ 26.07 with AnkiConnect 25.11.9.0 and Anki ≥ 26.08 with 26.10.x | L7 |
 
 ### 6.10 Library and word audio
 
@@ -382,7 +455,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-004 | Language | `LANG=it_IT.UTF-8` → Italian; `LANG=de_DE.UTF-8` → fallback to English; the choice in the settings wins | L1 |
 | T-SET-005 | Interface scale | 75% and 200%: the UI scale changes, the subtitle size does not (harness) | L6 |
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values | L1 |
-| T-SET-007 | Proxy | HTTP requests go through the proxy (wiremock as proxy); AnkiConnect on loopback does not | L4 |
+| T-SET-008 | Settings tabs | kittest: each tab's page shows the tabs and leaves for the one clicked; the search page's "Services and keys…" leads to the Subtitle services tab. L6: the tab opened from the harness, shown last, closed | L3/L6 |
+| T-SET-007 | Proxy | The online requests go through the proxy of `[network] proxy` (the fake online server as the proxy, the service on a port where nothing listens); an invalid proxy is refused; AnkiConnect never uses a proxy (T-ANK-001) | L4 |
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en`; no unused key; same `{ $var }` arguments in all languages | L1 |
 | T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in the views of `nikomiru-ui` (explicit exception list) | L4 |
 | T-A11Y-001 | Focus and accessibility | AccessKit tree snapshot of the player controls (role and name of each); visible focus | L3 |
@@ -394,16 +468,21 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-MET-001 | AniList | Fake GraphQL response → series identified only if there is an exact and unique result; otherwise chosen by the user | L4 |
 | T-MET-002 | Jikan | At most 1 request/s; after a 429, pause and cache respected (fake clock) | L4 |
-| T-MET-003 | Jimaku | `Authorization` header; search by `anilist_id` and then by `query`; zip extracted with the rules of DIC-011 | L4 |
-| T-MET-004 | OpenSubtitles | Query order; file > 64 MiB rejected | L4 |
-| T-MET-005 | API keys | Saved with permissions 0600 (see T-SEC-008); never in the logs (see T-PRV-002) | L4 |
+| T-MET-003 | Jimaku | The key in `Authorization`, only to the Jimaku host; search by `query` with `anime=true`, then `anime=false`; every file of the first two entries; answers read leniently (Fushi's vectors); zip opened by names only (no `../`, no hidden files), the episode taken out of a season pack; RAR listed, never downloaded; 401 and 429 (`Retry-After`) named; HTTPS only outside loopback; language and episode of subtitle names (Fushi's vectors) | L1/L4 |
+| T-MET-004 | OpenSubtitles | By hash and size, then by title, season and episode, the parameters sorted; `languages` always; the download link fetched without the key; the login when a user name is set, a wrong one refused; the quota used up (406); the hash: the size plus the first and last 64 KiB | L1/L4 |
+| T-MET-005 | API keys | Saved with permissions 0600 (see T-SEC-008); never in a debug print or the logs (see T-PRV-002), nor the proxy's password | L1 |
+| T-MET-007 | Automatic subtitles | Ranking and choice (the language, unknown on Jimaku as Japanese; the episode; never machine translated or RAR; a season pack); every provider failing is an error. L6: a video without subtitles gets them from the fake Jimaku, loaded and kept | L1/L4/L6 |
+| T-MET-008 | Downloaded subtitles | `<hash>/<video name>.<language>.<ext>`, ` (2)` when taken, odd characters replaced; offered like files next to the video whatever their name; L6: the next opening loads them with no request | L1/L6 |
+| T-MET-009 | Online subtitles page | kittest: the fields from the file name, Search, the providers' errors, Use (not on a RAR), no keys on it, "Services and keys…", the page closing when a file is loaded. L6: open, search, use; with automatic subtitles off, opening a video asks nothing (PRV-001) | L3/L6 |
+| T-MET-011 | Subtitle services | `[online] providers` read in its order, once each, unknown names left out; the service preferred first among equal files, the language still first (L1). kittest: a service moved up, one left out, the keys on each row, Save sends them in order, a service left out listed last. L6: with `providers = ["jimaku"]` a search asks only the fake Jimaku; saved from the tab as `["opensubtitles", "jimaku"]`, `config.toml` has them and the next search asks OpenSubtitles too | L1/L3/L6 |
+| T-MET-010 | File names | Fushi's vectors (groups, `SxxEyy`, `第N話`, `EP`, `#`, ` - N`, trailing numbers, Netflix-style dotted names, titles only in brackets, tilde secondary titles, explicit `{[s=…;e=…]}` blocks) and the season of the folder | L1 |
 | T-MET-LIVE-* | Real services | Smoke tests with keys from environment variables | L7 |
 
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered | L4 |
+| T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process); a normal quit during an import (L6) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered; a quit during an import cancels it, exits at once and leaves no repair, record or staging folder | L4, L6 |
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
 | T-FUZZ-006 | Structured content → view model | No panic; the output contains only nodes from the allowlist | L2 |

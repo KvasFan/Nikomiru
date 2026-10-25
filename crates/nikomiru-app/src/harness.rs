@@ -6,9 +6,17 @@
 //! for answer: `{"ok":true,"result":…}` or `{"ok":false,"error":"…"}`.
 //!
 //! Commands: `{"cmd":"open","path":…}`, `{"cmd":"wait","event":…,"timeout_ms":…}`,
-//! `{"cmd":"key","code":"Space","mods":["Ctrl"]}`, `{"cmd":"drop","paths":[…]}`,
+//! `{"cmd":"key","code":"Space","mods":["Ctrl"],"repeat":0}` (`repeat`: auto-repeats
+//! while held), `{"cmd":"drop","paths":[…]}`,
 //! `{"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":1}`,
-//! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"state"}`,
+//! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
+//! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
+//! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
+//! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
+//! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
+//! `{"cmd":"align"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
+//! `{"cmd":"settings","tab":"player"|"services"|"anki"|"close"}`,
+//! `{"cmd":"services","providers":["opensubtitles",…],"auto":true}`, `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
 use std::io::{BufRead, BufReader, Write};
@@ -74,7 +82,8 @@ fn run(command: &Value) -> Result<Value, String> {
                 .flatten()
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
-            harness::key(text(command, "code")?, &mods).map(|()| Value::Null)
+            let repeats = command["repeat"].as_u64().unwrap_or(0);
+            harness::key(text(command, "code")?, &mods, repeats).map(|()| Value::Null)
         }
         Some("drop") => {
             let paths: Vec<String> = command["paths"]
@@ -99,7 +108,67 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("lookup") => harness::lookup(text(command, "text")?).map(|()| Value::Null),
+        Some("popup_content") => {
+            let level = command["level"]
+                .as_u64()
+                .ok_or_else(|| "missing \"level\"".to_string())?;
+            harness::popup_content(level as usize)
+        }
         Some("state") => harness::state(),
+        Some("dict_css") => {
+            harness::dict_css(text(command, "id")?, text(command, "css")?).map(|()| Value::Null)
+        }
+        Some("card") => {
+            let index = |name: &str| {
+                command[name]
+                    .as_u64()
+                    .map(|v| v as usize)
+                    .ok_or_else(|| format!("missing \"{name}\""))
+            };
+            harness::card(index("level")?, index("entry")?, command["item"].as_str())
+                .map(|()| Value::Null)
+        }
+        Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
+        Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
+            .map(|()| Value::Null),
+        Some("align") => harness::align().map(|()| Value::Null),
+        Some("settings") => harness::settings(text(command, "tab")?).map(|()| Value::Null),
+        Some("services") => harness::services(
+            command["providers"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            command["auto"].as_bool(),
+        )
+        .map(|()| Value::Null),
+        Some("secondary") => harness::secondary(
+            command["key"].as_str().map(str::to_string),
+            command["obscure"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
+        Some("player") => harness::player(
+            text(command, "action")?,
+            command["path"].as_str().map(str::to_string),
+            command["name"].as_str().map(str::to_string),
+            command["raw"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
+        Some("online") => harness::online(
+            text(command, "action")?,
+            command["title"].as_str().map(str::to_string),
+            command["episode"]
+                .as_u64()
+                .and_then(|e| u32::try_from(e).ok()),
+            command["index"]
+                .as_u64()
+                .and_then(|i| usize::try_from(i).ok()),
+        )
+        .map(|()| Value::Null),
         Some("mpv_get") => harness::mpv_get(text(command, "property")?),
         Some("quit") => harness::quit().map(|()| Value::Null),
         _ => Err(format!("unknown command {command}")),

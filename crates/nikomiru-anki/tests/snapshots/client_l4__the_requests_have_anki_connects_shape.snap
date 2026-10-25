@@ -1,0 +1,21 @@
+---
+source: crates/nikomiru-anki/tests/client_l4.rs
+expression: text
+---
+{"action":"version","version":6}
+{"action":"deckNames","version":6}
+{"action":"modelNames","version":6}
+{"action":"modelNamesAndIds","version":6}
+{"action":"modelFieldNames","params":{"modelName":"Basic"},"version":6}
+{"action":"canAddNotesWithErrorDetail","params":{"notes":[{"deckName":"Default","fields":{"Front":"食べ物"},"modelName":"Basic","options":{"allowDuplicate":false,"duplicateScope":"deck","duplicateScopeOptions":{"checkAllModels":true,"checkChildren":true,"deckName":"Default"}}}]},"version":6}
+{"action":"addNote","params":{"note":{"deckName":"Default","fields":{"Back":"definition","Front":"食べ物"},"modelName":"Basic","options":{"allowDuplicate":false,"duplicateScope":"deck","duplicateScopeOptions":{"checkAllModels":true,"checkChildren":true,"deckName":"Default"}},"tags":["nikomiru","video"]}},"version":6}
+{"action":"findNotes","params":{"query":"\"Front:食べ物\""},"version":6}
+{"action":"notesInfo","params":{"notes":[1760000000000]},"version":6}
+{"action":"updateNoteFields","params":{"note":{"fields":{"Back":"new"},"id":1760000000000}},"version":6}
+{"action":"addTags","params":{"notes":[1760000000000],"tags":"mine again"},"version":6}
+{"action":"storeMediaFile","params":{"data":"anBn","filename":"nikomiru_0123456789abcdef.jpg"},"version":6}
+{"action":"multi","params":{"actions":[{"action":"getMediaFilesNames","params":{"pattern":"nikomiru_0123456789abcdef.jpg"},"version":6}]},"version":6}
+{"action":"deleteMediaFile","params":{"filename":"nikomiru_0123456789abcdef.jpg"},"version":6}
+{"action":"createDeck","params":{"deck":"Lapis"},"version":6}
+{"action":"createModel","params":{"cardTemplates":[{"Back":"{{B}}","Front":"{{A}}","Name":"Mining"}],"css":".card {}","inOrderFields":["A","B"],"isCloze":false,"modelName":"Mini"},"version":6}
+{"action":"guiBrowse","params":{"query":"nid:1760000000000"},"version":6}

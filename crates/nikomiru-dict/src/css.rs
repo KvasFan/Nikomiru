@@ -6,7 +6,8 @@
 //! structured content), joined by descendant (` `) or child (`>`)
 //! combinators, also when written as nested rules (`&`), with the properties
 //! of [`Style`]. Sibling combinators, pseudo-classes, pseudo-elements,
-//! at-rules and other properties are ignored.
+//! at-rules and other properties are ignored. The user's CSS goes through the
+//! same subset; [`Sheet::check`] tells its editor what is kept.
 
 use crate::style::Style;
 
@@ -52,6 +53,32 @@ struct Rule {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Sheet {
     rules: Vec<Rule>,
+}
+
+/// What [`Sheet::parse`] keeps of a stylesheet and what it leaves out: the
+/// feedback of the editor of the user's CSS (DIC-035).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Report {
+    /// Rules that apply: a selector of the subset with at least one property
+    /// kept, counted once per selector of a list.
+    pub rules: usize,
+    /// The properties left out of the rules that apply, in order: outside the
+    /// subset, or with a value it refuses.
+    pub dropped: Vec<String>,
+    /// The rules ignored whole, in order: their selector is outside the
+    /// subset (`a:hover`, `span + span`, `#id`), or they are at-rules.
+    pub ignored: Vec<String>,
+}
+
+/// Report entries longer than this are cut: they are for reading.
+const REPORT_TEXT: usize = 48;
+
+fn report_text(text: &str) -> String {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match text.char_indices().nth(REPORT_TEXT) {
+        Some((cut, _)) => format!("{}…", &text[..cut]),
+        None => text,
+    }
 }
 
 /// An element as a selector sees it: its tag and its `data` entries.
@@ -187,11 +214,17 @@ fn specificity(s: &Selector) -> (usize, usize) {
     })
 }
 
-fn declarations(block: &str) -> Style {
+/// The style of a block's declarations; the properties it leaves out go to
+/// `dropped`.
+fn declarations(block: &str, mut dropped: Option<&mut Vec<String>>) -> Style {
     let mut style = Style::default();
-    for decl in block.split(';') {
-        if let Some((property, value)) = decl.split_once(':') {
-            style.set(property.trim(), value.trim());
+    for decl in block.split(';').map(str::trim).filter(|d| !d.is_empty()) {
+        let (property, kept) = match decl.split_once(':') {
+            Some((property, value)) => (property.trim(), style.set(property.trim(), value.trim())),
+            None => (decl, false),
+        };
+        if !kept && let Some(dropped) = dropped.as_deref_mut() {
+            dropped.push(report_text(property));
         }
     }
     style
@@ -222,13 +255,14 @@ fn nested(prelude: &str, parents: &[String]) -> Vec<String> {
 }
 
 /// Reads rules and declarations at one level; `parents` are the selectors of
-/// the enclosing rule (none at the top).
+/// the enclosing rule (none at the top). What it leaves out goes to `report`.
 fn parse_level(
     css: &str,
     parents: &[String],
     depth: usize,
     order: &mut usize,
     rules: &mut Vec<Rule>,
+    mut report: Option<&mut Report>,
 ) {
     let mut decls = String::new();
     let mut start = 0;
@@ -257,12 +291,28 @@ fn parse_level(
                         _ => {}
                     }
                 }
-                let Some(close) = close else { return };
                 let prelude = css[start..i].trim();
+                let Some(close) = close else {
+                    if let Some(report) = report {
+                        report.ignored.push(format!("{} {{", report_text(prelude)));
+                    }
+                    return;
+                };
                 let body = &css[i + 1..close];
                 if !prelude.starts_with('@') && !prelude.is_empty() && depth < MAX_NESTING {
                     let selectors = nested(prelude, parents);
-                    parse_level(body, &selectors, depth + 1, order, rules);
+                    parse_level(
+                        body,
+                        &selectors,
+                        depth + 1,
+                        order,
+                        rules,
+                        report.as_deref_mut(),
+                    );
+                } else if !prelude.is_empty()
+                    && let Some(report) = report.as_deref_mut()
+                {
+                    report.ignored.push(report_text(prelude));
                 }
                 i = close + 1;
                 start = i;
@@ -278,22 +328,52 @@ fn parse_level(
     }
     decls.push_str(css.get(start..).unwrap_or_default());
     if parents.is_empty() {
-        return;
-    }
-    let style = declarations(&decls);
-    if style.is_empty() {
-        return;
-    }
-    for text in parents {
-        if let Some(selector) = selector(text) {
-            rules.push(Rule {
-                specificity: specificity(&selector),
-                selector,
-                order: *order,
-                style: style.clone(),
-            });
-            *order += 1;
+        // statements outside every rule: `@import` and the like, or
+        // declarations that belong to nothing
+        if let Some(report) = report {
+            for statement in decls.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                if statement.starts_with('@') {
+                    report.ignored.push(report_text(statement));
+                } else {
+                    let property = statement.split(':').next().unwrap_or(statement);
+                    report.dropped.push(report_text(property));
+                }
+            }
         }
+        return;
+    }
+    let mut dropped = Vec::new();
+    let style = declarations(&decls, report.is_some().then_some(&mut dropped));
+    // nothing to apply; and nothing to report when the block only holds
+    // nested rules
+    if style.is_empty() && (report.is_none() || dropped.is_empty()) {
+        return;
+    }
+    let mut applies = false;
+    for text in parents {
+        match selector(text) {
+            Some(selector) => {
+                applies = true;
+                if !style.is_empty() {
+                    rules.push(Rule {
+                        specificity: specificity(&selector),
+                        selector,
+                        order: *order,
+                        style: style.clone(),
+                    });
+                    *order += 1;
+                }
+            }
+            None => {
+                if let Some(report) = report.as_deref_mut() {
+                    report.ignored.push(report_text(text));
+                }
+            }
+        }
+    }
+    // what a rule that applies to nothing leaves out does not matter
+    if applies && let Some(report) = report {
+        report.dropped.append(&mut dropped);
     }
 }
 
@@ -327,10 +407,21 @@ impl Sheet {
     /// The applicable part of a stylesheet. Never fails: what cannot be read
     /// is skipped.
     pub fn parse(css: &str) -> Self {
+        Self::read(css, None)
+    }
+
+    /// What [`Sheet::parse`] keeps of `css` and what it leaves out.
+    pub fn check(css: &str) -> Report {
+        let mut report = Report::default();
+        report.rules = Self::read(css, Some(&mut report)).rules.len();
+        report
+    }
+
+    fn read(css: &str, report: Option<&mut Report>) -> Self {
         let css = strip_comments(css);
         let mut rules = Vec::new();
         let mut order = 0;
-        parse_level(&css, &[], 0, &mut order, &mut rules);
+        parse_level(&css, &[], 0, &mut order, &mut rules, report);
         rules.sort_by_key(|r| (r.specificity, r.order));
         Self { rules }
     }
@@ -350,6 +441,125 @@ impl Sheet {
             if matches_from(&r.selector, r.selector.parts.len() - 1, path, last) {
                 out.merge(&r.style);
             }
+        }
+        out
+    }
+}
+
+/// The HTML attribute of a structured-content `data` entry whose key is
+/// `kebab` (already in kebab case): `data-sc-<key>`, or `data-sc<key>` when
+/// the key starts with a CJK character, as Yomitan writes it.
+pub fn data_attribute(kebab: &str) -> String {
+    let cjk = kebab
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c as u32, 0x3000..=0x9FFF | 0xF900..=0xFAFF));
+    if cjk {
+        format!("data-sc{kebab}")
+    } else {
+        format!("data-sc-{kebab}")
+    }
+}
+
+impl Compound {
+    /// As CSS, or `None` if a name cannot be written safely.
+    fn to_css(&self) -> Option<String> {
+        let mut out = String::new();
+        if let Some(tag) = &self.tag {
+            if !is_ident(tag) {
+                return None;
+            }
+            out.push_str(tag);
+        }
+        for (name, value) in &self.attrs {
+            if let Some(of) = name.strip_prefix("\0tag:") {
+                if !is_ident(of) {
+                    return None;
+                }
+                out.push_str(&format!(".gloss-sc-{of}"));
+                continue;
+            }
+            if !is_ident(name) {
+                return None;
+            }
+            out.push('[');
+            out.push_str(&data_attribute(name));
+            if let Some(v) = value {
+                out.push('=');
+                out.push_str(&crate::style::css_string(v));
+            }
+            out.push(']');
+        }
+        (!out.is_empty()).then_some(out)
+    }
+}
+
+impl Selector {
+    fn to_css(&self) -> Option<String> {
+        let mut out = String::new();
+        for (i, part) in self.parts.iter().enumerate() {
+            if i > 0 {
+                out.push_str(match self.combinators[i - 1] {
+                    Combinator::Child => " > ",
+                    Combinator::Descendant => " ",
+                });
+            }
+            out.push_str(&part.to_css()?);
+        }
+        Some(out)
+    }
+}
+
+impl Compound {
+    /// Whether `html` holds every tag, class and attribute name this compound
+    /// asks for: if not, it matches nothing there.
+    fn may_match(&self, html: &str) -> bool {
+        let tag_ok = self.tag.as_ref().is_none_or(|t| {
+            html.match_indices(&format!("<{t}"))
+                .any(|(i, m)| matches!(html.as_bytes().get(i + m.len()), Some(b' ' | b'>')))
+        });
+        tag_ok
+            && self
+                .attrs
+                .iter()
+                .all(|(name, _)| match name.strip_prefix("\0tag:") {
+                    Some(of) => html.contains(&format!("gloss-sc-{of}")),
+                    None => html.contains(&data_attribute(name)),
+                })
+    }
+}
+
+impl Sheet {
+    /// The rules as CSS, each selector inside `scope` (`.yomitan-glossary
+    /// [data-dictionary="D"]`), in their order, written from the checked
+    /// values: no at-rule, no `url()`, nothing outside the subset (ANK-023).
+    pub fn to_css(&self, scope: &str) -> String {
+        self.to_css_for(scope, None)
+    }
+
+    /// [`Sheet::to_css`] without the rules that cannot match anything in
+    /// `html` (a card carries only the CSS its glossary uses).
+    pub fn to_css_used(&self, scope: &str, html: &str) -> String {
+        self.to_css_for(scope, Some(html))
+    }
+
+    fn to_css_for(&self, scope: &str, html: Option<&str>) -> String {
+        let mut rules: Vec<&Rule> = self.rules.iter().collect();
+        rules.sort_by_key(|r| r.order);
+        let mut out = String::new();
+        for r in rules {
+            if let Some(html) = html
+                && !r.selector.parts.iter().all(|p| p.may_match(html))
+            {
+                continue;
+            }
+            let (Some(selector), declarations) = (r.selector.to_css(), r.style.to_css()) else {
+                continue;
+            };
+            if declarations.is_empty() {
+                continue;
+            }
+            out.push_str(&format!("{scope} {selector} {{ {declarations} }}\n"));
         }
         out
     }
@@ -469,6 +679,52 @@ mod tests {
         );
     }
 
+    // T-DIC-035 (the editor's feedback)
+    #[test]
+    fn the_check_tells_what_applies_and_what_is_left_out() {
+        let report = Sheet::check(
+            r#"
+            span[data-sc-class="tag"] { color: red; position: absolute; font-family: serif }
+            div, a:hover { margin: 1em }
+            li { & > ul { list-style-type: none } }
+            @media (min-width: 1px) { span { color: blue } }
+            @import url(http://evil/x.css);
+            color: green;
+            span + span { color: pink }
+            ul { cursor: pointer }
+            "#,
+        );
+        assert_eq!(report.rules, 3, "{report:?}");
+        assert_eq!(
+            report.dropped,
+            ["position", "font-family", "cursor", "color"]
+        );
+        assert_eq!(
+            report.ignored,
+            [
+                "a:hover",
+                "@media (min-width: 1px)",
+                "span + span",
+                "@import url(http://evil/x.css)"
+            ]
+        );
+        // what the check counts is what the lookup applies
+        let sheet = Sheet::parse("div, a:hover { margin: 1em } ul { cursor: pointer }");
+        assert_eq!(sheet.rules.len(), 1);
+        let unclosed = Sheet::check("span { color: red");
+        assert_eq!(
+            (unclosed.rules, &unclosed.ignored[..]),
+            (0, &["span {".to_string()][..])
+        );
+        let long = Sheet::check(&format!("#{} {{ color: red }}", "x".repeat(200)));
+        assert_eq!(
+            long.ignored[0].chars().count(),
+            REPORT_TEXT + 1,
+            "cut, with …"
+        );
+        assert_eq!(Sheet::check(""), Report::default());
+    }
+
     #[test]
     fn hostile_css_is_harmless() {
         let sheet = Sheet::parse(
@@ -479,5 +735,40 @@ mod tests {
         // a deep nest neither overflows nor takes long
         let deep = "a {".repeat(5000) + &"}".repeat(5000);
         let _ = Sheet::parse(&deep);
+    }
+
+    // T-ANK-023
+    #[test]
+    fn a_sheet_is_written_back_scoped_with_only_the_subset() {
+        let sheet = Sheet::parse(
+            r#"
+            @import url(http://example.org/x.css);
+            span[data-sc-content="tag"] { color: red; position: absolute }
+            .gloss-sc-div > li[data-sc用例] { font-weight: bold }
+            a:hover { color: blue }
+            div { background: url(http://example.org/x.png) }
+            [data-sc-x="</style><script>"] { color: green }
+            "#,
+        );
+        let css = sheet.to_css(r#".yomitan-glossary [data-dictionary="D"]"#);
+        assert_eq!(
+            css,
+            ".yomitan-glossary [data-dictionary=\"D\"] span[data-sc-content=\"tag\"] { color:#ff0000; }\n\
+             .yomitan-glossary [data-dictionary=\"D\"] .gloss-sc-div > li[data-sc用例] { font-weight:bold; }\n\
+             .yomitan-glossary [data-dictionary=\"D\"] [data-sc-x=\"\\3c /style\\3e \\3c script\\3e \"] { color:#008000; }\n"
+        );
+        assert!(!css.contains("url(") && !css.contains('@') && !css.contains('<'));
+        // only what the HTML can match
+        let used = sheet.to_css_used(
+            ".g",
+            r#"<li class="gloss-sc-li"><span class="gloss-sc-span" data-sc-content="tag">x</span></li>"#,
+        );
+        assert_eq!(
+            used,
+            ".g span[data-sc-content=\"tag\"] { color:#ff0000; }\n"
+        );
+        assert_eq!(sheet.to_css_used(".g", "<b>plain</b>"), "");
+        assert_eq!(data_attribute("content"), "data-sc-content");
+        assert_eq!(data_attribute("用例囲み-g"), "data-sc用例囲み-g");
     }
 }

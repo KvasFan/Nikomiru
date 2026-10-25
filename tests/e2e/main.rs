@@ -102,6 +102,569 @@ fn files_open_from_the_command_line_and_by_drag_and_drop() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-011
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn s_saves_the_frame_shown_in_the_pictures_folder() {
+    let mut desk = Desktop::start();
+    let pictures = desk.path("pictures");
+    desk.set_env("XDG_PICTURES_DIR", &pictures.to_string_lossy());
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    h.key("KeyS");
+    let saved = h.wait("screenshot-saved");
+    let path = std::path::PathBuf::from(saved["path"].as_str().unwrap());
+    assert_eq!(path.parent(), Some(pictures.join("Nikomiru").as_path()));
+    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(
+        name.starts_with("av_basic ") && name.ends_with(".png"),
+        "{name}"
+    );
+    let png = std::fs::read(&path).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let int = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
+    assert_eq!((int(16), int(20)), (1280, 720), "the video's own size");
+    // T-KEY-005: S held down saves one picture, not one per repeat
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "KeyS", "repeat": 10 }));
+    h.wait("screenshot-saved");
+    std::thread::sleep(Duration::from_millis(1500));
+    let files = std::fs::read_dir(pictures.join("Nikomiru"))
+        .unwrap()
+        .count();
+    assert_eq!(files, 2);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014 (Ctrl+Enter), T-PERF-08
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_is_made_from_the_popup() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\ntags = [\"mine\"]\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    // the check found no card: +
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+
+    // Ctrl+Enter makes the card of the entry the keyboard is on
+    let started = std::time::Instant::now();
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = match h
+        .try_cmd(serde_json::json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }))
+    {
+        Ok(v) => v,
+        Err(e) => panic!("{e}\nstate: {}\nlog:\n{}", h.state(), desk.log()),
+    };
+    let elapsed = started.elapsed();
+    eprintln!("T-PERF-08 Ctrl+Enter → card-created: {elapsed:?}");
+    assert!(elapsed <= Duration::from_secs(3), "T-PERF-08: {elapsed:?}");
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let anki = fake.collection();
+        let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+        assert_eq!(
+            (note.deck.as_str(), note.model.as_str()),
+            ("Lapis", "Lapis")
+        );
+        assert_eq!(note.tags, ["mine", "nikomiru", "video"]);
+        let field = |name: &str| {
+            note.fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(field("Expression"), "食べる");
+        assert_eq!(field("ExpressionFurigana"), "食[た]べる");
+        assert_eq!(field("Sentence"), "<b>食べました</b>");
+        assert_eq!(field("FreqSort"), "120");
+        assert_eq!(field("IsWordAndSentenceCard"), "x");
+        assert!(
+            field("Glossary").contains("to eat"),
+            "{}",
+            field("Glossary")
+        );
+        let misc = field("MiscInfo");
+        assert!(
+            misc.contains("nikomiru://source?v=1&amp;kind=video&amp;uid=video%2Fav_basic&amp;ep=0&amp;startMs=1880&amp;endMs=2700"),
+            "{misc}"
+        );
+        assert!(
+            misc.ends_with(">av_basic</a> 00:00:01 - 00:00:02"),
+            "{misc}"
+        );
+        let audio = field("SentenceAudio");
+        let picture = field("Picture");
+        assert!(
+            audio.starts_with("[sound:nikomiru_") && audio.ends_with(".m4a]"),
+            "{audio}"
+        );
+        assert!(
+            picture.starts_with("<img src=\"nikomiru_") && picture.ends_with(".jpg\">"),
+            "{picture}"
+        );
+        let names: Vec<&String> = anki.media.keys().collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        let jpeg = anki
+            .media
+            .iter()
+            .find(|(n, _)| n.ends_with(".jpg"))
+            .unwrap()
+            .1;
+        assert_eq!(&jpeg[..3], [0xFF, 0xD8, 0xFF]);
+    }
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+
+    // ✓↩: the menu, then overwrite (ANK-037): the same note
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "overwrite" }));
+    let again = h.wait("card-created");
+    assert_eq!(again["note_id"].as_u64(), Some(note_id));
+    assert_eq!(fake.collection().notes.len(), 1);
+    assert!(fake.actions().contains(&"updateNoteFields".to_string()));
+    // add anyway: a second note
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "add-anyway" }));
+    let second = h.wait("card-created")["note_id"].as_u64().unwrap();
+    assert_ne!(second, note_id);
+    assert_eq!(fake.collection().notes.len(), 2);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // ANK-039: the cards made are in the library
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let card = library.mined_card(second).unwrap().unwrap();
+    assert_eq!(
+        (card.expression.as_str(), card.video_uid.as_str()),
+        ("食べる", "video/av_basic")
+    );
+    assert_eq!((card.start_ms, card.end_ms), (1880, 2700));
+    assert_eq!(library.mined_card_count().unwrap(), 2);
+}
+
+// T-ANK-037: a card made after its popup closed is still the last card
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_finished_after_its_popup_closed_is_the_last_card() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    // the card is asked for, the popup closes before Anki answers
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.key("Escape");
+    h.state_until("no popup", |s| s["popups"] == serde_json::json!([]));
+    let note_id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    // the word again: ✓↩ on that card
+    h.cmd(serde_json::json!({ "cmd": "lookup", "text": "食べました" }));
+    h.wait("popup-rendered");
+    h.state_until("the last card", |s| s["popups"][0]["cards"][0] == "last");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "overwrite" }));
+    assert_eq!(h.wait("card-created")["note_id"].as_u64(), Some(note_id));
+    assert_eq!(fake.collection().notes.len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-POP-014: a settings page over the popups takes their keys
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_page_over_the_popups_takes_their_keys() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    h.state_until("the page", |s| s["anki_page"]["open"] == true);
+    // Ctrl+Enter belongs to the popup under the page: no card
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    // Esc closes the page; the popup and its pause wait under it
+    h.key("Escape");
+    let s = h.state_until("the page closed", |s| s["anki_page"]["open"] == false);
+    assert_eq!(s["popups"].as_array().map(Vec::len), Some(1), "{s}");
+    assert_eq!(s["popups"][0]["cards"][0], "add", "{s}");
+    assert_eq!(s["paused"], true, "{s}");
+    assert!(!fake.actions().contains(&"addNote".to_string()));
+    // the keys are the popup's again
+    h.key("Escape");
+    h.state_until("the popup closed", |s| s["popups"] == serde_json::json!([]));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-ANK-052, T-APP-001 with a link
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_link_reopens_the_scene_and_a_moved_video_is_located() {
+    let mut desk = Desktop::start();
+    let videos = desk.path("videos");
+    std::fs::create_dir_all(&videos).unwrap();
+    let scene = videos.join("scene.mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &scene).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&scene.to_string_lossy());
+    h.wait("file-loaded");
+    // the second cue is [5.0, 5.5]; the link's clip is padded around it
+    let link = "nikomiru://source?v=1&kind=video&uid=video%2Fscene&ep=0&startMs=4880&endMs=5700&sourceId=12345678-1234-4234-8234-123456789abc";
+    let at_the_cue = |s: &serde_json::Value| {
+        s["paused"] == true && (time_pos(s) - 5.0).abs() < 0.06 && s["loaded"] == true
+    };
+
+    // the video moved: the link offers to locate it
+    let moved = videos.join("scene-moved.mkv");
+    std::fs::rename(&scene, &moved).unwrap();
+    h.cmd(serde_json::json!({ "cmd": "open", "path": link }));
+    let s = h.state_until("the offer to locate", |s| !s["missing_link"].is_null());
+    assert_eq!(s["missing_link"]["uid"], "video/scene");
+    assert_eq!(s["missing_link"]["path"], scene.to_string_lossy().as_ref());
+    h.cmd(serde_json::json!({ "cmd": "locate", "path": moved.to_string_lossy() }));
+    h.wait("file-loaded");
+    let s = h.state_until("at the cue, paused", at_the_cue);
+    assert!(s["missing_link"].is_null());
+
+    // from a second launch, as the desktop passes a link from Anki
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Space" }));
+    h.state_until("playing", |s| s["paused"] == false);
+    let mut second = desk.app(&[link]).spawn().unwrap();
+    assert!(exit_status(&mut second, Duration::from_secs(15)).success());
+    h.wait("file-loaded");
+    h.state_until("at the cue again, paused", at_the_cue);
+
+    // a link that is not one: a message, nothing opens
+    h.cmd(serde_json::json!({ "cmd": "open", "path": "nikomiru://source?v=1&kind=video&uid=%2Fetc%2Fpasswd&ep=0&startMs=0&endMs=0&sourceId=12345678-1234-4234-8234-123456789abc" }));
+    let s = h.state_until("the message", |s| {
+        s["toast"]
+            .as_str()
+            .is_some_and(|t| t.contains("not a Nikomiru link"))
+    });
+    assert_eq!(s["title"], "scene-moved.mkv");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // the library keeps the new place
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let record = library.video("video/scene").unwrap().unwrap();
+    assert_eq!(record.path, moved.to_string_lossy());
+}
+
+// T-ANK-006, T-ANK-011, T-SEC-008, SET-002 for Anki
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_anki_settings_test_create_lapis_and_save() {
+    use std::os::unix::fs::PermissionsExt;
+    let fake = nikomiru_anki::fake::FakeAnki::start().unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\ndeck = \"Default\"\nnote_type = \"Basic\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    // the page reads what Anki has at once
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    let s = h.state_until("the lists", |s| !s["anki_page"]["models"].is_null());
+    assert_eq!(s["anki_page"]["open"], true);
+    assert_eq!(s["anki_page"]["models"], serde_json::json!(["Basic"]));
+    assert_eq!(
+        s["anki_page"]["fields"],
+        serde_json::json!(["Front", "Back"])
+    );
+    // Create Lapis deck: the page then chooses Lapis and reads its fields
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "create-lapis" }));
+    let s = h.state_until("Lapis", |s| {
+        s["anki_page"]["fields"]
+            .as_array()
+            .is_some_and(|f| f.len() == 22)
+    });
+    assert_eq!(
+        s["anki_page"]["models"],
+        serde_json::json!(["Basic", "Lapis"])
+    );
+    // the choice of Lapis is saved (ANK-011)
+    let file = desk.path("config/nikomiru/config.toml");
+    let saved = support::until(Duration::from_secs(10), "the Lapis choice saved", || {
+        let text = std::fs::read_to_string(&file).ok()?;
+        let config = nikomiru_core::Config::from_toml(&text).ok()?;
+        (config.anki.deck == "Lapis").then_some(config)
+    });
+    assert_eq!(saved.anki.note_type, "Lapis");
+    assert_eq!(
+        saved.anki.field_mapping["Lapis"]["Expression"],
+        "{expression}"
+    );
+    // a deck Anki does not have is reported (ANK-006)
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "test", "config": format!("url = \"{}\"\ndeck = \"Nowhere\"", fake.url()) }));
+    h.state_until("the missing deck", |s| {
+        s["anki_page"]["status"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("Nowhere"))
+            && s["anki_page"]["status"]["ok"] == false
+    });
+    // Save: the file, readable by the user only
+    let url = fake.url();
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": format!(
+        "url = \"{url}\"\ndeck = \"Lapis\"\nnote_type = \"Lapis\"\ntags = [\"from-settings\"]\naudio_pad_head_ms = 0\n"
+    ) }));
+    h.state_until("saved", |s| {
+        s["anki_page"]["status"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("saved"))
+    });
+    let text = std::fs::read_to_string(&file).unwrap();
+    let config = nikomiru_core::Config::from_toml(&text).unwrap();
+    assert_eq!(
+        (config.anki.deck.as_str(), config.anki.note_type.as_str()),
+        ("Lapis", "Lapis")
+    );
+    assert_eq!(config.anki.tags, ["from-settings"]);
+    assert_eq!(config.player.mpv_options["ao"], "null", "the rest is kept");
+    let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    // the next card follows the new settings
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "close" }));
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    let id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    {
+        let anki = fake.collection();
+        let note = anki.notes.iter().find(|n| n.id == id).unwrap();
+        assert_eq!(note.deck, "Lapis");
+        assert_eq!(note.tags, ["from-settings", "nikomiru", "video"]);
+        let misc = &note.fields.iter().find(|(n, _)| n == "MiscInfo").unwrap().1;
+        assert!(
+            misc.contains("startMs=2000&amp;endMs=2700"),
+            "no head pad: {misc}"
+        );
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+/// Screenshots of the interface with the project's own media and test
+/// dictionaries, for review and for the repository page (ROADMAP M4), into
+/// the folder named by `NIKOMIRU_SCREENSHOTS`; without it, nothing.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, spectacle and `cargo xtask fixtures`"]
+fn screenshots_of_the_interface() {
+    let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from) else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let fake = nikomiru_anki::fake::FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let online = nikomiru_online::fake::FakeOnline::start().unwrap();
+    {
+        let mut d = online.data();
+        d.entries = vec![(1, "av basic".into(), true)];
+        d.files.insert(
+            1,
+            vec![
+                ("av basic 01.ja.srt".into(), ONLINE_SRT.as_bytes().to_vec()),
+                ("av basic 01.en.srt".into(), ONLINE_SRT.as_bytes().to_vec()),
+                ("av basic S1.zip".into(), Vec::new()),
+            ],
+        );
+    }
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\", deband = \"yes\", scale = \"ewa_lanczossharp\" }}\n\
+         [anki]\nurl = \"{}\"\n[online]\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.url(),
+        online.jimaku_url()
+    ));
+    // av_basic's tracks over a calm gradient, made here: the test pattern
+    // would take the eye off the interface
+    let scene = desk.path("av basic.mkv");
+    let status = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i"])
+        .arg("gradients=s=1280x720:d=12:r=25:c0=0x16213e:c1=0x3a2a5e:c2=0x0f3d4a:n=3:speed=0.004")
+        .arg("-i")
+        .arg(fixture("av_basic.mkv"))
+        .args([
+            "-map", "0:v", "-map", "1:a", "-map", "1:s", "-c:v", "libx264",
+        ])
+        .args([
+            "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "copy", "-c:s", "copy",
+        ])
+        .arg("-shortest")
+        .arg(&scene)
+        .status()
+        .unwrap();
+    assert!(status.success(), "ffmpeg: {status}");
+    let (mut app, mut h) = desk.launch();
+    h.open(&scene.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("popup.png"));
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.wait("card-created");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("popup-card-menu.png"));
+    h.key("Escape");
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
+    h.state_until("the lists", |s| {
+        s["anki_page"]["fields"]
+            .as_array()
+            .is_some_and(|f| f.len() == 22)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("anki-settings.png"));
+    // the toast of the card gone
+    std::thread::sleep(Duration::from_secs(2));
+    for tab in ["player", "services"] {
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
+        h.state_until("the tab", |s| s["settings_tab"] == tab);
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join(format!("settings-{tab}.png")));
+    }
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+    h.state_until("the results", |s| {
+        s["online_page"]["results"]["files"]
+            .as_array()
+            .is_some_and(|f| f.len() == 3)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("online-search.png"));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "close" }));
+    h.key("KeyL");
+    h.state_until("the list", |s| s["sub_list_open"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("subtitle-list.png"));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-E2E-ANKI-001 (L7): a real Anki with AnkiConnect, on a throwaway profile
+// named by NIKOMIRU_ANKI_URL (`cargo xtask test --anki-e2e`)
+#[test]
+#[ignore = "L7: needs a running Anki with AnkiConnect (NIKOMIRU_ANKI_URL) and the L6 tools"]
+fn l7_a_card_in_a_real_anki() {
+    let url = std::env::var("NIKOMIRU_ANKI_URL")
+        .expect("NIKOMIRU_ANKI_URL: the AnkiConnect of a throwaway Anki profile");
+    let client = nikomiru_anki::Client::new(&url, "").unwrap();
+    // Create Lapis deck, twice: idempotent
+    nikomiru_anki::lapis::create(&client).unwrap();
+    assert_eq!(
+        nikomiru_anki::lapis::create(&client).map(|m| m.setup),
+        Ok(nikomiru_anki::lapis::Setup::AlreadyExists)
+    );
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{url}\"\n"
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] != "unknown");
+    // add anyway: the profile may hold the card of an earlier run
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "add-anyway" }));
+    let id = h.wait("card-created")["note_id"].as_u64().unwrap();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let note = client.notes_info(&[id]).unwrap().remove(0).unwrap();
+    assert_eq!(note.model, "Lapis");
+    let field = |name: &str| {
+        note.fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(field("Expression"), "食べる");
+    assert_eq!(field("Sentence"), "<b>食べました</b>");
+    assert!(
+        field("MiscInfo").contains("nikomiru://source?v=1"),
+        "{}",
+        field("MiscInfo")
+    );
+    // the media are in collection.media
+    let names: Vec<String> = [field("SentenceAudio"), field("Picture")]
+        .iter()
+        .filter_map(|v| {
+            let start = v.find("nikomiru_")?;
+            let end = v[start..].find([']', '"'])?;
+            Some(v[start..start + end].to_string())
+        })
+        .collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert_eq!(client.media_exist(&names).unwrap(), [true, true]);
+}
+
+// SET-002, T-SEC-008: a config.toml that cannot be read is never written over
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn anki_settings_do_not_overwrite_a_config_file_that_did_not_load() {
+    let mut desk = Desktop::start();
+    let broken = "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\"\n# the user's comment\n";
+    desk.write_config(broken);
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": "deck = \"Mining\"" }));
+    h.state_until("not saved", |s| {
+        s["anki_page"]["status"]["ok"] == false
+            && s["anki_page"]["status"]["text"]
+                .as_str()
+                .is_some_and(|t| t.contains("config.toml"))
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let text = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).unwrap();
+    assert_eq!(text, broken, "the user's file is untouched");
+}
+
 // T-PRV-002
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -282,6 +845,68 @@ fn a_subtitle_file_next_to_the_video_wins_over_embedded_tracks() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SUB-006: names that differ from the video's
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_of_the_same_episode_open_with_the_video() {
+    let srt = |text: &str| format!("1\n00:00:01,000 --> 00:00:03,000\n{text}\n");
+    let menu = |s: &serde_json::Value| -> Vec<String> {
+        subs(s)["menu"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["kind"] == "file")
+            .map(|m| m["name"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    // a release: the episode in a different name, another episode beside it
+    let release = tempfile::tempdir().unwrap();
+    let video = release.path().join("[Group] Show - 02 [1080p].mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &video).unwrap();
+    std::fs::write(release.path().join("[Group] Show - 03 [1080p].mkv"), b"").unwrap();
+    std::fs::write(release.path().join("Show 02.ja.srt"), srt("二話の字幕")).unwrap();
+    std::fs::write(release.path().join("Show 03.ja.srt"), srt("三話の字幕")).unwrap();
+    std::fs::create_dir(release.path().join("Subs")).unwrap();
+    std::fs::write(
+        release.path().join("Subs/Show_E02.en.srt"),
+        srt("Episode two"),
+    )
+    .unwrap();
+    // a film: its subtitles in a folder of its own
+    let film = tempfile::tempdir().unwrap();
+    let movie = film.path().join("Movie (2016).mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &movie).unwrap();
+    std::fs::create_dir_all(film.path().join("Subs/Movie (2016)")).unwrap();
+    std::fs::write(
+        film.path().join("Subs/Movie (2016)/Japanese.srt"),
+        srt("映画の字幕"),
+    )
+    .unwrap();
+    std::fs::write(
+        film.path().join("Subs/Movie (2016)/English.srt"),
+        srt("The film"),
+    )
+    .unwrap();
+
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&video.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["二話の字幕"], "{s}");
+    assert_eq!(menu(&s), ["Show 02.ja.srt", "Show_E02.en.srt"], "{s}");
+
+    h.open(&movie.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["映画の字幕"], "{s}");
+    assert_eq!(menu(&s).len(), 2, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PERF-07
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -304,7 +929,6 @@ fn perf_cues_appear_within_50_ms_of_their_start() {
 
 // T-POP-001, T-POP-002, T-POP-004 with real dictionaries
 // T-PERF-06
-// T-SEC-001
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
@@ -360,6 +984,76 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SEC-001, T-SEC-006
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_hostile_dictionary_entry_shows_only_what_the_allowlist_lets_through() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    // a spy proxy: anything that fetched an address of the entry through the
+    // usual proxy variables would connect here
+    let spy = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    spy.set_nonblocking(true).unwrap();
+    let proxy = format!("http://{}", spy.local_addr().unwrap());
+    for var in [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+    ] {
+        desk.set_env(var, &proxy);
+    }
+    let (mut app, mut h) = desk.launch();
+    // 危険: a <script>, an onclick, a remote image and a javascript: link
+    h.cmd(serde_json::json!({ "cmd": "lookup", "text": "危険" }));
+    let rendered = h.wait("popup-rendered");
+    assert_eq!(
+        rendered["headwords"],
+        serde_json::json!(["危険"]),
+        "{rendered}"
+    );
+    let content = h.cmd(serde_json::json!({ "cmd": "popup_content", "level": 0 }));
+    let section = &content["entries"][0]["sections"][0];
+    assert_eq!(section["dictionary"], "Nikomiru mini-ja", "{content}");
+    assert_eq!(
+        section["glossaries"][0]["blocks"],
+        serde_json::json!([{ "k": "flow", "runs": [
+            { "k": "text", "t": "danger", "s": { "color": "#ff0000" } },
+            { "k": "link", "t": "click", "target": { "kind": "lookup", "to": "click" }, "s": {} }
+        ] }]),
+        "only the span's text and colour and the link's text survive"
+    );
+    let text = content.to_string();
+    for bad in [
+        "alert",
+        "steal",
+        "evil.example",
+        "javascript",
+        "script",
+        "url(",
+    ] {
+        assert!(!text.contains(bad), "{bad} in {text}");
+    }
+    // nothing reached for the network
+    let accepted = spy.accept();
+    assert!(
+        accepted
+            .as_ref()
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::WouldBlock),
+        "the spy proxy was reached: {accepted:?}"
+    );
+    let sockets = support::internet_sockets(app.id());
+    assert!(sockets.is_empty(), "{sockets:#?}");
+    assert!(
+        !support::internet_sockets(std::process::id()).is_empty(),
+        "the check sees the spy's own socket"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-DIC-001, T-DIC-032 from the page
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -410,6 +1104,97 @@ fn a_dropped_dictionary_is_imported_and_used() {
         Some(0),
         "the page is read when it opens"
     );
+}
+
+/// The style of the first text run of `content` that reads `text`.
+fn style_of<'a>(content: &'a serde_json::Value, text: &str) -> Option<&'a serde_json::Value> {
+    match content {
+        serde_json::Value::Object(o) if o.get("t").and_then(|t| t.as_str()) == Some(text) => {
+            o.get("s")
+        }
+        serde_json::Value::Object(o) => o.values().find_map(|v| style_of(v, text)),
+        serde_json::Value::Array(a) => a.iter().find_map(|v| style_of(v, text)),
+        _ => None,
+    }
+}
+
+// T-DIC-035 with a real lookup
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_users_css_saved_on_the_page_styles_the_popup() {
+    // 表 in mini-ja has a note, grey in the dictionary's styles.css
+    let dir = tempfile::tempdir().unwrap();
+    let video = dir.path().join("Ep01.mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &video).unwrap();
+    std::fs::write(
+        dir.path().join("Ep01.ja.srt"),
+        "1\n00:00:00,500 --> 00:00:09,500\n表\n",
+    )
+    .unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    // paused on the cue, so that it stays
+    let open = |desk: &mut Desktop| {
+        let (app, mut h) = desk.launch();
+        h.open(&video.to_string_lossy());
+        h.wait("file-loaded");
+        h.state_until("the cue", |s| visible_text(s) == ["表"]);
+        h.key("Space");
+        h.state_until("paused", |s| s["paused"] == true);
+        (app, h)
+    };
+    let (mut app, mut h) = open(&mut desk);
+    let note = |h: &mut support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+        h.wait("popup-rendered");
+        let content = h.cmd(serde_json::json!({ "cmd": "popup_content", "level": 0 }));
+        let style = style_of(&content, "a table").cloned();
+        h.key("Escape");
+        h.state_until("the popup closed", |s| {
+            s["popups"].as_array().is_some_and(Vec::is_empty)
+        });
+        style.unwrap_or_else(|| panic!("no note in {content}"))
+    };
+    let style = note(&mut h);
+    assert_eq!(style["color"], "#808080", "{style}");
+    assert_eq!(style["italic"], true, "{style}");
+
+    // the page, opened by a drop of the installed zip (refused as the same
+    // revision); then its editor's Save
+    h.drop_files(&[&fixture("dicts/mini-ja.zip")]);
+    let s = h.state_until("the page's list", |s| {
+        s["dictionaries"]["rows"]
+            .as_array()
+            .is_some_and(|r| !r.is_empty())
+    });
+    let id = s["dictionaries"]["rows"][0]["id"].clone();
+    let css = r#"span[data-sc-class="note"] { color: #ff0000; position: fixed }"#;
+    h.cmd(serde_json::json!({ "cmd": "dict_css", "id": id, "css": css }));
+    let s = h.state();
+    assert_eq!(s["dictionaries"]["rows"][0]["userCss"], css, "{s}");
+    assert!(
+        s["toast"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Nikomiru mini-ja"),
+        "{s}"
+    );
+    // Esc closes the page, which covers the popups
+    h.key("Escape");
+
+    // the user's rule comes after the dictionary's and wins; the rest of the
+    // style stays, and what the subset refuses does nothing
+    let style = note(&mut h);
+    assert_eq!(style["color"], "#ff0000", "{style}");
+    assert_eq!(style["italic"], true, "{style}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+
+    // kept for the next start
+    let (mut app, mut h) = open(&mut desk);
+    assert_eq!(note(&mut h)["color"], "#ff0000");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
 // T-POP-014, T-POP-015
@@ -495,6 +1280,402 @@ fn files_dragged_from_another_client_open_and_import() {
     let outcome = source.drag(&[&fixture("dicts/mini-ja.zip")], (640.0, 400.0));
     assert!(outcome.finished, "{outcome:?}");
     h.wait("dictionary-imported");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-REL-001, T-DIC-010: quitting during an import cancels it; the library is
+// closed, nothing is registered and nothing is left to repair or clean up
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn quitting_during_an_import_leaves_nothing_behind() {
+    let mut desk = Desktop::start();
+    let zip = desk.large_dictionary(300_000);
+    let (mut app, mut h) = desk.launch();
+    h.drop_files(&[&zip]);
+    h.state_until("the import running", |s| {
+        s["dictionaries"]["import"]["state"] == "running"
+            && s["dictionaries"]["import"]["done"].as_u64().unwrap_or(0) > 0
+    });
+    let quitting = std::time::Instant::now();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let took = quitting.elapsed();
+    eprintln!("quit during the import: {took:?}");
+    assert!(took < Duration::from_secs(5), "the exit waited {took:?}");
+    assert!(
+        !desk.data_file("library.redb.bak-repair").exists(),
+        "the library was left open"
+    );
+    // the next start: still nothing to repair, nothing registered, no
+    // staging folder left
+    let (mut app, mut h) = desk.launch();
+    h.state();
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(!desk.data_file("library.redb.bak-repair").exists());
+    assert!(
+        desk.registered_dictionaries().is_empty(),
+        "{:?}",
+        desk.registered_dictionaries()
+    );
+    let left: Vec<_> = std::fs::read_dir(desk.data_file("dicts"))
+        .map(|d| d.filter_map(Result::ok).map(|e| e.file_name()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+/// A Japanese subtitle file the fake online service gives.
+const ONLINE_SRT: &str =
+    "1\n00:00:00,500 --> 00:00:04,000\n食べました\n\n2\n00:00:05,000 --> 00:00:08,000\n猫です\n";
+
+fn online_fake() -> nikomiru_online::fake::FakeOnline {
+    let fake = nikomiru_online::fake::FakeOnline::start().unwrap();
+    {
+        let mut d = fake.data();
+        d.entries = vec![(1, "av long".into(), true)];
+        d.files.insert(
+            1,
+            vec![("av long.ja.srt".into(), ONLINE_SRT.as_bytes().to_vec())],
+        );
+    }
+    fake
+}
+
+/// The files kept under `subtitles/<hash>/` of the data folder.
+fn kept_subtitles(desk: &Desktop) -> Vec<std::path::PathBuf> {
+    let root = desk.data_file("subtitles");
+    let mut out = Vec::new();
+    for dir in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        for f in std::fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            out.push(f.path());
+        }
+    }
+    out
+}
+
+// T-MET-007, T-MET-008
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_come_online_for_a_video_without_them() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\nauto_subtitles = true\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.jimaku_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    let s = h.state_until("the online subtitles", |s| s["subtitles"]["cues"] == 2);
+    let source = s["subtitles"]["source"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(source.contains("/subtitles/"), "{s}");
+    let kept = kept_subtitles(&desk);
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(kept[0].file_name().unwrap(), "av_long.ja.srt");
+    assert!(
+        fake.requests()
+            .iter()
+            .all(|r| r.header("authorization") == Some("jimaku-key"))
+    );
+    // the next opening finds them without the network
+    fake.clear_requests();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    h.state_until("the kept subtitles", |s| s["subtitles"]["cues"] == 2);
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-MET-009, PRV-001
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_are_searched_and_used_on_the_online_page() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.jimaku_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    // automatic subtitles are off: nothing was asked
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+    let s = h.state_until("the page", |s| s["online_page"]["open"] == true);
+    assert_eq!(s["online_page"]["query"]["title"], "av long", "{s}");
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+    let s = h.state_until("the results", |s| {
+        s["online_page"]["results"]["files"]
+            .as_array()
+            .is_some_and(|f| !f.is_empty())
+    });
+    let first = &s["online_page"]["results"]["files"][0];
+    assert_eq!(
+        (first["provider"].as_str(), first["name"].as_str()),
+        (Some("Jimaku"), Some("av long.ja.srt"))
+    );
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "use", "index": 0 }));
+    h.state_until("loaded, the page closed", |s| {
+        s["subtitles"]["cues"] == 2 && s["online_page"]["open"] == false
+    });
+    assert_eq!(kept_subtitles(&desk).len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-MET-011, T-SET-008: only the services chosen are asked, set in the settings
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn only_the_subtitle_services_chosen_are_searched() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\nproviders = [\"jimaku\"]\n\
+         jimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n\
+         opensubtitles_api_key = \"os-key\"\nopensubtitles_url = \"{}\"\n",
+        fake.jimaku_url(),
+        fake.opensubtitles_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    let asked_os = |fake: &nikomiru_online::fake::FakeOnline| {
+        fake.requests().iter().any(|r| r.target.starts_with("/os/"))
+    };
+    let search = |h: &mut support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+        h.state_until("the results", |s| {
+            s["online_page"]["busy"] == false && !s["online_page"]["results"].is_null()
+        });
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "close" }));
+    };
+    search(&mut h);
+    assert!(!fake.requests().is_empty());
+    assert!(!asked_os(&fake), "{:?}", fake.requests());
+    // the services are a tab of the settings
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "services" }));
+    let s = h.state_until("the tab", |s| s["services_page"]["open"] == true);
+    assert_eq!(s["settings_tab"], "services");
+    assert_eq!(
+        s["services_page"]["providers"],
+        serde_json::json!(["jimaku"])
+    );
+    h.cmd(serde_json::json!({ "cmd": "services", "providers": ["opensubtitles", "jimaku"] }));
+    h.state_until("saved", |s| {
+        s["services_page"]["status"]["ok"] == true
+            && s["services_page"]["providers"] == serde_json::json!(["opensubtitles", "jimaku"])
+    });
+    let file = desk.path("config/nikomiru/config.toml");
+    let saved = nikomiru_core::Config::from_toml(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved.online.providers, ["opensubtitles", "jimaku"]);
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    search(&mut h);
+    assert!(asked_os(&fake), "{:?}", fake.requests());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-PLY-016, T-PLY-018
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn an_mpv_conf_is_previewed_applied_saved_and_exported() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let conf = desk.path("mpv.conf");
+    std::fs::write(
+        &conf,
+        "# a user's mpv.conf\nbrightness=10\ndeband\nscript=evil.lua\nvideo-zoom=0.25\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("first-frame");
+    let mpv = |h: &mut support::Harness, p: &str| {
+        h.cmd(serde_json::json!({ "cmd": "mpv_get", "property": p }))
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    h.state_until("the page", |s| s["player_page"]["open"] == true);
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "import", "path": conf }));
+    let s = h.state_until("the preview", |s| !s["player_page"]["preview"].is_null());
+    let lines = s["player_page"]["preview"]["lines"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let status = |text: &str| {
+        lines
+            .iter()
+            .find(|l| l["text"] == text)
+            .map(|l| l["status"].as_str().unwrap_or_default().to_string())
+            .unwrap_or_default()
+    };
+    assert_eq!(status("brightness=10"), "Control", "{lines:?}");
+    assert_eq!(status("video-zoom=0.25"), "Raw", "{lines:?}");
+    assert!(status("script").starts_with("Ignored"), "{lines:?}");
+    // nothing changes before it is applied
+    let number = |v: String| v.parse::<f64>().unwrap_or(f64::NAN);
+    assert_eq!(number(mpv(&mut h, "brightness")), 0.0);
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-apply" }));
+    h.state_until("applied", |s| s["player_page"]["set"]["brightness"] == "10");
+    support::until(Duration::from_secs(10), "mpv takes the options", || {
+        (number(mpv(&mut h, "brightness")) == 10.0 && number(mpv(&mut h, "video-zoom")) == 0.25)
+            .then_some(())
+    });
+    assert_eq!(mpv(&mut h, "deband"), "yes");
+    // saved in config.toml: the whole set replaced (PLY-016), `ao` gone
+    let file = desk.path("config/nikomiru/config.toml");
+    support::until(Duration::from_secs(10), "the settings saved", || {
+        let text = std::fs::read_to_string(&file).ok()?;
+        let c = nikomiru_core::Config::from_toml(&text).ok()?;
+        (c.player.mpv_options.get("brightness").map(String::as_str) == Some("10")).then_some(c)
+    });
+    // a preset, and an export mpv reads
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "save-preset", "name": "anime" }));
+    h.state_until("the preset", |s| {
+        s["player_page"]["presets"] == serde_json::json!(["anime"])
+    });
+    let preset = std::fs::read_to_string(desk.path("config/nikomiru/mpv/anime.conf")).unwrap();
+    assert!(preset.starts_with("# Nikomiru "), "{preset}");
+    let out = desk.path("exported.conf");
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "export", "path": out }));
+    let text = support::until(Duration::from_secs(10), "the export", || {
+        std::fs::read_to_string(&out).ok()
+    });
+    for line in ["brightness=10", "deband=yes", "video-zoom=0.25"] {
+        assert!(text.lines().any(|l| l == line), "{line} in {text}");
+    }
+    assert!(!text.contains("script") && !text.contains("ao="), "{text}");
+    // the brightness unset: mpv's own value again
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "load-preset", "name": "anime" }));
+    h.state_until("the preset's preview", |s| {
+        !s["player_page"]["preview"].is_null()
+    });
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-cancel" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-PLY-016: the user's own mpv.conf, while Nikomiru sets no option
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_users_mpv_conf_is_offered_on_the_player_page() {
+    let mut desk = Desktop::start();
+    // no video plays: no `ao=null` needed, and Nikomiru sets no option
+    desk.write_config("");
+    let folder = desk.path("config/mpv");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("mpv.conf"), "brightness=5\nscript=x.lua\n").unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    let s = h.state_until("the offer", |s| !s["player_page"]["preview"].is_null());
+    let page = &s["player_page"];
+    assert!(
+        page["preview"]["source"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("config/mpv/mpv.conf"),
+        "{page}"
+    );
+    assert_eq!(page["status"]["ok"], true, "{page}");
+    assert_eq!(
+        page["import_folder"].as_str(),
+        Some(folder.to_string_lossy().as_ref())
+    );
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "preview-apply" }));
+    h.state_until("applied", |s| s["player_page"]["set"]["brightness"] == "5");
+    // now Nikomiru has its own set: the page opens on it, with no offer
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "player", "action": "open" }));
+    let s = h.state_until("the page", |s| s["player_page"]["open"] == true);
+    assert!(s["player_page"]["preview"].is_null(), "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-018: subtitles written 1.2 s early are put back on the audio
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_are_aligned_with_the_audio() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let early = desk.path("early.srt");
+    std::fs::write(
+        &early,
+        "1\n00:00:00,800 --> 00:00:01,300\n食べました\n\n2\n00:00:03,800 --> 00:00:04,300\n日本語\n\n3\n00:00:06,800 --> 00:00:07,300\nラーメン\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.cmd(serde_json::json!({ "cmd": "drop", "paths": [early] }));
+    h.state_until("the early subtitles", |s| {
+        s["subtitles"]["source"]
+            .as_str()
+            .is_some_and(|k| k.contains("early.srt"))
+            && s["subtitles"]["cues"] == 3
+    });
+    h.cmd(serde_json::json!({ "cmd": "align" }));
+    let s = h.state_until("aligned", |s| s["subtitles"]["delay_ms"] != 0);
+    let delay = s["subtitles"]["delay_ms"].as_i64().unwrap();
+    assert!((delay - 1_200).abs() <= 100, "{s}");
+    assert!(
+        s["toast"].as_str().unwrap_or_default().contains("ms"),
+        "{s}"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-017: a second track under the first, following its offset
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_secondary_subtitle_follows_the_main_one() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    let s = h.state_until("the main subtitles", |s| s["subtitles"]["cues"] == 3);
+    let main = s["subtitles"]["source"].as_str().unwrap().to_string();
+    let other = if main == "track:1" {
+        "track:2"
+    } else {
+        "track:1"
+    };
+    h.cmd(serde_json::json!({ "cmd": "secondary", "key": other, "obscure": "blur" }));
+    h.state_until("the secondary", |s| s["secondary"]["cues"] == 3);
+    // its own obscuring, the main one's offset
+    h.key("KeyX");
+    let s = h.state_until("the offset followed", |s| {
+        s["subtitles"]["delay_ms"] != 0 && s["secondary"]["delay_ms"] == s["subtitles"]["delay_ms"]
+    });
+    assert_eq!(s["subtitles"]["obscure"], "none", "{s}");
+    assert_eq!(s["secondary"]["source"], other, "{s}");
+    // shown with the main cue
+    h.wait("cue-shown");
+    let s = h.state_until("both shown", |s| {
+        s["secondary"]["visible"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    });
+    assert_eq!(s["secondary"]["obscure"], "blur", "{s}");
+    // off again
+    h.cmd(serde_json::json!({ "cmd": "secondary", "key": "off" }));
+    h.state_until("no secondary", |s| s["secondary"]["source"].is_null());
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

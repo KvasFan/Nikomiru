@@ -142,6 +142,25 @@ impl Paths {
         self.runtime_dir.as_ref().map(|d| d.join("nikomiru.sock"))
     }
 
+    /// Folder of the mpv option presets (PLY-016).
+    pub fn mpv_presets_dir(&self) -> PathBuf {
+        self.config_dir.join("mpv")
+    }
+
+    /// The user's own `mpv.conf`, which mpv reads and Nikomiru does not
+    /// (`config=no`, PLY-005): offered on the Player page (PLY-016).
+    pub fn user_mpv_conf(&self) -> PathBuf {
+        self.config_dir.parent().map_or_else(
+            || self.config_dir.join("mpv.conf"),
+            |c| c.join("mpv/mpv.conf"),
+        )
+    }
+
+    /// Folder of the subtitles downloaded for the videos (MET-008).
+    pub fn subtitles_dir(&self) -> PathBuf {
+        self.data_dir.join("subtitles")
+    }
+
     /// Folder of the screenshots (PLY-011).
     pub fn screenshots_dir(&self) -> PathBuf {
         self.pictures_dir.join("Nikomiru")
@@ -186,6 +205,10 @@ mod tests {
             PathBuf::from("/home/u/Pictures/Nikomiru")
         );
         assert_eq!(p.socket_path(), None);
+        assert_eq!(
+            p.user_mpv_conf(),
+            PathBuf::from("/home/u/.config/mpv/mpv.conf")
+        );
     }
 
     #[test]

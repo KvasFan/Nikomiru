@@ -20,8 +20,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
         └──► M3 Dictionaries and lookup ────┴───────────────────┘
                 (pure logic: can proceed in parallel with M1/M2)
 
-0.1.0 ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
-      ──► M7 Online: metadata and subtitles (0.4.0) ──► M8 Stabilization ══► 1.0.0
+0.1.0 ◄── M4b Online subtitles + mpv presets (D-14; in 0.1.0 if D-15 is approved)
+      ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
+      ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -30,10 +31,11 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M1 | Minimal player | M | — | in progress |
 | M2 | Own subtitle rendering | L | — | done |
 | M3 | Dictionaries and lookup | XL | — | in progress |
-| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | not started |
+| M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
+| M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15, proposed) | in progress |
 | M5 | Library and word audio | L | 0.2.0 | not started |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
-| M7 | Online metadata and subtitles | M | 0.4.0 | not started |
+| M7 | Online metadata | M | 0.4.0 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
 
 ---
@@ -183,17 +185,18 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 **Status as of 2026-10-20**
 
 - Done: Yomitan import (safe, atomic, cancellable; T-DIC-001…003, 010…015, T-SEC-002), redb storage with term heads in the indexes and a Bloom filter per dictionary, deinflector on the `assets/transforms` tables, lookup (merging, sorting with dictionary priority, budget in groups, redirects, mixed orthography, Kansai exception, frequencies, pitch accent, kanji, LRU cache), registry in `library.redb` (order, enabled, update by revision, deletion, cleanup after a crash), the popup (spike S4, [ADR 0005](adr/0005-popup-qml.md)) with pause/resume, nesting, placement and highlighting, `--import-dictionary` on the command line.
-- Conformance: 168 text vectors and 233 lookup vectors from Fushi, all green.
+- Conformance: 168 text vectors, 243 lookup vectors and 39 import vectors from Fushi, green except 4 import vectors marked as known failures: Unicode Path fields that are malformed or that APPNOTE says to ignore (bit 11 set, unknown version, a record overrunning its block, an empty name), which the `zip` crate applies or refuses where Fushi keeps the raw name.
 - Measured: T-PERF-04 p95 1.7 ms / p99 2.2 ms, T-PERF-05 ≤ 4.4 s and 261 MiB per 300k-entry dictionary, T-PERF-06 p95 21 ms; with Jitendex and JMdict, click → popup 20–64 ms in a release build (ADR 0005).
 - Also done: the dictionaries page (import with progress and cancel, update offer, order, enable, rename, popup block state, delete), hover with Shift (POP-003), Tab/Shift+Tab/Alt+wheel between entries (POP-014; Enter and Ctrl+Enter wait for audio in M5 and cards in M4), replay and go to sentence (POP-015), `[lookup]` settings, library writes off the UI thread.
-- Open: selection inside glossaries for nested popups (POP-012; links already open them), the user's CSS per dictionary (DIC-035), the manual test with real dictionaries.
+- Done on 2026-10-20: selection inside glossaries opens a nested popup (POP-012), the popup resized by its border with its maximum size in `config.toml` (POP-006), the dictionaries page grouped by type with drag and drop between positions (DIC-030, DIC-031) and the user's CSS per dictionary edited on it (DIC-035), registry edits in one transaction, imports cancelled promptly and waited for at exit, T-SEC-001 on the real popup.
+- Open: the manual test with real dictionaries; the 4 Unicode Path known failures (they need a zip reader of our own, or a fix upstream).
 - UI on egui (D-13, 2026-10-20): decided after spike S5, which measured iced and egui against Qt Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Work track 5 done on 2026-10-20: window, video and control bar; subtitle overlay and list; popups from a typed view model with images decoded on the lookup thread; dictionaries page; file dialogs through the XDG portal; drag and drop on Wayland with the app's own data device (L6 with a real drag from another client); Qt, QML, cxx-qt and the C++ code removed. Still to check on the developer's session: fractional scale, Japanese IME, Orca, T-PERF-03 at 4K under load.
 
 **Exit criteria**
 
 - [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
 - [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
-- [ ] T-SEC-001 (dictionary content produces only allowlisted view-model nodes) and T-SEC-002 (malicious ZIPs) green.
+- [x] T-SEC-001 (dictionary content produces only allowlisted view-model nodes) and T-SEC-002 (malicious ZIPs) green.
 - [ ] UI on egui (D-13): the L6 suite green on the egui build; T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)); no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
@@ -222,13 +225,51 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
   Constraints: the logo and icons are original GPL-3.0-only works in `assets/brand/` (SPECIFICATION §3.4). Screenshots show only project-made media and the project's test dictionaries (`mini-ja`): no anime frames (copyright), no Creative Commons media, no content from third-party dictionaries. They are taken with the GUI harness in an off-screen compositor, so they can be regenerated for every release.
 
+**Status as of 2026-10-21**
+
+- Decided in [ADR 0007](adr/0007-mining-to-anki.md): the split between `nikomiru-anki` and the `anki` worker, AnkiConnect's legacy API over reqwest without proxy or pooled connections, retries by phase, a fake AnkiConnect of our own for the tests, Lapis 1.7.0 from the upstream tag, escaping and a Yomitan-shaped glossary, media always uploaded as base64, "session" as the run of the app, `mined_cards` as a new table.
+- Done: the AnkiConnect client and its fake (T-ANK-001…005), Lapis 1.7.0 vendored and "Create Lapis deck" (ANK-010…013), the field composer with the Yomitan-shaped glossary, its images and the scoped CSS of the subset (ANK-020…027), the sentence audio and the card image (ANK-033, ANK-034; the player's commands with a reply, also for `S`, PLY-011), the + / ✓ / ✓↩ buttons with their menu and Ctrl+Enter, the `anki` worker (checks, mining, overwrite, rollback, Open in Anki), `mined_cards`, the `[anki]` settings and their page, `nikomiru://source` links with "Locate the file" (ANK-050…053), `assets/nikomiru.desktop` and `cargo xtask install` (APP-002). Every M4 requirement has its tests.
+- Measured: T-PERF-08, Ctrl+Enter → `card-created` against the fake AnkiConnect with the real ffmpeg and mpv, 276 ms (limit 3 s).
+- Open: T-E2E-ANKI-001 against a real Anki (`cargo xtask test --anki-e2e`, needs Anki with AnkiConnect, not installed on the development machine), the manual "Mining" checklist with real episodes and AnkiDroid, the tag.
+- Release tasks done on 2026-10-25: the workspace at 0.1.0, the CHANGELOG, the repository page restyled with a proposed logo (`assets/brand/`) and screenshots from the GUI harness (`docs/images/`), `THIRD_PARTY_LICENSES.html` from `cargo xtask ci --full`.
+
 **Exit criteria**
 
-- [ ] T-ANK-* green on mocks (wiremock).
+- [x] T-ANK-* green on the fake AnkiConnect ([ADR 0007](adr/0007-mining-to-anki.md)).
 - [ ] T-E2E-ANKI-001 (real Anki in Xvfb with AnkiConnect, run nightly or by hand) green.
-- [ ] T-PERF-08 ≤ 3 s.
+- [x] T-PERF-08 ≤ 3 s (276 ms against the fake AnkiConnect).
 - [ ] Manual checklist "Mining": 10 cards created from 2 real episodes, checked in Anki desktop and after syncing to AnkiDroid (audio, image, bold word in the sentence, return link that reopens the scene).
 - [ ] **Release 0.1.0**: tag, CHANGELOG, `THIRD_PARTY_LICENSES.html`, build instructions, repository page restyled as described in the deliverables, with 0.1.0 screenshots.
+
+---
+
+## M4b — Online subtitles and mpv presets → 0.1.0 with M4 (D-15, proposed)
+
+Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7. D-15 (proposed): neither M4 nor M4b is released yet, so 0.1.0 ships both.
+
+**Requirements**: MET-003, MET-004, MET-005, MET-007…MET-011, SUB-017, SUB-018, SET-007, SET-008, PLY-016, PLY-018.
+
+**The maintainer's notes for the release (2026-10-25)**
+
+- Choosing the subtitle services belongs to the settings, not to the search page: MET-011 on the Subtitle services tab of the settings (SET-008).
+- The `mpv.conf` configuration opens with the one in use loaded: PLY-016 (d).
+- A video opens with the matching local subtitles of its folder, also when their names differ from its own: SUB-006.
+
+**Deliverables**
+
+- Crate `nikomiru-online` ([ADR 0008](adr/0008-online-subtitles.md)): Jimaku and OpenSubtitles clients behind one trait, the file-name parser (MET-010), language detection, the OpenSubtitles hash, ZIP archives, the ranking; a fake server for the tests.
+- The `online` worker; the Online subtitles page ("Search online…" in the subtitle menu); automatic subtitles (MET-007); downloaded subtitles kept in the data folder and offered like files next to the video (MET-008).
+- The settings as one page with tabs (⚙, SET-008): Player, Subtitle services (the services used and their order, keys, automatic subtitles, proxy; MET-011) and Anki.
+- Settings → Player: the option set in use as `mpv.conf` text and as render and audio controls (PLY-018), and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch, import and export through the file dialogs, the user's own `mpv.conf` offered (PLY-016).
+- Local subtitles of another name opened with the video: same episode, `Subs/` folders (SUB-006).
+- Alignment of the subtitles with the audio (SUB-018): from the subtitle menu, and by itself after downloaded subtitles load.
+- The secondary subtitle (SUB-017), e.g. a translation under the Japanese one.
+
+**Exit criteria**
+
+- [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green.
+- [ ] By hand with real keys (T-MET-LIVE-001): Japanese subtitles found and loaded automatically for 5 real episodes from 3 series.
+- [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 
 ---
 
@@ -253,13 +294,14 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 ## M6 — Statistics, full settings, i18n, advanced mining → 0.3.0
 
-**Requirements**: STA-001…STA-005, SET-001…SET-007, PLY-016, PLY-018, ANK-040, ANK-041, NFR-A11Y-01.
+**Requirements**: STA-001…STA-005, SET-001…SET-006, ANK-040, ANK-041, NFR-A11Y-01.
+
+The proxy setting and the mpv presets with their settings page moved to M4b (D-14).
 
 **Deliverables**
 
 - Watch tracker (interval coverage, per-cue credits), session clock, statistics page, CSV export.
 - Full settings page, shortcut editor with conflict checks, light/dark/system themes, interface scale.
-- Settings → Player: render and audio controls (PLY-018) and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch (PLY-016).
 - Fluent with complete `it` and `en`.
 - Advanced mining dialog; multiple sentences.
 
@@ -271,20 +313,20 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 ---
 
-## M7 — Online metadata and subtitles → 0.4.0
+## M7 — Online metadata → 0.4.0
 
-**Requirements**: MET-001…MET-005, SUB-017, SUB-018.
+**Requirements**: MET-001, MET-002.
+
+The online subtitles, their alignment with the audio and the secondary subtitle moved to M4b (D-14).
 
 **Deliverables**
 
-- Crate `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, Jimaku, OpenSubtitles. All behind a trait and with tests against a fake server.
-- UI: series identification (automatic if unique, otherwise chosen by the user), subtitle search and download per episode.
-- Secondary subtitle; automatic alignment with the waveform.
+- `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, behind a trait and with tests against a fake server; Jimaku searched by `anilist_id` first.
+- UI: series identification (automatic if unique, otherwise chosen by the user).
 
 **Exit criteria**
 
 - [ ] T-MET-* green on fake servers; T-MET-LIVE-* (real network, nightly only and with keys) green.
-- [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 - [ ] **Release 0.4.0**.
 
 ---

@@ -8,12 +8,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod cards;
 pub mod db;
 pub mod dictionaries;
 pub mod progress;
 pub mod uid;
 pub mod writer;
 
+pub use cards::MinedCard;
 pub use db::{Library, LibraryError, VideoRecord};
 pub use dictionaries::{Check, Collapse, DictionaryError, DictionaryManager, DictionaryRecord};
 pub use writer::Writer;
