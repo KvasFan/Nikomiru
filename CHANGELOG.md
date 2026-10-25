@@ -4,23 +4,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-The workspace is at 0.1.0: this section becomes 0.1.0 when the maintainer tags it, with M4 and M4b (D-15).
+### Added
 
-### Added (M5, after 0.1.0)
+- Statistics (STA-001…STA-005): the time of a video watched is counted once (seeks and pauses are not), the characters of a cue once it has been played 1.5 s (the units of study of every script, STA-003), lookups and cards; sessions split by hour and by a pause over 2 min, in the local time. The Library page has a Statistics tab: today, 7 days and all time, a chart by day over 7, 30 or 365 days, the year as a calendar, the time by series, the sessions (each can be deleted) and an export to CSV.
 
-- The Library (🎞 in the bar, and at start without a file; LIB-002…LIB-012): add a folder, and its videos are grouped into series by their names (Anitomy-style, the episode numbers completed from the files beside them, season folders as seasons), or by folder. "Continue watching", the series with a cover made from their first episode and how many are watched, the episodes of a series with their state. A scan again keeps progress and choices, and so do the user's edits: rename, merge, split, move or remove episodes, delete a series; the files are never touched.
+## [0.2.0] - 2026-10-25
+
+The library and word audio (M5).
+
+### Added
+
+- The Library ("← Library" in the bar, Esc over the video, and at start without a file; LIB-002…LIB-012): add a folder, and its videos are grouped into series by their names (Anitomy-style, the episode numbers completed from the files beside them, season folders as seasons), or by folder. "Continue watching", the series with a cover made from their first episode and how many are watched, the episodes of a series with their state. A scan again keeps progress and choices, and so do the user's edits: rename, merge, split, move or remove episodes, delete a series; the files are never touched.
 - The next episode starts by itself after a 5 s countdown that Esc or "Cancel" stops (LIB-009); an episode opened again near its end, or as the next one, starts from the beginning (LIB-007); one played to 90% is watched (LIB-008).
 - A series remembers its subtitle, offset and audio language for all its episodes (LIB-010).
 - Word audio (AUD-001…AUD-008): ♪ next to the card button of an entry plays the word from the sources set in Settings → Word audio, URL templates with `{term}` and `{reading}` that answer with a Yomitan list or the audio itself (a local audio server for Yomitan, for instance); a right click lists what every source has. The first entry plays by itself when a popup opens. No source is built in. The audio plays on an mpv of its own and is kept in a cache of 500 MiB.
 - A source of word audio can also be the `android.db` of the Local Audio Server for Yomichan (AUD-003), chosen with "Database…", with its sub-sources in the order wanted (`nhk16`, `forvo`, `jpod` by default). Nikomiru reads the SQLite file itself, read-only, with no library ([ADR 0004](docs/adr/0004-local-audio-db.md), spike S3).
 
-### Added (M6)
-
-- Statistics (STA-001…STA-005): the time of a video watched is counted once (seeks and pauses are not), the characters of a cue once it has been played 1.5 s (the units of study of every script, STA-003), lookups and cards; sessions split by hour and by a pause over 2 min, in the local time. The Library page has a Statistics tab: today, 7 days and all time, a chart by day over 7, 30 or 365 days, the year as a calendar, the time by series, the sessions (each can be deleted) and an export to CSV.
-
-### Changed (M5)
+### Changed
 
 - `library.redb` has schema 2: series and imported folders; the videos of 0.1 are migrated, with a backup (`library.redb.bak-v1`).
+
+## [0.1.0] - 2026-10-25
+
+The first release: M0–M4 and M4b (D-15). A video player with clickable Japanese subtitles, Yomitan dictionaries in a popup and one-click Anki cards, online subtitles and mpv presets.
 
 ### Changed (rename)
 
