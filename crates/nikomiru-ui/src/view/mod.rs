@@ -161,6 +161,8 @@ pub(crate) struct View {
     pub library_page_open: bool,
     /// The files opened as of the last frame.
     opened: u64,
+    /// Esc over the bare video: the Library page opens at the next frame.
+    library_asked: bool,
     /// What it keeps.
     pub library: library_page::State,
     /// The subtitle list is shown (SUB-015).
@@ -211,6 +213,9 @@ impl View {
                     self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
+                } else {
+                    // nothing over the video: back to the library (LIB-005)
+                    self.library_asked = true;
                 }
             }
             UiEffect::OpenDialog => self.dialog = Some(Dialog::Video),
@@ -342,6 +347,9 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if std::mem::take(&mut self.library_asked) {
+            self.open_library_page(&mut out);
+        }
         self.window(&ctx, s);
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             out.push(Command::MouseMoved);

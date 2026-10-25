@@ -1003,8 +1003,8 @@ fn a_folder_is_imported_and_played_from_the_library() {
     h.state_until("the page closed", |s| s["library_page"]["open"] == false);
     h.wait("first-frame");
     std::thread::sleep(Duration::from_millis(1_500));
-    // the next time, it is to continue
-    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    // Esc over the video: back to the library, where it is to continue
+    h.key("Escape");
     let s = h.state_until("continue watching", |s| {
         s["library_page"]["continue"]
             .as_array()

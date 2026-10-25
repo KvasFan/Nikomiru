@@ -193,6 +193,25 @@ pub(crate) fn draw(
     close
 }
 
+/// Cards `width` wide in rows that fit the page, one row under the other:
+/// a frame cannot wrap in a wrapping layout, which does not know its size
+/// before it is drawn.
+fn rows<T>(ui: &mut Ui, width: f32, items: &[T], mut each: impl FnMut(&mut Ui, &T)) {
+    const GAP: f32 = 12.0;
+    // the card's own margins
+    let outer = width + 16.0;
+    let per_row = (((ui.available_width() + GAP) / (outer + GAP)).floor() as usize).max(1);
+    ui.spacing_mut().item_spacing.y = GAP;
+    for row in items.chunks(per_row) {
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = GAP;
+            for item in row {
+                each(ui, item);
+            }
+        });
+    }
+}
+
 /// A clickable card with a cover; whether it was clicked.
 fn card(
     ui: &mut Ui,
@@ -253,37 +272,32 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     };
     if !home.continue_watching.is_empty() {
         section(ui, &tr(s, "library-continue"));
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = vec2(12.0, 12.0);
-            for (uid, v) in &home.continue_watching {
-                let series = v.series.and_then(|id| home.series_title(id));
-                let title = series.map_or_else(|| file_title(&v.path), str::to_string);
-                let left = v
+        rows(ui, WIDE, &home.continue_watching, |ui, (uid, v)| {
+            let series = v.series.and_then(|id| home.series_title(id));
+            let title = series.map_or_else(|| file_title(&v.path), str::to_string);
+            let left = v
+                .duration_ms
+                .map(|d| d.saturating_sub(v.last_position_ms) as i64);
+            let left = left.map(|left| (s.tr)("library-left", &[("time", clock(left))]));
+            let detail = [Some(episode_label(v)), left]
+                .into_iter()
+                .flatten()
+                .filter(|t| !t.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let texture = v.series.and_then(|id| state.textures.get(&id));
+            let name = format!("{title} {}", episode_label(v));
+            let clicked = card(ui, WIDE, texture, &name, |ui| {
+                ui.add(egui::Label::new(RichText::new(&title).family(theme::bold())).truncate());
+                ui.label(RichText::new(detail).color(DETAILS));
+                let share = v
                     .duration_ms
-                    .map(|d| d.saturating_sub(v.last_position_ms) as i64);
-                let left = left.map(|left| (s.tr)("library-left", &[("time", clock(left))]));
-                let detail = [Some(episode_label(v)), left]
-                    .into_iter()
-                    .flatten()
-                    .filter(|t| !t.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                let texture = v.series.and_then(|id| state.textures.get(&id));
-                let name = format!("{title} {}", episode_label(v));
-                let clicked = card(ui, WIDE, texture, &name, |ui| {
-                    ui.add(
-                        egui::Label::new(RichText::new(&title).family(theme::bold())).truncate(),
-                    );
-                    ui.label(RichText::new(detail).color(DETAILS));
-                    let share = v
-                        .duration_ms
-                        .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32);
-                    progress(ui, WIDE, share, ACCENT);
-                });
-                if clicked {
-                    tracing::debug!("continue {uid}");
-                    out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
-                }
+                    .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32);
+                progress(ui, WIDE, share, ACCENT);
+            });
+            if clicked {
+                tracing::debug!("continue {uid}");
+                out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
             }
         });
     }
@@ -291,36 +305,31 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     if home.series.is_empty() {
         ui.label(RichText::new(tr(s, "library-empty")).color(DETAILS));
     }
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(12.0, 12.0);
-        for summary in &home.series {
-            let clicked = card(
-                ui,
-                NARROW,
-                state.textures.get(&summary.id),
-                &summary.record.title,
-                |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(&summary.record.title).family(theme::bold()),
-                        )
+    rows(ui, NARROW, &home.series, |ui, summary| {
+        let clicked = card(
+            ui,
+            NARROW,
+            state.textures.get(&summary.id),
+            &summary.record.title,
+            |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&summary.record.title).family(theme::bold()))
                         .truncate(),
-                    );
-                    let count = (s.tr)(
-                        "library-watched",
-                        &[
-                            ("watched", summary.watched.to_string()),
-                            ("total", summary.episodes.to_string()),
-                        ],
-                    );
-                    ui.label(RichText::new(count).color(DETAILS));
-                    let share = summary.watched as f32 / summary.episodes.max(1) as f32;
-                    progress(ui, NARROW, share, GOOD);
-                },
-            );
-            if clicked {
-                out.push(Command::LibrarySeries(Some(summary.id)));
-            }
+                );
+                let count = (s.tr)(
+                    "library-watched",
+                    &[
+                        ("watched", summary.watched.to_string()),
+                        ("total", summary.episodes.to_string()),
+                    ],
+                );
+                ui.label(RichText::new(count).color(DETAILS));
+                let share = summary.watched as f32 / summary.episodes.max(1) as f32;
+                progress(ui, NARROW, share, GOOD);
+            },
+        );
+        if clicked {
+            out.push(Command::LibrarySeries(Some(summary.id)));
         }
     });
     if !home.folders.is_empty() {
@@ -671,6 +680,38 @@ mod tests {
         assert!(matches!(out.as_slice(), [Command::LibraryAddFolder]));
         click(&mut h, "library-close");
         assert!(h.state().closed);
+    }
+
+    // T-LIB-005: many series wrap into rows that fit the window
+    #[test]
+    fn the_series_wrap_into_rows() {
+        let mut home = home();
+        home.series = (0..30)
+            .map(|i| SeriesSummary {
+                id: i,
+                record: SeriesRecord {
+                    title: format!("A rather long series title number {i}"),
+                    ..SeriesRecord::default()
+                },
+                episodes: 12,
+                watched: 0,
+                started: 0,
+                last_played_at: None,
+            })
+            .collect();
+        let mut h = harness(LibraryPage {
+            home: Some(home),
+            ..LibraryPage::default()
+        });
+        h.run();
+        let first = h
+            .get_by_role_and_label(Role::Button, "A rather long series title number 0")
+            .rect();
+        let sixth = h
+            .get_by_role_and_label(Role::Button, "A rather long series title number 5")
+            .rect();
+        assert!(sixth.right() <= 1280.0, "{sixth:?}");
+        assert!(sixth.top() > first.bottom(), "{first:?} {sixth:?}");
     }
 
     // T-LIB-011, T-LIB-012
