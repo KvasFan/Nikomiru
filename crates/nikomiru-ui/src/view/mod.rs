@@ -16,12 +16,16 @@ mod dict_page;
 mod library_page;
 mod link;
 mod list;
+mod mining_dialog;
 mod online_page;
 mod overlay;
+pub(crate) mod palette;
 mod player_page;
 mod popups;
+mod prefs_page;
 mod services_page;
 pub(crate) mod settings;
+mod shortcuts_page;
 mod stats_view;
 pub(crate) mod theme;
 
@@ -168,6 +172,17 @@ pub(crate) struct View {
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
+    /// Ctrl+, asked for the settings: they open at the next frame.
+    settings_requested: bool,
+    /// The General, Subtitles, Lookup, Shortcuts, Advanced or About tab is
+    /// shown.
+    pub prefs_open: Option<settings::SettingsTab>,
+    /// What it keeps.
+    pub prefs: prefs_page::State,
+    /// How the interface looks, as of the last frame (SET-003, SET-005).
+    look: Option<crate::session::Look>,
+    /// egui's zoom, as of the last frame (SET-005).
+    pub zoom: f32,
     /// The Library page is shown (LIB-005).
     pub library_page_open: bool,
     /// The files opened as of the last frame.
@@ -214,14 +229,16 @@ impl View {
                     self.close_online_page();
                 } else if self.library_page_open {
                     self.close_library_page();
-                } else if self.services_page_open || self.audio_page_open {
+                } else if self.services_page_open
+                    || self.audio_page_open
+                    || self.dict_page_open
+                    || self.prefs_open.is_some()
+                {
                     self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
                 } else if self.anki_page_open {
                     self.close_anki_page();
-                } else if self.dict_page_open {
-                    self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
                 } else {
@@ -231,6 +248,9 @@ impl View {
             }
             UiEffect::OpenDialog => self.dialog = Some(Dialog::Video),
             UiEffect::ToggleSubList => self.sub_list_open = !self.sub_list_open,
+            UiEffect::OpenSettings => {
+                self.settings_requested = true;
+            }
             UiEffect::SubSearch => {
                 self.sub_list_open = true;
                 self.sub_search_focus = true;
@@ -288,7 +308,7 @@ impl View {
     }
 
     /// Opens the settings at `tab` (SET-008), in place of any other page
-    /// over the video but the dictionaries.
+    /// over the video.
     pub fn open_settings(&mut self, tab: settings::SettingsTab, out: &mut Vec<Command>) {
         use settings::SettingsTab;
         self.close_settings();
@@ -300,18 +320,42 @@ impl View {
                 self.services_page_open = true;
                 out.push(Command::ServicesOpen);
             }
+            SettingsTab::Dictionaries => self.open_dict_page(out),
             SettingsTab::Audio => {
                 self.audio_page_open = true;
                 out.push(Command::AudioOpen);
             }
             SettingsTab::Anki => self.open_anki_page(out),
+            SettingsTab::General
+            | SettingsTab::Subtitles
+            | SettingsTab::Lookup
+            | SettingsTab::Shortcuts
+            | SettingsTab::Advanced
+            | SettingsTab::About => {
+                self.prefs_open = Some(tab);
+                out.push(Command::SettingsOpen);
+            }
         }
+    }
+
+    /// Whether a tab of the settings is shown.
+    #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
+    pub fn settings_open(&self) -> bool {
+        self.player_page_open
+            || self.anki_page_open
+            || self.dict_page_open
+            || self.services_page_open
+            || self.audio_page_open
+            || self.prefs_open.is_some()
     }
 
     /// Closes the settings, whichever tab is shown.
     pub fn close_settings(&mut self) {
         self.close_player_page();
         self.close_anki_page();
+        self.close_dict_page();
+        self.prefs_open = None;
+        self.prefs = prefs_page::State::default();
         self.services_page_open = false;
         self.services = services_page::State::default();
         self.audio_page_open = false;
@@ -361,6 +405,9 @@ impl View {
         if std::mem::take(&mut self.library_asked) {
             self.open_library_page(&mut out);
         }
+        if std::mem::take(&mut self.settings_requested) {
+            self.open_settings(self.settings_tab, &mut out);
+        }
         self.window(&ctx, s);
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
             out.push(Command::MouseMoved);
@@ -371,6 +418,8 @@ impl View {
         // the video: a click plays or pauses (or closes the popups), a double
         // click toggles fullscreen (PLY-001)
         let video = ui.interact(screen, Id::unique("video"), Sense::click());
+        let name = s.translator().tr("video-area", &[]);
+        video.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Video, true, &name));
         if video.double_clicked() {
             self.fullscreen_request = Some(!self.fullscreen);
         } else if video.clicked() {
@@ -401,7 +450,9 @@ impl View {
             || self.player_page_open
             || self.services_page_open
             || self.audio_page_open
+            || self.prefs_open.is_some()
             || self.library_page_open
+            || s.advanced_card().is_some()
         {
             self.popups.rects.clear();
             Vec::new()
@@ -427,8 +478,14 @@ impl View {
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);
         }
+        if self.prefs_open.is_some() {
+            prefs_page::show(&ctx, s, self, &mut out);
+        }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
+        }
+        if let Some(card) = s.advanced_card() {
+            mining_dialog::show(&ctx, s, card, &mut out);
         }
         if let Some(missing) = &s.missing_link {
             link::show(&ctx, s, missing, &mut out);
@@ -445,6 +502,15 @@ impl View {
 
     /// Fullscreen, title and activation, through egui's viewport commands.
     fn window(&mut self, ctx: &egui::Context, s: &Session) {
+        // the theme, the accent and the scale, applied when they change
+        let look = s.look();
+        if self.look != Some(look) {
+            self.look = Some(look);
+            let [r, g, b] = look.accent;
+            palette::apply(ctx, look.dark, egui::Color32::from_rgb(r, g, b));
+            ctx.set_zoom_factor(f32::from(look.scale) / 100.0);
+        }
+        self.zoom = ctx.zoom_factor();
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
         if let Some(on) = self.fullscreen_request.take() {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(on));

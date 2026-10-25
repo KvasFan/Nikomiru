@@ -88,6 +88,8 @@ pub struct Desktop {
     kwin: Child,
     bus_address: String,
     launches: usize,
+    /// Helpers started for a test: the accessibility bus.
+    helpers: Vec<Child>,
     /// More variables for the apps launched from now on.
     env: Vec<(String, String)>,
 }
@@ -183,8 +185,109 @@ impl Desktop {
             kwin,
             bus_address,
             launches: 0,
+            helpers: Vec::new(),
             env: Vec::new(),
         }
+    }
+
+    /// An accessibility bus for the apps launched from now on, turned on as a
+    /// screen reader would turn it on (AT-SPI, NFR-A11Y-01); its address.
+    /// GSettings stays in memory: the user's settings are not touched.
+    pub fn start_accessibility(&mut self) -> String {
+        use nikomiru_app::dbus::{Connection, Message, Value};
+        let launcher = [
+            "/usr/lib/at-spi-bus-launcher",
+            "/usr/libexec/at-spi-bus-launcher",
+            "/usr/lib/at-spi2-core/at-spi-bus-launcher",
+        ]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .expect("at-spi-bus-launcher (at-spi2-core) is needed by this test");
+        let log = std::fs::File::create(self.path("at-spi.log")).unwrap();
+        let child = Command::new(launcher)
+            .arg("--launch-immediately")
+            .env_remove("DISPLAY")
+            .env("WAYLAND_DISPLAY", WAYLAND)
+            .env("XDG_RUNTIME_DIR", self.path("run"))
+            .env("XDG_CONFIG_HOME", self.path("config"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .env("GSETTINGS_BACKEND", "memory")
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .expect("at-spi-bus-launcher");
+        self.helpers.push(child);
+        let mut conn = Connection::open(&self.bus_address).unwrap();
+        let address = until(Duration::from_secs(10), "the accessibility bus", || {
+            let reply = conn
+                .call(Message::call(
+                    "org.a11y.Bus",
+                    "/org/a11y/bus",
+                    "org.a11y.Bus",
+                    "GetAddress",
+                ))
+                .ok()?;
+            match reply.body.first() {
+                Some(Value::Str(a)) if !a.is_empty() => Some(a.clone()),
+                _ => None,
+            }
+        });
+        // the registry, which the bus would start through systemd
+        let registry = [
+            "/usr/lib/at-spi2-registryd",
+            "/usr/libexec/at-spi2-registryd",
+            "/usr/lib/at-spi2-core/at-spi2-registryd",
+        ]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .expect("at-spi2-registryd (at-spi2-core) is needed by this test");
+        let log = std::fs::File::create(self.path("at-spi-registry.log")).unwrap();
+        let child = Command::new(registry)
+            .env_remove("DISPLAY")
+            .env("WAYLAND_DISPLAY", WAYLAND)
+            .env("XDG_RUNTIME_DIR", self.path("run"))
+            .env("XDG_CONFIG_HOME", self.path("config"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .env("GSETTINGS_BACKEND", "memory")
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .expect("at-spi2-registryd");
+        self.helpers.push(child);
+        let mut a11y = Connection::open(&address).unwrap();
+        until(
+            Duration::from_secs(10),
+            "the accessibility registry",
+            || {
+                let reply = a11y
+                    .call(
+                        Message::call(
+                            "org.freedesktop.DBus",
+                            "/org/freedesktop/DBus",
+                            "org.freedesktop.DBus",
+                            "NameHasOwner",
+                        )
+                        .with_body(vec![Value::Str("org.a11y.atspi.Registry".into())]),
+                    )
+                    .ok()?;
+                (reply.body.first() == Some(&Value::Bool(true))).then_some(())
+            },
+        );
+        conn.call(
+            Message::call(
+                "org.a11y.Bus",
+                "/org/a11y/bus",
+                "org.freedesktop.DBus.Properties",
+                "Set",
+            )
+            .with_body(vec![
+                Value::Str("org.a11y.Status".into()),
+                Value::Str("IsEnabled".into()),
+                Value::Variant(Box::new(Value::Bool(true))),
+            ]),
+        )
+        .unwrap();
+        address
     }
 
     /// Gives the apps launched from now on the variable `key`.
@@ -387,6 +490,12 @@ impl Desktop {
     /// The apps a failed test left running on this desktop: the `nikomiru`
     /// processes whose environment holds this desktop's runtime folder.
     fn leftover_apps(&self) -> Vec<u32> {
+        self.leftover(&["nikomiru"])
+    }
+
+    /// The processes of this desktop (they have its runtime folder) whose
+    /// program is one of `names`.
+    fn leftover(&self, names: &[&str]) -> Vec<u32> {
         let needle = format!("XDG_RUNTIME_DIR={}", self.path("run").display());
         let Ok(entries) = std::fs::read_dir("/proc") else {
             return Vec::new();
@@ -396,8 +505,10 @@ impl Desktop {
             .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
             .filter(|pid| {
                 let proc = PathBuf::from(format!("/proc/{pid}"));
-                let is_app = std::fs::read_link(proc.join("exe"))
-                    .is_ok_and(|exe| exe.file_name().is_some_and(|n| n == "nikomiru"));
+                let is_app = std::fs::read_link(proc.join("exe")).is_ok_and(|exe| {
+                    exe.file_name()
+                        .is_some_and(|n| names.iter().any(|name| n == *name))
+                });
                 is_app
                     && std::fs::read(proc.join("environ"))
                         .is_ok_and(|env| env.split(|b| *b == 0).any(|var| var == needle.as_bytes()))
@@ -413,6 +524,16 @@ impl Drop for Desktop {
             let _ = Command::new("kill")
                 .args(["-KILL", &pid.to_string()])
                 .status();
+        }
+        // the accessibility bus and its registry, then its launcher
+        for pid in self.leftover(&["dbus-daemon", "dbus-broker", "at-spi2-registryd"]) {
+            let _ = Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+        for child in &mut self.helpers {
+            let _ = child.kill();
+            let _ = child.wait();
         }
         for child in [&mut self.kwin, &mut self.bus] {
             let _ = child.kill();

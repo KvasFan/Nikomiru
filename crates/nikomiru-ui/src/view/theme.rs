@@ -30,8 +30,8 @@ pub(crate) fn install(ctx: &egui::Context) {
     ctx.add_font_provider(Arc::new(
         egui_system_font_provider::SystemFontProvider::new().with_locale(Some("ja")),
     ));
-    // a video player: always dark, whatever the desktop's preference
-    ctx.set_theme(egui::Theme::Dark);
+    // dark until the settings say otherwise (SET-003)
+    super::palette::apply(ctx, true, super::palette::ACCENT);
     ctx.all_styles_mut(|style| {
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(12.0)),

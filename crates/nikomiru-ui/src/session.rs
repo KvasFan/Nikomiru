@@ -41,6 +41,8 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
+    /// Open the settings on the tab shown last (SET-008).
+    OpenSettings,
 }
 
 /// Milestones of a load, for the GUI test harness (TEST §2.1).
@@ -201,6 +203,22 @@ pub struct Services {
     /// write it. When it could not be read, the settings in memory are the
     /// defaults, and writing them would lose the user's file.
     pub config_writable: bool,
+    /// The logs' folder (Settings → Advanced).
+    pub logs_dir: PathBuf,
+    /// `[lookup] max_results`, shared with the workers that look words up:
+    /// the settings change it at once (SET-002).
+    pub lookup_limit: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// How the interface looks (SET-003, SET-005).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Look {
+    /// The dark theme, or the light.
+    pub dark: bool,
+    /// The accent.
+    pub accent: [u8; 3],
+    /// The interface scale in percent.
+    pub scale: u16,
 }
 
 impl std::fmt::Debug for Services {
@@ -227,6 +245,8 @@ enum SavingPage {
     Services,
     Player,
     Audio,
+    /// General, Subtitles, Lookup, Shortcuts, Advanced.
+    Settings,
 }
 
 /// How long the next episode waits (LIB-009).
@@ -305,9 +325,14 @@ pub struct Session {
     /// A link whose video cannot be found: the view offers to locate it
     /// (ANK-052).
     pub missing_link: Option<MissingLink>,
-    /// A settings page covers the popups (the view says so): they wait under
-    /// it, and their keys with them (POP-014).
+    /// A page or a dialog covers the video and the popups (the view says
+    /// so): the popups wait under it, and the keys go to its controls but
+    /// the global shortcuts' (POP-014, NFR-A11Y-01).
     pub popups_covered: bool,
+    /// A lookup asked from the keyboard (NFR-A11Y-01): the cue and the byte
+    /// offset of its grapheme; the overlay, which knows where the cue is,
+    /// opens it as a click would.
+    keyboard_lookup: Option<(usize, usize)>,
     /// The clip of the link being opened: once its subtitles are there,
     /// playback goes to its first cue (ANK-052).
     link_clip: Option<LinkClip>,
@@ -335,6 +360,17 @@ pub struct Session {
     /// The last message of the Subtitle services tab, and whether it is good
     /// news (MET-011).
     pub services_status: Option<(String, bool)>,
+    /// The last message of the General, Subtitles, Lookup, Shortcuts and
+    /// Advanced tabs, and whether it is good news.
+    pub settings_status: Option<(String, bool)>,
+    /// The desktop prefers a dark theme, a light one, or says nothing
+    /// (SET-003).
+    pub system_dark: Option<bool>,
+    /// The shortcut editor waits for a key (KEY-001): the next chord goes to
+    /// it instead of running an action.
+    capturing: bool,
+    /// The chord it got; `None` once taken, or when Esc gave up.
+    captured: Option<String>,
     /// The Library page (LIB-005).
     pub library_page: crate::catalog::LibraryPage,
     /// The last message of the Word audio tab, and whether it is good news.
@@ -386,6 +422,12 @@ pub struct Session {
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
     replaying: bool,
+    /// The "Advanced mining" dialog (ANK-040).
+    advanced: Option<crate::mining::AdvancedCard>,
+    /// The word's place in its cue, for the merged sentences (ANK-041).
+    advanced_word: Option<usize>,
+    /// The frame of the click it keeps.
+    advanced_frame: Option<crate::mining::PendingFrame>,
 }
 
 /// An import to start, taken by the UI layer.
@@ -499,6 +541,7 @@ impl Session {
             last_card: None,
             missing_link: None,
             popups_covered: false,
+            keyboard_lookup: None,
             link_clip: None,
             start_at: None,
             opening: nikomiru_library::policy::Opening::Chosen,
@@ -511,6 +554,10 @@ impl Session {
             online_jobs: Vec::new(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
+            settings_status: None,
+            system_dark: None,
+            capturing: false,
+            captured: None,
             library_page: crate::catalog::LibraryPage::default(),
             audio_status: None,
             audio_database_row: None,
@@ -535,6 +582,9 @@ impl Session {
             hover: Hover::default(),
             popup_hovered: false,
             replaying: false,
+            advanced: None,
+            advanced_word: None,
+            advanced_frame: None,
         }
     }
 
@@ -1083,6 +1133,7 @@ impl Session {
             SavingPage::Services => self.services_status = Some(status),
             SavingPage::Audio => self.audio_status = Some(status),
             SavingPage::Player => self.player_page.status = Some(status),
+            SavingPage::Settings => self.settings_status = Some(status),
         }
     }
 
@@ -1274,12 +1325,112 @@ impl Session {
         self.services_status = None;
     }
 
+    /// A tab of the settings opened: General, Subtitles, Lookup, Shortcuts,
+    /// Advanced or About.
+    pub fn settings_open(&mut self) {
+        self.settings_status = None;
+        self.shortcut_capture(false);
+    }
+
+    /// `config.toml`.
+    pub fn config_file(&self) -> &Path {
+        &self.services.config_file
+    }
+
+    /// The logs' folder.
+    pub fn logs_dir(&self) -> &Path {
+        &self.services.logs_dir
+    }
+
+    /// The shortcut editor starts or stops waiting for a key (KEY-001).
+    pub fn shortcut_capture(&mut self, on: bool) {
+        self.capturing = on;
+        self.captured = None;
+    }
+
+    /// Whether the shortcut editor waits for a key, and the chord it got.
+    pub fn capture(&self) -> (bool, Option<&str>) {
+        (self.capturing, self.captured.as_deref())
+    }
+
+    /// The settings as they are, the draft of a tab.
+    pub fn config(&self) -> &Config {
+        &self.services.config
+    }
+
+    /// How the interface looks: the theme chosen, or the desktop's for
+    /// `"system"` (dark when it says nothing: a video player); the accent;
+    /// the scale.
+    pub fn look(&self) -> Look {
+        let g = &self.services.config.general;
+        let dark = match g.theme.as_str() {
+            "light" => false,
+            "dark" => true,
+            _ => self.system_dark.unwrap_or(true),
+        };
+        Look {
+            dark,
+            accent: g.accent_rgb().unwrap_or([0x6a, 0xa0, 0xff]),
+            scale: g.ui_scale,
+        }
+    }
+
+    /// Saves a tab of the settings, the keys of `section` in `draft`: they
+    /// apply at once (SET-002) and go to `config.toml` unless it could not
+    /// be read. Shortcuts that conflict are refused (KEY-001).
+    pub fn settings_save(&mut self, section: nikomiru_core::config::Section, draft: &Config) {
+        use nikomiru_core::config::Section;
+        if section == Section::Shortcuts {
+            match Bindings::with_overrides(&draft.shortcuts) {
+                Ok(bindings) => self.bindings = bindings,
+                Err(conflicts) => {
+                    let chords: Vec<String> = conflicts.into_iter().map(|c| c.chord).collect();
+                    let text = self.tr("shortcuts-conflict", &[("keys", chords.join(", "))]);
+                    self.settings_status = Some((text, false));
+                    return;
+                }
+            }
+        }
+        self.services.config.copy_section(section, draft);
+        let c = &self.services.config;
+        match section {
+            Section::General => self
+                .services
+                .translator
+                .set_setting(&c.general.ui_language, |k| std::env::var(k).ok()),
+            Section::Subtitles => {
+                self.subs.mode = Obscure::from_config(&c.subtitles.obscure);
+                self.secondary.mode = Obscure::from_config(&c.subtitles.secondary_obscure);
+            }
+            Section::Lookup => {
+                self.services
+                    .lookup_limit
+                    .store(c.lookup.max_results, std::sync::atomic::Ordering::Relaxed);
+                self.popups
+                    .set_size((c.popup.max_width, c.popup.max_height));
+            }
+            _ => {}
+        }
+        self.keep_status = false;
+        self.saving_page = SavingPage::Settings;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("settings-not-saved", &[]);
+            self.settings_status = Some((text, false));
+        }
+    }
+
     /// The Library page opened (LIB-005): the home page read again, and the
     /// series open.
     pub fn library_open(&mut self) {
         use crate::catalog::LibraryJob;
         self.library_page.status = None;
-        // the session being watched is in the statistics too
+        // the video being watched is in "Continue watching" at its place,
+        // and its session in the statistics
+        if let Some(ms) = self.saver.flush() {
+            self.save_position(ms);
+        }
         if let Some(save) = self.study.save_now() {
             self.write_study(save);
         }
@@ -2049,19 +2200,19 @@ impl Session {
             .or_else(|| t.near(pos))
     }
 
-    /// Builds the request for a card from entry `entry` of popup `level`.
-    fn start_mining(&mut self, level: usize, entry: usize, action: crate::mining::CardAction) {
-        use crate::mining::{AnkiJob, CardState, MineRequest};
-        let Some(current) = &self.current else {
-            return;
-        };
-        let Some(p) = self.popups.stack().get(level) else {
-            return;
-        };
-        let Some(e) = p.reply.as_ref().and_then(|r| r.content.entries.get(entry)) else {
-            return;
-        };
-        let anki = &self.services.config.anki;
+    /// The request for a card from entry `entry` of popup `level`, with its
+    /// popup's generation: the reference cue as the sentence, its clip, the
+    /// frame of the click.
+    fn mine_request(
+        &self,
+        level: usize,
+        entry: usize,
+        action: crate::mining::CardAction,
+    ) -> Option<(u64, crate::mining::MineRequest)> {
+        use crate::mining::{FrameChoice, MineRequest};
+        let current = self.current.as_ref()?;
+        let p = self.popups.stack().get(level)?;
+        let e = p.reply.as_ref()?.content.entries.get(entry)?;
         let t = self.subs.timeline();
         let cue = self.reference_cue();
         let sentence = cue
@@ -2073,17 +2224,7 @@ impl Session {
             (0, Some(Origin::Subtitle { cue: c, start })) if Some(*c) == cue => Some(*start),
             _ => None,
         };
-        // a cue of no length gives no audio
-        let clip = cue
-            .map(|c| {
-                let (start, end) = t.clip(
-                    c,
-                    i64::from(anki.audio_pad_head_ms),
-                    i64::from(anki.audio_pad_tail_ms),
-                );
-                (start, end.min(start + nikomiru_media::clip::MAX_AUDIO_MS))
-            })
-            .filter(|(start, end)| end > start);
+        let clip = cue.and_then(|c| self.clip_of(c, c));
         let (audio_input, audio_stream) = self.audio_source(&current.path);
         let request = MineRequest {
             query: p.query.clone(),
@@ -2105,23 +2246,241 @@ impl Session {
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default(),
             action,
+            frame: FrameChoice::Click,
+            audio: true,
         };
-        let generation = p.generation;
+        Some((p.generation, request))
+    }
+
+    /// The audio of cues `first..=last` for a card (ANK-032): padded as the
+    /// settings say, at most 30 s; `None` for no length.
+    fn clip_of(&self, first: usize, last: usize) -> Option<(i64, i64)> {
+        let anki = &self.services.config.anki;
+        let t = self.subs.timeline();
+        if last >= t.cues().len() || first > last {
+            return None;
+        }
+        let (head, tail) = (
+            i64::from(anki.audio_pad_head_ms),
+            i64::from(anki.audio_pad_tail_ms),
+        );
+        let start = t.clip(first, head, tail).0;
+        let end = t.clip(last, head, tail).1;
+        let end = end.min(start + nikomiru_media::clip::MAX_AUDIO_MS);
+        (end > start).then_some((start, end))
+    }
+
+    /// Sends a card's request to the worker, the entry's button busy.
+    fn send_mining(
+        &mut self,
+        level: usize,
+        generation: u64,
+        request: crate::mining::MineRequest,
+        frame: Option<crate::mining::PendingFrame>,
+    ) {
+        use crate::mining::{AnkiJob, CardState};
+        let entry = request.entry;
         if let Some(card) = self
             .popups
             .stack_mut()
             .get_mut(level)
+            .filter(|p| p.generation == generation)
             .and_then(|p| p.cards.get_mut(entry))
         {
             *card = CardState::Busy;
         }
-        let frame = self.ask_frame();
         self.anki_jobs.push(AnkiJob::Mine {
             generation,
             entry,
             request: Box::new(request),
             frame,
         });
+    }
+
+    /// Makes a card from entry `entry` of popup `level` at once.
+    fn start_mining(&mut self, level: usize, entry: usize, action: crate::mining::CardAction) {
+        let Some((generation, request)) = self.mine_request(level, entry, action) else {
+            return;
+        };
+        let frame = self.ask_frame();
+        self.send_mining(level, generation, request, frame);
+    }
+
+    /// Shift+click on an entry's card button (ANK-040): the "Advanced
+    /// mining" dialog, with the frame of the click saved now.
+    pub fn card_advanced(&mut self, level: usize, entry: usize) {
+        use crate::mining::{AdvancedCard, CardAction, FrameKind};
+        if self.popups.stack().get(level).is_none() || self.advanced.is_some() {
+            return;
+        }
+        let Some((_, request)) = self.mine_request(level, entry, CardAction::Add) else {
+            return;
+        };
+        let reference = self.reference_cue();
+        let at = reference.unwrap_or(0);
+        self.advanced = Some(AdvancedCard {
+            level,
+            entry,
+            expression: request.expression.clone(),
+            reference,
+            first: at,
+            last: at,
+            sentence: request.sentence.clone(),
+            offset: request.offset,
+            clip: request.clip,
+            frame: FrameKind::Click,
+            audio: request.clip.is_some(),
+            can_previous: false,
+            can_next: false,
+        });
+        self.advanced_word = request.offset;
+        self.advanced_frame = self.ask_frame();
+        self.advanced_merge();
+    }
+
+    /// The sentence and the clip of the cues the dialog has (ANK-041).
+    fn advanced_merge(&mut self) {
+        let Some(a) = self.advanced.as_ref() else {
+            return;
+        };
+        let Some(reference) = a.reference else {
+            return;
+        };
+        let (first, last) = (a.first, a.last);
+        let t = self.subs.timeline();
+        let count = t.cues().len();
+        let lines: Vec<&str> = t
+            .cues()
+            .get(first..=last.min(count.saturating_sub(1)))
+            .unwrap_or_default()
+            .iter()
+            .map(|c| c.plain_text.as_str())
+            .collect();
+        let (sentence, offset) =
+            crate::mining::merge_sentence(&lines, reference - first, self.advanced_word);
+        let clip = self.clip_of(first, last);
+        if let Some(a) = self.advanced.as_mut() {
+            a.sentence = sentence;
+            a.offset = offset;
+            a.clip = clip;
+            a.can_previous = first > 0;
+            a.can_next = last + 1 < count;
+        }
+    }
+
+    /// The lookup asked from the keyboard, until the overlay opens it.
+    pub fn keyboard_lookup(&self) -> Option<(usize, usize)> {
+        self.keyboard_lookup
+    }
+
+    /// The root popup's lookup starts a grapheme later or earlier in its cue.
+    fn step_lookup(&mut self, forward: bool) {
+        let Some(Origin::Subtitle { cue, start }) =
+            self.popups.stack().first().map(|p| p.origin.clone())
+        else {
+            return;
+        };
+        let Some(q) = self.subs.cue(cue) else {
+            return;
+        };
+        let offsets: Vec<usize> = q.graphemes().iter().map(|g| g.offset).collect();
+        let Some(i) = offsets.iter().position(|&o| o == start) else {
+            return;
+        };
+        let j = if forward { i + 1 } else { i.wrapping_sub(1) };
+        if let Some(&offset) = offsets.get(j) {
+            self.keyboard_lookup = Some((cue, offset));
+        }
+    }
+
+    /// The "Advanced mining" dialog open, if it is (ANK-040).
+    pub fn advanced_card(&self) -> Option<&crate::mining::AdvancedCard> {
+        self.advanced.as_ref()
+    }
+
+    /// A change in the "Advanced mining" dialog (ANK-040, ANK-041).
+    pub fn advanced_edit(&mut self, edit: crate::mining::AdvancedEdit) {
+        use crate::mining::{AdvancedEdit, CardAction, FrameChoice, FrameKind};
+        let Some(a) = self.advanced.as_mut() else {
+            return;
+        };
+        let count = self.subs.timeline().cues().len();
+        match edit {
+            AdvancedEdit::Previous(true) if a.first > 0 => a.first -= 1,
+            AdvancedEdit::Previous(false) if Some(a.first) < a.reference => a.first += 1,
+            AdvancedEdit::Next(true) if a.last + 1 < count => a.last += 1,
+            AdvancedEdit::Next(false) if a.reference.is_some_and(|r| a.last > r) => a.last -= 1,
+            AdvancedEdit::Previous(_) | AdvancedEdit::Next(_) => return,
+            AdvancedEdit::Start(ms) => {
+                if let Some((start, end)) = a.clip.as_mut() {
+                    *start = ms.clamp(0, *end - 1);
+                }
+                return;
+            }
+            AdvancedEdit::End(ms) => {
+                if let Some((start, end)) = a.clip.as_mut() {
+                    *end = ms.clamp(*start + 1, *start + nikomiru_media::clip::MAX_AUDIO_MS);
+                }
+                return;
+            }
+            AdvancedEdit::Frame(kind) => {
+                a.frame = kind;
+                return;
+            }
+            AdvancedEdit::Audio(on) => {
+                a.audio = on && a.clip.is_some();
+                return;
+            }
+            AdvancedEdit::Preview => {
+                // the clip from its start, paused at its end, as "Replay"
+                if let Some((start, end)) = a.clip {
+                    let p = &self.services.player;
+                    let _ = p.stop_at(Some(end as f64 / 1000.0));
+                    let _ = p.seek_absolute(start as f64 / 1000.0);
+                    let _ = p.set_pause(false);
+                    self.replaying = true;
+                }
+                return;
+            }
+            AdvancedEdit::Cancel => {
+                self.close_advanced();
+                return;
+            }
+            AdvancedEdit::Create => {
+                let a = a.clone();
+                let Some((generation, mut request)) =
+                    self.mine_request(a.level, a.entry, CardAction::Add)
+                else {
+                    self.close_advanced();
+                    return;
+                };
+                request.sentence = a.sentence;
+                request.offset = a.offset;
+                request.clip = a.clip;
+                request.audio = a.audio && a.clip.is_some();
+                request.frame = match a.frame {
+                    FrameKind::Click => FrameChoice::Click,
+                    FrameKind::SentenceStart => {
+                        FrameChoice::At(a.reference.map_or(request.position_ms, |_| {
+                            self.subs.timeline().start_pos(a.first)
+                        }))
+                    }
+                    FrameKind::None => FrameChoice::None,
+                };
+                let frame = self.advanced_frame.take();
+                self.close_advanced();
+                self.send_mining(a.level, generation, request, frame);
+                return;
+            }
+        }
+        self.advanced_merge();
+    }
+
+    /// Closes the "Advanced mining" dialog; the frame it kept goes.
+    fn close_advanced(&mut self) {
+        self.advanced = None;
+        self.advanced_frame = None;
+        self.end_replay();
     }
 
     /// The active audio track: the file it is in (an external track's own
@@ -2502,8 +2861,19 @@ impl Session {
             }
             return (UiEffect::None, false);
         };
-        // a popup's keys first, then the player's (KEY-003)
-        let action = if self.popups.is_open() && !self.popups_covered {
+        // the shortcut editor takes the next chord; Esc gives up
+        if self.capturing {
+            if pressed && !auto_repeat {
+                self.capturing = false;
+                self.captured = (chord != "Escape").then_some(chord);
+            }
+            return (UiEffect::None, true);
+        }
+        // a page over the video: its controls get the keys, but the global
+        // ones; a popup's keys first, then the player's (KEY-003)
+        let action = if self.popups_covered {
+            self.bindings.action(Context::Global, &chord, text_focus)
+        } else if self.popups.is_open() {
             self.bindings
                 .action(Context::Popup, &chord, text_focus)
                 .or_else(|| self.bindings.action(Context::Player, &chord, text_focus))
@@ -2562,6 +2932,25 @@ impl Session {
                     top.and_then(|l| self.popups.stack().get(l).map(|p| (l, p.entry)))
                 {
                     self.card_button(level, entry);
+                }
+                Ok(())
+            }
+            // NFR-A11Y-01: the first word of the subtitle shown
+            Action::LookupSubtitle => {
+                self.keyboard_lookup = self.subs.active().first().map(|&cue| (cue, 0));
+                Ok(())
+            }
+            Action::LookupPrev | Action::LookupNext => {
+                self.step_lookup(action == Action::LookupNext);
+                Ok(())
+            }
+            Action::Settings => return UiEffect::OpenSettings,
+            Action::CreateCardAdvanced => {
+                let top = self.popups.stack().len().checked_sub(1);
+                if let Some((level, entry)) =
+                    top.and_then(|l| self.popups.stack().get(l).map(|p| (l, p.entry)))
+                {
+                    self.card_advanced(level, entry);
                 }
                 Ok(())
             }
@@ -2691,6 +3080,10 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
+            Action::Back if self.advanced.is_some() => {
+                self.close_advanced();
+                return UiEffect::None;
+            }
             Action::Back if self.popups.is_open() && !self.popups_covered => {
                 self.close_popup();
                 return UiEffect::None;
@@ -3223,6 +3616,7 @@ impl Session {
     /// text from there (LKP-001…LKP-003) is looked up in a popup next to
     /// `anchor`; playback pauses if it was going.
     pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        self.keyboard_lookup = None;
         // a click: the popup does not close when the pointer leaves
         self.hover.reset();
         self.look_up_grapheme(cue, offset, anchor);

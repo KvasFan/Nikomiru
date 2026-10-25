@@ -424,9 +424,9 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 
 | ID | Requirement |
 |---|---|
-| KEY-001 | All actions can be remapped; the bindings are saved in `config.toml` (`[shortcuts]`). |
+| KEY-001 | All actions can be remapped in Settings → Shortcuts (a key removed with ×, one added by pressing it, Esc gives up; an action back to its defaults); the bindings are saved in `config.toml` (`[shortcuts]`), only for the actions whose keys differ from the defaults. |
 | KEY-002 | Keys are recognized by their **physical key**, i.e. the scan code (winit's physical key, as a Linux evdev code), not by the produced character: shortcuts stay the same with any layout and input method (Fushi BUG-936). |
-| KEY-003 | Two actions in the same context (`global`, `library`, `player`, `popup`) cannot have the same key: the editor reports the conflict and does not save. |
+| KEY-003 | Two actions in the same context (`global`, `library`, `player`, `popup`) cannot have the same key, nor can a global action and any other: the editor refuses the key, naming the action that has it, and a file with conflicts is not saved. |
 | KEY-004 | While a text field is focused, single-key shortcuts are disabled. |
 | KEY-005 | A held key repeats only the actions that step (seek, volume, speed up and down, frame, chapter, cue, subtitle offset, popup entry); the others run once per press. |
 
@@ -450,9 +450,12 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | Subtitle offset −100 / +100 ms | Z / X | M2 |
 | Align the start of the previous / next cue to the position | Ctrl+Shift+← / Ctrl+Shift+→ | M2 |
 | Previous / next chapter | PageUp / PageDown | M1 |
-| Character cursor for keyboard lookup | Enter | M3 |
-| Create card from the popup entry | Ctrl+Enter | M4 |
-| Back (closes popup → leaves fullscreen → returns to the library) | Esc, Alt+← | M1 |
+| Look up the first word of the subtitle shown; with the popup open, the lookup a character earlier / later | Enter; ← / → | M6 |
+| Create card from the popup entry; the "Advanced mining" dialog | Ctrl+Enter; Ctrl+Shift+Enter | M4, M6 |
+| Back (closes a dialog or a page → a popup → leaves fullscreen → returns to the library), everywhere | Esc, Alt+← | M1 |
+| Settings, everywhere | Ctrl+, | M6 |
+
+While a page or a dialog covers the video (the library, the settings, the dialogs), only the shortcuts of the global context run: the other keys drive the page's controls (Tab, the arrows, Enter, Space), with the focus always drawn (NFR-A11Y-01). The library gives the keyboard to its first card, and a series to its first episode.
 
 ### 6.4 Subtitles (SUB)
 
@@ -611,7 +614,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | POP-003 | Hover with Shift (movement threshold 8 px; not repeated on the same character). Option `lookup.hover_without_modifier` (default no). Hover lookup pauses like a click. If the pointer leaves the subtitle and the popup for 320 ms, the popup closes and playback resumes (`lookup.resume_on_leave`, default yes). | |
 | POP-004 | When all popups are closed, playback resumes **only** if the lookup paused it (BUG-072). | |
 | POP-005 | With a popup open, a click on another character of the subtitle or the list replaces the entry and stays paused. | |
-| POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size (`[popup]`, §9; 560 × 500 points by default): a popup is that wide and as tall as its content up to that height. Resizable by dragging the border: the edge away from the word, the side edges and the corners between them (the edge next to the word has no grip: moving it would cover the word). The dragged edge follows the pointer while the popup keeps its side of the word, stays centred on it and inside the window; the size it gets, within 240 × 120 and 4096 × 4096 points, holds for the next popups until the app closes. `config.toml` is not written: the app has no writer yet that keeps a hand-edited file and its comments (SET-001). | `dictionary_popup_layer.dart` |
+| POP-006 | Position: above the subtitle if there is room, otherwise below. It never covers the looked-up word and shrinks to fit in the window. Configurable maximum size (`[popup]`, §9; 560 × 500 points by default): a popup is that wide and as tall as its content up to that height. Resizable by dragging the border: the edge away from the word, the side edges and the corners between them (the edge next to the word has no grip: moving it would cover the word). The dragged edge follows the pointer while the popup keeps its side of the word, stays centred on it and inside the window; the size it gets, within 240 × 120 and 4096 × 4096 points, holds for the next popups until the app closes; Settings → Lookup sets the size the popups start from. | `dictionary_popup_layer.dart` |
 | POP-007 | Header of each entry: headword with furigana (LKP-050), ♪ audio button (AUD), create-card button (+ / ✓ / ✓↩, ANK-030), deinflection trace chips with a description on hover, frequency row, pitch accent row, term tag chips. | `popup.js` |
 | POP-008 | One collapsible block per dictionary, with the collapsed state according to DIC-034. Definition tags appear as chips: numeric tags are hidden, a part-of-speech tag repeated on consecutive senses is omitted. | |
 | POP-009 | Yomitan **structured content**: converted into the popup's view model (typed blocks and runs, drawn by egui) from an allowlist of tags (`br ruby rt rp table thead tbody tfoot tr td th span div ol ul li details summary img a`). The style hooks of each tag (Yomitan's `gloss-sc-<tag>` class), the `data-sc-*` values, `lang` and an allowlist of `style` properties feed the styling subset of DIC-035. **No raw HTML** from Yomitan dictionaries and no scripts. Tables in a scrollable container. | `renderStructuredContent` |
@@ -684,8 +687,8 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`), `addTags`, and `notesInfo` again to check the write. Once `updateNoteFields` may have reached Anki, a failure is an unknown outcome: the media stay and the message says to check the card. Scope: only the last card made since Nikomiru started, the one Anki confirmed last even if its popup has closed. `mined_cards` follows. |
 | ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` with Anki's duplicate search (`dupe:<model id>,<first field>` for each note type, from `modelNamesAndIds`, within the deck when the scope is `deck`) and then `guiBrowse` with the ids found. |
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
-| ANK-040 | "Advanced mining" dialog (Shift+click on +): editing of start/end with preview, frame choice, exclusion of audio or image. Milestone M6. |
-| ANK-041 | Adding the previous or next cues to the sentence (merging text and interval). Milestone M6. |
+| ANK-040 | "Advanced mining" dialog (Shift+click on the card button, or Ctrl+Shift+Enter): the start and end of the clip with a preview (played from its start, paused at its end, as "Replay"), the picture (the frame of the click, saved when the dialog opens; the frame at the start of the sentence, taken from the video by ffmpeg; none), the sentence audio left out or not (a video without audio then makes a card). Esc or Cancel closes it; the popups wait under it. Milestone M6. |
+| ANK-041 | In that dialog, the cue before or after the sentence added, or its first or last cue taken away again: the text a cue per line, the word still bold at its place; the clip from the first cue to the last, padded, at most 30 s. Milestone M6. |
 | ANK-042 | WebM video clips and animated covers (AVIF/WebP/GIF): post-1.0. |
 
 #### 6.9.5 Return to the scene
@@ -711,14 +714,14 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 
 | ID | Requirement |
 |---|---|
-| SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). |
-| SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file). |
-| SET-003 | Light / dark / system theme (the system theme follows the desktop's `color-scheme`, read from the XDG settings portal), with a configurable accent color. Design tokens in a single Rust `Theme`, applied to egui's visuals. |
-| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings. |
+| SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). `config.toml`: a key this version does not know is kept and written back; a value of the wrong kind takes its default and is named in a notice at startup (a file that is not TOML keeps the defaults in use and is never written over); saving changes only the values that changed, so a file edited by hand keeps its comments, order and layout; the write is atomic, with permissions 0600. |
+| SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file, the ffmpeg program from the next start). |
+| SET-003 | Light / dark / system theme (the system theme follows the desktop's `color-scheme`, read from the XDG settings portal and followed through its `SettingChanged` signal; dark when the desktop has no preference), with a configurable accent color. Design tokens in a single Rust palette (`view/palette.rs`), applied to egui's visuals: the pages and the dictionary popups follow the theme; what is drawn on the video (the bar, the subtitles, their list, the toasts) stays dark. The accent as text is made lighter or darker until it reads at 4.5:1. |
+| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings, at once for the interface and the messages of the workers. |
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
-| SET-006 | Reset to default settings per section. |
+| SET-006 | Reset to default settings per section: the tab's keys go back to their defaults in the page, and are saved with the page. What the user has rather than how Nikomiru behaves stays: the keys and logins of the services, the AnkiConnect key, the word audio sources, the keys `config.toml` has that this version does not know. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
-| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
+| SET-008 | The settings are one page with a tab per section, the tabs down its left side, opened by ⚙ in the bar on the tab shown last (📚 opens the Dictionaries tab, the Anki button the Anki tab); Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 
@@ -759,7 +762,7 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
 | NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: the interface lays them out as literal text from a typed view model (allowlisted blocks and runs, POP-009); no markup is ever parsed from them for display, never raw HTML or scripts; the interface never loads a URL from them (images are decoded from the dictionary's own media, POP-010; external links open only `http`/`https` in the browser, POP-011) | T-SEC-* |
 | NFR-SEC-02 | No file written outside Nikomiru's XDG directories and those chosen by the user (screenshots, exports) | T-SEC-03 |
-| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; AccessKit roles and names on the controls (AT-SPI on Linux) | T-A11Y-* |
+| NFR-A11Y-01 | The whole UI is usable from the keyboard, with focus always visible; AA contrast in the default themes; AccessKit roles and names on the controls (AT-SPI on Linux) | T-A11Y-*, T-E2E-A11Y-001 |
 | NFR-PORT-01 | Works on Wayland and X11; the build needs no network apart from `cargo fetch` | T-PORT-001, T-PORT-002 |
 | NFR-MAINT-01 | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check` clean; `///` documentation on every `pub` item of the library crates | T-MAINT-001 |
 | NFR-MAINT-02 | Line coverage ≥ 80% for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` (measured with `cargo llvm-cov`, MIT/Apache license) | T-MAINT-002 |
@@ -792,7 +795,9 @@ A scan of a folder keeps what the library knows (LIB-004): a file is found again
 ```toml
 [general]
 ui_language = "system"      # "it", "en", …
-theme = "system"            # "light" | "dark" | "system"
+theme = "system"            # "light" | "dark" | "system" (SET-003)
+accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
+ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
 study_language = "ja"
 
 [player]

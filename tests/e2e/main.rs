@@ -564,13 +564,45 @@ fn screenshots_of_the_interface() {
     h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("popup.png"));
+    // the same popup in the light theme (SET-003)
+    for (theme, dark) in [("light", false), ("dark", true)] {
+        h.cmd(serde_json::json!({
+            "cmd": "settings",
+            "tab": "general",
+            "save": format!("[general]\ntheme = \"{theme}\"\n"),
+        }));
+        h.state_until("the theme", |s| s["look"]["dark"] == dark);
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+        if !dark {
+            std::thread::sleep(Duration::from_millis(300));
+            desk.capture(&dir.join("popup-light.png"));
+        }
+    }
+    // the card made by hand (ANK-040)
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    h.state_until("the dialog", |s| s["advanced"].is_object());
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "next" }));
+    h.state_until("two lines", |s| s["advanced"]["last"] == 1);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("mining-advanced.png"));
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "cancel" }));
+    h.state_until("the dialog closed", |s| s["advanced"].is_null());
     h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
     h.wait("card-created");
     h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
     h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("popup-card-menu.png"));
+    // the menu, then the popup; the rest is taken paused, so that the video
+    // stays short of watched and in "Continue watching"
     h.key("Escape");
+    h.state_until("the menu closed", |s| s["popups"][0]["menu"].is_null());
+    h.key("Escape");
+    h.state_until("the popup closed and playback resumed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
+    });
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
     h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
     h.state_until("the lists", |s| {
         s["anki_page"]["fields"]
@@ -581,7 +613,18 @@ fn screenshots_of_the_interface() {
     desk.capture(&dir.join("anki-settings.png"));
     // the toast of the card gone
     std::thread::sleep(Duration::from_secs(2));
-    for tab in ["player", "services"] {
+    for tab in [
+        "general",
+        "player",
+        "subtitles",
+        "services",
+        "dictionaries",
+        "lookup",
+        "audio",
+        "shortcuts",
+        "advanced",
+        "about",
+    ] {
         h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
         h.state_until("the tab", |s| s["settings_tab"] == tab);
         std::thread::sleep(Duration::from_millis(300));
@@ -614,6 +657,20 @@ fn screenshots_of_the_interface() {
     h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("statistics.png"));
+    // the light theme (SET-003)
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "general",
+        "save": "[general]\ntheme = \"light\"\n",
+    }));
+    h.state_until("the light theme", |s| s["look"]["dark"] == false);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("settings-light.png"));
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("library-light.png"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -683,7 +740,9 @@ fn l7_a_card_in_a_real_anki() {
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn anki_settings_do_not_overwrite_a_config_file_that_did_not_load() {
     let mut desk = Desktop::start();
-    let broken = "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\"\n# the user's comment\n";
+    // not TOML (a wrong value alone takes its default, SET-001)
+    let broken =
+        "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\n# the user's comment\n";
     desk.write_config(broken);
     let (mut app, mut h) = desk.launch();
     h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": "deck = \"Mining\"" }));
@@ -1997,6 +2056,313 @@ fn a_secondary_subtitle_follows_the_main_one() {
     // off again
     h.cmd(serde_json::json!({ "cmd": "secondary", "key": "off" }));
     h.state_until("no secondary", |s| s["secondary"]["source"].is_null());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SET-002, T-SET-004, T-SET-005: the settings apply at once, the interface
+// scale leaves the subtitles' size alone, the user's file keeps its comments
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_settings_apply_without_a_restart() {
+    let mut desk = Desktop::start();
+    desk.write_config(
+        "# my settings\n[general]\nui_language = \"en\"\ntheme = \"dark\" # at night\n\
+         [player]\nmpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let px = |s: &serde_json::Value| s["look"]["subtitle_px"].as_f64().unwrap_or(0.0);
+    let s = h.state_until("the subtitles drawn", |s| px(s) > 0.0);
+    let before = px(&s);
+    assert_eq!(s["look"]["dark"], true, "{s}");
+    assert_eq!(s["look"]["language"], "en", "{s}");
+    assert_eq!(s["look"]["zoom"], 1.0, "{s}");
+    // light, in Italian, at 150 %
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "general",
+        "save": "[general]\ntheme = \"light\"\nui_language = \"it\"\nui_scale = 150\n",
+    }));
+    let s = h.state_until("the new look", |s| s["look"]["zoom"] == 1.5);
+    assert_eq!(s["look"]["dark"], false, "{s}");
+    assert_eq!(s["look"]["language"], "it", "{s}");
+    assert_eq!(s["settings_status"]["ok"], true, "{s}");
+    // the subtitles keep their size on the screen
+    assert!((px(&s) - before).abs() < 1.0, "{before} → {}", px(&s));
+    // and grow at once with their own setting
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "subtitles",
+        "save": "[subtitles]\nfont_size = 54\n",
+    }));
+    h.state_until("bigger subtitles", |s| (px(s) - before * 1.5).abs() < 1.5);
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let text = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).unwrap();
+    assert!(text.starts_with("# my settings\n"), "{text}");
+    assert!(text.contains("theme = \"light\" # at night\n"), "{text}");
+    assert!(text.contains("ui_scale = 150"), "{text}");
+    assert!(text.contains("font_size = 54"), "{text}");
+}
+
+// T-ANK-040, T-ANK-041: Shift+click makes the card by hand
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    let s = h.state_until("the dialog", |s| s["advanced"].is_object());
+    assert_eq!(s["advanced"]["sentence"], "食べました", "{s}");
+    assert_eq!(
+        s["advanced"]["clip"],
+        serde_json::json!([1880, 2700]),
+        "{s}"
+    );
+    // the line after joins the sentence and the clip
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "next" }));
+    let s = h.state_until("two lines", |s| s["advanced"]["last"] == 1);
+    let sentence = s["advanced"]["sentence"].as_str().unwrap().to_string();
+    assert!(sentence.starts_with("食べました\n"), "{s}");
+    assert!(s["advanced"]["clip"][1].as_i64().unwrap() > 2700, "{s}");
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "frame-start" }));
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "audio-off" }));
+    h.state_until("chosen", |s| s["advanced"]["audio"] == false);
+    // Esc closes the dialog, not the popup
+    h.key("Escape");
+    h.state_until("the dialog closed", |s| s["advanced"].is_null());
+    assert!(!h.state()["popups"].as_array().unwrap().is_empty());
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    h.state_until("the dialog again", |s| s["advanced"].is_object());
+    for edit in ["next", "frame-start", "audio-off", "create"] {
+        h.cmd(serde_json::json!({ "cmd": "advanced", "edit": edit }));
+    }
+    let created = h.wait("card-created");
+    let note_id = created["note_id"].as_u64().unwrap();
+    let anki = fake.collection();
+    let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+    let field = |name: &str| {
+        note.fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        field("Sentence").starts_with("<b>食べました</b><br>"),
+        "{}",
+        field("Sentence")
+    );
+    assert_eq!(field("SentenceAudio"), "");
+    assert!(
+        field("Picture").starts_with("<img src="),
+        "{}",
+        field("Picture")
+    );
+    drop(anki);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-E2E-A11Y-001: from the library to a card and back with the keyboard alone
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_keyboard_alone_goes_from_the_library_to_a_card_and_back() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let root = desk.path("videos");
+    let link = root.join("Show/Show - 01.mkv");
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(fixture("av_basic.mkv"), &link).unwrap();
+    let (mut app, mut h) = desk.launch();
+    // the setting up, not part of the tour: the folder in the library
+    h.state_until("the page", |s| s["library_page"]["series"].is_array());
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    h.state_until("the series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 1)
+    });
+    // Enter on the first card, which has the keyboard: the series
+    h.key("Enter");
+    h.state_until("its episodes", |s| {
+        s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    // Enter on its first episode
+    h.key("Enter");
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    // Enter looks up the subtitle shown; → and ← move the lookup
+    h.key("Enter");
+    let s = h.state_until("the popup", |s| s["popups"][0]["query"].is_string());
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.key("ArrowRight");
+    h.state_until("a character later", |s| {
+        s["popups"][0]["query"] == "べました"
+    });
+    h.key("ArrowLeft");
+    h.state_until("back", |s| s["popups"][0]["query"] == "食べました");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    // Ctrl+Enter makes the card
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.wait("card-created");
+    assert_eq!(fake.collection().notes.len(), 1);
+    // Ctrl+, opens the settings; Tab and the arrows are theirs there
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Comma", "mods": ["Ctrl"] }));
+    h.state_until("the settings", |s| s["settings_open"] == true);
+    h.key("Tab");
+    h.key("ArrowLeft");
+    let s = h.state();
+    assert!(
+        !s["popups"].as_array().unwrap().is_empty(),
+        "the popup waits: {s}"
+    );
+    // Esc: the settings, then the popup, then back to the library
+    h.key("Escape");
+    h.state_until("the settings closed", |s| s["settings_open"] == false);
+    h.key("Escape");
+    h.state_until("the popup closed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty)
+    });
+    h.key("Escape");
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+/// The objects of the accessibility tree on the bus at `address`, from the
+/// registry's root: their AT-SPI role (`AtspiRole`) and name.
+fn accessible_tree(address: &str) -> Vec<(u32, String)> {
+    use nikomiru_app::dbus::{Connection, Message, Value};
+    let mut conn = Connection::open(address).unwrap();
+    let mut call = |bus: &str, path: &str, iface: &str, member: &str, body: Vec<Value>| {
+        conn.call(Message::call(bus, path, iface, member).with_body(body))
+            .map(|r| r.body)
+            .unwrap_or_default()
+    };
+    let mut todo = vec![(
+        "org.a11y.atspi.Registry".to_string(),
+        "/org/a11y/atspi/accessible/root".to_string(),
+    )];
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    while let Some((bus, path)) = todo.pop() {
+        if seen.len() > 3000 || !seen.insert((bus.clone(), path.clone())) {
+            continue;
+        }
+        let role = match &call(&bus, &path, "org.a11y.atspi.Accessible", "GetRole", vec![])[..] {
+            [Value::U32(r)] => *r,
+            _ => 0,
+        };
+        let name = match &call(
+            &bus,
+            &path,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            vec![
+                Value::Str("org.a11y.atspi.Accessible".into()),
+                Value::Str("Name".into()),
+            ],
+        )[..]
+        {
+            [Value::Variant(v)] => match v.as_ref() {
+                Value::Str(n) => n.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+        out.push((role, name));
+        if let [Value::Array(_, children)] = &call(
+            &bus,
+            &path,
+            "org.a11y.atspi.Accessible",
+            "GetChildren",
+            vec![],
+        )[..]
+        {
+            for child in children {
+                if let Value::Struct(f) = child
+                    && let [Value::Str(b), Value::Path(p)] = &f[..]
+                {
+                    todo.push((b.clone(), p.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+// T-A11Y-001: the player's controls as a screen reader finds them
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, at-spi2-core and `cargo xtask fixtures`"]
+fn a_screen_reader_finds_every_control_named() {
+    let mut desk = Desktop::start();
+    let a11y = desk.start_accessibility();
+    // in English, whatever the system's language
+    desk.write_config(
+        "[general]\nui_language = \"en\"\n[player]\nmpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
+    std::thread::sleep(Duration::from_millis(800));
+    let tree = accessible_tree(&a11y);
+    // AtspiRole: check box, combo box, push button, radio button, slider
+    const CONTROLS: [u32; 5] = [7, 11, 43, 44, 51];
+    let unnamed: Vec<&(u32, String)> = tree
+        .iter()
+        .filter(|(role, name)| CONTROLS.contains(role) && name.trim().is_empty())
+        .collect();
+    assert!(
+        unnamed.is_empty(),
+        "controls without a name: {unnamed:?}\n{tree:?}"
+    );
+    let names: Vec<&str> = tree.iter().map(|(_, n)| n.as_str()).collect();
+    for name in [
+        "← Library",
+        "Play",
+        "Position",
+        "Mute",
+        "Volume",
+        "Subtitles",
+        "Settings",
+        "Anki settings",
+        "Dictionaries",
+        "Open file…",
+        "Fullscreen",
+        "Video",
+    ] {
+        assert!(names.contains(&name), "{name} is missing: {tree:?}");
+    }
+    let button = |name: &str| tree.iter().any(|(r, n)| *r == 43 && n == name);
+    assert!(button("Play") && button("Settings"), "{tree:?}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

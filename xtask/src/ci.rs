@@ -57,6 +57,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         ]))
     })?;
     step("architecture and headers", || arch::check_all(root))?;
+    step("interface strings", || crate::i18n::check(root))?;
     step("licenses (cargo deny)", || licenses::check(root, true))?;
     step("traceability", || trace::run(root))?;
     if full {

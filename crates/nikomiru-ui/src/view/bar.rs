@@ -10,6 +10,7 @@ use egui::{
     WidgetInfo, pos2,
 };
 
+use super::palette;
 use super::settings::SettingsTab;
 use super::{Dialog, View};
 use crate::session::Session;
@@ -231,6 +232,7 @@ pub(crate) fn show(
         .pivot(Align2::LEFT_BOTTOM)
         .fixed_pos(pos2(screen.left(), screen.bottom()))
         .show(ctx, |ui| {
+            palette::on_video(ui);
             ui.multiply_opacity(opacity);
             Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(0x14, 0x14, 0x18, 0xd9))
@@ -301,7 +303,7 @@ pub(crate) fn show(
                                 view.dialog = Some(Dialog::Video);
                             }
                             if icon(ui, true, "📚", &tr("dict-page-title")) {
-                                view.open_dict_page(out);
+                                view.open_settings(SettingsTab::Dictionaries, out);
                             }
                             if icon(ui, true, "Anki", &tr("anki-open")) {
                                 view.open_settings(SettingsTab::Anki, out);

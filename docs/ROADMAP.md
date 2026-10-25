@@ -308,7 +308,11 @@ The proxy setting and the mpv presets with their settings page moved to M4b (D-1
 **Status as of 2026-10-25**
 
 - Done: statistics (STA-001…STA-005), ported from Fushi with its vectors: the watch tracker with interval coverage, per-cue credits, the session clock by local hour, the Statistics tab of the Library page with its chart, calendar, totals by series, sessions and CSV export.
-- Open: the full settings (SET-001…SET-006, the shortcut editor), the complete `it`/`en` review, the advanced mining dialog (ANK-040, ANK-041), the keyboard-only tour (NFR-A11Y-01).
+- Done: the full settings (SET-001…SET-006): eleven tabs down the side of one page; `config.toml` keeps its comments and takes a wrong value as its default with a notice; reset per tab; light, dark and system theme (the desktop's portal) with an accent, the tokens checked for contrast; the language and the interface scale changed at once; the shortcut editor with conflict checks (KEY-001…KEY-004).
+- Done: the `it`/`en` review, with `cargo xtask check-i18n` in the CI (T-I18N-001, T-I18N-002): every key used, every key asked for present, no untranslated text in the views.
+- Done: the advanced mining dialog (ANK-040, ANK-041): Shift+click or Ctrl+Shift+Enter, lines added to the sentence, the clip with a preview, the picture and the audio chosen.
+- Done: the keyboard-only tour (NFR-A11Y-01): pages take the keys no global shortcut takes, Enter and ← → look words up, Ctrl+, opens the settings, the library's first card has the keyboard with a drawn focus; T-E2E-A11Y-001 goes from the library to a card and back with keys only, and T-A11Y-001 reads the controls through AT-SPI.
+- Left for 0.3.0: the maintainer's check of the manual items, then the release.
 
 **Deliverables**
 

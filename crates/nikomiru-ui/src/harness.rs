@@ -145,6 +145,7 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             other => return Err(format!("unknown modifier {other}")),
         }
     }
+    let name = code.to_string();
     call(move |ui| {
         let key = |pressed, repeat| Key {
             evdev,
@@ -152,12 +153,37 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             pressed,
             repeat,
         };
-        ui.key(key(true, false), false);
+        let taken = ui.key(key(true, false), false);
         // held: the auto-repeats of the window system
         for _ in 0..repeats {
             ui.key(key(true, true), false);
         }
         ui.key(key(false, false), false);
+        // what the window gives egui: a key no shortcut took, on a page
+        if !taken && (ui.page_open() || held.ctrl) {
+            let short = name
+                .strip_prefix("Key")
+                .or_else(|| name.strip_prefix("Digit"))
+                .unwrap_or(&name);
+            if let Some(k) = egui::Key::from_name(short) {
+                let modifiers = egui::Modifiers {
+                    alt: held.alt,
+                    ctrl: held.ctrl,
+                    shift: held.shift,
+                    command: held.ctrl,
+                    mac_cmd: false,
+                };
+                for pressed in [true, false] {
+                    ui.inject(egui::Event::Key {
+                        key: k,
+                        physical_key: Some(k),
+                        pressed,
+                        repeat: false,
+                        modifiers,
+                    });
+                }
+            }
+        }
     })
 }
 
@@ -199,6 +225,52 @@ pub fn state() -> Result<Value, String> {
                     .map(|q| json!({ "index": i, "text": q.plain_text }))
             })
             .collect();
+        // apart from the big json! below, whose macro would recurse too deep
+        let results = s.online_page.results.as_ref().map(|r| {
+            let files: Vec<Value> = r
+                .candidates
+                .iter()
+                .map(|c| {
+                    json!({
+                        "provider": c.provider.name(), "name": c.file_name,
+                        "language": c.language, "episode": c.episode,
+                    })
+                })
+                .collect();
+            json!({ "files": files, "failed": r.failed })
+        });
+        let online_page = json!({
+            "open": ui.view.online_page_open,
+            "busy": s.online_page.busy,
+            "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+            "query": s.online_page.query.as_ref().map(|q| json!({
+                "title": q.title, "season": q.season, "episode": q.episode,
+            })),
+            "results": results,
+        });
+        let advanced = s.advanced_card().map(|a| {
+            json!({
+                "sentence": a.sentence,
+                "offset": a.offset,
+                "first": a.first,
+                "last": a.last,
+                "clip": a.clip.map(|(s, e)| [s, e]),
+                "frame": format!("{:?}", a.frame),
+                "audio": a.audio,
+            })
+        });
+        let settings_status = s
+            .settings_status
+            .as_ref()
+            .map(|(t, ok)| json!({ "text": t, "ok": ok }));
+        let look = json!({
+            "dark": s.look().dark,
+            "accent": s.look().accent,
+            "scale": s.look().scale,
+            "zoom": ui.view.zoom,
+            "language": s.translator().language(),
+            "subtitle_px": ui.view.overlay.font_px,
+        });
         let library_page = {
             let page = &s.library_page;
             let home = page.home.as_ref();
@@ -290,7 +362,11 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
+            "advanced": advanced,
             "settings_tab": ui.view.settings_tab.key(),
+            "settings_open": ui.view.settings_open(),
+            "settings_status": settings_status,
+            "look": look,
             "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
             "library_page": library_page,
             "sub_list_open": ui.view.sub_list_open,
@@ -314,21 +390,7 @@ pub fn state() -> Result<Value, String> {
                 "raw": s.player_set().raw,
                 "preset": s.player_preset(),
             }),
-            "online_page": json!({
-                "open": ui.view.online_page_open,
-                "busy": s.online_page.busy,
-                "status": s.online_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
-                "query": s.online_page.query.as_ref().map(|q| json!({
-                    "title": q.title, "season": q.season, "episode": q.episode,
-                })),
-                "results": s.online_page.results.as_ref().map(|r| json!({
-                    "files": r.candidates.iter().map(|c| json!({
-                        "provider": c.provider.name(), "name": c.file_name,
-                        "language": c.language, "episode": c.episode,
-                    })).collect::<Vec<_>>(),
-                    "failed": r.failed,
-                })),
-            }),
+            "online_page": online_page,
             "missing_link": s.missing_link.as_ref().map(|m| json!({
                 "uid": m.link.uid,
                 "path": m.path,
@@ -382,6 +444,8 @@ pub fn popup_button(button: &str) -> Result<(), String> {
 pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String> {
     let command = match item {
         None => Command::CardButton { level, entry },
+        // Shift+click (ANK-040)
+        Some("advanced") => Command::CardAdvanced { level, entry },
         Some(name) => Command::CardMenu {
             level,
             entry,
@@ -486,10 +550,13 @@ pub fn player(
     })?
 }
 
-/// The settings (SET-008): the tab `tab` (`player`, `services`, `anki`)
-/// opened as ⚙ or a tab does, or `close`d.
-pub fn settings(tab: &str) -> Result<(), String> {
+/// The settings (SET-008): the tab `tab` opened as ⚙ or a tab does, or
+/// `close`d. With `save`, TOML laid over the settings in use, the tab saves
+/// it as its Save button does (SET-001: General, Subtitles, Lookup,
+/// Shortcuts, Advanced).
+pub fn settings(tab: &str, save: Option<&str>) -> Result<(), String> {
     let tab = tab.to_string();
+    let save = save.map(str::to_string);
     call(move |ui| {
         if tab == "close" {
             ui.view.close_settings();
@@ -501,6 +568,13 @@ pub fn settings(tab: &str) -> Result<(), String> {
         ui.view.open_settings(tab, &mut out);
         for c in out {
             ui.run(c);
+        }
+        if let Some(text) = save {
+            let section = tab
+                .section()
+                .ok_or_else(|| format!("the tab {} saves no section", tab.key()))?;
+            let draft = ui.session.config().laid_over(&text)?;
+            ui.run(Command::SettingsSave(section, Box::new(draft)));
         }
         Ok(())
     })?
@@ -610,6 +684,33 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
         ui.run(command);
         Ok(())
     })?
+}
+
+/// The "Advanced mining" dialog (ANK-040, ANK-041), as its controls do:
+/// `previous`, `next`, `drop-previous`, `drop-next`, `start`/`end` with
+/// `value` in ms, `frame-click`, `frame-start`, `frame-none`, `audio-on`,
+/// `audio-off`, `preview`, `create`, `cancel`.
+pub fn advanced(edit: &str, value: Option<i64>) -> Result<(), String> {
+    use crate::mining::{AdvancedEdit, FrameKind};
+    let ms = || value.ok_or_else(|| "missing \"value\"".to_string());
+    let edit = match edit {
+        "previous" => AdvancedEdit::Previous(true),
+        "drop-previous" => AdvancedEdit::Previous(false),
+        "next" => AdvancedEdit::Next(true),
+        "drop-next" => AdvancedEdit::Next(false),
+        "start" => AdvancedEdit::Start(ms()?),
+        "end" => AdvancedEdit::End(ms()?),
+        "frame-click" => AdvancedEdit::Frame(FrameKind::Click),
+        "frame-start" => AdvancedEdit::Frame(FrameKind::SentenceStart),
+        "frame-none" => AdvancedEdit::Frame(FrameKind::None),
+        "audio-on" => AdvancedEdit::Audio(true),
+        "audio-off" => AdvancedEdit::Audio(false),
+        "preview" => AdvancedEdit::Preview,
+        "create" => AdvancedEdit::Create,
+        "cancel" => AdvancedEdit::Cancel,
+        other => return Err(format!("no advanced mining edit {other}")),
+    };
+    call(move |ui| ui.run(Command::Advanced(edit)))
 }
 
 /// The secondary subtitle (SUB-017): a source key or `off`, and the

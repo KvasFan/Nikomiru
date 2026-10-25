@@ -19,8 +19,8 @@ use nikomiru_core::{Cancel, ManualClock};
 use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
-    AnkiService, BrowseTarget, CardAction, CheckRequest, MineFailure, MineRequest, Mined,
-    PendingFrame,
+    AnkiService, BrowseTarget, CardAction, CheckRequest, FrameChoice, MineFailure, MineRequest,
+    Mined, PendingFrame,
 };
 use serde_json::json;
 
@@ -78,7 +78,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
         ffmpeg: String::new(),
         translator: Translator::from_setting("en", |_| None),
         dictionaries: Some(Arc::new(manager)),
-        max_results: 10,
+        max_results: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(10)),
         cache_dir: mining.clone(),
         library: Some(Arc::clone(&library)),
         clock: clock.clone(),
@@ -110,6 +110,8 @@ fn request(video: &str, audio: Option<i64>, action: CardAction) -> MineRequest {
         uid: Some("video/av_basic".into()),
         title: "av_basic".into(),
         action,
+        frame: FrameChoice::Click,
+        audio: true,
     }
 }
 
@@ -216,6 +218,32 @@ fn the_frame_of_the_click_is_the_picture_and_a_failed_one_leaves_none() {
     assert_eq!(field(&s, "Picture"), "");
     s.fake.collection().notes.clear();
     mine_with(&s, request("av_basic.mkv", Some(1), CardAction::Add), None).unwrap();
+    assert_eq!(field(&s, "Picture"), "");
+}
+
+// T-ANK-040, T-ANK-041: the picture taken from the video at the start of
+// the sentence, no audio, two lines; or no picture
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn an_advanced_card_has_the_picture_and_audio_chosen() {
+    let s = setup(|_| {});
+    let mut r = request("av_basic.mkv", Some(1), CardAction::Add);
+    r.frame = FrameChoice::At(1_000);
+    r.audio = false;
+    r.sentence = "前の行\n食べました".into();
+    r.offset = Some("前の行\n".len());
+    // the frame of the click is not used: it goes too
+    mine(&s, r).unwrap();
+    let picture = field(&s, "Picture");
+    assert!(picture.starts_with(r#"<img src="nikomiru_"#), "{picture}");
+    assert_eq!(field(&s, "SentenceAudio"), "");
+    assert_eq!(field(&s, "Sentence"), "前の行<br><b>食べました</b>");
+    // a video without audio makes a card when its audio is left out
+    s.fake.collection().notes.clear();
+    let mut r = request("av_noaudio.mp4", None, CardAction::Add);
+    r.audio = false;
+    r.frame = FrameChoice::None;
+    mine(&s, r).unwrap();
     assert_eq!(field(&s, "Picture"), "");
 }
 

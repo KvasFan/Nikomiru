@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Statistics (STA-001…STA-005): the time of a video watched is counted once (seeks and pauses are not), the characters of a cue once it has been played 1.5 s (the units of study of every script, STA-003), lookups and cards; sessions split by hour and by a pause over 2 min, in the local time. The Library page has a Statistics tab: today, 7 days and all time, a chart by day over 7, 30 or 365 days, the year as a calendar, the time by series, the sessions (each can be deleted) and an export to CSV.
 
+- The full settings (SET-001…SET-006): one page with eleven tabs down its side, General, Player, Subtitles, Subtitle services, Dictionaries (📚 opens it), Lookup, Word audio, Anki, Shortcuts, Advanced and About. A tab's Save applies its settings at once; Reset puts them back to their defaults, keeping keys, logins and word audio sources.
+- Light, dark or the desktop's theme, followed when the desktop changes (the settings portal), and an accent color (SET-003). The pages and the dictionary popups follow it; the bar, the subtitles and the toasts on the video stay dark.
+- The interface language and scale change without a restart (SET-004, SET-005); the subtitles keep their size on the screen.
+- A shortcut editor (KEY-001…KEY-004): a key is added by pressing it, refused when another action has it, removed with ×; an action goes back to its default keys with ↺.
+- A card made by hand (ANK-040, ANK-041): Shift+click on the card button, or Ctrl+Shift+Enter, opens a dialog where the lines before and after join the sentence, the clip's start and end can be changed and listened to, the picture is the frame of the click, the one at the start of the sentence or none, and the sentence audio can be left out.
+- The whole way with the keyboard (NFR-A11Y-01): Enter looks up the first word of the subtitle shown and ← → move the lookup a character; Ctrl+, opens the settings; on a page or a dialog the keys drive its controls (Tab, the arrows, Enter, Space) and only the global shortcuts run, Esc included; the library gives the keyboard to its first card, with the focus drawn.
+
+### Changed
+
+- `config.toml` keeps the comments, order and layout of a file edited by hand: saving changes only the values that changed. A value of the wrong kind takes its default and is named in a notice, instead of the whole file being set aside (SET-001).
+- A global shortcut can no longer share its key with an action of another context (KEY-003).
+- Back (Esc, Alt+←) is a global shortcut: it closes a page or a dialog wherever the keyboard is.
+
+### Fixed
+
+- The settings tabs General to About cover the popups: keys typed there no longer reach a popup under them.
+- The next episode started by the countdown plays, instead of staying paused on its first frame.
+- Going back to the library saves the position first, so the video being watched is in "Continue watching" at its place.
+
 ## [0.2.0] - 2026-10-25
 
 The library and word audio (M5).

@@ -155,6 +155,9 @@ pub enum Inbound {
         /// How it went.
         result: Result<(), String>,
     },
+    /// The desktop's light or dark preference, at start and when it changes
+    /// (SET-003).
+    SystemTheme(Option<bool>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -191,6 +194,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Library(_) => "Library",
             Inbound::WordAudioListed { .. } => "WordAudioListed",
             Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
+            Inbound::SystemTheme(_) => "SystemTheme",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -285,6 +289,13 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// Shift+click on it: the "Advanced mining" dialog (ANK-040).
+    CardAdvanced {
+        level: usize,
+        entry: usize,
+    },
+    /// A change in that dialog (ANK-040, ANK-041).
+    Advanced(crate::mining::AdvancedEdit),
     /// The Anki settings page opened.
     AnkiOpen,
     /// "Test the connection" with these settings (ANK-006).
@@ -331,6 +342,13 @@ pub(crate) enum Command {
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
     ServicesOpen,
+    /// The General, Subtitles, Lookup, Shortcuts, Advanced or About tab of
+    /// the settings opened.
+    SettingsOpen,
+    /// Save the keys of a section from this draft (SET-001).
+    SettingsSave(nikomiru_core::config::Section, Box<nikomiru_core::Config>),
+    /// The shortcut editor waits for a key, or no longer (KEY-001).
+    ShortcutCapture(bool),
     /// The Word audio tab of the settings opened (AUD-001).
     AudioOpen,
     /// A search from it.
@@ -392,6 +410,8 @@ pub struct Ui {
     external: Vec<String>,
     /// Points of an Alt+swipe not yet turned into an entry step.
     swipe: f32,
+    /// Input for egui from the test harness, as the window would give it.
+    injected: Vec<egui::Event>,
 }
 
 /// A turn of the mouse wheel, in notches, or a swipe, in points: positive
@@ -431,6 +451,7 @@ impl Ui {
             view: View::default(),
             waker,
             quit: false,
+            injected: Vec::new(),
             external: Vec::new(),
             swipe: 0.0,
         };
@@ -622,6 +643,10 @@ impl Ui {
                 self.session.word_audio_played(result);
                 true
             }
+            Inbound::SystemTheme(dark) => {
+                self.session.system_dark = dark;
+                true
+            }
             Inbound::Quit => {
                 self.quit();
                 true
@@ -676,6 +701,23 @@ impl Ui {
             self.pump();
         }
         true
+    }
+
+    /// Whether a page or a dialog covers the video: its controls take the
+    /// keys no shortcut took (NFR-A11Y-01).
+    pub fn page_open(&self) -> bool {
+        self.session.popups_covered
+    }
+
+    /// Input for egui that the test harness made, for the next frame.
+    pub fn take_injected(&mut self) -> Vec<egui::Event> {
+        std::mem::take(&mut self.injected)
+    }
+
+    /// Queues input for egui (the test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn inject(&mut self, event: egui::Event) {
+        self.injected.push(event);
     }
 
     /// The web links the user clicked since the last call: the app opens them
@@ -791,7 +833,9 @@ impl Ui {
             || self.view.player_page_open
             || self.view.services_page_open
             || self.view.audio_page_open
-            || self.view.library_page_open;
+            || self.view.prefs_open.is_some()
+            || self.view.library_page_open
+            || self.session.advanced_card().is_some();
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -858,6 +902,8 @@ impl Ui {
             Command::DictSetCollapse(id, state) => s.dict_set_collapse(&id, &state),
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
             Command::CardButton { level, entry } => s.card_button(level, entry),
+            Command::CardAdvanced { level, entry } => s.card_advanced(level, entry),
+            Command::Advanced(edit) => s.advanced_edit(edit),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),
@@ -900,6 +946,9 @@ impl Ui {
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
             Command::ServicesOpen => s.services_open(),
+            Command::SettingsOpen => s.settings_open(),
+            Command::SettingsSave(section, draft) => s.settings_save(section, &draft),
+            Command::ShortcutCapture(on) => s.shortcut_capture(on),
             Command::AudioOpen => s.audio_status = None,
             Command::OnlineSearch {
                 title,

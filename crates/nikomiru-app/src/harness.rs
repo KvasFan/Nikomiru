@@ -15,7 +15,7 @@
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
 //! `{"cmd":"align"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
-//! `{"cmd":"settings","tab":"player"|"services"|"audio"|"anki"|"close"}`,
+//! `{"cmd":"settings","tab":"general"|"player"|…|"close","save"?:"<toml>"}`,
 //! `{"cmd":"word_audio","action":"play"|"menu"|"url","level":0,"entry":0,"url":…}`,
 //! `{"cmd":"library","action":"open"|"import"|"series"|"play"|…,"path":…,"grouping":…,"id":…}`,
 //! `{"cmd":"services","providers":["opensubtitles",…],"auto":true}`, `{"cmd":"state"}`,
@@ -135,7 +135,11 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
-        Some("settings") => harness::settings(text(command, "tab")?).map(|()| Value::Null),
+        Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
+            .map(|()| Value::Null),
+        Some("settings") => {
+            harness::settings(text(command, "tab")?, command["save"].as_str()).map(|()| Value::Null)
+        }
         Some("word_audio") => harness::word_audio(
             text(command, "action")?,
             command["level"].as_u64().unwrap_or(0) as usize,

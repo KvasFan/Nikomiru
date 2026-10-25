@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! `config.toml` (SPECIFICATION §5.4, §9). Unknown keys are kept as they are and
-//! written back, so a file from a newer version or edited by hand loses nothing.
-//! Writes are atomic and the file is readable only by the user (0600).
+//! written back, so a file from a newer version or edited by hand loses nothing;
+//! a value of the wrong kind takes its default and is reported (SET-001).
+//! Saving changes only the values that changed: the comments, the order and
+//! the layout of a file edited by hand stay. Writes are atomic and the file
+//! is readable only by the user (0600).
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
@@ -84,13 +87,61 @@ pub struct Config {
 pub struct General {
     /// `"system"`, `"it"`, `"en"`, …
     pub ui_language: String,
-    /// `"light"`, `"dark"` or `"system"`.
+    /// `"light"`, `"dark"` or `"system"` (SET-003).
     pub theme: String,
+    /// The accent color, `#rrggbb` (SET-003).
+    pub accent: String,
+    /// The interface scale in percent (SET-005), on top of the display's.
+    pub ui_scale: u16,
     /// Language being studied (BCP 47), e.g. `"ja"`.
     pub study_language: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+impl General {
+    /// The interface scales offered, in percent (SET-005).
+    pub const SCALES: RangeInclusive<u16> = 75..=200;
+    /// The default accent.
+    pub const ACCENT: &str = "#6aa0ff";
+
+    /// The accent as red, green and blue; `None` if it is not `#rrggbb`.
+    pub fn accent_rgb(&self) -> Option<[u8; 3]> {
+        parse_rgb(&self.accent)
+    }
+}
+
+/// `#rrggbb` as red, green and blue.
+pub fn parse_rgb(text: &str) -> Option<[u8; 3]> {
+    let hex = text.strip_prefix('#')?;
+    if hex.len() != 6 || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    Some([byte(0)?, byte(2)?, byte(4)?])
+}
+
+/// A tab of the settings page whose keys can go back to their defaults
+/// together (SET-006).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    /// Language, theme, accent, scale; the seek step and the next episode.
+    General,
+    /// `[subtitles]`.
+    Subtitles,
+    /// `[lookup]` and `[popup]`.
+    Lookup,
+    /// The word audio's playing; its sources stay.
+    WordAudio,
+    /// `[anki]` but the key of AnkiConnect.
+    Anki,
+    /// The subtitle services and the proxy; their keys and login stay.
+    Services,
+    /// `[shortcuts]`.
+    Shortcuts,
+    /// `[paths]`.
+    Advanced,
 }
 
 /// `[player]`.
@@ -503,6 +554,8 @@ impl Default for General {
         Self {
             ui_language: "system".into(),
             theme: "system".into(),
+            accent: Self::ACCENT.into(),
+            ui_scale: 100,
             study_language: "ja".into(),
             other: toml::Table::new(),
         }
@@ -544,9 +597,65 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Parses a configuration and brings out-of-range values back into range.
+    /// Parses a configuration and brings out-of-range values back into range;
+    /// a value of the wrong kind is an error.
     pub fn from_toml(text: &str) -> Result<Self, toml::de::Error> {
-        let mut c: Config = toml::from_str(text)?;
+        Ok(toml::from_str::<Config>(text)?.bounded())
+    }
+
+    /// Parses a configuration; a value of the wrong kind takes its default
+    /// and its dotted name is returned (SET-001). Only a file that is not
+    /// TOML is an error.
+    pub fn parse(text: &str) -> Result<(Self, Vec<String>), toml::de::Error> {
+        let mut table: toml::Table = toml::from_str(text)?;
+        let mut invalid = Vec::new();
+        let fits = |section: &str, value: toml::Value| {
+            let mut t = toml::Table::new();
+            t.insert(section.to_string(), value);
+            Config::deserialize(t).is_ok()
+        };
+        let sections: Vec<String> = table.keys().cloned().collect();
+        for section in sections {
+            let Some(value) = table.get_mut(&section) else {
+                continue;
+            };
+            if fits(&section, value.clone()) {
+                continue;
+            }
+            // a section of known keys: only the keys that do not fit go
+            if let toml::Value::Table(keys) = value {
+                let names: Vec<String> = keys.keys().cloned().collect();
+                for name in names {
+                    let mut one = toml::Table::new();
+                    if let Some(v) = keys.get(&name) {
+                        one.insert(name.clone(), v.clone());
+                    }
+                    if !fits(&section, toml::Value::Table(one)) {
+                        keys.remove(&name);
+                        invalid.push(format!("{section}.{name}"));
+                    }
+                }
+                if fits(&section, value.clone()) {
+                    continue;
+                }
+            }
+            table.remove(&section);
+            invalid.push(section);
+        }
+        let config = Config::deserialize(table)?.bounded();
+        Ok((config, invalid))
+    }
+
+    /// Out-of-range values brought back into range.
+    fn bounded(self) -> Self {
+        let mut c = self;
+        c.general.ui_scale = c
+            .general
+            .ui_scale
+            .clamp(*General::SCALES.start(), *General::SCALES.end());
+        if c.general.accent_rgb().is_none() {
+            c.general.accent = General::ACCENT.into();
+        }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
         if !(8.0..=200.0).contains(&c.subtitles.font_size) {
@@ -555,20 +664,21 @@ impl Config {
         (c.popup.max_width, c.popup.max_height) =
             PopupConfig::bounded(c.popup.max_width, c.popup.max_height);
         c.anki = c.anki.bounded();
-        Ok(c)
+        c
     }
 
-    /// Reads `path`; a missing file gives the defaults.
-    pub fn load(path: &Path) -> Result<Self, ConfigError> {
+    /// Reads `path`, with the dotted names of the values that took their
+    /// default ([`Self::parse`]); a missing file gives the defaults.
+    pub fn load(path: &Path) -> Result<(Self, Vec<String>), ConfigError> {
         match std::fs::read_to_string(path) {
-            Ok(text) => Self::from_toml(&text).map_err(|e| ConfigError::Parse {
+            Ok(text) => Self::parse(&text).map_err(|e| ConfigError::Parse {
                 path: path.to_path_buf(),
                 line: e.span().map_or(0, |s| {
                     text[..s.start.min(text.len())].lines().count().max(1)
                 }),
                 message: mask_quoted(e.message().trim()),
             }),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok((Self::default(), Vec::new())),
             Err(source) => Err(ConfigError::Read {
                 path: path.to_path_buf(),
                 source,
@@ -576,13 +686,129 @@ impl Config {
         }
     }
 
-    /// Writes `path` atomically with permissions 0600.
+    /// Writes `path` atomically with permissions 0600. What is there already
+    /// keeps its comments and layout: only the values that changed are
+    /// written over, the keys gone are removed, the new ones added.
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
-        let text = toml::to_string_pretty(self)?;
+        let fresh = toml::to_string_pretty(self)?;
+        let old = std::fs::read_to_string(path).ok();
+        let text = match old.as_deref().map(str::parse::<toml_edit::DocumentMut>) {
+            Some(Ok(mut doc)) => match fresh.parse::<toml_edit::DocumentMut>() {
+                Ok(new) => {
+                    merge(doc.as_table_mut(), new.as_table());
+                    doc.to_string()
+                }
+                Err(_) => fresh,
+            },
+            // nothing there, or not TOML: the settings as they are
+            _ => fresh,
+        };
         crate::fs::write_atomic(path, text.as_bytes(), 0o600).map_err(|source| ConfigError::Write {
             path: path.to_path_buf(),
             source,
         })
+    }
+
+    /// These settings with the TOML `text` laid over them, table by table:
+    /// a key `text` has takes its value, the others stay.
+    pub fn laid_over(&self, text: &str) -> Result<Self, String> {
+        fn lay(base: &mut toml::Table, top: toml::Table) {
+            for (key, value) in top {
+                match (base.get_mut(&key), value) {
+                    (Some(toml::Value::Table(b)), toml::Value::Table(t)) => lay(b, t),
+                    (_, value) => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+        }
+        let mut base = toml::Table::try_from(self).map_err(|e| e.to_string())?;
+        let top: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+        lay(&mut base, top);
+        let text = toml::to_string(&base).map_err(|e| e.to_string())?;
+        Self::from_toml(&text).map_err(|e| e.to_string())
+    }
+
+    /// Takes the keys of `section` from `from`, the others staying: what a
+    /// tab of the settings saves.
+    pub fn copy_section(&mut self, section: Section, from: &Config) {
+        match section {
+            Section::General => {
+                self.general = from.general.clone();
+                self.player.seek_seconds = from.player.seek_seconds;
+                self.player.auto_next = from.player.auto_next;
+            }
+            Section::Subtitles => self.subtitles = from.subtitles.clone(),
+            Section::Lookup => {
+                self.lookup = from.lookup.clone();
+                self.popup = from.popup.clone();
+            }
+            Section::WordAudio => self.word_audio = from.word_audio.clone(),
+            Section::Anki => self.anki = from.anki.clone(),
+            Section::Services => {
+                self.online = from.online.clone();
+                self.network = from.network.clone();
+            }
+            Section::Shortcuts => self.shortcuts = from.shortcuts.clone(),
+            Section::Advanced => self.paths = from.paths.clone(),
+        }
+    }
+
+    /// Puts the keys of `section` back to their defaults (SET-006). The
+    /// other keys stay, and so do the keys this version does not know, the
+    /// keys and passwords of the services, and the word audio's sources:
+    /// what the user has, not how Nikomiru behaves.
+    pub fn reset(&mut self, section: Section) {
+        let d = Config::default();
+        match section {
+            Section::General => {
+                let other = std::mem::take(&mut self.general.other);
+                let study = std::mem::take(&mut self.general.study_language);
+                self.general = General {
+                    study_language: study,
+                    other,
+                    ..d.general
+                };
+                self.player.seek_seconds = d.player.seek_seconds;
+                self.player.auto_next = d.player.auto_next;
+            }
+            Section::Subtitles => {
+                let other = std::mem::take(&mut self.subtitles.other);
+                self.subtitles = SubtitlesConfig {
+                    other,
+                    ..d.subtitles
+                };
+            }
+            Section::Lookup => {
+                let other = std::mem::take(&mut self.lookup.other);
+                self.lookup = LookupConfig { other, ..d.lookup };
+                let other = std::mem::take(&mut self.popup.other);
+                self.popup = PopupConfig { other, ..d.popup };
+            }
+            Section::WordAudio => {
+                self.word_audio.autoplay = d.word_audio.autoplay;
+                self.word_audio.volume = d.word_audio.volume;
+            }
+            Section::Anki => {
+                let other = std::mem::take(&mut self.anki.other);
+                let api_key = std::mem::take(&mut self.anki.api_key);
+                self.anki = AnkiConfig {
+                    api_key,
+                    other,
+                    ..d.anki
+                };
+            }
+            Section::Services => {
+                self.online.providers = d.online.providers;
+                self.online.auto_subtitles = d.online.auto_subtitles;
+                self.network.proxy = d.network.proxy;
+            }
+            Section::Shortcuts => self.shortcuts.clear(),
+            Section::Advanced => {
+                let other = std::mem::take(&mut self.paths.other);
+                self.paths = PathsConfig { other, ..d.paths };
+            }
+        }
     }
 
     /// Dotted names of the keys this version does not know (for a warning).
@@ -594,6 +820,14 @@ impl Config {
         out.extend(self.popup.other.keys().map(|k| format!("popup.{k}")));
         out.extend(self.anki.other.keys().map(|k| format!("anki.{k}")));
         out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
+        out.extend(self.network.other.keys().map(|k| format!("network.{k}")));
+        out.extend(self.online.other.keys().map(|k| format!("online.{k}")));
+        out.extend(
+            self.word_audio
+                .other
+                .keys()
+                .map(|k| format!("word_audio.{k}")),
+        );
         out.extend(
             self.subtitles
                 .other
@@ -659,6 +893,100 @@ fn mask_quoted(message: &str) -> String {
     out
 }
 
+/// Writes `new` over `old`: a value that changed takes the new one with the
+/// comments of the old, a table that changed is merged key by key, a key
+/// gone is removed, a new one added at the end of its table.
+fn merge(old: &mut dyn toml_edit::TableLike, new: &dyn toml_edit::TableLike) {
+    let gone: Vec<String> = old
+        .iter()
+        .map(|(k, _)| k.to_string())
+        .filter(|k| !new.contains_key(k))
+        .collect();
+    for key in gone {
+        old.remove(&key);
+    }
+    for (key, item) in new.iter() {
+        match old.get_mut(key) {
+            Some(slot) => update(slot, item),
+            None => {
+                old.insert(key, item.clone());
+            }
+        }
+    }
+}
+
+fn update(slot: &mut toml_edit::Item, new: &toml_edit::Item) {
+    use toml_edit::Item;
+    if same_item(slot, new) {
+        return;
+    }
+    if let (Some(o), Some(n)) = (slot.as_inline_table_mut(), new.as_table_like()) {
+        merge(o, n);
+        // `{ a = 1, b = 2 }` less `b` is not `{ a = 1}`
+        o.fmt();
+        return;
+    }
+    if let (Some(o), Some(n)) = (slot.as_table_like_mut(), new.as_table_like()) {
+        merge(o, n);
+        return;
+    }
+    match (slot, new) {
+        (Item::Value(o), Item::Value(n)) => {
+            let decor = o.decor().clone();
+            *o = n.clone();
+            *o.decor_mut() = decor;
+        }
+        (Item::ArrayOfTables(o), Item::ArrayOfTables(n)) if o.len() == n.len() => {
+            for (o, n) in o.iter_mut().zip(n.iter()) {
+                merge(o, n);
+            }
+        }
+        (slot, new) => *slot = new.clone(),
+    }
+}
+
+/// Whether two items hold the same values, whatever their layout.
+fn same_item(a: &toml_edit::Item, b: &toml_edit::Item) -> bool {
+    use toml_edit::Item;
+    match (a, b) {
+        (Item::Value(a), Item::Value(b)) => same(a, b),
+        (Item::ArrayOfTables(a), Item::ArrayOfTables(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| same_table(a, b))
+        }
+        _ => match (a.as_table_like(), b.as_table_like()) {
+            (Some(a), Some(b)) => same_table(a, b),
+            _ => false,
+        },
+    }
+}
+
+fn same_table(a: &dyn toml_edit::TableLike, b: &dyn toml_edit::TableLike) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .all(|(k, v)| b.get(k).is_some_and(|w| same_item(v, w)))
+}
+
+fn same(a: &toml_edit::Value, b: &toml_edit::Value) -> bool {
+    use toml_edit::Value;
+    match (a, b) {
+        (Value::String(a), Value::String(b)) => a.value() == b.value(),
+        (Value::Integer(a), Value::Integer(b)) => a.value() == b.value(),
+        (Value::Float(a), Value::Float(b)) => a.value() == b.value(),
+        // `font_size = 36` is the float the settings write as `36.0`
+        #[allow(clippy::cast_precision_loss)]
+        (Value::Integer(i), Value::Float(f)) | (Value::Float(f), Value::Integer(i)) => {
+            *i.value() as f64 == *f.value()
+        }
+        (Value::Boolean(a), Value::Boolean(b)) => a.value() == b.value(),
+        (Value::Datetime(a), Value::Datetime(b)) => a.value() == b.value(),
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| same(a, b))
+        }
+        (Value::InlineTable(a), Value::InlineTable(b)) => same_table(a, b),
+        _ => false,
+    }
+}
+
 /// Whether Nikomiru can write in the settings folder `dir`: a file made and
 /// removed there. A folder not there yet is fine (saving makes it); one
 /// owned by another user (made with `sudo`) is not.
@@ -682,8 +1010,9 @@ mod tests {
     #[test]
     fn missing_file_gives_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let c = Config::load(&dir.path().join("config.toml")).unwrap();
+        let (c, invalid) = Config::load(&dir.path().join("config.toml")).unwrap();
         assert_eq!(c, Config::default());
+        assert!(invalid.is_empty());
         assert_eq!(c.player.hwdec, "auto-safe");
         assert_eq!(c.player.seek_seconds, 3);
     }
@@ -864,7 +1193,7 @@ opensubtitles_password = "pw-s3cret"
         let path = dir.path().join("config.toml");
         std::fs::write(
             &path,
-            "[anki]\napi_key = \"secret\"\n[player]\nseek_seconds = \"three\"\n",
+            "[anki]\napi_key = \"secret\"\n[player]\nseek_seconds = \"three\n",
         )
         .unwrap();
         let err = Config::load(&path).unwrap_err();
@@ -885,7 +1214,174 @@ opensubtitles_password = "pw-s3cret"
         Config::default().save(&path).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
-        assert_eq!(Config::load(&path).unwrap(), Config::default());
+        assert_eq!(Config::load(&path).unwrap().0, Config::default());
+    }
+
+    // T-SET-001
+    #[test]
+    fn a_wrong_value_takes_its_default_and_is_told() {
+        let (c, invalid) = Config::parse(
+            "lookup = 7\n\
+             [general]\ntheme = \"light\"\nui_scale = \"big\"\naccent = \"blue\"\n\
+             [player]\nseek_seconds = \"three\"\nauto_next = false\n\
+             [network]\nproxy = 3\nlater = 1\n",
+        )
+        .unwrap();
+        assert_eq!(
+            invalid,
+            [
+                "general.ui_scale",
+                "lookup",
+                "network.proxy",
+                "player.seek_seconds"
+            ]
+        );
+        let d = Config::default();
+        assert_eq!(c.general.theme, "light");
+        assert_eq!(c.general.ui_scale, 100);
+        // not a color: the default, as for a number out of range
+        assert_eq!(c.general.accent, General::ACCENT);
+        assert_eq!(c.player.seek_seconds, d.player.seek_seconds);
+        assert!(!c.player.auto_next);
+        assert_eq!(c.lookup, d.lookup);
+        assert_eq!(c.network.proxy, "");
+        assert_eq!(c.unknown_keys(), ["network.later"]);
+        assert_eq!(
+            Config::parse("[general]\nui_scale = 500")
+                .unwrap()
+                .0
+                .general
+                .ui_scale,
+            200
+        );
+        assert_eq!(
+            Config::parse("[general]\naccent = \"#A0b1C2\"")
+                .unwrap()
+                .0
+                .general
+                .accent_rgb(),
+            Some([0xa0, 0xb1, 0xc2])
+        );
+        assert!(Config::parse("[general\n").is_err());
+    }
+
+    // T-SET-001: what the user wrote stays
+    #[test]
+    fn saving_keeps_the_comments_and_the_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let text = "# my settings\n\n[player]\n# a bigger step\nseek_seconds = 5 # seconds\n\
+                    mpv_options = { deband = \"yes\", scale = \"ewa_lanczos\" }\n\n\
+                    [subtitles]\nfont_size = 40 # a little bigger\n\n\
+                    [general]\ntheme = \"dark\"   # at night\nfuture = 1\n";
+        std::fs::write(&path, text).unwrap();
+        let (mut c, _) = Config::load(&path).unwrap();
+        c.general.theme = "light".into();
+        c.player.mpv_options.remove("scale");
+        c.save(&path).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            saved.starts_with(
+                "# my settings\n\n[player]\n# a bigger step\nseek_seconds = 5 # seconds\n"
+            ),
+            "{saved}"
+        );
+        assert!(
+            saved.contains("font_size = 40 # a little bigger\n"),
+            "{saved}"
+        );
+        assert!(
+            saved.contains("theme = \"light\"   # at night\n"),
+            "{saved}"
+        );
+        assert!(
+            saved.contains("mpv_options = { deband = \"yes\" }\n")
+                && !saved.contains("ewa_lanczos"),
+            "{saved}"
+        );
+        assert!(saved.contains("future = 1"), "{saved}");
+        assert_eq!(Config::load(&path).unwrap(), (c.clone(), Vec::new()));
+        // saved again unchanged: the same text
+        c.save(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    }
+
+    // T-SET-006
+    #[test]
+    fn a_section_goes_back_to_its_defaults_alone() {
+        let (mut c, _) = Config::parse(
+            "[general]\ntheme = \"light\"\nui_scale = 150\nlater = 1\n\
+             [player]\nseek_seconds = 10\nhwdec = \"no\"\n\
+             [subtitles]\nfont_size = 50\n\
+             [lookup]\nmax_results = 3\n[popup]\nmax_width = 900\n\
+             [online]\nproviders = [\"jimaku\"]\njimaku_api_key = \"k\"\n\
+             [network]\nproxy = \"http://p:1\"\n\
+             [anki]\ndeck = \"Mining\"\napi_key = \"a\"\n\
+             [paths]\nffmpeg = \"/opt/ffmpeg\"\n\
+             [shortcuts]\nplay_pause = [\"K\"]\n\
+             [word_audio]\nvolume = 50\n\
+             [[word_audio.sources]]\nname = \"Local\"\nurl = \"http://localhost:5050/?term={term}\"\n",
+        )
+        .unwrap();
+        let d = Config::default();
+        let before = c.clone();
+        c.reset(Section::General);
+        assert_eq!(
+            (
+                c.general.theme.as_str(),
+                c.general.ui_scale,
+                c.player.seek_seconds
+            ),
+            ("system", 100, 3)
+        );
+        assert_eq!(c.general.other, before.general.other);
+        assert_eq!(c.player.hwdec, "no");
+        assert_eq!(
+            (&c.subtitles, &c.lookup, &c.anki),
+            (&before.subtitles, &before.lookup, &before.anki)
+        );
+        c.reset(Section::Subtitles);
+        assert_eq!(c.subtitles, d.subtitles);
+        c.reset(Section::Lookup);
+        assert_eq!((&c.lookup, &c.popup), (&d.lookup, &d.popup));
+        c.reset(Section::Services);
+        assert_eq!(c.online.providers, d.online.providers);
+        assert_eq!(
+            (c.online.jimaku_api_key.as_str(), c.network.proxy.as_str()),
+            ("k", "")
+        );
+        c.reset(Section::Anki);
+        assert_eq!(
+            (c.anki.deck.as_str(), c.anki.api_key.as_str()),
+            ("Lapis", "a")
+        );
+        c.reset(Section::WordAudio);
+        assert_eq!((c.word_audio.volume, c.word_audio.sources.len()), (100, 1));
+        c.reset(Section::Shortcuts);
+        assert!(c.shortcuts.is_empty());
+        assert_eq!(c.paths, before.paths);
+        c.reset(Section::Advanced);
+        assert_eq!(c.paths, d.paths);
+        assert_eq!(c.player.hwdec, "no");
+        // TOML laid over the settings changes its keys alone
+        let over = before
+            .laid_over("[general]\nui_scale = 125\n[popup]\nmax_height = 300")
+            .unwrap();
+        assert_eq!(
+            (over.general.ui_scale, over.general.theme.as_str()),
+            (125, "light")
+        );
+        assert_eq!(
+            (over.popup.max_height, over.popup.max_width),
+            (300.0, 900.0)
+        );
+        // a tab saves its keys alone
+        let mut saved = before.clone();
+        saved.copy_section(Section::General, &c);
+        assert_eq!(saved.general.ui_scale, 100);
+        assert_eq!(saved.player.seek_seconds, 3);
+        assert_eq!(saved.player.hwdec, "no");
+        assert_eq!(saved.subtitles, before.subtitles);
     }
 
     // T-ERR-001
