@@ -6,6 +6,7 @@
 use egui::{Align2, Area, Color32, CornerRadius, Frame, Id, Margin, Order, RichText, pos2};
 
 use super::View;
+use super::palette;
 use crate::session::Session;
 use crate::ui::Command;
 
@@ -23,6 +24,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
             .pivot(Align2::CENTER_CENTER)
             .fixed_pos(screen.center())
             .show(ctx, |ui| {
+                palette::on_video(ui);
                 Frame::new()
                     .fill(Color32::from_rgba_unmultiplied(0x3a, 0x1a, 0x1a, 0xcc))
                     .corner_radius(8)
@@ -39,6 +41,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
             .pivot(Align2::CENTER_CENTER)
             .fixed_pos(screen.center())
             .show(ctx, |ui| {
+                palette::on_video(ui);
                 ui.label(
                     RichText::new(s.translator().tr("drop-hint", &[]))
                         .size(20.0)
@@ -65,6 +68,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
         .pivot(Align2::CENTER_TOP)
         .fixed_pos(pos2(screen.center().x, screen.top() + 32.0))
         .show(ctx, |ui| {
+            palette::on_video(ui);
             ui.multiply_opacity(opacity);
             Frame::new()
                 .fill(Color32::from_black_alpha(0xcc))
@@ -97,6 +101,7 @@ pub(crate) fn next_up(ctx: &egui::Context, s: &Session, bar_height: f32, out: &m
             screen.bottom() - bar_height - 24.0,
         ))
         .show(ctx, |ui| {
+            palette::on_video(ui);
             Frame::new()
                 .fill(Color32::from_black_alpha(0xdd))
                 .corner_radius(CornerRadius::same(8))

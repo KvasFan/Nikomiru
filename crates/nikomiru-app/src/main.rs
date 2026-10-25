@@ -384,20 +384,28 @@ fn run(
         }
     };
     let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));
+    // SET-003: the system theme follows the desktop's
+    {
+        let waker = Arc::clone(&waker);
+        nikomiru_app::appearance::follow(nikomiru_app::dbus::Connection::session, move |dark| {
+            waker.wake(Inbound::SystemTheme(dark));
+        });
+    }
     let subtitle_source = nikomiru_app::subtitles::Loader::start(
-        Translator::from_setting(&config.general.ui_language, |k| std::env::var(k).ok()),
+        translator.clone(),
         config.paths.ffmpeg.clone(),
         paths.cache_dir.join("subtitles"),
     );
-    let config_language = config.general.ui_language.clone();
-    let max_results = config.lookup.max_results;
+    let max_results = Arc::new(std::sync::atomic::AtomicUsize::new(
+        config.lookup.max_results,
+    ));
     let mining_dir = paths.cache_dir.join("mining");
     let anki = nikomiru_app::anki::Anki::start(nikomiru_app::anki::Parts {
         config: config.anki.clone(),
         ffmpeg: config.paths.ffmpeg.clone(),
-        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        translator: translator.clone(),
         dictionaries: dictionaries.clone(),
-        max_results,
+        max_results: Arc::clone(&max_results),
         cache_dir: mining_dir.clone(),
         library: library.clone(),
         clock: Arc::new(SystemClock::new()),
@@ -407,7 +415,7 @@ fn run(
         network: config.network.clone(),
         language: config.general.study_language.clone(),
         subtitles_dir: paths.subtitles_dir(),
-        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+        translator: translator.clone(),
     });
     // LIB-002…LIB-012
     let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {
@@ -416,7 +424,7 @@ fn run(
                 library: library.clone(),
                 ffmpeg: config.paths.ffmpeg.clone(),
                 cache_dir: paths.cache_dir.clone(),
-                translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+                translator: translator.clone(),
                 clock: Arc::new(SystemClock::new()),
             },
         )),
@@ -431,14 +439,16 @@ fn run(
             proxy: config.network.proxy.clone(),
             cache_dir: paths.cache_dir.join("audio"),
             ao: config.player.mpv_options.get("ao").cloned(),
-            translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+            translator: translator.clone(),
         });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
         config,
         library,
-        translator,
+        translator: translator.clone(),
+        lookup_limit: Arc::clone(&max_results),
+        logs_dir: paths.logs_dir(),
         clock: Box::new(linux::LocalClock::default()),
         notices,
         inhibitor: Box::new(inhibitor),
@@ -446,8 +456,8 @@ fn run(
         dictionaries: match dictionaries {
             Some(manager) => Box::new(nikomiru_app::dictionaries::Dictionaries::start(
                 manager,
-                Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
-                max_results,
+                translator.clone(),
+                Arc::clone(&max_results),
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },

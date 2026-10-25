@@ -16,21 +16,11 @@ use nikomiru_library::{Grouping, VideoRecord};
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::catalog::{LibraryEdit, LibraryPage};
 use crate::session::Session;
 use crate::subtitles::clock;
 use crate::ui::Command;
-
-const BACKDROP: Color32 = Color32::from_rgb(0x10, 0x12, 0x16);
-const CARD: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const CARD_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x1c);
-const PLACEHOLDER: Color32 = Color32::from_rgb(0x26, 0x2d, 0x3d);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const ACCENT: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
-const TRACK: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x30);
-const GOOD: Color32 = Color32::from_rgb(0x7c, 0xd3, 0x8a);
-const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 
 /// The width of a card of "Continue watching", and of a series.
 const WIDE: f32 = 232.0;
@@ -115,7 +105,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(17.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -138,7 +128,8 @@ fn episode_label(v: &VideoRecord) -> String {
 /// A thin bar filled to `share` (0…1).
 fn progress(ui: &mut Ui, width: f32, share: f32, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, 4.0), Sense::hover());
-    ui.painter().rect_filled(rect, 2.0, TRACK);
+    ui.painter()
+        .rect_filled(rect, 2.0, palette::current().track);
     let mut done = rect;
     done.set_width(rect.width() * share.clamp(0.0, 1.0));
     ui.painter().rect_filled(done, 2.0, color);
@@ -160,14 +151,14 @@ pub(crate) fn draw(
     }
     let screen = ctx.content_rect();
     let mut close = false;
-    full_screen(ctx, "library-page", BACKDROP, |ui| {
+    full_screen(ctx, "library-page", palette::current().page, |ui| {
         let area = screen.shrink(24.0);
         let mut ui = ui.new_child(
             UiBuilder::new()
                 .max_rect(area)
                 .layout(Layout::top_down(Align::Min)),
         );
-        ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+        ui.visuals_mut().override_text_color = Some(palette::current().text);
         ui.spacing_mut().item_spacing.y = 10.0;
         ui.horizontal(|ui| {
             // the library, or its statistics (STA-005)
@@ -201,7 +192,12 @@ pub(crate) fn draw(
         });
         if let Some((text, ok)) = &s.page.status {
             ui.add(
-                egui::Label::new(RichText::new(text).color(if *ok { GOOD } else { BAD })).wrap(),
+                egui::Label::new(RichText::new(text).color(if *ok {
+                    palette::current().good
+                } else {
+                    palette::current().bad
+                }))
+                .wrap(),
             );
         }
         ScrollArea::vertical()
@@ -251,7 +247,7 @@ fn card(
     body: impl FnOnce(&mut Ui),
 ) -> bool {
     let inner = Frame::new()
-        .fill(CARD)
+        .fill(palette::current().row)
         .corner_radius(8)
         .inner_margin(Margin::same(8))
         .show(ui, |ui| {
@@ -265,13 +261,14 @@ fn card(
                     }
                     None => {
                         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-                        ui.painter().rect_filled(rect, 6.0, PLACEHOLDER);
+                        ui.painter()
+                            .rect_filled(rect, 6.0, palette::current().placeholder);
                         ui.painter().text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
                             "🎞",
                             egui::FontId::proportional(28.0),
-                            DETAILS,
+                            palette::current().details,
                         );
                     }
                 }
@@ -287,7 +284,7 @@ fn card(
         ui.painter().rect_stroke(
             inner.response.rect,
             8.0,
-            Stroke::new(1.0, CARD_HOVER),
+            Stroke::new(1.0, palette::current().row_hover),
             egui::StrokeKind::Inside,
         );
     }
@@ -319,11 +316,11 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             let name = format!("{title} {}", episode_label(v));
             let clicked = card(ui, WIDE, texture, &name, |ui| {
                 ui.add(egui::Label::new(RichText::new(&title).family(theme::bold())).truncate());
-                ui.label(RichText::new(detail).color(DETAILS));
+                ui.label(RichText::new(detail).color(palette::current().details));
                 let share = v
                     .duration_ms
                     .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32);
-                progress(ui, WIDE, share, ACCENT);
+                progress(ui, WIDE, share, palette::current().accent);
             });
             if clicked {
                 tracing::debug!("continue {uid}");
@@ -333,7 +330,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
     section(ui, &tr(s, "library-series"));
     if home.series.is_empty() {
-        ui.label(RichText::new(tr(s, "library-empty")).color(DETAILS));
+        ui.label(RichText::new(tr(s, "library-empty")).color(palette::current().details));
     }
     rows(ui, NARROW, &home.series, |ui, summary| {
         let clicked = card(
@@ -353,9 +350,9 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                         ("total", summary.episodes.to_string()),
                     ],
                 );
-                ui.label(RichText::new(count).color(DETAILS));
+                ui.label(RichText::new(count).color(palette::current().details));
                 let share = summary.watched as f32 / summary.episodes.max(1) as f32;
-                progress(ui, NARROW, share, GOOD);
+                progress(ui, NARROW, share, palette::current().good);
             },
         );
         if clicked {
@@ -474,7 +471,7 @@ fn series(
     );
     for (uid, v) in episodes {
         Frame::new()
-            .fill(CARD)
+            .fill(palette::current().row)
             .corner_radius(6)
             .inner_margin(Margin::symmetric(10, 6))
             .show(ui, |ui| {
@@ -492,9 +489,9 @@ fn series(
                         }
                     }
                     let (glyph, color) = match Watched::of(v) {
-                        Watched::New => ("○", DETAILS),
-                        Watched::Started => ("◐", ACCENT),
-                        Watched::Watched => ("●", GOOD),
+                        Watched::New => ("○", palette::current().details),
+                        Watched::Started => ("◐", palette::current().accent_text),
+                        Watched::Watched => ("●", palette::current().good),
                     };
                     ui.label(RichText::new(glyph).color(color));
                     ui.label(RichText::new(episode_label(v)).family(theme::bold()));
@@ -518,7 +515,7 @@ fn series(
                                     clock(v.last_position_ms as i64),
                                     clock(d as i64)
                                 ))
-                                .color(DETAILS),
+                                .color(palette::current().details),
                             );
                         }
                     });

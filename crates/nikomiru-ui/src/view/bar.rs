@@ -10,6 +10,7 @@ use egui::{
     WidgetInfo, pos2,
 };
 
+use super::palette;
 use super::settings::SettingsTab;
 use super::{Dialog, View};
 use crate::session::Session;
@@ -231,6 +232,7 @@ pub(crate) fn show(
         .pivot(Align2::LEFT_BOTTOM)
         .fixed_pos(pos2(screen.left(), screen.bottom()))
         .show(ctx, |ui| {
+            palette::on_video(ui);
             ui.multiply_opacity(opacity);
             Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(0x14, 0x14, 0x18, 0xd9))

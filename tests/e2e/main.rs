@@ -564,13 +564,36 @@ fn screenshots_of_the_interface() {
     h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("popup.png"));
+    // the same popup in the light theme (SET-003)
+    for (theme, dark) in [("light", false), ("dark", true)] {
+        h.cmd(serde_json::json!({
+            "cmd": "settings",
+            "tab": "general",
+            "save": format!("[general]\ntheme = \"{theme}\"\n"),
+        }));
+        h.state_until("the theme", |s| s["look"]["dark"] == dark);
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+        if !dark {
+            std::thread::sleep(Duration::from_millis(300));
+            desk.capture(&dir.join("popup-light.png"));
+        }
+    }
     h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
     h.wait("card-created");
     h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
     h.state_until("the menu", |s| s["popups"][0]["menu"] == 0);
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("popup-card-menu.png"));
+    // the menu, then the popup; the rest is taken paused, so that the video
+    // stays short of watched and in "Continue watching"
     h.key("Escape");
+    h.state_until("the menu closed", |s| s["popups"][0]["menu"].is_null());
+    h.key("Escape");
+    h.state_until("the popup closed and playback resumed", |s| {
+        s["popups"].as_array().is_some_and(Vec::is_empty) && s["paused"] == false
+    });
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
     h.cmd(serde_json::json!({ "cmd": "anki", "action": "open" }));
     h.state_until("the lists", |s| {
         s["anki_page"]["fields"]
@@ -581,7 +604,18 @@ fn screenshots_of_the_interface() {
     desk.capture(&dir.join("anki-settings.png"));
     // the toast of the card gone
     std::thread::sleep(Duration::from_secs(2));
-    for tab in ["player", "services", "dictionaries", "audio"] {
+    for tab in [
+        "general",
+        "player",
+        "subtitles",
+        "services",
+        "dictionaries",
+        "lookup",
+        "audio",
+        "shortcuts",
+        "advanced",
+        "about",
+    ] {
         h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
         h.state_until("the tab", |s| s["settings_tab"] == tab);
         std::thread::sleep(Duration::from_millis(300));
@@ -614,6 +648,20 @@ fn screenshots_of_the_interface() {
     h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("statistics.png"));
+    // the light theme (SET-003)
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "general",
+        "save": "[general]\ntheme = \"light\"\n",
+    }));
+    h.state_until("the light theme", |s| s["look"]["dark"] == false);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("settings-light.png"));
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("library-light.png"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -1999,4 +2047,53 @@ fn a_secondary_subtitle_follows_the_main_one() {
     h.state_until("no secondary", |s| s["secondary"]["source"].is_null());
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SET-002, T-SET-004, T-SET-005: the settings apply at once, the interface
+// scale leaves the subtitles' size alone, the user's file keeps its comments
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_settings_apply_without_a_restart() {
+    let mut desk = Desktop::start();
+    desk.write_config(
+        "# my settings\n[general]\nui_language = \"en\"\ntheme = \"dark\" # at night\n\
+         [player]\nmpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let px = |s: &serde_json::Value| s["look"]["subtitle_px"].as_f64().unwrap_or(0.0);
+    let s = h.state_until("the subtitles drawn", |s| px(s) > 0.0);
+    let before = px(&s);
+    assert_eq!(s["look"]["dark"], true, "{s}");
+    assert_eq!(s["look"]["language"], "en", "{s}");
+    assert_eq!(s["look"]["zoom"], 1.0, "{s}");
+    // light, in Italian, at 150 %
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "general",
+        "save": "[general]\ntheme = \"light\"\nui_language = \"it\"\nui_scale = 150\n",
+    }));
+    let s = h.state_until("the new look", |s| s["look"]["zoom"] == 1.5);
+    assert_eq!(s["look"]["dark"], false, "{s}");
+    assert_eq!(s["look"]["language"], "it", "{s}");
+    assert_eq!(s["settings_status"]["ok"], true, "{s}");
+    // the subtitles keep their size on the screen
+    assert!((px(&s) - before).abs() < 1.0, "{before} → {}", px(&s));
+    // and grow at once with their own setting
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "subtitles",
+        "save": "[subtitles]\nfont_size = 54\n",
+    }));
+    h.state_until("bigger subtitles", |s| (px(s) - before * 1.5).abs() < 1.5);
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let text = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).unwrap();
+    assert!(text.starts_with("# my settings\n"), "{text}");
+    assert!(text.contains("theme = \"light\" # at night\n"), "{text}");
+    assert!(text.contains("ui_scale = 150"), "{text}");
+    assert!(text.contains("font_size = 54"), "{text}");
 }

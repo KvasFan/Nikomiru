@@ -78,7 +78,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
         ffmpeg: String::new(),
         translator: Translator::from_setting("en", |_| None),
         dictionaries: Some(Arc::new(manager)),
-        max_results: 10,
+        max_results: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(10)),
         cache_dir: mining.clone(),
         library: Some(Arc::clone(&library)),
         clock: clock.clone(),

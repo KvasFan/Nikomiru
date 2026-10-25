@@ -17,6 +17,7 @@ use egui::{
 
 use nikomiru_subs::timeline::Timeline;
 
+use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
@@ -220,6 +221,7 @@ pub(crate) fn draw(
         .order(Order::Middle)
         .fixed_pos(pos2(screen.right() - width, screen.top()))
         .show(ctx, |ui| {
+            palette::on_video(ui);
             Frame::new()
                 .fill(BACKGROUND)
                 .inner_margin(Margin::same(10))

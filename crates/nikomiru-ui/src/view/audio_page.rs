@@ -5,18 +5,15 @@
 //! template; the volume; playing by itself when a popup opens.
 
 use egui::{
-    Align, Button, Color32, Frame, Layout, Margin, RichText, Role, Slider, TextEdit, Ui, WidgetInfo,
+    Align, Button, Frame, Layout, Margin, RichText, Role, Slider, TextEdit, Ui, WidgetInfo,
 };
 use nikomiru_core::config::{AudioSourceConfig, WordAudioConfig};
 
 use super::popups::Translate;
 use super::settings::{Leave, SettingsTab, page};
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::session::Session;
 use crate::ui::Command;
-
-const ROW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
 
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Debug, Default)]
@@ -63,7 +60,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -127,13 +124,18 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     state.priorities.resize(draft.sources.len(), String::new());
     ui.spacing_mut().item_spacing.y = 8.0;
     section(ui, &tr(s, "audio-sources"));
-    ui.add(egui::Label::new(RichText::new(tr(s, "audio-sources-hint")).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "audio-sources-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
     let count = draft.sources.len();
     let mut swap = None;
     let mut remove = None;
     for (i, source) in draft.sources.iter_mut().enumerate() {
         Frame::new()
-            .fill(ROW)
+            .fill(palette::current().row)
             .corner_radius(6)
             .inner_margin(Margin::symmetric(10, 8))
             .show(ui, |ui| {

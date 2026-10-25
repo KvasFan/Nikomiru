@@ -6,11 +6,9 @@
 use egui::{Align, Color32, Frame, Layout, Margin, Rect, RichText, Stroke, UiBuilder, vec2};
 
 use super::dict_page::full_screen;
-use super::theme;
+use super::{palette, theme};
 use crate::session::{MissingLink, Session};
 use crate::ui::Command;
-
-const BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
 
 pub(super) fn show(
     ctx: &egui::Context,
@@ -29,13 +27,13 @@ pub(super) fn show(
                 .layout(Layout::top_down(Align::Center)),
         );
         Frame::new()
-            .fill(Color32::from_rgb(0x2a, 0x2d, 0x34))
-            .stroke(Stroke::new(1.0, BORDER))
+            .fill(palette::current().dialog)
+            .stroke(Stroke::new(1.0, palette::current().card_border))
             .corner_radius(8)
             .inner_margin(Margin::same(16))
             .show(&mut ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 12.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                ui.visuals_mut().override_text_color = Some(palette::current().text);
                 ui.add(
                     egui::Label::new(RichText::new(tr("link-missing")).family(theme::bold()))
                         .wrap(),

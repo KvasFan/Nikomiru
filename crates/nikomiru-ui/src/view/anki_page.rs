@@ -8,17 +8,15 @@
 
 use std::collections::BTreeMap;
 
-use egui::{Button, Color32, ComboBox, DragValue, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
+use egui::{Button, ComboBox, DragValue, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
 use nikomiru_core::config::AnkiConfig;
 
 use super::popups::Translate;
 use super::settings::{self, Leave, SettingsTab};
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::mining::AnkiPage;
 use crate::session::Session;
 use crate::ui::Command;
-
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
 
 /// The placeholders of ANK-021, for the picker of each field.
 pub(crate) const PLACEHOLDERS: [&str; 20] = [
@@ -88,7 +86,7 @@ fn section(ui: &mut Ui, text: &str) -> egui::Response {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     )
 }
 
@@ -271,7 +269,12 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         .map(|l| l.fields.clone())
         .unwrap_or_default();
     if fields.is_empty() {
-        ui.add(egui::Label::new(RichText::new(tr(s, "anki-fields-hint")).color(DETAILS)).wrap());
+        ui.add(
+            egui::Label::new(
+                RichText::new(tr(s, "anki-fields-hint")).color(palette::current().details),
+            )
+            .wrap(),
+        );
     } else {
         let note_type = draft.note_type.clone();
         let mapping = draft.field_mapping.entry(note_type.clone()).or_default();

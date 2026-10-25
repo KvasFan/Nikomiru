@@ -18,20 +18,11 @@ use nikomiru_library::{Collapse, DictionaryRecord};
 
 use super::popups::Translate;
 use super::settings::{self, Leave, SettingsTab};
-use super::{Dialog, View, theme};
+use super::{Dialog, View, palette, theme};
 use crate::dictionaries::{DictionaryPage, Group, Import, Member};
 use crate::session::Session;
 use crate::ui::Command;
 
-const CARD_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
-const ROW: Color32 = Color32::from_rgb(0x2a, 0x2d, 0x34);
-const ROW_OFF: Color32 = Color32::from_rgb(0x1f, 0x21, 0x26);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const OFF: Color32 = Color32::from_rgb(0x8a, 0x8f, 0x99);
-/// The drop marker and the dragged dictionary's outline.
-const DROP: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
-/// What the CSS subset leaves out.
-const LEFT_OUT: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 /// The user's CSS is for a few rules: a long paste would be parsed by every
 /// lookup.
 const MAX_CSS_CHARS: usize = 32 * 1024;
@@ -179,12 +170,15 @@ fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) -> Rect {
         &[("name", m.record.name().to_string()), ("group", home)],
     );
     Frame::new()
-        .stroke(Stroke::new(1.0, ROW))
+        .stroke(Stroke::new(1.0, palette::current().row))
         .corner_radius(6)
         .inner_margin(Margin::symmetric(10, 4))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(RichText::new(text).italics().color(OFF)).truncate());
+            ui.add(
+                egui::Label::new(RichText::new(text).italics().color(palette::current().off))
+                    .truncate(),
+            );
         })
         .response
         .rect
@@ -224,8 +218,11 @@ fn drop_zone(
     } else {
         rect.top() - half_gap
     };
-    ui.painter()
-        .hline(rect.x_range(), y, Stroke::new(2.0, DROP));
+    ui.painter().hline(
+        rect.x_range(),
+        y,
+        Stroke::new(2.0, palette::current().accent),
+    );
     if let Some(d) = zone.dnd_release_payload::<Dragged>() {
         out.push(Command::DictMoveTo(d.id.clone(), to));
     }
@@ -240,13 +237,23 @@ fn follow_drag(ui: &mut Ui, d: &Dragged) {
     let painter = ui
         .ctx()
         .layer_painter(LayerId::new(Order::Tooltip, Id::unique("dict-drag-chip")));
-    let galley = painter.layout_no_wrap(d.name.clone(), FontId::proportional(15.0), Color32::WHITE);
+    let galley = painter.layout_no_wrap(
+        d.name.clone(),
+        FontId::proportional(15.0),
+        palette::current().text,
+    );
     let chip = Rect::from_min_size(
         pointer + vec2(14.0, -galley.size().y / 2.0 - 4.0),
         galley.size() + vec2(16.0, 8.0),
     );
-    painter.rect(chip, 6, ROW, Stroke::new(1.0, DROP), StrokeKind::Outside);
-    painter.galley(chip.min + vec2(8.0, 4.0), galley, Color32::WHITE);
+    painter.rect(
+        chip,
+        6,
+        palette::current().dialog,
+        Stroke::new(1.0, palette::current().accent),
+        StrokeKind::Outside,
+    );
+    painter.galley(chip.min + vec2(8.0, 4.0), galley, palette::current().text);
 
     let view = ui.clip_rect();
     const EDGE: f32 = 32.0;
@@ -301,7 +308,12 @@ pub(crate) fn draw(
         if page.rows.is_empty() {
             ui.add_space(24.0);
             ui.vertical_centered(|ui| {
-                ui.add(egui::Label::new(RichText::new(tr("dict-empty")).color(DETAILS)).wrap());
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(tr("dict-empty")).color(palette::current().details),
+                    )
+                    .wrap(),
+                );
             });
             return;
         }
@@ -320,7 +332,7 @@ pub(crate) fn draw(
                 RichText::new(group_name(group, scene.tr))
                     .size(14.0)
                     .family(theme::bold())
-                    .color(DETAILS),
+                    .color(palette::current().details),
             );
             // the rows of the dragged dictionary's group are its drop targets
             let from = dragged
@@ -399,7 +411,7 @@ fn import_block(
                 });
                 ui.label(
                     RichText::new(format!("{} {}", progress.entries, tr("dict-entries")))
-                        .color(DETAILS),
+                        .color(palette::current().details),
                 );
             });
         }
@@ -421,7 +433,7 @@ fn import_block(
                         "{title} — {} {installed} → {file}",
                         tr("dict-revision")
                     ))
-                    .color(DETAILS),
+                    .color(palette::current().details),
                 );
                 ui.horizontal(|ui| {
                     if ui.button(tr("dict-update")).clicked() {
@@ -459,9 +471,9 @@ fn drag_handle(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>, place: Place) {
         group: place.group,
     });
     let color = if handle.hovered() || place.dragged {
-        Color32::WHITE
+        palette::current().text
     } else {
-        OFF
+        palette::current().off
     };
     for dx in [-2.5, 2.5] {
         for dy in [-5.0, 0.0, 5.0] {
@@ -486,11 +498,15 @@ fn row(
     let (id, r) = (m.id, m.record);
     let (up, down) = (place.up, place.down);
     let mut frame = Frame::new()
-        .fill(if r.enabled { ROW } else { ROW_OFF })
+        .fill(if r.enabled {
+            palette::current().row
+        } else {
+            palette::current().row_off
+        })
         .corner_radius(6)
         .inner_margin(Margin::symmetric(10, 8));
     if place.dragged {
-        frame = frame.stroke(Stroke::new(1.0, DROP));
+        frame = frame.stroke(Stroke::new(1.0, palette::current().accent));
     }
     frame
         .show(ui, |ui| {
@@ -529,7 +545,11 @@ fn row(
                                         RichText::new(r.name())
                                             .size(16.0)
                                             .family(theme::bold())
-                                            .color(if r.enabled { Color32::WHITE } else { OFF }),
+                                            .color(if r.enabled {
+                                                palette::current().text
+                                            } else {
+                                                palette::current().off
+                                            }),
                                     )
                                     .truncate(),
                                 );
@@ -539,13 +559,17 @@ fn row(
                                     about.push_str(" · ");
                                     about.push_str(&tr("dict-language", &[("code", code.into())]));
                                 }
-                                ui.label(RichText::new(about).color(DETAILS));
+                                ui.label(RichText::new(about).color(palette::current().details));
                             });
                         }
                     }
                     ui.add(
-                        egui::Label::new(RichText::new(details(r, tr)).size(13.0).color(DETAILS))
-                            .truncate(),
+                        egui::Label::new(
+                            RichText::new(details(r, tr))
+                                .size(13.0)
+                                .color(palette::current().details),
+                        )
+                        .truncate(),
                     );
                 });
                 if renamed {
@@ -694,7 +718,14 @@ fn css_panel(
     let t = |key: &str| tr(key, &[]);
     let (id, r) = (m.id, m.record);
     ui.add_space(6.0);
-    ui.add(egui::Label::new(RichText::new(t("dict-css-intro")).size(13.0).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(t("dict-css-intro"))
+                .size(13.0)
+                .color(palette::current().details),
+        )
+        .wrap(),
+    );
     let name = tr("dict-css-field", &[("title", r.name().to_string())]);
     ScrollArea::vertical()
         .id_salt(("dict-css", id))
@@ -720,15 +751,21 @@ fn css_panel(
         |text: String, color| egui::Label::new(RichText::new(text).size(13.0).color(color)).wrap();
     ui.add(small(
         tr("dict-css-rules", &[("count", report.rules.to_string())]),
-        DETAILS,
+        palette::current().details,
     ));
     if !report.dropped.is_empty() {
         let list = listed(&report.dropped);
-        ui.add(small(tr("dict-css-dropped", &[("list", list)]), LEFT_OUT));
+        ui.add(small(
+            tr("dict-css-dropped", &[("list", list)]),
+            palette::current().bad,
+        ));
     }
     if !report.ignored.is_empty() {
         let list = listed(&report.ignored);
-        ui.add(small(tr("dict-css-ignored", &[("list", list)]), LEFT_OUT));
+        ui.add(small(
+            tr("dict-css-ignored", &[("list", list)]),
+            palette::current().bad,
+        ));
     }
 
     let unsaved = editor.text != r.user_css;
@@ -752,7 +789,7 @@ fn css_panel(
             editor.text.clear();
         }
         if unsaved {
-            ui.label(RichText::new(t("dict-css-unsaved")).color(LEFT_OUT));
+            ui.label(RichText::new(t("dict-css-unsaved")).color(palette::current().bad));
         }
     });
 }
@@ -808,13 +845,13 @@ fn confirm_delete(
                 .layout(Layout::top_down(Align::Center)),
         );
         Frame::new()
-            .fill(Color32::from_rgb(0x2a, 0x2d, 0x34))
-            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .fill(palette::current().dialog)
+            .stroke(Stroke::new(1.0, palette::current().card_border))
             .corner_radius(8)
             .inner_margin(Margin::same(16))
             .show(&mut ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 12.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                ui.visuals_mut().override_text_color = Some(palette::current().text);
                 ui.add(
                     egui::Label::new(
                         RichText::new(tr("dict-delete-confirm")).family(theme::bold()),
@@ -931,7 +968,9 @@ mod tests {
     /// The height of the drop marker in the last frame, if one is drawn.
     fn marker(h: &Harness<'_, Test>) -> Option<f32> {
         h.output().shapes.iter().find_map(|c| match &c.shape {
-            egui::Shape::LineSegment { points, stroke } if stroke.color == DROP => {
+            egui::Shape::LineSegment { points, stroke }
+                if stroke.color == palette::current().accent =>
+            {
                 Some(points[0].y)
             }
             _ => None,

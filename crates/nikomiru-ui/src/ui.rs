@@ -155,6 +155,9 @@ pub enum Inbound {
         /// How it went.
         result: Result<(), String>,
     },
+    /// The desktop's light or dark preference, at start and when it changes
+    /// (SET-003).
+    SystemTheme(Option<bool>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -191,6 +194,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Library(_) => "Library",
             Inbound::WordAudioListed { .. } => "WordAudioListed",
             Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
+            Inbound::SystemTheme(_) => "SystemTheme",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -331,6 +335,13 @@ pub(crate) enum Command {
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
     ServicesOpen,
+    /// The General, Subtitles, Lookup, Shortcuts, Advanced or About tab of
+    /// the settings opened.
+    SettingsOpen,
+    /// Save the keys of a section from this draft (SET-001).
+    SettingsSave(nikomiru_core::config::Section, Box<nikomiru_core::Config>),
+    /// The shortcut editor waits for a key, or no longer (KEY-001).
+    ShortcutCapture(bool),
     /// The Word audio tab of the settings opened (AUD-001).
     AudioOpen,
     /// A search from it.
@@ -622,6 +633,10 @@ impl Ui {
                 self.session.word_audio_played(result);
                 true
             }
+            Inbound::SystemTheme(dark) => {
+                self.session.system_dark = dark;
+                true
+            }
             Inbound::Quit => {
                 self.quit();
                 true
@@ -900,6 +915,9 @@ impl Ui {
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
             Command::ServicesOpen => s.services_open(),
+            Command::SettingsOpen => s.settings_open(),
+            Command::SettingsSave(section, draft) => s.settings_save(section, &draft),
+            Command::ShortcutCapture(on) => s.shortcut_capture(on),
             Command::AudioOpen => s.audio_status = None,
             Command::OnlineSearch {
                 title,

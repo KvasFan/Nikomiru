@@ -13,7 +13,7 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -56,8 +56,8 @@ pub struct Parts {
     /// The dictionaries, to compose the cards.
     pub dictionaries: Option<Arc<DictionaryManager>>,
     /// Headword groups of a lookup, as the popup asks (the entry indexes
-    /// must match).
-    pub max_results: usize,
+    /// must match): the settings change it (SET-002).
+    pub max_results: Arc<AtomicUsize>,
     /// Where the media are made (`$XDG_CACHE_HOME/nikomiru/mining`), the
     /// frames of the clicks among them.
     pub cache_dir: PathBuf,
@@ -413,7 +413,7 @@ impl Worker {
             .lookup(
                 &r.query,
                 Options {
-                    max_results: self.parts.max_results,
+                    max_results: self.parts.max_results.load(Ordering::Relaxed),
                 },
             )
             .map_err(|e| MineFailure {

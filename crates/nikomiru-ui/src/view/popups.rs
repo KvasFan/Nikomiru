@@ -28,7 +28,7 @@ use nikomiru_core::PopupConfig;
 use nikomiru_dict::structured::{self, Block, Cell, Image, Pixels, Run, Target, Units};
 use nikomiru_dict::style::{Length, ListMarker, Rgba, Style, VerticalAlign};
 
-use super::theme;
+use super::{palette, theme};
 use crate::mining::{CardState, MenuItem};
 use crate::popup::{self, Origin, Popup, Side};
 use crate::popup_view::{Accent, EntryView, KanjiView, PitchRow, Section};
@@ -46,28 +46,10 @@ const EDGE: f64 = 8.0;
 const BAND: f32 = 6.0;
 const CORNER: f32 = PAD;
 
-const PANEL: Color32 = Color32::from_rgba_unmultiplied_const(0x1b, 0x1d, 0x22, 0xf2);
-const PANEL_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
-const TEXT: Color32 = Color32::from_rgb(0xe8, 0xe8, 0xe8);
-const WEAK: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const LINK: Color32 = Color32::from_rgb(0x8a, 0xb4, 0xff);
-const MARKER: Color32 = Color32::from_rgb(0xaa, 0xb2, 0xbf);
-const READING: Color32 = Color32::from_rgb(0xc5, 0xcf, 0xf5);
-const CURSOR: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
-const SECTION: Color32 = Color32::from_rgb(0x26, 0x2a, 0x31);
-const SECTION_TEXT: Color32 = Color32::from_rgb(0xc9, 0xd1, 0xdd);
-const TRACE: Color32 = Color32::from_rgb(0x24, 0x46, 0x5a);
-const FREQUENCY: Color32 = Color32::from_rgb(0x2f, 0x3a, 0x2a);
-const PITCH: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
-const ONYOMI: Color32 = Color32::from_rgb(0x3a, 0x2a, 0x44);
-const KUNYOMI: Color32 = Color32::from_rgb(0x2a, 0x3a, 0x44);
-const CHIP: Color32 = Color32::from_rgb(0x3a, 0x3d, 0x44);
-const CELL_BORDER: Color32 = Color32::from_rgb(0x55, 0x5b, 0x66);
-const HEADER_CELL: Color32 = Color32::from_rgb(0x2c, 0x30, 0x38);
-const BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0x90, 0x9a, 0xa8, 0x80);
-const GRIP: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x55);
-/// Under selected text: the subtitles' highlight.
-const SELECTION: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
+/// The popups' colors in the theme in use (SET-003).
+fn popup_colors() -> palette::PopupColors {
+    palette::current().popup
+}
 
 /// What a popup keeps between frames, by its generation: what the reader
 /// changed in it and what its drawing needs.
@@ -391,7 +373,7 @@ fn grips(ui: &Ui, panel: &mut Panel, rect: Rect, side: Side, layer: Id, name: &s
         Side::Above => vec2(-1.0, 1.0),
         Side::Below => vec2(-1.0, -1.0),
     };
-    let stroke = Stroke::new(1.0, GRIP);
+    let stroke = Stroke::new(1.0, popup_colors().grip);
     for (from, to) in [(3.0, 9.0), (3.0, 6.0)] {
         let start = corner + toward * vec2(from, to);
         let end = corner + toward * vec2(to, from);
@@ -438,8 +420,8 @@ pub(crate) fn draw(
             .fixed_pos(rect.min)
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(PANEL)
-                    .stroke(Stroke::new(1.0, PANEL_BORDER))
+                    .fill(popup_colors().panel)
+                    .stroke(Stroke::new(1.0, popup_colors().panel_border))
                     .corner_radius(8)
                     .inner_margin(Margin::same(PAD as i8))
                     .show(ui, |ui| {
@@ -568,11 +550,11 @@ fn rgba(c: Rgba) -> Color32 {
 /// The colour of a tag chip by its category.
 fn chip_color(category: &str) -> Color32 {
     match category {
-        "popular" => Color32::from_rgb(0x5a, 0x3b, 0x1f),
-        "partOfSpeech" => Color32::from_rgb(0x2a, 0x3f, 0x5f),
-        "frequent" => Color32::from_rgb(0x3d, 0x5a, 0x2a),
-        "archaism" | "dialect" => Color32::from_rgb(0x4a, 0x3a, 0x5a),
-        _ => CHIP,
+        "popular" => popup_colors().tag_popular,
+        "partOfSpeech" => popup_colors().tag_part_of_speech,
+        "frequent" => popup_colors().tag_frequent,
+        "archaism" | "dialect" => popup_colors().tag_archaism,
+        _ => popup_colors().chip,
     }
 }
 
@@ -615,9 +597,9 @@ fn text_format(s: &Style, link: bool) -> TextFormat {
         None => Align::BOTTOM,
     };
     let color = if link {
-        LINK
+        popup_colors().link
     } else {
-        s.color.map_or(TEXT, rgba)
+        s.color.map_or(popup_colors().text, rgba)
     };
     let line = |on: bool| {
         if on {
@@ -717,7 +699,7 @@ impl Selectable {
             slot,
         });
         self.text.extend(galley.text().chars());
-        ui.painter().galley(pos, galley, TEXT);
+        ui.painter().galley(pos, galley, popup_colors().text);
     }
 
     /// A line break between runs.
@@ -767,7 +749,7 @@ impl Selectable {
                 .into_iter()
                 .map(|r| {
                     around = around.union(r);
-                    Shape::rect_filled(r, 2.0, SELECTION)
+                    Shape::rect_filled(r, 2.0, popup_colors().selection)
                 })
                 .collect();
             painter.set(p.slot, Shape::Vec(shapes));
@@ -839,7 +821,7 @@ fn chip(ui: &mut Ui, text: &str, fill: Color32, size: f32, tip: &str) -> Respons
         .inner_margin(Margin::symmetric(5, 2))
         .show(ui, |ui| {
             ui.add(
-                Label::new(RichText::new(text).size(size).color(TEXT))
+                Label::new(RichText::new(text).size(size).color(popup_colors().text))
                     .wrap_mode(TextWrapMode::Extend)
                     .selectable(false),
             );
@@ -854,7 +836,7 @@ fn chip(ui: &mut Ui, text: &str, fill: Color32, size: f32, tip: &str) -> Respons
 
 /// A chip that does something when clicked.
 fn chip_button(ui: &mut Ui, text: &str) -> bool {
-    let response = chip(ui, text, CHIP, 13.0, "")
+    let response = chip(ui, text, popup_colors().chip, 13.0, "")
         .interact(Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
     let name = text.to_string();
@@ -921,9 +903,13 @@ fn text_run(ui: &mut Ui, label: Label, text: &mut Selectable) -> Response {
 
 fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
     ui.spacing_mut().item_spacing.y = 14.0;
-    ui.visuals_mut().override_text_color = Some(TEXT);
+    ui.visuals_mut().override_text_color = Some(popup_colors().text);
     let Some(reply) = &p.reply else {
-        ui.label(RichText::new(d.tr("popup-loading")).size(BASE).color(WEAK));
+        ui.label(
+            RichText::new(d.tr("popup-loading"))
+                .size(BASE)
+                .color(popup_colors().weak),
+        );
         return;
     };
     let content = &reply.content;
@@ -931,7 +917,7 @@ fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
         ui.label(
             RichText::new(d.tr("popup-no-results"))
                 .size(BASE)
-                .color(WEAK),
+                .color(popup_colors().weak),
         );
     }
     for k in &content.kanji {
@@ -967,7 +953,7 @@ fn body(ui: &mut Ui, d: &mut Draw<'_>, p: &Popup, level: usize) {
             ui.painter().rect_filled(
                 Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
                 1.5,
-                CURSOR,
+                popup_colors().cursor,
             );
             if follow {
                 ui.scroll_to_rect(rect, Some(Align::TOP));
@@ -982,7 +968,7 @@ fn headword(ui: &mut Ui, e: &EntryView) {
     for segment in &e.furigana {
         let base = LayoutJob::single_section(
             segment.t.clone(),
-            TextFormat::simple(FontId::proportional(26.0), Color32::WHITE),
+            TextFormat::simple(FontId::proportional(26.0), popup_colors().headword),
         );
         let headword = &mut Selectable::default();
         ruby(
@@ -990,7 +976,7 @@ fn headword(ui: &mut Ui, e: &EntryView) {
             base,
             &segment.r,
             12.0,
-            READING,
+            popup_colors().reading,
             Sense::hover(),
             headword,
         );
@@ -1020,13 +1006,19 @@ fn entry(
         let button = format!("{} ({})", card.state.glyph(), d.tr("card-button"));
         ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
             let busy = card.state == CardState::Busy;
-            let response = chip(ui, card.state.glyph(), CHIP, 15.0, &d.tr("card-button"))
-                .interact(if busy { Sense::hover() } else { Sense::click() })
-                .on_hover_cursor(if busy {
-                    CursorIcon::Wait
-                } else {
-                    CursorIcon::PointingHand
-                });
+            let response = chip(
+                ui,
+                card.state.glyph(),
+                popup_colors().chip,
+                15.0,
+                &d.tr("card-button"),
+            )
+            .interact(if busy { Sense::hover() } else { Sense::click() })
+            .on_hover_cursor(if busy {
+                CursorIcon::Wait
+            } else {
+                CursorIcon::PointingHand
+            });
             response.widget_info(|| WidgetInfo::labeled(Role::Button, !busy, &button));
             if response.clicked() {
                 d.out.push(Command::CardButton {
@@ -1038,7 +1030,7 @@ fn entry(
             if d.word_audio {
                 ui.add_space(4.0);
                 let name = d.tr("word-audio-button");
-                let sound = chip(ui, "♪", CHIP, 15.0, &d.tr("word-audio-hint"))
+                let sound = chip(ui, "♪", popup_colors().chip, 15.0, &d.tr("word-audio-hint"))
                     .interact(Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand);
                 sound.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
@@ -1060,10 +1052,10 @@ fn entry(
     });
     match audio {
         Some(crate::word_audio::AudioMenu::Loading) => {
-            ui.label(RichText::new(d.tr("word-audio-loading")).color(WEAK));
+            ui.label(RichText::new(d.tr("word-audio-loading")).color(popup_colors().weak));
         }
         Some(crate::word_audio::AudioMenu::Items(items)) if items.is_empty() => {
-            ui.label(RichText::new(d.tr("word-audio-none")).color(WEAK));
+            ui.label(RichText::new(d.tr("word-audio-none")).color(popup_colors().weak));
         }
         Some(crate::word_audio::AudioMenu::Items(items)) => {
             ui.horizontal_wrapped(|ui| {
@@ -1095,7 +1087,7 @@ fn entry(
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
             for t in &e.trace {
-                chip(ui, &t.name, TRACE, 12.0, &t.description);
+                chip(ui, &t.name, popup_colors().trace, 12.0, &t.description);
             }
             for t in &e.term_tags {
                 chip(ui, &t.name, chip_color(&t.category), 12.0, &t.notes);
@@ -1109,7 +1101,7 @@ fn entry(
                 chip(
                     ui,
                     &format!("{}: {}", f.dictionary, f.values.join(", ")),
-                    FREQUENCY,
+                    popup_colors().frequency,
                     12.0,
                     "",
                 );
@@ -1133,12 +1125,18 @@ fn pitch_row(ui: &mut Ui, d: &Draw<'_>, row: &PitchRow, morae: &[String]) {
             [one] => one.clone(),
             many => format!("{} · {}", d.tr("popup-pitch-accent"), many.len()),
         };
-        chip(ui, &label, CHIP, 12.0, &row.dictionaries.join(", "));
+        chip(
+            ui,
+            &label,
+            popup_colors().chip,
+            12.0,
+            &row.dictionaries.join(", "),
+        );
         for a in &row.accents {
             accent(ui, a, morae);
         }
         for text in row.patterns.iter().chain(&row.transcriptions) {
-            ui.label(RichText::new(text).size(14.0).color(TEXT));
+            ui.label(RichText::new(text).size(14.0).color(popup_colors().text));
         }
     });
 }
@@ -1147,27 +1145,31 @@ fn accent(ui: &mut Ui, a: &Accent, morae: &[String]) {
     let galleys: Vec<Arc<Galley>> = ui.ctx().fonts_mut(|f| {
         morae
             .iter()
-            .map(|m| f.layout_no_wrap(m.clone(), FontId::proportional(BASE), TEXT))
+            .map(|m| f.layout_no_wrap(m.clone(), FontId::proportional(BASE), popup_colors().text))
             .collect()
     });
     let tail = ui.ctx().fonts_mut(|f| {
         f.layout_no_wrap(
             format!(" [{}] {}", a.position, a.category),
             FontId::proportional(12.0),
-            WEAK,
+            popup_colors().weak,
         )
     });
     let text_height = galleys.iter().map(|g| g.size().y).fold(BASE, f32::max);
     let width: f32 = galleys.iter().map(|g| g.size().x).sum::<f32>() + tail.size().x;
     let (rect, _) = ui.allocate_exact_size(vec2(width, text_height + 3.0), Sense::hover());
     let painter = ui.painter();
-    let line = Stroke::new(1.5, PITCH);
+    let line = Stroke::new(1.5, popup_colors().pitch);
     let high: Vec<bool> = a.high_low.chars().map(|c| c == 'H').collect();
     let top = rect.top() + 1.0;
     let mut x = rect.left();
     for (i, g) in galleys.iter().enumerate() {
         let w = g.size().x;
-        painter.galley(pos2(x, rect.top() + 3.0), Arc::clone(g), TEXT);
+        painter.galley(
+            pos2(x, rect.top() + 3.0),
+            Arc::clone(g),
+            popup_colors().text,
+        );
         if high.get(i) == Some(&true) {
             painter.line_segment([pos2(x, top), pos2(x + w, top)], line);
             if high.get(i + 1) == Some(&false) {
@@ -1176,7 +1178,11 @@ fn accent(ui: &mut Ui, a: &Accent, morae: &[String]) {
         }
         x += w;
     }
-    painter.galley(pos2(x, rect.bottom() - tail.size().y), tail, WEAK);
+    painter.galley(
+        pos2(x, rect.bottom() - tail.size().y),
+        tail,
+        popup_colors().weak,
+    );
 }
 
 /// A dictionary's glossaries under a header that opens and closes them
@@ -1186,7 +1192,7 @@ fn dictionary_section(ui: &mut Ui, d: &mut Draw<'_>, s: &Section, key: (usize, u
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
         let header = Frame::new()
-            .fill(SECTION)
+            .fill(popup_colors().section)
             .corner_radius(4)
             .inner_margin(Margin::symmetric(6, 3))
             .show(ui, |ui| {
@@ -1196,7 +1202,7 @@ fn dictionary_section(ui: &mut Ui, d: &mut Draw<'_>, s: &Section, key: (usize, u
                         RichText::new(format!("{} {}", if open { "▾" } else { "▸" }, s.dictionary))
                             .size(13.0)
                             .family(theme::bold())
-                            .color(SECTION_TEXT),
+                            .color(popup_colors().section_text),
                     )
                     .selectable(false),
                 );
@@ -1234,23 +1240,36 @@ fn kanji(ui: &mut Ui, d: &Draw<'_>, k: &KanjiView) {
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.vertical(|ui| {
-            ui.label(RichText::new(&k.character).size(56.0).color(Color32::WHITE));
-            ui.label(RichText::new(&k.dictionary).size(12.0).color(WEAK));
+            ui.label(
+                RichText::new(&k.character)
+                    .size(56.0)
+                    .color(popup_colors().headword),
+            );
+            ui.label(
+                RichText::new(&k.dictionary)
+                    .size(12.0)
+                    .color(popup_colors().weak),
+            );
         });
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
                 for r in &k.onyomi {
-                    chip(ui, r, ONYOMI, 13.0, "");
+                    chip(ui, r, popup_colors().onyomi, 13.0, "");
                 }
                 for r in &k.kunyomi {
-                    chip(ui, r, KUNYOMI, 13.0, "");
+                    chip(ui, r, popup_colors().kunyomi, 13.0, "");
                 }
             });
             if !k.meanings.is_empty() {
                 ui.add(
-                    Label::new(RichText::new(k.meanings.join(", ")).size(BASE).color(TEXT)).wrap(),
+                    Label::new(
+                        RichText::new(k.meanings.join(", "))
+                            .size(BASE)
+                            .color(popup_colors().text),
+                    )
+                    .wrap(),
                 );
             }
             ui.horizontal_wrapped(|ui| {
@@ -1259,7 +1278,7 @@ fn kanji(ui: &mut Ui, d: &Draw<'_>, k: &KanjiView) {
                     chip(
                         ui,
                         &(d.tr)("kanji-strokes", &[("count", n.clone())]),
-                        CHIP,
+                        popup_colors().chip,
                         12.0,
                         "",
                     );
@@ -1268,19 +1287,25 @@ fn kanji(ui: &mut Ui, d: &Draw<'_>, k: &KanjiView) {
                     chip(
                         ui,
                         &(d.tr)("kanji-radical", &[("radical", r.clone())]),
-                        CHIP,
+                        popup_colors().chip,
                         12.0,
                         "",
                     );
                 }
                 for (name, value) in &k.stats {
-                    chip(ui, &format!("{name}: {value}"), CHIP, 12.0, "");
+                    chip(
+                        ui,
+                        &format!("{name}: {value}"),
+                        popup_colors().chip,
+                        12.0,
+                        "",
+                    );
                 }
                 for f in &k.frequencies {
                     chip(
                         ui,
                         &format!("{}: {}", f.dictionary, f.values.join(", ")),
-                        FREQUENCY,
+                        popup_colors().frequency,
                         12.0,
                         "",
                     );
@@ -1316,9 +1341,9 @@ fn blocks(ui: &mut Ui, d: &mut Draw<'_>, blocks_: &[Block], id: Id) {
                 for (term, tags) in items {
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
-                        ui.label(RichText::new(term).size(BASE).color(TEXT));
+                        ui.label(RichText::new(term).size(BASE).color(popup_colors().text));
                         for t in tags {
-                            chip(ui, t, CHIP, 12.0, "");
+                            chip(ui, t, popup_colors().chip, 12.0, "");
                         }
                     });
                 }
@@ -1462,7 +1487,15 @@ fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
                 }
                 Run::Text { t, s } if ruby_flow => {
                     let job = run_job(t, s, false);
-                    ruby(ui, job, "", reading, TEXT, Sense::hover(), &mut text);
+                    ruby(
+                        ui,
+                        job,
+                        "",
+                        reading,
+                        popup_colors().text,
+                        Sense::hover(),
+                        &mut text,
+                    );
                 }
                 Run::Text { t, s } => {
                     let em = BASE * s.font_scale.unwrap_or(1.0);
@@ -1471,14 +1504,22 @@ fn mixed(ui: &mut Ui, d: &mut Draw<'_>, runs: &[Run], id: Id, select: bool) {
                     ui.add_space(points(s.padding.right, em) + points(s.margin.right, em));
                 }
                 Run::Ruby { t, rt, s } => {
-                    let color = s.color.map_or(TEXT, rgba);
+                    let color = s.color.map_or(popup_colors().text, rgba);
                     let job = run_job(t, s, false);
                     ruby(ui, job, rt, reading, color, Sense::hover(), &mut text);
                 }
                 Run::Link { t, target, s } => {
                     let job = run_job(t, s, true);
                     let response = if ruby_flow {
-                        ruby(ui, job, "", reading, LINK, Sense::click(), &mut text)
+                        ruby(
+                            ui,
+                            job,
+                            "",
+                            reading,
+                            popup_colors().link,
+                            Sense::click(),
+                            &mut text,
+                        )
                     } else {
                         text_run(ui, Label::new(job).sense(Sense::click()), &mut text)
                     }
@@ -1541,19 +1582,22 @@ fn image_run(ui: &mut Ui, d: &mut Draw<'_>, image: &Image, id: Id) {
             .find(|t| !t.is_empty())
             .map_or("image", |t| t.as_str());
         let clickable = image.pixels.is_some();
-        let response = ui.add(
-            Label::new(
-                RichText::new(format!("[{name}]"))
-                    .size(BASE * 0.85)
-                    .color(if clickable { LINK } else { WEAK }),
-            )
-            .sense(if clickable {
-                Sense::click()
-            } else {
-                Sense::hover()
-            })
-            .selectable(false),
-        );
+        let response =
+            ui.add(
+                Label::new(RichText::new(format!("[{name}]")).size(BASE * 0.85).color(
+                    if clickable {
+                        popup_colors().link
+                    } else {
+                        popup_colors().weak
+                    },
+                ))
+                .sense(if clickable {
+                    Sense::click()
+                } else {
+                    Sense::hover()
+                })
+                .selectable(false),
+            );
         if clickable && response.clicked() {
             d.panel.images.insert(id);
         }
@@ -1604,7 +1648,7 @@ fn boxed(ui: &mut Ui, d: &mut Draw<'_>, s: &Style, inner: &[Block], id: Id) {
     let width = s.border_width.map_or(if partial { 3.0 } else { 1.0 }, |w| {
         w.px(em).clamp(0.0, 8.0)
     });
-    let color = s.border_color.map_or(BORDER, rgba);
+    let color = s.border_color.map_or(popup_colors().border, rgba);
     let indent = if partial && sides[3] {
         width + 4.0
     } else {
@@ -1686,13 +1730,13 @@ fn list(
                 ui.add_space(indent);
                 if !marker.is_empty() {
                     let galley = ui.ctx().fonts_mut(|f| {
-                        f.layout_no_wrap(marker, FontId::proportional(BASE), MARKER)
+                        f.layout_no_wrap(marker, FontId::proportional(BASE), popup_colors().marker)
                     });
                     let (rect, _) = ui.allocate_exact_size(
                         vec2(galley.size().x.max(BASE), galley.size().y),
                         Sense::hover(),
                     );
-                    ui.painter().galley(rect.min, galley, MARKER);
+                    ui.painter().galley(rect.min, galley, popup_colors().marker);
                 }
                 ui.vertical(|ui| blocks(ui, d, item, id.with(i)));
             });
@@ -1710,7 +1754,7 @@ fn details(ui: &mut Ui, d: &mut Draw<'_>, open: bool, summary: &[Run], inner: &[
                 Label::new(
                     RichText::new(if is_open { "▾" } else { "▸" })
                         .size(BASE)
-                        .color(MARKER),
+                        .color(popup_colors().marker),
                 )
                 .selectable(false),
             );
@@ -1821,7 +1865,7 @@ fn table(ui: &mut Ui, d: &mut Draw<'_>, columns: u32, rows: &[Vec<Cell>], id: Id
                 };
                 let rect = Rect::from_min_max(origin + vec2(x0, y0), origin + vec2(x1, y1));
                 let fill = c.s.background.map(rgba).unwrap_or(if c.header {
-                    HEADER_CELL
+                    popup_colors().header_cell
                 } else {
                     Color32::TRANSPARENT
                 });
@@ -1832,7 +1876,7 @@ fn table(ui: &mut Ui, d: &mut Draw<'_>, columns: u32, rows: &[Vec<Cell>], id: Id
                         Shape::rect_stroke(
                             rect,
                             0.0,
-                            Stroke::new(1.0, CELL_BORDER),
+                            Stroke::new(1.0, popup_colors().cell_border),
                             StrokeKind::Inside,
                         ),
                     ]),

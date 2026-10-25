@@ -9,42 +9,80 @@ use egui::{
 };
 
 use super::dict_page::full_screen;
-use super::theme;
+use super::{palette, theme};
 
 /// A tab of the settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsTab {
-    /// The mpv options and presets (PLY-016, PLY-018).
+    /// Language, theme, scale; the seek step, the next episode.
     #[default]
+    General,
+    /// The mpv options and presets (PLY-016, PLY-018).
     Player,
+    /// The subtitles' size, languages and obscuring.
+    Subtitles,
     /// The subtitle services, their keys and the proxy (MET-011).
     Services,
     /// The dictionaries, their order and their styles (DIC-*).
     Dictionaries,
+    /// The lookups and the popups.
+    Lookup,
     /// The word audio sources (AUD-001).
     Audio,
     /// Mining to Anki.
     Anki,
+    /// The keyboard shortcuts (KEY-001).
+    Shortcuts,
+    /// ffmpeg, the folders, the logs.
+    Advanced,
+    /// The version and the licenses.
+    About,
 }
 
 impl SettingsTab {
     /// Every tab, in the order shown.
-    pub const ALL: [SettingsTab; 5] = [
+    pub const ALL: [SettingsTab; 11] = [
+        Self::General,
         Self::Player,
+        Self::Subtitles,
         Self::Services,
         Self::Dictionaries,
+        Self::Lookup,
         Self::Audio,
         Self::Anki,
+        Self::Shortcuts,
+        Self::Advanced,
+        Self::About,
     ];
+
+    /// The keys of `config.toml` it saves and resets (SET-006), for the
+    /// tabs that save through [`Command::SettingsSave`](crate::ui::Command).
+    pub fn section(self) -> Option<nikomiru_core::config::Section> {
+        use nikomiru_core::config::Section;
+        match self {
+            Self::General => Some(Section::General),
+            Self::Subtitles => Some(Section::Subtitles),
+            Self::Lookup => Some(Section::Lookup),
+            Self::Shortcuts => Some(Section::Shortcuts),
+            Self::Advanced => Some(Section::Advanced),
+            _ => None,
+        }
+    }
 
     /// Its name, for the test harness and the scroll position.
     pub fn key(self) -> &'static str {
         match self {
+            Self::General => "general",
             Self::Player => "player",
+            Self::Subtitles => "subtitles",
             Self::Services => "services",
             Self::Dictionaries => "dictionaries",
+            Self::Lookup => "lookup",
             Self::Audio => "audio",
             Self::Anki => "anki",
+            Self::Shortcuts => "shortcuts",
+            Self::Advanced => "advanced",
+            Self::About => "about",
         }
     }
 
@@ -56,11 +94,17 @@ impl SettingsTab {
 
     fn label(self) -> &'static str {
         match self {
+            Self::General => "settings-general",
             Self::Player => "settings-player",
+            Self::Subtitles => "settings-subtitles",
             Self::Services => "settings-services",
             Self::Dictionaries => "settings-dictionaries",
+            Self::Lookup => "settings-lookup",
             Self::Audio => "settings-audio",
             Self::Anki => "settings-anki",
+            Self::Shortcuts => "settings-shortcuts",
+            Self::Advanced => "settings-advanced",
+            Self::About => "settings-about",
         }
     }
 }
@@ -90,7 +134,7 @@ pub(crate) fn page(
     status: Option<&(String, bool)>,
     content: impl FnOnce(&mut Ui, &mut Ui),
 ) -> Leave {
-    let p = theme::palette(ctx);
+    let p = palette::current();
     let screen = ctx.content_rect();
     let size = vec2(
         1040.0_f32.min(screen.width() - 32.0).max(0.0),

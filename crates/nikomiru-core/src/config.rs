@@ -709,6 +709,51 @@ impl Config {
         })
     }
 
+    /// These settings with the TOML `text` laid over them, table by table:
+    /// a key `text` has takes its value, the others stay.
+    pub fn laid_over(&self, text: &str) -> Result<Self, String> {
+        fn lay(base: &mut toml::Table, top: toml::Table) {
+            for (key, value) in top {
+                match (base.get_mut(&key), value) {
+                    (Some(toml::Value::Table(b)), toml::Value::Table(t)) => lay(b, t),
+                    (_, value) => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+        }
+        let mut base = toml::Table::try_from(self).map_err(|e| e.to_string())?;
+        let top: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+        lay(&mut base, top);
+        let text = toml::to_string(&base).map_err(|e| e.to_string())?;
+        Self::from_toml(&text).map_err(|e| e.to_string())
+    }
+
+    /// Takes the keys of `section` from `from`, the others staying: what a
+    /// tab of the settings saves.
+    pub fn copy_section(&mut self, section: Section, from: &Config) {
+        match section {
+            Section::General => {
+                self.general = from.general.clone();
+                self.player.seek_seconds = from.player.seek_seconds;
+                self.player.auto_next = from.player.auto_next;
+            }
+            Section::Subtitles => self.subtitles = from.subtitles.clone(),
+            Section::Lookup => {
+                self.lookup = from.lookup.clone();
+                self.popup = from.popup.clone();
+            }
+            Section::WordAudio => self.word_audio = from.word_audio.clone(),
+            Section::Anki => self.anki = from.anki.clone(),
+            Section::Services => {
+                self.online = from.online.clone();
+                self.network = from.network.clone();
+            }
+            Section::Shortcuts => self.shortcuts = from.shortcuts.clone(),
+            Section::Advanced => self.paths = from.paths.clone(),
+        }
+    }
+
     /// Puts the keys of `section` back to their defaults (SET-006). The
     /// other keys stay, and so do the keys this version does not know, the
     /// keys and passwords of the services, and the word audio's sources:
@@ -1318,6 +1363,25 @@ opensubtitles_password = "pw-s3cret"
         c.reset(Section::Advanced);
         assert_eq!(c.paths, d.paths);
         assert_eq!(c.player.hwdec, "no");
+        // TOML laid over the settings changes its keys alone
+        let over = before
+            .laid_over("[general]\nui_scale = 125\n[popup]\nmax_height = 300")
+            .unwrap();
+        assert_eq!(
+            (over.general.ui_scale, over.general.theme.as_str()),
+            (125, "light")
+        );
+        assert_eq!(
+            (over.popup.max_height, over.popup.max_width),
+            (300.0, 900.0)
+        );
+        // a tab saves its keys alone
+        let mut saved = before.clone();
+        saved.copy_section(Section::General, &c);
+        assert_eq!(saved.general.ui_scale, 100);
+        assert_eq!(saved.player.seek_seconds, 3);
+        assert_eq!(saved.player.hwdec, "no");
+        assert_eq!(saved.subtitles, before.subtitles);
     }
 
     // T-ERR-001

@@ -201,6 +201,22 @@ pub struct Services {
     /// write it. When it could not be read, the settings in memory are the
     /// defaults, and writing them would lose the user's file.
     pub config_writable: bool,
+    /// The logs' folder (Settings → Advanced).
+    pub logs_dir: PathBuf,
+    /// `[lookup] max_results`, shared with the workers that look words up:
+    /// the settings change it at once (SET-002).
+    pub lookup_limit: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// How the interface looks (SET-003, SET-005).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Look {
+    /// The dark theme, or the light.
+    pub dark: bool,
+    /// The accent.
+    pub accent: [u8; 3],
+    /// The interface scale in percent.
+    pub scale: u16,
 }
 
 impl std::fmt::Debug for Services {
@@ -227,6 +243,8 @@ enum SavingPage {
     Services,
     Player,
     Audio,
+    /// General, Subtitles, Lookup, Shortcuts, Advanced.
+    Settings,
 }
 
 /// How long the next episode waits (LIB-009).
@@ -335,6 +353,17 @@ pub struct Session {
     /// The last message of the Subtitle services tab, and whether it is good
     /// news (MET-011).
     pub services_status: Option<(String, bool)>,
+    /// The last message of the General, Subtitles, Lookup, Shortcuts and
+    /// Advanced tabs, and whether it is good news.
+    pub settings_status: Option<(String, bool)>,
+    /// The desktop prefers a dark theme, a light one, or says nothing
+    /// (SET-003).
+    pub system_dark: Option<bool>,
+    /// The shortcut editor waits for a key (KEY-001): the next chord goes to
+    /// it instead of running an action.
+    capturing: bool,
+    /// The chord it got; `None` once taken, or when Esc gave up.
+    captured: Option<String>,
     /// The Library page (LIB-005).
     pub library_page: crate::catalog::LibraryPage,
     /// The last message of the Word audio tab, and whether it is good news.
@@ -511,6 +540,10 @@ impl Session {
             online_jobs: Vec::new(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
+            settings_status: None,
+            system_dark: None,
+            capturing: false,
+            captured: None,
             library_page: crate::catalog::LibraryPage::default(),
             audio_status: None,
             audio_database_row: None,
@@ -1083,6 +1116,7 @@ impl Session {
             SavingPage::Services => self.services_status = Some(status),
             SavingPage::Audio => self.audio_status = Some(status),
             SavingPage::Player => self.player_page.status = Some(status),
+            SavingPage::Settings => self.settings_status = Some(status),
         }
     }
 
@@ -1274,12 +1308,112 @@ impl Session {
         self.services_status = None;
     }
 
+    /// A tab of the settings opened: General, Subtitles, Lookup, Shortcuts,
+    /// Advanced or About.
+    pub fn settings_open(&mut self) {
+        self.settings_status = None;
+        self.shortcut_capture(false);
+    }
+
+    /// `config.toml`.
+    pub fn config_file(&self) -> &Path {
+        &self.services.config_file
+    }
+
+    /// The logs' folder.
+    pub fn logs_dir(&self) -> &Path {
+        &self.services.logs_dir
+    }
+
+    /// The shortcut editor starts or stops waiting for a key (KEY-001).
+    pub fn shortcut_capture(&mut self, on: bool) {
+        self.capturing = on;
+        self.captured = None;
+    }
+
+    /// Whether the shortcut editor waits for a key, and the chord it got.
+    pub fn capture(&self) -> (bool, Option<&str>) {
+        (self.capturing, self.captured.as_deref())
+    }
+
+    /// The settings as they are, the draft of a tab.
+    pub fn config(&self) -> &Config {
+        &self.services.config
+    }
+
+    /// How the interface looks: the theme chosen, or the desktop's for
+    /// `"system"` (dark when it says nothing: a video player); the accent;
+    /// the scale.
+    pub fn look(&self) -> Look {
+        let g = &self.services.config.general;
+        let dark = match g.theme.as_str() {
+            "light" => false,
+            "dark" => true,
+            _ => self.system_dark.unwrap_or(true),
+        };
+        Look {
+            dark,
+            accent: g.accent_rgb().unwrap_or([0x6a, 0xa0, 0xff]),
+            scale: g.ui_scale,
+        }
+    }
+
+    /// Saves a tab of the settings, the keys of `section` in `draft`: they
+    /// apply at once (SET-002) and go to `config.toml` unless it could not
+    /// be read. Shortcuts that conflict are refused (KEY-001).
+    pub fn settings_save(&mut self, section: nikomiru_core::config::Section, draft: &Config) {
+        use nikomiru_core::config::Section;
+        if section == Section::Shortcuts {
+            match Bindings::with_overrides(&draft.shortcuts) {
+                Ok(bindings) => self.bindings = bindings,
+                Err(conflicts) => {
+                    let chords: Vec<String> = conflicts.into_iter().map(|c| c.chord).collect();
+                    let text = self.tr("shortcuts-conflict", &[("keys", chords.join(", "))]);
+                    self.settings_status = Some((text, false));
+                    return;
+                }
+            }
+        }
+        self.services.config.copy_section(section, draft);
+        let c = &self.services.config;
+        match section {
+            Section::General => self
+                .services
+                .translator
+                .set_setting(&c.general.ui_language, |k| std::env::var(k).ok()),
+            Section::Subtitles => {
+                self.subs.mode = Obscure::from_config(&c.subtitles.obscure);
+                self.secondary.mode = Obscure::from_config(&c.subtitles.secondary_obscure);
+            }
+            Section::Lookup => {
+                self.services
+                    .lookup_limit
+                    .store(c.lookup.max_results, std::sync::atomic::Ordering::Relaxed);
+                self.popups
+                    .set_size((c.popup.max_width, c.popup.max_height));
+            }
+            _ => {}
+        }
+        self.keep_status = false;
+        self.saving_page = SavingPage::Settings;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("settings-not-saved", &[]);
+            self.settings_status = Some((text, false));
+        }
+    }
+
     /// The Library page opened (LIB-005): the home page read again, and the
     /// series open.
     pub fn library_open(&mut self) {
         use crate::catalog::LibraryJob;
         self.library_page.status = None;
-        // the session being watched is in the statistics too
+        // the video being watched is in "Continue watching" at its place,
+        // and its session in the statistics
+        if let Some(ms) = self.saver.flush() {
+            self.save_position(ms);
+        }
         if let Some(save) = self.study.save_now() {
             self.write_study(save);
         }
@@ -2502,6 +2636,14 @@ impl Session {
             }
             return (UiEffect::None, false);
         };
+        // the shortcut editor takes the next chord; Esc gives up
+        if self.capturing {
+            if pressed && !auto_repeat {
+                self.capturing = false;
+                self.captured = (chord != "Escape").then_some(chord);
+            }
+            return (UiEffect::None, true);
+        }
         // a popup's keys first, then the player's (KEY-003)
         let action = if self.popups.is_open() && !self.popups_covered {
             self.bindings

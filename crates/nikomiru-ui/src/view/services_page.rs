@@ -4,20 +4,15 @@
 //! for subtitles and in which order, their keys and the OpenSubtitles login
 //! (MET-005), the automatic subtitles (MET-007) and the proxy (SET-007).
 
-use egui::{
-    Align, Button, Color32, Frame, Layout, Margin, RichText, Role, TextEdit, Ui, WidgetInfo, vec2,
-};
+use egui::{Align, Button, Frame, Layout, Margin, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
 use nikomiru_core::config::{NetworkConfig, OnlineConfig};
 use nikomiru_online::ProviderId;
 
 use super::popups::Translate;
 use super::settings::{Leave, SettingsTab, page};
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::session::Session;
 use crate::ui::Command;
-
-const ROW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
 
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Debug, Default)]
@@ -61,7 +56,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -115,7 +110,12 @@ fn save(state: &State, out: &mut Vec<Command>) {
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
     ui.spacing_mut().item_spacing.y = 8.0;
     section(ui, &tr(s, "services-list"));
-    ui.add(egui::Label::new(RichText::new(tr(s, "services-list-hint")).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "services-list-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
     let show = state.show_keys;
     let Some((online, network)) = state.draft.as_mut() else {
         return;
@@ -124,7 +124,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
     let mut swap = None;
     for (i, (id, used)) in state.order.iter_mut().enumerate() {
         Frame::new()
-            .fill(ROW)
+            .fill(palette::current().row)
             .corner_radius(6)
             .inner_margin(Margin::symmetric(10, 8))
             .show(ui, |ui| {
@@ -150,7 +150,10 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
                     ProviderId::Jimaku => "services-jimaku-about",
                     ProviderId::OpenSubtitles => "services-os-about",
                 };
-                ui.add(egui::Label::new(RichText::new(tr(s, about)).color(DETAILS)).wrap());
+                ui.add(
+                    egui::Label::new(RichText::new(tr(s, about)).color(palette::current().details))
+                        .wrap(),
+                );
                 egui::Grid::new(("service-keys", id.key()))
                     .num_columns(2)
                     .spacing(vec2(12.0, 6.0))
@@ -197,7 +200,12 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
         state.order.swap(a, b);
     }
     ui.checkbox(&mut state.show_keys, tr(s, "online-show-keys"));
-    ui.add(egui::Label::new(RichText::new(tr(s, "online-keys-hint")).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "online-keys-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
     section(ui, &tr(s, "services-auto-section"));
     ui.checkbox(&mut online.auto_subtitles, tr(s, "online-auto"));
     section(ui, &tr(s, "services-network"));

@@ -108,6 +108,9 @@ pub(crate) struct State {
     /// Where the pointer was in the last frame: a hover lookup goes out when
     /// it moves (the first event of a pointer has no delta).
     pointer: Option<Pos2>,
+    /// The subtitles' size in the last frame, in physical pixels: the
+    /// interface scale leaves it alone (SET-005).
+    pub font_px: f32,
     /// What the last frame drew.
     #[cfg(test)]
     pub drawn: Vec<Drawn>,
@@ -155,6 +158,7 @@ pub(crate) fn draw(
         scene.font_size,
         scene.subs.play_res().map(|(_, y)| y),
     );
+    state.font_px = units.font * ctx.pixels_per_point();
     let wrap = video.width().max(4.0 * units.font);
     let secondary_units = Units {
         font: units.font * SECONDARY_SCALE,

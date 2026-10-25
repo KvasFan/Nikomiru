@@ -5,23 +5,16 @@
 //! presets in `mpv.conf` format, loaded with a preview of every line, saved,
 //! imported and exported.
 
-use egui::{
-    Button, Color32, ComboBox, Frame, Margin, RichText, Role, TextEdit, Ui, WidgetInfo, vec2,
-};
+use egui::{Button, ComboBox, Frame, Margin, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
 use nikomiru_player::options::{Line, parse_mpv_conf};
 use nikomiru_player::settings::{CONTROLS, Control, Group, Kind, OptionSet};
 
 use super::popups::Translate;
 use super::settings::{Leave, SettingsTab, page};
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::player_settings::{LineStatus, PlayerPage};
 use crate::session::Session;
 use crate::ui::Command;
-
-const PREVIEW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const GOOD: Color32 = Color32::from_rgb(0x7c, 0xd3, 0x8a);
-const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Debug, Default)]
@@ -78,7 +71,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -134,7 +127,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
     if let Some(preview) = &s.page.preview {
         Frame::new()
-            .fill(PREVIEW)
+            .fill(palette::current().row)
             .corner_radius(6)
             .inner_margin(Margin::same(10))
             .show(ui, |ui| {
@@ -147,10 +140,12 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 );
                 for l in &preview.lines {
                     let (status, color) = match &l.status {
-                        LineStatus::Control => (tr(s, "player-line-control"), GOOD),
-                        LineStatus::Raw => (tr(s, "player-line-raw"), GOOD),
-                        LineStatus::Ignored(why) => (why.clone(), BAD),
-                        LineStatus::Invalid(why) => (why.clone(), BAD),
+                        LineStatus::Control => {
+                            (tr(s, "player-line-control"), palette::current().good)
+                        }
+                        LineStatus::Raw => (tr(s, "player-line-raw"), palette::current().good),
+                        LineStatus::Ignored(why) => (why.clone(), palette::current().bad),
+                        LineStatus::Invalid(why) => (why.clone(), palette::current().bad),
                     };
                     ui.label(
                         RichText::new(format!("{:>3}  {}  — {status}", l.line, l.text))
@@ -200,7 +195,12 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 }
             });
     }
-    ui.add(egui::Label::new(RichText::new(tr(s, "player-apply-note")).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "player-apply-note")).color(palette::current().details),
+        )
+        .wrap(),
+    );
 }
 
 /// The option set in use as `mpv.conf` text (PLY-016): what the controls
@@ -235,7 +235,7 @@ fn conf_text(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
                 &[("line", line.to_string()), ("error", error)],
             ),
         };
-        ui.label(RichText::new(text).color(BAD));
+        ui.label(RichText::new(text).color(palette::current().bad));
     }
 }
 

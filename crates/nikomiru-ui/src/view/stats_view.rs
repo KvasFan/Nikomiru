@@ -9,21 +9,23 @@ use egui::{Button, Color32, Frame, Margin, Rect, RichText, Sense, Ui, Vec2, vec2
 use nikomiru_library::stats::{DayTotal, date_of, day_number};
 
 use super::popups::Translate;
-use super::theme;
+use super::{palette, theme};
 use crate::catalog::{LibraryEdit, Stats};
 use crate::ui::Command;
 
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const ROW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const EMPTY: Color32 = Color32::from_rgb(0x26, 0x2b, 0x36);
-const BAR: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
-/// The calendar's shades, from a little to a lot of study.
-const HEAT: [Color32; 4] = [
-    Color32::from_rgb(0x2b, 0x45, 0x75),
-    Color32::from_rgb(0x3d, 0x63, 0xa8),
-    Color32::from_rgb(0x55, 0x86, 0xd8),
-    Color32::from_rgb(0x8a, 0xb4, 0xff),
-];
+/// The calendar's shade for a day of `minutes` of study: the accent,
+/// fainter for a little.
+fn heat(minutes: i64) -> Color32 {
+    let p = palette::current();
+    let share = match minutes {
+        0 => return p.placeholder,
+        1..15 => 0.3,
+        15..30 => 0.5,
+        30..60 => 0.75,
+        _ => 1.0,
+    };
+    p.accent.gamma_multiply(share)
+}
 
 /// The ranges of the chart, in days.
 pub(crate) const RANGES: [i64; 3] = [7, 30, 365];
@@ -56,7 +58,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(17.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -113,7 +115,7 @@ pub(crate) fn draw(
         .max(60_000);
     let width = ui.available_width().min(1000.0);
     let (rect, response) = ui.allocate_exact_size(vec2(width, 140.0), Sense::hover());
-    ui.painter().rect_filled(rect, 4.0, ROW);
+    ui.painter().rect_filled(rect, 4.0, palette::current().row);
     let step = rect.width() / span as f32;
     let mut hovered = None;
     for (i, day) in (first..=today).enumerate() {
@@ -125,7 +127,8 @@ pub(crate) fn draw(
             egui::pos2(x + step * 0.85, rect.bottom() - 4.0),
         );
         if ms > 0 {
-            ui.painter().rect_filled(bar, 1.0, BAR);
+            ui.painter()
+                .rect_filled(bar, 1.0, palette::current().accent);
         }
         if response
             .hover_pos()
@@ -147,9 +150,17 @@ pub(crate) fn draw(
         response.on_hover_text(text);
     }
     ui.horizontal(|ui| {
-        ui.label(RichText::new(date_of(first)).color(DETAILS).small());
+        ui.label(
+            RichText::new(date_of(first))
+                .color(palette::current().details)
+                .small(),
+        );
         ui.add_space((width - 140.0).max(0.0));
-        ui.label(RichText::new(date_of(today)).color(DETAILS).small());
+        ui.label(
+            RichText::new(date_of(today))
+                .color(palette::current().details)
+                .small(),
+        );
     });
 
     // the calendar of the year: a column per week, Monday on top
@@ -170,13 +181,7 @@ pub(crate) fn draw(
         let min = rect.min + vec2(col as f32 * (CELL + 2.0), row as f32 * (CELL + 2.0));
         let cell = Rect::from_min_size(min, Vec2::splat(CELL));
         let minutes = days.get(&day).map_or(0, |d| d.duration_ms / 60_000);
-        let color = match minutes {
-            0 => EMPTY,
-            1..15 => HEAT[0],
-            15..30 => HEAT[1],
-            30..60 => HEAT[2],
-            _ => HEAT[3],
-        };
+        let color = heat(minutes);
         ui.painter().rect_filled(cell, 2.0, color);
         if response.hover_pos().is_some_and(|p| cell.contains(p)) {
             hovered = Some(day);
@@ -209,7 +214,7 @@ pub(crate) fn draw(
                             "stats-time-chars",
                             &[("time", duration(*ms, tr)), ("chars", chars.to_string())],
                         ))
-                        .color(DETAILS),
+                        .color(palette::current().details),
                     );
                     ui.end_row();
                 }
@@ -219,11 +224,11 @@ pub(crate) fn draw(
     // the sessions
     section(ui, &tr("stats-sessions", &[]));
     if stats.sessions.is_empty() {
-        ui.label(RichText::new(tr("stats-none", &[])).color(DETAILS));
+        ui.label(RichText::new(tr("stats-none", &[])).color(palette::current().details));
     }
     for (id, s, name) in &stats.sessions {
         Frame::new()
-            .fill(ROW)
+            .fill(palette::current().row)
             .corner_radius(6)
             .inner_margin(Margin::symmetric(10, 4))
             .show(ui, |ui| {
@@ -255,7 +260,7 @@ pub(crate) fn draw(
                                     ("cards", s.cards.to_string()),
                                 ],
                             ))
-                            .color(DETAILS),
+                            .color(palette::current().details),
                         );
                     });
                 });

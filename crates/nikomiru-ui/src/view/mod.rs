@@ -18,10 +18,13 @@ mod link;
 mod list;
 mod online_page;
 mod overlay;
+pub(crate) mod palette;
 mod player_page;
 mod popups;
+mod prefs_page;
 mod services_page;
 pub(crate) mod settings;
+mod shortcuts_page;
 mod stats_view;
 pub(crate) mod theme;
 
@@ -168,6 +171,15 @@ pub(crate) struct View {
     pub services: services_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
+    /// The General, Subtitles, Lookup, Shortcuts, Advanced or About tab is
+    /// shown.
+    pub prefs_open: Option<settings::SettingsTab>,
+    /// What it keeps.
+    pub prefs: prefs_page::State,
+    /// How the interface looks, as of the last frame (SET-003, SET-005).
+    look: Option<crate::session::Look>,
+    /// egui's zoom, as of the last frame (SET-005).
+    pub zoom: f32,
     /// The Library page is shown (LIB-005).
     pub library_page_open: bool,
     /// The files opened as of the last frame.
@@ -214,7 +226,11 @@ impl View {
                     self.close_online_page();
                 } else if self.library_page_open {
                     self.close_library_page();
-                } else if self.services_page_open || self.audio_page_open || self.dict_page_open {
+                } else if self.services_page_open
+                    || self.audio_page_open
+                    || self.dict_page_open
+                    || self.prefs_open.is_some()
+                {
                     self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
@@ -304,6 +320,15 @@ impl View {
                 out.push(Command::AudioOpen);
             }
             SettingsTab::Anki => self.open_anki_page(out),
+            SettingsTab::General
+            | SettingsTab::Subtitles
+            | SettingsTab::Lookup
+            | SettingsTab::Shortcuts
+            | SettingsTab::Advanced
+            | SettingsTab::About => {
+                self.prefs_open = Some(tab);
+                out.push(Command::SettingsOpen);
+            }
         }
     }
 
@@ -312,6 +337,8 @@ impl View {
         self.close_player_page();
         self.close_anki_page();
         self.close_dict_page();
+        self.prefs_open = None;
+        self.prefs = prefs_page::State::default();
         self.services_page_open = false;
         self.services = services_page::State::default();
         self.audio_page_open = false;
@@ -401,6 +428,7 @@ impl View {
             || self.player_page_open
             || self.services_page_open
             || self.audio_page_open
+            || self.prefs_open.is_some()
             || self.library_page_open
         {
             self.popups.rects.clear();
@@ -427,6 +455,9 @@ impl View {
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);
         }
+        if self.prefs_open.is_some() {
+            prefs_page::show(&ctx, s, self, &mut out);
+        }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
         }
@@ -445,6 +476,15 @@ impl View {
 
     /// Fullscreen, title and activation, through egui's viewport commands.
     fn window(&mut self, ctx: &egui::Context, s: &Session) {
+        // the theme, the accent and the scale, applied when they change
+        let look = s.look();
+        if self.look != Some(look) {
+            self.look = Some(look);
+            let [r, g, b] = look.accent;
+            palette::apply(ctx, look.dark, egui::Color32::from_rgb(r, g, b));
+            ctx.set_zoom_factor(f32::from(look.scale) / 100.0);
+        }
+        self.zoom = ctx.zoom_factor();
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
         if let Some(on) = self.fullscreen_request.take() {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(on));

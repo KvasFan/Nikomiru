@@ -291,6 +291,15 @@ pub fn state() -> Result<Value, String> {
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
             "settings_tab": ui.view.settings_tab.key(),
+            "settings_status": s.settings_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+            "look": {
+                "dark": s.look().dark,
+                "accent": s.look().accent,
+                "scale": s.look().scale,
+                "zoom": ui.view.zoom,
+                "language": s.translator().language(),
+                "subtitle_px": ui.view.overlay.font_px,
+            },
             "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
             "library_page": library_page,
             "sub_list_open": ui.view.sub_list_open,
@@ -486,10 +495,13 @@ pub fn player(
     })?
 }
 
-/// The settings (SET-008): the tab `tab` (`player`, `services`, `anki`)
-/// opened as ⚙ or a tab does, or `close`d.
-pub fn settings(tab: &str) -> Result<(), String> {
+/// The settings (SET-008): the tab `tab` opened as ⚙ or a tab does, or
+/// `close`d. With `save`, TOML laid over the settings in use, the tab saves
+/// it as its Save button does (SET-001: General, Subtitles, Lookup,
+/// Shortcuts, Advanced).
+pub fn settings(tab: &str, save: Option<&str>) -> Result<(), String> {
     let tab = tab.to_string();
+    let save = save.map(str::to_string);
     call(move |ui| {
         if tab == "close" {
             ui.view.close_settings();
@@ -501,6 +513,13 @@ pub fn settings(tab: &str) -> Result<(), String> {
         ui.view.open_settings(tab, &mut out);
         for c in out {
             ui.run(c);
+        }
+        if let Some(text) = save {
+            let section = tab
+                .section()
+                .ok_or_else(|| format!("the tab {} saves no section", tab.key()))?;
+            let draft = ui.session.config().laid_over(&text)?;
+            ui.run(Command::SettingsSave(section, Box::new(draft)));
         }
         Ok(())
     })?

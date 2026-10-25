@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use egui::epaint::text::{FontData, FontInsert, FontPriority, FontProvider, InsertFontFamily};
-use egui::{Color32, FontFamily, FontId, Id, TextStyle};
+use egui::{FontFamily, FontId, TextStyle};
 use fontique::{
     Attributes, Collection, CollectionOptions, FallbackKey, FontWeight, GenericFamily, Language,
     QueryFamily, QueryFont, QueryStatus, Script, SourceCache, SourceCacheOptions,
@@ -23,50 +23,6 @@ pub(crate) fn bold() -> FontFamily {
     FontFamily::Name(BOLD.into())
 }
 
-/// The colors of the pages over the video (SET-003).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Palette {
-    /// Shades the video under a page.
-    pub backdrop: Color32,
-    /// A page's card.
-    pub card: Color32,
-    /// Its border.
-    pub card_border: Color32,
-    /// A row or a box inside a card.
-    pub row: Color32,
-    /// Text.
-    pub text: Color32,
-    /// Hints and details.
-    pub details: Color32,
-    /// Good news.
-    pub good: Color32,
-    /// Bad news, a warning.
-    pub bad: Color32,
-    /// Selections, bars, what is chosen.
-    pub accent: Color32,
-}
-
-impl Palette {
-    /// The dark theme.
-    pub(crate) const DARK: Palette = Palette {
-        backdrop: Color32::from_rgba_unmultiplied_const(0, 0, 0, 0xa6),
-        card: Color32::from_rgba_unmultiplied_const(0x20, 0x22, 0x27, 0xf0),
-        card_border: Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40),
-        row: Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c),
-        text: Color32::WHITE,
-        details: Color32::from_rgb(0x9a, 0xa0, 0xaa),
-        good: Color32::from_rgb(0x7c, 0xd3, 0x8a),
-        bad: Color32::from_rgb(0xf0, 0xb3, 0x5a),
-        accent: Color32::from_rgb(0x6a, 0xa0, 0xff),
-    };
-}
-
-/// The palette in use.
-pub(crate) fn palette(ctx: &egui::Context) -> Palette {
-    ctx.data(|d| d.get_temp::<Palette>(Id::NULL))
-        .unwrap_or(Palette::DARK)
-}
-
 /// Gives `ctx` the system fonts and the style.
 pub(crate) fn install(ctx: &egui::Context) {
     ctx.add_font_provider(Arc::new(SystemFonts::new()));
@@ -74,8 +30,8 @@ pub(crate) fn install(ctx: &egui::Context) {
     ctx.add_font_provider(Arc::new(
         egui_system_font_provider::SystemFontProvider::new().with_locale(Some("ja")),
     ));
-    // a video player: always dark, whatever the desktop's preference
-    ctx.set_theme(egui::Theme::Dark);
+    // dark until the settings say otherwise (SET-003)
+    super::palette::apply(ctx, true, super::palette::ACCENT);
     ctx.all_styles_mut(|style| {
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(12.0)),
