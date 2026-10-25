@@ -249,6 +249,7 @@ pub fn state() -> Result<Value, String> {
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
             "settings_tab": ui.view.settings_tab.key(),
+            "sub_list_open": ui.view.sub_list_open,
             "services_page": json!({
                 "open": ui.view.services_page_open,
                 "status": s.services_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),

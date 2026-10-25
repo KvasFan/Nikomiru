@@ -493,14 +493,48 @@ fn screenshots_of_the_interface() {
     std::fs::create_dir_all(&dir).unwrap();
     let fake = nikomiru_anki::fake::FakeAnki::start().unwrap();
     nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let online = nikomiru_online::fake::FakeOnline::start().unwrap();
+    {
+        let mut d = online.data();
+        d.entries = vec![(1, "av basic".into(), true)];
+        d.files.insert(
+            1,
+            vec![
+                ("av basic 01.ja.srt".into(), ONLINE_SRT.as_bytes().to_vec()),
+                ("av basic 01.en.srt".into(), ONLINE_SRT.as_bytes().to_vec()),
+                ("av basic S1.zip".into(), Vec::new()),
+            ],
+        );
+    }
     let mut desk = Desktop::start();
     desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
     desk.write_config(&format!(
-        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
-        fake.url()
+        "[player]\nmpv_options = {{ ao = \"null\", deband = \"yes\", scale = \"ewa_lanczossharp\" }}\n\
+         [anki]\nurl = \"{}\"\n[online]\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n",
+        fake.url(),
+        online.jimaku_url()
     ));
+    // av_basic's tracks over a calm gradient, made here: the test pattern
+    // would take the eye off the interface
+    let scene = desk.path("av basic.mkv");
+    let status = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i"])
+        .arg("gradients=s=1280x720:d=12:r=25:c0=0x16213e:c1=0x3a2a5e:c2=0x0f3d4a:n=3:speed=0.004")
+        .arg("-i")
+        .arg(fixture("av_basic.mkv"))
+        .args([
+            "-map", "0:v", "-map", "1:a", "-map", "1:s", "-c:v", "libx264",
+        ])
+        .args([
+            "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "copy", "-c:s", "copy",
+        ])
+        .arg("-shortest")
+        .arg(&scene)
+        .status()
+        .unwrap();
+    assert!(status.success(), "ffmpeg: {status}");
     let (mut app, mut h) = desk.launch();
-    h.open(&fixture("av_basic.mkv"));
+    h.open(&scene.to_string_lossy());
     h.wait("file-loaded");
     h.wait("cue-shown");
     h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
@@ -523,6 +557,29 @@ fn screenshots_of_the_interface() {
     });
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("anki-settings.png"));
+    // the toast of the card gone
+    std::thread::sleep(Duration::from_secs(2));
+    for tab in ["player", "services"] {
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
+        h.state_until("the tab", |s| s["settings_tab"] == tab);
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join(format!("settings-{tab}.png")));
+    }
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+    h.state_until("the results", |s| {
+        s["online_page"]["results"]["files"]
+            .as_array()
+            .is_some_and(|f| f.len() == 3)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("online-search.png"));
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "close" }));
+    h.key("KeyL");
+    h.state_until("the list", |s| s["sub_list_open"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("subtitle-list.png"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
