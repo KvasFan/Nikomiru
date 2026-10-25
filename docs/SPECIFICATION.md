@@ -717,6 +717,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
+| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar). SET-001 adds the other sections as tabs. |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 
@@ -732,7 +733,8 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | MET-006 | File identification with AniDB ed2k: post-1.0 (requires registering an AniDB client). | `anidb_ed2k.dart` |
 | MET-007 | **Automatic subtitles** (`[online] auto_subtitles`, default off, PRV-001): when an opened video has no text subtitles in the preferred language (none next to it or downloaded, no embedded text track in that language) and a provider has a key, the best online file (ADR 0008 §9: the preferred language, or unknown on Jimaku; the episode asked for, or a film; never machine-translated) is downloaded and loaded, unless the user chose subtitles meanwhile; a toast names the file and the provider. One attempt per opening. | `subtitle_batch.dart` |
 | MET-008 | Downloaded subtitles are kept in `$XDG_DATA_HOME/nikomiru/subtitles/<hash>/<video name>.<language>.<ext>`, `<hash>` being the OpenSubtitles hash of the video, never next to the video (NFR-SEC-02); they are offered like files next to it (SUB-006), so the next opening needs no network. | |
-| MET-009 | **Online subtitles page** ("Search online…" in the subtitle menu): title, season and episode filled from the file name and editable, "Search", results (provider, file, language, episode, notes: machine translated, archive, not usable) ranked by ADR 0008 §9, "Use" downloads and loads one; the online settings (Jimaku key; OpenSubtitles key, user name, password; automatic subtitles; proxy), saved atomically with permissions 0600. HTTP 429 shows when to try again. | |
+| MET-009 | **Online subtitles page** ("Search online…" in the subtitle menu): title, season and episode filled from the file name and editable, "Search", results (provider, file, language, episode, notes: machine translated, archive, not usable) ranked by ADR 0008 §9, "Use" downloads and loads one; "Services and keys…" opens Settings → Subtitle services (MET-011). HTTP 429 shows when to try again. | |
+| MET-011 | **Subtitle services in the settings** (Settings → Subtitle services, SET-008): the services that search for subtitles, ticked or not, in the order preferred (`[online] providers`, default `["jimaku", "opensubtitles"]`; one left out is never asked, MET-007 included); the order breaks the ties of the ranking (ADR 0008 §9). On the same tab: each service's key (Jimaku; OpenSubtitles key, user name, password), the automatic subtitles (MET-007) and the proxy (SET-007), saved atomically with permissions 0600 (MET-005). | |
 | MET-010 | File names are parsed Anitomy-style for the search (title, season, episode): bracketed blocks and technical tokens dropped; episode from `SxxEyy`, `第N話`, `EP N`, `#N`, ` - N` or a trailing number of two digits or with a leading zero; season from `SxxEyy`, `Season N`, `S N`, `Nth Season`, `第N期/季`, or the parent folder. LIB-003 (M5) reuses the parser. | `video_filename_parser.dart` |
 
 ---
@@ -844,6 +846,7 @@ ffmpeg = ""                 # empty = search in PATH
 proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
 
 [online]                    # ADR 0008
+providers = ["jimaku", "opensubtitles"]  # the services used, in the order preferred (MET-011)
 auto_subtitles = false      # MET-007
 jimaku_api_key = ""
 opensubtitles_api_key = ""
@@ -876,6 +879,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
 | D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
+| D-15 | Contents of 0.1.0 | **Proposed** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria |
 
 ### 10.2 Risks
 

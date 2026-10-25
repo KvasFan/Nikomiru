@@ -15,7 +15,8 @@
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
 //! `{"cmd":"align"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
-//! `{"cmd":"state"}`,
+//! `{"cmd":"settings","tab":"player"|"services"|"anki"|"close"}`,
+//! `{"cmd":"services","providers":["opensubtitles",…],"auto":true}`, `{"cmd":"state"}`,
 //! `{"cmd":"mpv_get","property":…}`, `{"cmd":"quit"}`.
 
 use std::io::{BufRead, BufReader, Write};
@@ -132,6 +133,19 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
+        Some("settings") => harness::settings(text(command, "tab")?).map(|()| Value::Null),
+        Some("services") => harness::services(
+            command["providers"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            command["auto"].as_bool(),
+        )
+        .map(|()| Value::Null),
         Some("secondary") => harness::secondary(
             command["key"].as_str().map(str::to_string),
             command["obscure"].as_str().map(str::to_string),

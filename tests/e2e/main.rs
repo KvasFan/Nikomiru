@@ -1377,6 +1377,59 @@ fn subtitles_are_searched_and_used_on_the_online_page() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-MET-011, T-SET-008: only the services chosen are asked, set in the settings
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn only_the_subtitle_services_chosen_are_searched() {
+    let fake = online_fake();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[online]\nproviders = [\"jimaku\"]\n\
+         jimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\n\
+         opensubtitles_api_key = \"os-key\"\nopensubtitles_url = \"{}\"\n",
+        fake.jimaku_url(),
+        fake.opensubtitles_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_long.mkv"));
+    h.wait("file-loaded");
+    let asked_os = |fake: &nikomiru_online::fake::FakeOnline| {
+        fake.requests().iter().any(|r| r.target.starts_with("/os/"))
+    };
+    let search = |h: &mut support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+        h.state_until("the results", |s| {
+            s["online_page"]["busy"] == false && !s["online_page"]["results"].is_null()
+        });
+        h.cmd(serde_json::json!({ "cmd": "online", "action": "close" }));
+    };
+    search(&mut h);
+    assert!(!fake.requests().is_empty());
+    assert!(!asked_os(&fake), "{:?}", fake.requests());
+    // the services are a tab of the settings
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "services" }));
+    let s = h.state_until("the tab", |s| s["services_page"]["open"] == true);
+    assert_eq!(s["settings_tab"], "services");
+    assert_eq!(
+        s["services_page"]["providers"],
+        serde_json::json!(["jimaku"])
+    );
+    h.cmd(serde_json::json!({ "cmd": "services", "providers": ["opensubtitles", "jimaku"] }));
+    h.state_until("saved", |s| {
+        s["services_page"]["status"]["ok"] == true
+            && s["services_page"]["providers"] == serde_json::json!(["opensubtitles", "jimaku"])
+    });
+    let file = desk.path("config/nikomiru/config.toml");
+    let saved = nikomiru_core::Config::from_toml(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved.online.providers, ["opensubtitles", "jimaku"]);
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    search(&mut h);
+    assert!(asked_os(&fake), "{:?}", fake.requests());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-016, T-PLY-018
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

@@ -16,6 +16,7 @@ use nikomiru_core::config::AnkiConfig;
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
+use super::settings::{Leave, SettingsTab, tabs};
 use super::{View, theme};
 use crate::mining::AnkiPage;
 use crate::session::Session;
@@ -82,10 +83,8 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         saved: s.anki_config(),
         tr: &tr,
     };
-    let close = draw(ctx, &scene, &mut view.anki, out);
-    if close {
-        view.close_anki_page();
-    }
+    let leave = draw(ctx, &scene, &mut view.anki, out);
+    view.leave(leave, out);
 }
 
 fn tr(s: &Scene<'_>, id: &str) -> String {
@@ -161,19 +160,19 @@ fn update(s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
 }
 
-/// Draws the page; returns whether it closes.
+/// Draws the page; returns what it asks for.
 pub(crate) fn draw(
     ctx: &egui::Context,
     s: &Scene<'_>,
     state: &mut State,
     out: &mut Vec<Command>,
-) -> bool {
+) -> Leave {
     update(s, state, out);
     let page = s.page;
     let screen = ctx.content_rect();
     let width = 780.0_f32.min(screen.width() - 32.0).max(0.0);
     let height = 680.0_f32.min(screen.height() - 32.0).max(0.0);
-    let mut close = false;
+    let mut leave = Leave::Stay;
     full_screen(ctx, "anki-page", BACKDROP, |ui| {
         let card = Rect::from_center_size(screen.center(), vec2(width, height));
         let mut ui = ui.new_child(
@@ -192,14 +191,12 @@ pub(crate) fn draw(
                 ui.spacing_mut().item_spacing.y = 10.0;
                 ui.visuals_mut().override_text_color = Some(Color32::WHITE);
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(tr(s, "anki-page-title"))
-                            .size(22.0)
-                            .family(theme::bold()),
-                    );
+                    if let Some(tab) = tabs(ui, SettingsTab::Anki, &|id| tr(s, id)) {
+                        leave = Leave::To(tab);
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button(tr(s, "anki-close")).clicked() {
-                            close = true;
+                            leave = Leave::Close;
                         }
                         let save = ui.add_enabled(!page.busy, Button::new(tr(s, "anki-save")));
                         if save.clicked()
@@ -225,7 +222,7 @@ pub(crate) fn draw(
                     .show(ui, |ui| body(ui, s, state, out));
             });
     });
-    close
+    leave
 }
 
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {

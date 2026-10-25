@@ -20,7 +20,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
         └──► M3 Dictionaries and lookup ────┴───────────────────┘
                 (pure logic: can proceed in parallel with M1/M2)
 
-0.1.0 ──► M4b Online subtitles + mpv presets (0.1.x, D-14)
+0.1.0 ◄── M4b Online subtitles + mpv presets (D-14; in 0.1.0 if D-15 is approved)
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
 ```
@@ -32,7 +32,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M2 | Own subtitle rendering | L | — | done |
 | M3 | Dictionaries and lookup | XL | — | in progress |
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
-| M4b | Online subtitles and mpv presets (D-14) | M | 0.1.x | in progress |
+| M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15, proposed) | in progress |
 | M5 | Library and word audio | L | 0.2.0 | not started |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
 | M7 | Online metadata | M | 0.4.0 | not started |
@@ -242,23 +242,31 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 ---
 
-## M4b — Online subtitles and mpv presets → 0.1.x
+## M4b — Online subtitles and mpv presets → 0.1.0 with M4 (D-15, proposed)
 
-Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7.
+Decision D-14 (2026-10-25): what the maintainer needs right after mining, brought forward from M6 and M7. D-15 (proposed): neither M4 nor M4b is released yet, so 0.1.0 ships both.
 
-**Requirements**: MET-003, MET-004, MET-005, MET-007…MET-010, SUB-017, SUB-018, SET-007, PLY-016, PLY-018.
+**Requirements**: MET-003, MET-004, MET-005, MET-007…MET-011, SUB-017, SUB-018, SET-007, SET-008, PLY-016, PLY-018.
+
+**The maintainer's notes for the release (2026-10-25)**
+
+- Choosing the subtitle services belongs to the settings, not to the search page: MET-011 on the Subtitle services tab of the settings (SET-008).
+- The `mpv.conf` configuration opens with the one in use loaded: PLY-016 (d).
+- A video opens with the matching local subtitles of its folder, also when their names differ from its own: SUB-006.
 
 **Deliverables**
 
 - Crate `nikomiru-online` ([ADR 0008](adr/0008-online-subtitles.md)): Jimaku and OpenSubtitles clients behind one trait, the file-name parser (MET-010), language detection, the OpenSubtitles hash, ZIP archives, the ranking; a fake server for the tests.
-- The `online` worker; the Online subtitles page ("Search online…" in the subtitle menu) with the online settings; automatic subtitles (MET-007); downloaded subtitles kept in the data folder and offered like files next to the video (MET-008).
-- Settings → Player: render and audio controls (PLY-018) and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch, import and export through the file dialogs (PLY-016).
+- The `online` worker; the Online subtitles page ("Search online…" in the subtitle menu); automatic subtitles (MET-007); downloaded subtitles kept in the data folder and offered like files next to the video (MET-008).
+- The settings as one page with tabs (⚙, SET-008): Player, Subtitle services (the services used and their order, keys, automatic subtitles, proxy; MET-011) and Anki.
+- Settings → Player: the option set in use as `mpv.conf` text and as render and audio controls (PLY-018), and mpv option presets in `mpv.conf` format: save, load with a per-line preview, switch, import and export through the file dialogs, the user's own `mpv.conf` offered (PLY-016).
+- Local subtitles of another name opened with the video: same episode, `Subs/` folders (SUB-006).
 - Alignment of the subtitles with the audio (SUB-018): from the subtitle menu, and by itself after downloaded subtitles load.
 - The secondary subtitle (SUB-017), e.g. a translation under the Japanese one.
 
 **Exit criteria**
 
-- [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-010 green on the fake server; T-PLY-016, T-PLY-018 green.
+- [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green.
 - [ ] By hand with real keys (T-MET-LIVE-001): Japanese subtitles found and loaded automatically for 5 real episodes from 3 series.
 - [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 

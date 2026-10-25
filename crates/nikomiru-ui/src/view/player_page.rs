@@ -14,6 +14,7 @@ use nikomiru_player::settings::{CONTROLS, Control, Group, Kind, OptionSet};
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
+use super::settings::{Leave, SettingsTab, tabs};
 use super::{View, theme};
 use crate::player_settings::{LineStatus, PlayerPage};
 use crate::session::Session;
@@ -68,9 +69,8 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         preset: s.player_preset(),
         tr: &tr,
     };
-    if draw(ctx, &scene, &mut view.player, out) {
-        view.close_player_page();
-    }
+    let leave = draw(ctx, &scene, &mut view.player, out);
+    view.leave(leave, out);
 }
 
 fn tr(s: &Scene<'_>, id: &str) -> String {
@@ -102,18 +102,18 @@ fn update(s: &Scene<'_>, state: &mut State) {
     }
 }
 
-/// Draws the page; returns whether it closes.
+/// Draws the page; returns what it asks for.
 pub(crate) fn draw(
     ctx: &egui::Context,
     s: &Scene<'_>,
     state: &mut State,
     out: &mut Vec<Command>,
-) -> bool {
+) -> Leave {
     update(s, state);
     let screen = ctx.content_rect();
     let width = 820.0_f32.min(screen.width() - 32.0).max(0.0);
     let height = 720.0_f32.min(screen.height() - 32.0).max(0.0);
-    let mut close = false;
+    let mut leave = Leave::Stay;
     full_screen(ctx, "player-page", BACKDROP, |ui| {
         let card = Rect::from_center_size(screen.center(), vec2(width, height));
         let mut ui = ui.new_child(
@@ -132,14 +132,12 @@ pub(crate) fn draw(
                 ui.spacing_mut().item_spacing.y = 10.0;
                 ui.visuals_mut().override_text_color = Some(Color32::WHITE);
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(tr(s, "player-page-title"))
-                            .size(22.0)
-                            .family(theme::bold()),
-                    );
+                    if let Some(tab) = tabs(ui, SettingsTab::Player, &|id| tr(s, id)) {
+                        leave = Leave::To(tab);
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button(tr(s, "player-close")).clicked() {
-                            close = true;
+                            leave = Leave::Close;
                         }
                         if ui.button(tr(s, "player-apply")).clicked()
                             && let Some(draft) = &state.draft
@@ -160,7 +158,7 @@ pub(crate) fn draw(
                     .show(ui, |ui| body(ui, s, state, out));
             });
     });
-    close
+    leave
 }
 
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {

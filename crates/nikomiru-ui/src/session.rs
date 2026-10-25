@@ -213,7 +213,7 @@ struct Current {
 enum SavingPage {
     #[default]
     Anki,
-    Online,
+    Services,
     Player,
 }
 
@@ -305,6 +305,9 @@ pub struct Session {
     online_jobs: Vec<crate::online::OnlineJob>,
     /// The Online subtitles page (MET-009).
     pub online_page: crate::online::OnlinePage,
+    /// The last message of the Subtitle services tab, and whether it is good
+    /// news (MET-011).
+    pub services_status: Option<(String, bool)>,
     /// Videos opened so far: an online answer for another one is dropped.
     online_generation: u64,
     /// The subtitle load current when automatic subtitles were asked for:
@@ -457,6 +460,7 @@ impl Session {
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
             online_page: crate::online::OnlinePage::default(),
+            services_status: None,
             online_generation: 0,
             auto_online: None,
             player_page: crate::player_settings::PlayerPage::default(),
@@ -958,7 +962,7 @@ impl Session {
         };
         match self.saving_page {
             SavingPage::Anki => self.anki_page.status = Some(status),
-            SavingPage::Online => self.online_page.status = Some(status),
+            SavingPage::Services => self.services_status = Some(status),
             SavingPage::Player => self.player_page.status = Some(status),
         }
     }
@@ -1137,13 +1141,18 @@ impl Session {
             .push(crate::online::OnlineJob::Configure(Box::new((
                 online, network,
             ))));
-        self.saving_page = SavingPage::Online;
+        self.saving_page = SavingPage::Services;
         if self.services.config_writable {
             self.config_save = Some(self.services.config.clone());
         } else {
             let text = self.tr("anki-config-not-saved", &[]);
-            self.online_page.status = Some((text, false));
+            self.services_status = Some((text, false));
         }
+    }
+
+    /// The Subtitle services tab of the settings opened (MET-011).
+    pub fn services_open(&mut self) {
+        self.services_status = None;
     }
 
     /// The Player settings page opens: the saved presets, and the option set
