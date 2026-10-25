@@ -19,10 +19,7 @@ speed-up = Faster
 speed-down = Slower
 position = Position
 audio-track = Audio track
-no-audio = No audio
 track-unknown-language = Unknown language
-chapter-previous = Previous chapter
-chapter-next = Next chapter
 
 toast-volume = Volume { $value }%
 toast-speed = Speed { $value }×
@@ -88,7 +85,7 @@ settings-advanced = Advanced
 settings-about = About
 settings-save = Save
 settings-reset = Reset
-settings-reset-hint = Puts the settings of this tab back to their defaults here; Save keeps them.
+settings-reset-hint = Puts the settings of this tab back to their defaults; press Save to keep them.
 settings-not-saved = config.toml could not be read, so it was not written: these settings last until Nikomiru closes. Fix the file and save again.
 settings-interface = Interface
 settings-language = Language
@@ -180,8 +177,6 @@ anki-deck-missing = Anki has no deck { $name }: choose another, or create it.
 anki-note-type-missing = Anki has no note type { $name }: choose another, or create Lapis.
 toast-muted = Muted
 toast-unmuted = Sound on
-toast-paused = Paused
-toast-playing = Playing
 
 error-file = Cannot play “{ $file }”: { $reason }.
 
@@ -341,7 +336,7 @@ inhibit-reason = Playing a video
 
 # Dictionary popup
 popup-loading = Looking up…
-popup-no-results = No dictionary has this word. Import dictionaries from the menu.
+popup-no-results = No dictionary has this word. Import dictionaries in Settings → Dictionaries (📚).
 popup-pitch-accent = pitch accent
 popup-replay = Replay
 popup-goto = Go to the sentence

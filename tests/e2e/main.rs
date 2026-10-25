@@ -732,7 +732,8 @@ fn l7_a_card_in_a_real_anki() {
 fn anki_settings_do_not_overwrite_a_config_file_that_did_not_load() {
     let mut desk = Desktop::start();
     // not TOML (a wrong value alone takes its default, SET-001)
-    let broken = "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\n# the user's comment\n";
+    let broken =
+        "[player]\nmpv_options = { ao = \"null\" }\nseek_seconds = \"five\n# the user's comment\n";
     desk.write_config(broken);
     let (mut app, mut h) = desk.launch();
     h.cmd(serde_json::json!({ "cmd": "anki", "action": "save", "config": "deck = \"Mining\"" }));

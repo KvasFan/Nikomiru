@@ -19,10 +19,7 @@ speed-up = Più veloce
 speed-down = Più lento
 position = Posizione
 audio-track = Traccia audio
-no-audio = Nessun audio
 track-unknown-language = Lingua sconosciuta
-chapter-previous = Capitolo precedente
-chapter-next = Capitolo successivo
 
 toast-volume = Volume { $value }%
 toast-speed = Velocità { $value }×
@@ -88,7 +85,7 @@ settings-advanced = Avanzate
 settings-about = Informazioni
 settings-save = Salva
 settings-reset = Ripristina
-settings-reset-hint = Riporta qui le impostazioni di questa scheda ai valori predefiniti; Salva le conserva.
+settings-reset-hint = Riporta ai valori predefiniti le impostazioni di questa scheda; premi Salva per conservarle.
 settings-not-saved = config.toml non si è potuto leggere, quindi non è stato scritto: queste impostazioni valgono fino alla chiusura di Nikomiru. Correggi il file e salva di nuovo.
 settings-interface = Interfaccia
 settings-language = Lingua
@@ -180,8 +177,6 @@ anki-deck-missing = Anki non ha il mazzo { $name }: scegline un altro o crealo.
 anki-note-type-missing = Anki non ha il tipo di nota { $name }: scegline un altro o crea Lapis.
 toast-muted = Audio disattivato
 toast-unmuted = Audio attivato
-toast-paused = In pausa
-toast-playing = In riproduzione
 
 error-file = Impossibile riprodurre “{ $file }”: { $reason }.
 
@@ -341,7 +336,7 @@ inhibit-reason = Riproduzione di un video
 
 # Popup del dizionario
 popup-loading = Ricerca…
-popup-no-results = Nessun dizionario contiene questa parola. Importa i dizionari dal menu.
+popup-no-results = Nessun dizionario contiene questa parola. Importa i dizionari in Impostazioni → Dizionari (📚).
 popup-pitch-accent = accento tonale
 popup-replay = Riascolta
 popup-goto = Vai alla frase
@@ -563,6 +558,9 @@ stats-none = Ancora nessuna sessione: vengono registrate mentre guardi.
 stats-session = { $time } · { $chars } caratteri · { $lookups } { $lookups ->
     [one] ricerca
    *[other] ricerche
-} · { $cards } card
+} · { $cards } { $cards ->
+    [one] carta
+   *[other] carte
+}
 stats-delete = Cancella
 stats-delete-session = Cancella la sessione del { $date }, { $name }

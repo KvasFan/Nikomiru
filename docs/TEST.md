@@ -457,8 +457,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values; keys, logins and audio sources stay. kittest: Reset then Save sends the defaults of the tab's keys | L1/L3 |
 | T-SET-008 | Settings tabs | kittest: each tab's page shows the tabs and leaves for the one clicked; the search page's "Services and keys…" leads to the Subtitle services tab. L6: the tab opened from the harness, shown last, closed | L3/L6 |
 | T-SET-007 | Proxy | The online requests go through the proxy of `[network] proxy` (the fake online server as the proxy, the service on a port where nothing listens); an invalid proxy is refused; AnkiConnect never uses a proxy (T-ANK-001) | L4 |
-| T-I18N-001 | Keys | Every Fluent key exists in `it` and `en`; no unused key; same `{ $var }` arguments in all languages | L1 |
-| T-I18N-002 | No strings in code | `xtask` lint: no user-visible string literal in the views of `nikomiru-ui` (explicit exception list) | L4 |
+| T-I18N-001 | Keys | Every Fluent key exists in `it` and `en` with the same `{ $var }` arguments (L1); every key is used and every key the code asks for exists, keys built from a prefix aside (`cargo xtask check-i18n`, in `ci`) | L1/L4 |
+| T-I18N-002 | No strings in code | `cargo xtask check-i18n`: no text literal shown by a widget in the views of `nikomiru-ui` (explicit exception list: examples to type, names of standards) | L4 |
 | T-A11Y-001 | Focus and accessibility | AccessKit tree snapshot of the player controls (role and name of each); visible focus | L3 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup → mining → settings → back, without a mouse (harness) | L6 |
 

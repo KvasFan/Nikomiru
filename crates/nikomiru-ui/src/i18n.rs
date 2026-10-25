@@ -289,7 +289,7 @@ mod tests {
                     ("cards", "1".into())
                 ]
             )
-            .ends_with("2 ricerche · 1 card")
+            .ends_with("2 ricerche · 1 carta")
         );
         assert!(matches!(value("07"), FluentValue::String(_)));
         assert!(matches!(value("2026-10-25"), FluentValue::String(_)));
