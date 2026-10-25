@@ -34,7 +34,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | released (manual checks open) |
 | M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15) | released (manual checks open) |
 | M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
-| M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | in progress |
+| M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
 
@@ -312,7 +312,7 @@ The proxy setting and the mpv presets with their settings page moved to M4b (D-1
 - Done: the `it`/`en` review, with `cargo xtask check-i18n` in the CI (T-I18N-001, T-I18N-002): every key used, every key asked for present, no untranslated text in the views.
 - Done: the advanced mining dialog (ANK-040, ANK-041): Shift+click or Ctrl+Shift+Enter, lines added to the sentence, the clip with a preview, the picture and the audio chosen.
 - Done: the keyboard-only tour (NFR-A11Y-01): pages take the keys no global shortcut takes, Enter and ← → look words up, Ctrl+, opens the settings, the library's first card has the keyboard with a drawn focus; T-E2E-A11Y-001 goes from the library to a card and back with keys only, and T-A11Y-001 reads the controls through AT-SPI.
-- Left for 0.3.0: the maintainer's check of the manual items, then the release.
+- Released as 0.3.0 on 2026-10-25, after the maintainer's checks.
 
 **Deliverables**
 
@@ -323,9 +323,9 @@ The proxy setting and the mpv presets with their settings page moved to M4b (D-1
 
 **Exit criteria**
 
-- [ ] T-STA-*, T-SET-*, T-I18N-*, T-A11Y-* green.
-- [ ] Full tour of the app with the keyboard only (T-E2E-A11Y-001).
-- [ ] **Release 0.3.0**.
+- [x] T-STA-*, T-SET-*, T-I18N-*, T-A11Y-* green.
+- [x] Full tour of the app with the keyboard only (T-E2E-A11Y-001).
+- [x] **Release 0.3.0** (2026-10-25, tag `v0.3.0`, after the maintainer's checks).
 
 ---
 

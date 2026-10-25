@@ -2189,7 +2189,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-anki"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "insta",
  "nikomiru-anki",
@@ -2209,7 +2209,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "egui",
  "egui-winit",
@@ -2245,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "tempfile",
@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-dict"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -2277,7 +2277,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-library"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nikomiru-core",
  "nikomiru-dict",
@@ -2295,7 +2295,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-media"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "insta",
  "nikomiru-core",
@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-online"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "flate2",
  "nikomiru-core",
@@ -2324,7 +2324,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-player"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libmpv2",
  "libmpv2-sys",
@@ -2337,7 +2337,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-subs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -2346,7 +2346,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-text"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "icu_normalizer",
  "proptest",
@@ -2357,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-ui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "egui",
  "egui_kittest",
@@ -4852,7 +4852,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "flate2",

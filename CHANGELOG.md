@@ -4,10 +4,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
+Statistics, the full settings, the interface strings checked, the advanced mining and the keyboard (M6).
+
 ### Added
 
 - Statistics (STA-001…STA-005): the time of a video watched is counted once (seeks and pauses are not), the characters of a cue once it has been played 1.5 s (the units of study of every script, STA-003), lookups and cards; sessions split by hour and by a pause over 2 min, in the local time. The Library page has a Statistics tab: today, 7 days and all time, a chart by day over 7, 30 or 365 days, the year as a calendar, the time by series, the sessions (each can be deleted) and an export to CSV.
-
 - The full settings (SET-001…SET-006): one page with eleven tabs down its side, General, Player, Subtitles, Subtitle services, Dictionaries (📚 opens it), Lookup, Word audio, Anki, Shortcuts, Advanced and About. A tab's Save applies its settings at once; Reset puts them back to their defaults, keeping keys, logins and word audio sources.
 - Light, dark or the desktop's theme, followed when the desktop changes (the settings portal), and an accent color (SET-003). The pages and the dictionary popups follow it; the bar, the subtitles and the toasts on the video stay dark.
 - The interface language and scale change without a restart (SET-004, SET-005); the subtitles keep their size on the screen.
