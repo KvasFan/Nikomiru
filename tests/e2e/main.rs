@@ -788,6 +788,68 @@ fn a_subtitle_file_next_to_the_video_wins_over_embedded_tracks() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SUB-006: names that differ from the video's
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn subtitles_of_the_same_episode_open_with_the_video() {
+    let srt = |text: &str| format!("1\n00:00:01,000 --> 00:00:03,000\n{text}\n");
+    let menu = |s: &serde_json::Value| -> Vec<String> {
+        subs(s)["menu"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["kind"] == "file")
+            .map(|m| m["name"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    // a release: the episode in a different name, another episode beside it
+    let release = tempfile::tempdir().unwrap();
+    let video = release.path().join("[Group] Show - 02 [1080p].mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &video).unwrap();
+    std::fs::write(release.path().join("[Group] Show - 03 [1080p].mkv"), b"").unwrap();
+    std::fs::write(release.path().join("Show 02.ja.srt"), srt("二話の字幕")).unwrap();
+    std::fs::write(release.path().join("Show 03.ja.srt"), srt("三話の字幕")).unwrap();
+    std::fs::create_dir(release.path().join("Subs")).unwrap();
+    std::fs::write(
+        release.path().join("Subs/Show_E02.en.srt"),
+        srt("Episode two"),
+    )
+    .unwrap();
+    // a film: its subtitles in a folder of its own
+    let film = tempfile::tempdir().unwrap();
+    let movie = film.path().join("Movie (2016).mkv");
+    std::fs::copy(fixture("av_basic.mkv"), &movie).unwrap();
+    std::fs::create_dir_all(film.path().join("Subs/Movie (2016)")).unwrap();
+    std::fs::write(
+        film.path().join("Subs/Movie (2016)/Japanese.srt"),
+        srt("映画の字幕"),
+    )
+    .unwrap();
+    std::fs::write(
+        film.path().join("Subs/Movie (2016)/English.srt"),
+        srt("The film"),
+    )
+    .unwrap();
+
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&video.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["二話の字幕"], "{s}");
+    assert_eq!(menu(&s), ["Show 02.ja.srt", "Show_E02.en.srt"], "{s}");
+
+    h.open(&movie.to_string_lossy());
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    let s = h.state();
+    assert_eq!(visible_text(&s), ["映画の字幕"], "{s}");
+    assert_eq!(menu(&s).len(), 2, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PERF-07
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

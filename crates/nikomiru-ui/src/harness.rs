@@ -213,6 +213,7 @@ pub fn state() -> Result<Value, String> {
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
                 "source": s.subs.source.as_ref().map(|x| x.key()),
+                "menu": s.subtitle_menu(),
                 "encoding": s.subs.encoding,
                 "delay_ms": s.subs.timeline().delay_ms,
                 "cues": s.subs.timeline().cues().len(),

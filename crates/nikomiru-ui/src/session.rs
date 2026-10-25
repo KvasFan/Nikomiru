@@ -2208,11 +2208,32 @@ impl Session {
         let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
             return;
         };
-        let entries: Vec<PathBuf> = video
-            .parent()
-            .and_then(|dir| std::fs::read_dir(dir).ok())
-            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+        let files = |dir: &Path| -> Vec<PathBuf> {
+            std::fs::read_dir(dir)
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                        .map(|e| e.path())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let folder = video.parent().map(Path::to_path_buf).unwrap_or_default();
+        let mut entries = files(&folder);
+        // the folders releases keep subtitles in (SUB-006), and the one named
+        // after this video inside them (`Subs/<video name>/`)
+        let stem = video
+            .file_stem()
+            .map(|s| s.to_os_string())
             .unwrap_or_default();
+        let mut own = Vec::new();
+        for name in select::SUBTITLE_FOLDERS {
+            let sub = folder.join(name);
+            if sub.is_dir() {
+                entries.extend(files(&sub));
+                own.extend(files(&sub.join(&stem)));
+            }
+        }
         // and the subtitles downloaded for it (MET-008)
         let downloaded = self
             .current
@@ -2226,6 +2247,24 @@ impl Session {
             })
             .unwrap_or_default();
         let mut externals = select::external_files(&video, &entries);
+        if externals.is_empty() {
+            // none with its name: those of its episode, or of a folder of its own
+            let only_video = !entries.iter().any(|p| {
+                p != &video
+                    && p.parent() == video.parent()
+                    && p.extension().is_some_and(|e| {
+                        let e = format!("*.{}", e.to_string_lossy().to_lowercase());
+                        crate::view::VIDEO_PATTERNS.contains(&e.as_str())
+                    })
+            });
+            let language =
+                |name: &str| nikomiru_online::language::subtitle_language(name).map(str::to_string);
+            let read = select::NameReader {
+                episode: &nikomiru_online::language::subtitle_episode,
+                language: &language,
+            };
+            externals = select::related_files(&video, &entries, &own, only_video, &read);
+        }
         externals.extend(select::downloaded_files(&downloaded));
         let mut sources: Vec<Source> = externals
             .iter()

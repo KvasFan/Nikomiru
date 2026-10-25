@@ -256,7 +256,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-003 | ASS | `no_playres.ass` → 384×288; `\N` → line break; `\p1` lines excluded from the clickable text; sorting by Layer | L1 |
 | T-SUB-004 | Text / markup separation | `plain_text` never contains tags or overrides (property over all fixture files) | L2 |
 | T-SUB-005 | Encodings | Each file in `shift_jis`, `euc_jp`, `utf16le_bom`, `gb18030`, `cp1252` produces the expected text; a forced encoding takes precedence | L4 |
-| T-SUB-006 | External files | `Ep01.mkv` ↔ `Ep01.ja.srt` yes, `Ep01.jpn.ass` yes, `Ep011.srt` no, `ep01.SRT` yes | L1 |
+| T-SUB-006 | External files | `Ep01.mkv` ↔ `Ep01.ja.srt` yes, `Ep01.jpn.ass` yes, `Ep011.srt` no, `ep01.SRT` yes. By another name: `[Group] Show - 02 [1080p].mkv` opens with `Show 02.ja.srt` drawn and `Subs/Show_E02.en.srt` in the menu, not the files of episode 3; `Movie (2016).mkv` with `Subs/Movie (2016)/Japanese.srt` and `English.srt`, the Japanese one drawn (L6); the folder rules in L1 | L1/L6 |
 | T-SUB-007 | Extraction of embedded tracks (`av_basic.mkv`) | 2 tracks extracted in a single invocation; 3 cues with the expected text; second request served from the cache (no ffmpeg process started) | L4 |
 | T-SUB-008 | Automatic selection | The 4 rules in the order given in SPECIFICATION | L1 |
 | T-SUB-009 | Clickable overlay | `av_basic.mkv` in L6: the Japanese embedded track is extracted and drawn; `click_grapheme` on the second grapheme selects byte offset 3 and pauses | L6 |

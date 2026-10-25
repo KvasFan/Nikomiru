@@ -57,7 +57,7 @@ pub struct FileDialog {
     pub save_as: Option<String>,
 }
 
-const VIDEO_PATTERNS: [&str; 14] = [
+pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
