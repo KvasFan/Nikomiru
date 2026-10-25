@@ -22,6 +22,7 @@ mod player_page;
 mod popups;
 mod services_page;
 pub(crate) mod settings;
+mod stats_view;
 pub(crate) mod theme;
 
 use std::collections::HashSet;
@@ -51,6 +52,8 @@ pub enum Dialog {
     LibraryFolder,
     /// A database of the Local Audio Server (AUD-003).
     AudioDatabase,
+    /// Where to export the study sessions (STA-005).
+    StatsExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -113,12 +116,20 @@ impl FileDialog {
                 tr("audio-database-button"),
                 vec![(tr("audio-database-filter"), vec!["*.db"]), all],
             ),
+            Dialog::StatsExport => (
+                tr("stats-export"),
+                vec![(tr("stats-csv-filter"), vec!["*.csv"]), all],
+            ),
         };
         Self {
             dialog,
             title,
             filters,
-            save_as: (dialog == Dialog::MpvExport).then(|| "mpv.conf".to_string()),
+            save_as: match dialog {
+                Dialog::MpvExport => Some("mpv.conf".to_string()),
+                Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
+                _ => None,
+            },
             folder: match dialog {
                 Dialog::MpvImport => s.mpv_conf_folder(),
                 _ => None,

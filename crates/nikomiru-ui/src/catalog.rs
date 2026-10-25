@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use nikomiru_library::home::SeriesSummary;
 use nikomiru_library::import::ImportReport;
+use nikomiru_library::stats::{DayTotal, Segment};
 use nikomiru_library::{FolderRecord, Grouping, VideoRecord};
 
 /// What the home page shows (LIB-005).
@@ -31,6 +32,20 @@ impl Home {
             .map(|s| s.record.title.as_str())
     }
 }
+
+/// What the statistics page shows (STA-005).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Stats {
+    /// The totals of each day studied, by day.
+    pub days: Vec<DayTotal>,
+    /// Time and characters by series (or file), the most studied first.
+    pub series: Vec<(String, i64, u64)>,
+    /// The latest sessions, with the name of their video.
+    pub sessions: Vec<(u128, Segment, String)>,
+}
+
+/// The sessions the page lists.
+pub const SESSIONS_SHOWN: usize = 200;
 
 /// A cover decoded off the UI thread.
 #[derive(Clone, PartialEq, Eq)]
@@ -89,6 +104,8 @@ pub enum LibraryEdit {
     },
     /// Episodes removed from the library; their files stay.
     Remove(Vec<String>),
+    /// A study session deleted (STA-005).
+    DeleteSession(u128),
 }
 
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
@@ -106,6 +123,10 @@ pub trait LibraryService: Send {
     /// The cover of `series`: the one kept, or the frame of its first
     /// episode, made and kept.
     fn cover(&self, series: u64, done: Done<Cover>);
+    /// The statistics (STA-005).
+    fn stats(&self, done: Done<Stats>);
+    /// The sessions as CSV, written to `path` (STA-005).
+    fn export_csv(&self, path: PathBuf, done: Done<PathBuf>);
 }
 
 /// No library (it could not be opened): every job fails with the reason.
@@ -132,6 +153,14 @@ impl LibraryService for NoLibrary {
     fn cover(&self, _: u64, done: Done<Cover>) {
         done(Err(self.0.clone()));
     }
+
+    fn stats(&self, done: Done<Stats>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn export_csv(&self, _: PathBuf, done: Done<PathBuf>) {
+        done(Err(self.0.clone()));
+    }
 }
 
 /// A job for the library worker, taken from the session by the UI layer.
@@ -147,6 +176,10 @@ pub enum LibraryJob {
     Edit(LibraryEdit),
     /// Make or read the cover of a series.
     Cover(u64),
+    /// Read the statistics.
+    Stats,
+    /// Write the sessions as CSV.
+    ExportCsv(PathBuf),
 }
 
 /// What the library worker answers, back on the UI thread.
@@ -162,6 +195,10 @@ pub enum LibraryReply {
     Edited(Result<(), String>),
     /// The cover of a series.
     Cover(u64, Result<Cover, String>),
+    /// The statistics.
+    Stats(Result<Stats, String>),
+    /// The CSV written, or not.
+    Exported(Result<PathBuf, String>),
 }
 
 /// Episodes by uid, in order.
@@ -182,4 +219,6 @@ pub struct LibraryPage {
     pub busy: bool,
     /// The last message, and whether it is good news.
     pub status: Option<(String, bool)>,
+    /// The statistics, once read (STA-005).
+    pub stats: Option<Stats>,
 }

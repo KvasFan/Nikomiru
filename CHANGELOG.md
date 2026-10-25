@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Statistics (STA-001…STA-005): the time of a video watched is counted once (seeks and pauses are not), the characters of a cue once it has been played 1.5 s (the units of study of every script, STA-003), lookups and cards; sessions split by hour and by a pause over 2 min, in the local time. The Library page has a Statistics tab: today, 7 days and all time, a chart by day over 7, 30 or 365 days, the year as a calendar, the time by series, the sessions (each can be deleted) and an export to CSV.
+
 ## [0.2.0] - 2026-10-25
 
 The library and word audio (M5).

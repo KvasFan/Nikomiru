@@ -12,6 +12,11 @@ pub trait Clock: Send + Sync {
     fn monotonic(&self) -> Duration;
     /// Wall-clock time (for timestamps stored on disk).
     fn now(&self) -> SystemTime;
+    /// How far the local time is east of UTC at `at`, in seconds: the days
+    /// and hours of the statistics are local (STA-004). UTC unless told.
+    fn utc_offset(&self, _at: SystemTime) -> i32 {
+        0
+    }
 }
 
 /// The real clock.

@@ -14,7 +14,7 @@ use std::thread::JoinHandle;
 use nikomiru_library::import::ImportReport;
 use nikomiru_library::{Grouping, Library, VideoRecord};
 use nikomiru_media::process::Cancel;
-use nikomiru_ui::catalog::{Cover, Home, LibraryEdit, LibraryService};
+use nikomiru_ui::catalog::{Cover, Home, LibraryEdit, LibraryService, SESSIONS_SHOWN, Stats};
 use nikomiru_ui::i18n::Translator;
 
 /// How many videos "Continue watching" shows.
@@ -50,6 +50,8 @@ enum Job {
     Import(PathBuf, Grouping, Done<ImportReport>),
     Edit(LibraryEdit, Done<()>),
     Cover(u64, Done<Cover>),
+    Stats(Done<Stats>),
+    ExportCsv(PathBuf, Done<PathBuf>),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -139,6 +141,7 @@ impl Worker {
                 lib.split_series(&uids, &title, self.now()).map(drop)
             }
             LibraryEdit::Remove(uids) => uids.iter().try_for_each(|u| lib.remove_video(u)),
+            LibraryEdit::DeleteSession(id) => lib.delete_segment(id),
         };
         result.map_err(|e| self.message(&e))
     }
@@ -153,6 +156,51 @@ impl Worker {
                     .map_err(|e| translator.error(&e))
             })
             .clone()
+    }
+
+    /// STA-005: the totals by day and by series, the latest sessions.
+    fn stats(&self) -> Result<Stats, String> {
+        let lib = &self.parts.library;
+        let e = |e| self.message(&e);
+        let videos: std::collections::BTreeMap<String, VideoRecord> =
+            lib.videos().map_err(e)?.into_iter().collect();
+        let sessions = lib
+            .segments()
+            .map_err(e)?
+            .into_iter()
+            .take(SESSIONS_SHOWN)
+            .map(|(id, s)| {
+                let name = videos
+                    .get(&s.media)
+                    .and_then(|v| Path::new(&v.path).file_stem())
+                    .map_or_else(|| s.media.clone(), |n| n.to_string_lossy().into_owned());
+                (id, s, name)
+            })
+            .collect();
+        Ok(Stats {
+            days: lib.day_totals().map_err(e)?,
+            series: lib.series_totals().map_err(e)?,
+            sessions,
+        })
+    }
+
+    /// STA-005: the sessions as CSV, at `path`.
+    fn export_csv(&self, path: &Path) -> Result<PathBuf, String> {
+        let csv = self
+            .parts
+            .library
+            .sessions_csv()
+            .map_err(|e| self.message(&e))?;
+        std::fs::write(path, csv).map_err(|e| {
+            self.parts.translator.tr(
+                "player-write-error",
+                &[
+                    ("path", path.display().to_string()),
+                    ("reason", e.to_string()),
+                ],
+            )
+        })?;
+        Ok(path.to_path_buf())
     }
 
     /// LIB-005: the cover kept, or the frame of the first episode.
@@ -220,6 +268,8 @@ impl Catalog {
                         Job::Import(root, grouping, done) => done(worker.import(&root, grouping)),
                         Job::Edit(edit, done) => done(worker.edit(edit)),
                         Job::Cover(id, done) => done(worker.cover(id)),
+                        Job::Stats(done) => done(worker.stats()),
+                        Job::ExportCsv(path, done) => done(worker.export_csv(&path)),
                     }
                 }
             });
@@ -251,6 +301,8 @@ impl Catalog {
             Some(Job::Import(_, _, done)) => done(Err(no)),
             Some(Job::Edit(_, done)) => done(Err(no)),
             Some(Job::Cover(_, done)) => done(Err(no)),
+            Some(Job::Stats(done)) => done(Err(no)),
+            Some(Job::ExportCsv(_, done)) => done(Err(no)),
             None => {}
         }
     }
@@ -275,5 +327,13 @@ impl LibraryService for Catalog {
 
     fn cover(&self, series: u64, done: Done<Cover>) {
         self.send(Job::Cover(series, done));
+    }
+
+    fn stats(&self, done: Done<Stats>) {
+        self.send(Job::Stats(done));
+    }
+
+    fn export_csv(&self, path: PathBuf, done: Done<PathBuf>) {
+        self.send(Job::ExportCsv(path, done));
     }
 }

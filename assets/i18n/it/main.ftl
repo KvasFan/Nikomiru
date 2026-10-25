@@ -446,3 +446,29 @@ audio-database-button = Database…
 audio-database-filter = Database di audio
 audio-priority = Sotto-fonti, in ordine
 word-audio-database = Il database audio { $path } non si può usare ({ $reason }).
+
+# Statistics (STA-005)
+stats-title = Statistiche
+stats-export = Esporta CSV…
+stats-csv-filter = File CSV
+stats-exported = Le sessioni sono in { $path }.
+stats-under-minute = < 1 min
+stats-minutes = { $m } min
+stats-hours = { $h } h { $m } min
+stats-today = Oggi: { $time } · { $chars } caratteri
+stats-week = 7 giorni: { $time } · { $chars } caratteri
+stats-all = In tutto: { $time } · { $chars } caratteri
+stats-chart = Tempo guardato per giorno
+stats-range = { $n } giorni
+stats-day = { $date }: { $time } · { $chars } caratteri
+stats-calendar = L'anno
+stats-series = Per serie
+stats-time-chars = { $time } · { $chars } caratteri
+stats-sessions = Sessioni
+stats-none = Ancora nessuna sessione: vengono registrate mentre guardi.
+stats-session = { $time } · { $chars } caratteri · { $lookups } { $lookups ->
+    [one] ricerca
+   *[other] ricerche
+} · { $cards } card
+stats-delete = Cancella
+stats-delete-session = Cancella la sessione del { $date }, { $name }

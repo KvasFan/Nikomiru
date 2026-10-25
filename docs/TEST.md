@@ -441,9 +441,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | ID | Check | Expected | L |
 |---|---|---|---|
 | T-STA-001 | Coverage | Watch 0–10 s, seek to 5 s, watch until 15 s → **15 s** in total. Speed 2.0: a jump of 2.4 s in 1 s of real time is not a seek (threshold 1 × 2 × 1.25 + 0.5 = 3.0 s). Plus the vectors from `interval_coverage_test.dart` | L1 |
-| T-STA-002 | Per-cue credits | 1000 ms cue: 900 ms watched → no credit, 1000 ms → credit; next session → no double counting | L1 |
-| T-STA-004 | Sessions | Pause > 120 s → new session; session spanning 15:00 → 2 segments | L1 |
-| T-STA-005 | CSV export | Snapshot | L3 |
+| T-STA-002 | Per-cue credits | 1000 ms cue: 900 ms watched → no credit, 1000 ms → credit; next session → no double counting ; the credits are per subtitle file. L6: the characters of the cues played | L1/L6 |
+| T-STA-004 | Sessions | Pause > 120 s → new session; session spanning 15:00 → 2 segments ; by video; the local day and hour from the time zone of the C library | L1 |
+| T-STA-005 | Statistics page | The totals by day and by series and the CSV of the sessions (a header, the oldest first, text quoted), a session deleted (L1); kittest: today, 7 days and all time, the range chosen, a session deleted. L6: a video watched and a word looked up, then Esc: the Statistics of the library has the session, its time, characters and lookup | L1/L3/L6 |
 
 ### 6.12 Settings, i18n, accessibility
 

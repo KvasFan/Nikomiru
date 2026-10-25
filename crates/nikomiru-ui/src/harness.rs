@@ -221,6 +221,15 @@ pub fn state() -> Result<Value, String> {
                     })).collect::<Vec<_>>()),
                 })),
                 "covers": page.covers.keys().collect::<Vec<_>>(),
+                "stats": page.stats.as_ref().map(|st| json!({
+                    "days": st.days.iter().map(|d| json!({
+                        "date": d.date, "ms": d.duration_ms, "chars": d.chars,
+                    })).collect::<Vec<_>>(),
+                    "sessions": st.sessions.iter().map(|(_, s, name)| json!({
+                        "name": name, "ms": s.duration_ms, "chars": s.chars,
+                        "lookups": s.lookups, "cards": s.cards,
+                    })).collect::<Vec<_>>(),
+                })),
             })
         };
         json!({
@@ -539,6 +548,10 @@ pub fn library(
             }
             "close" => {
                 ui.view.close_library_page();
+                return Ok(());
+            }
+            "statistics" | "library" => {
+                ui.view.library.show_statistics(action == "statistics");
                 return Ok(());
             }
             "import" => {

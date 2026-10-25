@@ -426,7 +426,7 @@ fn run(
         config,
         library,
         translator,
-        clock: Box::new(SystemClock::new()),
+        clock: Box::new(linux::LocalClock::default()),
         notices,
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
