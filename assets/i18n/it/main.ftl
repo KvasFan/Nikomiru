@@ -37,7 +37,6 @@ toast-card-overwritten = Carta sovrascritta in { $deck }.
 link-missing = Il video di questa carta non si trova:
 link-locate = Individua il file…
 anki-open = Impostazioni di Anki
-anki-close = Chiudi
 anki-save = Salva
 anki-connection = Connessione
 anki-url = Indirizzo di AnkiConnect
@@ -75,8 +74,10 @@ anki-lapis-created = Il tipo di nota e il mazzo Lapis ora sono in Anki.
 anki-lapis-exists = Anki ha già il tipo di nota e il mazzo Lapis.
 settings-saved = Impostazioni salvate.
 settings-title = Impostazioni
+settings-close = Chiudi
 settings-player = Player
 settings-services = Servizi sottotitoli
+settings-dictionaries = Dizionari
 settings-audio = Audio delle parole
 settings-anki = Anki
 anki-config-not-saved = config.toml non si è potuto leggere, quindi non è stato scritto: queste impostazioni valgono fino alla chiusura di Nikomiru. Correggi il file e salva di nuovo.
@@ -276,7 +277,6 @@ dict-collapse = Blocco nel popup
 dict-collapse-automatic = Automatico
 dict-collapse-expanded = Espanso
 dict-collapse-collapsed = Compresso
-dict-close = Chiudi
 dict-type-terms = termini
 dict-type-kanji = kanji
 dict-type-frequency = frequenze
@@ -346,7 +346,6 @@ online-auto-none = Nessun sottotitolo online trovato per questo video.
 online-no-providers = Nessun servizio di sottotitoli è pronto: scegline uno e aggiungi la sua chiave API in Impostazioni → Servizi sottotitoli.
 
 # Pagina delle impostazioni del player (PLY-016, PLY-018)
-player-close = Chiudi
 player-apply = Applica
 player-apply-note = Applica salva le impostazioni e imposta subito le opzioni in mpv; il profilo, il decoder hardware e un'opzione grezza tolta valgono dal file successivo o dal prossimo avvio.
 player-presets = Preset (mpv.conf)
@@ -428,7 +427,6 @@ word-audio-none = Nessun audio per questa parola.
 word-audio-unavailable = L'audio delle parole non si può riprodurre: vedi il log.
 
 # Word audio tab (AUD-001, AUD-005, AUD-006)
-audio-close = Chiudi
 audio-save = Salva
 audio-sources = Fonti, nell'ordine in cui vengono chieste
 audio-sources-hint = Una fonte è un indirizzo con {"{"}term{"}"} e {"{"}reading{"}"}, come un server audio locale per Yomitan, che risponde con una lista Yomitan di file audio o con l'audio stesso (solo HTTPS, o HTTP su questo computer); oppure l'android.db del Local Audio Server for Yomichan, letto dal disco. Nessuna è predefinita.

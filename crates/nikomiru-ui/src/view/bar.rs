@@ -301,7 +301,7 @@ pub(crate) fn show(
                                 view.dialog = Some(Dialog::Video);
                             }
                             if icon(ui, true, "📚", &tr("dict-page-title")) {
-                                view.open_dict_page(out);
+                                view.open_settings(SettingsTab::Dictionaries, out);
                             }
                             if icon(ui, true, "Anki", &tr("anki-open")) {
                                 view.open_settings(SettingsTab::Anki, out);

@@ -37,7 +37,6 @@ toast-card-overwritten = Card overwritten in { $deck }.
 link-missing = The video of this card cannot be found:
 link-locate = Locate the file…
 anki-open = Anki settings
-anki-close = Close
 anki-save = Save
 anki-connection = Connection
 anki-url = AnkiConnect address
@@ -75,8 +74,10 @@ anki-lapis-created = The Lapis note type and deck are now in Anki.
 anki-lapis-exists = Anki already has the Lapis note type and deck.
 settings-saved = Settings saved.
 settings-title = Settings
+settings-close = Close
 settings-player = Player
 settings-services = Subtitle services
+settings-dictionaries = Dictionaries
 settings-audio = Word audio
 settings-anki = Anki
 anki-config-not-saved = config.toml could not be read, so it was not written: these settings last until Nikomiru closes. Fix the file and save again.
@@ -276,7 +277,6 @@ dict-collapse = Block in the popup
 dict-collapse-automatic = Automatic
 dict-collapse-expanded = Expanded
 dict-collapse-collapsed = Collapsed
-dict-close = Close
 dict-type-terms = terms
 dict-type-kanji = kanji
 dict-type-frequency = frequencies
@@ -346,7 +346,6 @@ online-auto-none = No online subtitles found for this video.
 online-no-providers = No subtitle service is ready: choose one and add its API key in Settings → Subtitle services.
 
 # Player settings page (PLY-016, PLY-018)
-player-close = Close
 player-apply = Apply
 player-apply-note = Apply saves the settings and sets the options in mpv now; the profile, the hardware decoder and a removed raw option take effect from the next file or the next start.
 player-presets = Presets (mpv.conf)
@@ -428,7 +427,6 @@ word-audio-none = No audio for this word.
 word-audio-unavailable = Word audio cannot play: see the log.
 
 # Word audio tab (AUD-001, AUD-005, AUD-006)
-audio-close = Close
 audio-save = Save
 audio-sources = Sources, in the order they are asked
 audio-sources-hint = A source is an address with {"{"}term{"}"} and {"{"}reading{"}"}, such as a local audio server for Yomitan, which answers with a Yomitan list of audio files or with the audio itself (only HTTPS, or HTTP on this computer); or the android.db of the Local Audio Server for Yomichan, read from disk. None is built in.

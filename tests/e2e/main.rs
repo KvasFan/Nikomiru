@@ -581,7 +581,7 @@ fn screenshots_of_the_interface() {
     desk.capture(&dir.join("anki-settings.png"));
     // the toast of the card gone
     std::thread::sleep(Duration::from_secs(2));
-    for tab in ["player", "services"] {
+    for tab in ["player", "services", "dictionaries", "audio"] {
         h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
         h.state_until("the tab", |s| s["settings_tab"] == tab);
         std::thread::sleep(Duration::from_millis(300));

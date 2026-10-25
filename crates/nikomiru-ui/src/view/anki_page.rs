@@ -8,26 +8,17 @@
 
 use std::collections::BTreeMap;
 
-use egui::{
-    Align, Button, Color32, ComboBox, DragValue, Frame, Layout, Margin, Rect, RichText, Role,
-    ScrollArea, Stroke, TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
-};
+use egui::{Button, Color32, ComboBox, DragValue, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
 use nikomiru_core::config::AnkiConfig;
 
-use super::dict_page::full_screen;
 use super::popups::Translate;
-use super::settings::{Leave, SettingsTab, tabs};
+use super::settings::{self, Leave, SettingsTab};
 use super::{View, theme};
 use crate::mining::AnkiPage;
 use crate::session::Session;
 use crate::ui::Command;
 
-const BACKDROP: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0xa6);
-const CARD: Color32 = Color32::from_rgba_unmultiplied_const(0x20, 0x22, 0x27, 0xf0);
-const CARD_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
 const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const GOOD: Color32 = Color32::from_rgb(0x7c, 0xd3, 0x8a);
-const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 
 /// The placeholders of ANK-021, for the picker of each field.
 pub(crate) const PLACEHOLDERS: [&str; 20] = [
@@ -169,60 +160,26 @@ pub(crate) fn draw(
 ) -> Leave {
     update(s, state, out);
     let page = s.page;
-    let screen = ctx.content_rect();
-    let width = 780.0_f32.min(screen.width() - 32.0).max(0.0);
-    let height = 680.0_f32.min(screen.height() - 32.0).max(0.0);
-    let mut leave = Leave::Stay;
-    full_screen(ctx, "anki-page", BACKDROP, |ui| {
-        let card = Rect::from_center_size(screen.center(), vec2(width, height));
-        let mut ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(card)
-                .layout(Layout::top_down(Align::Min)),
-        );
-        Frame::new()
-            .fill(CARD)
-            .stroke(Stroke::new(1.0, CARD_BORDER))
-            .corner_radius(10)
-            .inner_margin(Margin::same(16))
-            .show(&mut ui, |ui| {
-                ui.set_width((width - 34.0).max(0.0));
-                ui.set_height((height - 34.0).max(0.0));
-                ui.spacing_mut().item_spacing.y = 10.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
-                ui.horizontal(|ui| {
-                    if let Some(tab) = tabs(ui, SettingsTab::Anki, &|id| tr(s, id)) {
-                        leave = Leave::To(tab);
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(tr(s, "anki-close")).clicked() {
-                            leave = Leave::Close;
-                        }
-                        let save = ui.add_enabled(!page.busy, Button::new(tr(s, "anki-save")));
-                        if save.clicked()
-                            && let Some(draft) = state.draft.as_mut()
-                        {
-                            draft.tags =
-                                state.tags.split_whitespace().map(str::to_string).collect();
-                            out.push(Command::AnkiSave(draft.clone()));
-                        }
-                    });
-                });
-                if let Some((text, ok)) = &page.status {
-                    ui.add(
-                        egui::Label::new(RichText::new(text).color(if *ok { GOOD } else { BAD }))
-                            .wrap(),
-                    );
-                } else if page.busy {
-                    ui.spinner();
-                }
-                ScrollArea::vertical()
-                    .id_salt("anki-page")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| body(ui, s, state, out));
-            });
-    });
-    leave
+    let tr = |id: &str| tr(s, id);
+    settings::page(
+        ctx,
+        SettingsTab::Anki,
+        &tr,
+        page.status.as_ref(),
+        |buttons, ui| {
+            let save = buttons.add_enabled(!page.busy, Button::new(tr("anki-save")));
+            if save.clicked()
+                && let Some(draft) = state.draft.as_mut()
+            {
+                draft.tags = state.tags.split_whitespace().map(str::to_string).collect();
+                out.push(Command::AnkiSave(draft.clone()));
+            }
+            if page.busy {
+                buttons.spinner();
+            }
+            body(ui, s, state, out);
+        },
+    )
 }
 
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {

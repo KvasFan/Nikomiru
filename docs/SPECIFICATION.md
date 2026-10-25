@@ -718,7 +718,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section: the tab's keys go back to their defaults in the page, and are saved with the page. What the user has rather than how Nikomiru behaves stays: the keys and logins of the services, the AnkiConnect key, the word audio sources, the keys `config.toml` has that this version does not know. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
-| SET-008 | The settings are one page with a tab per section, opened by ⚙ in the bar on the tab shown last; Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
+| SET-008 | The settings are one page with a tab per section, the tabs down its left side, opened by ⚙ in the bar on the tab shown last (📚 opens the Dictionaries tab, the Anki button the Anki tab); Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 

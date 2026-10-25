@@ -214,14 +214,12 @@ impl View {
                     self.close_online_page();
                 } else if self.library_page_open {
                     self.close_library_page();
-                } else if self.services_page_open || self.audio_page_open {
+                } else if self.services_page_open || self.audio_page_open || self.dict_page_open {
                     self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
                 } else if self.anki_page_open {
                     self.close_anki_page();
-                } else if self.dict_page_open {
-                    self.close_dict_page();
                 } else if self.fullscreen {
                     self.fullscreen_request = Some(false);
                 } else {
@@ -288,7 +286,7 @@ impl View {
     }
 
     /// Opens the settings at `tab` (SET-008), in place of any other page
-    /// over the video but the dictionaries.
+    /// over the video.
     pub fn open_settings(&mut self, tab: settings::SettingsTab, out: &mut Vec<Command>) {
         use settings::SettingsTab;
         self.close_settings();
@@ -300,6 +298,7 @@ impl View {
                 self.services_page_open = true;
                 out.push(Command::ServicesOpen);
             }
+            SettingsTab::Dictionaries => self.open_dict_page(out),
             SettingsTab::Audio => {
                 self.audio_page_open = true;
                 out.push(Command::AudioOpen);
@@ -312,6 +311,7 @@ impl View {
     pub fn close_settings(&mut self) {
         self.close_player_page();
         self.close_anki_page();
+        self.close_dict_page();
         self.services_page_open = false;
         self.services = services_page::State::default();
         self.audio_page_open = false;

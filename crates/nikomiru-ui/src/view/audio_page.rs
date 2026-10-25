@@ -5,25 +5,18 @@
 //! template; the volume; playing by itself when a popup opens.
 
 use egui::{
-    Align, Button, Color32, Frame, Layout, Margin, Rect, RichText, Role, ScrollArea, Slider,
-    Stroke, TextEdit, Ui, UiBuilder, WidgetInfo, vec2,
+    Align, Button, Color32, Frame, Layout, Margin, RichText, Role, Slider, TextEdit, Ui, WidgetInfo,
 };
 use nikomiru_core::config::{AudioSourceConfig, WordAudioConfig};
 
-use super::dict_page::full_screen;
 use super::popups::Translate;
-use super::settings::{Leave, SettingsTab, tabs};
+use super::settings::{Leave, SettingsTab, page};
 use super::{View, theme};
 use crate::session::Session;
 use crate::ui::Command;
 
-const BACKDROP: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0xa6);
-const CARD: Color32 = Color32::from_rgba_unmultiplied_const(0x20, 0x22, 0x27, 0xf0);
-const CARD_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
 const ROW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
 const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const GOOD: Color32 = Color32::from_rgb(0x7c, 0xd3, 0x8a);
-const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Debug, Default)]
@@ -99,73 +92,32 @@ pub(crate) fn draw(
             source.url.clone_from(path);
         }
     }
-    let screen = ctx.content_rect();
-    let width = 820.0_f32.min(screen.width() - 32.0).max(0.0);
-    let height = 680.0_f32.min(screen.height() - 32.0).max(0.0);
-    let mut leave = Leave::Stay;
-    full_screen(ctx, "audio-page", BACKDROP, |ui| {
-        let card = Rect::from_center_size(screen.center(), vec2(width, height));
-        let mut ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(card)
-                .layout(Layout::top_down(Align::Min)),
-        );
-        Frame::new()
-            .fill(CARD)
-            .stroke(Stroke::new(1.0, CARD_BORDER))
-            .corner_radius(10)
-            .inner_margin(Margin::same(16))
-            .show(&mut ui, |ui| {
-                ui.set_width((width - 34.0).max(0.0));
-                ui.set_height((height - 34.0).max(0.0));
-                ui.spacing_mut().item_spacing.y = 10.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
-                ui.horizontal(|ui| {
-                    if let Some(tab) = tabs(ui, SettingsTab::Audio, &|id| tr(s, id)) {
-                        leave = Leave::To(tab);
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(tr(s, "audio-close")).clicked() {
-                            leave = Leave::Close;
-                        }
-                        if ui.button(tr(s, "audio-save")).clicked()
-                            && let Some(draft) = &state.draft
-                        {
-                            let mut config = draft.clone();
-                            for (source, typed) in config.sources.iter_mut().zip(&state.priorities)
-                            {
-                                source.priority = typed
-                                    .split([',', ' '])
-                                    .map(str::trim)
-                                    .filter(|p| !p.is_empty())
-                                    .map(str::to_string)
-                                    .collect();
-                            }
-                            config.sources.retain(|x| !x.url.trim().is_empty());
-                            for source in &mut config.sources {
-                                source.name = source.name.trim().to_string();
-                                source.url = source.url.trim().to_string();
-                                if source.database().is_none() {
-                                    source.priority.clear();
-                                }
-                            }
-                            out.push(Command::WordAudioSave(Box::new(config)));
-                        }
-                    });
-                });
-                if let Some((text, ok)) = s.status {
-                    ui.add(
-                        egui::Label::new(RichText::new(text).color(if *ok { GOOD } else { BAD }))
-                            .wrap(),
-                    );
+    let tr = |id: &str| tr(s, id);
+    page(ctx, SettingsTab::Audio, &tr, s.status, |buttons, ui| {
+        if buttons.button(tr("audio-save")).clicked()
+            && let Some(draft) = &state.draft
+        {
+            let mut config = draft.clone();
+            for (source, typed) in config.sources.iter_mut().zip(&state.priorities) {
+                source.priority = typed
+                    .split([',', ' '])
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(str::to_string)
+                    .collect();
+            }
+            config.sources.retain(|x| !x.url.trim().is_empty());
+            for source in &mut config.sources {
+                source.name = source.name.trim().to_string();
+                source.url = source.url.trim().to_string();
+                if source.database().is_none() {
+                    source.priority.clear();
                 }
-                ScrollArea::vertical()
-                    .id_salt("audio-page")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| body(ui, s, state, out));
-            });
-    });
-    leave
+            }
+            out.push(Command::WordAudioSave(Box::new(config)));
+        }
+        body(ui, s, state, out);
+    })
 }
 
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
@@ -286,7 +238,7 @@ mod tests {
 
     fn harness(saved: WordAudioConfig) -> Harness<'static, Test> {
         Harness::builder()
-            .with_size(vec2(1280.0, 1000.0))
+            .with_size(egui::vec2(1280.0, 1000.0))
             .allow_missing_glyphs()
             .build_ui_state(
                 |ui, t: &mut Test| {
