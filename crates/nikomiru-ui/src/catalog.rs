@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use nikomiru_library::home::SeriesSummary;
 use nikomiru_library::import::ImportReport;
+use nikomiru_library::series_info::SeriesInfoRecord;
 use nikomiru_library::stats::{DayTotal, Segment};
 use nikomiru_library::{FolderRecord, Grouping, VideoRecord};
 
@@ -106,6 +107,38 @@ pub enum LibraryEdit {
     Remove(Vec<String>),
     /// A study session deleted (STA-005).
     DeleteSession(u128),
+    /// What was found online of a series (MET-001), or `None` to forget it;
+    /// its cover, already downloaded, becomes the series' own.
+    Identify {
+        /// The series.
+        id: u64,
+        /// What was found.
+        info: Option<Box<SeriesInfoRecord>>,
+        /// The cover image.
+        cover: Option<Vec<u8>>,
+    },
+}
+
+/// A series opened: its episodes in order, and what is known of it online.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SeriesDetail {
+    /// The episodes.
+    pub episodes: Episodes,
+    /// What AniList or Jikan said of it (MET-001).
+    pub info: Option<SeriesInfoRecord>,
+}
+
+/// A series being identified online (MET-001, MET-002).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Identify {
+    /// The series.
+    pub series: u64,
+    /// The source asked.
+    pub source: Option<nikomiru_online::metadata::Source>,
+    /// What to choose from, when no result has exactly its title.
+    pub choices: Vec<nikomiru_online::metadata::SeriesInfo>,
+    /// A request is running.
+    pub busy: bool,
 }
 
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
@@ -114,8 +147,8 @@ type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 pub trait LibraryService: Send {
     /// The home page.
     fn home(&self, done: Done<Home>);
-    /// The episodes of a series, in order.
-    fn episodes(&self, series: u64, done: Done<Vec<(String, VideoRecord)>>);
+    /// The episodes of a series, in order, and what is known of it online.
+    fn episodes(&self, series: u64, done: Done<SeriesDetail>);
     /// Imports `root`, or scans it again, with `grouping`.
     fn import(&self, root: PathBuf, grouping: Grouping, done: Done<ImportReport>);
     /// Applies an edit.
@@ -138,7 +171,7 @@ impl LibraryService for NoLibrary {
         done(Err(self.0.clone()));
     }
 
-    fn episodes(&self, _: u64, done: Done<Vec<(String, VideoRecord)>>) {
+    fn episodes(&self, _: u64, done: Done<SeriesDetail>) {
         done(Err(self.0.clone()));
     }
 
@@ -187,8 +220,8 @@ pub enum LibraryJob {
 pub enum LibraryReply {
     /// The home page.
     Home(Result<Home, String>),
-    /// The episodes of a series.
-    Episodes(u64, Result<Vec<(String, VideoRecord)>, String>),
+    /// The episodes of a series, and what is known of it online.
+    Episodes(u64, Result<SeriesDetail, String>),
     /// A folder imported or scanned.
     Imported(Result<ImportReport, String>),
     /// An edit applied.
@@ -221,4 +254,8 @@ pub struct LibraryPage {
     pub status: Option<(String, bool)>,
     /// The statistics, once read (STA-005).
     pub stats: Option<Stats>,
+    /// What is known online of the series open (MET-001).
+    pub series_info: Option<SeriesInfoRecord>,
+    /// The series being identified online.
+    pub identify: Option<Identify>,
 }

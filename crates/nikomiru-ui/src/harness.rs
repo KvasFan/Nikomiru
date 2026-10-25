@@ -271,6 +271,16 @@ pub fn state() -> Result<Value, String> {
             "language": s.translator().language(),
             "subtitle_px": ui.view.overlay.font_px,
         });
+        let series_info = s.library_page.series_info.as_ref().map(|i| {
+            json!({
+                "source": i.source, "anilist_id": i.anilist_id, "mal_id": i.mal_id,
+                "romaji": i.romaji, "native": i.native, "episodes": i.episodes,
+            })
+        });
+        let identify = s.library_page.identify.as_ref().map(|i| {
+            let choices: Vec<&str> = i.choices.iter().map(|c| c.romaji.as_str()).collect();
+            json!({ "series": i.series, "busy": i.busy, "choices": choices })
+        });
         let library_page = {
             let page = &s.library_page;
             let home = page.home.as_ref();
@@ -293,6 +303,8 @@ pub fn state() -> Result<Value, String> {
                     })).collect::<Vec<_>>()),
                 })),
                 "covers": page.covers.keys().collect::<Vec<_>>(),
+                "series_info": series_info,
+                "identify": identify,
                 "stats": page.stats.as_ref().map(|st| json!({
                     "days": st.days.iter().map(|d| json!({
                         "date": d.date, "ms": d.duration_ms, "chars": d.chars,
@@ -636,6 +648,11 @@ pub fn library(
                 Command::LibraryScan(path()?, grouping)
             }
             "series" => Command::LibrarySeries(id().ok()),
+            // MET-001: "Identify online", a result chosen (`id` its index,
+            // none without), "Forget"
+            "identify" => Command::LibraryIdentify(id()?),
+            "choose" => Command::LibraryIdentifyChoose(id().ok().map(|i| i as usize)),
+            "forget" => Command::LibraryForget(id()?),
             "play" => Command::LibraryPlay(path()?),
             "rename" => Command::LibraryEdit(LibraryEdit::Rename(
                 id()?,

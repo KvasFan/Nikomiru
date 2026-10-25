@@ -16,6 +16,9 @@ use nikomiru_core::config::{NetworkConfig, OnlineConfig};
 use nikomiru_online::http::Http;
 use nikomiru_online::jimaku::Jimaku;
 use nikomiru_online::language::subtitle_language;
+use nikomiru_online::metadata::{
+    AniList, Identified, Jikan, Limiter, MetadataSource, Source, identify,
+};
 use nikomiru_online::opensubtitles::OpenSubtitles;
 use nikomiru_online::search::{automatic, fetch, search_all};
 use nikomiru_online::{
@@ -53,6 +56,8 @@ enum Job {
     Download(OnlineQuery, Box<Candidate>, Done<Downloaded>),
     Automatic(OnlineQuery, Done<Option<Downloaded>>),
     Configure(Box<(OnlineConfig, NetworkConfig)>),
+    Identify(String, Done<(Source, Identified)>),
+    Cover(String, Done<Vec<u8>>),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -100,6 +105,8 @@ impl Online {
                         Job::Search(q, done) => done(worker.search(&q)),
                         Job::Download(q, c, done) => done(worker.download(&q, &c)),
                         Job::Automatic(q, done) => done(worker.automatic(&q)),
+                        Job::Identify(title, done) => done(worker.identify(&title)),
+                        Job::Cover(url, done) => done(worker.cover(&url)),
                         Job::Configure(settings) => {
                             let (online, network) = *settings;
                             worker.parts.online = online;
@@ -133,6 +140,8 @@ impl Online {
             Some(Job::Search(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Download(_, _, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Automatic(_, done)) => done(Err(self.unavailable.clone())),
+            Some(Job::Identify(_, done)) => done(Err(self.unavailable.clone())),
+            Some(Job::Cover(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Configure(_)) | None => {}
         }
     }
@@ -154,6 +163,14 @@ impl OnlineService for Online {
     fn configure(&self, online: OnlineConfig, network: NetworkConfig) {
         self.send(Job::Configure(Box::new((online, network))));
     }
+
+    fn identify(&self, title: String, done: Done<(Source, Identified)>) {
+        self.send(Job::Identify(title, done));
+    }
+
+    fn cover(&self, url: String, done: Done<Vec<u8>>) {
+        self.send(Job::Cover(url, done));
+    }
 }
 
 struct Worker {
@@ -162,6 +179,11 @@ struct Worker {
     providers: Vec<Box<dyn Provider>>,
     /// Why a provider with a key could not be made (a wrong address, proxy).
     broken: Vec<OnlineError>,
+    /// The source of series metadata (MET-001, MET-002), or why there is
+    /// none; built when first asked.
+    metadata: Option<Result<Box<dyn MetadataSource>, OnlineError>>,
+    /// The client of the covers.
+    http: Option<Http>,
 }
 
 impl Worker {
@@ -170,6 +192,8 @@ impl Worker {
             parts,
             providers: Vec::new(),
             broken: Vec::new(),
+            metadata: None,
+            http: None,
         };
         worker.build();
         worker
@@ -179,6 +203,8 @@ impl Worker {
     fn build(&mut self) {
         self.providers.clear();
         self.broken.clear();
+        self.metadata = None;
+        self.http = None;
         let (online, network) = (&self.parts.online, &self.parts.network);
         let http = match Http::new(&network.proxy) {
             Ok(http) => http,
@@ -188,6 +214,7 @@ impl Worker {
                 return;
             }
         };
+        self.http = Some(http.clone());
         for id in ProviderId::from_keys(&online.providers) {
             let made: Result<Box<dyn Provider>, OnlineError> = match id {
                 ProviderId::Jimaku if !online.jimaku_api_key.trim().is_empty() => {
@@ -211,6 +238,48 @@ impl Worker {
                 Err(e) => self.broken.push(e),
             }
         }
+    }
+
+    /// The series of `title` on the source of the settings (MET-001,
+    /// MET-002).
+    fn identify(&mut self, title: &str) -> Result<(Source, Identified), String> {
+        let online = &self.parts.online;
+        let source = Source::from_key(&online.metadata);
+        if self
+            .metadata
+            .as_ref()
+            .is_none_or(|m| m.as_ref().is_ok_and(|m| m.source() != source))
+        {
+            let http = self.http.clone().ok_or_else(|| {
+                self.broken
+                    .first()
+                    .map_or_else(String::new, |e| self.message(e))
+            })?;
+            self.metadata = Some(match source {
+                Source::AniList => AniList::new(http, &online.anilist_url)
+                    .map(|a| Box::new(a) as Box<dyn MetadataSource>),
+                Source::Jikan => Jikan::new(http, &online.jikan_url, Limiter::real())
+                    .map(|j| Box::new(j) as Box<dyn MetadataSource>),
+            });
+        }
+        let found = match self.metadata.as_mut() {
+            Some(Ok(m)) => m.search(title),
+            Some(Err(e)) => Err(e.clone()),
+            None => return Err(String::new()),
+        };
+        let found = found.map_err(|e| self.message(&e))?;
+        Ok((source, identify(title, found)))
+    }
+
+    /// A cover image (MET-001): HTTPS only, at most a few MiB.
+    fn cover(&self, url: &str) -> Result<Vec<u8>, String> {
+        let http = self.http.as_ref().ok_or_else(String::new)?;
+        let url = nikomiru_online::http::checked_url(url).map_err(|e| self.message(&e))?;
+        let answer = http
+            .get(&url, &[])
+            .and_then(|r| r.ok("cover"))
+            .map_err(|e| self.message(&e))?;
+        Ok(answer.body)
     }
 
     fn message(&self, e: &OnlineError) -> String {
@@ -237,6 +306,7 @@ impl Worker {
                 .ok(),
             language: self.parts.language.clone(),
             providers: self.providers.iter().map(|p| p.id()).collect(),
+            anilist_id: q.anilist_id,
         }
     }
 

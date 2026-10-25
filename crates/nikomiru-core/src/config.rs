@@ -366,6 +366,20 @@ pub const JIMAKU_URL: &str = "https://jimaku.cc/api";
 /// OpenSubtitles' address (MET-004).
 pub const OPENSUBTITLES_URL: &str = "https://api.opensubtitles.com/api/v1";
 
+/// AniList's address (MET-001).
+pub const ANILIST_URL: &str = "https://graphql.anilist.co";
+
+/// Jikan's address (MET-002).
+pub const JIKAN_URL: &str = "https://api.jikan.moe/v4";
+
+fn is_anilist_url(url: &str) -> bool {
+    url == ANILIST_URL
+}
+
+fn is_jikan_url(url: &str) -> bool {
+    url == JIKAN_URL
+}
+
 fn is_jimaku_url(url: &str) -> bool {
     url == JIMAKU_URL
 }
@@ -456,6 +470,15 @@ pub struct OnlineConfig {
     /// OpenSubtitles' address, another one for the tests.
     #[serde(skip_serializing_if = "is_opensubtitles_url")]
     pub opensubtitles_url: String,
+    /// Where the metadata of a series come from (MET-001, MET-002):
+    /// `anilist` or `jikan`.
+    pub metadata: String,
+    /// AniList's address, another one for the tests.
+    #[serde(skip_serializing_if = "is_anilist_url")]
+    pub anilist_url: String,
+    /// Jikan's address, another one for the tests.
+    #[serde(skip_serializing_if = "is_jikan_url")]
+    pub jikan_url: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -472,6 +495,9 @@ impl Default for OnlineConfig {
             opensubtitles_password: String::new(),
             jimaku_url: JIMAKU_URL.into(),
             opensubtitles_url: OPENSUBTITLES_URL.into(),
+            metadata: "anilist".into(),
+            anilist_url: ANILIST_URL.into(),
+            jikan_url: JIKAN_URL.into(),
             other: toml::Table::new(),
         }
     }
@@ -488,6 +514,7 @@ impl std::fmt::Debug for OnlineConfig {
             .field("opensubtitles_api_key", &set(&self.opensubtitles_api_key))
             .field("opensubtitles_username", &self.opensubtitles_username)
             .field("opensubtitles_password", &set(&self.opensubtitles_password))
+            .field("metadata", &self.metadata)
             .finish_non_exhaustive()
     }
 }
@@ -799,6 +826,7 @@ impl Config {
                 };
             }
             Section::Services => {
+                self.online.metadata = d.online.metadata;
                 self.online.providers = d.online.providers;
                 self.online.auto_subtitles = d.online.auto_subtitles;
                 self.network.proxy = d.network.proxy;

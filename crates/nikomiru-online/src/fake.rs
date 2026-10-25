@@ -59,6 +59,40 @@ pub struct Data {
     /// Word audio (AUD-002) by term: `/words/list` answers a Yomitan list of
     /// `/words/file/<term>`, `/words/direct` the audio itself.
     pub words: BTreeMap<String, Vec<u8>>,
+    /// The AniList id of Jimaku entries (MET-003 with M7).
+    pub entry_anilist: BTreeMap<u64, u64>,
+    /// The series AniList and Jikan know (MET-001, MET-002).
+    pub series: Vec<FakeSeries>,
+    /// The bytes of every cover, at `/covers/<anilist id>.jpg`.
+    pub cover: Vec<u8>,
+}
+
+/// A series of the fake AniList and Jikan.
+#[derive(Debug, Clone, Default)]
+pub struct FakeSeries {
+    /// Its AniList id.
+    pub anilist_id: u64,
+    /// Its MyAnimeList id.
+    pub mal_id: u64,
+    /// Its titles.
+    pub romaji: String,
+    /// See `romaji`.
+    pub english: Option<String>,
+    /// See `romaji`.
+    pub native: Option<String>,
+    /// Its episodes.
+    pub episodes: Option<u32>,
+}
+
+impl FakeSeries {
+    fn matches(&self, query: &str) -> bool {
+        let q = query.to_lowercase();
+        !q.is_empty()
+            && std::iter::once(&self.romaji)
+                .chain(self.english.as_ref())
+                .chain(self.native.as_ref())
+                .any(|t| t.to_lowercase().contains(&q) || q.contains(&t.to_lowercase()))
+    }
 }
 
 /// A request the fake received.
@@ -153,6 +187,16 @@ impl FakeOnline {
     /// The Jimaku base URL, for `[online] jimaku_url`.
     pub fn jimaku_url(&self) -> String {
         format!("http://127.0.0.1:{}/jimaku/api", self.port)
+    }
+
+    /// The AniList URL, for `[online] anilist_url`.
+    pub fn anilist_url(&self) -> String {
+        format!("http://127.0.0.1:{}/anilist", self.port)
+    }
+
+    /// The Jikan base URL, for `[online] jikan_url`.
+    pub fn jikan_url(&self) -> String {
+        format!("http://127.0.0.1:{}/jikan/v4", self.port)
     }
 
     /// The OpenSubtitles base URL, for `[online] opensubtitles_url`.
@@ -371,6 +415,16 @@ fn answer(shared: &Shared, r: &Request, port: u16) -> (u16, Vec<u8>) {
         (_, ["jimaku", ..]) if r.header("authorization") != Some(d.jimaku_key.as_str()) => {
             (401, json_body(&json!({"error": "unauthorized"})))
         }
+        ("GET", ["jimaku", "api", "entries", "search"]) if query.contains_key("anilist_id") => {
+            let id: u64 = query["anilist_id"].parse().unwrap_or(0);
+            let found: Vec<Value> = d
+                .entries
+                .iter()
+                .filter(|(e, ..)| d.entry_anilist.get(e) == Some(&id))
+                .map(|(e, name, a)| json!({"id": e, "name": name, "anilist_id": id, "flags": {"anime": a}}))
+                .collect();
+            (200, json_body(&Value::Array(found)))
+        }
         ("GET", ["jimaku", "api", "entries", "search"]) => {
             let q = query
                 .get("query")
@@ -416,6 +470,46 @@ fn answer(shared: &Shared, r: &Request, port: u16) -> (u16, Vec<u8>) {
                 None => (404, Vec::new()),
             }
         }
+        // AniList (MET-001)
+        ("POST", ["anilist"]) => {
+            let body: Value = serde_json::from_str(&r.body).unwrap_or(Value::Null);
+            let search = body["variables"]["search"].as_str().unwrap_or_default();
+            let media: Vec<Value> = d
+                .series
+                .iter()
+                .filter(|s| s.matches(search))
+                .map(|s| {
+                    json!({
+                        "id": s.anilist_id, "idMal": s.mal_id, "format": "TV",
+                        "episodes": s.episodes, "seasonYear": 2023,
+                        "title": {"romaji": s.romaji, "english": s.english, "native": s.native},
+                        "synonyms": [],
+                        "coverImage": {"large": format!("http://127.0.0.1:{port}/covers/{}.jpg", s.anilist_id)},
+                        "siteUrl": format!("https://anilist.co/anime/{}", s.anilist_id),
+                    })
+                })
+                .collect();
+            (200, json_body(&json!({"data": {"Page": {"media": media}}})))
+        }
+        // Jikan (MET-002)
+        ("GET", ["jikan", "v4", "anime"]) => {
+            let q = query.get("q").cloned().unwrap_or_default();
+            let data: Vec<Value> = d
+                .series
+                .iter()
+                .filter(|s| s.matches(&q))
+                .map(|s| {
+                    json!({
+                        "mal_id": s.mal_id, "title": s.romaji, "title_english": s.english,
+                        "title_japanese": s.native, "episodes": s.episodes, "type": "TV",
+                        "images": {"jpg": {"image_url": format!("http://127.0.0.1:{port}/covers/{}.jpg", s.anilist_id)}},
+                        "url": format!("https://myanimelist.net/anime/{}", s.mal_id),
+                    })
+                })
+                .collect();
+            (200, json_body(&json!({"data": data})))
+        }
+        ("GET", ["covers", _]) => (200, d.cover.clone()),
         // OpenSubtitles: the temporary files need no key
         ("GET", ["os", "files", id]) => {
             let id: u64 = id.parse().unwrap_or(0);

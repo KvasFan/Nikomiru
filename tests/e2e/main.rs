@@ -2366,3 +2366,156 @@ fn a_screen_reader_finds_every_control_named() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-MET-001, T-MET-003: a series identified on AniList, its cover kept, and
+// Jimaku asked by its AniList id; a title that is not exact lets the user choose
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_series_is_identified_online_and_its_subtitles_found_by_id() {
+    use nikomiru_online::fake::{FakeOnline, FakeSeries};
+    let fake = FakeOnline::start().unwrap();
+    {
+        let mut d = fake.data();
+        d.series = vec![
+            FakeSeries {
+                anilist_id: 154_587,
+                mal_id: 52_991,
+                romaji: "Sousou no Frieren".into(),
+                english: Some("Frieren: Beyond Journey's End".into()),
+                native: Some("葬送のフリーレン".into()),
+                episodes: Some(28),
+            },
+            FakeSeries {
+                anilist_id: 182_255,
+                mal_id: 59_978,
+                romaji: "Sousou no Frieren 2nd Season".into(),
+                english: None,
+                native: None,
+                episodes: None,
+            },
+        ];
+        d.cover = include_bytes!("../../docs/images/popup.png").to_vec();
+        // Jimaku knows it by another name
+        d.entries = vec![(9, "Frieren".into(), true)];
+        d.entry_anilist.insert(9, 154_587);
+        d.files.insert(
+            9,
+            vec![("Frieren - 01.ja.srt".into(), ONLINE_SRT.as_bytes().to_vec())],
+        );
+    }
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n\
+         [online]\njimaku_api_key = \"jimaku-key\"\njimaku_url = \"{}\"\nanilist_url = \"{}\"\n",
+        fake.jimaku_url(),
+        fake.anilist_url()
+    ));
+    let root = desk.path("videos");
+    for name in [
+        "Sousou no Frieren/Sousou no Frieren - 01.mkv",
+        "Frieren/Frieren - 01.mkv",
+    ] {
+        let link = root.join(name);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(fixture("av_basic.mkv"), &link).unwrap();
+    }
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the page", |s| s["library_page"]["series"].is_array());
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    let s = h.state_until("two series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 2)
+    });
+    let id_of = |s: &serde_json::Value, title: &str| {
+        s["library_page"]["series"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["title"] == title)
+            .unwrap()["id"]
+            .as_u64()
+            .unwrap()
+    };
+    let (frieren, other) = (id_of(&s, "Sousou no Frieren"), id_of(&s, "Frieren"));
+    // nothing went online by itself
+    assert!(fake.requests().is_empty(), "{:?}", fake.requests());
+
+    // exactly its title: identified at once, with its cover
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "series", "id": frieren }));
+    h.state_until("its episodes", |s| {
+        s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "identify", "id": frieren }));
+    let s = h.state_until("identified", |s| {
+        s["library_page"]["series_info"]["anilist_id"] == 154_587
+    });
+    assert_eq!(s["library_page"]["series_info"]["episodes"], 28, "{s}");
+    assert_eq!(
+        s["library_page"]["series_info"]["native"], "葬送のフリーレン",
+        "{s}"
+    );
+    let cover = desk
+        .path("cache/nikomiru/covers")
+        .join(format!("online-series-{frieren}.jpg"));
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !cover.is_file() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(cover.is_file(), "{}", cover.display());
+
+    // not exact: the user chooses
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "series", "id": other }));
+    h.state_until("its episodes", |s| {
+        s["library_page"]["open_series"]["id"] == other
+            && s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "identify", "id": other }));
+    let s = h.state_until("the choices", |s| {
+        s["library_page"]["identify"]["choices"]
+            .as_array()
+            .is_some_and(|c| c.len() == 2)
+    });
+    assert_eq!(
+        s["library_page"]["series_info"],
+        serde_json::Value::Null,
+        "{s}"
+    );
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "choose" }));
+    h.state_until("none chosen", |s| s["library_page"]["identify"].is_null());
+
+    // an episode of the identified series: Jimaku is asked by its AniList id
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "series", "id": frieren }));
+    let s = h.state_until("its episodes", |s| {
+        s["library_page"]["open_series"]["id"] == frieren
+            && s["library_page"]["open_series"]["episodes"].is_array()
+    });
+    let path = s["library_page"]["open_series"]["episodes"][0]["path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "play", "path": path }));
+    h.wait("file-loaded");
+    fake.clear_requests();
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
+    h.state_until("the page", |s| s["online_page"]["open"] == true);
+    h.cmd(serde_json::json!({ "cmd": "online", "action": "search" }));
+    let s = h.state_until("the results", |s| {
+        s["online_page"]["results"]["files"]
+            .as_array()
+            .is_some_and(|f| !f.is_empty())
+    });
+    assert_eq!(
+        s["online_page"]["results"]["files"][0]["name"], "Frieren - 01.ja.srt",
+        "{s}"
+    );
+    assert!(
+        fake.requests()
+            .iter()
+            .any(|r| r.target.contains("anilist_id=154587")),
+        "{:?}",
+        fake.requests()
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

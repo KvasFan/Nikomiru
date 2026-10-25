@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 
 use nikomiru_core::config::{NetworkConfig, OnlineConfig};
+use nikomiru_online::metadata::{Identified, Source};
 use nikomiru_online::{Candidate, ProviderId};
 
 /// What to search for: the video, and the title, season and episode (from
@@ -23,6 +24,8 @@ pub struct OnlineQuery {
     pub season: Option<u32>,
     /// The episode; `None` for a film.
     pub episode: Option<u32>,
+    /// The AniList id of its series, once identified (MET-001, MET-003).
+    pub anilist_id: Option<u64>,
 }
 
 impl OnlineQuery {
@@ -34,6 +37,7 @@ impl OnlineQuery {
             title: info.title,
             season: info.season,
             episode: info.episode,
+            anilist_id: None,
         }
     }
 }
@@ -71,6 +75,11 @@ pub trait OnlineService: Send {
     fn automatic(&self, query: OnlineQuery, done: Done<Option<Downloaded>>);
     /// New settings.
     fn configure(&self, online: OnlineConfig, network: NetworkConfig);
+    /// The series of `title` on the metadata source of the settings
+    /// (MET-001, MET-002), and which source it is.
+    fn identify(&self, title: String, done: Done<(Source, Identified)>);
+    /// A series' cover image, from the source's address.
+    fn cover(&self, url: String, done: Done<Vec<u8>>);
 }
 
 /// No `online` worker: every request is refused with this message.
@@ -91,6 +100,14 @@ impl OnlineService for NoOnline {
     }
 
     fn configure(&self, _: OnlineConfig, _: NetworkConfig) {}
+
+    fn identify(&self, _: String, done: Done<(Source, Identified)>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn cover(&self, _: String, done: Done<Vec<u8>>) {
+        done(Err(self.0.clone()));
+    }
 }
 
 /// A job the session queued; the UI layer starts it on the service and sends
@@ -122,6 +139,20 @@ pub enum OnlineJob {
     },
     /// New settings.
     Configure(Box<(OnlineConfig, NetworkConfig)>),
+    /// Identify a series of the library (MET-001).
+    Identify {
+        /// The series.
+        series: u64,
+        /// Its title.
+        title: String,
+    },
+    /// Download the cover of a series once identified.
+    Cover {
+        /// The series.
+        series: u64,
+        /// The cover's address.
+        url: String,
+    },
 }
 
 /// The Online subtitles page in the session (MET-009).

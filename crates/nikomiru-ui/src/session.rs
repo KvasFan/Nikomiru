@@ -422,6 +422,9 @@ pub struct Session {
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
     replaying: bool,
+    /// Series identified whose cover is being downloaded (MET-001).
+    pending_identity:
+        std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
     /// The "Advanced mining" dialog (ANK-040).
     advanced: Option<crate::mining::AdvancedCard>,
     /// The word's place in its cue, for the merged sentences (ANK-041).
@@ -582,6 +585,7 @@ impl Session {
             hover: Hover::default(),
             popup_hovered: false,
             replaying: false,
+            pending_identity: std::collections::HashMap::new(),
             advanced: None,
             advanced_word: None,
             advanced_frame: None,
@@ -1159,8 +1163,24 @@ impl Session {
         self.auto_online = Some(self.sub_generation);
         self.online_jobs.push(crate::online::OnlineJob::Automatic {
             generation: self.online_generation,
-            query: crate::online::OnlineQuery::of_video(video.to_path_buf()),
+            query: self.online_query(video.to_path_buf()),
         });
+    }
+
+    /// The AniList id of the series of the video playing, once identified
+    /// (MET-001): Jimaku is asked by it first (MET-003).
+    fn anilist_id(&self) -> Option<u64> {
+        let uid = self.current.as_ref()?.uid.as_ref()?;
+        let library = self.services.library.as_ref()?;
+        library.anilist_id_of_video(uid).ok().flatten()
+    }
+
+    /// The online query of `video`, from its file name and its series.
+    fn online_query(&self, video: PathBuf) -> crate::online::OnlineQuery {
+        crate::online::OnlineQuery {
+            anilist_id: self.anilist_id(),
+            ..crate::online::OnlineQuery::of_video(video)
+        }
     }
 
     /// The Online subtitles page opens (MET-009): the search of the video
@@ -1172,7 +1192,7 @@ impl Session {
             _ => true,
         };
         if other {
-            self.online_page.query = video.map(crate::online::OnlineQuery::of_video);
+            self.online_page.query = video.map(|v| self.online_query(v));
             self.online_page.results = None;
         }
         self.online_page.status = None;
@@ -1184,11 +1204,13 @@ impl Session {
             self.online_page.status = Some((self.tr("online-no-video", &[]), false));
             return;
         };
+        let anilist_id = self.anilist_id();
         let query = crate::online::OnlineQuery {
             video,
             title,
             season,
             episode,
+            anilist_id,
         };
         self.online_page.query = Some(query.clone());
         self.online_page.results = None;
@@ -1444,6 +1466,179 @@ impl Session {
         }
     }
 
+    /// "Identify online" on a series (MET-001, MET-002): its title asked of
+    /// the metadata source of the settings.
+    pub fn library_identify(&mut self, series: u64) {
+        let title = self
+            .library_page
+            .home
+            .as_ref()
+            .and_then(|h| h.series.iter().find(|s| s.id == series))
+            .map(|s| s.record.title.clone());
+        let Some(title) = title else {
+            return;
+        };
+        self.library_page.status = None;
+        self.library_page.identify = Some(crate::catalog::Identify {
+            series,
+            source: None,
+            choices: Vec::new(),
+            busy: true,
+        });
+        self.online_jobs
+            .push(crate::online::OnlineJob::Identify { series, title });
+    }
+
+    /// What the source found for a series: one with exactly its title is
+    /// taken, otherwise the user chooses.
+    pub fn identified(
+        &mut self,
+        series: u64,
+        result: Result<
+            (
+                nikomiru_online::metadata::Source,
+                nikomiru_online::metadata::Identified,
+            ),
+            String,
+        >,
+    ) {
+        use nikomiru_online::metadata::Identified;
+        if self
+            .library_page
+            .identify
+            .as_ref()
+            .is_none_or(|i| i.series != series)
+        {
+            return;
+        }
+        match result {
+            Ok((source, Identified::Unique(info))) => self.take_identity(series, source, &info),
+            Ok((source, Identified::Choose(choices))) => {
+                self.library_page.identify = Some(crate::catalog::Identify {
+                    series,
+                    source: Some(source),
+                    choices,
+                    busy: false,
+                });
+            }
+            Ok((source, Identified::Nothing)) => {
+                self.library_page.identify = None;
+                let text = self.tr("library-identify-none", &[("source", source.name().into())]);
+                self.library_page.status = Some((text, false));
+            }
+            Err(e) => {
+                self.library_page.identify = None;
+                self.library_page.status = Some((e, false));
+            }
+        }
+    }
+
+    /// What was found online of a series forgotten.
+    pub fn library_forget(&mut self, series: u64) {
+        self.library_jobs.push(crate::catalog::LibraryJob::Edit(
+            crate::catalog::LibraryEdit::Identify {
+                id: series,
+                info: None,
+                cover: None,
+            },
+        ));
+    }
+
+    /// One of the results chosen by the user, or none (`None`).
+    pub fn library_identify_choose(&mut self, index: Option<usize>) {
+        let Some(identify) = self.library_page.identify.take() else {
+            return;
+        };
+        if let (Some(i), Some(source)) = (index, identify.source)
+            && let Some(info) = identify.choices.get(i)
+        {
+            let info = info.clone();
+            self.take_identity(identify.series, source, &info);
+        }
+    }
+
+    /// The series is `info`: its cover downloaded first, then both kept.
+    fn take_identity(
+        &mut self,
+        series: u64,
+        source: nikomiru_online::metadata::Source,
+        info: &nikomiru_online::metadata::SeriesInfo,
+    ) {
+        let record = nikomiru_library::series_info::SeriesInfoRecord {
+            source: source.key().into(),
+            anilist_id: info.anilist_id,
+            mal_id: info.mal_id,
+            romaji: info.romaji.clone(),
+            english: info.english.clone(),
+            native: info.native.clone(),
+            episodes: info.episodes,
+            year: info.year,
+            format: info.format.clone(),
+            page_url: info.page_url.clone(),
+            identified_at: self.now_ms(),
+        };
+        let text = self.tr("library-identified", &[("title", info.romaji.clone())]);
+        self.library_page.status = Some((text, true));
+        self.library_page.identify = Some(crate::catalog::Identify {
+            series,
+            source: Some(source),
+            choices: Vec::new(),
+            busy: true,
+        });
+        match &info.cover_url {
+            Some(url) => {
+                self.pending_identity.insert(series, record);
+                self.online_jobs.push(crate::online::OnlineJob::Cover {
+                    series,
+                    url: url.clone(),
+                });
+            }
+            None => self.keep_identity(series, record, None),
+        }
+    }
+
+    /// The cover of an identified series came, or not: the series keeps what
+    /// was found either way.
+    pub fn identity_cover(&mut self, series: u64, cover: Result<Vec<u8>, String>) {
+        let Some(record) = self.pending_identity.remove(&series) else {
+            return;
+        };
+        let cover = cover
+            .inspect_err(|e| tracing::info!("cover of series {series}: {e}"))
+            .ok();
+        self.keep_identity(series, record, cover);
+    }
+
+    fn keep_identity(
+        &mut self,
+        series: u64,
+        record: nikomiru_library::series_info::SeriesInfoRecord,
+        cover: Option<Vec<u8>>,
+    ) {
+        if cover.is_some() {
+            // the new cover is read again
+            self.library_page.covers.remove(&series);
+            self.library_page.covers_asked.retain(|&id| id != series);
+        }
+        self.library_page.identify = None;
+        self.library_jobs.push(crate::catalog::LibraryJob::Edit(
+            crate::catalog::LibraryEdit::Identify {
+                id: series,
+                info: Some(Box::new(record)),
+                cover,
+            },
+        ));
+    }
+
+    /// Unix ms now.
+    fn now_ms(&self) -> i64 {
+        self.services
+            .clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+    }
+
     /// A series opened on the page, or closed (`None`).
     pub fn library_series(&mut self, series: Option<u64>) {
         self.library_page.series = series.map(|id| (id, None));
@@ -1494,11 +1689,12 @@ impl Session {
                 }
                 page.home = Some(home);
             }
-            LibraryReply::Episodes(id, Ok(list)) => {
+            LibraryReply::Episodes(id, Ok(detail)) => {
                 if let Some((open, episodes)) = &mut page.series
                     && *open == id
                 {
-                    *episodes = Some(list);
+                    *episodes = Some(detail.episodes);
+                    page.series_info = detail.info;
                 }
             }
             LibraryReply::Imported(Ok(report)) => {

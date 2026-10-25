@@ -341,9 +341,14 @@ The online subtitles, their alignment with the audio and the secondary subtitle 
 - `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, behind a trait and with tests against a fake server; Jimaku searched by `anilist_id` first.
 - UI: series identification (automatic if unique, otherwise chosen by the user).
 
+**Status as of 2026-10-26**
+
+- Done: AniList and Jikan clients (`nikomiru-online::metadata`) behind one trait, with their fake routes; the identification rule (exact and unique, otherwise the user's choice); the `series_info` table; "Identify online" on a series' page, the results to choose from, "Forget", the cover downloaded; the source chosen in Settings → Subtitle services; Jimaku asked by `anilist_id` first.
+- T-MET-LIVE on 2026-10-26: AniList identified Sousou no Frieren (154587); Jikan's API (`api.jikan.moe`) did not answer at all, while its site did: an outage of the service, to run again.
+
 **Exit criteria**
 
-- [ ] T-MET-* green on fake servers; T-MET-LIVE-* (real network, nightly only and with keys) green.
+- [x] T-MET-* green on fake servers; [ ] T-MET-LIVE-* (real network) green: AniList yes, Jikan to run again once its API answers.
 - [ ] **Release 0.4.0**.
 
 ---

@@ -428,6 +428,114 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
 }
 
+/// The episodes, the year and the format of a series as found online.
+fn online_details(
+    s: &Scene<'_>,
+    episodes: Option<u32>,
+    year: Option<u32>,
+    format: Option<&str>,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(n) = episodes {
+        parts.push((s.tr)(
+            "library-online-episodes",
+            &[("count", n.to_string())],
+        ));
+    }
+    parts.extend(year.map(|y| y.to_string()));
+    parts.extend(format.map(str::to_string));
+    parts.join(" · ")
+}
+
+/// MET-001, MET-002: what AniList or Jikan said of the series, or the way
+/// to ask them; the results to choose from when none has exactly its title.
+fn online(ui: &mut Ui, s: &Scene<'_>, id: u64, out: &mut Vec<Command>) {
+    let page = s.page;
+    let p = palette::current();
+    let identify = page.identify.as_ref().filter(|i| i.series == id);
+    let info = page
+        .series_info
+        .as_ref()
+        .filter(|_| page.series.as_ref().is_some_and(|(open, _)| *open == id));
+    match info {
+        Some(info) => {
+            let names: Vec<&str> = std::iter::once(info.romaji.as_str())
+                .chain(info.native.as_deref())
+                .chain(info.english.as_deref())
+                .collect();
+            ui.label(RichText::new(names.join(" · ")).color(p.details));
+            let details = online_details(s, info.episodes, info.year, info.format.as_deref());
+            ui.horizontal_wrapped(|ui| {
+                if !details.is_empty() {
+                    ui.label(RichText::new(details).color(p.details));
+                }
+                if let Some(url) = &info.page_url {
+                    let source = nikomiru_online::metadata::Source::from_key(&info.source);
+                    let link = ui.link(tr(s, "library-online-page") + " " + source.name());
+                    if link.clicked() {
+                        out.push(Command::OpenExternal(url.clone()));
+                    }
+                }
+                if ui
+                    .add_enabled(
+                        identify.is_none(),
+                        Button::new(tr(s, "library-identify-again")),
+                    )
+                    .clicked()
+                {
+                    out.push(Command::LibraryIdentify(id));
+                }
+                if ui.button(tr(s, "library-forget")).clicked() {
+                    out.push(Command::LibraryForget(id));
+                }
+            });
+        }
+        None if identify.is_none() => {
+            let button = ui
+                .button(tr(s, "library-identify"))
+                .on_hover_text(tr(s, "library-identify-hint"));
+            if button.clicked() {
+                out.push(Command::LibraryIdentify(id));
+            }
+        }
+        None => {}
+    }
+    let Some(identify) = identify else {
+        return;
+    };
+    if identify.busy {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(tr(s, "library-identifying"));
+        });
+        return;
+    }
+    let source = identify.source.map_or("", |src| src.name()).to_string();
+    ui.label(
+        RichText::new((s.tr)("library-identify-choose", &[("source", source)])).color(p.details),
+    );
+    for (i, choice) in identify.choices.iter().enumerate() {
+        ui.horizontal(|ui| {
+            let label = (s.tr)("library-identify-this", &[("title", choice.romaji.clone())]);
+            let this = ui.button(tr(s, "library-identify-pick"));
+            this.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
+            if this.clicked() {
+                out.push(Command::LibraryIdentifyChoose(Some(i)));
+            }
+            ui.label(RichText::new(&choice.romaji).family(theme::bold()));
+            let mut details: Vec<String> = choice.native.iter().cloned().collect();
+            let rest = online_details(s, choice.episodes, choice.year, choice.format.as_deref());
+            if !rest.is_empty() {
+                details.push(rest);
+            }
+            ui.label(RichText::new(details.join(" · ")).color(p.details));
+        });
+    }
+    if ui.button(tr(s, "library-identify-none-of-these")).clicked() {
+        out.push(Command::LibraryIdentifyChoose(None));
+    }
+}
+
 fn series(
     ui: &mut Ui,
     s: &Scene<'_>,
@@ -447,6 +555,7 @@ fn series(
         return;
     }
     ui.label(RichText::new(&title).size(22.0).family(theme::bold()));
+    online(ui, s, id, out);
     let others: Vec<(u64, String)> = home
         .map(|h| {
             h.series
@@ -711,6 +820,71 @@ mod tests {
             series: vec![summary(1, "Alpha", 3, 1), summary(2, "Beta", 1, 0)],
             folders: vec![("/v".into(), FolderRecord::default())],
         }
+    }
+
+    // T-MET-001: a series asked online, the result chosen, forgotten
+    #[test]
+    fn a_series_is_identified_from_its_page() {
+        use crate::catalog::Identify;
+        use nikomiru_library::series_info::SeriesInfoRecord;
+        use nikomiru_online::metadata::{SeriesInfo, Source};
+        let episodes = vec![(
+            "video/Alpha - 01".into(),
+            video("/v/Alpha - 01.mkv", 1, 1, 0),
+        )];
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            series: Some((1, Some(episodes.clone()))),
+            ..LibraryPage::default()
+        });
+        h.run();
+        assert!(matches!(
+            click(&mut h, "library-identify")[..],
+            [Command::LibraryIdentify(1)]
+        ));
+        // two results, neither exactly "Alpha"
+        let choice = |romaji: &str| SeriesInfo {
+            romaji: romaji.into(),
+            ..SeriesInfo::default()
+        };
+        h.state_mut().page.identify = Some(Identify {
+            series: 1,
+            source: Some(Source::AniList),
+            choices: vec![choice("Alpha Season 1"), choice("Alpha Movie")],
+            busy: false,
+        });
+        h.run();
+        h.get_by_label("library-identify-choose");
+        h.get_all_by_label("library-identify-this")
+            .next()
+            .unwrap()
+            .click();
+        h.run();
+        assert!(matches!(
+            std::mem::take(&mut h.state_mut().out)[..],
+            [Command::LibraryIdentifyChoose(Some(0))]
+        ));
+        // identified: what was found, and the way to forget it
+        h.state_mut().page.identify = None;
+        h.state_mut().page.series_info = Some(SeriesInfoRecord {
+            source: "anilist".into(),
+            anilist_id: Some(7),
+            romaji: "Alpha Season 1".into(),
+            native: Some("アルファ".into()),
+            episodes: Some(12),
+            page_url: Some("https://anilist.co/anime/7".into()),
+            ..SeriesInfoRecord::default()
+        });
+        h.run();
+        h.get_by_label("Alpha Season 1 · アルファ");
+        assert!(matches!(
+            click(&mut h, "library-forget")[..],
+            [Command::LibraryForget(1)]
+        ));
+        assert!(matches!(
+            &click(&mut h, "library-online-page AniList")[..],
+            [Command::OpenExternal(url)] if url == "https://anilist.co/anime/7"
+        ));
     }
 
     // T-LIB-005

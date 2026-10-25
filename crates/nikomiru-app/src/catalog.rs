@@ -14,7 +14,9 @@ use std::thread::JoinHandle;
 use nikomiru_library::import::ImportReport;
 use nikomiru_library::{Grouping, Library, VideoRecord};
 use nikomiru_media::process::Cancel;
-use nikomiru_ui::catalog::{Cover, Home, LibraryEdit, LibraryService, SESSIONS_SHOWN, Stats};
+use nikomiru_ui::catalog::{
+    Cover, Home, LibraryEdit, LibraryService, SESSIONS_SHOWN, SeriesDetail, Stats,
+};
 use nikomiru_ui::i18n::Translator;
 
 /// How many videos "Continue watching" shows.
@@ -46,7 +48,7 @@ type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 enum Job {
     Home(Done<Home>),
-    Episodes(u64, Done<Vec<(String, VideoRecord)>>),
+    Episodes(u64, Done<SeriesDetail>),
     Import(PathBuf, Grouping, Done<ImportReport>),
     Edit(LibraryEdit, Done<()>),
     Cover(u64, Done<Cover>),
@@ -142,6 +144,12 @@ impl Worker {
             }
             LibraryEdit::Remove(uids) => uids.iter().try_for_each(|u| lib.remove_video(u)),
             LibraryEdit::DeleteSession(id) => lib.delete_segment(id),
+            LibraryEdit::Identify { id, info, cover } => {
+                if let Some(bytes) = cover {
+                    self.keep_cover(id, &bytes);
+                }
+                lib.set_series_info(id, info.as_deref())
+            }
         };
         result.map_err(|e| self.message(&e))
     }
@@ -203,6 +211,38 @@ impl Worker {
         Ok(path.to_path_buf())
     }
 
+    /// The episodes of a series and what is known of it online.
+    fn series(&self, id: u64) -> Result<SeriesDetail, String> {
+        let lib = &self.parts.library;
+        Ok(SeriesDetail {
+            episodes: lib.episodes(id).map_err(|e| self.message(&e))?,
+            info: lib.series_info(id).map_err(|e| self.message(&e))?,
+        })
+    }
+
+    /// A cover downloaded for series `id` (MET-001) becomes its own, if it
+    /// is an image.
+    fn keep_cover(&self, id: u64, bytes: &[u8]) {
+        if let Err(e) = Cover::decode(bytes) {
+            tracing::info!("the cover of series {id} is not an image: {e}");
+            return;
+        }
+        let path =
+            nikomiru_media::cover::path(&self.parts.cache_dir, &format!("online-series-{id}"));
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&path, bytes));
+        match written {
+            Ok(()) => {
+                if let Err(e) = self.parts.library.set_cover(id, &path.to_string_lossy()) {
+                    tracing::warn!("cover of series {id}: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("{}: {e}", path.display()),
+        }
+    }
+
     /// LIB-005: the cover kept, or the frame of the first episode.
     fn cover(&mut self, series: u64) -> Result<Cover, String> {
         let lib = Arc::clone(&self.parts.library);
@@ -258,13 +298,7 @@ impl Catalog {
                     }
                     match job {
                         Job::Home(done) => done(worker.home()),
-                        Job::Episodes(id, done) => done(
-                            worker
-                                .parts
-                                .library
-                                .episodes(id)
-                                .map_err(|e| worker.message(&e)),
-                        ),
+                        Job::Episodes(id, done) => done(worker.series(id)),
                         Job::Import(root, grouping, done) => done(worker.import(&root, grouping)),
                         Job::Edit(edit, done) => done(worker.edit(edit)),
                         Job::Cover(id, done) => done(worker.cover(id)),
@@ -313,7 +347,7 @@ impl LibraryService for Catalog {
         self.send(Job::Home(done));
     }
 
-    fn episodes(&self, series: u64, done: Done<Vec<(String, VideoRecord)>>) {
+    fn episodes(&self, series: u64, done: Done<SeriesDetail>) {
         self.send(Job::Episodes(series, done));
     }
 

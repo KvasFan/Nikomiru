@@ -468,9 +468,10 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Check | Expected | L |
 |---|---|---|---|
-| T-MET-001 | AniList | Fake GraphQL response → series identified only if there is an exact and unique result; otherwise chosen by the user | L4 |
-| T-MET-002 | Jikan | At most 1 request/s; after a 429, pause and cache respected (fake clock) | L4 |
+| T-MET-001 | AniList | Fake GraphQL response → series identified only if there is an exact and unique result; otherwise chosen by the user (L1, L4); the series' page asks, offers the choices, forgets (kittest); identified from the library with its cover, a title not exact chosen by the user, nothing online unasked (L6) | L1/L3/L4/L6 |
+| T-MET-002 | Jikan | At most 1 request/s; after a 429, no request until the pause ends; the cache answers a title asked again (fake clock) | L4 |
 | T-MET-003 | Jimaku | The key in `Authorization`, only to the Jimaku host; search by `query` with `anime=true`, then `anime=false`; every file of the first two entries; answers read leniently (Fushi's vectors); zip opened by names only (no `../`, no hidden files), the episode taken out of a season pack; RAR listed, never downloaded; 401 and 429 (`Retry-After`) named; HTTPS only outside loopback; language and episode of subtitle names (Fushi's vectors) | L1/L4 |
+| T-MET-003b | Jimaku by AniList id | An identified series: Jimaku is asked `anilist_id=` first, then by title (L4); from the library to the online page (L6) | L4/L6 |
 | T-MET-004 | OpenSubtitles | By hash and size, then by title, season and episode, the parameters sorted; `languages` always; the download link fetched without the key; the login when a user name is set, a wrong one refused; the quota used up (406); the hash: the size plus the first and last 64 KiB | L1/L4 |
 | T-MET-005 | API keys | Saved with permissions 0600 (see T-SEC-008); never in a debug print or the logs (see T-PRV-002), nor the proxy's password | L1 |
 | T-MET-007 | Automatic subtitles | Ranking and choice (the language, unknown on Jimaku as Japanese; the episode; never machine translated or RAR; a season pack); every provider failing is an error. L6: a video without subtitles gets them from the fake Jimaku, loaded and kept | L1/L4/L6 |

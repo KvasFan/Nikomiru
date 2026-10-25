@@ -147,6 +147,15 @@ impl Jimaku {
         Ok(Vec::new())
     }
 
+    /// The entries of the AniList series `id` (MET-003).
+    pub fn search_anilist(&self, id: u64) -> Result<Vec<Entry>, OnlineError> {
+        let mut url = self.endpoint("entries/search")?;
+        url.query_pairs_mut()
+            .append_pair("anilist_id", &id.to_string());
+        let answer = self.http.get(&url, &self.headers())?.ok(NAME)?;
+        parse_entries(&answer.json(NAME)?)
+    }
+
     /// The files of an entry.
     pub fn files(&self, entry: u64) -> Result<Vec<File>, OnlineError> {
         let url = self.endpoint(&format!("entries/{entry}/files"))?;
@@ -174,11 +183,15 @@ impl Provider for Jimaku {
 
     fn search(&mut self, request: &SearchRequest) -> Result<Vec<Candidate>, OnlineError> {
         let mut out = Vec::new();
-        for entry in self
-            .search_entries(&request.title)?
-            .into_iter()
-            .take(ENTRIES)
-        {
+        // the series identified first, then its title (MET-003)
+        let mut entries = match request.anilist_id {
+            Some(id) => self.search_anilist(id)?,
+            None => Vec::new(),
+        };
+        if entries.is_empty() {
+            entries = self.search_entries(&request.title)?;
+        }
+        for entry in entries.into_iter().take(ENTRIES) {
             for file in self.files(entry.id)? {
                 out.push(Candidate {
                     provider: ProviderId::Jimaku,
