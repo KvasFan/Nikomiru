@@ -279,6 +279,9 @@ struct Shared {
     mpv: Mpv,
     token: AtomicU64,
     pending: Mutex<Option<(LoadToken, LoadRequest)>>,
+    /// The values of the Player settings' options before any was set: the
+    /// value an option goes back to when the user unsets it (PLY-018).
+    defaults: std::collections::BTreeMap<String, String>,
 }
 
 impl Shared {
@@ -409,10 +412,20 @@ impl Player {
         for (name, format) in OBSERVED {
             client.observe_property(name, format, 0)?;
         }
+        let defaults = crate::settings::CONTROLS
+            .iter()
+            .filter(|c| c.key != "profile")
+            .filter_map(|c| {
+                mpv.get_property::<String>(c.key)
+                    .ok()
+                    .map(|v| (c.key.to_string(), v))
+            })
+            .collect();
         let shared = Arc::new(Shared {
             mpv,
             token: AtomicU64::new(0),
             pending: Mutex::new(None),
+            defaults,
         });
         let sink: Sink = Arc::new(sink);
         let (commands, queue) = mpsc::channel();
@@ -615,6 +628,29 @@ impl PlayerHandle {
             reply,
         ))?;
         Ok(result)
+    }
+
+    /// Sets an mpv option now (SET-002, PLY-018), in order with the other
+    /// commands: `profile` applies the profile, any other is `set`. Its result
+    /// comes on the returned channel, for a worker to wait on.
+    pub fn apply_option(
+        &self,
+        option: &crate::options::MpvOption,
+    ) -> Result<CommandReply, PlayerError> {
+        let (reply, result) = mpsc::channel();
+        let command = if option.key == "profile" {
+            Command::Reply("apply-profile", vec![option.value.clone()], reply)
+        } else {
+            Command::Reply("set", vec![option.key.clone(), option.value.clone()], reply)
+        };
+        self.send(command)?;
+        Ok(result)
+    }
+
+    /// The value of a Player settings option before any was set, as mpv
+    /// reported it when the core was made.
+    pub fn option_default(&self, key: &str) -> Option<String> {
+        self.shared.defaults.get(key).cloned()
     }
 
     /// Stores a string in the core under `user-data/nikomiru/<key>` (for the GUI

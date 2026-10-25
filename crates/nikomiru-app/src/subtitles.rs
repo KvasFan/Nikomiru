@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The subtitle loader: a thread that reads subtitle files with encoding
-//! detection (SUB-005, glibc iconv) and extracts embedded text tracks with
-//! ffmpeg (SUB-007), so the UI thread never waits. A new request cancels the
-//! extraction still running for an older one.
+//! detection (SUB-005, glibc iconv), extracts embedded text tracks with
+//! ffmpeg (SUB-007) and aligns cues with the audio (SUB-018), so the UI thread
+//! never waits. A new load cancels the extraction or alignment still running
+//! for an older one.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, mpsc};
@@ -12,20 +13,26 @@ use std::time::Duration;
 use nikomiru_media::extract::{Extractor, Stream};
 use nikomiru_media::process::Cancel;
 use nikomiru_media::tools::{Search, Tools, ToolsError, probe};
+use nikomiru_subs::align::{ANALYSIS_MS, AlignResult, BIN_MS, align};
 use nikomiru_subs::encoding::decode;
 use nikomiru_subs::{Format, parse};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::session::SubtitleSource;
-use nikomiru_ui::subtitles::{Loaded, Request, Source};
+use nikomiru_ui::subtitles::{AlignRequest, Loaded, Request, Source};
 
 use crate::linux::Iconv;
 
 type Done = Box<dyn FnOnce(Result<Loaded, String>) + Send>;
+type Aligned = Box<dyn FnOnce(Result<AlignResult, String>) + Send>;
+
+enum Task {
+    Load(Request, Done),
+    Align(AlignRequest, Aligned),
+}
 
 struct Job {
-    request: Request,
+    task: Task,
     cancel: Cancel,
-    done: Done,
 }
 
 /// Loads subtitles on its own thread.
@@ -33,13 +40,16 @@ struct Job {
 pub struct Loader {
     jobs: mpsc::Sender<Job>,
     running: Mutex<Cancel>,
+    /// The same for the secondary subtitle's loads (SUB-017).
+    running_secondary: Mutex<Cancel>,
 }
 
 impl std::fmt::Debug for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Job")
-            .field("request", &self.request)
-            .finish()
+        match &self.task {
+            Task::Load(request, _) => f.debug_tuple("Load").field(request).finish(),
+            Task::Align(request, _) => f.debug_tuple("Align").field(&request.input).finish(),
+        }
     }
 }
 
@@ -58,8 +68,10 @@ impl Loader {
                     cache_dir,
                 };
                 for job in rx {
-                    let result = worker.load(&job.request, &job.cancel);
-                    (job.done)(result);
+                    match job.task {
+                        Task::Load(request, done) => done(worker.load(&request, &job.cancel)),
+                        Task::Align(request, done) => done(worker.align(&request, &job.cancel)),
+                    }
                 }
             });
         if let Err(e) = spawned {
@@ -68,6 +80,7 @@ impl Loader {
         Self {
             jobs,
             running: Mutex::new(Cancel::new()),
+            running_secondary: Mutex::new(Cancel::new()),
         }
     }
 }
@@ -75,14 +88,30 @@ impl Loader {
 impl SubtitleSource for Loader {
     fn load(&self, request: Request, done: Done) {
         let cancel = Cancel::new();
-        if let Ok(mut running) = self.running.lock() {
+        let slot = if request.secondary {
+            &self.running_secondary
+        } else {
+            &self.running
+        };
+        if let Ok(mut running) = slot.lock() {
             running.cancel();
             *running = cancel.clone();
         }
         let _ = self.jobs.send(Job {
-            request,
+            task: Task::Load(request, done),
             cancel,
-            done,
+        });
+    }
+
+    fn align(&self, request: AlignRequest, done: Aligned) {
+        // a load after it makes it pointless: it shares the load's token
+        let cancel = match self.running.lock() {
+            Ok(running) => running.clone(),
+            Err(_) => Cancel::new(),
+        };
+        let _ = self.jobs.send(Job {
+            task: Task::Align(request, done),
+            cancel,
         });
     }
 }
@@ -140,6 +169,25 @@ impl Worker {
             track: parse(format_of(path), &decoded.text),
             encoding: Some(decoded.encoding),
         })
+    }
+
+    /// The offset of the cues against the audio of the first 20 minutes.
+    fn align(&mut self, request: &AlignRequest, cancel: &Cancel) -> Result<AlignResult, String> {
+        let tools = self
+            .tools
+            .get_or_insert_with(|| probe(&self.search))
+            .as_ref()
+            .map_err(|e| self.translator.error(e))?;
+        let levels = nikomiru_media::energy::levels(
+            &tools.ffmpeg,
+            &request.input,
+            request.stream,
+            ANALYSIS_MS,
+            BIN_MS,
+            cancel,
+        )
+        .map_err(|e| self.translator.error(&e))?;
+        Ok(align(&request.cues, &levels))
     }
 
     fn extract(

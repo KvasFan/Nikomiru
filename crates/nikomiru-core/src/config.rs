@@ -64,6 +64,10 @@ pub struct Config {
     pub anki: AnkiConfig,
     /// `[paths]`.
     pub paths: PathsConfig,
+    /// `[network]` (SET-007).
+    pub network: NetworkConfig,
+    /// `[online]` (ADR 0008).
+    pub online: OnlineConfig,
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
@@ -122,6 +126,11 @@ pub struct SubtitlesConfig {
     pub respect_ass_styles: bool,
     /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
     pub obscure: String,
+    /// The same for the secondary subtitle (SUB-017).
+    pub secondary_obscure: String,
+    /// Where the secondary subtitle goes: `"top"` of the video, or `"bottom"`
+    /// above the main one (SUB-017).
+    pub secondary_position: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -134,6 +143,8 @@ impl Default for SubtitlesConfig {
             font_size: 36.0,
             respect_ass_styles: false,
             obscure: "none".into(),
+            secondary_obscure: "none".into(),
+            secondary_position: "top".into(),
             other: toml::Table::new(),
         }
     }
@@ -276,6 +287,100 @@ impl AnkiConfig {
     }
 }
 
+/// `[network]` (SET-007).
+#[derive(Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct NetworkConfig {
+    /// The proxy of the online services (`http://host:port`, `socks5://…`);
+    /// empty: none. The environment's proxy variables are never used.
+    pub proxy: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl std::fmt::Debug for NetworkConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NetworkConfig")
+            .field("proxy", &without_userinfo(&self.proxy))
+            .finish_non_exhaustive()
+    }
+}
+
+/// Jimaku's address (MET-003).
+pub const JIMAKU_URL: &str = "https://jimaku.cc/api";
+
+/// OpenSubtitles' address (MET-004).
+pub const OPENSUBTITLES_URL: &str = "https://api.opensubtitles.com/api/v1";
+
+fn is_jimaku_url(url: &str) -> bool {
+    url == JIMAKU_URL
+}
+
+fn is_opensubtitles_url(url: &str) -> bool {
+    url == OPENSUBTITLES_URL
+}
+
+/// `[online]` (ADR 0008, MET-005).
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OnlineConfig {
+    /// The subtitle services used, in the order preferred (MET-011):
+    /// `jimaku`, `opensubtitles`; one left out is not used.
+    pub providers: Vec<String>,
+    /// Search and load subtitles when a video has none in the preferred
+    /// language (MET-007).
+    pub auto_subtitles: bool,
+    /// Jimaku's API key.
+    pub jimaku_api_key: String,
+    /// OpenSubtitles' consumer API key.
+    pub opensubtitles_api_key: String,
+    /// OpenSubtitles user name, for the download quota.
+    pub opensubtitles_username: String,
+    /// OpenSubtitles password.
+    pub opensubtitles_password: String,
+    /// Jimaku's address, another one for the tests.
+    #[serde(skip_serializing_if = "is_jimaku_url")]
+    pub jimaku_url: String,
+    /// OpenSubtitles' address, another one for the tests.
+    #[serde(skip_serializing_if = "is_opensubtitles_url")]
+    pub opensubtitles_url: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for OnlineConfig {
+    fn default() -> Self {
+        Self {
+            providers: vec!["jimaku".into(), "opensubtitles".into()],
+            auto_subtitles: false,
+            jimaku_api_key: String::new(),
+            opensubtitles_api_key: String::new(),
+            opensubtitles_username: String::new(),
+            opensubtitles_password: String::new(),
+            jimaku_url: JIMAKU_URL.into(),
+            opensubtitles_url: OPENSUBTITLES_URL.into(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for OnlineConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // never a key or the password (MET-005, PRV-002)
+        let set = |s: &str| if s.is_empty() { "" } else { "…" };
+        f.debug_struct("OnlineConfig")
+            .field("providers", &self.providers)
+            .field("auto_subtitles", &self.auto_subtitles)
+            .field("jimaku_api_key", &set(&self.jimaku_api_key))
+            .field("opensubtitles_api_key", &set(&self.opensubtitles_api_key))
+            .field("opensubtitles_username", &self.opensubtitles_username)
+            .field("opensubtitles_password", &set(&self.opensubtitles_password))
+            .finish_non_exhaustive()
+    }
+}
+
 /// `url` without the user name and password it may hold, for messages and
 /// logs (PRV-002): all before its last `@` after the scheme goes, whether it
 /// parses or not.
@@ -369,6 +474,8 @@ impl Default for Config {
             popup: PopupConfig::default(),
             anki: AnkiConfig::default(),
             paths: PathsConfig::default(),
+            network: NetworkConfig::default(),
+            online: OnlineConfig::default(),
             shortcuts: BTreeMap::new(),
             other: toml::Table::new(),
         }
@@ -579,6 +686,43 @@ Expression = "{expression}"
             (d.url.as_str(), d.deck.as_str()),
             ("http://127.0.0.1:8765", "Lapis")
         );
+    }
+
+    // T-MET-005
+    #[test]
+    fn online_settings_keep_their_secrets() {
+        let c = Config::from_toml(
+            r#"
+[network]
+proxy = "http://me:pw0@proxy.lan:3128"
+
+[online]
+auto_subtitles = true
+jimaku_api_key = "jk-s3cret"
+opensubtitles_api_key = "os-s3cret"
+opensubtitles_username = "me"
+opensubtitles_password = "pw-s3cret"
+"#,
+        )
+        .unwrap();
+        assert!(c.online.auto_subtitles);
+        assert_eq!(c.online.jimaku_url, JIMAKU_URL);
+        assert_eq!(c.online.opensubtitles_url, OPENSUBTITLES_URL);
+        let shown = format!("{c:?}");
+        for secret in ["jk-s3cret", "os-s3cret", "pw-s3cret", "pw0"] {
+            assert!(!shown.contains(secret), "{secret}");
+        }
+        // the addresses are written only when they are not the services'
+        let text = toml::to_string_pretty(&c).unwrap();
+        assert!(!text.contains("jimaku_url"), "{text}");
+        let mut test = c.clone();
+        test.online.jimaku_url = "http://127.0.0.1:9/api".into();
+        let text = toml::to_string_pretty(&test).unwrap();
+        assert!(text.contains("jimaku_url"), "{text}");
+        assert_eq!(Config::from_toml(&text).unwrap(), test);
+        let d = Config::default();
+        assert!(!d.online.auto_subtitles);
+        assert!(d.network.proxy.is_empty());
     }
 
     #[test]

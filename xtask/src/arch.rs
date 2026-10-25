@@ -35,12 +35,13 @@ const UNSAFE_ALLOWED: [(&str, &[&str]); 2] = [
 
 /// Pure-logic crates: they do not depend, not even indirectly, on the UI toolkit
 /// or mpv.
-const LOGIC_CRATES: [&str; 5] = [
+const LOGIC_CRATES: [&str; 6] = [
     "nikomiru-text",
     "nikomiru-subs",
     "nikomiru-dict",
     "nikomiru-anki",
     "nikomiru-library",
+    "nikomiru-online",
 ];
 
 /// Runs all checks and fails with the list of problems.

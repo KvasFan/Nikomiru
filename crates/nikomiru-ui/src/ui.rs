@@ -31,6 +31,8 @@ pub enum Inbound {
         source: Source,
         /// The cues, or a message.
         result: Result<Loaded, String>,
+        /// For the secondary subtitle (SUB-017).
+        secondary: bool,
     },
     /// A lookup ended.
     Lookup {
@@ -99,6 +101,43 @@ pub enum Inbound {
     LapisDone(Result<crate::mining::LapisMade, String>),
     /// `config.toml` was written, or not.
     ConfigSaved(Result<(), String>),
+    /// What an online search found (MET-009).
+    OnlineFound {
+        /// The video it was for.
+        generation: u64,
+        /// The results, or why not.
+        result: Result<crate::online::OnlineResults, String>,
+    },
+    /// A file downloaded for a video, from the page or automatically
+    /// (MET-007): `None` when automatic subtitles found nothing that fits.
+    OnlineDownloaded {
+        /// The video it was for.
+        generation: u64,
+        /// For automatic subtitles.
+        automatic: bool,
+        /// The file kept, or why not.
+        result: Result<Option<crate::online::Downloaded>, String>,
+    },
+    /// An alignment with the audio ended (SUB-018).
+    Aligned {
+        /// The subtitle load it was for.
+        generation: u64,
+        /// Asked automatically.
+        automatic: bool,
+        /// The offset found, or why not.
+        result: Result<nikomiru_subs::align::AlignResult, String>,
+    },
+    /// The options mpv refused when they were set now: name and reason.
+    OptionsApplied(Vec<(String, String)>),
+    /// A preset or an export was written, or not.
+    FileWritten {
+        /// Where.
+        path: PathBuf,
+        /// The preset's name, or `None` for an export.
+        preset: Option<String>,
+        /// How it went.
+        result: Result<(), String>,
+    },
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -126,6 +165,11 @@ impl std::fmt::Debug for Inbound {
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
             Inbound::ConfigSaved(_) => "ConfigSaved",
+            Inbound::OnlineFound { .. } => "OnlineFound",
+            Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
+            Inbound::OptionsApplied(_) => "OptionsApplied",
+            Inbound::Aligned { .. } => "Aligned",
+            Inbound::FileWritten { .. } => "FileWritten",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -228,6 +272,47 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// The Online subtitles page opened (MET-009).
+    OnlineOpen,
+    /// The Subtitle services tab of the settings opened (MET-011).
+    ServicesOpen,
+    /// A search from it.
+    OnlineSearch {
+        title: String,
+        season: Option<u32>,
+        episode: Option<u32>,
+    },
+    /// "Use" on one of its results.
+    OnlineUse(usize),
+    /// Save these online settings.
+    OnlineSave(
+        Box<(
+            nikomiru_core::config::OnlineConfig,
+            nikomiru_core::config::NetworkConfig,
+        )>,
+    ),
+    /// "Align with the audio" (SUB-018).
+    AlignSubtitles,
+    /// The secondary subtitle: a source key or `"off"` (SUB-017).
+    SelectSecondary(String),
+    /// The secondary subtitle's obscuring mode.
+    SecondaryObscure(crate::subtitles::Obscure),
+    /// The Player settings page opened (PLY-016, PLY-018).
+    PlayerOpen,
+    /// Apply this option set, and remember the preset it comes from.
+    PlayerApply(Box<(nikomiru_player::settings::OptionSet, Option<String>)>),
+    /// Show a saved preset in the preview.
+    PlayerLoadPreset(String),
+    /// "Import mpv.conf…": the file dialog opens.
+    PlayerImport,
+    /// Apply the preview.
+    PlayerPreviewApply,
+    /// Drop the preview.
+    PlayerPreviewCancel,
+    /// Save this set as a preset.
+    PlayerSavePreset(String, Box<nikomiru_player::settings::OptionSet>),
+    /// Export this set: the file dialog opens.
+    PlayerExport(Box<nikomiru_player::settings::OptionSet>),
     /// "Locate the file" for a link whose video is missing (ANK-052).
     LinkLocate,
     /// The offer to locate it was declined.
@@ -322,8 +407,13 @@ impl Ui {
                 generation,
                 source,
                 result,
+                secondary,
             } => {
-                self.session.subtitles_loaded(generation, source, result);
+                if secondary {
+                    self.session.secondary_loaded(generation, source, result);
+                } else {
+                    self.session.subtitles_loaded(generation, source, result);
+                }
                 true
             }
             Inbound::Lookup { generation, result } => {
@@ -391,6 +481,39 @@ impl Ui {
                 self.session.config_saved(result);
                 true
             }
+            Inbound::OnlineFound { generation, result } => {
+                self.session.online_found(generation, result);
+                true
+            }
+            Inbound::OnlineDownloaded {
+                generation,
+                automatic,
+                result,
+            } => {
+                self.session
+                    .online_downloaded(generation, automatic, result);
+                true
+            }
+            Inbound::Aligned {
+                generation,
+                automatic,
+                result,
+            } => {
+                self.session.aligned(generation, automatic, result);
+                true
+            }
+            Inbound::OptionsApplied(refused) => {
+                self.session.options_applied(refused);
+                true
+            }
+            Inbound::FileWritten {
+                path,
+                preset,
+                result,
+            } => {
+                self.session.file_written(path, preset, result);
+                true
+            }
             Inbound::Dropped(path) => {
                 self.dropped(&path);
                 true
@@ -406,6 +529,8 @@ impl Ui {
                     Dialog::Subtitles => self.session.open_subtitle_file(&path),
                     Dialog::Dictionary => self.session.dict_choose(path),
                     Dialog::Locate => self.session.located(&path),
+                    Dialog::MpvImport => self.session.player_import(&path),
+                    Dialog::MpvExport => self.session.player_export_to(&path),
                 }
                 true
             }
@@ -572,7 +697,11 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
-        self.session.popups_covered = self.view.dict_page_open || self.view.anki_page_open;
+        self.session.popups_covered = self.view.dict_page_open
+            || self.view.anki_page_open
+            || self.view.online_page_open
+            || self.view.player_page_open
+            || self.view.services_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -645,6 +774,35 @@ impl Ui {
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
+            Command::AlignSubtitles => s.align_subtitles(false),
+            Command::SelectSecondary(key) => s.select_secondary(&key),
+            Command::SecondaryObscure(mode) => s.set_secondary_obscure(mode),
+            Command::PlayerOpen => s.player_open(),
+            Command::PlayerApply(settings) => {
+                let (set, preset) = *settings;
+                s.player_apply(set, preset);
+            }
+            Command::PlayerLoadPreset(name) => s.player_load_preset(&name),
+            Command::PlayerImport => self.view.dialog = Some(Dialog::MpvImport),
+            Command::PlayerPreviewApply => s.player_preview_apply(),
+            Command::PlayerPreviewCancel => s.player_preview_cancel(),
+            Command::PlayerSavePreset(name, set) => s.player_save_preset(&name, *set),
+            Command::PlayerExport(set) => {
+                s.player_export(*set);
+                self.view.dialog = Some(Dialog::MpvExport);
+            }
+            Command::OnlineOpen => s.online_open(),
+            Command::ServicesOpen => s.services_open(),
+            Command::OnlineSearch {
+                title,
+                season,
+                episode,
+            } => s.online_search(title, season, episode),
+            Command::OnlineUse(index) => s.online_use(index),
+            Command::OnlineSave(settings) => {
+                let (online, network) = *settings;
+                s.online_save(online, network);
+            }
             Command::CardMenu { level, entry, item } => s.card_menu(level, entry, item),
         }
     }
@@ -655,6 +813,7 @@ impl Ui {
         for (generation, request) in self.session.take_subtitle_loads() {
             let waker = self.waker.clone();
             let source = request.source.clone();
+            let secondary = request.secondary;
             self.session.start_subtitle_load(
                 request,
                 Box::new(move |result| {
@@ -662,6 +821,7 @@ impl Ui {
                         generation,
                         source,
                         result,
+                        secondary,
                     });
                 }),
             );
@@ -711,6 +871,109 @@ impl Ui {
                     .anki()
                     .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
                 crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
+            }
+        }
+        for (generation, automatic, request) in self.session.take_align_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_align(
+                request,
+                Box::new(move |result| {
+                    waker.wake(Inbound::Aligned {
+                        generation,
+                        automatic,
+                        result,
+                    });
+                }),
+            );
+        }
+        for job in self.session.take_online_jobs() {
+            let waker = self.waker.clone();
+            let online = self.session.online();
+            match job {
+                crate::online::OnlineJob::Search { generation, query } => online.search(
+                    query,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineFound { generation, result });
+                    }),
+                ),
+                crate::online::OnlineJob::Download {
+                    generation,
+                    query,
+                    candidate,
+                } => online.download(
+                    query,
+                    *candidate,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineDownloaded {
+                            generation,
+                            automatic: false,
+                            result: result.map(Some),
+                        });
+                    }),
+                ),
+                crate::online::OnlineJob::Automatic { generation, query } => online.automatic(
+                    query,
+                    Box::new(move |result| {
+                        waker.wake(Inbound::OnlineDownloaded {
+                            generation,
+                            automatic: true,
+                            result,
+                        });
+                    }),
+                ),
+                crate::online::OnlineJob::Configure(settings) => {
+                    let (o, n) = *settings;
+                    online.configure(o, n);
+                }
+            }
+        }
+        let writes = self.session.take_file_writes();
+        let replies = self.session.take_option_replies();
+        if !writes.is_empty() || !replies.is_empty() {
+            let waker = self.waker.clone();
+            let translator = self.session.translator().clone();
+            // files and mpv's answers wait for others: never on the UI thread
+            let spawned = std::thread::Builder::new()
+                .name("player-settings".into())
+                .spawn(move || {
+                    let refused: Vec<(String, String)> = replies
+                        .into_iter()
+                        .filter_map(|(key, reply)| {
+                            match reply.recv_timeout(std::time::Duration::from_secs(10)) {
+                                Ok(Err(e)) => Some((key, e.to_string())),
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    if !refused.is_empty() {
+                        waker.wake(Inbound::OptionsApplied(refused));
+                    }
+                    for w in writes {
+                        let result = w
+                            .path
+                            .parent()
+                            .map_or(Ok(()), std::fs::create_dir_all)
+                            .and_then(|()| {
+                                nikomiru_core::fs::write_atomic(&w.path, w.text.as_bytes(), w.mode)
+                            })
+                            .map_err(|e| {
+                                translator.tr(
+                                    "player-write-error",
+                                    &[
+                                        ("path", w.path.display().to_string()),
+                                        ("reason", e.to_string()),
+                                    ],
+                                )
+                            });
+                        waker.wake(Inbound::FileWritten {
+                            path: w.path,
+                            preset: w.preset,
+                            result,
+                        });
+                    }
+                });
+            if let Err(e) = spawned {
+                tracing::error!("cannot start the player settings thread: {e}");
             }
         }
         if let Some((config, file)) = self.session.take_config_save() {

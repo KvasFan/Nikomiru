@@ -20,6 +20,7 @@ nikomiru-text.workspace = true
 nikomiru-library.workspace = true
 nikomiru-player.workspace = true
 nikomiru-media.workspace = true
+nikomiru-online.workspace = true
 nikomiru-subs.workspace = true
 egui.workspace = true
 egui_system_font_provider.workspace = true

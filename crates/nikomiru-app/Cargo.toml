@@ -30,6 +30,7 @@ nikomiru-core.workspace = true
 nikomiru-dict.workspace = true
 nikomiru-library.workspace = true
 nikomiru-media.workspace = true
+nikomiru-online.workspace = true
 nikomiru-player.workspace = true
 nikomiru-subs.workspace = true
 nikomiru-ui.workspace = true
@@ -55,6 +56,8 @@ libc.workspace = true
 tempfile.workspace = true
 # the fake AnkiConnect of the mining tests
 nikomiru-anki = { workspace = true, features = ["test-support"] }
+# the fake Jimaku and OpenSubtitles of the online subtitle tests
+nikomiru-online = { workspace = true, features = ["test-support"] }
 # the L6 tests write a large dictionary for an import to interrupt
 zip.workspace = true
 wayland-protocols-wlr.workspace = true

@@ -378,6 +378,13 @@ fn run(
         library: library.clone(),
         clock: Arc::new(SystemClock::new()),
     });
+    let online = nikomiru_app::online::Online::start(nikomiru_app::online::Parts {
+        online: config.online.clone(),
+        network: config.network.clone(),
+        language: config.general.study_language.clone(),
+        subtitles_dir: paths.subtitles_dir(),
+        translator: Translator::from_setting(&config_language, |k| std::env::var(k).ok()),
+    });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let services = Services {
         player: player.handle(),
@@ -398,6 +405,10 @@ fn run(
         },
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
+        online: Box::new(online),
+        subtitles_dir: paths.subtitles_dir(),
+        mpv_presets_dir: paths.mpv_presets_dir(),
+        user_mpv_conf: paths.user_mpv_conf(),
         config_file: paths.config_file(),
         mining_dir,
         config_writable,

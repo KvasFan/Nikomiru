@@ -240,8 +240,10 @@ pub fn load_options(cfg: &PlayerConfig) -> (Vec<MpvOption>, Vec<Line>) {
         MpvOption::new("tone-mapping", "auto"),
         MpvOption::new("audio-channels", "auto-safe"),
     ];
-    if cfg.quality_profile == "high-quality" {
-        out.push(MpvOption::new("profile", "high-quality"));
+    // PLY-018: `fast` or `high-quality`; `default` needs nothing
+    let profile = cfg.quality_profile.as_str();
+    if profile != "default" && BUILTIN_PROFILES.contains(&profile) {
+        out.push(MpvOption::new("profile", profile));
     }
     for (k, v) in &cfg.mpv_options {
         if classify(k).is_some() {
