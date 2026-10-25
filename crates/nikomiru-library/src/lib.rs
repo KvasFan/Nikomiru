@@ -17,6 +17,7 @@ pub mod import;
 pub mod policy;
 pub mod progress;
 pub mod scan;
+pub mod stats;
 pub mod uid;
 pub mod writer;
 
