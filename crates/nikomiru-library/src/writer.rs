@@ -114,11 +114,11 @@ mod tests {
         };
         writer.run(move |l| l.put_video("a", &record).unwrap());
         for ms in [1000, 2000, 3000] {
-            writer.run(move |l| l.save_position("a", ms, 0).unwrap());
+            writer.run(move |l| l.save_position("a", ms, None, 0).unwrap());
         }
         writer.wait();
         assert_eq!(lib.video("a").unwrap().unwrap().last_position_ms, 3000);
-        writer.run(|l| l.save_position("a", 4000, 0).unwrap());
+        writer.run(|l| l.save_position("a", 4000, None, 0).unwrap());
         drop(writer);
         assert_eq!(lib.video("a").unwrap().unwrap().last_position_ms, 4000);
     }

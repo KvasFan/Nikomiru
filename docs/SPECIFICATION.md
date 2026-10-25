@@ -248,7 +248,7 @@ nikomiru/
 ├── xtask/                  # cargo xtask: ci, fixtures, about, bench
 ├── crates/
 │   ├── nikomiru-core/       # shared types, config, paths, errors, clock
-│   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count
+│   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count, file names
 │   ├── nikomiru-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
 │   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
@@ -256,7 +256,7 @@ nikomiru/
 │   │                       # the OpenGL render context of the video
 │   ├── nikomiru-anki/       # AnkiConnect client, note composer, Lapis, return link
 │   ├── nikomiru-library/    # library, file names, progress, statistics
-│   ├── nikomiru-online/     # (M7) AniList/Jikan, Jimaku, OpenSubtitles
+│   ├── nikomiru-online/     # Jimaku, OpenSubtitles (M4b); AniList/Jikan (M7)
 │   ├── nikomiru-ui/         # egui interface: player page, subtitle overlay, popup, pages, controls
 │   └── nikomiru-app/        # binary: winit event loop, glutin (EGL) window, egui_glow, wiring, single instance
 ├── assets/                 # transforms/, anki/lapis/, i18n/*.ftl, icons
@@ -385,7 +385,7 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 |---|---|---|
 | LIB-001 | MUST open a single video file: from the file dialog, by drag & drop onto the window or as a command-line argument. Extensions offered in the dialog: mp4 mkv avi mov webm m4v ts m2ts mts flv wmv mpg mpeg ogv; the dialog MUST also allow "all files" | `kVideoExtensions` |
 | LIB-002 | MUST import a folder recursively, in two modes: **by series** (default) and **by folder** | `video_library_import.dart` |
-| LIB-003 | By series: the file name is parsed Anitomy-style (series, season, episode, group, resolution). If the season is missing, it is derived from the folder (`Season 2`, `S02`, `第2季`, trailing number). If a name cannot be parsed, the episode number is inferred by comparing it with neighboring files | `video_filename_parser.dart` |
+| LIB-003 | By series: the file name is parsed Anitomy-style (series, season, episode, group, resolution). If the season is missing, it is derived from the folder (`Season 2`, `S02`, `第2季`, trailing number). If a name cannot be parsed, the episode number is inferred by comparing it with neighboring files. A name that is only an episode (`01.mkv`, `第01集.mp4`) takes the series of its folder, or of the folder above a season folder (`Show/Season 2/01.mkv` is season 2 of `Show`; Fushi keeps `Season 2` as a series) | `video_filename_parser.dart` |
 | LIB-004 | Changing mode or rescanning MUST NOT lose progress, chosen subtitles or metadata. A scan MUST NOT recreate series the user has deleted | spec `2026-09-07-video-library-workflow.md` |
 | LIB-005 | The home page shows "Continue watching" (latest episodes started and not finished) and the series grid with covers. The cover is the frame at 10% of the first episode (ffmpeg, cached) until metadata are available | |
 | LIB-006 | Episode progress: saved at most once per second, only after the file is open and the resume seek has happened. On exit and on episode change it is saved immediately | `video_player_controller.dart` |
@@ -769,9 +769,10 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 | Table | Key | Value (main fields) |
 |---|---|---|
-| `meta` | `&str` | `schema_version`, `created_with` |
-| `series` | `u64` | title, native title, `anilist_id?`, `mal_id?`, cover, grouping mode, added on, deleted (tombstone, for LIB-004), preferences (audio, subtitle, `delay_ms`) |
-| `videos` | `&str` uid | `series_id?`, path, size, mtime, season, episode, title, duration, `last_position_ms`, `last_played_at`, `completed_at`, chosen audio, main and secondary `SubtitleChoice`, `delay_ms?`, `secondary_delay_ms?`, `speed?`, `volume?` |
+| `meta` | `&str` | `schema_version` (2 from 0.2), `created_with` |
+| `folders` | `&str` path | an imported folder (LIB-002): grouping mode, added on, last scan |
+| `series` | `u64` | title, grouping key (the series name in lower case, or the folder's path), grouping mode, folder, added on, deleted (tombstone, for LIB-004), `merged_into?` (LIB-011), cover, preferences (audio language, subtitle, `delay_ms`; LIB-010); from M7: native title, `anilist_id?`, `mal_id?` |
+| `videos` | `&str` uid | `series_id?`, path, size, mtime, season, episode, duration, `last_position_ms`, `last_played_at`, `completed_at`, chosen audio, main and secondary `SubtitleChoice`, `delay_ms?`, `speed?`, `volume?`, `moved_to?` (moved by hand, LIB-011), removed (LIB-012) |
 | `watch_coverage` | `&str` uid | merged `[(start_ms, end_ms)]` intervals |
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
@@ -779,7 +780,9 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
 
-`SubtitleChoice = File(path) | Embedded { ff_index, lang, title } | Online { provider, id, path } | Off`
+`SubtitleChoice = File(path) | Embedded { ff_index, lang, title } | Off` (a downloaded file is a `File`, MET-008)
+
+A scan of a folder keeps what the library knows (LIB-004): a file is found again by its path, or, moved, by its name, size and time; a series by its grouping key, so a renamed one keeps its name, a merged one gathers its episodes where it was merged, a deleted one is not made again; an episode moved by hand stays where it was put, a removed one stays out. Changing a folder's grouping hides the series of the other grouping without deleting them, so changing back loses nothing.
 
 ---
 

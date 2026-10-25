@@ -289,6 +289,9 @@ pub struct Session {
     link_clip: Option<LinkClip>,
     /// Where the next file opens, instead of where it was left.
     start_at: Option<f64>,
+    /// Why the next file opens: chosen, or the next or previous episode,
+    /// which start from the beginning (LIB-007).
+    opening: nikomiru_library::policy::Opening,
     /// The Anki settings page (ANK-006, ANK-011).
     pub anki_page: crate::mining::AnkiPage,
     /// The settings to write, taken by the UI layer.
@@ -452,6 +455,7 @@ impl Session {
             popups_covered: false,
             link_clip: None,
             start_at: None,
+            opening: nikomiru_library::policy::Opening::Chosen,
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
             config_saving: false,
@@ -568,9 +572,13 @@ impl Session {
                 }
             }
         }
+        let opening =
+            std::mem::replace(&mut self.opening, nikomiru_library::policy::Opening::Chosen);
         let request = LoadRequest {
+            // LIB-007: from the beginning near the end
             start: self.start_at.take().or_else(|| {
-                (record.last_position_ms > 0).then(|| record.last_position_ms as f64 / 1000.0)
+                let ms = nikomiru_library::policy::start_ms(&record, opening);
+                (ms > 0).then(|| ms as f64 / 1000.0)
             }),
             options,
             aid: record.aid,
@@ -1922,8 +1930,10 @@ impl Session {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64);
         let uid = uid.clone();
+        // the duration, for the watched state (LIB-008)
+        let duration = (self.view.duration > 0.0).then_some((self.view.duration * 1000.0) as u64);
         w.run(move |lib| {
-            if let Err(e) = lib.save_position(&uid, ms, at) {
+            if let Err(e) = lib.save_position(&uid, ms, duration, at) {
                 tracing::warn!("saving the position: {e}");
             }
         });
