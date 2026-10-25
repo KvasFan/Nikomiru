@@ -178,6 +178,9 @@ pub struct Services {
     pub subtitles_dir: PathBuf,
     /// Where the mpv presets are kept (PLY-016).
     pub mpv_presets_dir: PathBuf,
+    /// The user's own `mpv.conf` (`$XDG_CONFIG_HOME/mpv/mpv.conf`), offered
+    /// when Nikomiru sets no mpv option yet (PLY-016).
+    pub user_mpv_conf: PathBuf,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
     /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
@@ -210,7 +213,7 @@ struct Current {
 enum SavingPage {
     #[default]
     Anki,
-    Online,
+    Services,
     Player,
 }
 
@@ -302,6 +305,9 @@ pub struct Session {
     online_jobs: Vec<crate::online::OnlineJob>,
     /// The Online subtitles page (MET-009).
     pub online_page: crate::online::OnlinePage,
+    /// The last message of the Subtitle services tab, and whether it is good
+    /// news (MET-011).
+    pub services_status: Option<(String, bool)>,
     /// Videos opened so far: an online answer for another one is dropped.
     online_generation: u64,
     /// The subtitle load current when automatic subtitles were asked for:
@@ -454,6 +460,7 @@ impl Session {
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
             online_page: crate::online::OnlinePage::default(),
+            services_status: None,
             online_generation: 0,
             auto_online: None,
             player_page: crate::player_settings::PlayerPage::default(),
@@ -955,7 +962,7 @@ impl Session {
         };
         match self.saving_page {
             SavingPage::Anki => self.anki_page.status = Some(status),
-            SavingPage::Online => self.online_page.status = Some(status),
+            SavingPage::Services => self.services_status = Some(status),
             SavingPage::Player => self.player_page.status = Some(status),
         }
     }
@@ -1134,20 +1141,47 @@ impl Session {
             .push(crate::online::OnlineJob::Configure(Box::new((
                 online, network,
             ))));
-        self.saving_page = SavingPage::Online;
+        self.saving_page = SavingPage::Services;
         if self.services.config_writable {
             self.config_save = Some(self.services.config.clone());
         } else {
             let text = self.tr("anki-config-not-saved", &[]);
-            self.online_page.status = Some((text, false));
+            self.services_status = Some((text, false));
         }
     }
 
-    /// The Player settings page opens: the saved presets.
+    /// The Subtitle services tab of the settings opened (MET-011).
+    pub fn services_open(&mut self) {
+        self.services_status = None;
+    }
+
+    /// The Player settings page opens: the saved presets, and the option set
+    /// in use, which the page shows. While Nikomiru sets no mpv option, the
+    /// user's own `mpv.conf` is offered in the preview (PLY-016).
     pub fn player_open(&mut self) {
         self.player_page.presets = self.presets();
         self.player_page.preview = None;
         self.player_page.status = None;
+        let unset =
+            self.player_set().to_mpv_conf("").trim().is_empty() && self.player_preset().is_empty();
+        let path = self.services.user_mpv_conf.clone();
+        if unset
+            && path.is_file()
+            && let Ok(text) = self.read_conf(&path)
+        {
+            self.preview(path.display().to_string(), None, &text);
+            let text = self.tr("player-user-conf", &[]);
+            self.player_page.status = Some((text, true));
+        }
+    }
+
+    /// Where the import dialog starts: the folder of the user's `mpv.conf`.
+    pub fn mpv_conf_folder(&self) -> Option<PathBuf> {
+        self.services
+            .user_mpv_conf
+            .parent()
+            .filter(|d| d.is_dir())
+            .map(Path::to_path_buf)
     }
 
     fn presets(&self) -> Vec<String> {
@@ -2208,11 +2242,32 @@ impl Session {
         let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
             return;
         };
-        let entries: Vec<PathBuf> = video
-            .parent()
-            .and_then(|dir| std::fs::read_dir(dir).ok())
-            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+        let files = |dir: &Path| -> Vec<PathBuf> {
+            std::fs::read_dir(dir)
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                        .map(|e| e.path())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let folder = video.parent().map(Path::to_path_buf).unwrap_or_default();
+        let mut entries = files(&folder);
+        // the folders releases keep subtitles in (SUB-006), and the one named
+        // after this video inside them (`Subs/<video name>/`)
+        let stem = video
+            .file_stem()
+            .map(|s| s.to_os_string())
             .unwrap_or_default();
+        let mut own = Vec::new();
+        for name in select::SUBTITLE_FOLDERS {
+            let sub = folder.join(name);
+            if sub.is_dir() {
+                entries.extend(files(&sub));
+                own.extend(files(&sub.join(&stem)));
+            }
+        }
         // and the subtitles downloaded for it (MET-008)
         let downloaded = self
             .current
@@ -2226,6 +2281,24 @@ impl Session {
             })
             .unwrap_or_default();
         let mut externals = select::external_files(&video, &entries);
+        if externals.is_empty() {
+            // none with its name: those of its episode, or of a folder of its own
+            let only_video = !entries.iter().any(|p| {
+                p != &video
+                    && p.parent() == video.parent()
+                    && p.extension().is_some_and(|e| {
+                        let e = format!("*.{}", e.to_string_lossy().to_lowercase());
+                        crate::view::VIDEO_PATTERNS.contains(&e.as_str())
+                    })
+            });
+            let language =
+                |name: &str| nikomiru_online::language::subtitle_language(name).map(str::to_string);
+            let read = select::NameReader {
+                episode: &nikomiru_online::language::subtitle_episode,
+                language: &language,
+            };
+            externals = select::related_files(&video, &entries, &own, only_video, &read);
+        }
         externals.extend(select::downloaded_files(&downloaded));
         let mut sources: Vec<Source> = externals
             .iter()

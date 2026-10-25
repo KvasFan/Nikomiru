@@ -18,9 +18,12 @@ mod online_page;
 mod overlay;
 mod player_page;
 mod popups;
+mod services_page;
+pub(crate) mod settings;
 pub(crate) mod theme;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use egui::{CursorIcon, Id, Sense, ViewportCommand};
 
@@ -55,9 +58,11 @@ pub struct FileDialog {
     pub filters: Vec<(String, Vec<&'static str>)>,
     /// A dialog that saves: the name it suggests.
     pub save_as: Option<String>,
+    /// The folder it starts in, when not the portal's choice.
+    pub folder: Option<PathBuf>,
 }
 
-const VIDEO_PATTERNS: [&str; 14] = [
+pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
@@ -101,6 +106,10 @@ impl FileDialog {
             title,
             filters,
             save_as: (dialog == Dialog::MpvExport).then(|| "mpv.conf".to_string()),
+            folder: match dialog {
+                Dialog::MpvImport => s.mpv_conf_folder(),
+                _ => None,
+            },
         }
     }
 }
@@ -124,6 +133,12 @@ pub(crate) struct View {
     pub player: player_page::State,
     /// What it keeps.
     pub online: online_page::State,
+    /// The Subtitle services tab of the settings is shown (MET-011).
+    pub services_page_open: bool,
+    /// What it keeps.
+    pub services: services_page::State,
+    /// The tab of the settings shown last: ⚙ opens it again.
+    pub settings_tab: settings::SettingsTab,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
     /// Give the keyboard to the list's search field (Ctrl+F).
@@ -160,6 +175,8 @@ impl View {
                 // popups were closed by the session already (POP-012)
                 if self.online_page_open {
                     self.close_online_page();
+                } else if self.services_page_open {
+                    self.close_settings();
                 } else if self.player_page_open {
                     self.close_player_page();
                 } else if self.anki_page_open {
@@ -228,6 +245,40 @@ impl View {
         self.player = player_page::State::default();
     }
 
+    /// Opens the settings at `tab` (SET-008), in place of any other page
+    /// over the video but the dictionaries.
+    pub fn open_settings(&mut self, tab: settings::SettingsTab, out: &mut Vec<Command>) {
+        use settings::SettingsTab;
+        self.close_settings();
+        self.close_online_page();
+        self.settings_tab = tab;
+        match tab {
+            SettingsTab::Player => self.open_player_page(out),
+            SettingsTab::Services => {
+                self.services_page_open = true;
+                out.push(Command::ServicesOpen);
+            }
+            SettingsTab::Anki => self.open_anki_page(out),
+        }
+    }
+
+    /// Closes the settings, whichever tab is shown.
+    pub fn close_settings(&mut self) {
+        self.close_player_page();
+        self.close_anki_page();
+        self.services_page_open = false;
+        self.services = services_page::State::default();
+    }
+
+    /// What a page asked for after its frame.
+    pub(crate) fn leave(&mut self, leave: settings::Leave, out: &mut Vec<Command>) {
+        match leave {
+            settings::Leave::Stay => {}
+            settings::Leave::Close => self.close_settings(),
+            settings::Leave::To(tab) => self.open_settings(tab, out),
+        }
+    }
+
     pub fn close_dict_page(&mut self) {
         self.dict_page_open = false;
         self.dict = dict_page::State::default();
@@ -280,6 +331,7 @@ impl View {
             || self.anki_page_open
             || self.online_page_open
             || self.player_page_open
+            || self.services_page_open
         {
             self.popups.rects.clear();
             Vec::new()
@@ -295,6 +347,9 @@ impl View {
         }
         if self.player_page_open {
             player_page::show(&ctx, s, self, &mut out);
+        }
+        if self.services_page_open {
+            services_page::show(&ctx, s, self, &mut out);
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);

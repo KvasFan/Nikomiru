@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The Online subtitles page (MET-009, ADR 0008 §12): the search of the video
-//! playing, its results with "Use", and the online settings.
+//! playing and its results with "Use"; the services and their keys are a tab
+//! of the settings (MET-011).
 
 use std::path::PathBuf;
 
@@ -9,11 +10,11 @@ use egui::{
     Align, Button, Color32, Frame, Layout, Margin, Rect, RichText, ScrollArea, Stroke, TextEdit,
     Ui, UiBuilder, vec2,
 };
-use nikomiru_core::config::{NetworkConfig, OnlineConfig};
 use nikomiru_online::{Candidate, FileKind};
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
+use super::settings::{Leave, SettingsTab};
 use super::{View, theme};
 use crate::online::OnlinePage;
 use crate::session::Session;
@@ -38,10 +39,6 @@ pub(crate) struct State {
     title: String,
     season: String,
     episode: String,
-    /// The settings being edited.
-    draft: Option<(OnlineConfig, NetworkConfig)>,
-    /// The keys and the password are shown.
-    show_keys: bool,
     /// The files loaded from the page when it opened: one more closes it.
     seen_loaded: Option<u64>,
 }
@@ -50,8 +47,6 @@ pub(crate) struct State {
 pub(crate) struct Scene<'a> {
     /// The page's state in the session.
     pub page: &'a OnlinePage,
-    /// The online settings as saved.
-    pub saved: (&'a OnlineConfig, &'a NetworkConfig),
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -60,11 +55,12 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
     let scene = Scene {
         page: &s.online_page,
-        saved: s.online_config(),
         tr: &tr,
     };
-    if draw(ctx, &scene, &mut view.online, out) {
-        view.close_online_page();
+    match draw(ctx, &scene, &mut view.online, out) {
+        Leave::Stay => {}
+        Leave::Close => view.close_online_page(),
+        Leave::To(tab) => view.open_settings(tab, out),
     }
 }
 
@@ -89,9 +85,6 @@ fn number(text: &str) -> Option<u32> {
 /// Brings the page's fields up to date with the session; returns whether a
 /// file was just loaded from the page, which closes it.
 fn update(s: &Scene<'_>, state: &mut State) -> bool {
-    if state.draft.is_none() {
-        state.draft = Some((s.saved.0.clone(), s.saved.1.clone()));
-    }
     if let Some(q) = &s.page.query
         && state.query_for.as_ref() != Some(&q.video)
     {
@@ -104,14 +97,18 @@ fn update(s: &Scene<'_>, state: &mut State) -> bool {
     s.page.loaded != seen
 }
 
-/// Draws the page; returns whether it closes.
+/// Draws the page; returns what it asks for.
 pub(crate) fn draw(
     ctx: &egui::Context,
     s: &Scene<'_>,
     state: &mut State,
     out: &mut Vec<Command>,
-) -> bool {
-    let mut close = update(s, state);
+) -> Leave {
+    let mut leave = if update(s, state) {
+        Leave::Close
+    } else {
+        Leave::Stay
+    };
     let page = s.page;
     let screen = ctx.content_rect();
     let width = 820.0_f32.min(screen.width() - 32.0).max(0.0);
@@ -141,7 +138,11 @@ pub(crate) fn draw(
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button(tr(s, "online-close")).clicked() {
-                            close = true;
+                            leave = Leave::Close;
+                        }
+                        // the services and their keys (MET-011)
+                        if ui.button(tr(s, "online-services")).clicked() {
+                            leave = Leave::To(SettingsTab::Services);
                         }
                         if page.busy {
                             ui.spinner();
@@ -160,7 +161,7 @@ pub(crate) fn draw(
                     .show(ui, |ui| body(ui, s, state, out));
             });
     });
-    close
+    leave
 }
 
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
@@ -206,7 +207,6 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             row(ui, s, i, c, page.busy, out);
         }
     }
-    settings(ui, s, state, out);
 }
 
 /// One result: provider and file, the details, "Use".
@@ -263,65 +263,6 @@ fn row(
         });
 }
 
-/// The online settings (MET-005, MET-007, SET-007).
-fn settings(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
-    let show = state.show_keys;
-    let Some((online, network)) = state.draft.as_mut() else {
-        return;
-    };
-    section(ui, &tr(s, "online-settings"));
-    ui.checkbox(&mut online.auto_subtitles, tr(s, "online-auto"));
-    egui::Grid::new("online-settings")
-        .num_columns(2)
-        .spacing(vec2(12.0, 8.0))
-        .show(ui, |ui| {
-            let secret = |ui: &mut Ui, name: &str, value: &mut String, hide: bool| {
-                let label = ui.label(name);
-                ui.add(
-                    TextEdit::singleline(value)
-                        .password(hide)
-                        .desired_width(320.0),
-                )
-                .labelled_by(label.id);
-                ui.end_row();
-            };
-            secret(
-                ui,
-                &tr(s, "online-jimaku-key"),
-                &mut online.jimaku_api_key,
-                !show,
-            );
-            secret(
-                ui,
-                &tr(s, "online-os-key"),
-                &mut online.opensubtitles_api_key,
-                !show,
-            );
-            secret(
-                ui,
-                &tr(s, "online-os-user"),
-                &mut online.opensubtitles_username,
-                false,
-            );
-            secret(
-                ui,
-                &tr(s, "online-os-password"),
-                &mut online.opensubtitles_password,
-                !show,
-            );
-            secret(ui, &tr(s, "online-proxy"), &mut network.proxy, false);
-        });
-    ui.checkbox(&mut state.show_keys, tr(s, "online-show-keys"));
-    ui.add(egui::Label::new(RichText::new(tr(s, "online-keys-hint")).color(DETAILS)).wrap());
-    if ui
-        .add_enabled(!s.page.busy, Button::new(tr(s, "online-save")))
-        .clicked()
-        && let Some(draft) = state.draft.clone()
-    {
-        out.push(Command::OnlineSave(Box::new(draft)));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,10 +274,9 @@ mod tests {
 
     struct Test {
         page: OnlinePage,
-        saved: (OnlineConfig, NetworkConfig),
         state: State,
         out: Vec<Command>,
-        closed: bool,
+        leave: Option<Leave>,
     }
 
     fn harness(page: OnlinePage) -> Harness<'static, Test> {
@@ -349,17 +289,18 @@ mod tests {
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
                     let scene = Scene {
                         page: &t.page,
-                        saved: (&t.saved.0, &t.saved.1),
                         tr: &tr,
                     };
-                    t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
+                    match draw(ui.ctx(), &scene, &mut t.state, &mut t.out) {
+                        Leave::Stay => {}
+                        other => t.leave = Some(other),
+                    }
                 },
                 Test {
                     page,
-                    saved: (OnlineConfig::default(), NetworkConfig::default()),
                     state: State::default(),
                     out: Vec::new(),
-                    closed: false,
+                    leave: None,
                 },
             )
     }
@@ -385,9 +326,9 @@ mod tests {
         }
     }
 
-    // T-MET-009
+    // T-MET-009, T-SET-008
     #[test]
-    fn the_page_searches_uses_a_result_and_saves_the_settings() {
+    fn the_page_searches_and_uses_a_result() {
         let page = OnlinePage {
             query: Some(OnlineQuery {
                 video: PathBuf::from("/v/Show - 01.mkv"),
@@ -426,18 +367,15 @@ mod tests {
         uses[1].click();
         h.run();
         assert!(h.state().out.is_empty());
-        // the settings
-        h.get_by_label("online-auto").click();
+        // the services and their keys are in the settings (MET-011)
+        assert!(h.query_by_label("online-jimaku-key").is_none());
+        h.get_by_label("online-services").click();
         h.run();
-        let out = click(&mut h, "online-save");
-        match out.as_slice() {
-            [Command::OnlineSave(settings)] => assert!(settings.0.auto_subtitles),
-            other => panic!("{other:?}"),
-        }
+        assert_eq!(h.state().leave, Some(Leave::To(SettingsTab::Services)));
         // a file loaded from the page closes it
-        assert!(!h.state().closed);
+        h.state_mut().leave = None;
         h.state_mut().page.loaded += 1;
         h.run();
-        assert!(h.state().closed);
+        assert_eq!(h.state().leave, Some(Leave::Close));
     }
 }

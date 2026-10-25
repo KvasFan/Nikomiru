@@ -213,6 +213,7 @@ pub fn state() -> Result<Value, String> {
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
                 "source": s.subs.source.as_ref().map(|x| x.key()),
+                "menu": s.subtitle_menu(),
                 "encoding": s.subs.encoding,
                 "delay_ms": s.subs.timeline().delay_ms,
                 "cues": s.subs.timeline().cues().len(),
@@ -247,6 +248,13 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
+            "settings_tab": ui.view.settings_tab.key(),
+            "sub_list_open": ui.view.sub_list_open,
+            "services_page": json!({
+                "open": ui.view.services_page_open,
+                "status": s.services_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
+                "providers": s.online_config().0.providers,
+            }),
             "player_page": json!({
                 "open": ui.view.player_page_open,
                 "presets": s.player_page.presets,
@@ -258,6 +266,7 @@ pub fn state() -> Result<Value, String> {
                     })).collect::<Vec<_>>(),
                 })),
                 "set": s.player_set().values,
+                "import_folder": s.mpv_conf_folder(),
                 "raw": s.player_set().raw,
                 "preset": s.player_preset(),
             }),
@@ -410,6 +419,41 @@ pub fn player(
         ui.run(command);
         Ok(())
     })?
+}
+
+/// The settings (SET-008): the tab `tab` (`player`, `services`, `anki`)
+/// opened as ⚙ or a tab does, or `close`d.
+pub fn settings(tab: &str) -> Result<(), String> {
+    let tab = tab.to_string();
+    call(move |ui| {
+        if tab == "close" {
+            ui.view.close_settings();
+            return Ok(());
+        }
+        let tab = crate::view::settings::SettingsTab::from_key(&tab)
+            .ok_or_else(|| format!("no settings tab {tab}"))?;
+        let mut out = Vec::new();
+        ui.view.open_settings(tab, &mut out);
+        for c in out {
+            ui.run(c);
+        }
+        Ok(())
+    })?
+}
+
+/// Saves the Subtitle services tab (MET-011) as its Save button does, with
+/// the services `providers` in their order and `auto` for the automatic
+/// subtitles, the rest as saved.
+pub fn services(providers: Vec<String>, auto: Option<bool>) -> Result<(), String> {
+    call(move |ui| {
+        let (online, network) = ui.session.online_config();
+        let (mut online, network) = (online.clone(), network.clone());
+        online.providers = providers;
+        if let Some(auto) = auto {
+            online.auto_subtitles = auto;
+        }
+        ui.run(Command::OnlineSave(Box::new((online, network))));
+    })
 }
 
 /// The Anki settings page (ANK-006, ANK-011): `open` and `close` as its

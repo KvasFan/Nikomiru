@@ -10,6 +10,7 @@ use egui::{
     WidgetInfo, pos2,
 };
 
+use super::settings::SettingsTab;
 use super::{Dialog, View};
 use crate::session::Session;
 use crate::shortcuts::Action;
@@ -292,11 +293,11 @@ pub(crate) fn show(
                                 view.open_dict_page(out);
                             }
                             if icon(ui, true, "Anki", &tr("anki-open")) {
-                                view.open_anki_page(out);
+                                view.open_settings(SettingsTab::Anki, out);
                             }
-                            // PLY-016, PLY-018
-                            if icon(ui, true, "⚙", &tr("player-page-title")) {
-                                view.open_player_page(out);
+                            // SET-008: the tab shown last
+                            if icon(ui, true, "⚙", &tr("settings-title")) {
+                                view.open_settings(view.settings_tab, out);
                             }
                             let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
                                 subtitle_menu(ui, s, view, out);

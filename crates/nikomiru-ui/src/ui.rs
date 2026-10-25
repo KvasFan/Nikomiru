@@ -274,6 +274,8 @@ pub(crate) enum Command {
     AnkiSave(nikomiru_core::config::AnkiConfig),
     /// The Online subtitles page opened (MET-009).
     OnlineOpen,
+    /// The Subtitle services tab of the settings opened (MET-011).
+    ServicesOpen,
     /// A search from it.
     OnlineSearch {
         title: String,
@@ -698,7 +700,8 @@ impl Ui {
         self.session.popups_covered = self.view.dict_page_open
             || self.view.anki_page_open
             || self.view.online_page_open
-            || self.view.player_page_open;
+            || self.view.player_page_open
+            || self.view.services_page_open;
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -789,6 +792,7 @@ impl Ui {
                 self.view.dialog = Some(Dialog::MpvExport);
             }
             Command::OnlineOpen => s.online_open(),
+            Command::ServicesOpen => s.services_open(),
             Command::OnlineSearch {
                 title,
                 season,

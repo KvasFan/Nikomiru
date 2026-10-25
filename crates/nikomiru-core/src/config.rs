@@ -325,6 +325,9 @@ fn is_opensubtitles_url(url: &str) -> bool {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OnlineConfig {
+    /// The subtitle services used, in the order preferred (MET-011):
+    /// `jimaku`, `opensubtitles`; one left out is not used.
+    pub providers: Vec<String>,
     /// Search and load subtitles when a video has none in the preferred
     /// language (MET-007).
     pub auto_subtitles: bool,
@@ -350,6 +353,7 @@ pub struct OnlineConfig {
 impl Default for OnlineConfig {
     fn default() -> Self {
         Self {
+            providers: vec!["jimaku".into(), "opensubtitles".into()],
             auto_subtitles: false,
             jimaku_api_key: String::new(),
             opensubtitles_api_key: String::new(),
@@ -367,6 +371,7 @@ impl std::fmt::Debug for OnlineConfig {
         // never a key or the password (MET-005, PRV-002)
         let set = |s: &str| if s.is_empty() { "" } else { "…" };
         f.debug_struct("OnlineConfig")
+            .field("providers", &self.providers)
             .field("auto_subtitles", &self.auto_subtitles)
             .field("jimaku_api_key", &set(&self.jimaku_api_key))
             .field("opensubtitles_api_key", &set(&self.opensubtitles_api_key))

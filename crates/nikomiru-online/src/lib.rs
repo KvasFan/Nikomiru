@@ -36,6 +36,36 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
+    /// Every provider, in the order used when the settings name none.
+    pub const ALL: [ProviderId; 2] = [ProviderId::Jimaku, ProviderId::OpenSubtitles];
+
+    /// Its name in `[online] providers` (MET-011).
+    pub fn key(self) -> &'static str {
+        match self {
+            ProviderId::Jimaku => "jimaku",
+            ProviderId::OpenSubtitles => "opensubtitles",
+        }
+    }
+
+    /// The provider of a name in `[online] providers`, in any case.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|p| p.key().eq_ignore_ascii_case(key.trim()))
+    }
+
+    /// The providers `[online] providers` names, in its order, once each;
+    /// unknown names are left out.
+    pub fn from_keys(keys: &[String]) -> Vec<Self> {
+        let mut out = Vec::new();
+        for p in keys.iter().filter_map(|k| Self::from_key(k)) {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+        out
+    }
+
     /// The name shown.
     pub fn name(self) -> &'static str {
         match self {
@@ -58,6 +88,9 @@ pub struct SearchRequest {
     pub hash: Option<VideoHash>,
     /// The language wanted (ISO 639-1, `ja`).
     pub language: String,
+    /// The providers in the user's order of preference (MET-011), which
+    /// breaks the ties of the ranking; empty: [`ProviderId::ALL`]'s order.
+    pub providers: Vec<ProviderId>,
 }
 
 /// What a file of a provider is.
