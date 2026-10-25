@@ -33,3 +33,26 @@ fn extraction_arguments() {
     // every path goes through `file:`, nothing through a shell
     insta::assert_snapshot!(shown.join("\n"));
 }
+
+// T-ANK-040: the picture at the start of a sentence, taken from the video
+#[test]
+fn a_frame_is_taken_at_its_time_whole() {
+    let args: Vec<String> = nikomiru_media::clip::frame_args(
+        Path::new("/videos/-weird: name.mkv"),
+        61_250,
+        Path::new("/cache/f.png"),
+    )
+    .into_iter()
+    .map(|a| a.to_string_lossy().into_owned())
+    .collect();
+    let at = args.iter().position(|a| a == "-ss").unwrap();
+    assert_eq!(args[at + 1], "61.250");
+    let input = args.iter().position(|a| a == "-i").unwrap();
+    assert!(at < input, "the seek before the input is exact and fast");
+    assert_eq!(args[input + 1], "file:/videos/-weird: name.mkv");
+    assert_eq!(args.last().unwrap(), "file:/cache/f.png");
+    assert!(
+        !args.iter().any(|a| a.contains("scale")),
+        "the frame keeps its size"
+    );
+}

@@ -578,6 +578,15 @@ fn screenshots_of_the_interface() {
             desk.capture(&dir.join("popup-light.png"));
         }
     }
+    // the card made by hand (ANK-040)
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    h.state_until("the dialog", |s| s["advanced"].is_object());
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "next" }));
+    h.state_until("two lines", |s| s["advanced"]["last"] == 1);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("mining-advanced.png"));
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "cancel" }));
+    h.state_until("the dialog closed", |s| s["advanced"].is_null());
     h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
     h.wait("card-created");
     h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
@@ -2098,4 +2107,77 @@ fn the_settings_apply_without_a_restart() {
     assert!(text.contains("theme = \"light\" # at night\n"), "{text}");
     assert!(text.contains("ui_scale = 150"), "{text}");
     assert!(text.contains("font_size = 54"), "{text}");
+}
+
+// T-ANK-040, T-ANK-041: Shift+click makes the card by hand
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    let s = h.state_until("the dialog", |s| s["advanced"].is_object());
+    assert_eq!(s["advanced"]["sentence"], "食べました", "{s}");
+    assert_eq!(
+        s["advanced"]["clip"],
+        serde_json::json!([1880, 2700]),
+        "{s}"
+    );
+    // the line after joins the sentence and the clip
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "next" }));
+    let s = h.state_until("two lines", |s| s["advanced"]["last"] == 1);
+    let sentence = s["advanced"]["sentence"].as_str().unwrap().to_string();
+    assert!(sentence.starts_with("食べました\n"), "{s}");
+    assert!(s["advanced"]["clip"][1].as_i64().unwrap() > 2700, "{s}");
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "frame-start" }));
+    h.cmd(serde_json::json!({ "cmd": "advanced", "edit": "audio-off" }));
+    h.state_until("chosen", |s| s["advanced"]["audio"] == false);
+    // Esc closes the dialog, not the popup
+    h.key("Escape");
+    h.state_until("the dialog closed", |s| s["advanced"].is_null());
+    assert!(!h.state()["popups"].as_array().unwrap().is_empty());
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0, "item": "advanced" }));
+    h.state_until("the dialog again", |s| s["advanced"].is_object());
+    for edit in ["next", "frame-start", "audio-off", "create"] {
+        h.cmd(serde_json::json!({ "cmd": "advanced", "edit": edit }));
+    }
+    let created = h.wait("card-created");
+    let note_id = created["note_id"].as_u64().unwrap();
+    let anki = fake.collection();
+    let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+    let field = |name: &str| {
+        note.fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        field("Sentence").starts_with("<b>食べました</b><br>"),
+        "{}",
+        field("Sentence")
+    );
+    assert_eq!(field("SentenceAudio"), "");
+    assert!(
+        field("Picture").starts_with("<img src="),
+        "{}",
+        field("Picture")
+    );
+    drop(anki);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

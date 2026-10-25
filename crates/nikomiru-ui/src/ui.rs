@@ -289,6 +289,13 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// Shift+click on it: the "Advanced mining" dialog (ANK-040).
+    CardAdvanced {
+        level: usize,
+        entry: usize,
+    },
+    /// A change in that dialog (ANK-040, ANK-041).
+    Advanced(crate::mining::AdvancedEdit),
     /// The Anki settings page opened.
     AnkiOpen,
     /// "Test the connection" with these settings (ANK-006).
@@ -806,7 +813,9 @@ impl Ui {
             || self.view.player_page_open
             || self.view.services_page_open
             || self.view.audio_page_open
-            || self.view.library_page_open;
+            || self.view.prefs_open.is_some()
+            || self.view.library_page_open
+            || self.session.advanced_card().is_some();
     }
 
     pub(crate) fn apply(&mut self, command: Command) {
@@ -873,6 +882,8 @@ impl Ui {
             Command::DictSetCollapse(id, state) => s.dict_set_collapse(&id, &state),
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
             Command::CardButton { level, entry } => s.card_button(level, entry),
+            Command::CardAdvanced { level, entry } => s.card_advanced(level, entry),
+            Command::Advanced(edit) => s.advanced_edit(edit),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),

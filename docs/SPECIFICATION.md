@@ -684,8 +684,8 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ANK-037 | Overwriting the last card: `notesInfo`, rejection if the note type is different, then `updateNoteFields` with **all** fields (unmapped ones become `''`), `addTags`, and `notesInfo` again to check the write. Once `updateNoteFields` may have reached Anki, a failure is an unknown outcome: the media stay and the message says to check the card. Scope: only the last card made since Nikomiru started, the one Anki confirmed last even if its popup has closed. `mined_cards` follows. |
 | ANK-038 | "Open in Anki": `guiBrowse` with `nid:<id>`; for a word, `findNotes` with Anki's duplicate search (`dupe:<model id>,<first field>` for each note type, from `modelNamesAndIds`, within the deck when the scope is `deck`) and then `guiBrowse` with the ids found. |
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
-| ANK-040 | "Advanced mining" dialog (Shift+click on +): editing of start/end with preview, frame choice, exclusion of audio or image. Milestone M6. |
-| ANK-041 | Adding the previous or next cues to the sentence (merging text and interval). Milestone M6. |
+| ANK-040 | "Advanced mining" dialog (Shift+click on the card button, or Ctrl+Shift+Enter): the start and end of the clip with a preview (played from its start, paused at its end, as "Replay"), the picture (the frame of the click, saved when the dialog opens; the frame at the start of the sentence, taken from the video by ffmpeg; none), the sentence audio left out or not (a video without audio then makes a card). Esc or Cancel closes it; the popups wait under it. Milestone M6. |
+| ANK-041 | In that dialog, the cue before or after the sentence added, or its first or last cue taken away again: the text a cue per line, the word still bold at its place; the clip from the first cue to the last, padded, at most 30 s. Milestone M6. |
 | ANK-042 | WebM video clips and animated covers (AVIF/WebP/GIF): post-1.0. |
 
 #### 6.9.5 Return to the scene

@@ -16,6 +16,7 @@ mod dict_page;
 mod library_page;
 mod link;
 mod list;
+mod mining_dialog;
 mod online_page;
 mod overlay;
 pub(crate) mod palette;
@@ -430,6 +431,7 @@ impl View {
             || self.audio_page_open
             || self.prefs_open.is_some()
             || self.library_page_open
+            || s.advanced_card().is_some()
         {
             self.popups.rects.clear();
             Vec::new()
@@ -460,6 +462,9 @@ impl View {
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
+        }
+        if let Some(card) = s.advanced_card() {
+            mining_dialog::show(&ctx, s, card, &mut out);
         }
         if let Some(missing) = &s.missing_link {
             link::show(&ctx, s, missing, &mut out);

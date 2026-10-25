@@ -1021,9 +1021,12 @@ fn entry(
             });
             response.widget_info(|| WidgetInfo::labeled(Role::Button, !busy, &button));
             if response.clicked() {
-                d.out.push(Command::CardButton {
-                    level: card.level,
-                    entry: k,
+                // Shift+click: the card made by hand (ANK-040)
+                let (level, entry) = (card.level, k);
+                d.out.push(if ui.input(|i| i.modifiers.shift) {
+                    Command::CardAdvanced { level, entry }
+                } else {
+                    Command::CardButton { level, entry }
                 });
             }
             // AUD-004: ♪ plays the first audio, a right click lists them all

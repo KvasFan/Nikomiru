@@ -135,6 +135,8 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
+        Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
+            .map(|()| Value::Null),
         Some("settings") => {
             harness::settings(text(command, "tab")?, command["save"].as_str()).map(|()| Value::Null)
         }

@@ -94,11 +94,13 @@ pub enum Action {
     PopupPrev,
     /// Makes the card of the entry the keyboard is on (ANK-030, POP-014).
     CreateCard,
+    /// Opens the "Advanced mining" dialog for that entry (ANK-040).
+    CreateCardAdvanced,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 34] = [
+    pub const ALL: [Action; 35] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -133,6 +135,7 @@ impl Action {
         Action::PopupNext,
         Action::PopupPrev,
         Action::CreateCard,
+        Action::CreateCardAdvanced,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the log.
@@ -172,6 +175,7 @@ impl Action {
             Action::PopupNext => "popup_next",
             Action::PopupPrev => "popup_prev",
             Action::CreateCard => "create_card",
+            Action::CreateCardAdvanced => "create_card_advanced",
         }
     }
 
@@ -189,7 +193,10 @@ impl Action {
     pub fn context(self) -> Context {
         match self {
             Action::OpenFile => Context::Global,
-            Action::PopupNext | Action::PopupPrev | Action::CreateCard => Context::Popup,
+            Action::PopupNext
+            | Action::PopupPrev
+            | Action::CreateCard
+            | Action::CreateCardAdvanced => Context::Popup,
             _ => Context::Player,
         }
     }
@@ -255,6 +262,7 @@ impl Action {
             Action::PopupNext => &["Tab"],
             Action::PopupPrev => &["Shift+Tab"],
             Action::CreateCard => &["Ctrl+Enter"],
+            Action::CreateCardAdvanced => &["Ctrl+Shift+Enter"],
         }
     }
 }

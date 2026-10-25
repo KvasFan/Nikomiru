@@ -290,6 +290,15 @@ pub fn state() -> Result<Value, String> {
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
                 "fields": s.anki_page.lists.as_ref().map(|l| l.fields.clone()),
             }),
+            "advanced": s.advanced_card().map(|a| json!({
+                "sentence": a.sentence,
+                "offset": a.offset,
+                "first": a.first,
+                "last": a.last,
+                "clip": a.clip.map(|(s, e)| [s, e]),
+                "frame": format!("{:?}", a.frame),
+                "audio": a.audio,
+            })),
             "settings_tab": ui.view.settings_tab.key(),
             "settings_status": s.settings_status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
             "look": {
@@ -391,6 +400,8 @@ pub fn popup_button(button: &str) -> Result<(), String> {
 pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String> {
     let command = match item {
         None => Command::CardButton { level, entry },
+        // Shift+click (ANK-040)
+        Some("advanced") => Command::CardAdvanced { level, entry },
         Some(name) => Command::CardMenu {
             level,
             entry,
@@ -629,6 +640,33 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
         ui.run(command);
         Ok(())
     })?
+}
+
+/// The "Advanced mining" dialog (ANK-040, ANK-041), as its controls do:
+/// `previous`, `next`, `drop-previous`, `drop-next`, `start`/`end` with
+/// `value` in ms, `frame-click`, `frame-start`, `frame-none`, `audio-on`,
+/// `audio-off`, `preview`, `create`, `cancel`.
+pub fn advanced(edit: &str, value: Option<i64>) -> Result<(), String> {
+    use crate::mining::{AdvancedEdit, FrameKind};
+    let ms = || value.ok_or_else(|| "missing \"value\"".to_string());
+    let edit = match edit {
+        "previous" => AdvancedEdit::Previous(true),
+        "drop-previous" => AdvancedEdit::Previous(false),
+        "next" => AdvancedEdit::Next(true),
+        "drop-next" => AdvancedEdit::Next(false),
+        "start" => AdvancedEdit::Start(ms()?),
+        "end" => AdvancedEdit::End(ms()?),
+        "frame-click" => AdvancedEdit::Frame(FrameKind::Click),
+        "frame-start" => AdvancedEdit::Frame(FrameKind::SentenceStart),
+        "frame-none" => AdvancedEdit::Frame(FrameKind::None),
+        "audio-on" => AdvancedEdit::Audio(true),
+        "audio-off" => AdvancedEdit::Audio(false),
+        "preview" => AdvancedEdit::Preview,
+        "create" => AdvancedEdit::Create,
+        "cancel" => AdvancedEdit::Cancel,
+        other => return Err(format!("no advanced mining edit {other}")),
+    };
+    call(move |ui| ui.run(Command::Advanced(edit)))
 }
 
 /// The secondary subtitle (SUB-017): a source key or `off`, and the

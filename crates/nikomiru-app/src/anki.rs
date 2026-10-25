@@ -31,8 +31,8 @@ use nikomiru_media::process::run;
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, Tools, probe};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
-    AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, LapisMade, MineFailure,
-    MineRequest, Mined, PendingFrame,
+    AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, FrameChoice, LapisMade,
+    MineFailure, MineRequest, Mined, PendingFrame,
 };
 
 /// The pause of the duplicate checks after a transport error (ANK-030).
@@ -469,16 +469,38 @@ impl Worker {
         self.tools.as_ref()
     }
 
-    /// Makes the card image from the frame of the click (ANK-034); the PNG
-    /// goes with `frame`.
+    /// Makes the card's picture (ANK-034, ANK-040): the frame of the click,
+    /// whose PNG goes with `frame`; the frame at a time of the video, taken
+    /// with ffmpeg; or none.
     fn image(
         &self,
         tools: &Tools,
+        r: &MineRequest,
         frame: Option<PendingFrame>,
         stem: &str,
-    ) -> Result<Media, String> {
-        let mut frame = frame.ok_or_else(|| "the player was not asked".to_string())?;
-        let png = frame.written(FRAME_TIMEOUT)?;
+    ) -> Result<Option<Media>, String> {
+        match r.frame {
+            FrameChoice::None => Ok(None),
+            FrameChoice::Click => {
+                let mut frame = frame.ok_or_else(|| "the player was not asked".to_string())?;
+                let png = frame.written(FRAME_TIMEOUT)?;
+                self.encode(tools, png, stem).map(Some)
+            }
+            FrameChoice::At(ms) => {
+                let png = self.parts.cache_dir.join(format!("{stem}-frame.png"));
+                let job = clip::frame_job(&tools.ffmpeg, &r.video, ms, &png);
+                let made = run(&job, &Cancel::new())
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| self.encode(tools, &png, stem));
+                let _ = std::fs::remove_file(&png);
+                made.map(Some)
+            }
+        }
+    }
+
+    /// The PNG `png` as the card's picture, in the format and size of the
+    /// settings.
+    fn encode(&self, tools: &Tools, png: &Path, stem: &str) -> Result<Media, String> {
         let preferred =
             ImageFormat::from_config(&self.parts.config.image_format).unwrap_or(ImageFormat::Jpeg);
         let format = tools
@@ -514,11 +536,11 @@ impl Worker {
         // audio and image in parallel (ANK-035)
         let (config, cache_dir) = (&self.parts.config, &self.parts.cache_dir);
         let (audio, image) = std::thread::scope(|s| {
-            let audio = r.clip.map(|clip| {
+            let audio = r.clip.filter(|_| r.audio).map(|clip| {
                 let (tools, stem) = (&tools, &stem);
                 s.spawn(move || sentence_audio(tools, config, cache_dir, r, clip, stem))
             });
-            let image = self.image(&tools, frame, &stem);
+            let image = self.image(&tools, r, frame, &stem);
             let audio = audio.map(|a| a.join().unwrap_or_else(|_| Err("audio thread".into())));
             (audio, image)
         });
@@ -530,9 +552,10 @@ impl Worker {
             }
             None => None,
         };
-        let image = image
-            .map_err(|reason| tracing::warn!("card image: {reason}"))
-            .ok();
+        let image = image.unwrap_or_else(|reason| {
+            tracing::warn!("card image: {reason}");
+            None
+        });
         let fields = self.note_fields().map_err(|e| self.fail(&e))?;
         let mapping = self.mapping(&fields);
         let (start_ms, end_ms) = r.clip.unwrap_or((r.position_ms, r.position_ms));

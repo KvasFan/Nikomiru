@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Light, dark or the desktop's theme, followed when the desktop changes (the settings portal), and an accent color (SET-003). The pages and the dictionary popups follow it; the bar, the subtitles and the toasts on the video stay dark.
 - The interface language and scale change without a restart (SET-004, SET-005); the subtitles keep their size on the screen.
 - A shortcut editor (KEY-001…KEY-004): a key is added by pressing it, refused when another action has it, removed with ×; an action goes back to its default keys with ↺.
+- A card made by hand (ANK-040, ANK-041): Shift+click on the card button, or Ctrl+Shift+Enter, opens a dialog where the lines before and after join the sentence, the clip's start and end can be changed and listened to, the picture is the frame of the click, the one at the start of the sentence or none, and the sentence audio can be left out.
 
 ### Changed
 
@@ -20,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- The settings tabs General to About cover the popups: keys typed there no longer reach a popup under them.
 - The next episode started by the countdown plays, instead of staying paused on its first frame.
 - Going back to the library saves the position first, so the video being watched is in "Continue watching" at its place.
 

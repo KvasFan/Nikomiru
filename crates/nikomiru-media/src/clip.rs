@@ -145,6 +145,43 @@ pub fn image_args(input: &Path, output: &Path, format: ImageFormat, level: u8) -
     args
 }
 
+/// ffmpeg's arguments for the frame of `video` at `at_ms` as a PNG of its
+/// own size, without subtitles: the picture of a card taken at the start of
+/// its sentence (ANK-040).
+pub fn frame_args(video: &Path, at_ms: i64, output: &Path) -> Vec<OsString> {
+    let mut args = os(&[
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-ss",
+    ]);
+    args.push(format!("{:.3}", at_ms.max(0) as f64 / 1000.0).into());
+    args.push("-i".into());
+    args.push(file_arg(video));
+    args.extend(os(&[
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-c:v",
+        "png",
+        "-f",
+        "image2",
+    ]));
+    args.push(file_arg(output));
+    args
+}
+
+/// The job of [`frame_args`].
+pub fn frame_job(ffmpeg: &Path, video: &Path, at_ms: i64, output: &Path) -> Job {
+    let mut job = Job::new(ffmpeg, frame_args(video, at_ms, output));
+    job.timeout = IMAGE_TIMEOUT;
+    job.outputs = vec![output.to_path_buf()];
+    job
+}
+
 /// The image job, with `output` removed if it fails.
 pub fn image_job(
     ffmpeg: &Path,
