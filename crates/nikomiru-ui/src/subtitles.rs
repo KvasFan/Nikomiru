@@ -52,6 +52,9 @@ pub struct Request {
     pub encoding: Option<String>,
     /// Video duration, for the extraction timeout (EXT-003).
     pub duration_ms: i64,
+    /// For the secondary subtitle (SUB-017): it does not cancel the main
+    /// one's load, nor is cancelled by it.
+    pub secondary: bool,
 }
 
 /// An alignment of the cues with the audio (SUB-018): the audio stream to

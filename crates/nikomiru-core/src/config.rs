@@ -126,6 +126,11 @@ pub struct SubtitlesConfig {
     pub respect_ass_styles: bool,
     /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
     pub obscure: String,
+    /// The same for the secondary subtitle (SUB-017).
+    pub secondary_obscure: String,
+    /// Where the secondary subtitle goes: `"top"` of the video, or `"bottom"`
+    /// above the main one (SUB-017).
+    pub secondary_position: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -138,6 +143,8 @@ impl Default for SubtitlesConfig {
             font_size: 36.0,
             respect_ass_styles: false,
             obscure: "none".into(),
+            secondary_obscure: "none".into(),
+            secondary_position: "top".into(),
             other: toml::Table::new(),
         }
     }
@@ -318,6 +325,9 @@ fn is_opensubtitles_url(url: &str) -> bool {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OnlineConfig {
+    /// The subtitle services used, in the order preferred (MET-011):
+    /// `jimaku`, `opensubtitles`; one left out is not used.
+    pub providers: Vec<String>,
     /// Search and load subtitles when a video has none in the preferred
     /// language (MET-007).
     pub auto_subtitles: bool,
@@ -343,6 +353,7 @@ pub struct OnlineConfig {
 impl Default for OnlineConfig {
     fn default() -> Self {
         Self {
+            providers: vec!["jimaku".into(), "opensubtitles".into()],
             auto_subtitles: false,
             jimaku_api_key: String::new(),
             opensubtitles_api_key: String::new(),
@@ -360,6 +371,7 @@ impl std::fmt::Debug for OnlineConfig {
         // never a key or the password (MET-005, PRV-002)
         let set = |s: &str| if s.is_empty() { "" } else { "…" };
         f.debug_struct("OnlineConfig")
+            .field("providers", &self.providers)
             .field("auto_subtitles", &self.auto_subtitles)
             .field("jimaku_api_key", &set(&self.jimaku_api_key))
             .field("opensubtitles_api_key", &set(&self.opensubtitles_api_key))

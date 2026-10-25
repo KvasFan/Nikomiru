@@ -131,6 +131,12 @@ mod tests {
         assert_eq!(subtitle_episode("[Group] Show - 03 [1080p].ass"), Some(3));
         assert_eq!(subtitle_episode("Show S01E07.srt"), Some(7));
         assert_eq!(subtitle_episode("Show.zip"), None);
+        // SUB-006 reads the video's name too, and names unlike it
+        assert_eq!(subtitle_episode("[Group] Show - 02 [1080p].mkv"), Some(2));
+        assert_eq!(subtitle_episode("Show 02.ja.srt"), Some(2));
+        assert_eq!(subtitle_episode("Show_E02.en.srt"), Some(2));
+        assert_eq!(subtitle_episode("Movie (2016).mkv"), None);
+        assert_eq!(subtitle_language("Show_E02.en.srt"), Some("en"));
         assert!(is_subtitle("a.ASS"));
         assert!(!is_subtitle("a.zip"));
     }

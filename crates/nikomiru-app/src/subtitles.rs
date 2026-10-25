@@ -40,6 +40,8 @@ struct Job {
 pub struct Loader {
     jobs: mpsc::Sender<Job>,
     running: Mutex<Cancel>,
+    /// The same for the secondary subtitle's loads (SUB-017).
+    running_secondary: Mutex<Cancel>,
 }
 
 impl std::fmt::Debug for Job {
@@ -78,6 +80,7 @@ impl Loader {
         Self {
             jobs,
             running: Mutex::new(Cancel::new()),
+            running_secondary: Mutex::new(Cancel::new()),
         }
     }
 }
@@ -85,7 +88,12 @@ impl Loader {
 impl SubtitleSource for Loader {
     fn load(&self, request: Request, done: Done) {
         let cancel = Cancel::new();
-        if let Ok(mut running) = self.running.lock() {
+        let slot = if request.secondary {
+            &self.running_secondary
+        } else {
+            &self.running
+        };
+        if let Ok(mut running) = slot.lock() {
             running.cancel();
             *running = cancel.clone();
         }

@@ -18,7 +18,9 @@ use nikomiru_online::jimaku::Jimaku;
 use nikomiru_online::language::subtitle_language;
 use nikomiru_online::opensubtitles::OpenSubtitles;
 use nikomiru_online::search::{automatic, fetch, search_all};
-use nikomiru_online::{Candidate, OnlineError, Provider, SearchRequest, SubtitleFile, store};
+use nikomiru_online::{
+    Candidate, OnlineError, Provider, ProviderId, SearchRequest, SubtitleFile, store,
+};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::online::{Downloaded, OnlineQuery, OnlineResults, OnlineService};
 
@@ -156,7 +158,7 @@ impl OnlineService for Online {
 
 struct Worker {
     parts: Parts,
-    /// The providers with a key.
+    /// The providers chosen that have a key, in the order preferred (MET-011).
     providers: Vec<Box<dyn Provider>>,
     /// Why a provider with a key could not be made (a wrong address, proxy).
     broken: Vec<OnlineError>,
@@ -173,7 +175,7 @@ impl Worker {
         worker
     }
 
-    /// The providers of the settings.
+    /// The providers of the settings: those chosen with a key, in their order.
     fn build(&mut self) {
         self.providers.clear();
         self.broken.clear();
@@ -186,21 +188,26 @@ impl Worker {
                 return;
             }
         };
-        if !online.jimaku_api_key.trim().is_empty() {
-            match Jimaku::new(http.clone(), &online.jimaku_url, &online.jimaku_api_key) {
-                Ok(j) => self.providers.push(Box::new(j)),
-                Err(e) => self.broken.push(e),
-            }
-        }
-        if !online.opensubtitles_api_key.trim().is_empty() {
-            match OpenSubtitles::new(
-                http,
-                &online.opensubtitles_url,
-                &online.opensubtitles_api_key,
-                &online.opensubtitles_username,
-                &online.opensubtitles_password,
-            ) {
-                Ok(o) => self.providers.push(Box::new(o)),
+        for id in ProviderId::from_keys(&online.providers) {
+            let made: Result<Box<dyn Provider>, OnlineError> = match id {
+                ProviderId::Jimaku if !online.jimaku_api_key.trim().is_empty() => {
+                    Jimaku::new(http.clone(), &online.jimaku_url, &online.jimaku_api_key)
+                        .map(|j| Box::new(j) as Box<dyn Provider>)
+                }
+                ProviderId::OpenSubtitles if !online.opensubtitles_api_key.trim().is_empty() => {
+                    OpenSubtitles::new(
+                        http.clone(),
+                        &online.opensubtitles_url,
+                        &online.opensubtitles_api_key,
+                        &online.opensubtitles_username,
+                        &online.opensubtitles_password,
+                    )
+                    .map(|o| Box::new(o) as Box<dyn Provider>)
+                }
+                _ => continue,
+            };
+            match made {
+                Ok(p) => self.providers.push(p),
                 Err(e) => self.broken.push(e),
             }
         }
@@ -229,6 +236,7 @@ impl Worker {
                 .inspect_err(|e| tracing::warn!("{}: {e}", q.video.display()))
                 .ok(),
             language: self.parts.language.clone(),
+            providers: self.providers.iter().map(|p| p.id()).collect(),
         }
     }
 

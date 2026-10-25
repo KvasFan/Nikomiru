@@ -34,15 +34,23 @@ fn episode_rank(episode: Option<u32>, wanted: Option<u32>) -> u8 {
 /// Sorts the candidates: the language wanted first (unknown on Jimaku counts
 /// as it; then unknown, then the others); the episode asked for (then none,
 /// then others); not machine
-/// translated; subtitles before archives before the unusable; the provider's
-/// own order.
+/// translated; subtitles before archives before the unusable; the provider
+/// the user prefers (MET-011); the provider's own order.
 pub fn rank(candidates: &mut [Candidate], request: &SearchRequest) {
+    let preferred = |p: ProviderId| {
+        request
+            .providers
+            .iter()
+            .position(|q| *q == p)
+            .unwrap_or(usize::MAX)
+    };
     candidates.sort_by_key(|c| {
         (
             language_rank(c, &request.language),
             episode_rank(c.episode, request.episode),
             c.machine_translated,
             c.kind,
+            preferred(c.provider),
             c.provider,
             c.order,
         )
@@ -178,6 +186,43 @@ mod tests {
             &c(Jimaku, "Movie.srt", None, None),
             &request(None)
         ));
+    }
+
+    // T-MET-011: the provider the user prefers breaks the ties
+    #[test]
+    fn the_preferred_provider_comes_first_among_equals() {
+        use ProviderId::{Jimaku, OpenSubtitles};
+        let mut all = vec![
+            c(Jimaku, "Show 01.srt", Some("ja"), Some(1)),
+            c(OpenSubtitles, "Show 01.srt", Some("ja"), Some(1)),
+            c(OpenSubtitles, "Show 01.en.srt", Some("en"), Some(1)),
+        ];
+        let mut r = request(Some(1));
+        r.providers = vec![OpenSubtitles, Jimaku];
+        rank(&mut all, &r);
+        let order: Vec<(ProviderId, Option<&str>)> = all
+            .iter()
+            .map(|c| (c.provider, c.language.as_deref()))
+            .collect();
+        // the language still comes first
+        assert_eq!(
+            order,
+            [
+                (OpenSubtitles, Some("ja")),
+                (Jimaku, Some("ja")),
+                (OpenSubtitles, Some("en"))
+            ]
+        );
+        assert_eq!(
+            ProviderId::from_keys(&[
+                "OpenSubtitles".into(),
+                "addic7ed".into(),
+                "jimaku".into(),
+                "opensubtitles".into()
+            ]),
+            [OpenSubtitles, Jimaku]
+        );
+        assert_eq!(ProviderId::from_keys(&[]), []);
     }
 
     // T-MET-003: a season pack

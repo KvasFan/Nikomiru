@@ -10,10 +10,11 @@ use egui::{
     WidgetInfo, pos2,
 };
 
+use super::settings::SettingsTab;
 use super::{Dialog, View};
 use crate::session::Session;
 use crate::shortcuts::Action;
-use crate::subtitles::clock;
+use crate::subtitles::{Obscure, clock};
 use crate::ui::Command;
 
 /// The subtitle encodings that can be forced (SUB-005); "" is automatic.
@@ -123,6 +124,48 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         view.open_online_page(out);
         ui.close();
     }
+    // SUB-017: a second text track, e.g. a translation
+    ui.menu_button(tr("subtitle-secondary"), |ui| {
+        let current = s
+            .secondary
+            .source
+            .as_ref()
+            .map(|x| x.key())
+            .unwrap_or_default();
+        if ui
+            .selectable_label(current.is_empty(), tr("subtitles-off"))
+            .clicked()
+        {
+            out.push(Command::SelectSecondary("off".into()));
+            ui.close();
+        }
+        if let serde_json::Value::Array(sources) = s.subtitle_menu() {
+            for source in sources.iter().filter(|x| x["kind"] != "bitmap") {
+                let key = source.get("key").and_then(|k| k.as_str()).unwrap_or("");
+                if ui
+                    .selectable_label(key == current, source_label(source))
+                    .clicked()
+                {
+                    out.push(Command::SelectSecondary(key.to_string()));
+                    ui.close();
+                }
+            }
+        }
+        ui.separator();
+        for (mode, label) in [
+            (Obscure::None, "subtitle-secondary-shown"),
+            (Obscure::Blur, "subtitle-secondary-blur"),
+            (Obscure::Hidden, "subtitle-secondary-hidden"),
+        ] {
+            if ui
+                .selectable_label(s.secondary.mode == mode, tr(label))
+                .clicked()
+            {
+                out.push(Command::SecondaryObscure(mode));
+                ui.close();
+            }
+        }
+    });
     // SUB-018
     if ui
         .add_enabled(!current.is_empty(), egui::Button::new(tr("subtitle-align")))
@@ -250,11 +293,11 @@ pub(crate) fn show(
                                 view.open_dict_page(out);
                             }
                             if icon(ui, true, "Anki", &tr("anki-open")) {
-                                view.open_anki_page(out);
+                                view.open_settings(SettingsTab::Anki, out);
                             }
-                            // PLY-016, PLY-018
-                            if icon(ui, true, "⚙", &tr("player-page-title")) {
-                                view.open_player_page(out);
+                            // SET-008: the tab shown last
+                            if icon(ui, true, "⚙", &tr("settings-title")) {
+                                view.open_settings(view.settings_tab, out);
                             }
                             let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
                                 subtitle_menu(ui, s, view, out);
