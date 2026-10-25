@@ -345,6 +345,8 @@ pub struct Session {
     pub audio_database: Option<(u64, usize, String)>,
     /// The next episode about to start (LIB-009).
     next_up: Option<NextUp>,
+    /// What watching adds to the statistics (STA-001…STA-004).
+    study: crate::study::Study,
     /// What the current video plays with: its own choices, else its
     /// series' (LIB-010).
     prefs: nikomiru_library::policy::Effective,
@@ -514,6 +516,7 @@ impl Session {
             audio_database_row: None,
             audio_database: None,
             next_up: None,
+            study: crate::study::Study::default(),
             prefs: Default::default(),
             own_audio: false,
             library_jobs: Vec::new(),
@@ -604,6 +607,18 @@ impl Session {
             }
             Some(uid)
         });
+        // STA-001: the watched intervals of the video, and what the last one
+        // leaves to save
+        let coverage = match (&uid, library) {
+            (Some(uid), Some(lib)) => lib
+                .coverage(uid)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .unwrap_or_default(),
+            _ => Default::default(),
+        };
+        if let Some(save) = self.study.start(uid.clone(), coverage) {
+            self.write_study(save);
+        }
         // LIB-010
         self.prefs = match (&uid, library) {
             (Some(uid), Some(lib)) => lib
@@ -712,13 +727,21 @@ impl Session {
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
                 }
+                if !self.view.paused && self.study.due_sample(now.as_millis() as i64) {
+                    self.study_sample(true);
+                }
             }
             PlayerEvent::Duration(d) => self.view.duration = d,
             PlayerEvent::Pause(p) => {
+                // STA-001: what played up to the pause counts, the pause does not
+                self.study_sample(!p);
                 self.view.paused = p;
                 self.controls.set_playing(!p, now);
             }
-            PlayerEvent::Speed(s) => self.view.speed = s,
+            PlayerEvent::Speed(s) => {
+                self.study_sample(!self.view.paused);
+                self.view.speed = s;
+            }
             PlayerEvent::Volume(v) => self.view.volume = v,
             PlayerEvent::Mute(m) => self.view.muted = m,
             PlayerEvent::Tracks(t) => {
@@ -764,6 +787,10 @@ impl Session {
     pub fn tick(&mut self) {
         self.update_screensaver();
         let now = self.services.clock.monotonic();
+        // STA-004: the session saved every minute
+        if let Some(save) = self.study.due_save(now.as_millis() as i64) {
+            self.write_study(save);
+        }
         if self.next_up.as_ref().is_some_and(|n| now >= n.at) {
             self.play_next();
         }
@@ -1252,7 +1279,15 @@ impl Session {
     pub fn library_open(&mut self) {
         use crate::catalog::LibraryJob;
         self.library_page.status = None;
+        // the session being watched is in the statistics too
+        if let Some(save) = self.study.save_now() {
+            self.write_study(save);
+        }
+        if let Some(w) = &self.writer {
+            w.wait();
+        }
         self.library_jobs.push(LibraryJob::Home);
+        self.library_jobs.push(LibraryJob::Stats);
         if let Some((id, _)) = self.library_page.series {
             self.library_jobs.push(LibraryJob::Episodes(id));
         }
@@ -1281,6 +1316,12 @@ impl Session {
         self.library_page.busy = true;
         self.library_jobs
             .push(crate::catalog::LibraryJob::Edit(edit));
+    }
+
+    /// The sessions as CSV, to `path` chosen in the save dialog (STA-005).
+    pub fn stats_export(&mut self, path: PathBuf) {
+        self.library_jobs
+            .push(crate::catalog::LibraryJob::ExportCsv(path));
     }
 
     /// An episode played from the page.
@@ -1328,9 +1369,16 @@ impl Session {
             LibraryReply::Cover(id, Ok(cover)) => {
                 page.covers.insert(id, cover);
             }
+            LibraryReply::Stats(Ok(stats)) => page.stats = Some(stats),
+            LibraryReply::Exported(Ok(path)) => {
+                let text = self.tr("stats-exported", &[("path", path.display().to_string())]);
+                self.library_page.status = Some((text, true));
+            }
             // a cover that cannot be made: the card keeps its placeholder
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
+            | LibraryReply::Stats(Err(e))
+            | LibraryReply::Exported(Err(e))
             | LibraryReply::Episodes(_, Err(e))
             | LibraryReply::Imported(Err(e))
             | LibraryReply::Edited(Err(e)) => {
@@ -2245,6 +2293,8 @@ impl Session {
         use crate::mining::{CardState, LastCard};
         match result {
             Ok(mined) => {
+                let at = self.moment();
+                self.study.card(at);
                 let (expression, reading) = headword;
                 self.last_card = Some(LastCard {
                     note_id: mined.note_id,
@@ -2330,8 +2380,69 @@ impl Session {
         });
     }
 
+    /// Today's local day number, for the statistics page (STA-005).
+    pub fn today(&self) -> i64 {
+        let at = self.moment();
+        let (date, _) = nikomiru_library::stats::local_day_hour(at.unix_ms, at.offset_s);
+        nikomiru_library::stats::day_number(&date).unwrap_or(0)
+    }
+
+    /// When now is, for the statistics.
+    fn moment(&self) -> crate::study::Moment {
+        let now = self.services.clock.now();
+        crate::study::Moment {
+            mono_ms: self.services.clock.monotonic().as_millis() as i64,
+            unix_ms: now
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64),
+            offset_s: self.services.clock.utc_offset(now),
+        }
+    }
+
+    /// A sample of the position for the statistics (STA-001, STA-002),
+    /// `playing` from now on.
+    fn study_sample(&mut self, playing: bool) {
+        let at = self.moment();
+        let pos_ms = (self.view.time_pos * 1000.0) as i64;
+        let timeline = self.subs.timeline();
+        let delay = timeline.delay_ms;
+        let cues = |from: i64, to: i64| -> Vec<crate::study::CueSpan> {
+            timeline
+                .cues()
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.start_ms + delay < to && c.end_ms + delay > from)
+                .map(|(i, c)| {
+                    let chars = nikomiru_text::count::count_study_chars(&c.plain_text) as u64;
+                    (i as u32, c.start_ms + delay, c.end_ms + delay, chars)
+                })
+                .collect()
+        };
+        self.study
+            .sample(at, pos_ms, self.view.speed, playing, &cues);
+    }
+
+    /// Writes what the statistics gathered, off the UI thread.
+    fn write_study(&self, save: crate::study::Save) {
+        if let Some(w) = &self.writer {
+            w.run(move |lib| {
+                if let Err(e) = lib.save_study(
+                    &save.uid,
+                    Some(&save.coverage),
+                    save.credit.as_ref(),
+                    &save.segments,
+                ) {
+                    tracing::warn!("saving the statistics: {e}");
+                }
+            });
+        }
+    }
+
     /// Exit or file change: write the last position and the per-file settings.
     pub fn flush_position(&mut self) {
+        if let Some(save) = self.study.finish() {
+            self.write_study(save);
+        }
         if let Some(ms) = self.saver.flush() {
             self.save_position(ms);
         }
@@ -2850,6 +2961,16 @@ impl Session {
         let link = self.link_clip.take().filter(|l| l.load == Some(generation));
         match result {
             Ok(loaded) => {
+                // STA-002: the cues of this file counted so far
+                let key = crate::study::Study::credit_key(&source.key(), loaded.track.cues.len());
+                let uid = self.current.as_ref().and_then(|c| c.uid.clone());
+                if let (Some(uid), Some(lib)) = (uid, self.services.library.as_ref()) {
+                    let credit = lib
+                        .credit(&uid, &key)
+                        .inspect_err(|e| tracing::warn!("library: {e}"))
+                        .unwrap_or_default();
+                    self.study.credits(credit);
+                }
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 self.subs.set_track(source, loaded);
@@ -3148,6 +3269,10 @@ impl Session {
         // a space or a delimiter: nothing to look up, and nothing changes
         if query.is_empty() {
             return;
+        }
+        {
+            let at = self.moment();
+            self.study.lookup(at);
         }
         self.subs.selection = Some((cue, offset));
         self.subs.highlight = None;

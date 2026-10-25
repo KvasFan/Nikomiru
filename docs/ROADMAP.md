@@ -34,7 +34,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M4 | Mining to Anki | L | **0.1.0** (MVP alpha) | in progress |
 | M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15) | in progress |
 | M5 | Library and word audio | L | 0.2.0 | in progress |
-| M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | not started |
+| M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | in progress |
 | M7 | Online metadata | M | 0.4.0 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
 
@@ -304,6 +304,11 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 **Requirements**: STA-001…STA-005, SET-001…SET-006, ANK-040, ANK-041, NFR-A11Y-01.
 
 The proxy setting and the mpv presets with their settings page moved to M4b (D-14).
+
+**Status as of 2026-10-25**
+
+- Done: statistics (STA-001…STA-005), ported from Fushi with its vectors: the watch tracker with interval coverage, per-cue credits, the session clock by local hour, the Statistics tab of the Library page with its chart, calendar, totals by series, sessions and CSV export.
+- Open: the full settings (SET-001…SET-006, the shortcut editor), the complete `it`/`en` review, the advanced mining dialog (ANK-040, ANK-041), the keyboard-only tour (NFR-A11Y-01).
 
 **Deliverables**
 

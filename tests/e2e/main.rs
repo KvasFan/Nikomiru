@@ -610,6 +610,10 @@ fn screenshots_of_the_interface() {
     });
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("library-continue.png"));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "statistics" }));
+    h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("statistics.png"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -1183,6 +1187,42 @@ fn a_word_is_played_from_a_local_database() {
         ],
         "{s}"
     );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-STA-001, T-STA-002, T-STA-004, T-STA-005: what is watched is in the
+// statistics, counted once
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn watching_fills_the_statistics() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    // the first cue, 2–5 s, played whole, then a word looked up
+    h.state_until("past the first cue", |s| time_pos(s) >= 5.5);
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.key("Escape");
+    // Esc over the video: the library, its statistics with this session
+    h.key("Escape");
+    let s = h.state_until("the session", |s| {
+        s["library_page"]["stats"]["sessions"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    });
+    let session = &s["library_page"]["stats"]["sessions"][0];
+    assert_eq!(session["name"], "av_basic", "{s}");
+    let ms = session["ms"].as_i64().unwrap();
+    assert!((4_000..=9_000).contains(&ms), "{session}");
+    // 食べました, 5 characters; with 日本語を勉強しています, 11 more, if the
+    // click came 1.5 s into the second cue
+    let chars = session["chars"].as_i64().unwrap();
+    assert!(chars == 5 || chars == 16, "{session}");
+    assert_eq!(session["lookups"], 1, "{session}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

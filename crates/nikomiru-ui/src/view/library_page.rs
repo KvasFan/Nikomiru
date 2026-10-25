@@ -51,9 +51,19 @@ pub(crate) struct State {
     move_to: Option<u64>,
     /// The name of a series split off.
     split_name: String,
+    /// The Statistics tab is shown (STA-005).
+    statistics: bool,
+    /// What it keeps.
+    stats: super::stats_view::State,
 }
 
 impl State {
+    /// Shows the Statistics tab, or the library.
+    #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
+    pub(crate) fn show_statistics(&mut self, on: bool) {
+        self.statistics = on;
+    }
+
     /// Forgets what was typed and ticked; the covers stay, they cost a
     /// decode each.
     pub(crate) fn reset(&mut self) {
@@ -77,6 +87,8 @@ impl std::fmt::Debug for State {
 pub(crate) struct Scene<'a> {
     /// The page's state in the session.
     pub page: &'a LibraryPage,
+    /// Today's local day number, for the statistics.
+    pub today: i64,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -85,6 +97,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
     let scene = Scene {
         page: &s.library_page,
+        today: s.today(),
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
@@ -157,16 +170,25 @@ pub(crate) fn draw(
         ui.visuals_mut().override_text_color = Some(Color32::WHITE);
         ui.spacing_mut().item_spacing.y = 10.0;
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(tr(s, "library-title"))
-                    .size(24.0)
-                    .family(theme::bold()),
-            );
+            // the library, or its statistics (STA-005)
+            for (statistics, id) in [(false, "library-title"), (true, "stats-title")] {
+                let text = RichText::new(tr(s, id)).size(24.0).family(theme::bold());
+                if ui
+                    .selectable_label(state.statistics == statistics, text)
+                    .clicked()
+                {
+                    state.statistics = statistics;
+                }
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button(tr(s, "library-close")).clicked() {
                     close = true;
                 }
-                if ui
+                if state.statistics {
+                    if ui.button(tr(s, "stats-export")).clicked() {
+                        out.push(Command::StatsExport);
+                    }
+                } else if ui
                     .add_enabled(!s.page.busy, Button::new(tr(s, "library-add-folder")))
                     .clicked()
                 {
@@ -186,6 +208,14 @@ pub(crate) fn draw(
             .id_salt("library-page")
             .auto_shrink([false, false])
             .show(&mut ui, |ui| match &s.page.series {
+                _ if state.statistics => super::stats_view::draw(
+                    ui,
+                    s.page.stats.as_ref(),
+                    s.today,
+                    s.tr,
+                    &mut state.stats,
+                    out,
+                ),
                 Some((id, episodes)) => series(ui, s, state, *id, episodes.as_deref(), out),
                 None => home(ui, s, state, out),
             });
@@ -595,6 +625,7 @@ mod tests {
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
                     let scene = Scene {
                         page: &t.page,
+                        today: 0,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);

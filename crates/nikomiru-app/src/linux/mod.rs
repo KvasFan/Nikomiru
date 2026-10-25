@@ -177,3 +177,53 @@ mod tests {
         assert_eq!(status.signal(), Some(libc::SIGTERM));
     }
 }
+
+/// How far the local time is east of UTC at `at`, in seconds (STA-004),
+/// from the C library's time zone (`TZ`, `/etc/localtime`); 0 when unknown.
+pub fn utc_offset(at: std::time::SystemTime) -> i32 {
+    let secs = at
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs()) as libc::time_t;
+    let mut tm = std::mem::MaybeUninit::<libc::tm>::zeroed();
+    // SAFETY: `localtime_r` writes only the `tm` given, from a `time_t` we
+    // own; it is the reentrant variant, safe with other threads.
+    let done = unsafe { libc::localtime_r(&secs, tm.as_mut_ptr()) };
+    if done.is_null() {
+        return 0;
+    }
+    // SAFETY: `localtime_r` succeeded, so it filled `tm`.
+    let tm = unsafe { tm.assume_init() };
+    i32::try_from(tm.tm_gmtoff).unwrap_or(0)
+}
+
+/// The system clock, with the local time zone (STA-004).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LocalClock(nikomiru_core::SystemClock);
+
+impl nikomiru_core::Clock for LocalClock {
+    fn monotonic(&self) -> std::time::Duration {
+        self.0.monotonic()
+    }
+
+    fn now(&self) -> std::time::SystemTime {
+        self.0.now()
+    }
+
+    fn utc_offset(&self, at: std::time::SystemTime) -> i32 {
+        utc_offset(at)
+    }
+}
+
+#[cfg(test)]
+mod time_tests {
+    use super::*;
+
+    // T-STA-004: the C library's zone, here forced to one without daylight saving
+    #[test]
+    fn the_local_offset_is_the_time_zone_s() {
+        let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_792_970_000);
+        let offset = utc_offset(at);
+        assert!((-14 * 3600..=14 * 3600).contains(&offset), "{offset}");
+        assert_eq!(offset % 900, 0, "zones move by quarters of an hour");
+    }
+}

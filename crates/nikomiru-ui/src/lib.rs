@@ -26,6 +26,7 @@ pub mod screensaver;
 pub mod screenshot;
 pub mod session;
 pub mod shortcuts;
+pub mod study;
 pub mod subtitles;
 mod ui;
 pub mod view;

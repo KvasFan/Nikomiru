@@ -5,7 +5,7 @@
 //! `"system"`, from `LC_ALL` / `LC_MESSAGES` / `LANG`, with English as fallback.
 
 use fluent_bundle::concurrent::FluentBundle;
-use fluent_bundle::{FluentArgs, FluentResource};
+use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
 /// Supported interface languages and their Fluent sources.
@@ -99,7 +99,7 @@ impl Translator {
     pub fn try_tr(&self, id: &str, args: &[(&str, String)]) -> Result<String, String> {
         let mut fa = FluentArgs::new();
         for (k, v) in args {
-            fa.set(*k, v.clone());
+            fa.set(*k, value(v));
         }
         let pattern = self
             .bundle
@@ -119,7 +119,7 @@ impl Translator {
     pub fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         let mut fa = FluentArgs::new();
         for (k, v) in args {
-            fa.set(*k, v.clone());
+            fa.set(*k, value(v));
         }
         for b in [&self.bundle, &self.fallback] {
             if let Some(pattern) = b.get_message(id).and_then(|m| m.value()) {
@@ -130,6 +130,19 @@ impl Translator {
             }
         }
         id.to_string()
+    }
+}
+
+/// An argument for Fluent: a plain integer as a number, so a message can
+/// choose its plural (`[one]`); anything else, `07` or a date included, as
+/// text.
+fn value(text: &str) -> FluentValue<'static> {
+    let integer = !text.is_empty()
+        && text.chars().all(|c| c.is_ascii_digit())
+        && (text == "0" || !text.starts_with('0'));
+    match text.parse::<i64>() {
+        Ok(n) if integer => FluentValue::from(n),
+        _ => FluentValue::from(text.to_string()),
     }
 }
 
@@ -212,5 +225,39 @@ mod tests {
         );
         assert_eq!(t.tr("pause", &[]), "Pausa");
         assert_eq!(t.tr("no-such-key", &[]), "no-such-key");
+    }
+
+    // plurals choose by number; other values stay text
+    #[test]
+    fn integers_choose_their_plural() {
+        let t = Translator::from_setting("en", |_| None);
+        assert_eq!(
+            t.tr(
+                "stats-session",
+                &[
+                    ("time", "5 min".into()),
+                    ("chars", "16".into()),
+                    ("lookups", "1".into()),
+                    ("cards", "2".into())
+                ]
+            ),
+            "5 min · 16 characters · 1 lookup · 2 cards"
+        );
+        let t = Translator::from_setting("it", |_| None);
+        assert!(
+            t.tr(
+                "stats-session",
+                &[
+                    ("time", "5 min".into()),
+                    ("chars", "1".into()),
+                    ("lookups", "2".into()),
+                    ("cards", "1".into())
+                ]
+            )
+            .ends_with("2 ricerche · 1 card")
+        );
+        assert!(matches!(value("07"), FluentValue::String(_)));
+        assert!(matches!(value("2026-10-25"), FluentValue::String(_)));
+        assert!(matches!(value("1234"), FluentValue::Number(_)));
     }
 }

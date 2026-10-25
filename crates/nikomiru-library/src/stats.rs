@@ -198,6 +198,30 @@ pub fn local_day_hour(unix_ms: i64, offset_s: i32) -> (String, u8) {
     (format!("{y:04}-{m:02}-{d:02}"), hour)
 }
 
+/// The day number (days since 1970-01-01) of a date `YYYY-MM-DD`.
+pub fn day_number(date: &str) -> Option<i64> {
+    let mut parts = date.splitn(3, '-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: i64 = parts.next()?.parse().ok()?;
+    let d: i64 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Howard Hinnant's `days_from_civil`
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+/// The date `YYYY-MM-DD` of a day number.
+pub fn date_of(day: i64) -> String {
+    let (y, m, d) = civil(day);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// Howard Hinnant's `civil_from_days`.
 fn civil(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
@@ -560,6 +584,14 @@ mod tests {
         let at = 1_792_970_000_000; // 2026-10-25T23:13:20Z
         assert_eq!(local_day_hour(at, 0), ("2026-10-25".to_string(), 23));
         assert_eq!(local_day_hour(at, 7_200), ("2026-10-26".to_string(), 1));
+        for date in ["1970-01-01", "2000-02-29", "2026-10-25", "2026-12-31"] {
+            assert_eq!(date_of(day_number(date).unwrap()), date);
+        }
+        assert_eq!(
+            day_number("2026-10-26").unwrap() - day_number("2026-10-25").unwrap(),
+            1
+        );
+        assert_eq!(day_number("2026-13-01"), None);
         let mut clock = Clock::default();
         let start = 1_792_965_600_000; // 22:00:00Z
         assert!(

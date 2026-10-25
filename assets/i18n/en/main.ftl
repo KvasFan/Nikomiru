@@ -446,3 +446,32 @@ audio-database-button = Database…
 audio-database-filter = Databases of audio
 audio-priority = Sub-sources, in order
 word-audio-database = The audio database { $path } cannot be used ({ $reason }).
+
+# Statistics (STA-005)
+stats-title = Statistics
+stats-export = Export CSV…
+stats-csv-filter = CSV files
+stats-exported = The sessions are in { $path }.
+stats-under-minute = < 1 min
+stats-minutes = { $m } min
+stats-hours = { $h } h { $m } min
+stats-today = Today: { $time } · { $chars } characters
+stats-week = 7 days: { $time } · { $chars } characters
+stats-all = In all: { $time } · { $chars } characters
+stats-chart = Time watched by day
+stats-range = { $n } days
+stats-day = { $date }: { $time } · { $chars } characters
+stats-calendar = The year
+stats-series = By series
+stats-time-chars = { $time } · { $chars } characters
+stats-sessions = Sessions
+stats-none = No session yet: they are recorded while you watch.
+stats-session = { $time } · { $chars } characters · { $lookups } { $lookups ->
+    [one] lookup
+   *[other] lookups
+} · { $cards } { $cards ->
+    [one] card
+   *[other] cards
+}
+stats-delete = Delete
+stats-delete-session = Delete the session of { $date }, { $name }

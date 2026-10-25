@@ -317,6 +317,8 @@ pub(crate) enum Command {
     LibraryOpen,
     /// "Add folder…": the folder dialog opens (LIB-002).
     LibraryAddFolder,
+    /// "Export CSV…": the save dialog opens (STA-005).
+    StatsExport,
     /// A series opened on it, or closed.
     LibrarySeries(Option<u64>),
     /// A folder scanned again with a grouping (LIB-002, LIB-004).
@@ -598,6 +600,7 @@ impl Ui {
                         .session
                         .library_import(path, nikomiru_library::Grouping::BySeries),
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
+                    Dialog::StatsExport => self.session.stats_export(path),
                 }
                 true
             }
@@ -891,6 +894,7 @@ impl Ui {
             Command::NextCancel => s.cancel_next(),
             Command::LibraryOpen => s.library_open(),
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
+            Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
             Command::LibrarySeries(id) => s.library_series(id),
             Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
             Command::LibraryEdit(edit) => s.library_edit(edit),
@@ -1048,6 +1052,12 @@ impl Ui {
                 }
                 LibraryJob::Cover(id) => {
                     catalog.cover(id, Box::new(move |r| reply(LibraryReply::Cover(id, r))));
+                }
+                LibraryJob::Stats => {
+                    catalog.stats(Box::new(move |r| reply(LibraryReply::Stats(r))))
+                }
+                LibraryJob::ExportCsv(path) => {
+                    catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
             }
         }
