@@ -259,6 +259,7 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 
 - [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-010 green on the fake server; T-PLY-016, T-PLY-018 green.
 - [ ] By hand with real keys (T-MET-LIVE-001): Japanese subtitles found and loaded automatically for 5 real episodes from 3 series.
+- [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 
 ---
 
@@ -317,7 +318,6 @@ The online subtitles and their alignment with the audio moved to M4b (D-14).
 **Exit criteria**
 
 - [ ] T-MET-* green on fake servers; T-MET-LIVE-* (real network, nightly only and with keys) green.
-- [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 - [ ] **Release 0.4.0**.
 
 ---
