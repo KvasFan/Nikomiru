@@ -267,6 +267,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-014 | Blur | Sigma = max(12, 0.45 · font_size); absent while paused and with the popup open (state machine) | L1/L3 |
 | T-SUB-015 | List that follows playback | In the gaps between cues, it stays on the previous cue; search filters without losing the position | L1 |
 | T-SUB-016 | Alignment to the playhead | `pos` = 4900, next [5000–6000] → `delay_ms` decreases by 100 | L1 |
+| T-SUB-017 | Secondary subtitle | kittest: at the top, or above the main one at the bottom; smaller; no grapheme to click, a click on it looks nothing up; hidden on its own. L6: an embedded track chosen as the secondary, blurred while the main one is not, following the main offset (X), off again | L3/L6 |
 | T-SUB-018 | Alignment with the audio | Cues and levels on the grid (Fushi's vectors: a cue past the end left out, silence as 0); 20 minutes of speech-like audio and its cues moved by 0, +1.2, −3.4, +9.9, −14.8 s → the offset ±100 ms; audio unrelated to the cues → not applied; the PCM levels and the ffmpeg arguments; L4: the tones of `av_basic.mkv` put its cues moved by +1.2 and −0.7 s back; L6: an SRT written 1.2 s early, dropped on `av_basic.mkv`, aligned from the menu → offset +1200 ± 100 ms | L1/L4/L6 |
 | T-FUZZ-001…003 | SRT / VTT / ASS parsers on arbitrary bytes | No panic; for every cue produced, `start ≤ end` | L2 |
 

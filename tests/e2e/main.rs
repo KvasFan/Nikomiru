@@ -1430,3 +1430,43 @@ fn subtitles_are_aligned_with_the_audio() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-SUB-017: a second track under the first, following its offset
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_secondary_subtitle_follows_the_main_one() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    let s = h.state_until("the main subtitles", |s| s["subtitles"]["cues"] == 3);
+    let main = s["subtitles"]["source"].as_str().unwrap().to_string();
+    let other = if main == "track:1" {
+        "track:2"
+    } else {
+        "track:1"
+    };
+    h.cmd(serde_json::json!({ "cmd": "secondary", "key": other, "obscure": "blur" }));
+    h.state_until("the secondary", |s| s["secondary"]["cues"] == 3);
+    // its own obscuring, the main one's offset
+    h.key("KeyX");
+    let s = h.state_until("the offset followed", |s| {
+        s["subtitles"]["delay_ms"] != 0 && s["secondary"]["delay_ms"] == s["subtitles"]["delay_ms"]
+    });
+    assert_eq!(s["subtitles"]["obscure"], "none", "{s}");
+    assert_eq!(s["secondary"]["source"], other, "{s}");
+    // shown with the main cue
+    h.wait("cue-shown");
+    let s = h.state_until("both shown", |s| {
+        s["secondary"]["visible"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    });
+    assert_eq!(s["secondary"]["obscure"], "blur", "{s}");
+    // off again
+    h.cmd(serde_json::json!({ "cmd": "secondary", "key": "off" }));
+    h.state_until("no secondary", |s| s["secondary"]["source"].is_null());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

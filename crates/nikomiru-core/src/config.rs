@@ -126,6 +126,11 @@ pub struct SubtitlesConfig {
     pub respect_ass_styles: bool,
     /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
     pub obscure: String,
+    /// The same for the secondary subtitle (SUB-017).
+    pub secondary_obscure: String,
+    /// Where the secondary subtitle goes: `"top"` of the video, or `"bottom"`
+    /// above the main one (SUB-017).
+    pub secondary_position: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -138,6 +143,8 @@ impl Default for SubtitlesConfig {
             font_size: 36.0,
             respect_ass_styles: false,
             obscure: "none".into(),
+            secondary_obscure: "none".into(),
+            secondary_position: "top".into(),
             other: toml::Table::new(),
         }
     }

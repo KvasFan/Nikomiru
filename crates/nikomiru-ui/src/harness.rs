@@ -222,6 +222,13 @@ pub fn state() -> Result<Value, String> {
                 "disabled": s.subs.disabled,
                 "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
             },
+            "secondary": {
+                "source": s.secondary.source.as_ref().map(|x| x.key()),
+                "cues": s.secondary.timeline().cues().len(),
+                "delay_ms": s.secondary.timeline().delay_ms,
+                "visible": s.secondary.shown(false).map(|q| q.cue.plain_text.clone()).collect::<Vec<_>>(),
+                "obscure": s.secondary_obscure_now().name(),
+            },
             "popups": s.popups.stack().iter().map(|p| json!({
                 "query": p.query,
                 "entry": p.entry,
@@ -440,6 +447,21 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
         ui.run(command);
         Ok(())
     })?
+}
+
+/// The secondary subtitle (SUB-017): a source key or `off`, and the
+/// obscuring mode if given.
+pub fn secondary(key: Option<String>, obscure: Option<String>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(key) = key {
+            ui.run(Command::SelectSecondary(key));
+        }
+        if let Some(mode) = obscure {
+            ui.run(Command::SecondaryObscure(
+                crate::subtitles::Obscure::from_config(&mode),
+            ));
+        }
+    })
 }
 
 /// "Align with the audio" in the subtitle menu (SUB-018).

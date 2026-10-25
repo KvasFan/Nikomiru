@@ -31,6 +31,8 @@ pub enum Inbound {
         source: Source,
         /// The cues, or a message.
         result: Result<Loaded, String>,
+        /// For the secondary subtitle (SUB-017).
+        secondary: bool,
     },
     /// A lookup ended.
     Lookup {
@@ -289,6 +291,10 @@ pub(crate) enum Command {
     ),
     /// "Align with the audio" (SUB-018).
     AlignSubtitles,
+    /// The secondary subtitle: a source key or `"off"` (SUB-017).
+    SelectSecondary(String),
+    /// The secondary subtitle's obscuring mode.
+    SecondaryObscure(crate::subtitles::Obscure),
     /// The Player settings page opened (PLY-016, PLY-018).
     PlayerOpen,
     /// Apply this option set, and remember the preset it comes from.
@@ -399,8 +405,13 @@ impl Ui {
                 generation,
                 source,
                 result,
+                secondary,
             } => {
-                self.session.subtitles_loaded(generation, source, result);
+                if secondary {
+                    self.session.secondary_loaded(generation, source, result);
+                } else {
+                    self.session.subtitles_loaded(generation, source, result);
+                }
                 true
             }
             Inbound::Lookup { generation, result } => {
@@ -761,6 +772,8 @@ impl Ui {
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
+            Command::SelectSecondary(key) => s.select_secondary(&key),
+            Command::SecondaryObscure(mode) => s.set_secondary_obscure(mode),
             Command::PlayerOpen => s.player_open(),
             Command::PlayerApply(settings) => {
                 let (set, preset) = *settings;
@@ -796,6 +809,7 @@ impl Ui {
         for (generation, request) in self.session.take_subtitle_loads() {
             let waker = self.waker.clone();
             let source = request.source.clone();
+            let secondary = request.secondary;
             self.session.start_subtitle_load(
                 request,
                 Box::new(move |result| {
@@ -803,6 +817,7 @@ impl Ui {
                         generation,
                         source,
                         result,
+                        secondary,
                     });
                 }),
             );

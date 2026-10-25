@@ -475,7 +475,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | SUB-014 | Blur / hidden: modes for the main subtitle (`none`, `blur`, `hidden`). Blur is a soft blur of the text, with sigma = max(12, font_size·0.45). The text is revealed on mouse hover. Blur applies only during playback and with no popup open (BUG-2198, BUG-2235). **V** turns the subtitles off and on: nothing is drawn, not even on hover, and the chosen track stays for when they come back (maintainer request after the M2 checklist) | |
 | SUB-015 | Subtitle list panel (`L`): list of all cues with time, text search (`Ctrl+F`), automatic scrolling that follows playback (in gaps between cues it stays on the previous cue), click on the time to jump, click on a word for lookup | `video_subtitle_jump_panel.dart` |
 | SUB-016 | Align the start of the previous or next cue to the current position (Ctrl+Shift+←/→), updating `delay_ms` | |
-| SUB-017 | **Secondary** subtitle (e.g. a translation): second layer with its own offset (default: follows the main one), its own blur mode and position. Milestone M7 | |
+| SUB-017 | **Secondary** subtitle (e.g. a translation), chosen among the text sources in the subtitle menu: a second layer at 85 % of the size, at the top of the video or above the main subtitle at the bottom (`[subtitles] secondary_position`), never clicked (no lookups), with its own obscuring mode (`secondary_obscure`, revealed with the main one on hover); it follows the main offset. Its load neither cancels nor is cancelled by the main one's. Milestone M4b (D-14) | |
 | SUB-018 | **Automatic alignment with the audio** ("Align with the audio" in the subtitle menu, and by itself after downloaded subtitles load, MET-007): the first 20 minutes of the active audio track decoded by ffmpeg to 8 kHz mono PCM, its RMS level every 100 ms; the bins in the loud part of the track's own range (≥ 35 %) and the cues become activity series, and the offset is the shift within ±15 s with the best Pearson correlation. It is applied as the subtitle offset (SUB-011) only when the correlation is ≥ 0.15 and at least 0.05 above the best one more than 1 s away; otherwise the menu says it is not sure and nothing changes. A new load cancels it. Milestone M4b (D-14) | `subtitle_auto_align.dart`, `audio_energy_probe.dart` |
 | SUB-019 | Advanced ASS (`\t`, `\move`, `\fad`, `\clip`, karaoke `\k`, rotations): post-1.0 | |
 
@@ -806,6 +806,8 @@ preferred_languages = ["ja", "jpn"]
 font_size = 36
 respect_ass_styles = false
 obscure = "none"            # "none" | "blur" | "hidden"
+secondary_obscure = "none"  # the same for the secondary subtitle (SUB-017)
+secondary_position = "top"  # "top" | "bottom" (above the main subtitle)
 
 [lookup]
 max_results = 10
@@ -873,7 +875,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-11 | Name of the project | **Approved**: the app, the crates (`nikomiru-*`), the binary, the URL scheme (`nikomiru://`), the XDG folders and the GitHub repository (`nikomiru`, created at the first push) are called **Nikomiru**, because "Anikoto" was already taken. Git history before the rename keeps the old name |
 | D-12 | Direction after 1.0 | **Approved** (2026-10-19): books (EPUB), manga and online resources are a planned direction after 1.0, not a permanent exclusion. Until 1.0 the focus is video with clickable subtitles and the dictionary explanation of the clicked word, in the overlay and in the subtitle list (SUB-009, SUB-015, M3) |
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
-| D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
+| D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
 
 ### 10.2 Risks
 

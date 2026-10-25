@@ -258,6 +258,11 @@ pub struct Session {
     sub_sources: Vec<Source>,
     /// Languages of embedded tracks, for the menu labels.
     sub_tracks: Vec<Track>,
+    /// The secondary subtitle (SUB-017): a second text track, drawn without
+    /// clicks, with its own obscuring mode, following the main offset.
+    pub secondary: Subtitles,
+    /// Its loads so far: an older answer is dropped.
+    secondary_generation: u64,
     sub_generation: u64,
     sub_loads: Vec<(u64, Request)>,
     sub_auto_done: bool,
@@ -397,6 +402,7 @@ impl Session {
             ..ViewState::default()
         };
         let services_obscure = services.config.subtitles.obscure.clone();
+        let secondary_obscure = services.config.subtitles.secondary_obscure.clone();
         let popup_size = (
             services.config.popup.max_width,
             services.config.popup.max_height,
@@ -423,6 +429,8 @@ impl Session {
             events: Vec::new(),
             first_frame: false,
             subs: Subtitles::with_mode(Obscure::from_config(&services_obscure)),
+            secondary: Subtitles::with_mode(Obscure::from_config(&secondary_obscure)),
+            secondary_generation: 0,
             sub_sources: Vec::new(),
             sub_tracks: Vec::new(),
             sub_generation: 0,
@@ -619,6 +627,7 @@ impl Session {
                         time_pos_ms: pos_ms,
                     });
                 }
+                self.update_secondary();
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
                 }
@@ -1714,6 +1723,7 @@ impl Session {
                 tracing::info!("aligned with the audio: {a:?}");
                 self.subs.timeline_mut().delay_ms = a.offset_ms;
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
+                self.update_secondary();
                 self.sub_list_version += 1;
                 self.toasts.push(self.tr(
                     "toast-sub-aligned",
@@ -2180,6 +2190,8 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.secondary.clear(None);
+        self.secondary_generation += 1;
         self.subs.clear(None);
         self.sub_sources.clear();
         self.sub_tracks.clear();
@@ -2310,6 +2322,7 @@ impl Session {
                         source,
                         encoding: self.subs.forced_encoding.clone(),
                         duration_ms: (self.view.duration * 1000.0) as i64,
+                        secondary: false,
                     },
                 ));
             }
@@ -2405,6 +2418,85 @@ impl Session {
         }
     }
 
+    /// The secondary subtitle follows the main one's offset (SUB-017).
+    fn update_secondary(&mut self) {
+        let delay = self.subs.timeline().delay_ms;
+        self.secondary.timeline_mut().delay_ms = delay;
+        self.secondary.update((self.view.time_pos * 1000.0) as i64);
+    }
+
+    /// The secondary subtitle chosen in the menu: a source key, or `"off"`
+    /// (SUB-017). Text sources only: mpv draws graphic tracks.
+    pub fn select_secondary(&mut self, key: &str) {
+        self.secondary_generation += 1;
+        let source = self
+            .sub_sources
+            .iter()
+            .find(|s| s.key() == key && !matches!(s, Source::Bitmap(_)))
+            .cloned();
+        let (Some(source), Some(video)) = (source, self.current.as_ref().map(|c| c.path.clone()))
+        else {
+            self.secondary.clear(None);
+            return;
+        };
+        self.sub_loads.push((
+            self.secondary_generation,
+            Request {
+                video,
+                source,
+                encoding: None,
+                duration_ms: (self.view.duration * 1000.0) as i64,
+                secondary: true,
+            },
+        ));
+    }
+
+    /// A load of the secondary subtitle ended; an older one is dropped.
+    pub fn secondary_loaded(
+        &mut self,
+        generation: u64,
+        source: Source,
+        result: Result<Loaded, String>,
+    ) {
+        if generation != self.secondary_generation {
+            return;
+        }
+        match result {
+            Ok(loaded) => {
+                self.secondary.set_track(source, loaded);
+                self.update_secondary();
+            }
+            Err(reason) => {
+                self.secondary.clear(None);
+                self.toasts
+                    .push(self.tr("error-subtitles", &[("reason", reason)]));
+            }
+        }
+    }
+
+    /// The secondary subtitle's obscuring mode (SUB-017), from the menu.
+    pub fn set_secondary_obscure(&mut self, mode: Obscure) {
+        self.secondary.mode = mode;
+        self.services.config.subtitles.secondary_obscure = mode.name().to_string();
+    }
+
+    /// The obscuring of the secondary subtitle now: its own mode, lifted
+    /// like the main one's (SUB-014, SUB-017).
+    pub fn secondary_obscure_now(&self) -> Obscure {
+        crate::subtitles::obscured(
+            self.secondary.mode,
+            self.view.loaded && !self.view.paused,
+            self.popups.is_open(),
+            self.subs.hovered,
+        )
+    }
+
+    /// Whether the secondary subtitle goes above the main one at the bottom,
+    /// rather than at the top of the video.
+    pub fn secondary_at_bottom(&self) -> bool {
+        self.services.config.subtitles.secondary_position == "bottom"
+    }
+
     /// The subtitle menu: `{key, kind, name, lang, title, codec}`.
     pub fn subtitle_menu(&self) -> serde_json::Value {
         let items = self.sub_sources.iter().map(|s| {
@@ -2443,6 +2535,7 @@ impl Session {
 
     fn after_delay_change(&mut self, delay_ms: i64) {
         self.subs.update((self.view.time_pos * 1000.0) as i64);
+        self.update_secondary();
         self.sub_list_version += 1;
         self.toasts
             .push(self.tr("toast-sub-delay", &[("value", format!("{delay_ms:+}"))]));
