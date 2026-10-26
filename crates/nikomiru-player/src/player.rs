@@ -282,6 +282,9 @@ struct Shared {
     /// The values of the Player settings' options before any was set: the
     /// value an option goes back to when the user unsets it (PLY-018).
     defaults: std::collections::BTreeMap<String, String>,
+    /// The profile the last load applied; `None` after one applied from the
+    /// settings, so that the next load applies its own again.
+    profile: Mutex<Option<String>>,
 }
 
 impl Shared {
@@ -426,6 +429,7 @@ impl Player {
             token: AtomicU64::new(0),
             pending: Mutex::new(None),
             defaults,
+            profile: Mutex::new(None),
         });
         let sink: Sink = Arc::new(sink);
         let (commands, queue) = mpsc::channel();
@@ -639,6 +643,9 @@ impl PlayerHandle {
     ) -> Result<CommandReply, PlayerError> {
         let (reply, result) = mpsc::channel();
         let command = if option.key == "profile" {
+            if let Ok(mut p) = self.shared.profile.lock() {
+                *p = None;
+            }
             Command::Reply("apply-profile", vec![option.value.clone()], reply)
         } else {
             Command::Reply("set", vec![option.key.clone(), option.value.clone()], reply)
@@ -712,7 +719,10 @@ fn command_loop(shared: &Shared, queue: &mpsc::Receiver<Command>, sink: &Sink) {
 }
 
 /// A load: options (PLY-006), `start` (PLY-007: resume through `start`, never
-/// with a seek after loading), then `loadfile`.
+/// with a seek after loading), then `loadfile`. An option already at its
+/// value, and the profile applied last, are not set again: setting `hwdec`,
+/// even to the same value, makes mpv load the hardware decoding again, and
+/// with the render API each time kept memory for good (T-REL-003).
 fn load(
     shared: &Shared,
     token: LoadToken,
@@ -722,7 +732,25 @@ fn load(
     let mpv = &shared.mpv;
     for option in &request.options {
         let result = if option.key == "profile" {
-            mpv.command("apply-profile", &[&option.value])
+            let mut last = shared.profile.lock().ok();
+            if last
+                .as_deref()
+                .is_some_and(|p| p.as_deref() == Some(option.value.as_str()))
+            {
+                continue;
+            }
+            let applied = mpv.command("apply-profile", &[&option.value]);
+            if applied.is_ok()
+                && let Some(last) = last.as_mut()
+            {
+                **last = Some(option.value.clone());
+            }
+            applied
+        } else if mpv
+            .get_property::<String>(&option.key)
+            .is_ok_and(|now| now == option.value)
+        {
+            continue;
         } else {
             mpv.set_property(&option.key, option.value.as_str())
         };
