@@ -2223,6 +2223,7 @@ fn the_keyboard_alone_goes_from_the_library_to_a_card_and_back() {
     h.key("Enter");
     let s = h.state_until("the popup", |s| s["popups"][0]["query"].is_string());
     assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    // one word: → goes on by character
     h.key("ArrowRight");
     h.state_until("a character later", |s| {
         s["popups"][0]["query"] == "べました"

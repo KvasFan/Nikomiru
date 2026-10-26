@@ -2591,14 +2591,14 @@ impl Session {
         let Some(q) = self.subs.cue(cue) else {
             return;
         };
-        // word by word once its words are known (LKP-060), else by grapheme
-        if self.words.get(&q.plain_text).is_some() {
-            if let Some(offset) = self.words.step(&q.plain_text, start, forward) {
-                self.keyboard_lookup = Some((cue, offset));
-            }
+        // word by word once its words are known (LKP-060); by grapheme
+        // before, and past the last word (into a compound's own words)
+        if self.words.get(&q.plain_text).is_none() {
+            self.words.ask(&q.plain_text);
+        } else if let Some(offset) = self.words.step(&q.plain_text, start, forward) {
+            self.keyboard_lookup = Some((cue, offset));
             return;
         }
-        self.words.ask(&q.plain_text);
         let offsets: Vec<usize> = q.graphemes().iter().map(|g| g.offset).collect();
         let Some(i) = offsets.iter().position(|&o| o == start) else {
             return;

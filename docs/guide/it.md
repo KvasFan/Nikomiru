@@ -61,7 +61,7 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 - **Shift + passaggio del puntatore** cerca senza cliccare. In Impostazioni → Ricerca puoi far funzionare anche il passaggio semplice.
 - **Tastiera**:
   - Invio cerca nel sottotitolo mostrato;
-  - ← → spostano la ricerca alla parola dopo o prima;
+  - ← → spostano la ricerca alla parola dopo o prima, e di un carattere oltre l'ultima;
   - Tab e Shift+Tab passano da una voce all'altra;
   - Esc chiude il popup.
 - **Seleziona del testo** in una definizione per cercarlo in un popup annidato.

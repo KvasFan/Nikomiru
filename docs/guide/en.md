@@ -61,7 +61,7 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 - **Shift + hover** looks words up without clicking. In Settings → Lookup you can make plain hover work too.
 - **Keyboard**:
   - Enter looks up the subtitle shown;
-  - ← → move the lookup to the next or previous word;
+  - ← → move the lookup to the next or previous word, then by character past the last one;
   - Tab and Shift+Tab move between the entries;
   - Esc closes the popup.
 - **Select text** in a definition to look it up in a nested popup.
