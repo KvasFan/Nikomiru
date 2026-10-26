@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - The user guide, in English and Italian (`docs/guide/`).
 - The desktop entry has an icon: the logo, installed by `cargo xtask install` too.
 
+### Security
+
+- Covers are decoded within the limits of the dictionaries' images (format by the bytes, size, sides and memory bounded): since 0.4.0 one can come from the network.
+- A subtitle file larger than 64 MiB is refused instead of read whole.
+
 ## [0.4.0] - 2026-10-26
 
 Series identified online (M7).
