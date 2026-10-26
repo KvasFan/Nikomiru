@@ -227,9 +227,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PRV-001 | No unrequested network traffic | L6 suite under `strace -f -e trace=connect`: no `connect()` to non-loopback addresses if the user has not started network features | L6 |
 | T-PRV-002 | Clean logs | Flows with sentinel text in the subtitles and a sentinel API key: neither of the two appears in the log files | L4 |
 | T-MAINT-001 | Code quality | `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `#![deny(missing_docs)]` in library crates | CI |
-| T-MAINT-002 | Coverage | `cargo llvm-cov` ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` | CI |
-| T-PORT-001 | Wayland and X11 | The L6 smoke test passes both under headless Weston and under Xvfb | L6 |
-| T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds | CI |
+| T-MAINT-002 | Coverage | `cargo xtask coverage` (`cargo llvm-cov` with the L4 tests, the tests and fakes not counted, the profiles of killed children dropped) ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki`; on 2026-10-26: 96.2%, 96.8%, 92.3%, 95.5% | CI |
+| T-PORT-001 | Wayland and X11 | The L6 suite runs on Wayland (the off-screen KWin); the smoke test (a video, its first frame, a word looked up) also on X11 alone, through the same KWin's Xwayland | L6 |
+| T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds (a step of `cargo xtask ci --full`; the PKGBUILD builds with `--frozen`) | CI |
 
 ### 6.2 Text (`nikomiru-text`)
 

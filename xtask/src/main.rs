@@ -9,6 +9,7 @@
 
 mod arch;
 mod ci;
+mod coverage;
 mod evil;
 mod fixtures;
 mod i18n;
@@ -35,6 +36,7 @@ cargo xtask <command>
                        with fixtures --large if needed) and times 10k lookups
   check-headers        SPDX headers, unsafe, documentation, dependencies
   check-i18n           every Fluent key used and existing, no untranslated text in the views
+  coverage             line coverage of the logic crates with cargo-llvm-cov, ≥ 80% each
   check-licenses [--canary]
                        deny.toml exceptions = SPECIFICATION §3.2, then cargo deny;
                        --canary: checks that a BSL-1.0 crate is rejected
@@ -70,6 +72,7 @@ fn run() -> Result<()> {
         "bench" => bench(&root),
         "check-headers" => arch::check_all(&root),
         "check-i18n" => i18n::check(&root),
+        "coverage" => coverage::run(&root),
         "check-licenses" if rest.iter().any(|a| a == "--canary") => licenses::canary(&root),
         "check-licenses" => licenses::check(&root, true),
         "trace" => trace::run(&root),

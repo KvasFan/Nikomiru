@@ -2521,3 +2521,22 @@ fn a_series_is_identified_online_and_its_subtitles_found_by_id() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-PORT-001 (NFR-PORT-01): the same smoke test on X11, through Xwayland
+#[test]
+#[ignore = "L6: needs kwin_wayland with Xwayland, dbus-daemon and `cargo xtask fixtures`"]
+fn on_x11_a_video_plays_and_a_word_is_looked_up() {
+    let mut desk = Desktop::start_x11();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    let s = h.state();
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

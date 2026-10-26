@@ -65,6 +65,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     step("test", || tests(full))?;
     if full {
+        step("offline build (T-PORT-002)", offline_build)?;
         step("release build (T-SEC-004)", release_build)?;
         step("GUI end-to-end (L6)", gui_tests)?;
     }
@@ -79,6 +80,14 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         started.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+// T-PORT-002
+/// The build needs no network once the crates are fetched (NFR-PORT-01):
+/// `cargo fetch`, then the whole workspace with `--offline`.
+fn offline_build() -> Result<()> {
+    util::run(cargo().args(["fetch", "--locked"]))?;
+    util::run(cargo().args(["build", "--offline", "--locked", "--workspace"]))
 }
 
 // T-SEC-004
