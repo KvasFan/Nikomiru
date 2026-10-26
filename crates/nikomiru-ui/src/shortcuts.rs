@@ -98,9 +98,10 @@ pub enum Action {
     CreateCardAdvanced,
     /// Looks up the first word of the subtitle shown (NFR-A11Y-01).
     LookupSubtitle,
-    /// The lookup starts a character earlier in its subtitle.
+    /// The lookup starts a word earlier in its subtitle (a character while
+    /// its words are not known, LKP-060).
     LookupPrev,
-    /// The lookup starts a character later.
+    /// The lookup starts a word later.
     LookupNext,
     /// Opens the settings (SET-008).
     Settings,

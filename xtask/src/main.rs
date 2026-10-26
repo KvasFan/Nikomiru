@@ -33,8 +33,9 @@ cargo xtask <command>
                        generates test media and dictionaries in target/fixtures
                        (--large: synthetic dictionaries with 300k entries; --perf:
                        5-minute 1080p60 videos for T-PERF-03)
-  bench                T-PERF-04/05: imports the synthetic dictionaries (generated
-                       with fixtures --large if needed) and times 10k lookups
+  bench                T-PERF-04/05/10: imports the synthetic dictionaries (generated
+                       with fixtures --large if needed), times 10k lookups and
+                       500 lines split into words
   check-headers        SPDX headers, unsafe, documentation, dependencies
   check-i18n           every Fluent key used and existing, no untranslated text in the views
   coverage             line coverage of the logic crates with cargo-llvm-cov, ≥ 80% each

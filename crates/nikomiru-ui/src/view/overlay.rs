@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The subtitle overlay (SUB-009, SUB-010, SUB-014, POP-001…003): cues over the
-//! video, clickable and hoverable per grapheme.
+//! video, clickable and hoverable per grapheme; readings over their kanji
+//! and the words already made into cards underlined (LKP-051, LKP-061).
 //!
 //! Sizes follow the visible video: 36 px at 1080 by default, ASS sizes in
 //! PlayResY units when ASS styles are respected. Each line of a cue is one
@@ -10,6 +11,7 @@
 //! the outline, the shadow and the blur are offset copies of the text and
 //! soft rectangles, with no GL pass.
 
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -28,9 +30,12 @@ use crate::popup;
 use crate::session::Session;
 use crate::subtitles::{Obscure, Shown, Subtitles, blur_sigma};
 use crate::ui::Command;
+use crate::words::Marks;
 
 /// The selected grapheme and the text the popup matched (POP-002).
 const HIGHLIGHT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
+/// The underline of the words already made into cards (LKP-061).
+const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
 /// The outline without an ASS style.
 const OUTLINE: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0x99);
 /// The soft shadow under each row of text: `#cc000000` spread over the row,
@@ -70,6 +75,8 @@ pub(crate) struct Scene<'a> {
     pub secondary: Option<Secondary<'a>>,
     /// A lookup asked from the keyboard: the cue and the grapheme's offset.
     pub keyboard: Option<(usize, usize)>,
+    /// The marks of the main cues shown, by index (LKP-051, LKP-061).
+    pub marks: HashMap<usize, Marks>,
 }
 
 /// The secondary subtitle as the overlay draws it (SUB-017).
@@ -98,6 +105,11 @@ impl<'a> Scene<'a> {
                 bottom: s.secondary_at_bottom(),
             }),
             keyboard: s.keyboard_lookup(),
+            marks: s
+                .subs
+                .shown(false)
+                .filter_map(|c| Some((c.index, s.word_marks(&c.cue.plain_text)?)))
+                .collect(),
         }
     }
 }
@@ -129,6 +141,10 @@ pub(crate) struct Drawn {
     pub graphemes: Vec<(usize, Rect)>,
     /// How many rects are highlighted.
     pub highlighted: usize,
+    /// How many readings are drawn over it.
+    pub readings: usize,
+    /// How many underlines mark words already mined.
+    pub mined: usize,
     /// Whether any text was painted.
     pub painted: bool,
     /// A cue of the secondary subtitle.
@@ -172,7 +188,7 @@ pub(crate) fn draw(
         let mut all: Vec<Laid> = Vec::new();
         if let Some(sec) = scene.secondary.as_ref().filter(|_| !scene.subs.disabled) {
             for shown in sec.subs.shown(false) {
-                let mut laid = lay_out(fonts, &shown, &secondary_units, false, wrap);
+                let mut laid = lay_out(fonts, &shown, &secondary_units, false, wrap, None);
                 laid.place = if sec.bottom {
                     Place::Bottom
                 } else {
@@ -183,12 +199,10 @@ pub(crate) fn draw(
                 all.push(laid);
             }
         }
-        all.extend(
-            scene
-                .subs
-                .shown(scene.respect_ass)
-                .map(|shown| lay_out(fonts, &shown, &units, scene.respect_ass, wrap)),
-        );
+        all.extend(scene.subs.shown(scene.respect_ass).map(|shown| {
+            let marks = scene.marks.get(&shown.index);
+            lay_out(fonts, &shown, &units, scene.respect_ass, wrap, marks)
+        }));
         all
     });
     // drawn bottom, middle, top, then the free ones; by layer and file order
@@ -290,6 +304,8 @@ pub(crate) fn draw(
                 .map(|g| (g.offset, g.rect.translate(offset)))
                 .collect(),
             highlighted: cue.highlight.len(),
+            readings: cue.readings,
+            mined: cue.mined.len(),
             painted,
             secondary: cue.secondary,
         });
@@ -593,6 +609,10 @@ struct Laid<'a> {
     rows: Vec<Rect>,
     graphemes: Vec<Hit>,
     highlight: Vec<Rect>,
+    /// The readings drawn, the file's and the dictionaries'.
+    readings: usize,
+    /// The underlines of the words already mined (LKP-061).
+    mined: Vec<Rect>,
     /// A cue of the secondary subtitle: drawn, never clicked (SUB-017).
     secondary: bool,
 }
@@ -614,6 +634,7 @@ fn lay_out<'a>(
     units: &Units,
     respect: bool,
     wrap: f32,
+    marks: Option<&Marks>,
 ) -> Laid<'a> {
     let align = h_align(shown);
     let fill = shown.style.map_or(Color32::WHITE, |s| color(s.primary));
@@ -632,9 +653,15 @@ fn lay_out<'a>(
         ..LayoutJob::default()
     };
 
+    let all = shown.cue.graphemes();
+    // the file's ruby wins over the dictionaries' readings (LKP-051)
+    let dictionary_readings: &[(Range<usize>, String)] = match marks {
+        Some(m) if shown.cue.markup.ruby.is_empty() => &m.readings,
+        _ => &[],
+    };
     // one job per line; for each grapheme its byte offset and its chars in the line
     let mut lines: Vec<Line> = vec![(new_job(), Vec::new(), Vec::new())];
-    for g in shown.cue.graphemes() {
+    for g in &all {
         if g.text == "\n" {
             lines.push((new_job(), Vec::new(), Vec::new()));
             continue;
@@ -666,7 +693,14 @@ fn lay_out<'a>(
             strikethrough: stroke(look.strike),
             ..TextFormat::default()
         };
-        if let Some((reading, covered)) = g.ruby {
+        let auto = dictionary_readings
+            .iter()
+            .find(|(range, _)| range.start == g.offset)
+            .map(|(range, text)| {
+                let covered = all.iter().filter(|h| range.contains(&h.offset)).count();
+                (text.as_str(), covered)
+            });
+        if let Some((reading, covered)) = g.ruby.or(auto) {
             // WebVTT ruby: half size, the colour of its base
             let galley = fonts.layout_job(LayoutJob::single_section(
                 reading.to_string(),
@@ -696,6 +730,8 @@ fn lay_out<'a>(
         rows: Vec::new(),
         graphemes: Vec::new(),
         highlight: Vec::new(),
+        readings: 0,
+        mined: Vec::new(),
         secondary: false,
     };
     // lines with nothing in them take no room, as in a column of rows
@@ -757,6 +793,7 @@ fn lay_out<'a>(
                 span.min.y - size.y,
             );
             laid.texts.push((at, reading.galley));
+            laid.readings += 1;
         }
         for row in &galley.rows {
             let ink = row.visuals.mesh_bounds;
@@ -774,6 +811,24 @@ fn lay_out<'a>(
     }
     // drop the targets of graphemes with no glyph (a lone combining mark)
     laid.graphemes.retain(|h| h.rect.is_positive());
+    // a line under each word already mined, one per row it is on
+    for range in marks.map_or(&[][..], |m| &m.mined) {
+        let mut rows: Vec<Rect> = Vec::new();
+        for hit in laid.graphemes.iter().filter(|h| range.contains(&h.offset)) {
+            match rows
+                .iter_mut()
+                .find(|r| (r.max.y - hit.rect.max.y).abs() < 0.5)
+            {
+                Some(row) => *row = row.union(hit.rect),
+                None => rows.push(hit.rect),
+            }
+        }
+        let thick = (units.font / 14.0).max(2.0);
+        laid.mined.extend(
+            rows.into_iter()
+                .map(|r| Rect::from_min_max(pos2(r.min.x, r.max.y - thick), r.max)),
+        );
+    }
     laid
 }
 
@@ -851,6 +906,11 @@ fn paint(painter: &Painter, cue: &Laid<'_>, offset: Vec2, mode: Obscure, units: 
     }
     for (at, galley) in &cue.texts {
         painter.add(TextShape::new(*at + offset, Arc::clone(galley), cue.fill));
+    }
+    for line in &cue.mined {
+        let line = line.translate(offset);
+        painter.rect_filled(line.expand(width), 1.0, cue.outline);
+        painter.rect_filled(line, 1.0, MINED);
     }
 }
 
@@ -1056,6 +1116,17 @@ mod tests {
         obscure: Obscure,
         secondary: Option<(Subtitles, Obscure, bool)>,
     ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        build(subs, obscure, secondary, HashMap::new())
+    }
+
+    /// The same, with the words' marks of each cue (LKP-051, LKP-061).
+    fn build(
+        subs: Subtitles,
+        obscure: Obscure,
+        secondary: Option<(Subtitles, Obscure, bool)>,
+        marks: HashMap<usize, Marks>,
+    ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        let marks: &'static HashMap<usize, Marks> = Box::leak(Box::new(marks));
         let secondary: &'static Option<(Subtitles, Obscure, bool)> = Box::leak(Box::new(secondary));
         Harness::builder()
             .with_size(vec2(1280.0, 720.0))
@@ -1078,6 +1149,7 @@ mod tests {
                             bottom: *bottom,
                         }),
                         keyboard: None,
+                        marks: marks.clone(),
                     };
                     draw(ui.ctx(), &scene, state, 0.0, out);
                 },
@@ -1328,6 +1400,43 @@ mod tests {
         h.state_mut().0.disabled = true;
         h.run();
         assert!(h.state().1.drawn.is_empty());
+    }
+
+    // T-LKP-051, T-LKP-061
+    #[test]
+    fn readings_and_mined_words_are_drawn_over_their_graphemes() {
+        let srt = "1\n00:00:01,000 --> 00:00:03,000\n猫が食べた\n";
+        let marks = Marks {
+            readings: vec![(0..3, "ねこ".into()), (6..9, "た".into())],
+            mined: std::iter::once(6..15).collect(),
+        };
+        let mut h = build(
+            subtitles(srt, Format::Srt, 1500),
+            Obscure::None,
+            None,
+            HashMap::from([(0, marks.clone())]),
+        );
+        h.run();
+        let marked = h.state().1.drawn[0].clone();
+        assert_eq!((marked.readings, marked.mined), (2, 1));
+        let mut plain = harness(subtitles(srt, Format::Srt, 1500), Obscure::None);
+        plain.run();
+        let plain = plain.state().1.drawn[0].clone();
+        assert_eq!((plain.readings, plain.mined), (0, 0));
+        // the readings take room above the line; the text stays clickable
+        assert!(marked.rect.height() > plain.rect.height());
+        assert_eq!(marked.graphemes.len(), 5);
+        // the file's own ruby wins
+        let vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<ruby>猫<rt>ネコ</rt></ruby>が食べた\n";
+        let mut h = build(
+            subtitles(vtt, Format::Vtt, 1500),
+            Obscure::None,
+            None,
+            HashMap::from([(0, marks)]),
+        );
+        h.run();
+        assert_eq!(h.state().1.drawn[0].readings, 1);
+        assert_eq!(h.state().1.drawn[0].mined, 1);
     }
 
     trait Contains {

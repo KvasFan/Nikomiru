@@ -167,7 +167,7 @@ pub struct PlayerConfig {
     pub other: toml::Table,
 }
 
-/// `[subtitles]` (SUB-008, SUB-010, SUB-014).
+/// `[subtitles]` (SUB-008, SUB-010, SUB-014, LKP-051, LKP-061).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitlesConfig {
@@ -184,6 +184,11 @@ pub struct SubtitlesConfig {
     /// Where the secondary subtitle goes: `"top"` of the video, or `"bottom"`
     /// above the main one (SUB-017).
     pub secondary_position: String,
+    /// Readings over the kanji of the subtitles, from the dictionaries
+    /// (LKP-051).
+    pub furigana: bool,
+    /// Underline the words already made into cards (LKP-061).
+    pub mark_mined: bool,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -198,6 +203,8 @@ impl Default for SubtitlesConfig {
             obscure: "none".into(),
             secondary_obscure: "none".into(),
             secondary_position: "top".into(),
+            furigana: false,
+            mark_mined: true,
             other: toml::Table::new(),
         }
     }

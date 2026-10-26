@@ -2,7 +2,8 @@
 
 //! The dictionary service of the session: lookups run on a worker thread,
 //! with the dictionaries of the registry (DIC-021), and come back as popup
-//! content (POP-007); imports run on threads of their own, which the service
+//! content (POP-007); the subtitles are split into words on another
+//! (LKP-060), so that a click never waits behind them; imports run on threads of their own, which the service
 //! cancels and waits for when it goes; the page's other operations are quick
 //! registry writes.
 
@@ -17,6 +18,7 @@ use nikomiru_dict::import::Progress;
 
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::Options;
+use nikomiru_dict::segment::{Word, segment};
 use nikomiru_library::{
     Check, Collapse as RecordCollapse, DictionaryError, DictionaryManager, DictionaryRecord,
 };
@@ -31,8 +33,10 @@ use nikomiru_ui::popup_view::{self, Collapse, DictView};
 pub struct Dictionaries {
     manager: Arc<DictionaryManager>,
     translator: Translator,
-    jobs: Option<mpsc::Sender<(String, Done<Reply>)>>,
+    jobs: Option<Jobs<Reply>>,
     worker: Option<JoinHandle<()>>,
+    words: Option<Jobs<Vec<Word>>>,
+    words_worker: Option<JoinHandle<()>>,
     /// The imports that may still run, with their cancels.
     imports: Mutex<Vec<(Cancel, JoinHandle<()>)>>,
 }
@@ -52,7 +56,11 @@ impl Drop for Dictionaries {
             cancel.cancel();
         }
         drop(self.jobs.take());
-        if let Some(worker) = self.worker.take() {
+        drop(self.words.take());
+        for worker in [self.worker.take(), self.words_worker.take()]
+            .into_iter()
+            .flatten()
+        {
             let _ = worker.join();
         }
         for (_, import) in imports {
@@ -61,40 +69,74 @@ impl Drop for Dictionaries {
     }
 }
 
+/// The texts sent to a worker, each with what to call once done.
+type Jobs<T> = mpsc::Sender<(String, Done<T>)>;
+
+/// A thread that runs `job` on each text sent to it, and the sender.
+fn spawn_worker<T: 'static>(
+    name: &str,
+    manager: &Arc<DictionaryManager>,
+    translator: &Translator,
+    job: impl Fn(&DictionaryManager, &str) -> Result<T, DictionaryError> + Send + 'static,
+) -> (Jobs<T>, Option<JoinHandle<()>>) {
+    let (tx, rx) = mpsc::channel::<(String, Done<T>)>();
+    let manager = Arc::clone(manager);
+    let translator = translator.clone();
+    let spawned = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            for (text, done) in rx {
+                let started = std::time::Instant::now();
+                let result = job(&manager, &text).map_err(|e| translator.error(&e));
+                tracing::debug!(query = %text, elapsed = ?started.elapsed(), "{}", std::thread::current().name().unwrap_or_default());
+                done(result);
+            }
+        });
+    match spawned {
+        Ok(worker) => (tx, Some(worker)),
+        Err(e) => {
+            tracing::error!("cannot start the thread {name}: {e}");
+            (tx, None)
+        }
+    }
+}
+
+/// Sends `text` to a worker; without one, `done` gets the error at once.
+fn send<T>(jobs: Option<&Jobs<T>>, text: String, done: Done<T>, translator: &Translator) {
+    let unsent = match jobs {
+        Some(jobs) => jobs
+            .send((text, done))
+            .err()
+            .map(|mpsc::SendError((_, done))| done),
+        None => Some(done),
+    };
+    if let Some(done) = unsent {
+        done(Err(translator.tr("error-dict-unavailable", &[])));
+    }
+}
+
 impl Dictionaries {
-    /// Starts the lookup worker.
+    /// Starts the lookup and segmentation workers.
     pub fn start(
         manager: Arc<DictionaryManager>,
         translator: Translator,
         max_results: Arc<AtomicUsize>,
     ) -> Self {
-        let (jobs, rx) = mpsc::channel::<(String, Done<Reply>)>();
-        let worker_manager = Arc::clone(&manager);
-        let worker_translator = translator.clone();
-        let spawned = std::thread::Builder::new()
-            .name("nikomiru-lookup".into())
-            .spawn(move || {
-                for (text, done) in rx {
-                    let started = std::time::Instant::now();
-                    let limit = max_results.load(Ordering::Relaxed);
-                    let result = render(&worker_manager, &text, limit)
-                        .map_err(|e| worker_translator.error(&e));
-                    tracing::debug!(query = %text, elapsed = ?started.elapsed(), "lookup");
-                    done(result);
-                }
+        let (jobs, worker) =
+            spawn_worker("nikomiru-lookup", &manager, &translator, move |m, text| {
+                render(m, text, max_results.load(Ordering::Relaxed))
             });
-        let worker = match spawned {
-            Ok(worker) => Some(worker),
-            Err(e) => {
-                tracing::error!("cannot start the lookup thread: {e}");
-                None
-            }
-        };
+        let (words, words_worker) =
+            spawn_worker("nikomiru-words", &manager, &translator, |m, text| {
+                Ok(segment(&*m.lookup()?, text)?)
+            });
         Self {
             manager,
             translator,
-            jobs: Some(jobs),
+            jobs: worker.is_some().then_some(jobs),
             worker,
+            words: words_worker.is_some().then_some(words),
+            words_worker,
             imports: Mutex::new(Vec::new()),
         }
     }
@@ -106,16 +148,11 @@ impl Dictionaries {
 
 impl DictionaryService for Dictionaries {
     fn lookup(&self, text: String, done: Done<Reply>) {
-        let unsent = match &self.jobs {
-            Some(jobs) => jobs
-                .send((text, done))
-                .err()
-                .map(|mpsc::SendError((_, done))| done),
-            None => Some(done),
-        };
-        if let Some(done) = unsent {
-            done(Err(self.translator.tr("error-dict-unavailable", &[])));
-        }
+        send(self.jobs.as_ref(), text, done, &self.translator);
+    }
+
+    fn segment(&self, text: String, done: Done<Vec<Word>>) {
+        send(self.words.as_ref(), text, done, &self.translator);
     }
 
     fn list(&self) -> Result<Vec<(String, DictionaryRecord)>, String> {

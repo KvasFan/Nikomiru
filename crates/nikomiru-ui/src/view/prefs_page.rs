@@ -293,6 +293,10 @@ fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut Str
     });
     hint(ui, &tr("settings-sub-hint"));
     ui.checkbox(&mut subs.respect_ass_styles, tr("settings-sub-ass"));
+    // the words of the subtitles (LKP-051, LKP-061)
+    ui.checkbox(&mut subs.furigana, tr("settings-sub-furigana"));
+    ui.checkbox(&mut subs.mark_mined, tr("settings-sub-mark-mined"));
+    hint(ui, &tr("settings-sub-words-hint"));
 }
 
 fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use nikomiru_core::Cancel;
 use nikomiru_dict::import::Progress;
+use nikomiru_dict::segment::Word;
 use nikomiru_dict::yomitan::Kinds;
 use nikomiru_library::{Check, Collapse, DictionaryRecord};
 use serde_json::{Value, json};
@@ -91,6 +92,12 @@ pub type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 pub trait DictionaryService: Send {
     /// Looks `text` up away from the UI thread; `done` gets the popup content.
     fn lookup(&self, text: String, done: Done<Reply>);
+    /// Splits `text` into words away from the UI thread, without holding up
+    /// the lookups (LKP-060). Without dictionaries there are no words.
+    fn segment(&self, text: String, done: Done<Vec<Word>>) {
+        let _ = text;
+        done(Ok(Vec::new()));
+    }
     /// The registered dictionaries, in order.
     fn list(&self) -> Result<Vec<(String, DictionaryRecord)>, String>;
     /// What importing `zip` would do (DIC-016).

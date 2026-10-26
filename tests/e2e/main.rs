@@ -2223,6 +2223,7 @@ fn the_keyboard_alone_goes_from_the_library_to_a_card_and_back() {
     h.key("Enter");
     let s = h.state_until("the popup", |s| s["popups"][0]["query"].is_string());
     assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    // one word: → goes on by character
     h.key("ArrowRight");
     h.state_until("a character later", |s| {
         s["popups"][0]["query"] == "べました"
@@ -2542,6 +2543,60 @@ fn on_x11_a_video_plays_and_a_word_is_looked_up() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-WORDS-001: the subtitles' words get their readings from the
+// dictionaries, and a word made into a card is underlined at once
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_words_of_a_subtitle_get_readings_and_a_card_an_underline() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[subtitles]\nfurigana = true\n\
+         [anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    // the popup pauses on the cue
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    let s = h.state_until("the readings", |s| {
+        s["subtitles"]["marks"][0]["readings"].is_array()
+    });
+    // 食べました: た over 食, nothing mined yet
+    assert_eq!(
+        s["subtitles"]["marks"][0],
+        serde_json::json!({ "readings": [[0, 3, "た"]], "mined": [] }),
+        "{s}"
+    );
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    h.wait("card-created");
+    let s = h.state_until("the underline", |s| {
+        s["subtitles"]["marks"][0]["mined"] == serde_json::json!([[0, 15]])
+    });
+    assert_eq!(s["subtitles"]["marks"][0]["readings"][0][2], "た", "{s}");
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&std::path::Path::new(&dir).join("words.png"));
+    }
+    // turned off in the settings, without a restart
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "subtitles",
+        "save": "[subtitles]\nfurigana = false\nmark_mined = false\n",
+    }));
+    h.state_until("no marks", |s| s["subtitles"]["marks"][0].is_null());
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-A11Y-002: every page's controls named for a screen reader: the popup,
 // each tab of the settings, the library and its statistics
 #[test]
@@ -2560,7 +2615,7 @@ fn a_screen_reader_finds_every_page_named() {
     const CONTROLS: [u32; 5] = [7, 11, 43, 44, 51];
     let mut unnamed: Vec<String> = Vec::new();
     // each page with a control it must show, so that its tree is there
-    let mut look = |page: &str, expected: &str, unnamed: &mut Vec<String>| {
+    let look = |page: &str, expected: &str, unnamed: &mut Vec<String>| {
         std::thread::sleep(Duration::from_millis(700));
         let tree = accessible_tree(&a11y);
         if !tree.iter().any(|(_, name)| name == expected) {

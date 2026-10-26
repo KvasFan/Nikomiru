@@ -4,8 +4,12 @@
 //! kanji groups and the reading is aligned to them; when the alignment is
 //! ambiguous, the whole reading goes over the whole expression.
 //!
-//! Port of Yomitan's `distributeFurigana` / `segmentizeFurigana` in
-//! `ext/js/language/ja/japanese.js` (GPL-3.0), working on code points.
+//! Over a word of a subtitle (LKP-051), the text is an inflected form of the
+//! headword: the reading goes over the stem they share, and the rest is kana.
+//!
+//! Port of Yomitan's `distributeFurigana` / `segmentizeFurigana` /
+//! `distributeFuriganaInflected` in `ext/js/language/ja/japanese.js`
+//! (GPL-3.0), working on code points.
 
 use crate::kana::{is_kana, katakana_to_hiragana};
 
@@ -131,12 +135,79 @@ pub fn distribute(expression: &str, reading: &str) -> Vec<Segment> {
     })
 }
 
+/// The length of the prefix `a` and `b` share, in chars.
+fn stem_length(a: &[char], b: &[char]) -> usize {
+    a.iter().zip(b).take_while(|(x, y)| x == y).count()
+}
+
+/// Distributes the reading of the headword `expression` over `source`, the
+/// form of it found in a text (LKP-051): `食べた` under `食べる` / `たべる`
+/// gives `[食|た][べた]`.
+pub fn distribute_inflected(expression: &str, reading: &str, source: &str) -> Vec<Segment> {
+    let chars = |s: &str| -> Vec<char> { s.chars().collect() };
+    let normalized = |s: &str| chars(&katakana_to_hiragana(s));
+    let source_chars = chars(source);
+    let source_normalized = normalized(source);
+    let mut main = chars(expression);
+    let mut reading = chars(reading);
+    let mut stem = stem_length(&normalized(expression), &source_normalized);
+    // the source may be written in the reading's kana
+    let reading_stem = stem_length(
+        &normalized(&reading.iter().collect::<String>()),
+        &source_normalized,
+    );
+    if reading_stem > 0 && reading_stem >= stem {
+        main.clone_from(&reading);
+        stem = reading_stem;
+        reading.splice(..stem, source_chars[..stem].iter().copied());
+    }
+    let mut segments = Vec::new();
+    if stem > 0 {
+        main.splice(..stem, source_chars[..stem].iter().copied());
+        let main: String = main.iter().collect();
+        let mut consumed = 0;
+        for s in distribute(&main, &reading.iter().collect::<String>()) {
+            let start = consumed;
+            consumed += s.text.chars().count();
+            if consumed <= stem {
+                segments.push(s);
+                if consumed == stem {
+                    break;
+                }
+            } else {
+                if start < stem {
+                    segments.push(Segment {
+                        text: main.chars().skip(start).take(stem - start).collect(),
+                        reading: String::new(),
+                    });
+                }
+                break;
+            }
+        }
+    }
+    if stem < source_chars.len() {
+        let rest: String = source_chars[stem..].iter().collect();
+        match segments.last_mut() {
+            Some(last) if last.reading.is_empty() => last.text.push_str(&rest),
+            _ => segments.push(Segment {
+                text: rest,
+                reading: String::new(),
+            }),
+        }
+    }
+    segments
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn show(expression: &str, reading: &str) -> String {
-        distribute(expression, reading)
+        shown(&distribute(expression, reading))
+    }
+
+    fn shown(segments: &[Segment]) -> String {
+        segments
             .iter()
             .map(|s| {
                 if s.reading.is_empty() {
@@ -164,5 +235,22 @@ mod tests {
         assert_eq!(show("取扱い", "とりあつかい"), "[取扱|とりあつか][い]");
         // a reading that does not fit
         assert_eq!(show("食べる", "のむ"), "[食べる|のむ]");
+    }
+
+    // T-LKP-051
+    #[test]
+    fn an_inflected_form_takes_the_reading_of_its_stem() {
+        let show = |e, r, s| shown(&distribute_inflected(e, r, s));
+        assert_eq!(show("食べる", "たべる", "食べた"), "[食|た][べた]");
+        assert_eq!(show("勉強", "べんきょう", "勉強"), "[勉強|べんきょう]");
+        assert_eq!(show("読む", "よむ", "読んでいる"), "[読|よ][んでいる]");
+        // a kanji whose okurigana changes: no reading over a split group
+        assert_eq!(show("来る", "くる", "来ない"), "[来|く][ない]");
+        // written in kana: no reading at all
+        assert_eq!(show("食べる", "たべる", "たべた"), "[たべた]");
+        // katakana for hiragana
+        assert_eq!(show("する", "する", "スル"), "[スル]");
+        // nothing shared
+        assert_eq!(show("行く", "いく", "ゆく"), "[ゆく]");
     }
 }

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Words in the subtitles (M9, D-17): the subtitles are split into words with your dictionaries (LKP-060). Words you already made into cards are underlined (LKP-061), and readings can go over the kanji (LKP-051, off by default): both are in Settings → Subtitles. ← → move a keyboard lookup word by word.
+
 - An Arch Linux package: `packaging/aur/PKGBUILD` (D-5), with the icon, the desktop entry and the third-party licenses where Settings → About finds them.
 - The user guide, in English and Italian (`docs/guide/`).
 - A Flatpak (`packaging/flatpak`, D-5): the freedesktop 26.08 runtime with its FFmpeg, libmpv built in; `cargo xtask flatpak` makes a bundle.

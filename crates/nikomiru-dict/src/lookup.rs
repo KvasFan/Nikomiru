@@ -347,6 +347,25 @@ impl Lookup {
         if let Some(hit) = self.cache.lock().ok().and_then(|mut c| c.get(&key)) {
             return Ok(hit);
         }
+        let entries = Arc::new(self.run(window, options)?);
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.put(key, Arc::clone(&entries));
+        }
+        Ok(entries)
+    }
+
+    /// The headword a lookup of `text` shows first, without the cache: the
+    /// segmentation's lookups (LKP-060) would push the popup's out of it.
+    pub(crate) fn first(&self, text: &str) -> Result<Option<Entry>, StoreError> {
+        let window_end = text
+            .char_indices()
+            .nth(SCAN_LENGTH)
+            .map_or(text.len(), |(i, _)| i);
+        let entries = self.run(&text[..window_end], Options { max_results: 1 })?;
+        Ok(entries.into_iter().next())
+    }
+
+    fn run(&self, window: &str, options: Options) -> Result<Vec<Entry>, StoreError> {
         let readers = self
             .dictionaries
             .iter()
@@ -361,11 +380,7 @@ impl Lookup {
             run_readings: HashMap::new(),
         };
         run.scan()?;
-        let entries = Arc::new(run.finish(options)?);
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.put(key, Arc::clone(&entries));
-        }
-        Ok(entries)
+        run.finish(options)
     }
 
     /// The kanji entries of one character (LKP-037), in dictionary order.
