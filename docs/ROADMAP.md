@@ -35,7 +35,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M4b | Online subtitles and mpv presets (D-14) | M | **0.1.0** with M4 (D-15) | released (manual checks open) |
 | M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
-| M7 | Online metadata | M | 0.4.0 | not started |
+| M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
 
@@ -349,7 +349,7 @@ The online subtitles, their alignment with the audio and the secondary subtitle 
 **Exit criteria**
 
 - [x] T-MET-* green on fake servers; [ ] T-MET-LIVE-* (real network) green: AniList yes, Jikan to run again once its API answers.
-- [ ] **Release 0.4.0**.
+- [x] **Release 0.4.0** (2026-10-26, tag `v0.4.0`, at the maintainer's request; Jikan's live check to run again once its API answers).
 
 ---
 

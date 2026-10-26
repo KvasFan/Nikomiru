@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-26
+
+Series identified online (M7).
+
 ### Added
 
 - Series identified online (MET-001, MET-002, M7): "Identify online" on a series' page asks AniList (or MyAnimeList through Jikan, chosen in Settings → Subtitle services) for its titles, episodes and cover. A result with exactly the series' title is taken at once, otherwise you choose among the results; "Forget" drops it. Nothing goes online unless asked.

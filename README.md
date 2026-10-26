@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 0.3.0 is an alpha for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 0.4.0 is an alpha for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -79,7 +79,7 @@ Version 0.3.0 is an alpha for Linux. The status of each area follows the [ROADMA
 | mpv options: controls, `mpv.conf` presets, import and export | Works (M4b) |
 | Library, word audio (also from a local `android.db`) | Works with project-made files; a real library of hundreds of episodes is still to be checked by hand (M5) |
 | Statistics, the full settings (themes, languages, shortcuts), cards made by hand, the keyboard alone | Works (M6) |
-| Online metadata (AniList, Jikan) | Planned for 0.4 (M7) |
+| Series identified online (AniList, Jikan); Jimaku by AniList id | Works against simulated services and the real AniList (M7) |
 | Packages (AUR, Flatpak) | Planned for 1.0 (M8) |
 
 ## Quick start
@@ -134,7 +134,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6). Next: online metadata (0.4), then stabilization and packages for 1.0. Until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7). Next: stabilization and packages for 1.0. Until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 
