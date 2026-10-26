@@ -23,8 +23,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 0.1.0 ◄── M4b Online subtitles + mpv presets (D-14, D-15)
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
-      ──► M9 Words in the subtitles (D-17) ══► 1.1.0
-      ──► M10 Moving pictures (D-18) ══► 1.2.0
+                                         ▲
+      M9 Words in the subtitles (D-17) ──┤ (merged while M8's manual
+      M10 Moving pictures (D-18) ────────┘  checks wait: they ship with 1.0.0)
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -40,8 +41,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
-| M9 | Words in the subtitles (D-17) | M | 1.1.0 | done (maintainer's check open) |
-| M10 | Moving pictures (D-18) | M | 1.2.0 | done (maintainer's check open) |
+| M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | done (maintainer's check open) |
+| M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | done (maintainer's check open) |
 
 ---
 
@@ -409,7 +410,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 ---
 
-## M9 — Words in the subtitles → 1.1.0
+## M9 — Words in the subtitles → 1.0.0 with M8
 
 Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
@@ -429,11 +430,11 @@ Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
 - [x] T-LKP-051, T-LKP-060, T-LKP-061, T-PERF-10, T-E2E-WORDS-001 green.
 - [ ] The furigana checked by the maintainer on real subtitles and a real dictionary (JMdict).
-- [ ] **Release 1.1.0**, after 1.0.0.
+- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
 
 ---
 
-## M10 — Moving pictures → 1.2.0
+## M10 — Moving pictures → 1.0.0 with M8
 
 Proposed after M9, when the maintainer asked to go on (D-18).
 
@@ -453,7 +454,7 @@ Proposed after M9, when the maintainer asked to go on (D-18).
 
 - [x] T-ANK-042, T-E2E-ANK-042, T-PLY-014 and T-E2E-PLY-014 green.
 - [ ] An animated card checked by the maintainer in Anki desktop and AnkiDroid.
-- [ ] **Release 1.2.0**.
+- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
 
 ---
 
