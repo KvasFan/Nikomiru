@@ -53,8 +53,9 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 | Cloud sync, Interconnect, iroh P2P, headless server, CLI | post-1.0 (WebDAV backup/sync only) | Complexity; not needed for the MVP |
 | Built-in SRS (FSRS) | post-1.0 | `fsrs` is BSD-3-Clause: it would need an exception (§3) |
 | Leaderboard, in-app feedback, usage telemetry | excluded | Privacy; no service to run |
-| Android, iOS | excluded | Mobile builds with libmpv are not a goal |
-| Windows, macOS | post-1.0 | Linux first; the architecture must not rule them out (§5.2.4) |
+| Android | in scope (D-16) | Builds asked by the maintainer; libmpv from mpv-android, AnkiDroid's own API instead of AnkiConnect, touch instead of hover (§5.2.4) |
+| iOS | excluded | Not asked; libmpv and the App Store's rules |
+| Windows, macOS | in scope (D-16) | Linux first; builds asked by the maintainer, after spike S6 (§5.2.4) |
 
 ### 1.4 Platforms
 
@@ -313,10 +314,13 @@ Measured in ADR 0006 (spike S5): at 4K HEVC 10-bit under heavy CPU load, 60 rend
 - Without OpenGL (neither EGL nor GLX) there is no window: the app reports the error and exits. Option D (mpv in its own window) is withdrawn: egui needs OpenGL too, so it would keep the video without the interface.
 - The GtkOverlay design of ADR 0001 and its fallbacks B (separate transparent window over a `wid` child window) and C (`dioxus-native`) are withdrawn (D-10).
 
-#### 5.2.4 Other platforms (post-1.0)
+#### 5.2.4 Other platforms (D-16)
 
-- Windows: the same integration, with glutin on WGL.
-- macOS: OpenGL is deprecated (glutin still supports CGL); a Metal path may be needed, to be evaluated.
+The maintainer asked for builds for macOS, Windows and Android (D-16). Linux stays the reference platform. Spike S6 (ROADMAP, milestone "Ports") finds what each port takes before any is promised for a release.
+
+- **Windows**: the same integration, with glutin on WGL. The platform layers to replace are the D-Bus portals (file dialogs, screensaver, links, the color scheme), iconv, `localtime_r`, the single-instance socket and the XDG folders. libmpv and ffmpeg ship with the program (their LGPL/GPL source obligations apply). It is built from Linux with the `x86_64-pc-windows-gnu` target, then checked on a real Windows.
+- **macOS**: OpenGL is deprecated (glutin still supports CGL); a Metal path may be needed, to be evaluated. The Apple SDK's license allows it only on Apple hardware, so a build needs a Mac or a macOS build machine.
+- **Android**: winit's Android backend with GLES; libmpv as built by mpv-android; files through the system's document picker; cards through AnkiDroid's API (AnkiConnect is a desktop add-on); touch: a tap looks up, a long press selects. A port of this size changes the input model of the popup and of the subtitles.
 
 ### 5.3 Threads and events
 
@@ -729,8 +733,8 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 | ID | Requirement | Fushi |
 |---|---|---|
-| MET-001 | Metadata from **AniList** (GraphQL, no key): romaji/native/English title, cover, episodes, `anilist_id`. Identification from the series title obtained by LIB-003; it is accepted automatically only with an exact, unique match, otherwise the user is asked to choose. | — (Fushi uses Jikan/TMDB) |
-| MET-002 | **Jikan v4** (MAL) as an alternative source: limit of 1 request/s, cache, pause after a 429. | `mal_video_metadata_provider.dart` |
+| MET-001 | Metadata from **AniList** (GraphQL, no key): romaji/native/English title, cover, episodes, `anilist_id`. Identification from the series title obtained by LIB-003, asked with "Identify online" on the series' page (nothing goes online otherwise, PRV-001); it is accepted automatically only with an exact, unique match (letters and digits compared, case aside, against every title of a result), otherwise the user chooses among the results or none. The cover, an image checked by decoding it, becomes the series' own. "Forget" drops what was found. | — (Fushi uses Jikan/TMDB) |
+| MET-002 | **Jikan v4** (MAL) as an alternative source, chosen in Settings → Subtitle services (`[online] metadata = "anilist"` or `"jikan"`): limit of 1 request/s, cache, pause after a 429 (no request until it ends). | `mal_video_metadata_provider.dart` |
 | MET-003 | **Jimaku**: `https://jimaku.cc/api`, header `Authorization: <key>`, sent only to the Jimaku host. `GET /entries/search?query=<title>&anime=true`, then `anime=false` when nothing is found (and `anilist_id=` first once M7 identifies series), `GET /entries/{id}/files` for the first two entries (all files: season packs carry no episode), download of each file's `url`; zip archives opened with the rules of DIC-011 (names only, ≤ 64 MiB unpacked, ≤ 1000 entries); RAR and 7z listed but not usable. Episode and language are inferred from the file name; a file of unknown language counts as Japanese. | `jimaku_client.dart` |
 | MET-004 | **OpenSubtitles** (user's consumer API key, header `Api-Key`, `User-Agent: Nikomiru/<version>`; optional user name and password for `POST /login`): `GET /subtitles` with `moviehash` + `moviebytesize`, then `query` + `season_number`/`episode_number`, always with `languages=<study language>`; `POST /download {file_id}` gives a temporary HTTPS link; files ≤ 64 MiB; machine-translated results marked. | `open_subtitles_client.dart` |
 | MET-005 | API keys (and the OpenSubtitles password) are saved in the config with permissions 0600 and never written to a log (the keyring is in the ROADMAP backlog). | |
@@ -775,7 +779,8 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 |---|---|---|
 | `meta` | `&str` | `schema_version` (2 from 0.2), `created_with` |
 | `folders` | `&str` path | an imported folder (LIB-002): grouping mode, added on, last scan |
-| `series` | `u64` | title, grouping key (the series name in lower case, or the folder's path), grouping mode, folder, added on, deleted (tombstone, for LIB-004), `merged_into?` (LIB-011), cover, preferences (audio language, subtitle, `delay_ms`; LIB-010); from M7: native title, `anilist_id?`, `mal_id?` |
+| `series` | `u64` | title, grouping key (the series name in lower case, or the folder's path), grouping mode, folder, added on, deleted (tombstone, for LIB-004), `merged_into?` (LIB-011), cover, preferences (audio language, subtitle, `delay_ms`; LIB-010) |
+| `series_info` | `u64` series id | what AniList or Jikan said of it (MET-001, M7): source, `anilist_id?`, `mal_id?`, romaji, English and native titles, episodes, year, format, page, identified on; a table of its own, so the `series` records stay as they were |
 | `videos` | `&str` uid | `series_id?`, path, size, mtime, season, episode, duration, `last_position_ms`, `last_played_at`, `completed_at`, chosen audio, main and secondary `SubtitleChoice`, `delay_ms?`, `speed?`, `volume?`, `moved_to?` (moved by hand, LIB-011), removed (LIB-012) |
 | `watch_coverage` | `&str` uid | merged `[(start_ms, end_ms)]` intervals |
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
@@ -898,6 +903,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-13 | UI toolkit, after spike S5 (iced and egui against Qt Quick) | **Approved** (2026-10-20): egui 0.37 on winit + glutin (EGL first) + egui_glow instead of Qt 6 Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Under heavy load at 4K HEVC 10-bit egui drops 0–2 frames in 20 s like Qt, with about half of its CPU; the popup draws a whole entry in one frame; everything is Rust (no QML, C++ or cxx-qt). Class B exception `libloading` (ISC) approved with it (§3.2). The Flatpak of D-5 no longer needs the KDE runtime: the freedesktop one has what egui needs |
 | D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
 | D-15 | Contents of 0.1.0 | **Approved** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria. The logo in `assets/brand/` is approved too |
+| D-16 | Other platforms | **Asked by the maintainer** (2026-10-25, with 0.4.0): builds for macOS, Windows and Android. Recorded as the milestone "Ports" after M7, which starts with spike S6; the release that ships each port follows from S6. Before: Windows and macOS after 1.0, Android excluded (§1.3) |
 
 ### 10.2 Risks
 

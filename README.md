@@ -134,7 +134,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6). Next: online metadata (0.4), then stabilization and packages for 1.0. Until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after (D-12). Windows and macOS come after 1.0. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6). Next: online metadata (0.4), then stabilization and packages for 1.0. Until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 

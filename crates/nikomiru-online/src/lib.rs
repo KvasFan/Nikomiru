@@ -2,7 +2,8 @@
 
 //! Online services chosen by the user ([ADR 0008]): subtitles from Jimaku and
 //! OpenSubtitles, searched by hand or automatically (MET-003, MET-004,
-//! MET-007…MET-010). AniList and Jikan metadata come with M7.
+//! MET-007…MET-010), and the metadata of series from AniList and Jikan
+//! (MET-001, MET-002).
 //!
 //! [ADR 0008]: ../../../docs/adr/0008-online-subtitles.md
 
@@ -18,6 +19,7 @@ pub mod hash;
 pub mod http;
 pub mod jimaku;
 pub mod language;
+pub mod metadata;
 pub mod opensubtitles;
 pub mod rank;
 pub mod search;
@@ -91,6 +93,9 @@ pub struct SearchRequest {
     /// The providers in the user's order of preference (MET-011), which
     /// breaks the ties of the ranking; empty: [`ProviderId::ALL`]'s order.
     pub providers: Vec<ProviderId>,
+    /// The series' AniList id, once identified (MET-001): Jimaku is asked by
+    /// it first (MET-003).
+    pub anilist_id: Option<u64>,
 }
 
 /// What a file of a provider is.

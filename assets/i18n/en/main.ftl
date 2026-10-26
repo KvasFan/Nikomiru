@@ -443,6 +443,8 @@ services-jimaku-about = Japanese subtitles of anime and dramas, uploaded by the 
 services-os-about = Subtitles of films and series in many languages, found also by the file's fingerprint; needs an API key, the login is optional.
 services-auto-section = Automatic subtitles
 services-network = Network
+services-metadata = Series metadata
+services-metadata-hint = Where "Identify online" in the library asks for the titles, the episodes and the cover of a series. Neither needs a key. Jimaku then finds the subtitles of an identified series by its AniList id.
 online-auto = Search and load subtitles automatically when a video has none in the preferred language
 online-jimaku-key = Jimaku API key
 online-os-key = OpenSubtitles API key
@@ -527,6 +529,22 @@ library-remove = Remove the ticked episodes from the library (the files stay)
 library-scanning = Looking for videos in { $path }…
 library-imported = { $added } new videos, { $series } new series.
 library-no-folder = { $path } is not a folder that can be read.
+library-identify = Identify online
+library-identify-hint = Asks AniList (or MyAnimeList, chosen in Settings → Subtitle services) for the titles, the episodes and the cover of this series. Nothing goes online otherwise.
+library-identifying = Asking…
+library-identify-choose = { $source } has no series with exactly this title: which one is it?
+library-identify-pick = This one
+library-identify-this = This one: { $title }
+library-identify-none-of-these = None of these
+library-identify-none = { $source } found nothing for this title: rename the series and try again.
+library-identified = Identified as { $title }.
+library-identify-again = Identify again
+library-forget = Forget
+library-online-page = Open on
+library-online-episodes = { $count ->
+    [one] { $count } episode
+   *[other] { $count } episodes
+}
 
 # Next episode (LIB-009)
 next-up = Next episode in { $seconds } s

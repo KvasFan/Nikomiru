@@ -158,6 +158,26 @@ pub enum Inbound {
     /// The desktop's light or dark preference, at start and when it changes
     /// (SET-003).
     SystemTheme(Option<bool>),
+    /// What the metadata source found for a series (MET-001).
+    Identified {
+        /// The series.
+        series: u64,
+        /// The source, and what it found; or why not.
+        result: Result<
+            (
+                nikomiru_online::metadata::Source,
+                nikomiru_online::metadata::Identified,
+            ),
+            String,
+        >,
+    },
+    /// The cover of a series identified.
+    IdentityCover {
+        /// The series.
+        series: u64,
+        /// The image's bytes, or why not.
+        result: Result<Vec<u8>, String>,
+    },
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -195,6 +215,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::WordAudioListed { .. } => "WordAudioListed",
             Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
             Inbound::SystemTheme(_) => "SystemTheme",
+            Inbound::Identified { .. } => "Identified",
+            Inbound::IdentityCover { .. } => "IdentityCover",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -332,6 +354,12 @@ pub(crate) enum Command {
     StatsExport,
     /// A series opened on it, or closed.
     LibrarySeries(Option<u64>),
+    /// "Identify online" on a series (MET-001).
+    LibraryIdentify(u64),
+    /// One of its results chosen, or none.
+    LibraryIdentifyChoose(Option<usize>),
+    /// What was found online of a series forgotten.
+    LibraryForget(u64),
     /// A folder scanned again with a grouping (LIB-002, LIB-004).
     LibraryScan(PathBuf, nikomiru_library::Grouping),
     /// An edit of the library (LIB-011, LIB-012).
@@ -647,6 +675,16 @@ impl Ui {
                 self.session.system_dark = dark;
                 true
             }
+            Inbound::Identified { series, result } => {
+                self.session.identified(series, result);
+                self.pump();
+                true
+            }
+            Inbound::IdentityCover { series, result } => {
+                self.session.identity_cover(series, result);
+                self.pump();
+                true
+            }
             Inbound::Quit => {
                 self.quit();
                 true
@@ -942,6 +980,9 @@ impl Ui {
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
             Command::LibrarySeries(id) => s.library_series(id),
+            Command::LibraryIdentify(id) => s.library_identify(id),
+            Command::LibraryIdentifyChoose(index) => s.library_identify_choose(index),
+            Command::LibraryForget(id) => s.library_forget(id),
             Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
@@ -1149,6 +1190,14 @@ impl Ui {
                     let (o, n) = *settings;
                     online.configure(o, n);
                 }
+                crate::online::OnlineJob::Identify { series, title } => online.identify(
+                    title,
+                    Box::new(move |result| waker.wake(Inbound::Identified { series, result })),
+                ),
+                crate::online::OnlineJob::Cover { series, url } => online.cover(
+                    url,
+                    Box::new(move |result| waker.wake(Inbound::IdentityCover { series, result })),
+                ),
             }
         }
         let writes = self.session.take_file_writes();

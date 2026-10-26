@@ -334,6 +334,7 @@ mod tests {
                 title: "Show".into(),
                 season: None,
                 episode: Some(1),
+                anilist_id: None,
             }),
             results: Some(OnlineResults {
                 candidates: vec![

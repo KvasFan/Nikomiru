@@ -443,6 +443,8 @@ services-jimaku-about = Sottotitoli giapponesi di anime e drama, caricati dalla 
 services-os-about = Sottotitoli di film e serie in molte lingue, trovati anche dall'impronta del file; serve una chiave API, l'accesso è facoltativo.
 services-auto-section = Sottotitoli automatici
 services-network = Rete
+services-metadata = Metadati delle serie
+services-metadata-hint = Dove "Identifica online" nella libreria chiede i titoli, gli episodi e la copertina di una serie. Nessuno dei due richiede una chiave. Jimaku poi trova i sottotitoli di una serie identificata dal suo id AniList.
 online-auto = Cerca e carica i sottotitoli in automatico quando un video non li ha nella lingua preferita
 online-jimaku-key = Chiave API di Jimaku
 online-os-key = Chiave API di OpenSubtitles
@@ -527,6 +529,22 @@ library-remove = Togli gli episodi spuntati dalla libreria (i file restano)
 library-scanning = Cerco video in { $path }…
 library-imported = { $added } video nuovi, { $series } serie nuove.
 library-no-folder = { $path } non è una cartella leggibile.
+library-identify = Identifica online
+library-identify-hint = Chiede ad AniList (o a MyAnimeList, scelto in Impostazioni → Servizi sottotitoli) i titoli, gli episodi e la copertina di questa serie. Altrimenti nulla va online.
+library-identifying = Chiedo…
+library-identify-choose = { $source } non ha una serie con esattamente questo titolo: quale è?
+library-identify-pick = Questa
+library-identify-this = Questa: { $title }
+library-identify-none-of-these = Nessuna di queste
+library-identify-none = { $source } non ha trovato nulla per questo titolo: rinomina la serie e riprova.
+library-identified = Identificata come { $title }.
+library-identify-again = Identifica di nuovo
+library-forget = Dimentica
+library-online-page = Apri su
+library-online-episodes = { $count ->
+    [one] { $count } episodio
+   *[other] { $count } episodi
+}
 
 # Next episode (LIB-009)
 next-up = Prossimo episodio fra { $seconds } s

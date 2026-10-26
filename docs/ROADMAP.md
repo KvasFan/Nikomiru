@@ -36,6 +36,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | not started |
+| Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | not started |
 
 ---
@@ -340,10 +341,33 @@ The online subtitles, their alignment with the audio and the secondary subtitle 
 - `nikomiru-online`: AniList client (GraphQL), Jikan with rate limiting, behind a trait and with tests against a fake server; Jimaku searched by `anilist_id` first.
 - UI: series identification (automatic if unique, otherwise chosen by the user).
 
+**Status as of 2026-10-26**
+
+- Done: AniList and Jikan clients (`nikomiru-online::metadata`) behind one trait, with their fake routes; the identification rule (exact and unique, otherwise the user's choice); the `series_info` table; "Identify online" on a series' page, the results to choose from, "Forget", the cover downloaded; the source chosen in Settings → Subtitle services; Jimaku asked by `anilist_id` first.
+- T-MET-LIVE on 2026-10-26: AniList identified Sousou no Frieren (154587); Jikan's API (`api.jikan.moe`) did not answer at all, while its site did: an outage of the service, to run again.
+
 **Exit criteria**
 
-- [ ] T-MET-* green on fake servers; T-MET-LIVE-* (real network, nightly only and with keys) green.
+- [x] T-MET-* green on fake servers; [ ] T-MET-LIVE-* (real network) green: AniList yes, Jikan to run again once its API answers.
 - [ ] **Release 0.4.0**.
+
+---
+
+## Ports — macOS, Windows, Android (D-16)
+
+The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
+
+**Spike S6 — what each port takes** (first, before any port is promised for a release)
+
+- Windows: a cross build from Linux (`x86_64-pc-windows-gnu`) that opens a window with egui and plays a video through libmpv; the list of Linux-only layers to put behind traits (portals, iconv, `localtime_r`, the single-instance socket, XDG folders, the fonts) and their Windows counterparts; how libmpv and ffmpeg ship, with their source obligations.
+- Android: egui and mpv's render API on GLES through winit's Android backend, with mpv-android's libmpv; AnkiDroid's API for cards; touch for lookups; the size of the work.
+- macOS: what a Mac or a macOS build machine must do (the Apple SDK cannot be used elsewhere), CGL or Metal.
+- Output: ADR 0009 with the order of the ports and what each costs.
+
+**Exit criteria**
+
+- [ ] ADR 0009 accepted by the maintainer.
+- [ ] Each port it keeps: built, started, a video played with clickable subtitles and a card made, on the real platform.
 
 ---
 
@@ -374,7 +398,6 @@ Every item requires a change to SPECIFICATION.md before work starts.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
-| Windows and macOS port (SPECIFICATION §5.2.4) | glutin with WGL or CGL (OpenGL is deprecated on macOS); libmpv and ffmpeg must be distributed (LGPL/GPL, source code obligations) |
 | WebM video clips and animated covers (ANK-042) | libvpx (BSD) and SVT-AV1 (BSD) encoders **inside the system ffmpeg**: they are external processes, not crates |
 | Advanced ASS (SUB-019), screenshots with subtitles (PLY-015), thumbnails on the seek bar (PLY-014) | |
 | Automatic furigana on subtitles (LKP-051), highlighting of already mined words | Uses LKP-060 and `mined_cards` |

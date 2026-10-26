@@ -208,6 +208,25 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
     );
     section(ui, &tr(s, "services-auto-section"));
     ui.checkbox(&mut online.auto_subtitles, tr(s, "online-auto"));
+    // MET-001, MET-002: where "Identify online" asks
+    section(ui, &tr(s, "services-metadata"));
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "services-metadata-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
+    for source in [
+        nikomiru_online::metadata::Source::AniList,
+        nikomiru_online::metadata::Source::Jikan,
+    ] {
+        if ui
+            .radio(online.metadata == source.key(), source.name())
+            .clicked()
+        {
+            online.metadata = source.key().to_string();
+        }
+    }
     section(ui, &tr(s, "services-network"));
     ui.horizontal(|ui| {
         let label = ui.label(tr(s, "online-proxy"));
