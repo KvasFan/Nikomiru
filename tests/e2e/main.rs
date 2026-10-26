@@ -1366,7 +1366,7 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-SEC-001, T-SEC-006
+// T-SEC-001, T-SEC-006, T-PRV-001
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_hostile_dictionary_entry_shows_only_what_the_allowlist_lets_through() {
@@ -2369,7 +2369,8 @@ fn a_screen_reader_finds_every_control_named() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-MET-001, T-MET-003: a series identified on AniList, its cover kept, and
+// T-MET-001, T-MET-003, T-PRV-001
+// a series identified on AniList, its cover kept, and
 // Jimaku asked by its AniList id; a title that is not exact lets the user choose
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
