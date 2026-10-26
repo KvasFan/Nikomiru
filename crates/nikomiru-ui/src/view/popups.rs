@@ -2193,6 +2193,37 @@ mod tests {
         assert!(tag.height() < 30.0, "{tag:?}");
     }
 
+    // T-POP-013: a kanji entry has a card of its own, every part readable
+    #[test]
+    fn a_kanji_has_its_own_card() {
+        let mut p = popup(1, Some(Vec::new()));
+        if let Some(reply) = p.reply.as_mut() {
+            reply.empty = false;
+            reply.content = Arc::new(Content {
+                entries: Vec::new(),
+                kanji: vec![KanjiView {
+                    dictionary: "KANJIDIC".into(),
+                    character: "食".into(),
+                    onyomi: vec!["ショク".into()],
+                    kunyomi: vec!["た.べる".into()],
+                    meanings: vec!["eat".into(), "food".into()],
+                    strokes: Some("9".into()),
+                    radical: Some("食".into()),
+                    stats: vec![("jlpt".into(), "4".into())],
+                    frequencies: Vec::new(),
+                }],
+                best_length: 1,
+            });
+        }
+        let mut h = harness(vec![p]);
+        h.run();
+        for text in ["ショク", "た.べる", "KANJIDIC"] {
+            assert!(h.query_by_label(text).is_some(), "{text}");
+        }
+        assert!(h.query_by_label_contains("eat").is_some());
+        assert!(h.query_by_label_contains("kanji-strokes").is_some());
+    }
+
     // T-AUD-004: ♪ plays, a right click opens the menu, an item plays
     #[test]
     fn the_sound_of_an_entry_plays_and_lists_its_audio() {

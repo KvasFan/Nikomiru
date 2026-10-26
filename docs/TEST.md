@@ -298,6 +298,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-LKP-001 | Scan start | Click on `l` in `hello world` → `hello world`; click on `語` in `日本語を` → `語を` | L1 |
 | T-LKP-002 | Delimiters and spaces | Stops at `。` and `「`; `listen to` stays joined (BUG-1773); `don't` stays joined (BUG-2056) | L1 |
+| T-LKP-003 | Normalization | Truncated to 2000 characters; a line break and an emoji become a space each; punctuation stripped at the ends | L1 |
 | T-LKP-004 | Candidates | At most 16 code points; no cut inside a Latin word; no prefix that ends with a space | L1/L2 |
 | T-LKP-020…024 | Deinflection (`mini-ja` + real `ja.json` tables) | `食べました` → `食べる`; `行かなかった` → `行く`; `読んでいる` → `読む` with the trace shown as `-て « -いる`; `書いた` → `書く`; `高くない` → `高い`; depth never > 10 (property) | L1/L4 |
 | T-LKP-023 | Empty rules | `mini-norules`: `食べました` finds `食べる` (BUG-2543) | L4 |
@@ -331,7 +332,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-010 | Images | A PNG from the media table is decoded to its pixels, once per path; a nonexistent path, an SVG or a damaged file → alternative text only; a large image is scaled down to 1280 pixels; `..` → rejected; the drawn size keeps the aspect and the flow's width | L1 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); a click on a link asks for a nested lookup next to it, or for the browser; only `http(s)` addresses are opened (L1); an external link reaches the `OpenURI` portal (spy portal on a private bus, L4) | L1, L4 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children. A drag across glossary text (one paragraph, or a line of runs with ruby, chips and links, the readings left out) looks the selection up in a child popup next to it and stays lit while that popup is open; a click still follows a link; the summary of a `details` does not select; a drag on text does not scroll the popup (`egui_kittest`) | L1 |
-| T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |
+| T-POP-013 | Kanji entry | A kanji's own card: its readings, meanings, strokes and dictionary readable in the AccessKit tree (kittest) | L3 |
 | T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness); with the Anki page over a popup, Ctrl+Enter makes no card and Esc closes the page, then the popup | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
