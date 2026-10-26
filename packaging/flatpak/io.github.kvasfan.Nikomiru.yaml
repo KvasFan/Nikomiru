@@ -94,6 +94,8 @@ modules:
       - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 assets/brand/logo-light.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
       - install -Dm644 packaging/flatpak/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      # the licenses of every crate in the program, shown by Settings → About
+      - install -Dm644 THIRD_PARTY_LICENSES.html -t /app/share/licenses/nikomiru
     sources:
       # nikomiru source: the release; `cargo xtask flatpak` puts the working tree here
       - type: git
@@ -102,3 +104,5 @@ modules:
         commit: 448c03c148ea2703034f4db5278d34d5077b619a
       # end of nikomiru source
       - cargo-sources.json
+      - type: file
+        path: THIRD_PARTY_LICENSES.html

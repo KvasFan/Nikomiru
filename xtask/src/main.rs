@@ -39,7 +39,8 @@ cargo xtask <command>
   check-headers        SPDX headers, unsafe, documentation, dependencies
   check-i18n           every Fluent key used and existing, no untranslated text in the views
   coverage             line coverage of the logic crates with cargo-llvm-cov, ≥ 80% each
-  flatpak-sources      packaging/flatpak/cargo-sources.json from Cargo.lock, for an offline Flatpak build
+  flatpak-sources      packaging/flatpak/cargo-sources.json from Cargo.lock, for an offline Flatpak
+                       build, and the THIRD_PARTY_LICENSES.html it installs
   flatpak              the Flatpak of the last commit, into target/nikomiru.flatpak
   check-licenses [--canary]
                        deny.toml exceptions = SPECIFICATION §3.2, then cargo deny;

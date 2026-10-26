@@ -60,6 +60,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     step("interface strings", || crate::i18n::check(root))?;
     step("licenses (cargo deny)", || licenses::check(root, true))?;
     step("traceability", || trace::run(root))?;
+    step("Flatpak sources", || crate::flatpak::check(root))?;
     if full {
         step("fixtures", || fixtures::run(root, &[]))?;
     }
@@ -71,7 +72,8 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     if full {
         step("THIRD_PARTY_LICENSES.html", || {
-            licenses::about(root).map(|_| ())
+            let html = licenses::about(root)?;
+            crate::flatpak::check_licenses(root, &html)
         })?;
     }
     eprintln!(

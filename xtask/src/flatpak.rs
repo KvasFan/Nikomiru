@@ -5,15 +5,18 @@
 //! an archive from crates.io checked by the checksum of the lock file,
 //! unpacked in `cargo/vendor`, with the `.cargo-checksum.json` that cargo
 //! wants of a vendored crate; then the `cargo/config.toml` that points cargo
-//! there.
+//! there. Next to them, `THIRD_PARTY_LICENSES.html` for Settings → About:
+//! the SDK has no `cargo about`. `cargo xtask ci` checks that both still
+//! match `Cargo.lock`.
 
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
-/// Where the sources go, next to the manifest.
+/// Where the sources go, next to the manifest, and the licenses.
 const OUT: &str = "packaging/flatpak/cargo-sources.json";
+const LICENSES: &str = "packaging/flatpak/THIRD_PARTY_LICENSES.html";
 
 /// The sources of the crates of `lock`, the text of a `Cargo.lock`.
 pub fn sources(lock: &str) -> Result<Vec<Value>> {
@@ -100,6 +103,7 @@ pub fn build(root: &Path) -> Result<()> {
     let local = dir.join(format!("{APP_ID}.yaml"));
     std::fs::write(&local, local_manifest(&manifest, root, commit.trim())?)?;
     std::fs::copy(root.join(OUT), dir.join("cargo-sources.json"))?;
+    std::fs::copy(root.join(LICENSES), dir.join("THIRD_PARTY_LICENSES.html"))?;
     let repo = dir.join("repo");
     crate::util::run(
         std::process::Command::new("flatpak")
@@ -130,14 +134,47 @@ pub fn build(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Writes [`OUT`] from the workspace's `Cargo.lock`.
-pub fn run(root: &Path) -> Result<()> {
+/// The text of [`OUT`] for the workspace's `Cargo.lock`, and its crates.
+fn sources_text(root: &Path) -> Result<(String, usize)> {
     let lock = std::fs::read_to_string(root.join("Cargo.lock")).context("reading Cargo.lock")?;
     let sources = sources(&lock)?;
+    Ok((
+        serde_json::to_string_pretty(&sources)? + "\n",
+        (sources.len() - 1) / 2,
+    ))
+}
+
+/// Writes [`OUT`] from the workspace's `Cargo.lock`, and [`LICENSES`].
+pub fn run(root: &Path) -> Result<()> {
+    let (text, crates) = sources_text(root)?;
     let out = root.join(OUT);
-    std::fs::write(&out, serde_json::to_string_pretty(&sources)? + "\n")
-        .with_context(|| format!("writing {}", out.display()))?;
-    eprintln!("{} crates in {OUT}", (sources.len() - 1) / 2);
+    std::fs::write(&out, text).with_context(|| format!("writing {}", out.display()))?;
+    eprintln!("{crates} crates in {OUT}");
+    let html = crate::licenses::about(root)?;
+    std::fs::copy(&html, root.join(LICENSES)).with_context(|| format!("writing {LICENSES}"))?;
+    eprintln!("wrote {LICENSES}");
+    Ok(())
+}
+
+/// [`OUT`] matches `Cargo.lock`: a dependency changed without
+/// `cargo xtask flatpak-sources` would break the offline Flatpak build.
+pub fn check(root: &Path) -> Result<()> {
+    let (text, _) = sources_text(root)?;
+    let written = std::fs::read_to_string(root.join(OUT)).unwrap_or_default();
+    if text != written {
+        anyhow::bail!("{OUT} does not match Cargo.lock: run `cargo xtask flatpak-sources`");
+    }
+    eprintln!("ok: {OUT} matches Cargo.lock");
+    Ok(())
+}
+
+/// [`LICENSES`] is the one generated now at `generated`.
+pub fn check_licenses(root: &Path, generated: &Path) -> Result<()> {
+    let now = std::fs::read(generated).with_context(|| generated.display().to_string())?;
+    if std::fs::read(root.join(LICENSES)).unwrap_or_default() != now {
+        anyhow::bail!("{LICENSES} is out of date: run `cargo xtask flatpak-sources`");
+    }
+    eprintln!("ok: {LICENSES} is up to date");
     Ok(())
 }
 
