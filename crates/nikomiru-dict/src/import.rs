@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use nikomiru_core::Cancel;
@@ -235,19 +235,109 @@ fn ignored(name: &str) -> bool {
         || name.ends_with('/')
 }
 
+/// CP437, the encoding of a zip name without the UTF-8 flag: its upper half.
+const CP437: &str = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u{a0}";
+
+/// The CRC-32 of zip (IEEE, reflected).
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &b in bytes {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// The name of an entry from its central header: the raw name, its flags and
+/// its extra block (DIC-011, APPNOTE 4.6.9, like Fushi's
+/// `zip_unicode_path_extra_test.cpp`). The Info-ZIP Unicode Path field
+/// (0x7075) gives the name only when the UTF-8 flag (bit 11) is clear, its
+/// version is 1, its CRC-32 is the raw name's and its name is UTF-8 and not
+/// empty; a record that overruns the block ends the search. Otherwise the raw
+/// name: UTF-8 with the flag or when it is valid UTF-8, else CP437.
+fn entry_name(raw: &[u8], flags: u16, extra: &[u8]) -> String {
+    const UTF8: u16 = 1 << 11;
+    let from_field = (flags & UTF8 == 0)
+        .then(|| {
+            let mut rest = extra;
+            while let [a, b, c, d, tail @ ..] = rest {
+                let (id, len) = (
+                    u16::from_le_bytes([*a, *b]),
+                    usize::from(u16::from_le_bytes([*c, *d])),
+                );
+                let data = tail.get(..len)?;
+                if id == 0x7075
+                    && let [1, c0, c1, c2, c3, name @ ..] = data
+                    && u32::from_le_bytes([*c0, *c1, *c2, *c3]) == crc32(raw)
+                    && !name.is_empty()
+                    && let Ok(name) = std::str::from_utf8(name)
+                {
+                    return Some(name.to_string());
+                }
+                rest = &tail[len..];
+            }
+            None
+        })
+        .flatten();
+    from_field.unwrap_or_else(|| match std::str::from_utf8(raw) {
+        Ok(name) => name.to_string(),
+        Err(_) if flags & UTF8 != 0 => String::from_utf8_lossy(raw).into_owned(),
+        Err(_) => raw
+            .iter()
+            .map(|&b| {
+                if b < 0x80 {
+                    char::from(b)
+                } else {
+                    CP437.chars().nth(usize::from(b - 0x80)).unwrap_or('?')
+                }
+            })
+            .collect(),
+    })
+}
+
+/// Reads the central header at `offset` of `file` and gives its entry's
+/// name by [`entry_name`]: the zip crate applies the Unicode Path field by
+/// rules of its own, and keeps no raw name once it has.
+fn central_name(file: &mut File, offset: u64) -> Result<String, ImportError> {
+    let zip_error = |e: std::io::Error| ImportError::Zip(e.to_string());
+    let mut header = [0u8; 46];
+    file.seek(SeekFrom::Start(offset)).map_err(zip_error)?;
+    file.read_exact(&mut header).map_err(zip_error)?;
+    if header[..4] != [0x50, 0x4b, 0x01, 0x02] {
+        return Err(ImportError::Zip("not a central directory header".into()));
+    }
+    let u16_at = |i: usize| u16::from_le_bytes([header[i], header[i + 1]]);
+    let (flags, name_len, extra_len) =
+        (u16_at(8), usize::from(u16_at(28)), usize::from(u16_at(30)));
+    let mut bytes = vec![0u8; name_len + extra_len];
+    file.read_exact(&mut bytes).map_err(zip_error)?;
+    Ok(entry_name(&bytes[..name_len], flags, &bytes[name_len..]))
+}
+
 /// Opens `zip` and checks every entry (DIC-011); returns the entries with the
-/// wrapper folders, if any, removed from their names.
-fn checked_entries(zip: &mut zip::ZipArchive<File>) -> Result<Vec<Entry>, ImportError> {
+/// wrapper folders, if any, removed from their names. `path` is the zip's,
+/// read again for the raw names.
+fn checked_entries(
+    zip: &mut zip::ZipArchive<File>,
+    path: &Path,
+) -> Result<Vec<Entry>, ImportError> {
+    let mut headers = File::open(path).map_err(|source| ImportError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let mut entries = Vec::new();
     let mut total: u64 = 0;
     for index in 0..zip.len() {
         let file = zip
             .by_index_raw(index)
             .map_err(|e| ImportError::Zip(e.to_string()))?;
-        let raw = file
-            .name()
-            .map_err(|e| ImportError::Zip(e.to_string()))?
-            .replace('\\', "/");
+        let raw = central_name(&mut headers, file.central_header_start())?.replace('\\', "/");
         let refuse = |reason| ImportError::Unsafe {
             entry: raw.clone(),
             reason,
@@ -342,7 +432,7 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<File>, ImportError> {
 /// installed dictionaries before importing (DIC-016).
 pub fn read_index(path: &Path) -> Result<Index, ImportError> {
     let mut zip = open_zip(path)?;
-    let entries = checked_entries(&mut zip)?;
+    let entries = checked_entries(&mut zip, path)?;
     let entry = entries
         .iter()
         .find(|e| e.name == "index.json")
@@ -451,7 +541,7 @@ fn write(
     progress: &mut impl FnMut(Progress),
 ) -> Result<DictInfo, ImportError> {
     let mut zip = open_zip(path)?;
-    let entries = checked_entries(&mut zip)?;
+    let entries = checked_entries(&mut zip, path)?;
     let index_entry = entries
         .iter()
         .find(|e| e.name == "index.json")
@@ -557,6 +647,43 @@ fn write(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-DIC-011
+    #[test]
+    fn zip_names_follow_the_unicode_path_rules() {
+        assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
+        // Shift-JIS 一 (0x88 0xEA) without the flag: CP437
+        let raw = b"a/\x88\xea.svg";
+        assert_eq!(entry_name(raw, 0, &[]), "a/êΩ.svg");
+        let field = |version: u8, crc: u32, name: &str| {
+            let mut data = vec![version];
+            data.extend(crc.to_le_bytes());
+            data.extend(name.as_bytes());
+            let mut block = vec![0x75, 0x70];
+            block.extend((data.len() as u16).to_le_bytes());
+            block.extend(data);
+            block
+        };
+        let good = field(1, crc32(raw), "a/一.svg");
+        assert_eq!(entry_name(raw, 0, &good), "a/一.svg");
+        assert_eq!(
+            entry_name(raw, 1 << 11, &good),
+            "a/\u{fffd}\u{fffd}.svg",
+            "the flag wins"
+        );
+        assert_eq!(
+            entry_name(raw, 0, &field(2, crc32(raw), "a/一.svg")),
+            "a/êΩ.svg"
+        );
+        assert_eq!(entry_name(raw, 0, &field(1, 7, "a/一.svg")), "a/êΩ.svg");
+        assert_eq!(entry_name(raw, 0, &field(1, crc32(raw), "")), "a/êΩ.svg");
+        // after another record, and an overrunning one ends the search
+        let mut second = vec![0x55, 0x54, 1, 0, 0];
+        second.extend(&good);
+        assert_eq!(entry_name(raw, 0, &second), "a/一.svg");
+        assert_eq!(entry_name(raw, 0, &[0x75, 0x70, 200, 0, 1]), "a/êΩ.svg");
+        assert_eq!(entry_name("b/日.txt".as_bytes(), 0, &[]), "b/日.txt");
+    }
 
     #[test]
     fn bank_names() {

@@ -670,10 +670,7 @@
         }
       },
       "divergence": null,
-      "known_failure": {
-        "owner": "crates/nikomiru-dict/src/import.rs",
-        "note": "the zip crate (9.0.5) applies a matching 0x7075 field even when bit 11 is set, so the entry is stored under the field's name; the importer takes the crate's name."
-      },
+      "known_failure": null,
       "skip": false,
       "note": "With the UTF-8 flag set the header name is already the name; the field is not consulted."
     },
@@ -727,10 +724,7 @@
         }
       },
       "divergence": null,
-      "known_failure": {
-        "owner": "crates/nikomiru-dict/src/import.rs",
-        "note": "the zip crate (9.0.5) discards the version byte and applies the field of any version."
-      },
+      "known_failure": null,
       "skip": false,
       "note": "Only version 1 of the field is defined."
     },
@@ -776,18 +770,21 @@
         ]
       },
       "expected": {
-        "counts": {
-          "media": 1
-        },
-        "media": {
-          "daijirin2/一-default.svg": null
+        "error": "zip"
+      },
+      "divergence": {
+        "requirement": "DIC-011",
+        "note": "The zip crate refuses an archive whose extra field overruns its block, and DIC-011 keeps that: a malformed central directory is refused as a whole. Fushi takes the raw name and opens the archive.",
+        "fushi_expected": {
+          "counts": {
+            "media": 1
+          },
+          "media": {
+            "daijirin2/一-default.svg": null
+          }
         }
       },
-      "divergence": null,
-      "known_failure": {
-        "owner": "crates/nikomiru-dict/src/import.rs",
-        "note": "the zip crate (9.0.5) refuses the whole archive when an extra field overruns its block, so the import fails with a zip error."
-      },
+      "known_failure": null,
       "skip": false,
       "note": "A 0x7075 record that claims 200 bytes in a 9-byte block is malformed: the raw name stays and the archive still opens."
     },
@@ -842,10 +839,7 @@
         }
       },
       "divergence": null,
-      "known_failure": {
-        "owner": "crates/nikomiru-dict/src/import.rs",
-        "note": "the zip crate (9.0.5) takes the empty name, and the importer stores the entry as media under an empty path."
-      },
+      "known_failure": null,
       "skip": false,
       "note": "A field with an empty name gives no name."
     },
