@@ -215,6 +215,18 @@ pub fn state() -> Result<Value, String> {
     call(|ui| {
         let s = &ui.session;
         let v = &s.view;
+        // the words' marks of each cue shown (LKP-051, LKP-061)
+        let marks: Vec<Value> = s
+            .subs
+            .shown(false)
+            .map(|c| match s.word_marks(&c.cue.plain_text) {
+                Some(m) => json!({
+                    "readings": m.readings.iter().map(|(r, t)| json!([r.start, r.end, t])).collect::<Vec<_>>(),
+                    "mined": m.mined.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
+                }),
+                None => Value::Null,
+            })
+            .collect();
         let visible: Vec<Value> = s
             .subs
             .active()
@@ -341,6 +353,7 @@ pub fn state() -> Result<Value, String> {
                 "obscure": s.obscure_now().name(),
                 "disabled": s.subs.disabled,
                 "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
+                "marks": marks,
             },
             "secondary": {
                 "source": s.secondary.source.as_ref().map(|x| x.key()),

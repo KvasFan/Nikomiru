@@ -41,6 +41,15 @@ pub enum Inbound {
         /// The reply, or a message.
         result: Result<Reply, String>,
     },
+    /// A subtitle text split into words (LKP-060).
+    Words {
+        /// The words' generation (the dictionaries').
+        generation: u64,
+        /// The text.
+        text: String,
+        /// Its words, or a message.
+        result: Result<Vec<nikomiru_dict::segment::Word>, String>,
+    },
     /// Progress of a dictionary import.
     ImportProgress {
         /// The import's generation.
@@ -191,6 +200,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Player(e) => return write!(f, "Player({:?})", e.value),
             Inbound::Subtitles { .. } => "Subtitles",
             Inbound::Lookup { .. } => "Lookup",
+            Inbound::Words { .. } => "Words",
             Inbound::ImportProgress { .. } => "ImportProgress",
             Inbound::ImportDone { .. } => "ImportDone",
             Inbound::Open(_) => "Open",
@@ -278,6 +288,9 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// The rows of the subtitle list in view changed: their words are
+    /// wanted (LKP-061).
+    ListRows(Vec<usize>),
     PopupLookup {
         level: usize,
         text: String,
@@ -524,6 +537,14 @@ impl Ui {
             }
             Inbound::Lookup { generation, result } => {
                 self.session.lookup_done(generation, result);
+                true
+            }
+            Inbound::Words {
+                generation,
+                text,
+                result,
+            } => {
+                self.session.segmented(generation, text, result);
                 true
             }
             Inbound::ImportProgress {
@@ -914,6 +935,7 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::ListRows(cues) => s.list_rows(&cues),
             Command::PopupLookup {
                 level,
                 text,
@@ -1278,6 +1300,20 @@ impl Ui {
             self.session.start_lookup(
                 text,
                 Box::new(move |result| waker.wake(Inbound::Lookup { generation, result })),
+            );
+        }
+        for (generation, text) in self.session.take_segmentations() {
+            let waker = self.waker.clone();
+            let asked = text.clone();
+            self.session.start_segment(
+                text,
+                Box::new(move |result| {
+                    waker.wake(Inbound::Words {
+                        generation,
+                        text: asked,
+                        result,
+                    });
+                }),
             );
         }
         for import in self.session.take_dict_imports() {

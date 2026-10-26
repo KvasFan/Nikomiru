@@ -256,3 +256,47 @@ fn frequencies_keep_display_values() {
     assert_eq!(entries[0].reading, "にほん", "30000 occurrences before 800");
     let _ = Meta::mode;
 }
+
+fn words(lookup: &Lookup, text: &str) -> Vec<String> {
+    nikomiru_dict::segment::segment(lookup, text)
+        .unwrap()
+        .iter()
+        .map(|w| match &w.headword {
+            Some(h) => format!("{}({})", &text[w.range.clone()], h.expression),
+            None => format!("[{}]", &text[w.range.clone()]),
+        })
+        .collect()
+}
+
+// T-LKP-060
+#[test]
+fn a_line_is_split_into_its_longest_words() {
+    let (_tmp, lookup) = ja();
+    assert_eq!(
+        words(&lookup, "日本語を勉強します"),
+        ["日本語(日本語)", "を(を)", "勉強(勉強)", "します(する)"]
+    );
+    // inflected forms, unknown text and punctuation in one piece
+    assert_eq!(
+        words(&lookup, "「猫が食べた」…ｘｙ"),
+        ["[「]", "猫(猫)", "が(が)", "食べた(食べる)", "[」…ｘｙ]"]
+    );
+    assert_eq!(
+        words(&lookup, "時々、映画を見ました"),
+        [
+            "時々(時々)",
+            "[、]",
+            "映画(映画)",
+            "を(を)",
+            "見ました(見る)"
+        ]
+    );
+    assert_eq!(words(&lookup, ""), Vec::<String>::new());
+    // the cache keeps only the popup's lookups (LKP-038)
+    let first = lookup.lookup("猫", Options::default()).unwrap();
+    words(&lookup, "猫が猫");
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &lookup.lookup("猫", Options::default()).unwrap()
+    ));
+}

@@ -61,12 +61,13 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 - **Shift + hover** looks words up without clicking. In Settings → Lookup you can make plain hover work too.
 - **Keyboard**:
   - Enter looks up the subtitle shown;
-  - ← → move the lookup by one character;
+  - ← → move the lookup to the next or previous word, then by character past the last one;
   - Tab and Shift+Tab move between the entries;
   - Esc closes the popup.
 - **Select text** in a definition to look it up in a nested popup.
 - **Replay** plays the line again; **Go to the sentence** jumps to its start.
 - **♪** plays the word itself, if you set up a word audio source in Settings → Word audio.
+- **Words you already mined** are underlined in green in the subtitles and in the subtitle list. In Settings → Subtitles you can turn that off, or turn on readings over the kanji. Both come from your dictionaries, which split each line into words: where a word is cut wrong, its reading can be wrong too.
 
 ## 5. Anki cards
 
@@ -113,7 +114,7 @@ Nothing goes online unless you ask for it.
 |---|---|
 | General | Language, theme (light, dark or as the desktop), accent color, interface scale, seek step, next episode |
 | Player | mpv's options as controls, `mpv.conf` presets, import and export |
-| Subtitles | Size, preferred languages, blur or hide until hovered, the secondary subtitle |
+| Subtitles | Size, preferred languages, blur or hide until hovered, the secondary subtitle, readings over the kanji, mined words underlined |
 | Lookup | Results in a popup, the popup's size, hover |
 | Shortcuts | Every key, which you can change. Keys are physical: they stay put whatever the keyboard layout |
 | Advanced | The ffmpeg program, where the settings file and the logs are |

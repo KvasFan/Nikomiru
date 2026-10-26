@@ -14,7 +14,7 @@ T-E2E-A11Y-001 walks the main path with keys alone: library → episode → look
 
 - **Over the video**, the shortcuts take the keys. Every action has one, and the keys can be changed in Settings → Shortcuts (KEY-001).
 - **Looking a word up** works from the keyboard as well as with the mouse:
-  - Enter looks up the subtitle shown, and ← → move the lookup by one character;
+  - Enter looks up the subtitle shown, and ← → move the lookup by one word (by one character until the line is split into words);
   - Tab and Shift+Tab move between the popup's entries;
   - Ctrl+Enter makes the card, and Ctrl+Shift+Enter opens the dialog that makes it by hand.
 - **On a page or a dialog** (the library, the settings, the dialogs), only the global shortcuts run. Tab, the arrows, Enter and Space drive the page's controls, and Esc goes back from anywhere.

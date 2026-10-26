@@ -2,7 +2,8 @@
 
 //! Performance (TEST §6.15) on the synthetic dictionaries of
 //! `cargo xtask fixtures --large`: T-PERF-05 (import of 300k entries) and
-//! T-PERF-04 (lookup with 5 term, 3 frequency and 1 pitch dictionaries).
+//! T-PERF-04 (lookup with 5 term, 3 frequency and 1 pitch dictionaries),
+//! T-PERF-10 (a line split into words on them).
 //! Release build only: `cargo xtask bench`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -14,12 +15,16 @@ use std::time::{Duration, Instant};
 use nikomiru_core::Cancel;
 use nikomiru_dict::import::import;
 use nikomiru_dict::lookup::{Dictionary, Lookup, Options};
+use nikomiru_dict::segment::segment;
 use nikomiru_dict::store::{DictStore, RedbStore};
 
 const IMPORT_LIMIT: Duration = Duration::from_secs(60);
 const IMPORT_RAM_KIB: u64 = 1 << 20;
 const P95: Duration = Duration::from_millis(10);
 const P99: Duration = Duration::from_millis(25);
+/// Lines split into words, and the time of most (T-PERF-10).
+const SEGMENTED: usize = 500;
+const SEGMENT_P95: Duration = Duration::from_millis(50);
 
 const CHILD_ZIP: &str = "NIKOMIRU_PERF_ZIP";
 const CHILD_OUT: &str = "NIKOMIRU_PERF_OUT";
@@ -175,6 +180,24 @@ fn l7_perf_import_and_lookup() {
         "most queries must find something"
     );
     assert!(p95 <= P95 && p99 <= P99, "p95 {p95:?}, p99 {p99:?}");
+
+    // T-PERF-10: a line split into words (LKP-060), ahead of its cue
+    let mut times = Vec::new();
+    let mut words = 0;
+    for q in queries.lines().filter(|l| !l.is_empty()).take(SEGMENTED) {
+        let started = Instant::now();
+        words += segment(&lookup, q).unwrap().len();
+        times.push(started.elapsed());
+    }
+    times.sort();
+    let p95 = percentile(&times, 0.95);
+    println!(
+        "T-PERF-10 {} lines, {words} words: p50 {:?}, p95 {p95:?}, max {:?}",
+        times.len(),
+        percentile(&times, 0.5),
+        times.last().unwrap()
+    );
+    assert!(p95 <= SEGMENT_P95, "p95 {p95:?}");
 }
 
 /// Timing of the steps of a first lookup on a real dictionary

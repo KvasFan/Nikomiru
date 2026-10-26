@@ -23,6 +23,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 0.1.0 ◄── M4b Online subtitles + mpv presets (D-14, D-15)
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
+      ──► M9 Words in the subtitles (D-17) ══► 1.1.0
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -37,7 +38,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
-| M8 | Stabilization and packages | M | **1.0.0** | not started |
+| M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
+| M9 | Words in the subtitles (D-17) | M | 1.1.0 | in progress |
 
 ---
 
@@ -157,7 +159,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 **Goal**: import Yomitan dictionaries and do lookups with the same quality as Fushi, popup included.
 
-**Requirements**: DIC-001…DIC-003, DIC-010…DIC-016, DIC-020, DIC-021, DIC-030…DIC-035, LKP-001…LKP-050, LKP-060, POP-001…POP-015, NFR-SEC-01.
+**Requirements**: DIC-001…DIC-003, DIC-010…DIC-016, DIC-020, DIC-021, DIC-030…DIC-035, LKP-001…LKP-050, POP-001…POP-015, NFR-SEC-01.
 
 **Work tracks** (`nikomiru-text` and `nikomiru-dict` do not depend on the UI and can start in parallel with M1):
 
@@ -373,7 +375,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 ## M8 — Stabilization and packages → 1.0.0
 
-**Requirements**: all NFRs not assigned to other milestones (NFR-PERF-*, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
+**Requirements**: all NFRs not assigned to other milestones (NFR-PERF-01…NFR-PERF-09, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
 
 **Deliverables**
 
@@ -402,6 +404,30 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 ---
 
+## M9 — Words in the subtitles → 1.1.0
+
+Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
+
+**Requirements**: LKP-051, LKP-060, LKP-061, NFR-PERF-10.
+
+**Deliverables**
+
+- `nikomiru-dict::segment`: the words of a text by greedy longest match, on a thread of its own in the app; the cues shown and the next three split ahead.
+- The overlay: readings over the kanji of each word (off by default), the words already made into cards underlined (on by default), both in Settings → Subtitles.
+- ← → move the keyboard lookup word by word.
+
+**Status as of 2026-10-26**
+
+- Done: the segmentation (T-LKP-060; 3 ms per line, p95 8 ms, on the dictionaries of T-PERF-04), the furigana of inflected words (T-LKP-051), the mined words (T-LKP-061), the settings, the keyboard by word, T-E2E-WORDS-001.
+
+**Exit criteria**
+
+- [x] T-LKP-051, T-LKP-060, T-LKP-061, T-PERF-10, T-E2E-WORDS-001 green.
+- [ ] The furigana checked by the maintainer on real subtitles and a real dictionary (JMdict).
+- [ ] **Release 1.1.0**, after 1.0.0.
+
+---
+
 ## After 1.0 (backlog, in no binding order)
 
 Every item requires a change to SPECIFICATION.md before work starts.
@@ -410,7 +436,6 @@ Every item requires a change to SPECIFICATION.md before work starts.
 |---|---|
 | WebM video clips and animated covers (ANK-042) | libvpx (BSD) and SVT-AV1 (BSD) encoders **inside the system ffmpeg**: they are external processes, not crates |
 | Advanced ASS (SUB-019), screenshots with subtitles (PLY-015), thumbnails on the seek bar (PLY-014) | |
-| Automatic furigana on subtitles (LKP-051), highlighting of already mined words | Uses LKP-060 and `mined_cards` |
 | Lookup from the clipboard and WebSocket texthooker (visual novels with external Textractor/LunaTranslator) | `tokio-tungstenite` (MIT) |
 | MDict, StarDict, DSL import (DIC-004) | `ammonia` (MIT/Apache) for the HTML |
 | Books (EPUB, with the ttu sync format), manga, audiobooks and online resources | Planned after 1.0 (D-12). Each is as large as the MVP; they reuse the text, dictionary and Anki crates, which know nothing about video |

@@ -315,7 +315,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LKP-041 | Morae and pitch accent | `きょう` → [`きょ`, `う`]; nasal and devoicing from `mini-pitch` present in the rendering model | L1 |
 | T-LKP-042 | Categories | `はし`: pos 0 → heiban; pos 1 → atamadaka; `おとうと` (4 morae): pos 4 → odaka, pos 2 → nakadaka; verb with pos 2 → kifuku | L1 |
 | T-LKP-043 | Pitch accent deduplication | 2 dictionaries with an identical payload → 1 row "pitch accent · 2" | L1 |
-| T-LKP-060 | Segmentation | `日本語を勉強します` → [`日本語`, `を`, `勉強`, `します`] with `mini-ja` | L4 |
+| T-LKP-060 | Segmentation | `日本語を勉強します` → [`日本語`, `を`, `勉強`, `します`] with `mini-ja`; punctuation and unknown text in one piece; the popup's cache untouched. In the session: each text asked once, an answer of older dictionaries dropped; ← → step by word | L4, L1 |
+| T-LKP-051 | Furigana on the subtitles | `食べた` under `食べる`/`たべる` → `[食|た][べた]`; written in kana → no reading; the overlay draws the readings over their graphemes, a cue's own ruby wins | L1, L3 |
+| T-LKP-061 | Words already mined | The headwords of `mined_cards`; a word whose headword has a card is underlined, also inflected; a card just made underlines at once; the subtitle list underlines them too and asks once for the words of the rows in view | L1, L3 |
 | T-FUZZ-004 | Deinflector and lookup on arbitrary Unicode strings | No panic; time per query ≤ 50 ms | L2 |
 
 ### 6.6 Popup
@@ -465,6 +467,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-A11Y-001 | Focus and accessibility | The player's controls as a screen reader finds them: an AT-SPI bus and registry started in the L6 desktop (at-spi2-core, GSettings in memory), the tree walked with the project's D-Bus client; every button, slider, combo box, check box and radio button has a name, and the bar's are all there | L6 |
 | T-A11Y-002 | Every page named | Through AT-SPI as T-A11Y-001: the popup, the eleven tabs of the settings, the library and its statistics; every control named, and each page with a control it must show | L6 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |
+| T-E2E-WORDS-001 | Words in the subtitles | `mini-ja`, furigana on: `食べました` gets `た` over `食`; a card made from it underlines the word at once; both turned off in the settings, without a restart | L6 |
 
 ### 6.13 Online (M7)
 
@@ -508,6 +511,7 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 | T-PERF-07 | Cue display delay | `cue-shown.time_pos − cue.start` | ≤ 50 ms |
 | T-PERF-08 | Mining | From Ctrl+Enter to `card-created`, fake AnkiConnect, real ffmpeg | ≤ 3 s |
 | T-PERF-09 | Idle RSS | 30 s after `library-ready` | ≤ 400 MB |
+| T-PERF-10 | A line split into words | `cargo xtask bench`: 500 lines of the corpus of T-PERF-04, on its dictionaries | p95 ≤ 50 ms |
 
 ---
 
