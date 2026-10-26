@@ -251,6 +251,8 @@ enum SavingPage {
 
 /// How long the next episode waits (LIB-009).
 const NEXT_COUNTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
+/// The cues split into words ahead of the one playing (LKP-060).
+const AHEAD: usize = 3;
 
 /// The next episode about to start (LIB-009).
 #[derive(Debug, Clone)]
@@ -318,6 +320,8 @@ pub struct Session {
     /// The dictionary popups.
     pub popups: Popups,
     lookups: Vec<(u64, String)>,
+    /// The words of the subtitles (LKP-060, LKP-051, LKP-061).
+    words: crate::words::Words,
     screenshots: Vec<String>,
     anki_jobs: Vec<crate::mining::AnkiJob>,
     /// The last card made since Nikomiru started (ANK-030).
@@ -512,6 +516,13 @@ impl Session {
             .as_ref()
             .filter(|l| !l.read_only())
             .map(|l| Writer::start(std::sync::Arc::clone(l)));
+        let mut words = crate::words::Words::default();
+        if let Some(library) = &services.library {
+            match library.mined_expressions() {
+                Ok(mined) => words.set_mined(mined),
+                Err(e) => tracing::warn!("reading the cards made: {e}"),
+            }
+        }
         Self {
             services,
             bindings,
@@ -539,6 +550,7 @@ impl Session {
             sub_list_version: 0,
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
+            words,
             screenshots: Vec::new(),
             anki_jobs: Vec::new(),
             last_card: None,
@@ -2579,6 +2591,14 @@ impl Session {
         let Some(q) = self.subs.cue(cue) else {
             return;
         };
+        // word by word once its words are known (LKP-060), else by grapheme
+        if self.words.get(&q.plain_text).is_some() {
+            if let Some(offset) = self.words.step(&q.plain_text, start, forward) {
+                self.keyboard_lookup = Some((cue, offset));
+            }
+            return;
+        }
+        self.words.ask(&q.plain_text);
         let offsets: Vec<usize> = q.graphemes().iter().map(|g| g.offset).collect();
         let Some(i) = offsets.iter().position(|&o| o == start) else {
             return;
@@ -2855,6 +2875,7 @@ impl Session {
                 let at = self.moment();
                 self.study.card(at);
                 let (expression, reading) = headword;
+                self.words.add_mined(expression.clone());
                 self.last_card = Some(LastCard {
                     note_id: mined.note_id,
                     expression,
@@ -4044,6 +4065,52 @@ impl Session {
         std::mem::take(&mut self.lookups)
     }
 
+    /// The subtitle texts to split into words, taken by the UI layer: the
+    /// cues shown and the next few, while the overlay marks words (LKP-060).
+    pub fn take_segmentations(&mut self) -> Vec<(u64, String)> {
+        let c = &self.services.config.subtitles;
+        if c.furigana || c.mark_mined {
+            let t = self.subs.timeline();
+            let pos = (self.view.time_pos * 1000.0) as i64;
+            let next = t.list_position(pos).map_or(0, |i| i + 1);
+            let ahead = (next..next + AHEAD).filter_map(|i| t.cues().get(i));
+            for cue in self.subs.shown(false).map(|s| s.cue).chain(ahead) {
+                self.words.ask(&cue.plain_text);
+            }
+        }
+        self.words.take_queue()
+    }
+
+    /// Splits a subtitle text into words on the dictionary service.
+    pub fn start_segment(
+        &self,
+        text: String,
+        done: Box<dyn FnOnce(Result<Vec<nikomiru_dict::segment::Word>, String>) + Send>,
+    ) {
+        self.services.dictionaries.segment(text, done);
+    }
+
+    /// The words of a subtitle text.
+    pub fn segmented(
+        &mut self,
+        generation: u64,
+        text: String,
+        result: Result<Vec<nikomiru_dict::segment::Word>, String>,
+    ) {
+        self.words.done(generation, text, result);
+    }
+
+    /// What the overlay marks over `text` (LKP-051, LKP-061).
+    pub fn word_marks(&self, text: &str) -> Option<crate::words::Marks> {
+        let c = &self.services.config.subtitles;
+        if !(c.furigana || c.mark_mined) {
+            return None;
+        }
+        self.words
+            .marks(text, c.furigana, c.mark_mined)
+            .filter(|m| !m.is_empty())
+    }
+
     /// Starts a lookup on the dictionary service.
     pub fn start_lookup(&self, text: String, done: Box<dyn FnOnce(Result<Reply, String>) + Send>) {
         self.services.dictionaries.lookup(text, done);
@@ -4131,6 +4198,7 @@ impl Session {
                 .finished(self.services.dictionaries.as_ref(), generation, result);
         if ok {
             self.events.push(UiEvent::DictionaryImported);
+            self.words.forget();
         }
         self.dict_effects(effects);
     }
@@ -4140,6 +4208,7 @@ impl Session {
         let effects = self
             .dict_page
             .move_by(self.services.dictionaries.as_ref(), id, delta);
+        self.words.forget();
         self.dict_effects(effects);
     }
 
@@ -4148,6 +4217,7 @@ impl Session {
         let effects = self
             .dict_page
             .move_to(self.services.dictionaries.as_ref(), id, to);
+        self.words.forget();
         self.dict_effects(effects);
     }
 
@@ -4156,6 +4226,7 @@ impl Session {
         let effects = self
             .dict_page
             .set_enabled(self.services.dictionaries.as_ref(), id, enabled);
+        self.words.forget();
         self.dict_effects(effects);
     }
 
@@ -4164,6 +4235,7 @@ impl Session {
         let effects = self
             .dict_page
             .delete(self.services.dictionaries.as_ref(), id);
+        self.words.forget();
         self.dict_effects(effects);
     }
 

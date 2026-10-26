@@ -13,7 +13,7 @@
 - Every requirement has a stable identifier (`PLY-012`). IDs are never reused: a removed requirement stays in the table, struck through, with the reason.
 - Tests that verify a requirement use the same prefix (`T-PLY-012`, see [TEST.md](TEST.md)).
 - "Fushi:" followed by a path names the Fushi file to consult during porting. Paths start from the root of the Fushi repository.
-- The **milestone** of each requirement (M0…M8, or "post-1.0") is defined in [ROADMAP.md](ROADMAP.md).
+- The **milestone** of each requirement (M0…M9, or "post-1.0") is defined in [ROADMAP.md](ROADMAP.md).
 - **Language (D-9)**: documents, code comments, commit messages and developer-tool messages are written in **English**. The user interface is localized through Fluent (SET-004), with Italian and English at 1.0.
 
 ---
@@ -597,13 +597,14 @@ The algorithm is a port of Yomitan's, as implemented by fushidicts. Fushi: `nati
 | ID | Requirement |
 |---|---|
 | LKP-050 | `distribute_furigana(expression, reading)`, like Yomitan's `distributeFurigana`/`segmentizeFurigana`: splits into kana and kanji groups and aligns the reading; if the alignment is ambiguous, the reading goes over the whole expression. |
-| LKP-051 | Automatic furigana on subtitle text is post-1.0; it needs the greedy segmentation of LKP-060. |
+| LKP-051 | Automatic furigana on subtitle text (`[subtitles] furigana`, default off; M9, D-17): each word found by the segmentation of LKP-060 gets the reading of its headword over its kanji, distributed over the stem the word shares with the headword (Yomitan's `distributeFuriganaInflected`: `食べた` under `食べる`/`たべる` → `た` over `食`). Drawn as WebVTT ruby, at half size; a cue with ruby of its own keeps it. A word cut wrong can get a wrong reading, and the settings say so. |
 
 #### 6.6.7 Segmentation
 
 | ID | Requirement |
 |---|---|
-| LKP-060 | Word segmentation without a morphological tokenizer: greedy longest-match with `lookup(max_results = 1)` (like Fushi `japanese_language.dart`). It is used for "next/previous word" with the keyboard cursor and, in the future, to highlight already mined words. No MeCab/IPADIC dictionary (licenses). |
+| LKP-060 | Word segmentation without a morphological tokenizer: greedy longest-match with `lookup(max_results = 1)` (like Fushi `japanese_language.dart`); spaces and punctuation are not looked up, and text no dictionary knows stays in one piece. No MeCab/IPADIC dictionary (licenses). It runs on a thread of its own, so a click never waits behind it, and its lookups bypass the cache of LKP-038. The cues shown and the next three are split ahead, once per text; a change of the dictionaries splits them again. Used by the furigana (LKP-051), the mined words (LKP-061), and to move the keyboard lookup (← →) word by word once a cue is split (grapheme by grapheme before). M9 (D-17). |
+| LKP-061 | The words already made into cards (`mined_cards`, ANK-039) are underlined in the subtitles (`[subtitles] mark_mined`, default on), matched by headword, so an inflected form is marked too; a card just made marks its word at once. Cards made outside Nikomiru are not known. M9 (D-17). |
 
 #### 6.6.8 Intended differences from Fushi
 
@@ -762,6 +763,7 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | NFR-PERF-07 | A cue appears within ≤ 50 ms of its actual `start` | T-PERF-07 |
 | NFR-PERF-08 | Card created (5 s audio + image) ≤ 3 s from the click, with a local Anki | T-PERF-08 |
 | NFR-PERF-09 | Idle RAM (RSS) with the library open ≤ 400 MB | T-PERF-09 |
+| NFR-PERF-10 | A line split into words (LKP-060) with the dictionaries of NFR-PERF-04: p95 ≤ 50 ms | T-PERF-10 |
 | NFR-REL-01 | No crash and no data loss if the app is closed during: import, config write, progress save, mining | T-REL-001, T-REL-002 |
 | NFR-REL-02 | A corrupted or malicious video file, subtitle or dictionary does not crash the app (parser fuzzing) | T-FUZZ-* |
 | NFR-SEC-01 | Dictionary contents and subtitle text are untrusted data: the interface lays them out as literal text from a typed view model (allowlisted blocks and runs, POP-009); no markup is ever parsed from them for display, never raw HTML or scripts; the interface never loads a URL from them (images are decoded from the dictionary's own media, POP-010; external links open only `http`/`https` in the browser, POP-011) | T-SEC-* |
@@ -824,6 +826,8 @@ respect_ass_styles = false
 obscure = "none"            # "none" | "blur" | "hidden"
 secondary_obscure = "none"  # the same for the secondary subtitle (SUB-017)
 secondary_position = "top"  # "top" | "bottom" (above the main subtitle)
+furigana = false            # readings over the kanji, from the dictionaries (LKP-051)
+mark_mined = true           # underline the words already made into cards (LKP-061)
 
 [lookup]
 max_results = 10
@@ -904,6 +908,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
 | D-15 | Contents of 0.1.0 | **Approved** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria. The logo in `assets/brand/` is approved too |
 | D-16 | Other platforms | **Asked by the maintainer** (2026-10-25, with 0.4.0): builds for macOS, Windows and Android. Recorded as the milestone "Ports" after M7, which starts with spike S6; the release that ships each port follows from S6. Before: Windows and macOS after 1.0, Android excluded (§1.3) |
+| D-17 | The next version, while 1.0.0 waits for its manual checks | **Asked by the maintainer** (2026-10-26): work goes on with the next version while M8's manual checks are open. Recorded as M9 "Words in the subtitles": the segmentation of LKP-060 in the subtitles, automatic furigana (LKP-051, until now post-1.0) and the words already mined underlined (LKP-061), on by default except the furigana. Its release follows 1.0.0 (1.1.0) |
 
 ### 10.2 Risks
 

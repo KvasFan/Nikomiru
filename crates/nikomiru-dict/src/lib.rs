@@ -21,6 +21,7 @@ pub mod memory;
 pub mod mixed;
 pub mod pitch;
 pub mod present;
+pub mod segment;
 pub mod sqlite;
 pub mod store;
 pub mod structured;

@@ -61,12 +61,13 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 - **Shift + passaggio del puntatore** cerca senza cliccare. In Impostazioni → Ricerca puoi far funzionare anche il passaggio semplice.
 - **Tastiera**:
   - Invio cerca nel sottotitolo mostrato;
-  - ← → spostano la ricerca di un carattere;
+  - ← → spostano la ricerca alla parola dopo o prima;
   - Tab e Shift+Tab passano da una voce all'altra;
   - Esc chiude il popup.
 - **Seleziona del testo** in una definizione per cercarlo in un popup annidato.
 - **Riascolta** ripete la battuta; **Vai alla frase** salta al suo inizio.
 - **♪** riproduce la parola stessa, se hai impostato una fonte in Impostazioni → Audio delle parole.
+- **Le parole che hai già minato** sono sottolineate in verde nei sottotitoli. In Impostazioni → Sottotitoli puoi spegnere la sottolineatura, o accendere le letture sopra i kanji. Entrambe vengono dai tuoi dizionari, che dividono ogni battuta in parole: dove una parola è tagliata male, anche la sua lettura può essere sbagliata.
 
 ## 5. Carte Anki
 
@@ -113,7 +114,7 @@ Nulla va online se non lo chiedi.
 |---|---|
 | Generale | Lingua, tema (chiaro, scuro o come il desktop), colore d'accento, scala dell'interfaccia, passo dei salti, episodio successivo |
 | Player | Le opzioni di mpv come controlli, preset `mpv.conf`, importazione ed esportazione |
-| Sottotitoli | Dimensione, lingue preferite, sfocatura o nascondere finché non ci passi sopra, il sottotitolo secondario |
+| Sottotitoli | Dimensione, lingue preferite, sfocatura o nascondere finché non ci passi sopra, il sottotitolo secondario, le letture sopra i kanji, le parole minate sottolineate |
 | Ricerca | Risultati in un popup, dimensione del popup, passaggio del puntatore |
 | Scorciatoie | Tutti i tasti, che puoi cambiare. I tasti sono fisici: restano al loro posto con qualunque disposizione della tastiera |
 | Avanzate | Il programma ffmpeg, dove sono il file delle impostazioni e i log |

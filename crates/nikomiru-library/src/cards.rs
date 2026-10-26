@@ -5,7 +5,9 @@
 //! A new table leaves the other records as they are, so the schema version
 //! does not change (ADR 0007 §26).
 
-use redb::{ReadableTableMetadata, TableDefinition};
+use std::collections::HashSet;
+
+use redb::{ReadableTable, ReadableTableMetadata, TableDefinition};
 use serde::{Deserialize, Serialize};
 
 use crate::db::{Library, LibraryError};
@@ -61,6 +63,24 @@ impl Library {
         })
     }
 
+    /// The headwords of the cards made, to mark them in the subtitles
+    /// (LKP-061).
+    pub fn mined_expressions(&self) -> Result<HashSet<String>, LibraryError> {
+        self.read(|tx| match tx.open_table(MINED_CARDS) {
+            Ok(t) => {
+                let mut out = HashSet::new();
+                for row in t.iter().map_err(|e| LibraryError::Db(e.into()))? {
+                    let (_, v) = row.map_err(|e| LibraryError::Db(e.into()))?;
+                    let card: MinedCard = postcard::from_bytes(v.value())?;
+                    out.insert(card.expression);
+                }
+                Ok(out)
+            }
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(HashSet::new()),
+            Err(e) => Err(LibraryError::Db(e.into())),
+        })
+    }
+
     /// How many cards were made.
     pub fn mined_card_count(&self) -> Result<u64, LibraryError> {
         self.read(|tx| match tx.open_table(MINED_CARDS) {
@@ -95,11 +115,19 @@ mod tests {
         let lib = Library::open(&dir.path().join("library.redb")).unwrap();
         assert_eq!(lib.mined_card(7).unwrap(), None, "no table yet");
         assert_eq!(lib.mined_card_count().unwrap(), 0);
+        assert!(lib.mined_expressions().unwrap().is_empty());
         lib.put_mined_card(7, &card("食べました")).unwrap();
         assert_eq!(lib.mined_card(7).unwrap(), Some(card("食べました")));
         lib.put_mined_card(7, &card("また食べた")).unwrap();
         assert_eq!(lib.mined_card(7).unwrap(), Some(card("また食べた")));
         assert_eq!(lib.mined_card_count().unwrap(), 1);
+        lib.put_mined_card(8, &card("食べる")).unwrap();
+        // T-LKP-061 the headwords, once each
+        assert_eq!(
+            lib.mined_expressions().unwrap(),
+            HashSet::from(["食べる".to_string()])
+        );
+        assert_eq!(lib.mined_card_count().unwrap(), 2);
         assert_eq!(lib.schema(), crate::db::SCHEMA_VERSION, "no migration");
     }
 }
