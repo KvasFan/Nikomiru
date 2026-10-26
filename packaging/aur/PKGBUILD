@@ -1,0 +1,75 @@
+# Maintainer: Artem Sedletskyy
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Nikomiru for Arch Linux (D-5). Built from the release's source tarball
+# with the Rust toolchain of `rust-toolchain.toml` (through rustup).
+
+pkgname=nikomiru
+pkgver=0.4.0
+pkgrel=1
+pkgdesc='Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards'
+arch=('x86_64')
+url='https://github.com/KvasFan/nikomiru'
+license=('GPL-3.0-only')
+depends=(
+  'glibc'
+  'libgcc'
+  'mpv'            # libmpv: the video (and the word audio)
+  'ffmpeg'         # run as a program: subtitles from the videos, the media of the cards
+  'openssl'
+  # loaded at run time, so not seen by namcap
+  'fontconfig'
+  'libxkbcommon'
+  'wayland'
+  'libglvnd'       # EGL and OpenGL
+  'hicolor-icon-theme'
+)
+optdepends=(
+  'noto-fonts-cjk: a font with Japanese glyphs'
+  'xdg-desktop-portal: file dialogs, links, the desktop theme and the screensaver'
+  'at-spi2-core: screen readers'
+)
+makedepends=('rustup' 'cargo-about')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('3614604949b8cbcb33b7e17c001412071ba568d08d698c78cc37eb7b5adc5f2d')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  # the toolchain of rust-toolchain.toml, and every crate, before the build
+  rustup toolchain install --profile minimal "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export CARGO_TARGET_DIR=target
+  # no path of the build machine in the program
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build --remap-path-prefix=$HOME=/home"
+  cargo build --frozen --release -p nikomiru-app
+  # the licenses of every crate in the program, shown by Settings → About
+  cargo about generate --frozen --fail \
+    --manifest-path crates/nikomiru-app/Cargo.toml \
+    --output-file THIRD_PARTY_LICENSES.html about.hbs
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  # the logic, without the GUI and the generated fixtures
+  cargo test --frozen --release --lib \
+    -p nikomiru-core -p nikomiru-text -p nikomiru-subs -p nikomiru-dict \
+    -p nikomiru-anki -p nikomiru-library
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/nikomiru -t "$pkgdir/usr/bin"
+  install -Dm644 assets/nikomiru.desktop -t "$pkgdir/usr/share/applications"
+  # releases before 0.5 had no Icon line
+  grep -q '^Icon=' "$pkgdir/usr/share/applications/nikomiru.desktop" ||
+    sed -i '/^Exec=/i Icon=nikomiru' "$pkgdir/usr/share/applications/nikomiru.desktop"
+  install -Dm644 assets/brand/logo-light.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/nikomiru.svg"
+  install -Dm644 THIRD_PARTY_LICENSES.html -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 README.md CHANGELOG.md -t "$pkgdir/usr/share/doc/$pkgname"
+}

@@ -84,6 +84,8 @@ Version 0.4.0 is an alpha for Linux. The status of each area follows the [ROADMA
 
 ## Quick start
 
+The [user guide](docs/guide/en.md) ([in Italian](docs/guide/it.md)) covers everything below in more detail. On Arch Linux, `packaging/aur/PKGBUILD` builds a package (`makepkg -si`).
+
 You need Rust through `rustup` (the version is pinned in `rust-toolchain.toml`) and these system libraries: libmpv ≥ 0.37, FFmpeg ≥ 6, OpenGL with EGL (Mesa or NVIDIA's driver), the Wayland or X11 client libraries and libxkbcommon, fontconfig, OpenSSL 3 and a font with Japanese glyphs (for example Noto Sans CJK). Building also needs the development files of libmpv and OpenSSL, and `pkg-config`.
 
 ```sh

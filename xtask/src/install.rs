@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! `cargo xtask install [--prefix DIR]` (APP-002): the release build of
-//! `nikomiru` in `DIR/bin` and its desktop entry in `DIR/share/applications`,
+//! `nikomiru` in `DIR/bin`, its icon in `DIR/share/icons` and its desktop
+//! entry in `DIR/share/applications`,
 //! registered for `nikomiru://` links, so that the links in Anki cards open
 //! Nikomiru. For builds from source, until the packages of 1.0 (D-5).
 
@@ -100,6 +101,13 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     let entry = std::fs::read_to_string(root.join("assets/nikomiru.desktop"))?;
     let desktop = apps.join("nikomiru.desktop");
     std::fs::write(&desktop, installed_entry(&entry, &bin))?;
+    // the logo, the entry's icon
+    let icons = prefix.join("share/icons/hicolor/scalable/apps");
+    std::fs::create_dir_all(&icons)?;
+    std::fs::copy(
+        root.join("assets/brand/logo-light.svg"),
+        icons.join("nikomiru.svg"),
+    )?;
     eprintln!("installed {} and {}", bin.display(), desktop.display());
     optional("update-desktop-database", &[&apps.to_string_lossy()]);
     optional(

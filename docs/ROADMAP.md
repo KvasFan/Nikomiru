@@ -383,6 +383,11 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Optimization until all T-PERF pass on REF.
 - Cleanup of the P1/P2 bug backlog.
 
+**Status as of 2026-10-26**
+
+- Done: the PKGBUILD in `packaging/aur` (built and checked with `makepkg` and `namcap`: the program, the desktop entry with its icon, `THIRD_PARTY_LICENSES.html` where Settings → About finds it, the logic's tests in `check()`); the user guide in `docs/guide/` (English and Italian); the desktop entry's icon.
+- Open: publishing on the AUR (the maintainer's account), the Flatpak, the security and accessibility reviews, T-PERF on REF, the bug backlog, the manual checklist of TEST §9.
+
 **Exit criteria**
 
 - [ ] All automatic tests green; no open P1 bugs.

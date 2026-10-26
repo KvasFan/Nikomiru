@@ -1,0 +1,27 @@
+pkgbase = nikomiru
+	pkgdesc = Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards
+	pkgver = 0.4.0
+	pkgrel = 1
+	url = https://github.com/KvasFan/nikomiru
+	arch = x86_64
+	license = GPL-3.0-only
+	makedepends = rustup
+	makedepends = cargo-about
+	depends = glibc
+	depends = libgcc
+	depends = mpv
+	depends = ffmpeg
+	depends = openssl
+	depends = fontconfig
+	depends = libxkbcommon
+	depends = wayland
+	depends = libglvnd
+	depends = hicolor-icon-theme
+	optdepends = noto-fonts-cjk: a font with Japanese glyphs
+	optdepends = xdg-desktop-portal: file dialogs, links, the desktop theme and the screensaver
+	optdepends = at-spi2-core: screen readers
+	options = !lto
+	source = nikomiru-0.4.0.tar.gz::https://github.com/KvasFan/nikomiru/archive/refs/tags/v0.4.0.tar.gz
+	sha256sums = 3614604949b8cbcb33b7e17c001412071ba568d08d698c78cc37eb7b5adc5f2d
+
+pkgname = nikomiru
