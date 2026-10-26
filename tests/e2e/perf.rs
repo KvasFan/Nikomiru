@@ -10,6 +10,21 @@ use std::time::{Duration, Instant};
 
 use crate::support::{Desktop, exit_status};
 
+/// The anonymous memory of process `pid`, resident or swapped out, in MiB:
+/// unlike the RSS, the kernel reclaiming pages under pressure does not make
+/// it fall (T-REL-003).
+fn anon_mib(pid: u32) -> u64 {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+    let kib = |key: &str| {
+        status
+            .lines()
+            .find_map(|l| l.strip_prefix(key))
+            .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    (kib("RssAnon:") + kib("VmSwap:")) / 1024
+}
+
 /// The resident memory of process `pid`, in MiB.
 fn rss_mib(pid: u32) -> u64 {
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
@@ -184,8 +199,8 @@ fn l7_perf_playback_drops_no_frame() {
 
 // T-REL-003: a long session keeps its memory: a 10-minute file played in a
 // loop, a word looked up every 20 s, the settings and another file every
-// 5 minutes; the resident memory at the end is at most 64 MiB above its
-// highest point of the first 10 minutes. Two hours by default
+// 5 minutes; the anonymous memory at the end, resident or swapped, is at
+// most 64 MiB above its highest point of the first 10 minutes. Two hours by default
 // (`NIKOMIRU_SOAK_MINUTES`); in the off-screen KWin, not in the L6 suite.
 #[test]
 #[ignore = "L7: two hours; run by hand before a release"]
@@ -232,16 +247,16 @@ fn l7_soak_a_long_session_keeps_its_memory() {
         std::thread::sleep(Duration::from_secs(20));
         if started.elapsed() - last_sample >= Duration::from_secs(60) {
             last_sample = started.elapsed();
-            let rss = rss_mib(app.id());
+            let rss = anon_mib(app.id());
             if started.elapsed() <= Duration::from_secs(600) {
                 warm = warm.max(rss);
             }
             samples.push(rss);
         }
     }
-    let end = rss_mib(app.id());
+    let end = anon_mib(app.id());
     eprintln!(
-        "T-REL-003 RSS by minute (MiB): {samples:?}; first 10 min at most {warm}, at the end {end}"
+        "T-REL-003 anonymous memory by minute (MiB): {samples:?}; first 10 min at most {warm}, at the end {end}"
     );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
