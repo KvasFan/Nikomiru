@@ -274,7 +274,7 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 
 **Exit criteria**
 
-- [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green.
+- [x] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green (every `ci --full`, 2026-10-26).
 - [ ] By hand with real keys (T-MET-LIVE-001): Japanese subtitles found and loaded automatically for 5 real episodes from 3 series.
 - [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 
