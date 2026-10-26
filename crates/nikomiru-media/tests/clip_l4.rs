@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! L3/L4: the sentence audio and the card image (T-ANK-033, T-ANK-034,
-//! T-ANK-035): the ffmpeg arguments, then the real ffmpeg on `av_basic.mkv`.
+//! T-ANK-035, T-ANK-042): the ffmpeg arguments, then the real ffmpeg on
+//! `av_basic.mkv`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use nikomiru_media::clip::{AudioClip, image_args, image_job};
+use nikomiru_media::clip::{
+    AudioClip, animated_args, animated_job, image_args, image_job, thumbnail_args, thumbnail_job,
+};
 use nikomiru_media::process::{Cancel, JobError, run};
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, probe};
 
@@ -226,7 +229,130 @@ fn the_image_is_scaled_to_its_level() {
         let bytes = std::fs::read(&out).unwrap();
         match format {
             ImageFormat::Jpeg => assert_eq!(&bytes[..3], [0xFF, 0xD8, 0xFF]),
-            ImageFormat::Webp => assert_eq!(&bytes[8..12], b"WEBP"),
+            _ => assert_eq!(&bytes[8..12], b"WEBP"),
         }
     }
+}
+
+// T-ANK-042
+#[test]
+fn animated_picture_arguments() {
+    let (video, out) = (
+        Path::new("/videos/-weird: name.mkv"),
+        Path::new("/cache/mining/a.webp"),
+    );
+    assert_eq!(
+        shown(&animated_args(
+            video,
+            (10_250, 12_400),
+            out,
+            ImageFormat::WebpAnimated,
+            1
+        )),
+        "-nostdin -hide_banner -loglevel error -y -ss 10.250 -t 2.150 -i file:/videos/-weird: name.mkv \
+         -map 0:v:0 -an -sn -dn \
+         -vf fps=12,scale=w='if(gte(iw,ih),min(640,iw),-2)':h='if(gte(iw,ih),-2,min(640,ih))' \
+         -c:v libwebp_anim -quality 70 -loop 0 -f webp file:/cache/mining/a.webp"
+    );
+    // at most 10 s from the sentence's start, never before 0
+    let avif = shown(&animated_args(
+        video,
+        (-500, 90_000),
+        out,
+        ImageFormat::AvifAnimated,
+        3,
+    ));
+    assert!(avif.contains("-ss 0.000 -t 10.000 -i"), "{avif}");
+    assert!(
+        avif.contains("fps=15,scale=w='if(gte(iw,ih),min(1280,iw)"),
+        "{avif}"
+    );
+    assert!(
+        avif.contains("-c:v libaom-av1 -cpu-used 8 -row-mt 1 -crf 30 -pix_fmt yuv420p -f avif"),
+        "{avif}"
+    );
+    // the still formats of a frame
+    let still = shown(&image_args(out, out, ImageFormat::AvifAnimated, 1));
+    assert!(still.contains("-c:v mjpeg"), "{still}");
+}
+
+// T-ANK-042
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn the_sentence_becomes_an_animated_picture() {
+    let dir = tempfile::tempdir().unwrap();
+    for (format, ext) in [
+        (ImageFormat::WebpAnimated, "webp"),
+        (ImageFormat::AvifAnimated, "avif"),
+    ] {
+        let out = dir.path().join(format!("sentence.{ext}"));
+        // the first cue of av_basic, padded as a card's audio is
+        let job = animated_job(
+            &ffmpeg(),
+            &fixture("av_basic.mkv"),
+            (1_880, 2_700),
+            &out,
+            format,
+            1,
+        );
+        run(&job, &Cancel::new()).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        match format {
+            // an animation: its ANIM chunk, after VP8X
+            ImageFormat::WebpAnimated => {
+                assert_eq!(&bytes[8..12], b"WEBP");
+                assert!(bytes.windows(4).any(|w| w == b"ANIM"), "not animated");
+            }
+            // an image sequence
+            _ => assert_eq!(&bytes[4..12], b"ftypavis"),
+        }
+        let probe = Command::new(ffmpeg().with_file_name("ffprobe"))
+            .args(["-v", "error", "-count_frames", "-select_streams", "v:0"])
+            .args(["-show_entries", "stream=width,height", "-of", "csv=p=0"])
+            .arg(&out)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&probe.stdout);
+        assert_eq!(text.lines().next(), Some("640,360"), "{format:?}");
+        // about 10 frames (0.82 s at 12 fps)
+        let frames = Command::new(ffmpeg().with_file_name("ffprobe"))
+            .args(["-v", "error", "-count_frames", "-show_entries"])
+            .args(["stream=nb_read_frames", "-of", "csv=p=0"])
+            .arg(&out)
+            .output()
+            .unwrap();
+        let counts = String::from_utf8_lossy(&frames.stdout);
+        let most = counts
+            .lines()
+            .filter_map(|l| l.trim().parse::<u32>().ok())
+            .max()
+            .unwrap_or(0);
+        assert!((8..=12).contains(&most), "{format:?}: {counts}");
+    }
+}
+
+// T-PLY-014
+#[test]
+fn thumbnail_arguments() {
+    assert_eq!(
+        shown(&thumbnail_args(
+            Path::new("/videos/-weird: name.mkv"),
+            83_250,
+            144,
+            Path::new("/cache/thumbnails/t.png")
+        )),
+        "-nostdin -hide_banner -loglevel error -y -ss 83.250 -i file:/videos/-weird: name.mkv \
+         -map 0:v:0 -frames:v 1 -vf scale=-2:144 -an -sn -c:v png -f image2 file:/cache/thumbnails/t.png"
+    );
+}
+
+// T-PLY-014
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn a_thumbnail_is_a_small_frame() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("t.png");
+    let job = thumbnail_job(&ffmpeg(), &fixture("av_basic.mkv"), 2_000, 144, &out);
+    run(&job, &Cancel::new()).unwrap();
+    assert_eq!(size(&out), (256, 144));
 }

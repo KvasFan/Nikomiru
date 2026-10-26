@@ -45,6 +45,7 @@ Start Nikomiru from the menu, or with `nikomiru path/to/episode.mkv`. Without a 
 - **Open a video**: Ctrl+O, drag it onto the window, or open it from the library.
 - **Subtitles**: Nikomiru loads the ones next to the video by itself, even when their name differs (`Subs/` folders, `Show 02.ja.srt`). It also loads the subtitle tracks inside the video. To choose, use the 字 menu in the bar.
 - **Back**: Esc, or "← Library" in the bar.
+- **Find a scene**: the pointer over the progress bar shows the time and the frame there.
 
 ## 3. Dictionaries
 
@@ -76,7 +77,7 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 3. In a popup, **+** on an entry (or Ctrl+Enter) makes the card. It includes:
    - the word and its meanings;
    - the sentence with the word in bold;
-   - the frame of the video and the audio of the line;
+   - the frame of the video (or, in Settings → Anki → Image format, the whole line as an animated picture) and the audio of the line;
    - a link that reopens the scene.
 4. **✓** means Anki already has the word: its menu opens the card in Anki, or adds another anyway.
 5. **Shift+click on +** (or Ctrl+Shift+Enter) makes the card by hand. You can:

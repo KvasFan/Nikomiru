@@ -24,6 +24,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
       ──► M9 Words in the subtitles (D-17) ══► 1.1.0
+      ──► M10 Moving pictures (D-18) ══► 1.2.0
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -39,7 +40,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
-| M9 | Words in the subtitles (D-17) | M | 1.1.0 | in progress |
+| M9 | Words in the subtitles (D-17) | M | 1.1.0 | done (maintainer's check open) |
+| M10 | Moving pictures (D-18) | M | 1.2.0 | done (maintainer's check open) |
 
 ---
 
@@ -428,14 +430,38 @@ Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
 ---
 
+## M10 — Moving pictures → 1.2.0
+
+Proposed after M9, when the maintainer asked to go on (D-18).
+
+**Requirements**: ANK-042, PLY-014.
+
+**Deliverables**
+
+- Cards whose picture is the sentence, moving: animated WebP or AVIF made by ffmpeg from the clip (ANK-042).
+- Thumbnails over the progress bar (PLY-014).
+
+**Status as of 2026-10-26**
+
+- Done: the animated picture (T-ANK-042, T-E2E-ANK-042), its formats and levels in Settings → Anki.
+- Done: the thumbnails of the progress bar (T-PLY-014, T-E2E-PLY-014): about 0.15 s a frame for 1080p HEVC 10-bit.
+
+**Exit criteria**
+
+- [x] T-ANK-042, T-E2E-ANK-042, T-PLY-014 and T-E2E-PLY-014 green.
+- [ ] An animated card checked by the maintainer in Anki desktop and AnkiDroid.
+- [ ] **Release 1.2.0**.
+
+---
+
 ## After 1.0 (backlog, in no binding order)
 
 Every item requires a change to SPECIFICATION.md before work starts.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
-| WebM video clips and animated covers (ANK-042) | libvpx (BSD) and SVT-AV1 (BSD) encoders **inside the system ffmpeg**: they are external processes, not crates |
-| Advanced ASS (SUB-019), screenshots with subtitles (PLY-015), thumbnails on the seek bar (PLY-014) | |
+| WebM video clips with sound (ANK-043) | libvpx (BSD) **inside the system ffmpeg**: an external process, not a crate |
+| Advanced ASS (SUB-019), screenshots with subtitles (PLY-015) | |
 | Lookup from the clipboard and WebSocket texthooker (visual novels with external Textractor/LunaTranslator) | `tokio-tungstenite` (MIT) |
 | MDict, StarDict, DSL import (DIC-004) | `ammonia` (MIT/Apache) for the HTML |
 | Books (EPUB, with the ttu sync format), manga, audiobooks and online resources | Planned after 1.0 (D-12). Each is as large as the MVP; they reuse the text, dictionary and Anki crates, which know nothing about video |

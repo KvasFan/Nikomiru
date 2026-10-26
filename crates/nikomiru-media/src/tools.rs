@@ -164,11 +164,20 @@ pub enum ImageFormat {
     Jpeg,
     /// WebP.
     Webp,
+    /// Animated WebP of the sentence (ANK-042).
+    WebpAnimated,
+    /// Animated AVIF of the sentence (ANK-042).
+    AvifAnimated,
 }
 
 impl ImageFormat {
     /// All formats, in fallback order.
-    pub const ALL: [ImageFormat; 2] = [ImageFormat::Jpeg, ImageFormat::Webp];
+    pub const ALL: [ImageFormat; 4] = [
+        ImageFormat::Jpeg,
+        ImageFormat::Webp,
+        ImageFormat::WebpAnimated,
+        ImageFormat::AvifAnimated,
+    ];
 
     /// From the `anki.image_format` setting.
     pub fn from_config(name: &str) -> Option<Self> {
@@ -180,6 +189,22 @@ impl ImageFormat {
         match self {
             ImageFormat::Jpeg => "jpeg",
             ImageFormat::Webp => "webp",
+            ImageFormat::WebpAnimated => "webp-animated",
+            ImageFormat::AvifAnimated => "avif-animated",
+        }
+    }
+
+    /// A moving picture of the sentence rather than one frame (ANK-042).
+    pub fn is_animated(self) -> bool {
+        matches!(self, ImageFormat::WebpAnimated | ImageFormat::AvifAnimated)
+    }
+
+    /// The format of one frame: itself, or the still one an animated
+    /// format falls back to without a sentence or an encoder.
+    pub fn still(self) -> Self {
+        match self {
+            ImageFormat::Jpeg | ImageFormat::AvifAnimated => ImageFormat::Jpeg,
+            ImageFormat::Webp | ImageFormat::WebpAnimated => ImageFormat::Webp,
         }
     }
 
@@ -188,6 +213,8 @@ impl ImageFormat {
         match self {
             ImageFormat::Jpeg => "mjpeg",
             ImageFormat::Webp => "libwebp",
+            ImageFormat::WebpAnimated => "libwebp_anim",
+            ImageFormat::AvifAnimated => "libaom-av1",
         }
     }
 }
@@ -232,7 +259,9 @@ impl Tools {
 
     /// `preferred` if ffmpeg can encode it, otherwise the other format.
     pub fn image_format(&self, preferred: ImageFormat) -> Option<ImageFormat> {
-        std::iter::once(preferred)
+        // an animated format falls back to its still one first
+        [preferred, preferred.still()]
+            .into_iter()
             .chain(ImageFormat::ALL)
             .find(|f| self.has_encoder(f.encoder()))
     }
@@ -440,13 +469,34 @@ mod tests {
             version: "9.0".into(),
             encoders: encoders.iter().map(|e| e.to_string()).collect(),
         };
-        let t = tools(&["aac", "libopus", "libmp3lame", "mjpeg", "libwebp"]);
+        let t = tools(&[
+            "aac",
+            "libopus",
+            "libmp3lame",
+            "mjpeg",
+            "libwebp",
+            "libwebp_anim",
+            "libaom-av1",
+        ]);
         assert_eq!(t.audio_format(AudioFormat::Mp3), Some(AudioFormat::Mp3));
         assert!(t.missing_encoders().is_empty());
         let t = tools(&["libmp3lame"]);
         assert_eq!(t.audio_format(AudioFormat::AacM4a), Some(AudioFormat::Mp3));
         assert_eq!(t.image_format(ImageFormat::Jpeg), None);
-        assert_eq!(t.missing_encoders().len(), 4);
+        assert_eq!(t.missing_encoders().len(), 6);
+        // T-ANK-042 an animated format without its encoder: its still one
+        let t = tools(&["mjpeg", "libwebp"]);
+        for (preferred, got) in [
+            (ImageFormat::WebpAnimated, ImageFormat::Webp),
+            (ImageFormat::AvifAnimated, ImageFormat::Jpeg),
+        ] {
+            assert_eq!(t.image_format(preferred), Some(got));
+            assert!(preferred.is_animated() && !got.is_animated());
+        }
+        assert_eq!(
+            ImageFormat::from_config("avif-animated"),
+            Some(ImageFormat::AvifAnimated)
+        );
         assert_eq!(
             AudioFormat::from_config("opus-ogg"),
             Some(AudioFormat::OpusOgg)

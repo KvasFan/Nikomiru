@@ -45,6 +45,7 @@ Avvia Nikomiru dal menu, oppure con `nikomiru percorso/episodio.mkv`. Senza un f
 - **Aprire un video**: Ctrl+O, trascinandolo sulla finestra, o dalla libreria.
 - **Sottotitoli**: Nikomiru carica da solo quelli accanto al video, anche se hanno un altro nome (cartelle `Subs/`, `Serie 02.ja.srt`). Carica anche le tracce di sottotitoli dentro il video. Per scegliere c'è il menu 字 nella barra.
 - **Indietro**: Esc, oppure "← Libreria" nella barra.
+- **Trovare una scena**: il puntatore sopra la barra di avanzamento mostra l'orario e il fotogramma in quel punto.
 
 ## 3. Dizionari
 
@@ -76,7 +77,7 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 3. In un popup, **+** su una voce (o Ctrl+Invio) crea la carta. Contiene:
    - la parola e i suoi significati;
    - la frase con la parola in grassetto;
-   - il fotogramma e l'audio della battuta;
+   - il fotogramma (oppure, in Impostazioni → Anki → Formato immagine, tutta la battuta come immagine animata) e l'audio della battuta;
    - un link che riapre la scena.
 4. **✓** vuol dire che Anki ha già la parola: dal suo menu apri la carta in Anki, oppure ne aggiungi un'altra comunque.
 5. **Shift+clic su +** (o Ctrl+Shift+Invio) crea la carta a mano. Puoi:

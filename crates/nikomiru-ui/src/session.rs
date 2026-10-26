@@ -187,6 +187,8 @@ pub struct Services {
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
     pub word_audio: Box<dyn crate::word_audio::WordAudioService>,
+    /// The thumbnails of the progress bar (PLY-014).
+    pub thumbnails: Box<dyn crate::thumbnails::ThumbnailService>,
     /// Where downloaded subtitles are kept (MET-008).
     pub subtitles_dir: PathBuf,
     /// Where the mpv presets are kept (PLY-016).
@@ -322,6 +324,8 @@ pub struct Session {
     lookups: Vec<(u64, String)>,
     /// The words of the subtitles (LKP-060, LKP-051, LKP-061).
     words: crate::words::Words,
+    /// The thumbnails of the progress bar (PLY-014).
+    thumbnails: crate::thumbnails::Thumbnails,
     screenshots: Vec<String>,
     anki_jobs: Vec<crate::mining::AnkiJob>,
     /// The last card made since Nikomiru started (ANK-030).
@@ -551,6 +555,7 @@ impl Session {
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             words,
+            thumbnails: crate::thumbnails::Thumbnails::default(),
             screenshots: Vec::new(),
             anki_jobs: Vec::new(),
             last_card: None,
@@ -760,6 +765,8 @@ impl Session {
         self.online_generation += 1;
         self.auto_online = None;
         self.online_page.busy = false;
+        // a stream has no thumbnails: ffmpeg would download it again
+        self.thumbnails.open(path.is_file().then(|| path.clone()));
         self.current = Some(Current { uid, path, hash });
     }
 
@@ -4123,6 +4130,45 @@ impl Session {
             .marks(text, false, true)
             .map(|m| m.mined)
             .unwrap_or_default()
+    }
+
+    /// The last step of the progress bar the pointer was over (PLY-014).
+    pub fn bar_hovered(&self) -> Option<i64> {
+        self.thumbnails.last()
+    }
+
+    /// The pointer is over step `at_ms` of the progress bar (PLY-014).
+    pub fn bar_hover(&mut self, at_ms: i64) {
+        self.thumbnails.want(at_ms);
+    }
+
+    /// The frame of the progress bar to make, taken by the UI layer.
+    pub fn take_thumbnail(&mut self) -> Option<(u64, PathBuf, i64)> {
+        self.thumbnails.take()
+    }
+
+    /// Makes a frame of the progress bar on the thumbnail service.
+    pub fn start_thumbnail(
+        &self,
+        video: PathBuf,
+        at_ms: i64,
+        done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>,
+    ) {
+        self.services.thumbnails.frame(video, at_ms, done);
+    }
+
+    /// A frame of the progress bar made.
+    pub fn thumbnail_done(&mut self, generation: u64, at_ms: i64, result: Result<Vec<u8>, String>) {
+        self.thumbnails.done(generation, at_ms, result);
+    }
+
+    /// The thumbnail of step `at_ms` of the progress bar, with the generation
+    /// of its file.
+    pub fn thumbnail(
+        &self,
+        at_ms: i64,
+    ) -> Option<(u64, std::sync::Arc<nikomiru_dict::structured::Pixels>)> {
+        self.thumbnails.get(at_ms)
     }
 
     /// What the overlay marks over `text` (LKP-051, LKP-061).
