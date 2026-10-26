@@ -194,15 +194,17 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - Measured: T-PERF-04 p95 1.7 ms / p99 2.2 ms, T-PERF-05 ≤ 4.4 s and 261 MiB per 300k-entry dictionary, T-PERF-06 p95 21 ms; with Jitendex and JMdict, click → popup 20–64 ms in a release build (ADR 0005).
 - Also done: the dictionaries page (import with progress and cancel, update offer, order, enable, rename, popup block state, delete), hover with Shift (POP-003), Tab/Shift+Tab/Alt+wheel between entries (POP-014; Enter and Ctrl+Enter wait for audio in M5 and cards in M4), replay and go to sentence (POP-015), `[lookup]` settings, library writes off the UI thread.
 - Done on 2026-10-20: selection inside glossaries opens a nested popup (POP-012), the popup resized by its border with its maximum size in `config.toml` (POP-006), the dictionaries page grouped by type with drag and drop between positions (DIC-030, DIC-031) and the user's CSS per dictionary edited on it (DIC-035), registry edits in one transaction, imports cancelled promptly and waited for at exit, T-SEC-001 on the real popup.
-- Open: the manual test with real dictionaries; the 4 Unicode Path known failures (they need a zip reader of our own, or a fix upstream).
+- Done on 2026-10-26: the 4 Unicode Path known failures: the importer reads the names from the central directory by Fushi's rules; three pass, the fourth (an overrunning field) is a declared DIC-011 divergence. T-PERF-04 (p95 9.7 ms, p99 21.6 ms) and T-PERF-05 within their thresholds on 2026-10-26, T-PERF-06 in every `ci --full`.
+- Open: the manual test with real dictionaries.
 - UI on egui (D-13, 2026-10-20): decided after spike S5, which measured iced and egui against Qt Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Work track 5 done on 2026-10-20: window, video and control bar; subtitle overlay and list; popups from a typed view model with images decoded on the lookup thread; dictionaries page; file dialogs through the XDG portal; drag and drop on Wayland with the app's own data device (L6 with a real drag from another client); Qt, QML, cxx-qt and the C++ code removed. Still to check on the developer's session: fractional scale, Japanese IME, Orca, T-PERF-03 at 4K under load.
 
 **Exit criteria**
 
-- [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
-- [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
+- [x] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1): no known failure left, the divergences declared (2026-10-26).
+- [x] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
 - [x] T-SEC-001 (dictionary content produces only allowlisted view-model nodes) and T-SEC-002 (malicious ZIPs) green.
-- [ ] UI on egui (D-13): the L6 suite green on the egui build; T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)); no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
+- [x] UI on egui (D-13): the L6 suite green on the egui build; no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
+- [ ] UI on egui, by hand: T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)).
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
 ---
@@ -395,13 +397,14 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Done: NFR-MAINT-02 (`cargo xtask coverage`: 92–97% of the lines of the logic crates), NFR-PORT-01 (the smoke test on X11 through Xwayland; the offline build in `ci --full`).
 - Done: the Flatpak (`packaging/flatpak`): freedesktop 26.08, whose FFmpeg has the programs and encoders of the cards; libass, libplacebo and libmpv built in it; the crates as offline sources (`cargo xtask flatpak-sources`); `cargo xtask flatpak` builds a bundle. Built, its libraries resolved, its manifest and AppStream file passing `flatpak-builder-lint`.
 - Done: the accessibility review (`docs/accessibility-review-1.0.md`), with T-A11Y-002: every page's controls named for a screen reader.
+- Done: the Flatpak installs `THIRD_PARTY_LICENSES.html` too, generated with its crate sources; T-PRV-001 under `strace`.
 - Open: publishing on the AUR and on Flathub (the maintainer's accounts), the Flatpak run on a desktop, T-PERF-03 by hand on REF, the bug backlog (no issue open on 2026-10-26), the manual checklist of TEST §9.
 
 **Exit criteria**
 
 - [ ] All automatic tests green; no open P1 bugs.
 - [ ] Manual release checklist TEST §9 complete on: GNOME Wayland, KDE Wayland, X11 (Xfce or i3), Intel, AMD and NVIDIA GPUs (proprietary driver).
-- [ ] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About".
+- [x] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About" (2026-10-26: the PKGBUILD and the Flatpak install it where About finds it; `ci` checks the Flatpak's copy).
 - [ ] **Release 1.0.0**.
 
 ---

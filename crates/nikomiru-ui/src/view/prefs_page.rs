@@ -417,6 +417,7 @@ mod tests {
     struct Test {
         tab: SettingsTab,
         saved: Config,
+        licenses: Option<PathBuf>,
         state: State,
         out: Vec<Command>,
         leave: Leave,
@@ -436,7 +437,7 @@ mod tests {
                         status: None,
                         config_file: Path::new("/home/u/.config/nikomiru/config.toml"),
                         logs_dir: Path::new("/home/u/.local/state/nikomiru/logs"),
-                        licenses: None,
+                        licenses: t.licenses.clone(),
                         capture: (false, None),
                         tr: &tr,
                     };
@@ -448,6 +449,7 @@ mod tests {
                 Test {
                     tab,
                     saved,
+                    licenses: None,
                     state: State::default(),
                     out: Vec::new(),
                     leave: Leave::Stay,
@@ -499,5 +501,11 @@ mod tests {
         assert!(matches!(&h.state().out[..], [Command::OpenExternal(url)] if url == LICENSE));
         // nothing to save or reset
         assert!(h.query_by_label("settings-save").is_none());
+        // where the package put the third-party licenses (M8)
+        h.state_mut().licenses =
+            Some("/app/share/licenses/nikomiru/THIRD_PARTY_LICENSES.html".into());
+        h.run();
+        h.get_by_label("/app/share/licenses/nikomiru/THIRD_PARTY_LICENSES.html");
+        assert!(h.query_by_label("about-third-party-missing").is_none());
     }
 }
