@@ -310,7 +310,8 @@ pub struct AnkiConfig {
     pub audio_format: String,
     /// 0 = mono 64k, 1 = stereo 128k, 2 = stereo 192k (ANK-033).
     pub audio_quality_level: u8,
-    /// `"jpeg"` or `"webp"` (ANK-034).
+    /// `"jpeg"` or `"webp"` (ANK-034); `"webp-animated"` or
+    /// `"avif-animated"`: the sentence as an animated picture (ANK-042).
     pub image_format: String,
     /// 0–3: long side 720, 1000, 2000 px or the original (ANK-034).
     pub image_quality_level: u8,
@@ -340,7 +341,10 @@ impl AnkiConfig {
         if !matches!(self.audio_format.as_str(), "aac-m4a" | "opus-ogg" | "mp3") {
             self.audio_format = defaults.audio_format;
         }
-        if !matches!(self.image_format.as_str(), "jpeg" | "webp") {
+        if !matches!(
+            self.image_format.as_str(),
+            "jpeg" | "webp" | "webp-animated" | "avif-animated"
+        ) {
             self.image_format = defaults.image_format;
         }
         self

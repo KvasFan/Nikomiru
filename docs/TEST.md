@@ -402,6 +402,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
 | T-ANK-033 | Sentence audio | ffmpeg argv snapshot. On `av_basic.mkv`, cue 2 with track `jpn`: the produced file lasts D ± 50 ms and contains the 1 kHz tone (ffmpeg `astats`); with track `eng` the tone is at 660 Hz (check of `ff-index`, Fushi BUG-345); an external audio track is cut from its own file | L3/L4 |
 | T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution; the frame asked at the click is the picture; without it (the player failed, or was not asked) the card is made without a picture | L4/L5 |
+| T-ANK-042 | Animated picture | Arguments: the clip, at most 10 s, never before 0, the level's size and frame rate, the encoder of each format; on `av_basic.mkv` an animated WebP (`ANIM` chunk) and an AVIF sequence (`ftypavis`), 640×360, about 10 frames for 0.82 s; without its encoder an animated format falls back to its still one | L1, L4 |
 | T-ANK-040 | Advanced mining | kittest: the dialog sends the lines added, the picture, the audio, the preview and Create. L3: the frame at a time taken whole by ffmpeg, the seek before the input. L4: the picture at the start of the sentence, no audio (a video without audio makes a card), no picture. L6: Shift+click (harness) opens the dialog over the popup, Esc closes it alone, the card has the picture and no audio | L3/L4/L6 |
 | T-ANK-041 | Merged sentences | The cues joined a line each, the word still bold at its place (`<br>` in `{sentence}`); the clip from the first cue's start to the last one's end, at most 30 s | L1/L6 |
 | T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request; the same for a track ffmpeg cannot cut and for an empty clip | L4 |
@@ -468,6 +469,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-A11Y-002 | Every page named | Through AT-SPI as T-A11Y-001: the popup, the eleven tabs of the settings, the library and its statistics; every control named, and each page with a control it must show | L6 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |
 | T-E2E-WORDS-001 | Words in the subtitles | `mini-ja`, furigana on: `食べました` gets `た` over `食`; a card made from it underlines the word at once; both turned off in the settings, without a restart | L6 |
+| T-E2E-ANK-042 | Moving picture | `image_format = "webp-animated"`: a card from `av_basic.mkv` has an animated WebP in its Picture field | L6 |
 
 ### 6.13 Online (M7)
 

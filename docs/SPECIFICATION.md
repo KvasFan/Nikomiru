@@ -694,7 +694,8 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | ANK-039 | Every created card is recorded in `mined_cards` (note id, expression, reading, sentence, video uid, start/end, `source_id`, date) for statistics and to highlight "already mined" in the future. |
 | ANK-040 | "Advanced mining" dialog (Shift+click on the card button, or Ctrl+Shift+Enter): the start and end of the clip with a preview (played from its start, paused at its end, as "Replay"), the picture (the frame of the click, saved when the dialog opens; the frame at the start of the sentence, taken from the video by ffmpeg; none), the sentence audio left out or not (a video without audio then makes a card). Esc or Cancel closes it; the popups wait under it. Milestone M6. |
 | ANK-041 | In that dialog, the cue before or after the sentence added, or its first or last cue taken away again: the text a cue per line, the word still bold at its place; the clip from the first cue to the last, padded, at most 30 s. Milestone M6. |
-| ANK-042 | WebM video clips and animated covers (AVIF/WebP/GIF): post-1.0. |
+| ANK-042 | The card's picture can be its sentence, moving (M10, D-18): `image_format = "webp-animated"` (ffmpeg's `libwebp_anim`) or `"avif-animated"` (`libaom-av1`, smaller files, slower), made with ffmpeg from the clip of ANK-032 (its pads included), at most 10 s from its start, without sound, looping. The image level of ANK-034 gives the long side and the frame rate: 480 px / 10 fps, **640 px / 12 fps (default)**, 854 px / 15 fps, 1280 px / 15 fps. Without a sentence (a card made away from any cue) or without the encoder, the still frame in WebP (for WebP) or JPEG (for AVIF). The click's frame or the advanced dialog's choice of frame do not change it; "no picture" still leaves it out. Such a card may take longer than NFR-PERF-08's 3 s: about 1–3 s for 4 s of sentence. |
+| ANK-043 | WebM video clips with sound: post-1.0. |
 
 #### 6.9.5 Return to the scene
 
@@ -848,7 +849,7 @@ audio_pad_head_ms = 120
 audio_pad_tail_ms = 200
 audio_format = "aac-m4a"    # "aac-m4a" | "opus-ogg" | "mp3"
 audio_quality_level = 0     # 0 = mono 64k, 1 = stereo 128k, 2 = stereo 192k
-image_format = "jpeg"       # "jpeg" | "webp"
+image_format = "jpeg"       # "jpeg" | "webp" | "webp-animated" | "avif-animated" (ANK-042)
 image_quality_level = 1     # 0..3
 tags = []
 
@@ -909,6 +910,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-15 | Contents of 0.1.0 | **Approved** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria. The logo in `assets/brand/` is approved too |
 | D-16 | Other platforms | **Asked by the maintainer** (2026-10-25, with 0.4.0): builds for macOS, Windows and Android. Recorded as the milestone "Ports" after M7, which starts with spike S6; the release that ships each port follows from S6. Before: Windows and macOS after 1.0, Android excluded (§1.3) |
 | D-17 | The next version, while 1.0.0 waits for its manual checks | **Asked by the maintainer** (2026-10-26): work goes on with the next version while M8's manual checks are open. Recorded as M9 "Words in the subtitles": the segmentation of LKP-060 in the subtitles, automatic furigana (LKP-051, until now post-1.0) and the words already mined underlined (LKP-061), on by default except the furigana. Its release follows 1.0.0 (1.1.0) |
+| D-18 | After M9 | **Proposed** (2026-10-26, the maintainer asked to go on; to change at will): M10 "Moving pictures", for the release after 1.1.0: the card's picture as the moving sentence (ANK-042) and thumbnails on the progress bar (PLY-014), both made by the system's ffmpeg with no new dependency. WebM clips with sound (ANK-043) stay in the backlog |
 
 ### 10.2 Risks
 

@@ -2184,6 +2184,51 @@ fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-ANK-042: a card whose picture is its sentence, moving
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_takes_its_sentence_as_an_animated_picture() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n\
+         [anki]\nurl = \"{}\"\nimage_format = \"webp-animated\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    let created = h.wait("card-created");
+    let note_id = created["note_id"].as_u64().unwrap();
+    let anki = fake.collection();
+    let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+    let picture = note
+        .fields
+        .iter()
+        .find(|(n, _)| n == "Picture")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let name = picture
+        .strip_prefix("<img src=\"")
+        .and_then(|p| p.split('"').next())
+        .unwrap_or_else(|| panic!("{picture}"));
+    assert!(name.ends_with(".webp"), "{name}");
+    let bytes = &anki.media[name];
+    assert_eq!(&bytes[8..12], b"WEBP");
+    assert!(bytes.windows(4).any(|w| w == b"ANIM"), "a still picture");
+    drop(anki);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-E2E-A11Y-001: from the library to a card and back with the keyboard alone
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

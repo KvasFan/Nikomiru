@@ -469,9 +469,10 @@ impl Worker {
         self.tools.as_ref()
     }
 
-    /// Makes the card's picture (ANK-034, ANK-040): the frame of the click,
-    /// whose PNG goes with `frame`; the frame at a time of the video, taken
-    /// with ffmpeg; or none.
+    /// Makes the card's picture (ANK-034, ANK-040, ANK-042): the sentence as
+    /// an animated picture, when that is the format and there is a sentence;
+    /// else the frame of the click, whose PNG goes with `frame`; the frame at
+    /// a time of the video, taken with ffmpeg; or none.
     fn image(
         &self,
         tools: &Tools,
@@ -479,33 +480,50 @@ impl Worker {
         frame: Option<PendingFrame>,
         stem: &str,
     ) -> Result<Option<Media>, String> {
+        if r.frame == FrameChoice::None {
+            return Ok(None);
+        }
+        let preferred =
+            ImageFormat::from_config(&self.parts.config.image_format).unwrap_or(ImageFormat::Jpeg);
+        let format = tools
+            .image_format(preferred)
+            .ok_or_else(|| "ffmpeg has no image encoder".to_string())?;
+        if format.is_animated()
+            && let Some(clip) = r.clip
+        {
+            // the click's frame is not needed: dropping it removes its file
+            drop(frame);
+            return self.animate(tools, r, clip, format, stem).map(Some);
+        }
+        let format = format.still();
         match r.frame {
             FrameChoice::None => Ok(None),
             FrameChoice::Click => {
                 let mut frame = frame.ok_or_else(|| "the player was not asked".to_string())?;
                 let png = frame.written(FRAME_TIMEOUT)?;
-                self.encode(tools, png, stem).map(Some)
+                self.encode(tools, png, format, stem).map(Some)
             }
             FrameChoice::At(ms) => {
                 let png = self.parts.cache_dir.join(format!("{stem}-frame.png"));
                 let job = clip::frame_job(&tools.ffmpeg, &r.video, ms, &png);
                 let made = run(&job, &Cancel::new())
                     .map_err(|e| e.to_string())
-                    .and_then(|_| self.encode(tools, &png, stem));
+                    .and_then(|_| self.encode(tools, &png, format, stem));
                 let _ = std::fs::remove_file(&png);
                 made.map(Some)
             }
         }
     }
 
-    /// The PNG `png` as the card's picture, in the format and size of the
+    /// The PNG `png` as the card's picture, in `format` and the size of the
     /// settings.
-    fn encode(&self, tools: &Tools, png: &Path, stem: &str) -> Result<Media, String> {
-        let preferred =
-            ImageFormat::from_config(&self.parts.config.image_format).unwrap_or(ImageFormat::Jpeg);
-        let format = tools
-            .image_format(preferred)
-            .ok_or_else(|| "ffmpeg has no image encoder".to_string())?;
+    fn encode(
+        &self,
+        tools: &Tools,
+        png: &Path,
+        format: ImageFormat,
+        stem: &str,
+    ) -> Result<Media, String> {
         let ext = clip::image_extension(format);
         let out = self.parts.cache_dir.join(format!("{stem}.{ext}"));
         let job = clip::image_job(
@@ -515,11 +533,29 @@ impl Worker {
             format,
             self.parts.config.image_quality_level,
         );
-        run(&job, &Cancel::new()).map_err(|e| e.to_string())?;
-        let bytes = std::fs::read(&out).map_err(|e| e.to_string());
-        let _ = std::fs::remove_file(&out);
-        let bytes = bytes?;
-        Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
+        read_output(&job, &out, ext)
+    }
+
+    /// The sentence `clip` of the video as an animated picture (ANK-042).
+    fn animate(
+        &self,
+        tools: &Tools,
+        r: &MineRequest,
+        clip: (i64, i64),
+        format: ImageFormat,
+        stem: &str,
+    ) -> Result<Media, String> {
+        let ext = clip::image_extension(format);
+        let out = self.parts.cache_dir.join(format!("{stem}.{ext}"));
+        let job = clip::animated_job(
+            &tools.ffmpeg,
+            &r.video,
+            clip,
+            &out,
+            format,
+            self.parts.config.image_quality_level,
+        );
+        read_output(&job, &out, ext)
     }
 
     /// Makes, or overwrites, a card (ANK-031…ANK-039).
@@ -943,6 +979,15 @@ fn sweep(dir: &Path) {
 }
 
 /// Makes the sentence audio (ANK-033): its Anki name and bytes.
+/// Runs `job`, then reads and removes its output `out`: a card's media.
+fn read_output(job: &nikomiru_media::process::Job, out: &Path, ext: &str) -> Result<Media, String> {
+    run(job, &Cancel::new()).map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(out).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(out);
+    let bytes = bytes?;
+    Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
+}
+
 fn sentence_audio(
     tools: &Tools,
     config: &AnkiConfig,

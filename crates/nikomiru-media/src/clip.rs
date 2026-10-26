@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The media of an Anki card (ANK-033, ANK-034): the sentence audio cut from
-//! the video with ffmpeg, and the frame mpv saved, scaled and encoded.
+//! The media of an Anki card (ANK-033, ANK-034, ANK-042): the sentence audio
+//! cut from the video with ffmpeg, the frame mpv saved, scaled and encoded,
+//! or the sentence as an animated picture.
 //!
 //! Translated from Fushi `packages/fushi_engine/lib/utils/misc/desktop_audio_clipper.dart`
 //! (commit `ac8034e`), with the changes of ADR 0007 §18–§19: the track is
@@ -23,6 +24,12 @@ pub const IMAGE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The longest sentence audio (ANK-032).
 pub const MAX_AUDIO_MS: i64 = 30_000;
+
+/// The longest animated picture, from the start of its sentence (ANK-042).
+pub const MAX_ANIMATED_MS: i64 = 10_000;
+
+/// How long encoding an animated picture may take.
+pub const ANIMATED_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The sentence audio to cut.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +61,8 @@ pub fn audio_extension(format: AudioFormat) -> &'static str {
 pub fn image_extension(format: ImageFormat) -> &'static str {
     match format {
         ImageFormat::Jpeg => "jpg",
-        ImageFormat::Webp => "webp",
+        ImageFormat::Webp | ImageFormat::WebpAnimated => "webp",
+        ImageFormat::AvifAnimated => "avif",
     }
 }
 
@@ -115,34 +123,122 @@ impl AudioClip {
 /// The long side of each image level (ANK-034); level 3 keeps the original.
 const LONG_SIDE: [u32; 3] = [720, 1000, 2000];
 
+/// The long side and the frame rate of each level of an animated picture
+/// (ANK-042): smaller than a frame's, a sentence is many frames.
+const ANIMATED_SIDE: [u32; 4] = [480, 640, 854, 1280];
+const ANIMATED_FPS: [u32; 4] = [10, 12, 15, 15];
+
+/// The filter that scales to the long side `side`, never up.
+fn scale(side: u32) -> String {
+    format!("scale=w='if(gte(iw,ih),min({side},iw),-2)':h='if(gte(iw,ih),-2,min({side},ih))'")
+}
+
 /// The ffmpeg arguments that turn the frame `input` into the card image
 /// `output` (ANK-034): scaled to the level's long side, never up, then encoded
-/// at about q80 / q90 / q95 (level 3: original size, q95).
+/// at about q80 / q90 / q95 (level 3: original size, q95). An animated format
+/// gives its still one.
 pub fn image_args(input: &Path, output: &Path, format: ImageFormat, level: u8) -> Vec<OsString> {
     let level = level.min(3);
     let mut args = os(&["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"]);
     args.push(file_arg(input));
     args.extend(os(&["-frames:v", "1"]));
     if let Some(&side) = LONG_SIDE.get(usize::from(level)) {
-        let scale = format!(
-            "scale=w='if(gte(iw,ih),min({side},iw),-2)':h='if(gte(iw,ih),-2,min({side},ih))'"
-        );
-        args.extend(os(&["-vf", &scale]));
+        args.extend(os(&["-vf", &scale(side)]));
     }
-    match format {
+    match format.still() {
         ImageFormat::Jpeg => {
             let q = ["5", "3", "2", "2"][usize::from(level)];
             args.extend(os(&[
                 "-c:v", "mjpeg", "-q:v", q, "-update", "1", "-f", "image2",
             ]));
         }
-        ImageFormat::Webp => {
+        _ => {
             let q = ["80", "90", "95", "95"][usize::from(level)];
             args.extend(os(&["-c:v", "libwebp", "-quality", q, "-f", "webp"]));
         }
     }
     args.push(file_arg(output));
     args
+}
+
+/// The ffmpeg arguments for the sentence `start_ms..end_ms` of `video` as an
+/// animated picture (ANK-042): at most [`MAX_ANIMATED_MS`], without sound or
+/// subtitles, at the level's long side and frame rate, looping. A still
+/// format gives a WebP animation.
+pub fn animated_args(
+    video: &Path,
+    (start_ms, end_ms): (i64, i64),
+    output: &Path,
+    format: ImageFormat,
+    level: u8,
+) -> Vec<OsString> {
+    let level = usize::from(level.min(3));
+    let start = start_ms.max(0);
+    let duration = (end_ms - start).clamp(1, MAX_ANIMATED_MS);
+    let mut args = os(&["-nostdin", "-hide_banner", "-loglevel", "error", "-y"]);
+    args.extend(os(&[
+        "-ss",
+        &seconds(start),
+        "-t",
+        &seconds(duration),
+        "-i",
+    ]));
+    args.push(file_arg(video));
+    let filter = format!(
+        "fps={},{}",
+        ANIMATED_FPS[level],
+        scale(ANIMATED_SIDE[level])
+    );
+    args.extend(os(&["-map", "0:v:0", "-an", "-sn", "-dn", "-vf", &filter]));
+    match format {
+        ImageFormat::AvifAnimated => {
+            let crf = ["42", "38", "34", "30"][level];
+            args.extend(os(&[
+                "-c:v",
+                "libaom-av1",
+                "-cpu-used",
+                "8",
+                "-row-mt",
+                "1",
+                "-crf",
+                crf,
+                "-pix_fmt",
+                "yuv420p",
+                "-f",
+                "avif",
+            ]));
+        }
+        _ => {
+            let q = ["60", "70", "80", "85"][level];
+            args.extend(os(&[
+                "-c:v",
+                "libwebp_anim",
+                "-quality",
+                q,
+                "-loop",
+                "0",
+                "-f",
+                "webp",
+            ]));
+        }
+    }
+    args.push(file_arg(output));
+    args
+}
+
+/// The job of [`animated_args`], with `output` removed if it fails.
+pub fn animated_job(
+    ffmpeg: &Path,
+    video: &Path,
+    clip: (i64, i64),
+    output: &Path,
+    format: ImageFormat,
+    level: u8,
+) -> Job {
+    let mut job = Job::new(ffmpeg, animated_args(video, clip, output, format, level));
+    job.timeout = ANIMATED_TIMEOUT;
+    job.outputs = vec![output.to_path_buf()];
+    job
 }
 
 /// ffmpeg's arguments for the frame of `video` at `at_ms` as a PNG of its

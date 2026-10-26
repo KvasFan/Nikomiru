@@ -19,11 +19,12 @@ use crate::util::{rel, walk};
 
 /// Keys built at run time from a prefix: `action-play-pause`,
 /// `encoding-utf-8`, `anki-audio-q0`, `dict-group-terms`.
-const DYNAMIC: [&str; 5] = [
+const DYNAMIC: [&str; 6] = [
     "action-",
     "encoding-",
     "anki-audio-q",
     "anki-image-q",
+    "anki-image-a",
     "dict-group-",
 ];
 

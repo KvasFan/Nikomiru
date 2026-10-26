@@ -377,10 +377,15 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             draft.audio_quality_level = level.parse().unwrap_or(0);
             ui.end_row();
             ui.label(tr(s, "anki-image-format"));
-            let formats: Vec<(String, String)> = ["jpeg", "webp"]
-                .iter()
-                .map(|f| ((*f).to_string(), (*f).to_string()))
-                .collect();
+            let formats: Vec<(String, String)> = [
+                ("jpeg", "JPEG".to_string()),
+                ("webp", "WebP".to_string()),
+                ("webp-animated", tr(s, "anki-image-webp-animated")),
+                ("avif-animated", tr(s, "anki-image-avif-animated")),
+            ]
+            .into_iter()
+            .map(|(f, label)| (f.to_string(), label))
+            .collect();
             choice(
                 ui,
                 "anki-image-format",
@@ -391,8 +396,17 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             ui.end_row();
             ui.label(tr(s, "anki-image-quality"));
             let mut level = draft.image_quality_level.to_string();
+            // an animated picture has its own sizes and frame rates (ANK-042)
+            let animated = draft.image_format.ends_with("-animated");
             let levels: Vec<(String, String)> = (0..4)
-                .map(|n| (n.to_string(), tr(s, &format!("anki-image-q{n}"))))
+                .map(|n| {
+                    let key = if animated {
+                        format!("anki-image-a{n}")
+                    } else {
+                        format!("anki-image-q{n}")
+                    };
+                    (n.to_string(), tr(s, &key))
+                })
                 .collect();
             choice(
                 ui,
