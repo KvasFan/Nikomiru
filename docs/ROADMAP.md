@@ -119,7 +119,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 - [x] T-PLY-001…T-PLY-010, T-PLY-012, T-PLY-013, T-KEY-001…T-KEY-004, T-APP-001 green (T-PLY-011 goes with PLY-011 in M4).
 - [x] GUI harness: opens a fixture, play/pause/seek from the keyboard, closes, reopens and resumes from the saved position (T-E2E-001).
-- [ ] T-PRV-001 under `strace` (not installed on the development machine yet).
+- [x] T-PRV-001 under `strace` (2026-10-26: a whole session reaches for no address but AnkiConnect's on loopback).
 - [ ] Manual checklist TEST §9, "Player" section, completed on Wayland and X11.
 - [ ] T-PERF-03 on a real X11 session (Xorg), with EGL (glutin prefers EGL on X11, [ADR 0006](adr/0006-toolkit-comparison.md)): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer decides between a documented tolerance on X11 and moving X11 support after 1.0.
 

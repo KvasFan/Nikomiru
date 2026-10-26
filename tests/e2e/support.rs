@@ -108,6 +108,8 @@ pub struct Desktop {
     /// The X display, when the apps run on X11 through KWin's Xwayland
     /// (T-PORT-001).
     x11: Option<String>,
+    /// A program the apps run under, with its arguments (`strace`).
+    wrapper: Vec<String>,
 }
 
 const WAYLAND: &str = "wayland-e2e";
@@ -229,6 +231,7 @@ impl Desktop {
             launches: 0,
             helpers: Vec::new(),
             env: Vec::new(),
+            wrapper: Vec::new(),
         }
     }
 
@@ -449,7 +452,14 @@ impl Desktop {
     pub fn command(&mut self, binary: &Path, args: &[&str]) -> Command {
         self.launches += 1;
         let log = std::fs::File::create(self.path(&format!("app-{}.log", self.launches))).unwrap();
-        let mut cmd = Command::new(binary);
+        let mut cmd = match self.wrapper.split_first() {
+            Some((program, rest)) => {
+                let mut cmd = Command::new(program);
+                cmd.args(rest).arg(binary);
+                cmd
+            }
+            None => Command::new(binary),
+        };
         cmd.args(args)
             .env_clear()
             .env("HOME", self.path("home"))
@@ -482,6 +492,12 @@ impl Desktop {
     /// Starts `nikomiru --test-harness` and connects to it.
     pub fn launch(&mut self) -> (Child, Harness) {
         self.launch_with(&[])
+    }
+
+    /// Runs the apps launched from now on under `program` and its arguments,
+    /// the app's path and arguments last.
+    pub fn run_under(&mut self, program: &[&str]) {
+        self.wrapper = program.iter().map(|a| a.to_string()).collect();
     }
 
     /// Writes `config.toml` in this desktop's settings folder.
