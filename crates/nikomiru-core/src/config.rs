@@ -95,6 +95,9 @@ pub struct General {
     pub ui_scale: u16,
     /// Language being studied (BCP 47), e.g. `"ja"`.
     pub study_language: String,
+    /// The library shows its first steps until they are done or hidden
+    /// (LIB-013).
+    pub first_steps: bool,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -594,6 +597,7 @@ impl Default for General {
             theme: "system".into(),
             accent: Self::ACCENT.into(),
             ui_scale: 100,
+            first_steps: true,
             study_language: "ja".into(),
             other: toml::Table::new(),
         }

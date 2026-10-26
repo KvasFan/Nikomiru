@@ -375,6 +375,8 @@ pub(crate) enum Command {
     LibraryOpen,
     /// "Add folder…": the folder dialog opens (LIB-002).
     LibraryAddFolder,
+    /// "Hide" on the library's first steps (LIB-013).
+    HideFirstSteps,
     /// "Export CSV…": the save dialog opens (STA-005).
     StatsExport,
     /// A series opened on it, or closed.
@@ -1021,6 +1023,7 @@ impl Ui {
             Command::NextCancel => s.cancel_next(),
             Command::LibraryOpen => s.library_open(),
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
+            Command::HideFirstSteps => self.session.hide_first_steps(),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
             Command::LibrarySeries(id) => s.library_series(id),
             Command::LibraryIdentify(id) => s.library_identify(id),

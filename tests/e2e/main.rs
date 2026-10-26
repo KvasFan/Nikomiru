@@ -1436,6 +1436,85 @@ fn a_hostile_dictionary_entry_shows_only_what_the_allowlist_lets_through() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PRV-001: under strace, a session that opens a video, looks a word up,
+// browses the library and the settings reaches for no address but
+// AnkiConnect's on loopback: no DNS, no internet
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, strace and `cargo xtask fixtures`"]
+fn nothing_reaches_for_the_network_under_strace() {
+    if std::process::Command::new("strace")
+        .arg("-V")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipped: strace is not installed");
+        return;
+    }
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let trace = desk.path("strace.txt");
+    let trace_arg = trace.to_string_lossy().into_owned();
+    desk.run_under(&[
+        "strace",
+        "-f",
+        "-qq",
+        "-e",
+        "trace=connect,sendto,sendmsg",
+        "-o",
+        &trace_arg,
+    ]);
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.key("Escape");
+    for tab in ["general", "services", "dictionaries", "anki"] {
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.state_until("the library again", |s| s["library_page"]["open"] == true);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(30)).success());
+    let text = std::fs::read_to_string(&trace).unwrap();
+    let reached = network_calls(&text);
+    assert!(reached.is_empty(), "{reached:#?}");
+    assert!(
+        text.contains("AF_UNIX"),
+        "the trace saw the app's own sockets (D-Bus, the harness)"
+    );
+}
+
+/// The calls of an strace log that reach an internet address other than
+/// AnkiConnect's default one on loopback (PRV-001).
+fn network_calls(trace: &str) -> Vec<&str> {
+    trace
+        .lines()
+        .filter(|l| l.contains("AF_INET"))
+        .filter(|l| {
+            let loopback = l.contains("inet_addr(\"127.0.0.1\")") || l.contains("\"::1\"");
+            !(loopback && l.contains("htons(8765)"))
+        })
+        .collect()
+}
+
+#[test]
+fn the_strace_filter_lets_only_anki_connect_through() {
+    let trace = "\
+        12 connect(5, {sa_family=AF_UNIX, sun_path=\"/run/bus\"}, 110) = 0\n\
+        12 connect(7, {sa_family=AF_INET, sin_port=htons(8765), sin_addr=inet_addr(\"127.0.0.1\")}, 16) = -1 ECONNREFUSED\n\
+        13 connect(8, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr(\"127.0.0.53\")}, 16) = 0\n\
+        13 sendto(8, \"x\", 1, 0, {sa_family=AF_INET6, sin6_port=htons(443), inet_pton(AF_INET6, \"2a00::1\", &sin6_addr)}, 28) = 1\n";
+    let reached = network_calls(trace);
+    assert_eq!(reached.len(), 2, "{reached:#?}");
+    assert!(reached[0].contains("htons(53)") && reached[1].contains("htons(443)"));
+}
+
 // T-DIC-001, T-DIC-032 from the page
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -2180,6 +2259,42 @@ fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
         field("Picture")
     );
     drop(anki);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-LIB-013: on a first start the library shows the first steps, each done
+// as it is done; hidden, they stay hidden
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_first_steps_show_until_hidden() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    let s = h.state_until("the first steps", |s| s["first_steps"].is_array());
+    assert_eq!(
+        s["first_steps"],
+        serde_json::json!([true, false, false]),
+        "{s}"
+    );
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&std::path::Path::new(&dir).join("first-steps.png"));
+    }
+    h.cmd(serde_json::json!({ "cmd": "hide_first_steps" }));
+    h.state_until("hidden", |s| s["first_steps"].is_null());
+    let config = desk.path("config/nikomiru/config.toml");
+    support::until(Duration::from_secs(10), "saved", || {
+        std::fs::read_to_string(&config)
+            .ok()
+            .filter(|t| t.contains("first_steps = false"))
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(h.state()["first_steps"].is_null());
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

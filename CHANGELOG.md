@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Moving pictures (M10, D-18): a card's picture can be its sentence as an animated WebP or AVIF (ANK-042), chosen in Settings → Anki → Image format.
 - Thumbnails over the progress bar: the pointer shows the time and the frame there (PLY-014).
+- First steps on the library page: import a dictionary, add a folder, make a first card, each with what does it, until done or hidden (LIB-013).
 
 - Words in the subtitles (M9, D-17): the subtitles are split into words with your dictionaries (LKP-060). Words you already made into cards are underlined, in the subtitle list too (LKP-061), and readings can go over the kanji (LKP-051, off by default): both are in Settings → Subtitles. ← → move a keyboard lookup word by word.
 

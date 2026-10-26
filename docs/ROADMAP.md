@@ -23,8 +23,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 0.1.0 ◄── M4b Online subtitles + mpv presets (D-14, D-15)
       ──► M5 Library + word audio (0.2.0) ──► M6 Statistics, settings, i18n (0.3.0)
       ──► M7 Online metadata (0.4.0) ──► M8 Stabilization ══► 1.0.0
-      ──► M9 Words in the subtitles (D-17) ══► 1.1.0
-      ──► M10 Moving pictures (D-18) ══► 1.2.0
+                                         ▲
+      M9 Words in the subtitles (D-17) ──┤ (merged while M8's manual
+      M10 Moving pictures (D-18) ────────┘  checks wait: they ship with 1.0.0)
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -40,8 +41,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
-| M9 | Words in the subtitles (D-17) | M | 1.1.0 | done (maintainer's check open) |
-| M10 | Moving pictures (D-18) | M | 1.2.0 | done (maintainer's check open) |
+| M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | done (maintainer's check open) |
+| M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | done (maintainer's check open) |
 
 ---
 
@@ -119,7 +120,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 - [x] T-PLY-001…T-PLY-010, T-PLY-012, T-PLY-013, T-KEY-001…T-KEY-004, T-APP-001 green (T-PLY-011 goes with PLY-011 in M4).
 - [x] GUI harness: opens a fixture, play/pause/seek from the keyboard, closes, reopens and resumes from the saved position (T-E2E-001).
-- [ ] T-PRV-001 under `strace` (not installed on the development machine yet).
+- [x] T-PRV-001 under `strace` (2026-10-26: a whole session reaches for no address but AnkiConnect's on loopback).
 - [ ] Manual checklist TEST §9, "Player" section, completed on Wayland and X11.
 - [ ] T-PERF-03 on a real X11 session (Xorg), with EGL (glutin prefers EGL on X11, [ADR 0006](adr/0006-toolkit-comparison.md)): 1080p60 H.264 and HEVC 10-bit for 5 minutes with hwdec, 0 dropped frames and process CPU ≤ 25% of one core (moved from M0, [ADR 0001](adr/0001-video-composition.md)). If it fails, the maintainer decides between a documented tolerance on X11 and moving X11 support after 1.0.
 
@@ -194,15 +195,17 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 - Measured: T-PERF-04 p95 1.7 ms / p99 2.2 ms, T-PERF-05 ≤ 4.4 s and 261 MiB per 300k-entry dictionary, T-PERF-06 p95 21 ms; with Jitendex and JMdict, click → popup 20–64 ms in a release build (ADR 0005).
 - Also done: the dictionaries page (import with progress and cancel, update offer, order, enable, rename, popup block state, delete), hover with Shift (POP-003), Tab/Shift+Tab/Alt+wheel between entries (POP-014; Enter and Ctrl+Enter wait for audio in M5 and cards in M4), replay and go to sentence (POP-015), `[lookup]` settings, library writes off the UI thread.
 - Done on 2026-10-20: selection inside glossaries opens a nested popup (POP-012), the popup resized by its border with its maximum size in `config.toml` (POP-006), the dictionaries page grouped by type with drag and drop between positions (DIC-030, DIC-031) and the user's CSS per dictionary edited on it (DIC-035), registry edits in one transaction, imports cancelled promptly and waited for at exit, T-SEC-001 on the real popup.
-- Open: the manual test with real dictionaries; the 4 Unicode Path known failures (they need a zip reader of our own, or a fix upstream).
+- Done on 2026-10-26: the 4 Unicode Path known failures: the importer reads the names from the central directory by Fushi's rules; three pass, the fourth (an overrunning field) is a declared DIC-011 divergence. T-PERF-04 (p95 9.7 ms, p99 21.6 ms) and T-PERF-05 within their thresholds on 2026-10-26, T-PERF-06 in every `ci --full`.
+- Open: the manual test with real dictionaries.
 - UI on egui (D-13, 2026-10-20): decided after spike S5, which measured iced and egui against Qt Quick ([ADR 0006](adr/0006-toolkit-comparison.md)). Work track 5 done on 2026-10-20: window, video and control bar; subtitle overlay and list; popups from a typed view model with images decoded on the lookup thread; dictionaries page; file dialogs through the XDG portal; drag and drop on Wayland with the app's own data device (L6 with a real drag from another client); Qt, QML, cxx-qt and the C++ code removed. Still to check on the developer's session: fractional scale, Japanese IME, Orca, T-PERF-03 at 4K under load.
 
 **Exit criteria**
 
-- [ ] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1).
-- [ ] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
+- [x] T-DIC-*, T-LKP-*, T-POP-* green, including **all** the conformance vectors ported from the fushidicts tests (TEST §5.1): no known failure left, the divergences declared (2026-10-26).
+- [x] T-PERF-04, T-PERF-05, T-PERF-06 within the thresholds.
 - [x] T-SEC-001 (dictionary content produces only allowlisted view-model nodes) and T-SEC-002 (malicious ZIPs) green.
-- [ ] UI on egui (D-13): the L6 suite green on the egui build; T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)); no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
+- [x] UI on egui (D-13): the L6 suite green on the egui build; no Qt, cxx-qt or C++ left in the workspace (T-ARC-010, T-ARC-011).
+- [ ] UI on egui, by hand: T-PERF-03 at 4K HEVC 10-bit under load, on Wayland and on X11 with EGL; on the developer's session: fractional scale, Japanese IME (fcitx5, ibus), AccessKit with Orca, 50 opens and closes ([ADR 0006](adr/0006-toolkit-comparison.md)).
 - [ ] Manual test with JMdict (English), JMnedict, a frequency dictionary (e.g. JPDB) and a pitch accent dictionary (e.g. NHK) imported by the user: the 50 words in the list of TEST §9.3 give the same headword in Nikomiru and in Fushi.
 
 ---
@@ -272,7 +275,7 @@ Decision D-14 (2026-10-25): what the maintainer needs right after mining, brough
 
 **Exit criteria**
 
-- [ ] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green.
+- [x] T-MET-003, T-MET-004, T-MET-007…T-MET-011 green on the fake server; T-PLY-016, T-PLY-018, T-SET-008, T-SUB-006 green (every `ci --full`, 2026-10-26).
 - [ ] By hand with real keys (T-MET-LIVE-001): Japanese subtitles found and loaded automatically for 5 real episodes from 3 series.
 - [ ] Alignment: on 5 real pairs (downloaded subtitle + embedded track) the residual error is ≤ 150 ms.
 
@@ -377,7 +380,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 ## M8 — Stabilization and packages → 1.0.0
 
-**Requirements**: all NFRs not assigned to other milestones (NFR-PERF-01…NFR-PERF-09, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
+**Requirements**: LIB-013; all NFRs not assigned to other milestones (NFR-PERF-01…NFR-PERF-09, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
 
 **Deliverables**
 
@@ -395,18 +398,20 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Done: NFR-MAINT-02 (`cargo xtask coverage`: 92–97% of the lines of the logic crates), NFR-PORT-01 (the smoke test on X11 through Xwayland; the offline build in `ci --full`).
 - Done: the Flatpak (`packaging/flatpak`): freedesktop 26.08, whose FFmpeg has the programs and encoders of the cards; libass, libplacebo and libmpv built in it; the crates as offline sources (`cargo xtask flatpak-sources`); `cargo xtask flatpak` builds a bundle. Built, its libraries resolved, its manifest and AppStream file passing `flatpak-builder-lint`.
 - Done: the accessibility review (`docs/accessibility-review-1.0.md`), with T-A11Y-002: every page's controls named for a screen reader.
+- Done: the first steps on the library page (LIB-013), which the release checklist expects of a first start; T-REL-003, a two-hour session, as a test to run before a release.
+- Done: the Flatpak installs `THIRD_PARTY_LICENSES.html` too, generated with its crate sources; T-PRV-001 under `strace`; T-PERF-03 as one command for REF, `cargo xtask perf-playback` (checked for its mechanics in an off-screen KWin).
 - Open: publishing on the AUR and on Flathub (the maintainer's accounts), the Flatpak run on a desktop, T-PERF-03 by hand on REF, the bug backlog (no issue open on 2026-10-26), the manual checklist of TEST §9.
 
 **Exit criteria**
 
 - [ ] All automatic tests green; no open P1 bugs.
 - [ ] Manual release checklist TEST §9 complete on: GNOME Wayland, KDE Wayland, X11 (Xfce or i3), Intel, AMD and NVIDIA GPUs (proprietary driver).
-- [ ] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About".
+- [x] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About" (2026-10-26: the PKGBUILD and the Flatpak install it where About finds it; `ci` checks the Flatpak's copy).
 - [ ] **Release 1.0.0**.
 
 ---
 
-## M9 — Words in the subtitles → 1.1.0
+## M9 — Words in the subtitles → 1.0.0 with M8
 
 Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
@@ -426,11 +431,11 @@ Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
 - [x] T-LKP-051, T-LKP-060, T-LKP-061, T-PERF-10, T-E2E-WORDS-001 green.
 - [ ] The furigana checked by the maintainer on real subtitles and a real dictionary (JMdict).
-- [ ] **Release 1.1.0**, after 1.0.0.
+- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
 
 ---
 
-## M10 — Moving pictures → 1.2.0
+## M10 — Moving pictures → 1.0.0 with M8
 
 Proposed after M9, when the maintainer asked to go on (D-18).
 
@@ -450,7 +455,7 @@ Proposed after M9, when the maintainer asked to go on (D-18).
 
 - [x] T-ANK-042, T-E2E-ANK-042, T-PLY-014 and T-E2E-PLY-014 green.
 - [ ] An animated card checked by the maintainer in Anki desktop and AnkiDroid.
-- [ ] **Release 1.2.0**.
+- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
 
 ---
 

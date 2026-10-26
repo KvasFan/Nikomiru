@@ -326,6 +326,10 @@ pub struct Session {
     words: crate::words::Words,
     /// The thumbnails of the progress bar (PLY-014).
     thumbnails: crate::thumbnails::Thumbnails,
+    /// A dictionary is installed, and a card was made: two of the first
+    /// steps (LIB-013).
+    dictionaries_installed: bool,
+    cards_made: bool,
     screenshots: Vec<String>,
     anki_jobs: Vec<crate::mining::AnkiJob>,
     /// The last card made since Nikomiru started (ANK-030).
@@ -520,6 +524,12 @@ impl Session {
             .as_ref()
             .filter(|l| !l.read_only())
             .map(|l| Writer::start(std::sync::Arc::clone(l)));
+        let dictionaries_installed = services.dictionaries.list().is_ok_and(|l| !l.is_empty());
+        let cards_made = services
+            .library
+            .as_ref()
+            .and_then(|l| l.mined_card_count().ok())
+            .is_some_and(|n| n > 0);
         let mut words = crate::words::Words::default();
         if let Some(library) = &services.library {
             match library.mined_expressions() {
@@ -556,6 +566,8 @@ impl Session {
             lookups: Vec::new(),
             words,
             thumbnails: crate::thumbnails::Thumbnails::default(),
+            dictionaries_installed,
+            cards_made,
             screenshots: Vec::new(),
             anki_jobs: Vec::new(),
             last_card: None,
@@ -2883,6 +2895,7 @@ impl Session {
                 self.study.card(at);
                 let (expression, reading) = headword;
                 self.words.add_mined(expression.clone());
+                self.cards_made = true;
                 self.last_card = Some(LastCard {
                     note_id: mined.note_id,
                     expression,
@@ -4137,6 +4150,27 @@ impl Session {
         self.thumbnails.last()
     }
 
+    /// The library's first steps (LIB-013): a dictionary imported, a folder
+    /// of videos added, a card made; `None` once all are done, or hidden.
+    pub fn first_steps(&self) -> Option<[bool; 3]> {
+        let home = self.library_page.home.as_ref()?;
+        let steps = [
+            self.dictionaries_installed,
+            !home.series.is_empty() || !home.folders.is_empty(),
+            self.cards_made,
+        ];
+        (self.services.config.general.first_steps && steps.contains(&false)).then_some(steps)
+    }
+
+    /// "Hide" on the first steps: saved, so they do not come back.
+    pub fn hide_first_steps(&mut self) {
+        self.services.config.general.first_steps = false;
+        if self.services.config_writable {
+            self.saving_page = SavingPage::Settings;
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// The pointer is over step `at_ms` of the progress bar (PLY-014).
     pub fn bar_hover(&mut self, at_ms: i64) {
         self.thumbnails.want(at_ms);
@@ -4270,6 +4304,7 @@ impl Session {
         if ok {
             self.events.push(UiEvent::DictionaryImported);
             self.words.forget();
+            self.dictionaries_installed = true;
         }
         self.dict_effects(effects);
     }
@@ -4307,6 +4342,11 @@ impl Session {
             .dict_page
             .delete(self.services.dictionaries.as_ref(), id);
         self.words.forget();
+        self.dictionaries_installed = self
+            .services
+            .dictionaries
+            .list()
+            .is_ok_and(|l| !l.is_empty());
         self.dict_effects(effects);
     }
 

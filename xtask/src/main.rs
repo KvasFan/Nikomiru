@@ -39,13 +39,18 @@ cargo xtask <command>
   check-headers        SPDX headers, unsafe, documentation, dependencies
   check-i18n           every Fluent key used and existing, no untranslated text in the views
   coverage             line coverage of the logic crates with cargo-llvm-cov, ≥ 80% each
-  flatpak-sources      packaging/flatpak/cargo-sources.json from Cargo.lock, for an offline Flatpak build
+  flatpak-sources      packaging/flatpak/cargo-sources.json from Cargo.lock, for an offline Flatpak
+                       build, and the THIRD_PARTY_LICENSES.html it installs
   flatpak              the Flatpak of the last commit, into target/nikomiru.flatpak
   check-licenses [--canary]
                        deny.toml exceptions = SPECIFICATION §3.2, then cargo deny;
                        --canary: checks that a BSL-1.0 crate is rejected
   trace                requirements ↔ tests ↔ milestones matrix in target/trace.md
   about                generates target/THIRD_PARTY_LICENSES.html
+  perf-playback        T-PERF-03 by hand on the reference machine: plays the 1080p60
+                       files of fixtures --perf in a window of THIS session for
+                       5 minutes each (NIKOMIRU_PERF_SECONDS to shorten), then
+                       checks dropped frames and CPU
   test --anki-e2e      L7: the real Anki at NIKOMIRU_ANKI_URL (a throwaway profile
                        with AnkiConnect): Create Lapis deck and a card from the app
   install [--prefix DIR]
@@ -74,6 +79,7 @@ fn run() -> Result<()> {
         "ci" => ci::run(&root, rest),
         "fixtures" => fixtures::run(&root, rest),
         "bench" => bench(&root),
+        "perf-playback" => perf_playback(&root),
         "check-headers" => arch::check_all(&root),
         "check-i18n" => i18n::check(&root),
         "coverage" => coverage::run(&root),
@@ -115,6 +121,29 @@ fn anki_e2e(root: &std::path::Path) -> Result<()> {
         "--ignored",
         "--exact",
         "l7_a_card_in_a_real_anki",
+    ]))
+}
+
+/// T-PERF-03 (NFR-PERF-03) on the session this runs in, by hand on the
+/// reference machine: a release build, since a debug one would cost CPU the
+/// app does not.
+fn perf_playback(root: &std::path::Path) -> Result<()> {
+    fixtures::run(root, &["--perf".to_string()])?;
+    util::run(util::cargo().env("NIKOMIRU_PERF_SESSION", "1").args([
+        "test",
+        "--release",
+        "--locked",
+        "-p",
+        "nikomiru-app",
+        "--features",
+        "test-harness",
+        "--test",
+        "e2e",
+        "--",
+        "--ignored",
+        "--exact",
+        "perf::l7_perf_playback_drops_no_frame",
+        "--nocapture",
     ]))
 }
 

@@ -400,6 +400,7 @@ The maintainer asked for builds for macOS, Windows and Android (D-16). Linux sta
 | LIB-010 | For each series the audio track, the chosen subtitle (by language or track title) and the subtitle offset are remembered. They apply to all episodes, which can however have their own values | `VideoBooks.delayMs` |
 | LIB-011 | It MUST be possible to rename, merge and split series, and to move episodes from one series to another | |
 | LIB-012 | Removing an item from the library MUST NOT delete the video file from disk | |
+| LIB-013 | **First steps**: until they are done, the library's home page starts with three steps, each marked done once it is: import a dictionary (a button opens Settings → Dictionaries), add a folder of videos (the "Add folder…" of the page), make a first card (a button opens Settings → Anki, the line says that Anki must be open with AnkiConnect). Done is read from what lasts: a dictionary installed, a series or folder in the library, a card in `mined_cards`. "Hide" saves `[general] first_steps = false`. M8 (TEST §9.5) | |
 
 ### 6.2 Player (PLY)
 
@@ -503,7 +504,7 @@ While a page or a dialog covers the video (the library, the settings, the dialog
 | ID | Requirement |
 |---|---|
 | DIC-010 | Import runs in a background task with progress (files and entries) and can be cancelled; the UI stays responsive. |
-| DIC-011 | ZIP safety: reject absolute paths, `..` components, symbolic links, entries > 512 MiB uncompressed, compression ratio > 200:1 on entries > 1 MiB, total uncompressed > 8 GiB. Strip the wrapper folder that holds the whole archive, and the one nested in it, until `index.json` is at the root; ignore `__MACOSX` and `.DS_Store` (BUG-2053). Support the Info-ZIP extra field for Unicode paths (BUG-3277) and ZIP64. |
+| DIC-011 | ZIP safety: reject absolute paths, `..` components, symbolic links, entries > 512 MiB uncompressed, compression ratio > 200:1 on entries > 1 MiB, total uncompressed > 8 GiB. Strip the wrapper folder that holds the whole archive, and the one nested in it, until `index.json` is at the root; ignore `__MACOSX` and `.DS_Store` (BUG-2053). Support the Info-ZIP extra field for Unicode paths (BUG-3277) and ZIP64: the field (0x7075) names the entry only when the UTF-8 flag (bit 11) is clear, its version is 1, its CRC-32 is the raw name's and its name is UTF-8 and not empty; otherwise the raw name, UTF-8 or CP437. An archive whose central directory is malformed (an extra field overrunning its block) is refused as a whole, where Fushi takes the raw name. |
 | DIC-012 | Limits: 10 M entries per dictionary, glossary ≤ 10 MiB per entry. If a limit is exceeded, the import fails cleanly. |
 | DIC-013 | Import writes to `dicts/<id>.importing/` and, only on complete success, does an atomic rename to `dicts/<id>/` and registers the dictionary. After an error or a crash nothing partial remains; leftover `.importing` folders are deleted at startup. |
 | DIC-014 | Disk full: specific message (`ERR_STORAGE_FULL`), with cleanup of partial files. |
@@ -807,6 +808,7 @@ theme = "system"            # "light" | "dark" | "system" (SET-003)
 accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
 ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
 study_language = "ja"
+first_steps = true          # the library's first steps, until done or hidden (LIB-013)
 
 [player]
 hwdec = "auto-safe"
@@ -909,8 +911,8 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-14 | Priorities after M4 | **Approved** (2026-10-25): online subtitles (search by hand and automatic, [ADR 0008](adr/0008-online-subtitles.md)), their alignment with the audio (SUB-018), the secondary subtitle (SUB-017) and the mpv option presets in `mpv.conf` format with their settings page (PLY-016, PLY-018) come right after M4, as milestone M4b, before the library (M5) |
 | D-15 | Contents of 0.1.0 | **Approved** (2026-10-25): since neither is released, 0.1.0 ships M4 and M4b together, with the maintainer's notes of 2026-10-25: the subtitle services chosen in the settings (MET-011, SET-008), the Player page opening on the `mpv.conf` in use (PLY-016 d), the local subtitles of another name opened with the video (SUB-006). The tag waits for the maintainer's check of the manual exit criteria. The logo in `assets/brand/` is approved too |
 | D-16 | Other platforms | **Asked by the maintainer** (2026-10-25, with 0.4.0): builds for macOS, Windows and Android. Recorded as the milestone "Ports" after M7, which starts with spike S6; the release that ships each port follows from S6. Before: Windows and macOS after 1.0, Android excluded (§1.3) |
-| D-17 | The next version, while 1.0.0 waits for its manual checks | **Asked by the maintainer** (2026-10-26): work goes on with the next version while M8's manual checks are open. Recorded as M9 "Words in the subtitles": the segmentation of LKP-060 in the subtitles, automatic furigana (LKP-051, until now post-1.0) and the words already mined underlined (LKP-061), on by default except the furigana. Its release follows 1.0.0 (1.1.0) |
-| D-18 | After M9 | **Proposed** (2026-10-26, the maintainer asked to go on; to change at will): M10 "Moving pictures", for the release after 1.1.0: the card's picture as the moving sentence (ANK-042) and thumbnails on the progress bar (PLY-014), both made by the system's ffmpeg with no new dependency. WebM clips with sound (ANK-043) stay in the backlog |
+| D-17 | The next version, while 1.0.0 waits for its manual checks | **Asked by the maintainer** (2026-10-26): work goes on with the next version while M8's manual checks are open. Recorded as M9 "Words in the subtitles": the segmentation of LKP-060 in the subtitles, automatic furigana (LKP-051, until now post-1.0) and the words already mined underlined (LKP-061), on by default except the furigana. Planned for 1.1.0; merged into `main` while M8's manual checks wait, so it ships with 1.0.0 |
+| D-18 | After M9 | **Proposed** (2026-10-26, the maintainer asked to go on; to change at will): M10 "Moving pictures", merged into `main` while M8's manual checks wait, so it ships with 1.0.0: the card's picture as the moving sentence (ANK-042) and thumbnails on the progress bar (PLY-014), both made by the system's ffmpeg with no new dependency. WebM clips with sound (ANK-043) stay in the backlog |
 
 ### 10.2 Risks
 

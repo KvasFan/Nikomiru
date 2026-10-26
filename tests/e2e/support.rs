@@ -98,7 +98,11 @@ pub fn internet_sockets(pid: u32) -> Vec<String> {
 pub struct Desktop {
     dir: tempfile::TempDir,
     bus: Child,
-    kwin: Child,
+    /// The off-screen KWin; `None` on the session the tests run in
+    /// ([`Desktop::this_session`]).
+    kwin: Option<Child>,
+    /// The Wayland socket of that session, as an absolute path.
+    host_wayland: Option<String>,
     bus_address: String,
     launches: usize,
     /// Helpers started for a test: the accessibility bus.
@@ -108,6 +112,8 @@ pub struct Desktop {
     /// The X display, when the apps run on X11 through KWin's Xwayland
     /// (T-PORT-001).
     x11: Option<String>,
+    /// A program the apps run under, with its arguments (`strace`).
+    wrapper: Vec<String>,
 }
 
 const WAYLAND: &str = "wayland-e2e";
@@ -123,7 +129,35 @@ impl Desktop {
         Self::start_with(true)
     }
 
-    fn start_with(xwayland: bool) -> Self {
+    /// The Wayland session the tests run in, instead of an off-screen
+    /// KWin: only for what the virtual KWin cannot measure, the playback of
+    /// T-PERF-03 on a real GPU, run by hand on the reference machine. The
+    /// app still has its own folders and bus.
+    pub fn this_session() -> Self {
+        let runtime = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR");
+        let display = std::env::var("WAYLAND_DISPLAY").expect("a Wayland session");
+        let socket = if display.starts_with('/') {
+            display
+        } else {
+            format!("{runtime}/{display}")
+        };
+        let (dir, bus, bus_address) = Self::folders_and_bus();
+        Self {
+            dir,
+            bus,
+            kwin: None,
+            host_wayland: Some(socket),
+            bus_address,
+            x11: None,
+            launches: 0,
+            helpers: Vec::new(),
+            env: Vec::new(),
+            wrapper: Vec::new(),
+        }
+    }
+
+    /// The app's folders and its private session bus.
+    fn folders_and_bus() -> (tempfile::TempDir, Child, String) {
         let dir = tempfile::tempdir().unwrap();
         // `home` is the app's HOME: T-SEC-003 finds it empty at the end
         for sub in ["config", "state", "data", "cache", "run", "home"] {
@@ -174,7 +208,12 @@ impl Desktop {
             .read_line(&mut bus_address)
             .unwrap();
         let bus_address = bus_address.trim().to_string();
+        (dir, bus, bus_address)
+    }
 
+    fn start_with(xwayland: bool) -> Self {
+        let (dir, bus, bus_address) = Self::folders_and_bus();
+        let run = dir.path().join("run");
         let log = std::fs::File::create(dir.path().join("kwin.log")).unwrap();
         let x_before = x_displays();
         let kwin = Command::new("kwin_wayland")
@@ -223,12 +262,14 @@ impl Desktop {
         Self {
             dir,
             bus,
-            kwin,
+            kwin: Some(kwin),
+            host_wayland: None,
             bus_address,
             x11,
             launches: 0,
             helpers: Vec::new(),
             env: Vec::new(),
+            wrapper: Vec::new(),
         }
     }
 
@@ -449,7 +490,14 @@ impl Desktop {
     pub fn command(&mut self, binary: &Path, args: &[&str]) -> Command {
         self.launches += 1;
         let log = std::fs::File::create(self.path(&format!("app-{}.log", self.launches))).unwrap();
-        let mut cmd = Command::new(binary);
+        let mut cmd = match self.wrapper.split_first() {
+            Some((program, rest)) => {
+                let mut cmd = Command::new(program);
+                cmd.args(rest).arg(binary);
+                cmd
+            }
+            None => Command::new(binary),
+        };
         cmd.args(args)
             .env_clear()
             .env("HOME", self.path("home"))
@@ -472,8 +520,11 @@ impl Desktop {
                 cmd.env("DISPLAY", display);
             }
             None => {
-                cmd.env("WAYLAND_DISPLAY", WAYLAND)
-                    .env("QT_QPA_PLATFORM", "wayland");
+                cmd.env(
+                    "WAYLAND_DISPLAY",
+                    self.host_wayland.as_deref().unwrap_or(WAYLAND),
+                )
+                .env("QT_QPA_PLATFORM", "wayland");
             }
         }
         cmd
@@ -482,6 +533,12 @@ impl Desktop {
     /// Starts `nikomiru --test-harness` and connects to it.
     pub fn launch(&mut self) -> (Child, Harness) {
         self.launch_with(&[])
+    }
+
+    /// Runs the apps launched from now on under `program` and its arguments,
+    /// the app's path and arguments last.
+    pub fn run_under(&mut self, program: &[&str]) {
+        self.wrapper = program.iter().map(|a| a.to_string()).collect();
     }
 
     /// Writes `config.toml` in this desktop's settings folder.
@@ -605,14 +662,16 @@ impl Drop for Desktop {
             let _ = child.wait();
         }
         // KWin with Xwayland removes its X sockets only when asked to quit
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.kwin.id().to_string()])
-            .status();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while self.kwin.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
+        if let Some(kwin) = &mut self.kwin {
+            let _ = Command::new("kill")
+                .args(["-TERM", &kwin.id().to_string()])
+                .status();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while kwin.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
-        for child in [&mut self.kwin, &mut self.bus] {
+        for child in self.kwin.iter_mut().chain([&mut self.bus]) {
             let _ = child.kill();
             let _ = child.wait();
         }

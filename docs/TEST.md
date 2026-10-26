@@ -185,7 +185,7 @@ Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of
 | `zip64_central_dir_test.cpp` | `import.json` `z64-*` (2) |
 | `zip_high_ratio_bank_test.cpp` | `import.json` `zhr-*` (5; 3 divergences, DIC-011: the 200:1 ratio limit and the 512 MiB cap) |
 | `zip_malformed_deflate_test.cpp` | `import.json` `zmd-*` (4) |
-| `zip_unicode_path_extra_test.cpp` | `import.json` `zup-*` (8; 4 known failures) |
+| `zip_unicode_path_extra_test.cpp` | `import.json` `zup-*` (8; 1 divergence, DIC-011: a field overrunning its block refuses the archive) |
 | `zip_wrapper_directory_test.cpp` | `import.json` `zwd-*` (8) |
 | `simple_dict_css_test.cpp` | `import.json` `sdc-styles`: the Yomitan counterpart, `styles.css` kept byte for byte; the `.css` next to an MDX file does not apply |
 | `win_utf8_import_test.cpp` | `import.json` `wui-non-ascii-paths`: non-ASCII zip, folder and title (the Windows ANSI path bug itself does not apply) |
@@ -197,7 +197,7 @@ Every test file of `native/fushidicts/tests` at `ac8034e`, and the Dart tests of
 | `fushi/test/dictionary/deinflection_grammar_tags_test.dart` | `lookup.json` `dgt-*` (5, 7 skipped: Fushi's stored extras, its second result builder, an engine state no lookup produces, source guards) |
 | `fushi/test/lookup/sentence_extraction_test.dart` | `text.json` `sent-*` (9, 2 skipped: a negative click offset and a source guard) |
 
-Known failures, owner `crates/nikomiru-dict/src/import.rs`: `zup-bit11`, `zup-unknown-version`, `zup-overrun`, `zup-empty-name` (the importer takes the `zip` crate's Unicode Path handling, which applies the field with bit 11 set or with any version, refuses an archive whose field overruns its block and takes an empty name).
+No known failure is left: the importer reads the names from the central directory itself, by the rules of DIC-011, since the `zip` crate applies the Unicode Path field by rules of its own.
 
 ---
 
@@ -224,7 +224,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-EXT-001 | Discovery of ffmpeg and encoders | Order: setting → `NIKOMIRU_FFMPEG` → `PATH` (fake scripts in temporary directories); a fake `-encoders` without `aac` → AAC format disabled with a warning, fallback to Opus | L4 |
 | T-EXT-002 | Arguments as a vector and `file:` prefix | argv snapshot; no invocation goes through `sh -c` (see also T-SEC-005) | L3 |
 | T-EXT-003 | Timeout and cancellation | Fake ffmpeg that sleeps 120 s → killed at the timeout; with cancellation, the process ends within 1 s and the partial files are removed | L4 |
-| T-PRV-001 | No unrequested network traffic | Without a network feature asked for, no request reaches a spy proxy and no internet socket is held (the hostile dictionary of T-SEC-001), and the fake online services receive nothing until the user asks (the identification of T-MET-001) | L6 |
+| T-PRV-001 | No unrequested network traffic | Without a network feature asked for, no request reaches a spy proxy and no internet socket is held (the hostile dictionary of T-SEC-001), and the fake online services receive nothing until the user asks (the identification of T-MET-001); under `strace -f`, a session that opens a video, looks a word up and browses the library and the settings makes no `connect`, `sendto` or `sendmsg` to an internet address but AnkiConnect's on loopback (no DNS either) | L6 |
 | T-PRV-002 | Clean logs | Flows with sentinel text in the subtitles and a sentinel API key: neither of the two appears in the log files | L4 |
 | T-MAINT-001 | Code quality | `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `#![deny(missing_docs)]` in library crates | CI |
 | T-MAINT-002 | Coverage | `cargo xtask coverage` (`cargo llvm-cov` with the L4 tests, the tests and fakes not counted, the profiles of killed children dropped) ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki`; on 2026-10-26: 96.2%, 96.8%, 92.3%, 95.5% | CI |
@@ -432,6 +432,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIB-010 | Per-series preferences | An episode without its own values inherits audio, subtitle and offset from the series; a value set on the episode wins; a choice made while watching goes to the series. L6: the offset set on episode 1 is that of episode 2 | L1/L6 |
 | T-LIB-011 | Library edits | Renaming, merging, splitting, moving episodes: progress and preferences preserved, also after a scan; kittest: the page's rename, split, remove, delete | L1/L3 |
 | T-LIB-012 | Removal | The file on disk stays; a removed episode stays out after a scan | L1 |
+| T-LIB-013 | First steps | The card with its three steps, each with its button while not done (Dictionaries, Add folder, Anki), "Hide" sends its command (kittest); on a first start with a dictionary imported the first step is done, "Hide" writes `first_steps = false` and after a restart the steps stay hidden (L6) | L3/L6 |
 | T-DAT-001/002 | Migrations | A fixture v1 DB → migrated with a `.bak-v1` backup; the videos of schema 1 kept through the migration to schema 2 (0.2), twice; a DB with a future schema → opened read-only | L1 |
 | T-DAT-003 | uid | Stable `sanitize`; two files with the same name in different folders → ` (2)` | L1 |
 | T-AUD-001 | Source list | Order and enabled state saved and read back (`config.toml`, L1); kittest: sources added, moved, turned off, an empty one not saved | L1/L3 |
@@ -496,6 +497,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process); a normal quit during an import (L6) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered; a quit during an import cancels it, exits at once and leaves no repair, record or staging folder | L4, L6 |
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
+| T-REL-003 | A long session keeps its memory | Two hours in the off-screen KWin (`NIKOMIRU_SOAK_MINUTES`): a 10-minute file in a loop, a word looked up every 20 s, the settings and another file every 5 minutes; the resident memory at the end at most 64 MiB above its highest point of the first 10 minutes. By hand before a release (`l7_soak_…`), not in the L6 suite | L7 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
 | T-FUZZ-006 | Structured content → view model | No panic; the output contains only nodes from the allowlist | L2 |
 | T-FUZZ-007 | Parser for `nikomiru://` links and for the TOML config | No panic | L2 |
@@ -508,7 +510,7 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 |---|---|---|---|
 | T-PERF-01 | Cold start until `library-ready` | Harness, median of 5 runs (the page cache is not dropped: that needs root) | ≤ 1.5 s |
 | T-PERF-02 | From `open` to `first-frame` | Harness | ≤ 1.0 s |
-| T-PERF-03 | Dropped frames and CPU during playback | `frame-drop-count`, `vo-delayed-frame-count` (mpv; the harness's `mpv_property`) and `/proc/<pid>/stat` for 5 min on `av_hd60_*` with the overlay visible. By hand on REF: the off-screen KWin of L6 draws with the CPU, and its numbers would say nothing of a real GPU | 0 dropped; CPU ≤ 25% of one core |
+| T-PERF-03 | Dropped frames and CPU during playback | `frame-drop-count`, `vo-delayed-frame-count` (mpv; the harness's `mpv_property`) and `/proc/<pid>/stat` for 5 min on `av_hd60_*` with the overlay visible. By hand on REF with `cargo xtask perf-playback` (release build, `hwdec=auto-safe`; a window opens on the session it runs in): the off-screen KWin of L6 draws with the CPU, and its numbers would say nothing of a real GPU | 0 dropped; CPU ≤ 25% of one core |
 | T-PERF-04 | Lookup in the engine | `cargo xtask bench` (release test `nikomiru-dict/tests/perf.rs`): synthetic dictionary ×5 + freq ×3 + pitch, 10k queries from a sentence corpus, percentiles of the single lookups | p95 ≤ 10 ms, p99 ≤ 25 ms |
 | T-PERF-05 | Import of 300k entries | `cargo xtask bench`: total time and `VmHWM` of each import, in its own process | ≤ 60 s; ≤ 1 GiB |
 | T-PERF-06 | From `click_grapheme` to `popup-rendered` | Harness, 100 clicks | p95 ≤ 100 ms |
@@ -608,7 +610,7 @@ Sections 9.1–9.4, plus:
 - [ ] First start without configuration: language from the system, first-start guide (dictionaries, Anki).
 - [ ] "About" shows the version and `THIRD_PARTY_LICENSES`.
 - [ ] Upgrade from a previous version: DB migration with backup.
-- [ ] A 2-hour session without abnormal memory growth.
+- [ ] A 2-hour session without abnormal memory growth (T-REL-003 measures it off-screen; this is the same on a real desktop).
 
 ---
 
