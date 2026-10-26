@@ -187,6 +187,11 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
     })
 }
 
+/// "Hide" on the library's first steps (LIB-013).
+pub fn hide_first_steps() -> Result<(), String> {
+    call(|ui| ui.run(Command::HideFirstSteps))
+}
+
 /// Moves the pointer to `(x, y)`, in points, as the window would.
 pub fn pointer(x: f32, y: f32) -> Result<(), String> {
     call(move |ui| {
@@ -444,6 +449,7 @@ pub fn state() -> Result<Value, String> {
         });
         state["bar_progress"] = bar_progress;
         state["thumbnail"] = thumbnail.unwrap_or(Value::Null);
+        state["first_steps"] = json!(s.first_steps());
         state
     })
 }

@@ -432,6 +432,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIB-010 | Per-series preferences | An episode without its own values inherits audio, subtitle and offset from the series; a value set on the episode wins; a choice made while watching goes to the series. L6: the offset set on episode 1 is that of episode 2 | L1/L6 |
 | T-LIB-011 | Library edits | Renaming, merging, splitting, moving episodes: progress and preferences preserved, also after a scan; kittest: the page's rename, split, remove, delete | L1/L3 |
 | T-LIB-012 | Removal | The file on disk stays; a removed episode stays out after a scan | L1 |
+| T-LIB-013 | First steps | The card with its three steps, each with its button while not done (Dictionaries, Add folder, Anki), "Hide" sends its command (kittest); on a first start with a dictionary imported the first step is done, "Hide" writes `first_steps = false` and after a restart the steps stay hidden (L6) | L3/L6 |
 | T-DAT-001/002 | Migrations | A fixture v1 DB → migrated with a `.bak-v1` backup; the videos of schema 1 kept through the migration to schema 2 (0.2), twice; a DB with a future schema → opened read-only | L1 |
 | T-DAT-003 | uid | Stable `sanitize`; two files with the same name in different folders → ` (2)` | L1 |
 | T-AUD-001 | Source list | Order and enabled state saved and read back (`config.toml`, L1); kittest: sources added, moved, turned off, an empty one not saved | L1/L3 |

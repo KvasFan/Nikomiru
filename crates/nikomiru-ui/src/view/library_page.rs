@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The Library page (LIB-005): "Continue watching", the series with their
-//! covers and state, a series' episodes with the edits of LIB-011 and
-//! LIB-012, and the imported folders with their grouping (LIB-002).
+//! The Library page (LIB-005): the first steps until they are done
+//! (LIB-013), "Continue watching", the series with their covers and state, a
+//! series' episodes with the edits of LIB-011 and LIB-012, and the imported
+//! folders with their grouping (LIB-002).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -50,6 +51,8 @@ pub(crate) struct State {
     focused_view: Option<Option<u64>>,
     /// This frame gives the keyboard to the first card or episode.
     focus_first: bool,
+    /// A tab of the settings a first step asked for (LIB-013).
+    pub(crate) open_settings: Option<super::settings::SettingsTab>,
 }
 
 impl State {
@@ -84,6 +87,8 @@ pub(crate) struct Scene<'a> {
     pub page: &'a LibraryPage,
     /// Today's local day number, for the statistics.
     pub today: i64,
+    /// The first steps and whether each is done (LIB-013), while shown.
+    pub first_steps: Option<[bool; 3]>,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -93,10 +98,14 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let scene = Scene {
         page: &s.library_page,
         today: s.today(),
+        first_steps: s.first_steps(),
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
         view.close_library_page();
+    }
+    if let Some(tab) = view.library.open_settings.take() {
+        view.open_settings(tab, out);
     }
 }
 
@@ -325,11 +334,73 @@ fn card(
     response.clicked()
 }
 
+/// The first steps (LIB-013): import a dictionary, add a folder, make a
+/// card, each with what does it; hidden for good with "Hide".
+fn first_steps(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    steps: [bool; 3],
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    use super::settings::SettingsTab;
+    Frame::new()
+        .fill(palette::current().row_hover)
+        .corner_radius(8.0)
+        .inner_margin(Margin::same(12))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(tr(s, "first-steps-title"))
+                        .size(17.0)
+                        .family(theme::bold()),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button(tr(s, "first-steps-hide")).clicked() {
+                        out.push(Command::HideFirstSteps);
+                    }
+                });
+            });
+            let rows = [
+                ("first-steps-dictionary", "first-steps-dictionary-button"),
+                ("first-steps-folder", "library-add-folder"),
+                ("first-steps-card", "first-steps-card-button"),
+            ];
+            for (n, ((text, button), done)) in rows.into_iter().zip(steps).enumerate() {
+                ui.horizontal(|ui| {
+                    let mark = if done {
+                        "✓".to_string()
+                    } else {
+                        format!("{}.", n + 1)
+                    };
+                    ui.label(RichText::new(mark).family(theme::bold()));
+                    let line = RichText::new(tr(s, text));
+                    ui.label(if done {
+                        line.color(palette::current().details)
+                    } else {
+                        line
+                    });
+                    if !done && ui.button(tr(s, button)).clicked() {
+                        match n {
+                            0 => state.open_settings = Some(SettingsTab::Dictionaries),
+                            1 => out.push(Command::LibraryAddFolder),
+                            _ => state.open_settings = Some(SettingsTab::Anki),
+                        }
+                    }
+                });
+            }
+        });
+    ui.add_space(4.0);
+}
+
 fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let Some(home) = &s.page.home else {
         ui.spinner();
         return;
     };
+    if let Some(steps) = s.first_steps {
+        first_steps(ui, s, steps, state, out);
+    }
     if !home.continue_watching.is_empty() {
         section(ui, &tr(s, "library-continue"));
         rows(ui, WIDE, &home.continue_watching, |ui, (uid, v)| {
@@ -753,6 +824,7 @@ mod tests {
 
     struct Test {
         page: LibraryPage,
+        first_steps: Option<[bool; 3]>,
         state: State,
         out: Vec<Command>,
         closed: bool,
@@ -769,12 +841,14 @@ mod tests {
                     let scene = Scene {
                         page: &t.page,
                         today: 0,
+                        first_steps: t.first_steps,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                 },
                 Test {
                     page,
+                    first_steps: None,
                     state: State::default(),
                     out: Vec::new(),
                     closed: false,
@@ -1015,5 +1089,38 @@ mod tests {
         ));
         let out = click(&mut h, "library-back");
         assert!(matches!(out.as_slice(), [Command::LibrarySeries(None)]));
+    }
+
+    // T-LIB-013
+    #[test]
+    fn the_first_steps_lead_to_what_does_them_and_hide() {
+        let page = LibraryPage {
+            home: Some(Home::default()),
+            ..LibraryPage::default()
+        };
+        let mut h = harness(page);
+        h.state_mut().first_steps = Some([false, true, false]);
+        h.run();
+        h.get_by_label("first-steps-title");
+        // the folder is there: no second "Add folder…"
+        assert_eq!(h.query_all_by_label("library-add-folder").count(), 1);
+        click(&mut h, "first-steps-dictionary-button");
+        assert_eq!(
+            h.state_mut().state.open_settings.take(),
+            Some(crate::view::settings::SettingsTab::Dictionaries)
+        );
+        click(&mut h, "first-steps-card-button");
+        assert_eq!(
+            h.state_mut().state.open_settings.take(),
+            Some(crate::view::settings::SettingsTab::Anki)
+        );
+        let out = click(&mut h, "first-steps-hide");
+        assert!(matches!(out.as_slice(), [Command::HideFirstSteps]));
+        h.state_mut().first_steps = Some([true, false, true]);
+        h.run();
+        assert_eq!(h.query_all_by_label("library-add-folder").count(), 2);
+        h.state_mut().first_steps = None;
+        h.run();
+        assert!(h.query_by_label("first-steps-title").is_none());
     }
 }

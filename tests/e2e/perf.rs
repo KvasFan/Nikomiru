@@ -219,7 +219,7 @@ fn l7_soak_a_long_session_keeps_its_memory() {
         h.cmd(serde_json::json!({ "cmd": "lookup", "text": "食べました" }));
         h.wait("popup-rendered");
         h.key("Escape");
-        if round % 15 == 0 {
+        if round.is_multiple_of(15) {
             // every 5 minutes: the settings, another file and back
             h.cmd(serde_json::json!({ "cmd": "settings", "tab": "dictionaries" }));
             std::thread::sleep(Duration::from_millis(500));

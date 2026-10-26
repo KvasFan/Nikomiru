@@ -40,7 +40,7 @@ cargo xtask install      # in ~/.local, con la voce di menu e l'icona
 
 ## 2. Primo avvio
 
-Avvia Nikomiru dal menu, oppure con `nikomiru percorso/episodio.mkv`. Senza un file si apre sulla **Libreria**.
+Avvia Nikomiru dal menu, oppure con `nikomiru percorso/episodio.mkv`. Senza un file si apre sulla **Libreria**, che comincia con i **primi passi**: un dizionario, una cartella di video e una prima carta, ognuno con un pulsante che porta lì. Spariscono una volta fatti, o con **Nascondi**.
 
 - **Aprire un video**: Ctrl+O, trascinandolo sulla finestra, o dalla libreria.
 - **Sottotitoli**: Nikomiru carica da solo quelli accanto al video, anche se hanno un altro nome (cartelle `Subs/`, `Serie 02.ja.srt`). Carica anche le tracce di sottotitoli dentro il video. Per scegliere c'è il menu 字 nella barra.

@@ -2263,6 +2263,42 @@ fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-LIB-013: on a first start the library shows the first steps, each done
+// as it is done; hidden, they stay hidden
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_first_steps_show_until_hidden() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    let s = h.state_until("the first steps", |s| s["first_steps"].is_array());
+    assert_eq!(
+        s["first_steps"],
+        serde_json::json!([true, false, false]),
+        "{s}"
+    );
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&std::path::Path::new(&dir).join("first-steps.png"));
+    }
+    h.cmd(serde_json::json!({ "cmd": "hide_first_steps" }));
+    h.state_until("hidden", |s| s["first_steps"].is_null());
+    let config = desk.path("config/nikomiru/config.toml");
+    support::until(Duration::from_secs(10), "saved", || {
+        std::fs::read_to_string(&config)
+            .ok()
+            .filter(|t| t.contains("first_steps = false"))
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(h.state()["first_steps"].is_null());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-E2E-PLY-014: the pointer over the progress bar shows the time there
 // and, once made, the frame
 #[test]

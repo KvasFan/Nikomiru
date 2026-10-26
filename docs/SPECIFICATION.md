@@ -400,6 +400,7 @@ The maintainer asked for builds for macOS, Windows and Android (D-16). Linux sta
 | LIB-010 | For each series the audio track, the chosen subtitle (by language or track title) and the subtitle offset are remembered. They apply to all episodes, which can however have their own values | `VideoBooks.delayMs` |
 | LIB-011 | It MUST be possible to rename, merge and split series, and to move episodes from one series to another | |
 | LIB-012 | Removing an item from the library MUST NOT delete the video file from disk | |
+| LIB-013 | **First steps**: until they are done, the library's home page starts with three steps, each marked done once it is: import a dictionary (a button opens Settings → Dictionaries), add a folder of videos (the "Add folder…" of the page), make a first card (a button opens Settings → Anki, the line says that Anki must be open with AnkiConnect). Done is read from what lasts: a dictionary installed, a series or folder in the library, a card in `mined_cards`. "Hide" saves `[general] first_steps = false`. M8 (TEST §9.5) | |
 
 ### 6.2 Player (PLY)
 
@@ -807,6 +808,7 @@ theme = "system"            # "light" | "dark" | "system" (SET-003)
 accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
 ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
 study_language = "ja"
+first_steps = true          # the library's first steps, until done or hidden (LIB-013)
 
 [player]
 hwdec = "auto-safe"

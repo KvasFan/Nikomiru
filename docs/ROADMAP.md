@@ -380,7 +380,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 ## M8 — Stabilization and packages → 1.0.0
 
-**Requirements**: all NFRs not assigned to other milestones (NFR-PERF-01…NFR-PERF-09, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
+**Requirements**: LIB-013; all NFRs not assigned to other milestones (NFR-PERF-01…NFR-PERF-09, NFR-REL-*, NFR-SEC-02, NFR-PORT-01, NFR-MAINT-02), D-5.
 
 **Deliverables**
 
@@ -398,6 +398,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Done: NFR-MAINT-02 (`cargo xtask coverage`: 92–97% of the lines of the logic crates), NFR-PORT-01 (the smoke test on X11 through Xwayland; the offline build in `ci --full`).
 - Done: the Flatpak (`packaging/flatpak`): freedesktop 26.08, whose FFmpeg has the programs and encoders of the cards; libass, libplacebo and libmpv built in it; the crates as offline sources (`cargo xtask flatpak-sources`); `cargo xtask flatpak` builds a bundle. Built, its libraries resolved, its manifest and AppStream file passing `flatpak-builder-lint`.
 - Done: the accessibility review (`docs/accessibility-review-1.0.md`), with T-A11Y-002: every page's controls named for a screen reader.
+- Done: the first steps on the library page (LIB-013), which the release checklist expects of a first start; T-REL-003, a two-hour session, as a test to run before a release.
 - Done: the Flatpak installs `THIRD_PARTY_LICENSES.html` too, generated with its crate sources; T-PRV-001 under `strace`; T-PERF-03 as one command for REF, `cargo xtask perf-playback` (checked for its mechanics in an off-screen KWin).
 - Open: publishing on the AUR and on Flathub (the maintainer's accounts), the Flatpak run on a desktop, T-PERF-03 by hand on REF, the bug backlog (no issue open on 2026-10-26), the manual checklist of TEST §9.
 
