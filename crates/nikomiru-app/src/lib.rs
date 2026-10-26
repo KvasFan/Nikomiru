@@ -29,6 +29,7 @@ pub mod online;
 pub mod portal;
 pub mod shell;
 pub mod subtitles;
+pub mod thumbnails;
 #[allow(unsafe_code)]
 pub mod window;
 pub mod word_audio;

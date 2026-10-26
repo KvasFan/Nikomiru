@@ -442,6 +442,7 @@ fn run(
             translator: translator.clone(),
         });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
+    let ffmpeg_setting = config.paths.ffmpeg.clone();
     let services = Services {
         player: player.handle(),
         config,
@@ -466,6 +467,11 @@ fn run(
         online: Box::new(online),
         catalog,
         word_audio: Box::new(word_audio),
+        // PLY-014
+        thumbnails: Box::new(nikomiru_app::thumbnails::ThumbnailWorker::start(
+            ffmpeg_setting,
+            paths.cache_dir.join("thumbnails"),
+        )),
         subtitles_dir: paths.subtitles_dir(),
         mpv_presets_dir: paths.mpv_presets_dir(),
         user_mpv_conf: paths.user_mpv_conf(),

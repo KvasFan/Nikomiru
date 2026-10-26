@@ -28,6 +28,7 @@ pub mod session;
 pub mod shortcuts;
 pub mod study;
 pub mod subtitles;
+pub mod thumbnails;
 mod ui;
 pub mod view;
 pub mod word_audio;

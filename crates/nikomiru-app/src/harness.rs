@@ -138,6 +138,11 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("mpv_property") => harness::mpv_property(text(command, "name")?)
             .map(|v| v.map_or(Value::Null, Value::String)),
         Some("mouse_moved") => harness::mouse_moved().map(|()| Value::Null),
+        Some("pointer") => harness::pointer(
+            command["x"].as_f64().ok_or("missing \"x\"")? as f32,
+            command["y"].as_f64().ok_or("missing \"y\"")? as f32,
+        )
+        .map(|()| Value::Null),
         Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
             .map(|()| Value::Null),
         Some("settings") => {

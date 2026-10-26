@@ -187,6 +187,14 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
     })
 }
 
+/// Moves the pointer to `(x, y)`, in points, as the window would.
+pub fn pointer(x: f32, y: f32) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::MouseMoved);
+        ui.inject(egui::Event::PointerMoved(egui::pos2(x, y)));
+    })
+}
+
 /// Clicks grapheme `grapheme` of cue `cue` (layer `main`, the only one before
 /// M7) through the overlay's click command. The anchor is empty, so the popup
 /// takes the fallback place.
@@ -215,6 +223,18 @@ pub fn state() -> Result<Value, String> {
     call(|ui| {
         let s = &ui.session;
         let v = &s.view;
+        // the progress bar and the thumbnail under the pointer (PLY-014)
+        let bar_progress = ui
+            .view
+            .bar
+            .progress
+            .map_or(Value::Null, |p| json!([p.min.x, p.min.y, p.max.x, p.max.y]));
+        let thumbnail = s.bar_hovered().map(|at| {
+            json!({
+                "at_ms": at,
+                "size": s.thumbnail(at).map(|(_, px)| json!(px.size)),
+            })
+        });
         // the words' marks of each cue shown (LKP-051, LKP-061)
         let marks: Vec<Value> = s
             .subs
@@ -328,7 +348,7 @@ pub fn state() -> Result<Value, String> {
                 })),
             })
         };
-        json!({
+        let mut state = json!({
             "loaded": v.loaded,
             "title": v.title,
             "time_pos": v.time_pos,
@@ -421,7 +441,10 @@ pub fn state() -> Result<Value, String> {
                 "path": m.path,
             })),
             "dictionaries": s.dict_page.json(),
-        })
+        });
+        state["bar_progress"] = bar_progress;
+        state["thumbnail"] = thumbnail.unwrap_or(Value::Null);
+        state
     })
 }
 

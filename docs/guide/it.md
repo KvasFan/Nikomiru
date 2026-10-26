@@ -45,6 +45,7 @@ Avvia Nikomiru dal menu, oppure con `nikomiru percorso/episodio.mkv`. Senza un f
 - **Aprire un video**: Ctrl+O, trascinandolo sulla finestra, o dalla libreria.
 - **Sottotitoli**: Nikomiru carica da solo quelli accanto al video, anche se hanno un altro nome (cartelle `Subs/`, `Serie 02.ja.srt`). Carica anche le tracce di sottotitoli dentro il video. Per scegliere c'è il menu 字 nella barra.
 - **Indietro**: Esc, oppure "← Libreria" nella barra.
+- **Trovare una scena**: il puntatore sopra la barra di avanzamento mostra l'orario e il fotogramma in quel punto.
 
 ## 3. Dizionari
 

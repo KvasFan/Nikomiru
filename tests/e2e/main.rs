@@ -2184,6 +2184,47 @@ fn an_advanced_card_takes_two_lines_and_the_picture_chosen() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-PLY-014: the pointer over the progress bar shows the time there
+// and, once made, the frame
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_progress_bar_shows_a_thumbnail_under_the_pointer() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_hd60_h264.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    h.cmd(serde_json::json!({ "cmd": "mouse_moved" }));
+    let s = h.state_until("the bar", |s| {
+        s["controls_visible"] == true && s["bar_progress"].is_array()
+    });
+    let r: Vec<f64> = s["bar_progress"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let (x, y) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+    h.cmd(serde_json::json!({ "cmd": "pointer", "x": x, "y": y }));
+    let s = h.state_until("the thumbnail", |s| s["thumbnail"]["size"].is_array());
+    assert_eq!(s["thumbnail"]["size"], serde_json::json!([256, 144]), "{s}");
+    // about the middle of the file
+    let at = s["thumbnail"]["at_ms"].as_f64().unwrap();
+    let duration = s["duration"].as_f64().unwrap() * 1000.0;
+    assert!(
+        (at - duration / 2.0).abs() < duration / 10.0,
+        "{at} of {duration}"
+    );
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
+        h.cmd(serde_json::json!({ "cmd": "pointer", "x": x, "y": y }));
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&std::path::Path::new(&dir).join("bar-thumbnail.png"));
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-E2E-ANK-042: a card whose picture is its sentence, moving
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

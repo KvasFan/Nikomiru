@@ -278,6 +278,28 @@ pub fn frame_job(ffmpeg: &Path, video: &Path, at_ms: i64, output: &Path) -> Job 
     job
 }
 
+/// ffmpeg's arguments for the frame of `video` at `at_ms` as a PNG `height`
+/// pixels high, without subtitles: a thumbnail of the progress bar
+/// (PLY-014).
+pub fn thumbnail_args(video: &Path, at_ms: i64, height: u32, output: &Path) -> Vec<OsString> {
+    let mut args = frame_args(video, at_ms, output);
+    // before the codec: `-vf scale=-2:<height>`
+    let at = args.len() - 5;
+    args.splice(
+        at..at,
+        os(&["-vf", &format!("scale=-2:{height}"), "-an", "-sn"]),
+    );
+    args
+}
+
+/// The job of [`thumbnail_args`].
+pub fn thumbnail_job(ffmpeg: &Path, video: &Path, at_ms: i64, height: u32, output: &Path) -> Job {
+    let mut job = Job::new(ffmpeg, thumbnail_args(video, at_ms, height, output));
+    job.timeout = IMAGE_TIMEOUT;
+    job.outputs = vec![output.to_path_buf()];
+    job
+}
+
 /// The image job, with `output` removed if it fails.
 pub fn image_job(
     ffmpeg: &Path,

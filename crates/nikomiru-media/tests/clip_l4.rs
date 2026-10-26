@@ -9,7 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use nikomiru_media::clip::{AudioClip, animated_args, animated_job, image_args, image_job};
+use nikomiru_media::clip::{
+    AudioClip, animated_args, animated_job, image_args, image_job, thumbnail_args, thumbnail_job,
+};
 use nikomiru_media::process::{Cancel, JobError, run};
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, probe};
 
@@ -327,4 +329,30 @@ fn the_sentence_becomes_an_animated_picture() {
             .unwrap_or(0);
         assert!((8..=12).contains(&most), "{format:?}: {counts}");
     }
+}
+
+// T-PLY-014
+#[test]
+fn thumbnail_arguments() {
+    assert_eq!(
+        shown(&thumbnail_args(
+            Path::new("/videos/-weird: name.mkv"),
+            83_250,
+            144,
+            Path::new("/cache/thumbnails/t.png")
+        )),
+        "-nostdin -hide_banner -loglevel error -y -ss 83.250 -i file:/videos/-weird: name.mkv \
+         -map 0:v:0 -frames:v 1 -vf scale=-2:144 -an -sn -c:v png -f image2 file:/cache/thumbnails/t.png"
+    );
+}
+
+// T-PLY-014
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn a_thumbnail_is_a_small_frame() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("t.png");
+    let job = thumbnail_job(&ffmpeg(), &fixture("av_basic.mkv"), 2_000, 144, &out);
+    run(&job, &Cancel::new()).unwrap();
+    assert_eq!(size(&out), (256, 144));
 }

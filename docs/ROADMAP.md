@@ -41,7 +41,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
 | M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | 1.1.0 | done (maintainer's check open) |
-| M10 | Moving pictures (D-18) | M | 1.2.0 | in progress |
+| M10 | Moving pictures (D-18) | M | 1.2.0 | done (maintainer's check open) |
 
 ---
 
@@ -444,11 +444,11 @@ Proposed after M9, when the maintainer asked to go on (D-18).
 **Status as of 2026-10-26**
 
 - Done: the animated picture (T-ANK-042, T-E2E-ANK-042), its formats and levels in Settings → Anki.
+- Done: the thumbnails of the progress bar (T-PLY-014, T-E2E-PLY-014): about 0.15 s a frame for 1080p HEVC 10-bit.
 
 **Exit criteria**
 
-- [x] T-ANK-042 and T-E2E-ANK-042 green.
-- [ ] PLY-014 and its tests.
+- [x] T-ANK-042, T-E2E-ANK-042, T-PLY-014 and T-E2E-PLY-014 green.
 - [ ] An animated card checked by the maintainer in Anki desktop and AnkiDroid.
 - [ ] **Release 1.2.0**.
 

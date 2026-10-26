@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The control bar (PLY-001, PLY-003, PLY-004): progress, play/pause, time,
-//! volume, speed, audio track, the subtitle menu, the dictionaries page, open
-//! and fullscreen. It fades with the controls; its buttons never take the
+//! The control bar (PLY-001, PLY-003, PLY-004): progress, with the time and a
+//! thumbnail under the pointer (PLY-014), play/pause, time, volume, speed,
+//! audio track, the subtitle menu, the dictionaries page, open and
+//! fullscreen. It fades with the controls; its buttons never take the
 //! keyboard, so Space stays play/pause.
 
 use egui::{
@@ -22,15 +23,32 @@ use crate::ui::Command;
 const ENCODINGS: [&str; 7] = ["", "UTF-8", "CP932", "EUC-JP", "GB18030", "BIG5", "CP1252"];
 
 /// What the bar keeps between frames.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct State {
     /// The bar's height, for the subtitles above it.
     pub height: f32,
+    /// Where the progress slider was drawn last (the harness points at it).
+    pub progress: Option<egui::Rect>,
     /// The position while the progress slider is dragged: the slider does not
     /// follow mpv meanwhile.
     seek: Option<f64>,
     /// The volume while its slider is dragged.
     volume: Option<f64>,
+    /// The step of the progress bar under the pointer, last told the
+    /// session (PLY-014).
+    hovered: Option<i64>,
+    /// The thumbnail shown, by its file's generation and step.
+    thumbnail: Option<((u64, i64), egui::TextureHandle)>,
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("height", &self.height)
+            .field("seek", &self.seek)
+            .field("hovered", &self.hovered)
+            .finish_non_exhaustive()
+    }
 }
 
 fn named(response: &egui::Response, enabled: bool, name: &str) {
@@ -217,6 +235,69 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
     }
 }
 
+/// The time under the pointer over the progress bar, and its thumbnail once
+/// made (PLY-014).
+fn preview(
+    ctx: &egui::Context,
+    s: &Session,
+    bar: &mut State,
+    slider: &egui::Response,
+    duration: f64,
+    out: &mut Vec<Command>,
+) {
+    let Some(pointer) = slider.hover_pos().filter(|_| s.view.loaded) else {
+        bar.hovered = None;
+        return;
+    };
+    // the rail stops half a handle short of each end
+    let rail = slider.rect.x_range().shrink(slider.rect.height() / 2.0);
+    let share = f64::from((pointer.x - rail.min) / rail.span().max(1.0)).clamp(0.0, 1.0);
+    let at_ms = (share * duration * 1000.0) as i64;
+    let step = crate::thumbnails::step((duration * 1000.0) as i64, at_ms);
+    if bar.hovered != Some(step) {
+        bar.hovered = Some(step);
+        out.push(Command::BarHover(step));
+    }
+    let made = s.thumbnail(step);
+    if let Some((generation, pixels)) = &made
+        && bar.thumbnail.as_ref().map(|(k, _)| *k) != Some((*generation, step))
+    {
+        let image = egui::ColorImage::from_rgba_unmultiplied(pixels.size, &pixels.rgba);
+        let texture = ctx.load_texture("bar-thumbnail", image, Default::default());
+        bar.thumbnail = Some(((*generation, step), texture));
+    }
+    let texture = made.and_then(|(generation, _)| {
+        bar.thumbnail
+            .as_ref()
+            .filter(|(k, _)| *k == (generation, step))
+            .map(|(_, t)| t.clone())
+    });
+    Area::new(Id::unique("bar-preview"))
+        .order(Order::Tooltip)
+        .pivot(Align2::CENTER_BOTTOM)
+        .fixed_pos(pos2(pointer.x, slider.rect.top() - 6.0))
+        .constrain(true)
+        .interactable(false)
+        .show(ctx, |ui| {
+            Frame::new()
+                .fill(Color32::from_rgba_unmultiplied(0x14, 0x14, 0x18, 0xe6))
+                .corner_radius(4.0)
+                .inner_margin(Margin::same(4))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        if let Some(texture) = &texture {
+                            ui.image((texture.id(), texture.size_vec2()));
+                        }
+                        ui.label(
+                            RichText::new(clock(at_ms))
+                                .monospace()
+                                .color(Color32::WHITE),
+                        );
+                    });
+                });
+        });
+}
+
 pub(crate) fn show(
     ctx: &egui::Context,
     s: &Session,
@@ -260,6 +341,8 @@ pub(crate) fn show(
                     if !slider.dragged() {
                         view.bar.seek = None;
                     }
+                    view.bar.progress = Some(slider.rect);
+                    preview(ui.ctx(), s, &mut view.bar, &slider, duration, out);
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;

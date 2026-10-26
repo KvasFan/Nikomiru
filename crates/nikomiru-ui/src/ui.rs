@@ -41,6 +41,15 @@ pub enum Inbound {
         /// The reply, or a message.
         result: Result<Reply, String>,
     },
+    /// A frame of the progress bar (PLY-014).
+    Thumbnail {
+        /// Its file's generation.
+        generation: u64,
+        /// Its step.
+        at_ms: i64,
+        /// The image's bytes, or why not.
+        result: Result<Vec<u8>, String>,
+    },
     /// A subtitle text split into words (LKP-060).
     Words {
         /// The words' generation (the dictionaries').
@@ -201,6 +210,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Subtitles { .. } => "Subtitles",
             Inbound::Lookup { .. } => "Lookup",
             Inbound::Words { .. } => "Words",
+            Inbound::Thumbnail { .. } => "Thumbnail",
             Inbound::ImportProgress { .. } => "ImportProgress",
             Inbound::ImportDone { .. } => "ImportDone",
             Inbound::Open(_) => "Open",
@@ -288,6 +298,8 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// The pointer is over this step of the progress bar (PLY-014).
+    BarHover(i64),
     /// The rows of the subtitle list in view changed: their words are
     /// wanted (LKP-061).
     ListRows(Vec<usize>),
@@ -545,6 +557,14 @@ impl Ui {
                 result,
             } => {
                 self.session.segmented(generation, text, result);
+                true
+            }
+            Inbound::Thumbnail {
+                generation,
+                at_ms,
+                result,
+            } => {
+                self.session.thumbnail_done(generation, at_ms, result);
                 true
             }
             Inbound::ImportProgress {
@@ -935,6 +955,7 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),
             Command::PopupLookup {
                 level,
@@ -1300,6 +1321,20 @@ impl Ui {
             self.session.start_lookup(
                 text,
                 Box::new(move |result| waker.wake(Inbound::Lookup { generation, result })),
+            );
+        }
+        if let Some((generation, video, at_ms)) = self.session.take_thumbnail() {
+            let waker = self.waker.clone();
+            self.session.start_thumbnail(
+                video,
+                at_ms,
+                Box::new(move |result| {
+                    waker.wake(Inbound::Thumbnail {
+                        generation,
+                        at_ms,
+                        result,
+                    });
+                }),
             );
         }
         for (generation, text) in self.session.take_segmentations() {
