@@ -83,6 +83,8 @@ modules:
       env:
         CARGO_HOME: /run/build/nikomiru/cargo
         CARGO_NET_OFFLINE: 'true'
+        # libmpv, built above
+        LIBRARY_PATH: /app/lib
         # no path of the build machine in the program
         RUSTFLAGS: --remap-path-prefix=/run/build/nikomiru=/build
     build-commands:
