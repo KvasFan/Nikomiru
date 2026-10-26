@@ -88,3 +88,96 @@ fn perf_at_rest_the_app_holds_at_most_400_mb() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     assert!(rss <= 381, "T-PERF-09: {rss} MiB (400 MB = 381 MiB)");
 }
+
+/// The CPU time of process `pid` so far (user and system), from
+/// `/proc/<pid>/stat`.
+fn cpu_time(pid: u32) -> Duration {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    // the fields after the command's closing parenthesis; utime and stime are
+    // the 14th and 15th of the line, the 12th and 13th after it
+    let rest = &stat[stat.rfind(')').unwrap() + 2..];
+    let fields: Vec<u64> = rest
+        .split_whitespace()
+        .map(|f| f.parse().unwrap_or(0))
+        .collect();
+    let ticks = std::process::Command::new("getconf")
+        .arg("CLK_TCK")
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .parse::<u64>()
+                .ok()
+        })
+        .unwrap_or(100);
+    Duration::from_millis((fields[11] + fields[12]) * 1000 / ticks)
+}
+
+// T-PERF-03: 1080p60 H.264 and 10-bit HEVC play with the controls and the
+// subtitles over them, hardware decoding on, with no frame dropped and at most
+// a quarter of one core. On the session the test runs in, since the
+// off-screen KWin draws with the CPU: by hand on the reference machine,
+// `NIKOMIRU_PERF_SESSION=1 cargo xtask perf-playback` (a window opens there);
+// `NIKOMIRU_PERF_SECONDS` shortens the 5 minutes.
+#[test]
+#[ignore = "L7: on the session the test runs in, by hand: cargo xtask perf-playback"]
+fn l7_perf_playback_drops_no_frame() {
+    if std::env::var_os("NIKOMIRU_PERF_SESSION").is_none() {
+        eprintln!("skipped: set NIKOMIRU_PERF_SESSION=1 to play on this session");
+        return;
+    }
+    let seconds: u64 = std::env::var("NIKOMIRU_PERF_SECONDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    let mut desk = Desktop::this_session();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\", hwdec = \"auto-safe\" }\n");
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    let mut failures = Vec::new();
+    for name in ["av_hd60_h264.mkv", "av_hd60_hevc10.mkv"] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/fixtures")
+            .join(name);
+        if !path.exists() {
+            failures.push(format!("{name} is missing: `cargo xtask fixtures --perf`"));
+            continue;
+        }
+        h.open(&path.canonicalize().unwrap().to_string_lossy());
+        h.wait("first-frame");
+        let property = |h: &mut crate::support::Harness, name: &str| {
+            h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": name }))
+                .as_str()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0)
+        };
+        let (drops, delayed) = (
+            property(&mut h, "frame-drop-count"),
+            property(&mut h, "vo-delayed-frame-count"),
+        );
+        let (cpu, started) = (cpu_time(app.id()), Instant::now());
+        // the controls stay over the video, as when the user moves the mouse
+        while started.elapsed() < Duration::from_secs(seconds) {
+            h.cmd(serde_json::json!({ "cmd": "mouse_moved" }));
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        let share = (cpu_time(app.id()) - cpu).as_secs_f64() / started.elapsed().as_secs_f64();
+        let dropped = property(&mut h, "frame-drop-count") - drops;
+        let late = property(&mut h, "vo-delayed-frame-count") - delayed;
+        let hwdec = h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": "hwdec-current" }));
+        eprintln!(
+            "T-PERF-03 {name}: {dropped} dropped, {late} delayed, CPU {:.1}% of a core, hwdec {hwdec}",
+            share * 100.0
+        );
+        if dropped > 0 || late > 0 || share > 0.25 {
+            failures.push(format!(
+                "{name}: {dropped} dropped, {late} delayed, CPU {:.1}%",
+                share * 100.0
+            ));
+        }
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(failures.is_empty(), "T-PERF-03: {failures:#?}");
+}
