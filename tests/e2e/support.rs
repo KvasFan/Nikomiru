@@ -27,6 +27,19 @@ pub fn fixture(name: &str) -> String {
     path.canonicalize().unwrap().to_string_lossy().into_owned()
 }
 
+/// The X displays whose sockets exist (`:0`, `:1`…).
+fn x_displays() -> Vec<String> {
+    std::fs::read_dir("/tmp/.X11-unix")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.strip_prefix('X').map(|n| format!(":{n}"))
+        })
+        .collect()
+}
+
 /// Polls `f` until it returns `Some`, or panics after `timeout`.
 pub fn until<T>(timeout: Duration, what: &str, mut f: impl FnMut() -> Option<T>) -> T {
     let deadline = Instant::now() + timeout;
@@ -92,14 +105,28 @@ pub struct Desktop {
     helpers: Vec<Child>,
     /// More variables for the apps launched from now on.
     env: Vec<(String, String)>,
+    /// The X display, when the apps run on X11 through KWin's Xwayland
+    /// (T-PORT-001).
+    x11: Option<String>,
 }
 
 const WAYLAND: &str = "wayland-e2e";
 
 impl Desktop {
     pub fn start() -> Self {
+        Self::start_with(false)
+    }
+
+    /// A desktop whose apps run on X11, through KWin's Xwayland
+    /// (T-PORT-001, NFR-PORT-01).
+    pub fn start_x11() -> Self {
+        Self::start_with(true)
+    }
+
+    fn start_with(xwayland: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        for sub in ["config", "state", "data", "cache", "run"] {
+        // `home` is the app's HOME: T-SEC-003 finds it empty at the end
+        for sub in ["config", "state", "data", "cache", "run", "home"] {
             std::fs::create_dir_all(dir.path().join(sub)).unwrap();
         }
         let run = dir.path().join("run");
@@ -149,6 +176,7 @@ impl Desktop {
         let bus_address = bus_address.trim().to_string();
 
         let log = std::fs::File::create(dir.path().join("kwin.log")).unwrap();
+        let x_before = x_displays();
         let kwin = Command::new("kwin_wayland")
             .args([
                 "--virtual",
@@ -160,6 +188,7 @@ impl Desktop {
                 "1",
             ])
             .args(["--socket", WAYLAND])
+            .args(xwayland.then_some("--xwayland"))
             .args([
                 "--no-lockscreen",
                 "--no-global-shortcuts",
@@ -179,11 +208,24 @@ impl Desktop {
         until(Duration::from_secs(20), "KWin's Wayland socket", || {
             socket.exists().then_some(())
         });
+        // KWin's X display: the first socket it adds (the second is its own);
+        // Xwayland starts when the first client connects
+        let x11 = xwayland.then(|| {
+            until(Duration::from_secs(20), "KWin's Xwayland", || {
+                let mut new: Vec<String> = x_displays()
+                    .into_iter()
+                    .filter(|d| !x_before.contains(d))
+                    .collect();
+                new.sort_by_key(|d| d[1..].parse::<u32>().unwrap_or(u32::MAX));
+                new.into_iter().next()
+            })
+        });
         Self {
             dir,
             bus,
             kwin,
             bus_address,
+            x11,
             launches: 0,
             helpers: Vec::new(),
             env: Vec::new(),
@@ -410,7 +452,7 @@ impl Desktop {
         let mut cmd = Command::new(binary);
         cmd.args(args)
             .env_clear()
-            .env("HOME", self.dir.path())
+            .env("HOME", self.path("home"))
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("LANG", "C.UTF-8")
             .env("XDG_CONFIG_HOME", self.path("config"))
@@ -418,14 +460,22 @@ impl Desktop {
             .env("XDG_DATA_HOME", self.path("data"))
             .env("XDG_CACHE_HOME", self.path("cache"))
             .env("XDG_RUNTIME_DIR", self.path("run"))
-            .env("WAYLAND_DISPLAY", WAYLAND)
-            .env("QT_QPA_PLATFORM", "wayland")
             .env("QT_FORCE_STDERR_LOGGING", "1")
             .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null())
             .stdout(log.try_clone().unwrap())
             .stderr(log);
+        // Wayland, or X11 alone: winit then has no choice (T-PORT-001)
+        match &self.x11 {
+            Some(display) => {
+                cmd.env("DISPLAY", display);
+            }
+            None => {
+                cmd.env("WAYLAND_DISPLAY", WAYLAND)
+                    .env("QT_QPA_PLATFORM", "wayland");
+            }
+        }
         cmd
     }
 
@@ -519,6 +569,25 @@ impl Desktop {
 
 impl Drop for Desktop {
     fn drop(&mut self) {
+        // T-SEC-003 (NFR-SEC-02): nothing written outside the XDG folders
+        // and those the test chose, checked once the app is gone
+        if !std::thread::panicking() && self.leftover_apps().is_empty() {
+            let mut written = Vec::new();
+            let mut todo = vec![self.path("home")];
+            while let Some(dir) = todo.pop() {
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                        todo.push(entry.path());
+                    } else {
+                        written.push(entry.path());
+                    }
+                }
+            }
+            assert!(
+                written.is_empty(),
+                "T-SEC-003: written in HOME: {written:?}"
+            );
+        }
         // a failed test may leave its app running: it must not outlive the desktop
         for pid in self.leftover_apps() {
             let _ = Command::new("kill")
@@ -534,6 +603,14 @@ impl Drop for Desktop {
         for child in &mut self.helpers {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        // KWin with Xwayland removes its X sockets only when asked to quit
+        let _ = Command::new("kill")
+            .args(["-TERM", &self.kwin.id().to_string()])
+            .status();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while self.kwin.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
         }
         for child in [&mut self.kwin, &mut self.bus] {
             let _ = child.kill();

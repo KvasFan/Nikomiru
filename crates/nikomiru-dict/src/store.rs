@@ -653,6 +653,7 @@ mod tests {
         }
     }
 
+    // T-DIC-020: the redb store, behind the `DictStore` trait the lookup uses
     #[test]
     fn written_entries_are_found() {
         let dir = tempfile::tempdir().unwrap();

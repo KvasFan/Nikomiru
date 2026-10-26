@@ -208,6 +208,8 @@ mod tests {
         assert_eq!(q(&long, 0, Context::Cue).chars().count(), 500);
     }
 
+    // T-LKP-003 (a lone surrogate cannot be in a Rust string: decoding
+    // replaced it already)
     #[test]
     fn normalization() {
         // the line break and the emoji become one space each

@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Nikomiru as a Flatpak (D-5): the freedesktop runtime, which has FFmpeg and
+# its programs; libass, libplacebo and libmpv are built here. The crates come
+# from cargo-sources.json (`cargo xtask flatpak-sources`), so the build needs
+# no network. `cargo xtask flatpak` builds the working tree instead of the tag.
+
+id: io.github.kvasfan.Nikomiru
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: nikomiru
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # online subtitles and metadata (only when asked), AnkiConnect on this computer
+  - --share=network
+  # the videos of the library and the subtitles next to them; dictionaries
+  - --filesystem=home:ro
+  # the frames saved with S (PLY-011)
+  - --filesystem=xdg-pictures/Nikomiru:create
+  # screen readers (NFR-A11Y-01)
+  - --talk-name=org.a11y.Bus
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dpdf-build=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  - name: nikomiru
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/nikomiru/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # libmpv, built above
+        LIBRARY_PATH: /app/lib
+        # no path of the build machine in the program
+        RUSTFLAGS: --remap-path-prefix=/run/build/nikomiru=/build
+    build-commands:
+      - cargo build --offline --release --locked -p nikomiru-app
+      - install -Dm755 target/release/nikomiru -t /app/bin
+      - install -Dm644 assets/nikomiru.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 assets/brand/logo-light.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - install -Dm644 packaging/flatpak/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+    sources:
+      # nikomiru source: the release; `cargo xtask flatpak` puts the working tree here
+      - type: git
+        url: https://github.com/KvasFan/nikomiru.git
+        tag: v0.4.0
+        commit: 448c03c148ea2703034f4db5278d34d5077b619a
+      # end of nikomiru source
+      - cargo-sources.json

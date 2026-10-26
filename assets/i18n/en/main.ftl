@@ -351,6 +351,7 @@ encoding-cp1252 = Western European — Windows-1252
 encoding-iso-8859-1 = Western European — ISO-8859-1
 error-subtitles = The subtitles cannot be shown: { $reason }
 error-subtitle-read = { $path } cannot be read ({ $reason })
+error-subtitle-too-large = { $path } is too large for a subtitle file (over 64 MiB)
 error-subtitle-encoding = the encoding of { $path } is not recognized: choose it in Subtitles → Encoding
 error-subtitle-empty = the file has no subtitle lines
 error-subtitle-bitmap = image subtitles are drawn by the player

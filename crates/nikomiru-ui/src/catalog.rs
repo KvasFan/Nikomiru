@@ -66,11 +66,13 @@ impl std::fmt::Debug for Cover {
 impl Cover {
     /// Decodes a JPEG or PNG cover.
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
-        let image = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
-        let rgba = image.to_rgba8();
+        // the limits of the dictionaries' images: a cover may come from the
+        // network (MET-001)
+        let pixels = crate::popup_view::decode_image(bytes)
+            .ok_or_else(|| "not an image Nikomiru reads, or too large".to_string())?;
         Ok(Self {
-            size: [rgba.width() as usize, rgba.height() as usize],
-            rgba: rgba.into_raw(),
+            size: pixels.size,
+            rgba: pixels.rgba,
         })
     }
 }
@@ -258,4 +260,28 @@ pub struct LibraryPage {
     pub series_info: Option<SeriesInfoRecord>,
     /// The series being identified online.
     pub identify: Option<Identify>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::new(width, height)
+            .write_to(&mut out, image::ImageFormat::Png)
+            .unwrap();
+        out.into_inner()
+    }
+
+    // a cover may come from the network (MET-001): it is decoded within limits
+    #[test]
+    fn covers_are_decoded_within_limits() {
+        let cover = Cover::decode(&png(320, 180)).unwrap();
+        assert_eq!(cover.size, [320, 180]);
+        assert_eq!(cover.rgba.len(), 320 * 180 * 4);
+        // wider than any screen: refused, not allocated
+        assert!(Cover::decode(&png(9000, 1)).is_err());
+        assert!(Cover::decode(b"<html>not an image</html>").is_err());
+    }
 }

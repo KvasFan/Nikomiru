@@ -25,6 +25,13 @@ fn key<'a>(text: &'a str, name: &str) -> &'a str {
 fn links_and_videos_open_with_nikomiru() {
     let text = entry();
     assert_eq!(key(&text, "Exec"), "nikomiru %U");
+    // the logo, installed as the hicolor icon `nikomiru`
+    assert_eq!(key(&text, "Icon"), "nikomiru");
+    assert!(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/brand/logo-light.svg")
+            .is_file()
+    );
     let types: Vec<&str> = key(&text, "MimeType")
         .split(';')
         .filter(|t| !t.is_empty())

@@ -224,12 +224,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-EXT-001 | Discovery of ffmpeg and encoders | Order: setting → `NIKOMIRU_FFMPEG` → `PATH` (fake scripts in temporary directories); a fake `-encoders` without `aac` → AAC format disabled with a warning, fallback to Opus | L4 |
 | T-EXT-002 | Arguments as a vector and `file:` prefix | argv snapshot; no invocation goes through `sh -c` (see also T-SEC-005) | L3 |
 | T-EXT-003 | Timeout and cancellation | Fake ffmpeg that sleeps 120 s → killed at the timeout; with cancellation, the process ends within 1 s and the partial files are removed | L4 |
-| T-PRV-001 | No unrequested network traffic | L6 suite under `strace -f -e trace=connect`: no `connect()` to non-loopback addresses if the user has not started network features | L6 |
+| T-PRV-001 | No unrequested network traffic | Without a network feature asked for, no request reaches a spy proxy and no internet socket is held (the hostile dictionary of T-SEC-001), and the fake online services receive nothing until the user asks (the identification of T-MET-001) | L6 |
 | T-PRV-002 | Clean logs | Flows with sentinel text in the subtitles and a sentinel API key: neither of the two appears in the log files | L4 |
 | T-MAINT-001 | Code quality | `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `#![deny(missing_docs)]` in library crates | CI |
-| T-MAINT-002 | Coverage | `cargo llvm-cov` ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` | CI |
-| T-PORT-001 | Wayland and X11 | The L6 smoke test passes both under headless Weston and under Xvfb | L6 |
-| T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds | CI |
+| T-MAINT-002 | Coverage | `cargo xtask coverage` (`cargo llvm-cov` with the L4 tests, the tests and fakes not counted, the profiles of killed children dropped) ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki`; on 2026-10-26: 96.2%, 96.8%, 92.3%, 95.5% | CI |
+| T-PORT-001 | Wayland and X11 | The L6 suite runs on Wayland (the off-screen KWin); the smoke test (a video, its first frame, a word looked up) also on X11 alone, through the same KWin's Xwayland | L6 |
+| T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds (a step of `cargo xtask ci --full`; the PKGBUILD builds with `--frozen`) | CI |
 
 ### 6.2 Text (`nikomiru-text`)
 
@@ -298,6 +298,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-LKP-001 | Scan start | Click on `l` in `hello world` → `hello world`; click on `語` in `日本語を` → `語を` | L1 |
 | T-LKP-002 | Delimiters and spaces | Stops at `。` and `「`; `listen to` stays joined (BUG-1773); `don't` stays joined (BUG-2056) | L1 |
+| T-LKP-003 | Normalization | Truncated to 2000 characters; a line break and an emoji become a space each; punctuation stripped at the ends | L1 |
 | T-LKP-004 | Candidates | At most 16 code points; no cut inside a Latin word; no prefix that ends with a space | L1/L2 |
 | T-LKP-020…024 | Deinflection (`mini-ja` + real `ja.json` tables) | `食べました` → `食べる`; `行かなかった` → `行く`; `読んでいる` → `読む` with the trace shown as `-て « -いる`; `書いた` → `書く`; `高くない` → `高い`; depth never > 10 (property) | L1/L4 |
 | T-LKP-023 | Empty rules | `mini-norules`: `食べました` finds `食べる` (BUG-2543) | L4 |
@@ -331,7 +332,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-POP-010 | Images | A PNG from the media table is decoded to its pixels, once per path; a nonexistent path, an SVG or a damaged file → alternative text only; a large image is scaled down to 1280 pixels; `..` → rejected; the drawn size keeps the aspect and the flow's width | L1 |
 | T-POP-011 | Internal links | The link text excludes `<rt>` (BUG-2456); a click on a link asks for a nested lookup next to it, or for the browser; only `http(s)` addresses are opened (L1); an external link reaches the `OpenURI` portal (spy portal on a private bus, L4) | L1, L4 |
 | T-POP-012 | Nesting | Depth 8 at most; Esc closes only the last one; a click on the parent closes the children. A drag across glossary text (one paragraph, or a line of runs with ruby, chips and links, the readings left out) looks the selection up in a child popup next to it and stays lit while that popup is open; a click still follows a link; the summary of a `details` does not select; a drag on text does not scroll the popup (`egui_kittest`) | L1 |
-| T-POP-013 | Kanji entry | View-model and AccessKit snapshot for `食` from `mini-kanji` | L3 |
+| T-POP-013 | Kanji entry | A kanji's own card: its readings, meanings, strokes and dictionary readable in the AccessKit tree (kittest) | L3 |
 | T-POP-014 | Keyboard | Tab, Enter, Ctrl+Enter, Esc, Alt+wheel (harness); with the Anki page over a popup, Ctrl+Enter makes no card and Esc closes the page, then the popup | L6 |
 | T-POP-015 | Replay and go to sentence | From the popup: "replay" restarts from the start of the cue and stops at the end; "go" closes the popup and takes the player to the start of the cue (harness) | L6 |
 
@@ -341,7 +342,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-SEC-001 | `mini-ja` entry `危険` with `<script>`, `on*` attributes, a remote `<img>` and a `javascript:` link, through the real import, lookup and popup content builder | Only allowlisted view-model nodes are produced: exactly the span's text and colour and a lookup link, every link a lookup or `http(s)`, every image a path inside the dictionary with decoded pixels, every style within the bounds of DIC-035 (L1); drawn with `egui_kittest` it opens nothing until the link is clicked, and the click is a lookup (L3); in the real app (`lookup`, `popup_content`) the same view model, and no network request (spy proxy, no internet socket held, L6) | L1/L3/L6 |
 | T-SEC-002 | Malicious ZIPs | See T-DIC-011 | L4 |
-| T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories (checked with inotify on the test `$HOME`) | L6 |
+| T-SEC-003 | Disk writes | During the whole L6 suite, no file created outside the isolated XDG directories and the test's export directories: the app's `$HOME` is an empty folder of its own, found empty when each test's desktop closes | L6 |
 | T-SEC-004 | Release build | `cargo tree -e normal,build,features -p nikomiru-app` without `test-harness`, `test_harness` or `test-support`; the release binary contains none of the harness's strings and starts, opens a file and quits on SIGTERM (L6) | L4 |
 | T-SEC-005 | Argument injection into ffmpeg | `-weird: name & spaces ü 日本.mkv` and `http:fake.mkv` are treated as local files; argv captured with a snapshot | L4 |
 | T-SEC-006 | Network isolation of the interface | No network-capable image loader is in the UI's graph (no egui_extras `http`); a remote image source injected into a glossary generates no network requests (spy proxy) | L6 |
@@ -462,6 +463,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-I18N-001 | Keys | Every Fluent key exists in `it` and `en` with the same `{ $var }` arguments (L1); every key is used and every key the code asks for exists, keys built from a prefix aside (`cargo xtask check-i18n`, in `ci`) | L1/L4 |
 | T-I18N-002 | No strings in code | `cargo xtask check-i18n`: no text literal shown by a widget in the views of `nikomiru-ui` (explicit exception list: examples to type, names of standards) | L4 |
 | T-A11Y-001 | Focus and accessibility | The player's controls as a screen reader finds them: an AT-SPI bus and registry started in the L6 desktop (at-spi2-core, GSettings in memory), the tree walked with the project's D-Bus client; every button, slider, combo box, check box and radio button has a name, and the bar's are all there | L6 |
+| T-A11Y-002 | Every page named | Through AT-SPI as T-A11Y-001: the popup, the eleven tabs of the settings, the library and its statistics; every control named, and each page with a control it must show | L6 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |
 
 ### 6.13 Online (M7)
@@ -497,9 +499,9 @@ They run nightly on REF (SPECIFICATION §7). The result is a failure if the thre
 
 | ID | Measure | Method | Threshold |
 |---|---|---|---|
-| T-PERF-01 | Cold start until `library-ready` | Harness, median of 10 runs (disk cache dropped with `vmtouch -e` or similar) | ≤ 1.5 s |
+| T-PERF-01 | Cold start until `library-ready` | Harness, median of 5 runs (the page cache is not dropped: that needs root) | ≤ 1.5 s |
 | T-PERF-02 | From `open` to `first-frame` | Harness | ≤ 1.0 s |
-| T-PERF-03 | Dropped frames and CPU during playback | `frame-drop-count`, `vo-delayed-frame-count` (mpv) and `/proc/<pid>/stat` for 5 min on `av_hd60_*` with the overlay visible | 0 dropped; CPU ≤ 25% of one core |
+| T-PERF-03 | Dropped frames and CPU during playback | `frame-drop-count`, `vo-delayed-frame-count` (mpv; the harness's `mpv_property`) and `/proc/<pid>/stat` for 5 min on `av_hd60_*` with the overlay visible. By hand on REF: the off-screen KWin of L6 draws with the CPU, and its numbers would say nothing of a real GPU | 0 dropped; CPU ≤ 25% of one core |
 | T-PERF-04 | Lookup in the engine | `cargo xtask bench` (release test `nikomiru-dict/tests/perf.rs`): synthetic dictionary ×5 + freq ×3 + pitch, 10k queries from a sentence corpus, percentiles of the single lookups | p95 ≤ 10 ms, p99 ≤ 25 ms |
 | T-PERF-05 | Import of 300k entries | `cargo xtask bench`: total time and `VmHWM` of each import, in its own process | ≤ 60 s; ≤ 1 GiB |
 | T-PERF-06 | From `click_grapheme` to `popup-rendered` | Harness, 100 clicks | p95 ≤ 100 ms |

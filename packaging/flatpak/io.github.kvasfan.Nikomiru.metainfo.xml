@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<component type="desktop-application">
+  <id>io.github.kvasfan.Nikomiru</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Nikomiru</name>
+  <summary>Watch videos in Japanese, look words up and make Anki cards</summary>
+  <summary xml:lang="it">Guarda video in giapponese, cerca le parole e crea carte Anki</summary>
+  <description>
+    <p>
+      Nikomiru is a video player for learning Japanese. Every word of the subtitles can be clicked to look it up in your Yomitan dictionaries, and turned into an Anki card in one click.
+    </p>
+    <ul>
+      <li>Clickable subtitles: SRT, ASS, WebVTT and the tracks inside the video</li>
+      <li>Yomitan dictionaries: terms, kanji, frequencies and pitch accent</li>
+      <li>Anki cards with the sentence, the frame, the audio of the line and a link back to the scene</li>
+      <li>Subtitles from Jimaku and OpenSubtitles, aligned with the audio</li>
+      <li>A library of your series, statistics of your study</li>
+      <li>The whole app works from the keyboard</li>
+    </ul>
+    <p>Nothing goes online unless you ask for it.</p>
+  </description>
+  <launchable type="desktop-id">io.github.kvasfan.Nikomiru.desktop</launchable>
+  <url type="homepage">https://github.com/KvasFan/nikomiru</url>
+  <url type="bugtracker">https://github.com/KvasFan/nikomiru/issues</url>
+  <developer id="io.github.kvasfan">
+    <name>Artem Sedletskyy</name>
+  </developer>
+  <screenshots>
+    <screenshot type="default">
+      <caption>A word looked up in the dictionary popup</caption>
+      <image>https://raw.githubusercontent.com/KvasFan/nikomiru/main/docs/images/popup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The settings of the Anki cards</caption>
+      <image>https://raw.githubusercontent.com/KvasFan/nikomiru/main/docs/images/anki-settings.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Education</category>
+  </categories>
+  <provides>
+    <binary>nikomiru</binary>
+  </provides>
+  <releases>
+    <release version="0.4.0" date="2026-10-26"/>
+    <release version="0.3.0" date="2026-10-25"/>
+    <release version="0.2.0" date="2026-10-25"/>
+    <release version="0.1.0" date="2026-10-25"/>
+  </releases>
+</component>

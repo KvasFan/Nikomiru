@@ -703,6 +703,18 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
     })?
 }
 
+/// A property of mpv, as text (T-PERF-03: `frame-drop-count`,
+/// `vo-delayed-frame-count`); `null` when mpv has none.
+pub fn mpv_property(name: &str) -> Result<Option<String>, String> {
+    let name = name.to_string();
+    call(move |ui| ui.session.player().property_string(&name))
+}
+
+/// The pointer moved over the window: the controls show (PLY-004).
+pub fn mouse_moved() -> Result<(), String> {
+    call(|ui| ui.run(Command::MouseMoved))
+}
+
 /// The "Advanced mining" dialog (ANK-040, ANK-041), as its controls do:
 /// `previous`, `next`, `drop-previous`, `drop-next`, `start`/`end` with
 /// `value` in ms, `frame-click`, `frame-start`, `frame-none`, `audio-on`,

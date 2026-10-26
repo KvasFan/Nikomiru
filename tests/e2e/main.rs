@@ -8,6 +8,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod drag;
+mod perf;
 mod support;
 
 use std::time::Duration;
@@ -136,7 +137,8 @@ fn s_saves_the_frame_shown_in_the_pictures_folder() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014 (Ctrl+Enter), T-PERF-08
+// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014, T-PERF-08
+// (T-POP-014: Ctrl+Enter)
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_card_is_made_from_the_popup() {
@@ -1364,7 +1366,7 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-SEC-001, T-SEC-006
+// T-SEC-001, T-SEC-006, T-PRV-001
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_hostile_dictionary_entry_shows_only_what_the_allowlist_lets_through() {
@@ -2367,7 +2369,8 @@ fn a_screen_reader_finds_every_control_named() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-MET-001, T-MET-003: a series identified on AniList, its cover kept, and
+// T-MET-001, T-MET-003, T-PRV-001
+// a series identified on AniList, its cover kept, and
 // Jimaku asked by its AniList id; a title that is not exact lets the user choose
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -2518,4 +2521,88 @@ fn a_series_is_identified_online_and_its_subtitles_found_by_id() {
     );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-PORT-001 (NFR-PORT-01): the same smoke test on X11, through Xwayland
+#[test]
+#[ignore = "L6: needs kwin_wayland with Xwayland, dbus-daemon and `cargo xtask fixtures`"]
+fn on_x11_a_video_plays_and_a_word_is_looked_up() {
+    let mut desk = Desktop::start_x11();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("first-frame");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    let s = h.state();
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-A11Y-002: every page's controls named for a screen reader: the popup,
+// each tab of the settings, the library and its statistics
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, at-spi2-core and `cargo xtask fixtures`"]
+fn a_screen_reader_finds_every_page_named() {
+    let mut desk = Desktop::start();
+    let a11y = desk.start_accessibility();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(
+        "[general]\nui_language = \"en\"\n[player]\nmpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    const CONTROLS: [u32; 5] = [7, 11, 43, 44, 51];
+    let mut unnamed: Vec<String> = Vec::new();
+    // each page with a control it must show, so that its tree is there
+    let mut look = |page: &str, expected: &str, unnamed: &mut Vec<String>| {
+        std::thread::sleep(Duration::from_millis(700));
+        let tree = accessible_tree(&a11y);
+        if !tree.iter().any(|(_, name)| name == expected) {
+            unnamed.push(format!("{page}: no {expected:?} in {tree:?}"));
+        }
+        let n = tree
+            .iter()
+            .filter(|(role, name)| CONTROLS.contains(role) && name.trim().is_empty())
+            .count();
+        if n > 0 {
+            unnamed.push(format!("{page}: {n} unnamed in {tree:?}"));
+        }
+    };
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    look("popup", "↻ Replay", &mut unnamed);
+    h.key("Escape");
+    for (tab, expected) in [
+        ("general", "Save"),
+        ("player", "Apply"),
+        ("subtitles", "Reset"),
+        ("services", "Show the keys and the password"),
+        ("dictionaries", "Import…"),
+        ("lookup", "Save"),
+        ("audio", "Add a source"),
+        ("anki", "Test the connection"),
+        ("shortcuts", "Add a key to Play/pause"),
+        ("advanced", "Copy"),
+        ("about", "GPL-3.0-only"),
+    ] {
+        h.cmd(serde_json::json!({ "cmd": "settings", "tab": tab }));
+        h.state_until("the tab", |s| s["settings_tab"] == tab);
+        look(tab, expected, &mut unnamed);
+    }
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    look("library", "Add folder…", &mut unnamed);
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "statistics" }));
+    h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
+    look("statistics", "Export CSV…", &mut unnamed);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(unnamed.is_empty(), "{}", unnamed.join("\n\n"));
 }

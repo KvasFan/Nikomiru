@@ -60,12 +60,17 @@ impl GlWindow {
             .with_title(title)
             .with_inner_size(LogicalSize::new(1280.0, 720.0))
             .with_visible(false);
-        // the Wayland app id and the X11 class: the `.desktop` file's name (APP-002)
+        // the Wayland app id and the X11 class: the `.desktop` file's name
+        // (APP-002), which a Flatpak names after its id (D-5)
+        let app_id = std::env::var("FLATPAK_ID")
+            .ok()
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| "nikomiru".to_string());
         attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
-            attributes, "nikomiru", "nikomiru",
+            attributes, &app_id, "nikomiru",
         );
         attributes = winit::platform::x11::WindowAttributesExtX11::with_name(
-            attributes, "nikomiru", "nikomiru",
+            attributes, &app_id, "nikomiru",
         );
         if let Some(token) = token {
             attributes = attributes.with_activation_token(ActivationToken::from_raw(token));

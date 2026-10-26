@@ -84,6 +84,8 @@ Version 0.4.0 is an alpha for Linux. The status of each area follows the [ROADMA
 
 ## Quick start
 
+The [user guide](docs/guide/en.md) ([in Italian](docs/guide/it.md)) covers everything below in more detail. On Arch Linux, `packaging/aur/PKGBUILD` builds a package (`makepkg -si`).
+
 You need Rust through `rustup` (the version is pinned in `rust-toolchain.toml`) and these system libraries: libmpv ≥ 0.37, FFmpeg ≥ 6, OpenGL with EGL (Mesa or NVIDIA's driver), the Wayland or X11 client libraries and libxkbcommon, fontconfig, OpenSSL 3 and a font with Japanese glyphs (for example Noto Sans CJK). Building also needs the development files of libmpv and OpenSSL, and `pkg-config`.
 
 ```sh
@@ -123,11 +125,14 @@ cargo install --locked cargo-about --features cli
 
 | Command | What it does |
 |---|---|
-| `cargo xtask ci` | fmt, clippy `-D warnings`, architecture checks, licenses (`cargo deny`), traceability, tests |
-| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests, the release build, the GUI end-to-end tests (L6, in an off-screen `kwin_wayland` on a private `dbus-daemon`; the accessibility test also needs at-spi2-core) and `THIRD_PARTY_LICENSES.html` |
+| `cargo xtask ci` | fmt, clippy `-D warnings`, architecture checks, interface strings, licenses (`cargo deny`), traceability, tests |
+| `cargo xtask ci --full` | as above, plus fixtures, L4/L5 tests, the offline build, the release build, the GUI end-to-end tests (L6, in an off-screen `kwin_wayland` on a private `dbus-daemon`; the accessibility test also needs at-spi2-core) and `THIRD_PARTY_LICENSES.html` |
 | `cargo xtask fixtures [--large] [--perf]` | generates test media and dictionaries in `target/fixtures/` (requires `ffmpeg`) |
 | `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
 | `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |
+| `cargo xtask coverage` | line coverage of the logic crates with `cargo-llvm-cov`, at least 80% each |
+| `cargo xtask flatpak` | the Flatpak of the last commit (`packaging/flatpak`), into `target/nikomiru.flatpak` |
+| `cargo xtask check-i18n` | every interface string used and translated, no untranslated text in the views |
 | `cargo xtask install [--prefix DIR]` | builds the release binary into `DIR/bin` (default `~/.local`) and installs the desktop entry |
 
 The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<folder> cargo test -p nikomiru-app --features test-harness --test e2e -- --include-ignored screenshots_of_the_interface`.

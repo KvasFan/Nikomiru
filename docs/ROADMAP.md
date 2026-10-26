@@ -383,6 +383,16 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Optimization until all T-PERF pass on REF.
 - Cleanup of the P1/P2 bug backlog.
 
+**Status as of 2026-10-26**
+
+- Done: the PKGBUILD in `packaging/aur` (built and checked with `makepkg` and `namcap`: the program, the desktop entry with its icon, `THIRD_PARTY_LICENSES.html` where Settings → About finds it, the logic's tests in `check()`); the user guide in `docs/guide/` (English and Italian); the desktop entry's icon.
+- Done: the security review (`docs/security-review-1.0.md`): every entry point of external data and every `unsafe` block; two findings fixed (covers decoded within limits, subtitle files bounded to 64 MiB); `cargo deny check advisories` clean.
+- Done: T-PERF-01 (start → library, median 0.45 s), T-PERF-02 (open → first frame of the 1080p60 files: 0.19 s and 0.06 s), T-PERF-09 (152 MiB at rest) in the L6 suite; T-SEC-003: the app's HOME stays empty through the whole L6 suite.
+- Done: NFR-MAINT-02 (`cargo xtask coverage`: 92–97% of the lines of the logic crates), NFR-PORT-01 (the smoke test on X11 through Xwayland; the offline build in `ci --full`).
+- Done: the Flatpak (`packaging/flatpak`): freedesktop 26.08, whose FFmpeg has the programs and encoders of the cards; libass, libplacebo and libmpv built in it; the crates as offline sources (`cargo xtask flatpak-sources`); `cargo xtask flatpak` builds a bundle. Built, its libraries resolved, its manifest and AppStream file passing `flatpak-builder-lint`.
+- Done: the accessibility review (`docs/accessibility-review-1.0.md`), with T-A11Y-002: every page's controls named for a screen reader.
+- Open: publishing on the AUR and on Flathub (the maintainer's accounts), the Flatpak run on a desktop, T-PERF-03 by hand on REF, the bug backlog (no issue open on 2026-10-26), the manual checklist of TEST §9.
+
 **Exit criteria**
 
 - [ ] All automatic tests green; no open P1 bugs.
