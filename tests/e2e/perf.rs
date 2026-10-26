@@ -181,3 +181,69 @@ fn l7_perf_playback_drops_no_frame() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     assert!(failures.is_empty(), "T-PERF-03: {failures:#?}");
 }
+
+// T-REL-003: a long session keeps its memory: a 10-minute file played in a
+// loop, a word looked up every 20 s, the settings and another file every
+// 5 minutes; the resident memory at the end is at most 64 MiB above its
+// highest point of the first 10 minutes. Two hours by default
+// (`NIKOMIRU_SOAK_MINUTES`); in the off-screen KWin, not in the L6 suite.
+#[test]
+#[ignore = "L7: two hours; run by hand before a release"]
+fn l7_soak_a_long_session_keeps_its_memory() {
+    let minutes: u64 = std::env::var("NIKOMIRU_SOAK_MINUTES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(120);
+    let fixture = |name: &str| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/fixtures")
+            .join(name)
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    };
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config("[player]\nmpv_options = { ao = \"null\", loop-file = \"inf\" }\n");
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open(&fixture("av_long.mkv"));
+    h.wait("first-frame");
+    let started = Instant::now();
+    let (mut warm, mut samples) = (0u64, Vec::new());
+    let mut last_sample = Duration::ZERO;
+    let mut round = 0u64;
+    while started.elapsed() < Duration::from_secs(minutes * 60) {
+        round += 1;
+        h.cmd(serde_json::json!({ "cmd": "lookup", "text": "食べました" }));
+        h.wait("popup-rendered");
+        h.key("Escape");
+        if round % 15 == 0 {
+            // every 5 minutes: the settings, another file and back
+            h.cmd(serde_json::json!({ "cmd": "settings", "tab": "dictionaries" }));
+            std::thread::sleep(Duration::from_millis(500));
+            h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+            h.open(&fixture("av_basic.mkv"));
+            h.wait("first-frame");
+            h.open(&fixture("av_long.mkv"));
+            h.wait("first-frame");
+        }
+        std::thread::sleep(Duration::from_secs(20));
+        if started.elapsed() - last_sample >= Duration::from_secs(60) {
+            last_sample = started.elapsed();
+            let rss = rss_mib(app.id());
+            if started.elapsed() <= Duration::from_secs(600) {
+                warm = warm.max(rss);
+            }
+            samples.push(rss);
+        }
+    }
+    let end = rss_mib(app.id());
+    eprintln!(
+        "T-REL-003 RSS by minute (MiB): {samples:?}; first 10 min at most {warm}, at the end {end}"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(end <= warm + 64, "T-REL-003: {warm} MiB → {end} MiB");
+}
