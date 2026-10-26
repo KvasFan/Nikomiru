@@ -99,7 +99,8 @@ const WAYLAND: &str = "wayland-e2e";
 impl Desktop {
     pub fn start() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        for sub in ["config", "state", "data", "cache", "run"] {
+        // `home` is the app's HOME: T-SEC-003 finds it empty at the end
+        for sub in ["config", "state", "data", "cache", "run", "home"] {
             std::fs::create_dir_all(dir.path().join(sub)).unwrap();
         }
         let run = dir.path().join("run");
@@ -410,7 +411,7 @@ impl Desktop {
         let mut cmd = Command::new(binary);
         cmd.args(args)
             .env_clear()
-            .env("HOME", self.dir.path())
+            .env("HOME", self.path("home"))
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("LANG", "C.UTF-8")
             .env("XDG_CONFIG_HOME", self.path("config"))
@@ -519,6 +520,25 @@ impl Desktop {
 
 impl Drop for Desktop {
     fn drop(&mut self) {
+        // T-SEC-003 (NFR-SEC-02): nothing written outside the XDG folders
+        // and those the test chose, checked once the app is gone
+        if !std::thread::panicking() && self.leftover_apps().is_empty() {
+            let mut written = Vec::new();
+            let mut todo = vec![self.path("home")];
+            while let Some(dir) = todo.pop() {
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                        todo.push(entry.path());
+                    } else {
+                        written.push(entry.path());
+                    }
+                }
+            }
+            assert!(
+                written.is_empty(),
+                "T-SEC-003: written in HOME: {written:?}"
+            );
+        }
         // a failed test may leave its app running: it must not outlive the desktop
         for pid in self.leftover_apps() {
             let _ = Command::new("kill")

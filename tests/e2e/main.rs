@@ -8,6 +8,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod drag;
+mod perf;
 mod support;
 
 use std::time::Duration;
@@ -136,7 +137,8 @@ fn s_saves_the_frame_shown_in_the_pictures_folder() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014 (Ctrl+Enter), T-PERF-08
+// T-ANK-030, T-ANK-036, T-ANK-037, T-ANK-039, T-POP-014, T-PERF-08
+// (T-POP-014: Ctrl+Enter)
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_card_is_made_from_the_popup() {

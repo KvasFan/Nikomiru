@@ -135,6 +135,9 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
+        Some("mpv_property") => harness::mpv_property(text(command, "name")?)
+            .map(|v| v.map_or(Value::Null, Value::String)),
+        Some("mouse_moved") => harness::mouse_moved().map(|()| Value::Null),
         Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
             .map(|()| Value::Null),
         Some("settings") => {

@@ -1364,6 +1364,12 @@ impl Session {
         &self.services.logs_dir
     }
 
+    /// A property of mpv, as text (the test harness).
+    #[cfg(feature = "test-harness")]
+    pub fn player_property(&self, name: &str) -> Option<String> {
+        self.services.player.property_string(name)
+    }
+
     /// The shortcut editor starts or stops waiting for a key (KEY-001).
     pub fn shortcut_capture(&mut self, on: bool) {
         self.capturing = on;

@@ -387,7 +387,8 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 - Done: the PKGBUILD in `packaging/aur` (built and checked with `makepkg` and `namcap`: the program, the desktop entry with its icon, `THIRD_PARTY_LICENSES.html` where Settings → About finds it, the logic's tests in `check()`); the user guide in `docs/guide/` (English and Italian); the desktop entry's icon.
 - Done: the security review (`docs/security-review-1.0.md`): every entry point of external data and every `unsafe` block; two findings fixed (covers decoded within limits, subtitle files bounded to 64 MiB); `cargo deny check advisories` clean.
-- Open: publishing on the AUR (the maintainer's account), the Flatpak (it needs `org.flatpak.Builder` and the freedesktop runtimes, several GB), the accessibility review, T-PERF on REF, the bug backlog, the manual checklist of TEST §9.
+- Done: T-PERF-01 (start → library, median 0.45 s), T-PERF-02 (open → first frame of the 1080p60 files: 0.19 s and 0.06 s), T-PERF-09 (152 MiB at rest) in the L6 suite; T-SEC-003: the app's HOME stays empty through the whole L6 suite.
+- Open: publishing on the AUR (the maintainer's account), the Flatpak (it needs `org.flatpak.Builder` and the freedesktop runtimes, several GB), T-PERF-03 by hand on REF, the accessibility review, T-PERF on REF, the bug backlog, the manual checklist of TEST §9.
 
 **Exit criteria**
 
