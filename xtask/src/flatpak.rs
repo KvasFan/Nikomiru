@@ -105,7 +105,6 @@ pub fn build(root: &Path) -> Result<()> {
         std::process::Command::new("flatpak")
             .args([
                 "run",
-                "--filesystem=host",
                 "org.flatpak.Builder",
                 "--user",
                 "--force-clean",
