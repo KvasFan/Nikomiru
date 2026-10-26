@@ -288,6 +288,9 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// The rows of the subtitle list in view changed: their words are
+    /// wanted (LKP-061).
+    ListRows(Vec<usize>),
     PopupLookup {
         level: usize,
         text: String,
@@ -932,6 +935,7 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::ListRows(cues) => s.list_rows(&cues),
             Command::PopupLookup {
                 level,
                 text,

@@ -67,7 +67,7 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 - **Seleziona del testo** in una definizione per cercarlo in un popup annidato.
 - **Riascolta** ripete la battuta; **Vai alla frase** salta al suo inizio.
 - **♪** riproduce la parola stessa, se hai impostato una fonte in Impostazioni → Audio delle parole.
-- **Le parole che hai già minato** sono sottolineate in verde nei sottotitoli. In Impostazioni → Sottotitoli puoi spegnere la sottolineatura, o accendere le letture sopra i kanji. Entrambe vengono dai tuoi dizionari, che dividono ogni battuta in parole: dove una parola è tagliata male, anche la sua lettura può essere sbagliata.
+- **Le parole che hai già minato** sono sottolineate in verde nei sottotitoli e nella lista dei sottotitoli. In Impostazioni → Sottotitoli puoi spegnere la sottolineatura, o accendere le letture sopra i kanji. Entrambe vengono dai tuoi dizionari, che dividono ogni battuta in parole: dove una parola è tagliata male, anche la sua lettura può essere sbagliata.
 
 ## 5. Carte Anki
 

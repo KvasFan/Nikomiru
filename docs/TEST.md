@@ -317,7 +317,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LKP-043 | Pitch accent deduplication | 2 dictionaries with an identical payload → 1 row "pitch accent · 2" | L1 |
 | T-LKP-060 | Segmentation | `日本語を勉強します` → [`日本語`, `を`, `勉強`, `します`] with `mini-ja`; punctuation and unknown text in one piece; the popup's cache untouched. In the session: each text asked once, an answer of older dictionaries dropped; ← → step by word | L4, L1 |
 | T-LKP-051 | Furigana on the subtitles | `食べた` under `食べる`/`たべる` → `[食|た][べた]`; written in kana → no reading; the overlay draws the readings over their graphemes, a cue's own ruby wins | L1, L3 |
-| T-LKP-061 | Words already mined | The headwords of `mined_cards`; a word whose headword has a card is underlined, also inflected; a card just made underlines at once | L1, L3 |
+| T-LKP-061 | Words already mined | The headwords of `mined_cards`; a word whose headword has a card is underlined, also inflected; a card just made underlines at once; the subtitle list underlines them too and asks once for the words of the rows in view | L1, L3 |
 | T-FUZZ-004 | Deinflector and lookup on arbitrary Unicode strings | No panic; time per query ≤ 50 ms | L2 |
 
 ### 6.6 Popup

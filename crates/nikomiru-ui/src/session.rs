@@ -4100,6 +4100,31 @@ impl Session {
         self.words.done(generation, text, result);
     }
 
+    /// The rows of the subtitle list in view: their words are split, to
+    /// underline the mined ones (LKP-061).
+    pub fn list_rows(&mut self, cues: &[usize]) {
+        if !self.services.config.subtitles.mark_mined {
+            return;
+        }
+        for &i in cues {
+            if let Some(cue) = self.subs.cue(i) {
+                self.words.ask(&cue.plain_text);
+            }
+        }
+    }
+
+    /// The words of `text` already made into cards, in bytes, while they are
+    /// underlined (LKP-061).
+    pub fn mined_words(&self, text: &str) -> Vec<std::ops::Range<usize>> {
+        if !self.services.config.subtitles.mark_mined {
+            return Vec::new();
+        }
+        self.words
+            .marks(text, false, true)
+            .map(|m| m.mined)
+            .unwrap_or_default()
+    }
+
     /// What the overlay marks over `text` (LKP-051, LKP-061).
     pub fn word_marks(&self, text: &str) -> Option<crate::words::Marks> {
         let c = &self.services.config.subtitles;

@@ -67,7 +67,7 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 - **Select text** in a definition to look it up in a nested popup.
 - **Replay** plays the line again; **Go to the sentence** jumps to its start.
 - **♪** plays the word itself, if you set up a word audio source in Settings → Word audio.
-- **Words you already mined** are underlined in green in the subtitles. In Settings → Subtitles you can turn that off, or turn on readings over the kanji. Both come from your dictionaries, which split each line into words: where a word is cut wrong, its reading can be wrong too.
+- **Words you already mined** are underlined in green in the subtitles and in the subtitle list. In Settings → Subtitles you can turn that off, or turn on readings over the kanji. Both come from your dictionaries, which split each line into words: where a word is cut wrong, its reading can be wrong too.
 
 ## 5. Anki cards
 

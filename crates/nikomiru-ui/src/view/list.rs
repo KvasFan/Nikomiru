@@ -2,11 +2,13 @@
 
 //! The subtitle list (SUB-015): every cue with its time, the current one
 //! highlighted, search, a click on the time seeks and a click on the text looks
-//! the word up.
+//! the word up. The words already made into cards are underlined (LKP-061);
+//! readings are not drawn here, as they would change the rows' heights.
 //!
 //! A film has a few thousand cues: their heights are measured once per list,
 //! query and width, and only the rows in view are laid out and drawn.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use egui::text::{CCursorRange, LayoutJob};
@@ -24,6 +26,8 @@ use crate::session::Session;
 use crate::subtitles::clock;
 use crate::ui::Command;
 
+/// The underline of the words already made into cards, as in the overlay.
+const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
 const BACKGROUND: Color32 = Color32::from_rgba_unmultiplied_const(0x14, 0x14, 0x18, 0xe6);
 const CURRENT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x3a);
 const TIME: Color32 = Color32::from_rgb(0x9a, 0xb8, 0xff);
@@ -61,6 +65,8 @@ pub(crate) struct State {
     followed: Option<(u64, usize)>,
     /// The search field had the keyboard in the last frame.
     search_focused: bool,
+    /// The cues of the rows in view, last asked for their words.
+    asked: Vec<usize>,
     /// The rows drawn in the last frame.
     #[cfg(test)]
     drawn: Vec<Drawn>,
@@ -75,6 +81,7 @@ struct Drawn {
     text: Rect,
     galley: Arc<Galley>,
     current: bool,
+    mined: usize,
 }
 
 /// What the list shows: the session's part of it.
@@ -87,6 +94,8 @@ pub(crate) struct Scene<'a> {
     pub title: String,
     pub search_hint: String,
     pub close: String,
+    /// The bytes of a text's words already made into cards (LKP-061).
+    pub mined: &'a dyn Fn(&str) -> Vec<Range<usize>>,
 }
 
 fn text_job(text: &str, width: f32) -> LayoutJob {
@@ -183,6 +192,27 @@ fn char_at(galley: &Galley, pos: Vec2) -> Option<usize> {
     None
 }
 
+/// The rects of chars `chars` of `galley`, one per row they are on.
+fn char_rects(galley: &Galley, chars: Range<usize>) -> Vec<Rect> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for row in &galley.rows {
+        let count = row.glyphs.len();
+        let (from, to) = (chars.start.max(start), chars.end.min(start + count));
+        if from < to {
+            let glyphs = &row.glyphs[from - start..to - start];
+            let left = glyphs[0].pos.x;
+            let right = glyphs.iter().map(|g| g.max_x()).fold(left, f32::max);
+            out.push(Rect::from_min_max(
+                row.pos + vec2(left, 0.0),
+                row.pos + vec2(right, row.size.y),
+            ));
+        }
+        start += count + usize::from(row.ends_with_newline);
+    }
+    out
+}
+
 /// Draws the list on the right, from the top down to the control bar.
 /// Returns whether it stays open.
 pub(crate) fn show(
@@ -194,6 +224,7 @@ pub(crate) fn show(
     out: &mut Vec<Command>,
 ) -> bool {
     let tr = |id: &str| s.translator().tr(id, &[]);
+    let mined = |text: &str| s.mined_words(text);
     let scene = Scene {
         timeline: s.subs.timeline(),
         version: s.sub_list_version,
@@ -201,6 +232,7 @@ pub(crate) fn show(
         title: tr("subtitle-list"),
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
+        mined: &mined,
     };
     draw(ctx, &scene, state, search_focus, bar_height, out)
 }
@@ -301,7 +333,13 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
             let painter = ui.painter().clone();
             #[cfg(test)]
             state.drawn.clear();
-            for k in rows.between(viewport.min.y, viewport.max.y) {
+            let in_view = rows.between(viewport.min.y, viewport.max.y);
+            let cues: Vec<usize> = rows.cues[in_view.clone()].to_vec();
+            if cues != state.asked {
+                state.asked.clone_from(&cues);
+                out.push(Command::ListRows(cues));
+            }
+            for k in in_view {
                 let cue = rows.cues[k];
                 let rect = rows.rect(k, origin);
                 if current == Some(k) {
@@ -328,6 +366,20 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 let at = rect.min + vec2(TEXT_X, PAD);
                 let text_rect = Rect::from_min_size(at, text.size());
                 painter.galley(at, Arc::clone(&text), Color32::WHITE);
+                let underlines: Vec<Rect> = (scene.mined)(plain)
+                    .into_iter()
+                    .flat_map(|bytes| {
+                        let char_of = |b: usize| plain.get(..b).map_or(0, |s| s.chars().count());
+                        char_rects(&text, char_of(bytes.start)..char_of(bytes.end))
+                    })
+                    .map(|r| {
+                        Rect::from_min_max(pos2(r.min.x, r.max.y - 2.0), r.max)
+                            .translate(at.to_vec2())
+                    })
+                    .collect();
+                for line in &underlines {
+                    painter.rect_filled(*line, 1.0, MINED);
+                }
                 let clicked = ui
                     .interact(text_rect, id.with("text"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand);
@@ -353,6 +405,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     text: text_rect,
                     galley: text,
                     current: current == Some(k),
+                    mined: underlines.len(),
                 });
             }
 
@@ -427,6 +480,11 @@ mod tests {
                         title: "Subtitle list".into(),
                         search_hint: "Search".into(),
                         close: "Close".into(),
+                        mined: &|text: &str| {
+                            text.match_indices('猫')
+                                .map(|(i, m)| i..i + m.len())
+                                .collect()
+                        },
                     };
                     if !draw(
                         ui.ctx(),
@@ -455,7 +513,11 @@ mod tests {
         h.drag_at(at);
         h.drop_at(at);
         h.run();
+        // the rows in view asked for their words are not the click's
         std::mem::take(&mut h.state_mut().out)
+            .into_iter()
+            .filter(|c| !matches!(c, Command::ListRows(_)))
+            .collect()
     }
 
     fn drawn(h: &Harness<'_, Test>) -> Vec<(usize, bool)> {
@@ -558,5 +620,28 @@ mod tests {
         let current = h.state().state.drawn.iter().find(|d| d.current).cloned();
         let row = current.map(|d| d.row).unwrap_or(Rect::NOTHING);
         assert!(row.min.y >= 0.0 && row.max.y <= 720.0, "{row:?}");
+    }
+
+    // T-LKP-061
+    #[test]
+    fn the_words_already_mined_are_underlined_and_the_rows_in_view_asked() {
+        let mut h = harness(
+            timeline(&[(1000, "猫が好き"), (3000, "犬"), (5000, "猫と猫")]),
+            0,
+            false,
+        );
+        h.run();
+        let mined: Vec<usize> = h.state().state.drawn.iter().map(|d| d.mined).collect();
+        assert_eq!(mined, [1, 0, 2]);
+        let asked: Vec<_> = h
+            .state()
+            .out
+            .iter()
+            .filter_map(|c| match c {
+                Command::ListRows(cues) => Some(cues.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(asked, [vec![0, 1, 2]], "once, until the rows change");
     }
 }

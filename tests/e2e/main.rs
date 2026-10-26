@@ -2584,6 +2584,12 @@ fn the_words_of_a_subtitle_get_readings_and_a_card_an_underline() {
     if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
         std::thread::sleep(Duration::from_millis(300));
         desk.capture(&std::path::Path::new(&dir).join("words.png"));
+        h.key("Escape");
+        h.key("KeyL");
+        h.state_until("the list", |s| s["sub_list_open"] == true);
+        std::thread::sleep(Duration::from_millis(500));
+        desk.capture(&std::path::Path::new(&dir).join("words-list.png"));
+        h.key("KeyL");
     }
     // turned off in the settings, without a restart
     h.cmd(serde_json::json!({
