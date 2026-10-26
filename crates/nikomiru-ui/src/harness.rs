@@ -707,7 +707,7 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
 /// `vo-delayed-frame-count`); `null` when mpv has none.
 pub fn mpv_property(name: &str) -> Result<Option<String>, String> {
     let name = name.to_string();
-    call(move |ui| ui.session.player_property(&name))
+    call(move |ui| ui.session.player().property_string(&name))
 }
 
 /// The pointer moved over the window: the controls show (PLY-004).
