@@ -7,6 +7,7 @@
 //! registry writes.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -65,7 +66,7 @@ impl Dictionaries {
     pub fn start(
         manager: Arc<DictionaryManager>,
         translator: Translator,
-        max_results: usize,
+        max_results: Arc<AtomicUsize>,
     ) -> Self {
         let (jobs, rx) = mpsc::channel::<(String, Done<Reply>)>();
         let worker_manager = Arc::clone(&manager);
@@ -75,7 +76,8 @@ impl Dictionaries {
             .spawn(move || {
                 for (text, done) in rx {
                     let started = std::time::Instant::now();
-                    let result = render(&worker_manager, &text, max_results)
+                    let limit = max_results.load(Ordering::Relaxed);
+                    let result = render(&worker_manager, &text, limit)
                         .map_err(|e| worker_translator.error(&e));
                     tracing::debug!(query = %text, elapsed = ?started.elapsed(), "lookup");
                     done(result);

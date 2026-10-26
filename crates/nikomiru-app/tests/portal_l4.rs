@@ -418,3 +418,87 @@ fn web_links_go_to_the_open_uri_portal() {
         }
     );
 }
+
+// T-SET-003: the system theme follows the desktop's color scheme
+#[test]
+fn the_color_scheme_is_read_and_followed() {
+    let bus = Bus::start();
+    let mut portal = bus.connect();
+    let reply = portal
+        .call(
+            Message::call(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "RequestName",
+            )
+            .with_body(vec![
+                Value::Str("org.freedesktop.portal.Desktop".into()),
+                Value::U32(4),
+            ]),
+        )
+        .unwrap();
+    assert_eq!(reply.body, [Value::U32(1)]);
+    // an older portal: no `ReadOne`, `Read` wraps the value twice
+    std::thread::spawn(move || {
+        while let Ok(msg) = portal.receive() {
+            if msg.kind != Kind::MethodCall {
+                continue;
+            }
+            let answer = match msg.member.as_deref() {
+                Some("Read") => Message::reply_to(
+                    &msg,
+                    vec![Value::Variant(Box::new(Value::Variant(Box::new(
+                        Value::U32(1),
+                    ))))],
+                ),
+                _ => {
+                    let mut e = Message::reply_to(&msg, Vec::new());
+                    e.kind = Kind::Error;
+                    e.error_name = Some("org.freedesktop.DBus.Error.UnknownMethod".into());
+                    e
+                }
+            };
+            portal.send(&answer).unwrap();
+            if msg.member.as_deref() == Some("Read") {
+                // the user turns the desktop light
+                let changed = Message::signal(
+                    "/org/freedesktop/portal/desktop",
+                    "org.freedesktop.portal.Settings",
+                    "SettingChanged",
+                )
+                .with_body(vec![
+                    Value::Str("org.freedesktop.appearance".into()),
+                    Value::Str("color-scheme".into()),
+                    Value::Variant(Box::new(Value::U32(2))),
+                ]);
+                portal.send(&changed).unwrap();
+            }
+        }
+    });
+    let (tx, rx) = mpsc::channel();
+    let address = bus.address.clone();
+    nikomiru_app::appearance::follow(
+        move || Connection::open(&address),
+        move |dark| {
+            let _ = tx.send(dark);
+        },
+    );
+    let seen = |rx: &mpsc::Receiver<Option<bool>>| rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(seen(&rx), Some(true));
+    assert_eq!(seen(&rx), Some(false));
+}
+
+#[test]
+fn without_a_portal_there_is_no_preference() {
+    let bus = Bus::start();
+    let (tx, rx) = mpsc::channel();
+    let address = bus.address.clone();
+    nikomiru_app::appearance::follow(
+        move || Connection::open(&address),
+        move |dark| {
+            let _ = tx.send(dark);
+        },
+    );
+    assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), None);
+}

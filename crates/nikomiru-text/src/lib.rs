@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod count;
 pub mod filename;
 pub mod furigana;
 pub mod hangul;

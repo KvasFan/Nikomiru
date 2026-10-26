@@ -122,6 +122,97 @@ pub enum CardAction {
     Overwrite(u64),
 }
 
+/// The picture of a card (ANK-034, ANK-040).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameChoice {
+    /// The frame of the click, saved by the player.
+    #[default]
+    Click,
+    /// The frame at this position of the video, in ms.
+    At(i64),
+    /// No picture.
+    None,
+}
+
+/// The picture chosen in the "Advanced mining" dialog (ANK-040).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameKind {
+    /// The frame of the click.
+    #[default]
+    Click,
+    /// The frame at the start of the sentence.
+    SentenceStart,
+    /// No picture.
+    None,
+}
+
+/// The "Advanced mining" dialog (ANK-040, ANK-041): the card of an entry
+/// with its sentence, clip, picture and audio chosen by hand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdvancedCard {
+    /// The popup.
+    pub level: usize,
+    /// The entry.
+    pub entry: usize,
+    /// The word, for the title.
+    pub expression: String,
+    /// The reference cue (ANK-031), and the cues merged around it.
+    pub reference: Option<usize>,
+    /// The first cue of the sentence.
+    pub first: usize,
+    /// The last one.
+    pub last: usize,
+    /// The sentence: the merged cues, a line each.
+    pub sentence: String,
+    /// The word's place in it (ANK-024).
+    pub offset: Option<usize>,
+    /// The clip in player ms; `None` without a cue.
+    pub clip: Option<(i64, i64)>,
+    /// The picture.
+    pub frame: FrameKind,
+    /// The sentence audio goes with the card.
+    pub audio: bool,
+    /// A cue before the first, or after the last, can be added.
+    pub can_previous: bool,
+    /// See `can_previous`.
+    pub can_next: bool,
+}
+
+/// A change in the "Advanced mining" dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvancedEdit {
+    /// The cue before the sentence added (`true`) or its first cue taken
+    /// away (ANK-041).
+    Previous(bool),
+    /// The cue after it added, or its last cue taken away.
+    Next(bool),
+    /// The clip's start, in player ms.
+    Start(i64),
+    /// The clip's end.
+    End(i64),
+    /// The picture.
+    Frame(FrameKind),
+    /// With the sentence audio or without.
+    Audio(bool),
+    /// Plays the clip.
+    Preview,
+    /// Makes the card.
+    Create,
+    /// Closes the dialog.
+    Cancel,
+}
+
+/// The sentence of `lines` (the cues merged, ANK-041), a line each, and the
+/// word's `offset` in line `reference` moved to its place in it.
+pub fn merge_sentence(
+    lines: &[&str],
+    reference: usize,
+    offset: Option<usize>,
+) -> (String, Option<usize>) {
+    let before: usize = lines.iter().take(reference).map(|l| l.len() + 1).sum();
+    (lines.join("\n"), offset.map(|o| o + before))
+}
+
 /// The entries of a popup to check for existing cards (ANK-030).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckRequest {
@@ -165,6 +256,10 @@ pub struct MineRequest {
     pub title: String,
     /// What to do.
     pub action: CardAction,
+    /// The picture (ANK-034, ANK-040).
+    pub frame: FrameChoice,
+    /// The sentence audio goes with the card (ANK-040).
+    pub audio: bool,
 }
 
 /// A card that was made or overwritten.
@@ -411,6 +506,25 @@ pub struct LastCard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-ANK-041: merged cues keep the word bold at its place
+    #[test]
+    fn merged_cues_keep_the_word_in_place() {
+        let lines = ["前の行", "今日は寿司を食べました", "次"];
+        let (sentence, offset) = merge_sentence(&lines, 1, Some("今日は".len()));
+        assert_eq!(sentence, "前の行\n今日は寿司を食べました\n次");
+        let o = offset.unwrap();
+        assert!(sentence[o..].starts_with("寿司"));
+        assert_eq!(
+            merge_sentence(&lines[1..2], 0, Some(9)),
+            (lines[1].to_string(), Some(9))
+        );
+        assert_eq!(merge_sentence(&lines, 2, None).1, None);
+        assert_eq!(
+            nikomiru_anki::compose::sentence(&sentence, offset, "寿司"),
+            "前の行<br>今日は<b>寿司</b>を食べました<br>次"
+        );
+    }
 
     // T-ANK-030
     #[test]

@@ -7,26 +7,18 @@
 use std::path::PathBuf;
 
 use egui::{
-    Align, Button, Color32, Frame, Layout, Margin, Rect, RichText, ScrollArea, Stroke, TextEdit,
-    Ui, UiBuilder, vec2,
+    Align, Button, Frame, Layout, Margin, Rect, RichText, ScrollArea, Stroke, TextEdit, Ui,
+    UiBuilder, vec2,
 };
 use nikomiru_online::{Candidate, FileKind};
 
 use super::dict_page::full_screen;
 use super::popups::Translate;
 use super::settings::{Leave, SettingsTab};
-use super::{View, theme};
+use super::{View, palette, theme};
 use crate::online::OnlinePage;
 use crate::session::Session;
 use crate::ui::Command;
-
-const BACKDROP: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0xa6);
-const CARD: Color32 = Color32::from_rgba_unmultiplied_const(0x20, 0x22, 0x27, 0xf0);
-const CARD_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
-const ROW: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x0c);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const GOOD: Color32 = Color32::from_rgb(0x7c, 0xd3, 0x8a);
-const BAD: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 
 /// The results shown at most.
 const ROWS: usize = 100;
@@ -74,7 +66,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(DETAILS),
+            .color(palette::current().details),
     );
 }
 
@@ -113,7 +105,7 @@ pub(crate) fn draw(
     let screen = ctx.content_rect();
     let width = 820.0_f32.min(screen.width() - 32.0).max(0.0);
     let height = 680.0_f32.min(screen.height() - 32.0).max(0.0);
-    full_screen(ctx, "online-page", BACKDROP, |ui| {
+    full_screen(ctx, "online-page", palette::current().backdrop, |ui| {
         let card = Rect::from_center_size(screen.center(), vec2(width, height));
         let mut ui = ui.new_child(
             UiBuilder::new()
@@ -121,15 +113,15 @@ pub(crate) fn draw(
                 .layout(Layout::top_down(Align::Min)),
         );
         Frame::new()
-            .fill(CARD)
-            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .fill(palette::current().card)
+            .stroke(Stroke::new(1.0, palette::current().card_border))
             .corner_radius(10)
             .inner_margin(Margin::same(16))
             .show(&mut ui, |ui| {
                 ui.set_width((width - 34.0).max(0.0));
                 ui.set_height((height - 34.0).max(0.0));
                 ui.spacing_mut().item_spacing.y = 10.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                ui.visuals_mut().override_text_color = Some(palette::current().text);
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(tr(s, "online-page-title"))
@@ -151,8 +143,12 @@ pub(crate) fn draw(
                 });
                 if let Some((text, ok)) = &page.status {
                     ui.add(
-                        egui::Label::new(RichText::new(text).color(if *ok { GOOD } else { BAD }))
-                            .wrap(),
+                        egui::Label::new(RichText::new(text).color(if *ok {
+                            palette::current().good
+                        } else {
+                            palette::current().bad
+                        }))
+                        .wrap(),
                     );
                 }
                 ScrollArea::vertical()
@@ -201,7 +197,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
     if let Some(results) = &page.results {
         for failure in &results.failed {
-            ui.add(egui::Label::new(RichText::new(failure).color(BAD)).wrap());
+            ui.add(egui::Label::new(RichText::new(failure).color(palette::current().bad)).wrap());
         }
         for (i, c) in results.candidates.iter().take(ROWS).enumerate() {
             row(ui, s, i, c, page.busy, out);
@@ -219,7 +215,7 @@ fn row(
     out: &mut Vec<Command>,
 ) {
     Frame::new()
-        .fill(ROW)
+        .fill(palette::current().row)
         .corner_radius(6)
         .inner_margin(Margin::symmetric(10, 6))
         .show(ui, |ui| {
@@ -254,8 +250,11 @@ fn row(
                             details.push(tr(s, "online-machine"));
                         }
                         ui.add(
-                            egui::Label::new(RichText::new(details.join(" · ")).color(DETAILS))
-                                .wrap(),
+                            egui::Label::new(
+                                RichText::new(details.join(" · "))
+                                    .color(palette::current().details),
+                            )
+                            .wrap(),
                         );
                     });
                 });

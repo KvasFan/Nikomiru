@@ -17,22 +17,12 @@ use nikomiru_dict::css::{Report, Sheet};
 use nikomiru_library::{Collapse, DictionaryRecord};
 
 use super::popups::Translate;
-use super::{Dialog, View, theme};
+use super::settings::{self, Leave, SettingsTab};
+use super::{Dialog, View, palette, theme};
 use crate::dictionaries::{DictionaryPage, Group, Import, Member};
 use crate::session::Session;
 use crate::ui::Command;
 
-const BACKDROP: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0xa6);
-const CARD: Color32 = Color32::from_rgba_unmultiplied_const(0x20, 0x22, 0x27, 0xf0);
-const CARD_BORDER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 0x40);
-const ROW: Color32 = Color32::from_rgb(0x2a, 0x2d, 0x34);
-const ROW_OFF: Color32 = Color32::from_rgb(0x1f, 0x21, 0x26);
-const DETAILS: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xaa);
-const OFF: Color32 = Color32::from_rgb(0x8a, 0x8f, 0x99);
-/// The drop marker and the dragged dictionary's outline.
-const DROP: Color32 = Color32::from_rgb(0x6a, 0xa0, 0xff);
-/// What the CSS subset leaves out.
-const LEFT_OUT: Color32 = Color32::from_rgb(0xf0, 0xb3, 0x5a);
 /// The user's CSS is for a few rules: a long paste would be parsed by every
 /// lookup.
 const MAX_CSS_CHARS: usize = 32 * 1024;
@@ -92,8 +82,8 @@ pub(crate) struct Scene<'a> {
 pub(crate) struct Asked {
     /// The file dialog for a dictionary.
     pub dialog: bool,
-    /// Close the page.
-    pub close: bool,
+    /// Close the page, or go to another tab of the settings.
+    pub leave: Leave,
 }
 
 pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut Vec<Command>) {
@@ -106,9 +96,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     if asked.dialog {
         view.dialog = Some(Dialog::Dictionary);
     }
-    if asked.close {
-        view.close_dict_page();
-    }
+    view.leave(asked.leave, out);
 }
 
 /// The size on disk: MB with a decimal from one mebibyte, kB below.
@@ -182,12 +170,15 @@ fn reference(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>) -> Rect {
         &[("name", m.record.name().to_string()), ("group", home)],
     );
     Frame::new()
-        .stroke(Stroke::new(1.0, ROW))
+        .stroke(Stroke::new(1.0, palette::current().row))
         .corner_radius(6)
         .inner_margin(Margin::symmetric(10, 4))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(RichText::new(text).italics().color(OFF)).truncate());
+            ui.add(
+                egui::Label::new(RichText::new(text).italics().color(palette::current().off))
+                    .truncate(),
+            );
         })
         .response
         .rect
@@ -227,8 +218,11 @@ fn drop_zone(
     } else {
         rect.top() - half_gap
     };
-    ui.painter()
-        .hline(rect.x_range(), y, Stroke::new(2.0, DROP));
+    ui.painter().hline(
+        rect.x_range(),
+        y,
+        Stroke::new(2.0, palette::current().accent),
+    );
     if let Some(d) = zone.dnd_release_payload::<Dragged>() {
         out.push(Command::DictMoveTo(d.id.clone(), to));
     }
@@ -243,13 +237,23 @@ fn follow_drag(ui: &mut Ui, d: &Dragged) {
     let painter = ui
         .ctx()
         .layer_painter(LayerId::new(Order::Tooltip, Id::unique("dict-drag-chip")));
-    let galley = painter.layout_no_wrap(d.name.clone(), FontId::proportional(15.0), Color32::WHITE);
+    let galley = painter.layout_no_wrap(
+        d.name.clone(),
+        FontId::proportional(15.0),
+        palette::current().text,
+    );
     let chip = Rect::from_min_size(
         pointer + vec2(14.0, -galley.size().y / 2.0 - 4.0),
         galley.size() + vec2(16.0, 8.0),
     );
-    painter.rect(chip, 6, ROW, Stroke::new(1.0, DROP), StrokeKind::Outside);
-    painter.galley(chip.min + vec2(8.0, 4.0), galley, Color32::WHITE);
+    painter.rect(
+        chip,
+        6,
+        palette::current().dialog,
+        Stroke::new(1.0, palette::current().accent),
+        StrokeKind::Outside,
+    );
+    painter.galley(chip.min + vec2(8.0, 4.0), galley, palette::current().text);
 
     let view = ui.clip_rect();
     const EDGE: f32 = 32.0;
@@ -290,108 +294,68 @@ pub(crate) fn draw(
 ) -> Asked {
     let tr = |id: &str| (scene.tr)(id, &[]);
     let page = scene.page;
-    let screen = ctx.content_rect();
     let mut asked = Asked::default();
-    let width = 780.0_f32.min(screen.width() - 32.0).max(0.0);
-    let height = 640.0_f32.min(screen.height() - 32.0).max(0.0);
-
-    // one layer for the backdrop and the card: it comes on top when it
-    // appears, and its backdrop takes every click and the wheel
-    full_screen(ctx, "dict-page", BACKDROP, |ui| {
-        let card = Rect::from_center_size(screen.center(), vec2(width, height));
-        let mut ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(card)
-                .layout(Layout::top_down(Align::Min)),
-        );
-        Frame::new()
-            .fill(CARD)
-            .stroke(Stroke::new(1.0, CARD_BORDER))
-            .corner_radius(10)
-            .inner_margin(Margin::same(16))
-            .show(&mut ui, |ui| {
-                ui.set_width((width - 34.0).max(0.0));
-                ui.set_height((height - 34.0).max(0.0));
-                ui.spacing_mut().item_spacing.y = 12.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
-
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(tr("dict-page-title"))
-                            .size(22.0)
-                            .family(theme::bold()),
-                    );
-                    let idle = matches!(page.import, Import::Idle);
-                    if ui
-                        .add_enabled(idle, Button::new(tr("dict-import")))
-                        .clicked()
-                    {
-                        asked.dialog = true;
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if glyph(ui, true, "✕", &tr("dict-close")) {
-                            asked.close = true;
-                        }
-                    });
-                });
-
-                import_block(ui, page, &tr, out);
-
-                if page.rows.is_empty() {
-                    ui.add_space(24.0);
-                    ui.vertical_centered(|ui| {
-                        ui.add(
-                            egui::Label::new(RichText::new(tr("dict-empty")).color(DETAILS)).wrap(),
-                        );
-                    });
-                    return;
-                }
-                ScrollArea::vertical()
-                    .id_salt("dict-page-rows")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 6.0;
-                        let dragged = DragAndDrop::payload::<Dragged>(ui.ctx());
-                        if let Some(d) = &dragged {
-                            follow_drag(ui, d);
-                        }
-                        for group in Group::ALL {
-                            let rows = page.group(group);
-                            let Some(last) = rows.len().checked_sub(1) else {
-                                continue;
-                            };
-                            ui.add_space(4.0);
-                            ui.label(
-                                RichText::new(group_name(group, scene.tr))
-                                    .size(14.0)
-                                    .family(theme::bold())
-                                    .color(DETAILS),
-                            );
-                            // the rows of the dragged dictionary's group are its
-                            // drop targets
-                            let from = dragged
-                                .as_deref()
-                                .filter(|d| d.group == group)
-                                .and_then(|d| rows.iter().position(|m| m.id == d.id));
-                            for (i, m) in rows.iter().enumerate() {
-                                let rect = if m.reference {
-                                    reference(ui, scene.tr, m)
-                                } else {
-                                    let place = Place {
-                                        group,
-                                        up: i > 0,
-                                        down: i < last,
-                                        dragged: from == Some(i),
-                                    };
-                                    row(ui, scene.tr, state, out, m, place)
-                                };
-                                if let Some(from) = from {
-                                    drop_zone(ui, rect, (group, m.id), (i, from), out);
-                                }
-                            }
-                        }
-                    });
+    asked.leave = settings::page(ctx, SettingsTab::Dictionaries, &tr, None, |buttons, ui| {
+        let idle = matches!(page.import, Import::Idle);
+        if buttons
+            .add_enabled(idle, Button::new(tr("dict-import")))
+            .clicked()
+        {
+            asked.dialog = true;
+        }
+        ui.spacing_mut().item_spacing.y = 12.0;
+        import_block(ui, page, &tr, out);
+        if page.rows.is_empty() {
+            ui.add_space(24.0);
+            ui.vertical_centered(|ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(tr("dict-empty")).color(palette::current().details),
+                    )
+                    .wrap(),
+                );
             });
+            return;
+        }
+        ui.spacing_mut().item_spacing.y = 6.0;
+        let dragged = DragAndDrop::payload::<Dragged>(ui.ctx());
+        if let Some(d) = &dragged {
+            follow_drag(ui, d);
+        }
+        for group in Group::ALL {
+            let rows = page.group(group);
+            let Some(last) = rows.len().checked_sub(1) else {
+                continue;
+            };
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(group_name(group, scene.tr))
+                    .size(14.0)
+                    .family(theme::bold())
+                    .color(palette::current().details),
+            );
+            // the rows of the dragged dictionary's group are its drop targets
+            let from = dragged
+                .as_deref()
+                .filter(|d| d.group == group)
+                .and_then(|d| rows.iter().position(|m| m.id == d.id));
+            for (i, m) in rows.iter().enumerate() {
+                let rect = if m.reference {
+                    reference(ui, scene.tr, m)
+                } else {
+                    let place = Place {
+                        group,
+                        up: i > 0,
+                        down: i < last,
+                        dragged: from == Some(i),
+                    };
+                    row(ui, scene.tr, state, out, m, place)
+                };
+                if let Some(from) = from {
+                    drop_zone(ui, rect, (group, m.id), (i, from), out);
+                }
+            }
+        }
     });
 
     if let Some((id, name)) = state.deleting.clone() {
@@ -447,7 +411,7 @@ fn import_block(
                 });
                 ui.label(
                     RichText::new(format!("{} {}", progress.entries, tr("dict-entries")))
-                        .color(DETAILS),
+                        .color(palette::current().details),
                 );
             });
         }
@@ -469,7 +433,7 @@ fn import_block(
                         "{title} — {} {installed} → {file}",
                         tr("dict-revision")
                     ))
-                    .color(DETAILS),
+                    .color(palette::current().details),
                 );
                 ui.horizontal(|ui| {
                     if ui.button(tr("dict-update")).clicked() {
@@ -507,9 +471,9 @@ fn drag_handle(ui: &mut Ui, tr: &Translate<'_>, m: &Member<'_>, place: Place) {
         group: place.group,
     });
     let color = if handle.hovered() || place.dragged {
-        Color32::WHITE
+        palette::current().text
     } else {
-        OFF
+        palette::current().off
     };
     for dx in [-2.5, 2.5] {
         for dy in [-5.0, 0.0, 5.0] {
@@ -534,11 +498,15 @@ fn row(
     let (id, r) = (m.id, m.record);
     let (up, down) = (place.up, place.down);
     let mut frame = Frame::new()
-        .fill(if r.enabled { ROW } else { ROW_OFF })
+        .fill(if r.enabled {
+            palette::current().row
+        } else {
+            palette::current().row_off
+        })
         .corner_radius(6)
         .inner_margin(Margin::symmetric(10, 8));
     if place.dragged {
-        frame = frame.stroke(Stroke::new(1.0, DROP));
+        frame = frame.stroke(Stroke::new(1.0, palette::current().accent));
     }
     frame
         .show(ui, |ui| {
@@ -577,7 +545,11 @@ fn row(
                                         RichText::new(r.name())
                                             .size(16.0)
                                             .family(theme::bold())
-                                            .color(if r.enabled { Color32::WHITE } else { OFF }),
+                                            .color(if r.enabled {
+                                                palette::current().text
+                                            } else {
+                                                palette::current().off
+                                            }),
                                     )
                                     .truncate(),
                                 );
@@ -587,13 +559,17 @@ fn row(
                                     about.push_str(" · ");
                                     about.push_str(&tr("dict-language", &[("code", code.into())]));
                                 }
-                                ui.label(RichText::new(about).color(DETAILS));
+                                ui.label(RichText::new(about).color(palette::current().details));
                             });
                         }
                     }
                     ui.add(
-                        egui::Label::new(RichText::new(details(r, tr)).size(13.0).color(DETAILS))
-                            .truncate(),
+                        egui::Label::new(
+                            RichText::new(details(r, tr))
+                                .size(13.0)
+                                .color(palette::current().details),
+                        )
+                        .truncate(),
                     );
                 });
                 if renamed {
@@ -742,7 +718,14 @@ fn css_panel(
     let t = |key: &str| tr(key, &[]);
     let (id, r) = (m.id, m.record);
     ui.add_space(6.0);
-    ui.add(egui::Label::new(RichText::new(t("dict-css-intro")).size(13.0).color(DETAILS)).wrap());
+    ui.add(
+        egui::Label::new(
+            RichText::new(t("dict-css-intro"))
+                .size(13.0)
+                .color(palette::current().details),
+        )
+        .wrap(),
+    );
     let name = tr("dict-css-field", &[("title", r.name().to_string())]);
     ScrollArea::vertical()
         .id_salt(("dict-css", id))
@@ -768,15 +751,21 @@ fn css_panel(
         |text: String, color| egui::Label::new(RichText::new(text).size(13.0).color(color)).wrap();
     ui.add(small(
         tr("dict-css-rules", &[("count", report.rules.to_string())]),
-        DETAILS,
+        palette::current().details,
     ));
     if !report.dropped.is_empty() {
         let list = listed(&report.dropped);
-        ui.add(small(tr("dict-css-dropped", &[("list", list)]), LEFT_OUT));
+        ui.add(small(
+            tr("dict-css-dropped", &[("list", list)]),
+            palette::current().bad,
+        ));
     }
     if !report.ignored.is_empty() {
         let list = listed(&report.ignored);
-        ui.add(small(tr("dict-css-ignored", &[("list", list)]), LEFT_OUT));
+        ui.add(small(
+            tr("dict-css-ignored", &[("list", list)]),
+            palette::current().bad,
+        ));
     }
 
     let unsaved = editor.text != r.user_css;
@@ -800,7 +789,7 @@ fn css_panel(
             editor.text.clear();
         }
         if unsaved {
-            ui.label(RichText::new(t("dict-css-unsaved")).color(LEFT_OUT));
+            ui.label(RichText::new(t("dict-css-unsaved")).color(palette::current().bad));
         }
     });
 }
@@ -856,13 +845,13 @@ fn confirm_delete(
                 .layout(Layout::top_down(Align::Center)),
         );
         Frame::new()
-            .fill(Color32::from_rgb(0x2a, 0x2d, 0x34))
-            .stroke(Stroke::new(1.0, CARD_BORDER))
+            .fill(palette::current().dialog)
+            .stroke(Stroke::new(1.0, palette::current().card_border))
             .corner_radius(8)
             .inner_margin(Margin::same(16))
             .show(&mut ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 12.0;
-                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                ui.visuals_mut().override_text_color = Some(palette::current().text);
                 ui.add(
                     egui::Label::new(
                         RichText::new(tr("dict-delete-confirm")).family(theme::bold()),
@@ -944,7 +933,9 @@ mod tests {
                     };
                     let asked = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                     t.asked.dialog |= asked.dialog;
-                    t.asked.close |= asked.close;
+                    if asked.leave != Leave::Stay {
+                        t.asked.leave = asked.leave;
+                    }
                 },
                 Test {
                     page,
@@ -977,7 +968,9 @@ mod tests {
     /// The height of the drop marker in the last frame, if one is drawn.
     fn marker(h: &Harness<'_, Test>) -> Option<f32> {
         h.output().shapes.iter().find_map(|c| match &c.shape {
-            egui::Shape::LineSegment { points, stroke } if stroke.color == DROP => {
+            egui::Shape::LineSegment { points, stroke }
+                if stroke.color == palette::current().accent =>
+            {
                 Some(points[0].y)
             }
             _ => None,
@@ -1282,8 +1275,8 @@ mod tests {
         h.drop_at(pos2(5.0, 5.0));
         h.run();
         assert!(h.state().out.is_empty(), "{:?}", h.state().out);
-        click(&mut h, "dict-close", 0);
-        assert!(h.state().asked.close);
+        click(&mut h, "settings-close", 0);
+        assert_eq!(h.state().asked.leave, Leave::Close);
         click(&mut h, "dict-import", 0);
         assert!(h.state().asked.dialog);
     }
@@ -1326,7 +1319,7 @@ mod tests {
         h.key_press(Key::Escape);
         h.run();
         assert!(h.state().state.renaming.is_none());
-        assert!(h.state().out.is_empty() && !h.state().asked.close);
+        assert!(h.state().out.is_empty() && h.state().asked.leave == Leave::Stay);
     }
 
     // T-DIC-033

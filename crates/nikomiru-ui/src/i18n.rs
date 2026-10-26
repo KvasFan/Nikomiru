@@ -3,9 +3,13 @@
 //! Interface strings with Fluent (SET-004): `assets/i18n/<locale>/main.ftl`,
 //! embedded in the binary. The language comes from the setting or, for
 //! `"system"`, from `LC_ALL` / `LC_MESSAGES` / `LANG`, with English as fallback.
+//! The clones of a translator share its language: the settings change it for
+//! the interface and the workers at once (SET-002).
+
+use std::sync::{Arc, PoisonError, RwLock};
 
 use fluent_bundle::concurrent::FluentBundle;
-use fluent_bundle::{FluentArgs, FluentResource};
+use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
 /// Supported interface languages and their Fluent sources.
@@ -15,24 +19,32 @@ pub const SOURCES: [(&str, &str); 2] = [
 ];
 
 /// Translates message ids into the interface language.
+#[derive(Clone)]
 pub struct Translator {
+    shared: Arc<RwLock<Bundles>>,
+}
+
+struct Bundles {
     language: &'static str,
     bundle: FluentBundle<FluentResource>,
     fallback: FluentBundle<FluentResource>,
 }
 
-impl std::fmt::Debug for Translator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Translator")
-            .field("language", &self.language)
-            .finish()
+impl Bundles {
+    fn new(language: &'static str) -> Self {
+        Self {
+            language,
+            bundle: bundle(language),
+            fallback: bundle("en"),
+        }
     }
 }
 
-impl Clone for Translator {
-    /// Another translator for the same language (the bundles are rebuilt).
-    fn clone(&self) -> Self {
-        Self::new(self.language)
+impl std::fmt::Debug for Translator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Translator")
+            .field("language", &self.language())
+            .finish()
     }
 }
 
@@ -50,6 +62,19 @@ fn bundle(language: &'static str) -> FluentBundle<FluentResource> {
     b
 }
 
+/// The language of the setting `"it"`, `"en"`, or for `"system"` the
+/// locale of the first of `LC_ALL`, `LC_MESSAGES`, `LANG` that is set.
+fn language_of(setting: &str, var: impl Fn(&str) -> Option<String>) -> String {
+    if setting != "system" {
+        return setting.to_string();
+    }
+    ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .filter_map(|k| var(k))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
 /// The supported language for a locale string like `it_IT.UTF-8`, if any.
 fn supported(locale: &str) -> Option<&'static str> {
     let lang = locale
@@ -64,29 +89,31 @@ impl Translator {
     pub fn new(language: &str) -> Self {
         let language = supported(language).unwrap_or("en");
         Self {
-            language,
-            bundle: bundle(language),
-            fallback: bundle("en"),
+            shared: Arc::new(RwLock::new(Bundles::new(language))),
         }
     }
 
     /// From the `general.ui_language` setting; `"system"` reads the locale
     /// variables through `var`.
     pub fn from_setting(setting: &str, var: impl Fn(&str) -> Option<String>) -> Self {
-        if setting != "system" {
-            return Self::new(setting);
+        Self::new(&language_of(setting, var))
+    }
+
+    /// Changes the language of this translator and of its clones.
+    pub fn set_setting(&self, setting: &str, var: impl Fn(&str) -> Option<String>) {
+        let language = supported(&language_of(setting, var)).unwrap_or("en");
+        if language != self.language() {
+            *self.shared.write().unwrap_or_else(PoisonError::into_inner) = Bundles::new(language);
         }
-        let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
-            .iter()
-            .filter_map(|k| var(k))
-            .find(|v| !v.is_empty())
-            .unwrap_or_default();
-        Self::new(&locale)
     }
 
     /// The language in use.
     pub fn language(&self) -> &'static str {
-        self.language
+        self.read().language
+    }
+
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, Bundles> {
+        self.shared.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The translated message of an error (ERR-001).
@@ -99,19 +126,20 @@ impl Translator {
     pub fn try_tr(&self, id: &str, args: &[(&str, String)]) -> Result<String, String> {
         let mut fa = FluentArgs::new();
         for (k, v) in args {
-            fa.set(*k, v.clone());
+            fa.set(*k, value(v));
         }
-        let pattern = self
+        let b = self.read();
+        let pattern = b
             .bundle
             .get_message(id)
             .and_then(|m| m.value())
-            .ok_or_else(|| format!("{}: no message {id}", self.language))?;
+            .ok_or_else(|| format!("{}: no message {id}", b.language))?;
         let mut errors = Vec::new();
-        let text = self.bundle.format_pattern(pattern, Some(&fa), &mut errors);
+        let text = b.bundle.format_pattern(pattern, Some(&fa), &mut errors);
         if errors.is_empty() {
             Ok(text.into_owned())
         } else {
-            Err(format!("{}: {id}: {errors:?}", self.language))
+            Err(format!("{}: {id}: {errors:?}", b.language))
         }
     }
 
@@ -119,9 +147,10 @@ impl Translator {
     pub fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         let mut fa = FluentArgs::new();
         for (k, v) in args {
-            fa.set(*k, v.clone());
+            fa.set(*k, value(v));
         }
-        for b in [&self.bundle, &self.fallback] {
+        let bundles = self.read();
+        for b in [&bundles.bundle, &bundles.fallback] {
             if let Some(pattern) = b.get_message(id).and_then(|m| m.value()) {
                 let mut errors = Vec::new();
                 return b
@@ -130,6 +159,19 @@ impl Translator {
             }
         }
         id.to_string()
+    }
+}
+
+/// An argument for Fluent: a plain integer as a number, so a message can
+/// choose its plural (`[one]`); anything else, `07` or a date included, as
+/// text.
+fn value(text: &str) -> FluentValue<'static> {
+    let integer = !text.is_empty()
+        && text.chars().all(|c| c.is_ascii_digit())
+        && (text == "0" || !text.starts_with('0'));
+    match text.parse::<i64>() {
+        Ok(n) if integer => FluentValue::from(n),
+        _ => FluentValue::from(text.to_string()),
     }
 }
 
@@ -212,5 +254,45 @@ mod tests {
         );
         assert_eq!(t.tr("pause", &[]), "Pausa");
         assert_eq!(t.tr("no-such-key", &[]), "no-such-key");
+        // the settings change the language of every clone (SET-002)
+        let worker = t.clone();
+        t.set_setting("en", |_| None);
+        assert_eq!(worker.tr("pause", &[]), "Pause");
+        t.set_setting("system", env("it_IT.UTF-8"));
+        assert_eq!(worker.language(), "it");
+    }
+
+    // plurals choose by number; other values stay text
+    #[test]
+    fn integers_choose_their_plural() {
+        let t = Translator::from_setting("en", |_| None);
+        assert_eq!(
+            t.tr(
+                "stats-session",
+                &[
+                    ("time", "5 min".into()),
+                    ("chars", "16".into()),
+                    ("lookups", "1".into()),
+                    ("cards", "2".into())
+                ]
+            ),
+            "5 min · 16 characters · 1 lookup · 2 cards"
+        );
+        let t = Translator::from_setting("it", |_| None);
+        assert!(
+            t.tr(
+                "stats-session",
+                &[
+                    ("time", "5 min".into()),
+                    ("chars", "1".into()),
+                    ("lookups", "2".into()),
+                    ("cards", "1".into())
+                ]
+            )
+            .ends_with("2 ricerche · 1 carta")
+        );
+        assert!(matches!(value("07"), FluentValue::String(_)));
+        assert!(matches!(value("2026-10-25"), FluentValue::String(_)));
+        assert!(matches!(value("1234"), FluentValue::Number(_)));
     }
 }

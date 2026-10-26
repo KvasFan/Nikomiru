@@ -94,11 +94,21 @@ pub enum Action {
     PopupPrev,
     /// Makes the card of the entry the keyboard is on (ANK-030, POP-014).
     CreateCard,
+    /// Opens the "Advanced mining" dialog for that entry (ANK-040).
+    CreateCardAdvanced,
+    /// Looks up the first word of the subtitle shown (NFR-A11Y-01).
+    LookupSubtitle,
+    /// The lookup starts a character earlier in its subtitle.
+    LookupPrev,
+    /// The lookup starts a character later.
+    LookupNext,
+    /// Opens the settings (SET-008).
+    Settings,
 }
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 34] = [
+    pub const ALL: [Action; 39] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -133,6 +143,11 @@ impl Action {
         Action::PopupNext,
         Action::PopupPrev,
         Action::CreateCard,
+        Action::CreateCardAdvanced,
+        Action::LookupSubtitle,
+        Action::LookupPrev,
+        Action::LookupNext,
+        Action::Settings,
     ];
 
     /// Name used in `config.toml` (`[shortcuts]`) and in the log.
@@ -172,7 +187,17 @@ impl Action {
             Action::PopupNext => "popup_next",
             Action::PopupPrev => "popup_prev",
             Action::CreateCard => "create_card",
+            Action::CreateCardAdvanced => "create_card_advanced",
+            Action::LookupSubtitle => "lookup_subtitle",
+            Action::LookupPrev => "lookup_prev",
+            Action::LookupNext => "lookup_next",
+            Action::Settings => "settings",
         }
+    }
+
+    /// The id of its name in the interface (`action-play-pause`).
+    pub fn label_id(self) -> String {
+        format!("action-{}", self.name().replace('_', "-"))
     }
 
     /// The action with this name.
@@ -183,8 +208,14 @@ impl Action {
     /// The context of the action.
     pub fn context(self) -> Context {
         match self {
-            Action::OpenFile => Context::Global,
-            Action::PopupNext | Action::PopupPrev | Action::CreateCard => Context::Popup,
+            // Back and these work on the pages too (NFR-A11Y-01)
+            Action::OpenFile | Action::Back | Action::Settings => Context::Global,
+            Action::PopupNext
+            | Action::PopupPrev
+            | Action::CreateCard
+            | Action::CreateCardAdvanced
+            | Action::LookupPrev
+            | Action::LookupNext => Context::Popup,
             _ => Context::Player,
         }
     }
@@ -210,6 +241,8 @@ impl Action {
                 | Action::SubDelayPlus
                 | Action::PopupNext
                 | Action::PopupPrev
+                | Action::LookupPrev
+                | Action::LookupNext
         )
     }
 
@@ -250,6 +283,11 @@ impl Action {
             Action::PopupNext => &["Tab"],
             Action::PopupPrev => &["Shift+Tab"],
             Action::CreateCard => &["Ctrl+Enter"],
+            Action::CreateCardAdvanced => &["Ctrl+Shift+Enter"],
+            Action::LookupSubtitle => &["Enter"],
+            Action::LookupPrev => &["ArrowLeft"],
+            Action::LookupNext => &["ArrowRight"],
+            Action::Settings => &["Ctrl+Comma"],
         }
     }
 }
@@ -391,6 +429,36 @@ pub fn chord(evdev: u32, mods: Modifiers) -> Option<String> {
     Some(s)
 }
 
+/// A chord as the settings show it: `Ctrl+O`, `Shift+←`, `9`.
+pub fn display(chord: &str) -> String {
+    chord
+        .split('+')
+        .map(|part| match part {
+            "ArrowLeft" => "←",
+            "ArrowRight" => "→",
+            "ArrowUp" => "↑",
+            "ArrowDown" => "↓",
+            "MediaPlayPause" => "Media",
+            "BracketLeft" => "[",
+            "BracketRight" => "]",
+            "Equal" => "=",
+            "Minus" => "-",
+            "Comma" => ",",
+            "Period" => ".",
+            "Slash" => "/",
+            "Semicolon" => ";",
+            "Quote" => "'",
+            "Backquote" => "`",
+            "Backslash" => "\\",
+            p => p
+                .strip_prefix("Key")
+                .or_else(|| p.strip_prefix("Digit"))
+                .unwrap_or(p),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
 /// Normalizes a chord written by hand (`shift+ctrl+keyq` → `Ctrl+Shift+KeyQ`).
 pub fn normalize(chord: &str) -> String {
     let mut mods = Modifiers::default();
@@ -421,7 +489,8 @@ pub fn normalize(chord: &str) -> String {
     s
 }
 
-/// Two actions of the same context bound to the same chord (KEY-003).
+/// Two actions of the same context bound to the same chord, or a global
+/// action and another one (KEY-003).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conflict {
     /// The chord.
@@ -475,14 +544,24 @@ impl Bindings {
                     .push(*action);
             }
         }
-        let conflicts: Vec<Conflict> = owners
-            .iter()
-            .filter(|(_, a)| a.len() > 1)
-            .map(|((_, chord), a)| Conflict {
-                chord: chord.clone(),
-                actions: a.clone(),
-            })
-            .collect();
+        // a global chord works everywhere: no other action may have it
+        let mut conflicts: Vec<Conflict> = Vec::new();
+        for ((context, chord), actions) in &owners {
+            let mut all = actions.clone();
+            if *context != Context::Global
+                && let Some(global) = owners.get(&(Context::Global, chord.clone()))
+            {
+                all.extend(global);
+            }
+            if all.len() > 1 && !conflicts.iter().any(|c| c.chord == *chord) {
+                all.sort();
+                all.dedup();
+                conflicts.push(Conflict {
+                    chord: chord.clone(),
+                    actions: all,
+                });
+            }
+        }
         if !conflicts.is_empty() {
             return Err(conflicts);
         }
@@ -602,7 +681,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         cfg.save(&path).unwrap();
-        nikomiru_core::Config::load(&path).unwrap()
+        nikomiru_core::Config::load(&path).unwrap().0
     }
 
     // T-KEY-003
@@ -618,6 +697,34 @@ mod tests {
             Bindings::with_overrides(&BTreeMap::new()).is_ok(),
             "the defaults have no conflicts"
         );
+        // a global chord conflicts with any context's
+        let mut overrides = BTreeMap::new();
+        overrides.insert("sub_list".to_string(), vec!["Ctrl+KeyO".to_string()]);
+        let err = Bindings::with_overrides(&overrides).unwrap_err();
+        assert_eq!(err[0].actions, [Action::OpenFile, Action::SubList]);
+        // the popup's keys may shadow the player's
+        let mut overrides = BTreeMap::new();
+        overrides.insert("popup_next".to_string(), vec!["KeyM".to_string()]);
+        assert!(Bindings::with_overrides(&overrides).is_ok());
+    }
+
+    #[test]
+    fn chords_read_as_the_keys_show() {
+        assert_eq!(display("Ctrl+KeyO"), "Ctrl+O");
+        assert_eq!(display("Shift+ArrowLeft"), "Shift+←");
+        assert_eq!(display("Digit9"), "9");
+        assert_eq!(display("F11"), "F11");
+        assert_eq!(Action::PlayPause.label_id(), "action-play-pause");
+        // every action has a name in every language
+        for (lang, _) in crate::i18n::SOURCES {
+            let t = crate::i18n::Translator::new(lang);
+            for action in Action::ALL {
+                assert!(
+                    t.try_tr(&action.label_id(), &[]).is_ok(),
+                    "{lang}: {action:?}"
+                );
+            }
+        }
     }
 
     // T-KEY-004

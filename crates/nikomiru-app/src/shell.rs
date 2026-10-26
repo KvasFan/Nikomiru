@@ -221,6 +221,11 @@ impl<'a> Shell<'a> {
             .entry(egui::ViewportId::ROOT)
             .or_default();
         egui_winit::update_viewport_info(info, &ctx, &gl.window, false);
+        // keys of the test harness that the window would have given egui
+        egui.egui_winit
+            .egui_input_mut()
+            .events
+            .extend(ui.take_injected());
         egui.run(&gl.window, |root| ui.frame(root));
         if let Some(dialog) = ui.take_file_dialog() {
             crate::portal::open_file(dialog, self.waker.clone());
@@ -339,10 +344,12 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                         event_loop.exit();
                         return;
                     }
-                    // egui sees a key only when a text field has the keyboard, or
-                    // for an unbound Ctrl chord (copy): otherwise Tab and the arrows
-                    // would move its focus and Space would press the focused button
-                    if !(text_focus || (!taken && mods.control_key())) {
+                    // egui sees a key only when a text field has the keyboard, for
+                    // an unbound Ctrl chord (copy), or on a page over the video,
+                    // whose controls the keyboard drives (NFR-A11Y-01): over the
+                    // video Tab and the arrows would move its focus and Space
+                    // would press the focused button
+                    if !(text_focus || (!taken && (mods.control_key() || open.ui.page_open()))) {
                         return;
                     }
                 }
