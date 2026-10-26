@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - An Arch Linux package: `packaging/aur/PKGBUILD` (D-5), with the icon, the desktop entry and the third-party licenses where Settings → About finds them.
 - The user guide, in English and Italian (`docs/guide/`).
+- A Flatpak (`packaging/flatpak`, D-5): the freedesktop 26.08 runtime with its FFmpeg, libmpv built in; `cargo xtask flatpak` makes a bundle.
 - The desktop entry has an icon: the logo, installed by `cargo xtask install` too.
 
 ### Security

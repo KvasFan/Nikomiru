@@ -16,6 +16,10 @@ cd nikomiru/packaging/aur
 makepkg -si
 ```
 
+### Flatpak
+
+Un bundle creato con `cargo xtask flatpak` si installa con `flatpak install --user nikomiru.flatpak`; più avanti su Flathub. Il Flatpak porta la sua libmpv e usa l'FFmpeg del runtime freedesktop.
+
 ### Dal sorgente
 
 Servono:

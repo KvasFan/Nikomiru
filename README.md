@@ -131,6 +131,7 @@ cargo install --locked cargo-about --features cli
 | `cargo xtask trace` | requirements ↔ tests ↔ milestones matrix in `target/trace.md` |
 | `cargo xtask about` | generates `target/THIRD_PARTY_LICENSES.html` |
 | `cargo xtask coverage` | line coverage of the logic crates with `cargo-llvm-cov`, at least 80% each |
+| `cargo xtask flatpak` | the Flatpak of the last commit (`packaging/flatpak`), into `target/nikomiru.flatpak` |
 | `cargo xtask check-i18n` | every interface string used and translated, no untranslated text in the views |
 | `cargo xtask install [--prefix DIR]` | builds the release binary into `DIR/bin` (default `~/.local`) and installs the desktop entry |
 
