@@ -8,8 +8,10 @@
 //! ([`crate::PlayerHandle`]) or on the events thread, so the render thread
 //! never waits for the core (`<mpv/render.h>`, "Threading").
 
+use std::cell::Cell;
 use std::ffi::{CStr, c_char, c_int, c_void};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use libmpv2_sys as sys;
 
@@ -58,6 +60,48 @@ fn end() -> sys::mpv_render_param {
     )
 }
 
+// mpv up to 0.41 makes a GL fence at the end of every frame drawn and deletes it
+// only on a buffer swap of its own, which the render API never does: one fence
+// left behind per frame, for good (T-REL-003; fixed upstream after 0.41 by
+// f74adc4243, "require swap_buffers param for FenceSync"). mpv gets its
+// `glFenceSync` and `glDeleteSync` through `fence_sync` and `delete_sync`, which
+// note the frame's fence, and `render` deletes it once the call returns. The
+// only other fences mpv makes are its upload buffers' (`ra_gl.c`), each made
+// right after deleting the buffer's previous one: those are left alone, so with
+// an mpv that makes no frame fence nothing is deleted.
+type FenceSync = extern "C" fn(u32, u32) -> *mut c_void;
+type DeleteSync = extern "C" fn(*mut c_void);
+
+/// The driver's `glFenceSync` and `glDeleteSync`, as mpv resolved them.
+static REAL_FENCE_SYNC: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static REAL_DELETE_SYNC: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+
+thread_local! {
+    /// The frame's fence mpv made on this thread, in the current render call.
+    static FRAME_FENCE: Cell<*mut c_void> = const { Cell::new(ptr::null_mut()) };
+    /// mpv's last sync call was a deletion: the next fence is a buffer's.
+    static AFTER_DELETE: Cell<bool> = const { Cell::new(false) };
+}
+
+extern "C" fn fence_sync(condition: u32, flags: u32) -> *mut c_void {
+    let real = REAL_FENCE_SYNC.load(Ordering::Acquire);
+    // SAFETY: `resolve` hands out `fence_sync` only after storing the driver's
+    // non-null `glFenceSync` here; mpv calls it with the GL context current.
+    let fence = unsafe { std::mem::transmute::<*mut c_void, FenceSync>(real)(condition, flags) };
+    if !AFTER_DELETE.replace(false) {
+        FRAME_FENCE.set(fence);
+    }
+    fence
+}
+
+extern "C" fn delete_sync(sync: *mut c_void) {
+    AFTER_DELETE.set(true);
+    let real = REAL_DELETE_SYNC.load(Ordering::Acquire);
+    // SAFETY: `resolve` hands out `delete_sync` only after storing the driver's
+    // non-null `glDeleteSync` here; mpv calls it with the GL context current.
+    unsafe { std::mem::transmute::<*mut c_void, DeleteSync>(real)(sync) }
+}
+
 extern "C" fn resolve(ctx: *mut c_void, name: *const c_char) -> *mut c_void {
     if ctx.is_null() || name.is_null() {
         return ptr::null_mut();
@@ -66,7 +110,23 @@ extern "C" fn resolve(ctx: *mut c_void, name: *const c_char) -> *mut c_void {
     // until the render context is freed; `name` is a NUL-terminated string that
     // mpv keeps for the duration of the call.
     let (resolve, name) = unsafe { (&*ctx.cast::<GetProcAddress>(), CStr::from_ptr(name)) };
-    resolve(name).cast_mut()
+    let found = resolve(name).cast_mut();
+    if found.is_null() {
+        return found;
+    }
+    match name.to_bytes() {
+        b"glFenceSync" => {
+            REAL_FENCE_SYNC.store(found, Ordering::Release);
+            let shim: FenceSync = fence_sync;
+            shim as *mut c_void
+        }
+        b"glDeleteSync" => {
+            REAL_DELETE_SYNC.store(found, Ordering::Release);
+            let shim: DeleteSync = delete_sync;
+            shim as *mut c_void
+        }
+        _ => found,
+    }
 }
 
 extern "C" fn updated(ctx: *mut c_void) {
@@ -181,11 +241,20 @@ impl VideoRenderer {
             ),
             end(),
         ];
+        FRAME_FENCE.set(ptr::null_mut());
         // SAFETY: `ctx` is live and used on its own thread with its GL context
         // current (contract of `new`); the parameters outlive the call.
         let rc = unsafe { sys::mpv_render_context_render(self.ctx, params.as_mut_ptr()) };
         if rc < 0 {
             tracing::debug!(target: "mpv", "mpv_render_context_render: {rc}");
+        }
+        let fence = FRAME_FENCE.replace(ptr::null_mut());
+        let delete = REAL_DELETE_SYNC.load(Ordering::Acquire);
+        if !fence.is_null() && !delete.is_null() {
+            // SAFETY: `delete` is the driver's `glDeleteSync`, the GL context is
+            // current (contract of `new`), and `fence` is the frame's fence,
+            // which mpv never waits on nor deletes (see `FenceSync`).
+            unsafe { std::mem::transmute::<*mut c_void, DeleteSync>(delete)(fence) };
         }
     }
 
