@@ -497,7 +497,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 |---|---|---|---|
 | T-REL-001 | SIGKILL during: import, config write, progress saving, mining (child process); a normal quit during an import (L6) | On restart, consistent state: no corrupt DB, no partial dictionary, no orphan media registered; a quit during an import cancels it, exits at once and leaves no repair, record or staging folder | L4, L6 |
 | T-REL-002 | Anki closed during mining | "Connection refused" error, no panic, no orphan media | L4 |
-| T-REL-003 | A long session keeps its memory | Two hours in the off-screen KWin (`NIKOMIRU_SOAK_MINUTES`): a 10-minute file in a loop, a word looked up every 20 s, the settings and another file every 5 minutes; the resident memory at the end at most 64 MiB above its highest point of the first 10 minutes. By hand before a release (`l7_soak_…`), not in the L6 suite | L7 |
+| T-REL-003 | A long session keeps its memory | Two hours in the off-screen KWin (`NIKOMIRU_SOAK_MINUTES`): a 10-minute file in a loop, a word looked up every 20 s, the settings and another file every 5 minutes; the anonymous memory at the end, resident or swapped (`RssAnon` + `VmSwap`: the RSS falls when the kernel reclaims pages), at most 64 MiB above its highest point of the first 10 minutes. By hand before a release (`l7_soak_…`), not in the L6 suite | L7 |
 | T-FUZZ-005 | Yomitan term bank JSON | No panic; typed error | L2 |
 | T-FUZZ-006 | Structured content → view model | No panic; the output contains only nodes from the allowlist | L2 |
 | T-FUZZ-007 | Parser for `nikomiru://` links and for the TOML config | No panic | L2 |
