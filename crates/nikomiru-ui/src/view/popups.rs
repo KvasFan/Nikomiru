@@ -403,7 +403,15 @@ pub(crate) fn draw(
     // egui brings an area up when it appears: a nested popup comes over its
     // parent, a panel already shown keeps its place
     for (level, p) in stack.iter().enumerate() {
-        let layer = LayerId::new(Order::Foreground, Id::unique(("popup", p.generation)));
+        // one layer for each level, not for each popup, and so the same widget
+        // ids: egui keeps something for every layer and id it has seen, for good
+        // (T-REL-003). A new popup still starts like a new area: sized unseen
+        // first, then on top, scrolled to its start.
+        let layer = LayerId::new(Order::Foreground, Id::unique(("popup", level)));
+        let fresh = !state.panels.contains_key(&p.generation);
+        if fresh {
+            ctx.move_to_top(layer);
+        }
         let panel = state.panels.entry(p.generation).or_default();
         // a selection stays lit while the popup it opened is open (POP-012)
         if panel.selection.is_some_and(|s| !s.held) && level + 1 == stack.len() {
@@ -418,6 +426,7 @@ pub(crate) fn draw(
             .fade_in(false)
             .constrain(false)
             .fixed_pos(rect.min)
+            .sizing_pass(fresh)
             .show(ctx, |ui| {
                 Frame::new()
                     .fill(popup_colors().panel)
@@ -429,21 +438,24 @@ pub(crate) fn draw(
                         // held to the area's size in the last frame
                         ui.set_width((rect.width() - 2.0 * PAD - 2.0).max(0.0));
                         ui.set_height((rect.height() - 2.0 * PAD - 2.0).max(0.0));
-                        let scroll = ScrollArea::vertical()
-                            .id_salt(("popup-scroll", p.generation))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                let mut d = Draw {
-                                    level,
-                                    panel: &mut *panel,
-                                    out: &mut *out,
-                                    tr: scene.tr,
-                                    word_audio: scene.word_audio,
-                                    #[cfg(test)]
-                                    drawn: &mut state.drawn,
-                                };
-                                body(ui, &mut d, p, level);
-                            });
+                        let mut scroll = ScrollArea::vertical()
+                            .id_salt("popup-scroll")
+                            .auto_shrink([false, false]);
+                        if fresh {
+                            scroll = scroll.vertical_scroll_offset(0.0);
+                        }
+                        let scroll = scroll.show(ui, |ui| {
+                            let mut d = Draw {
+                                level,
+                                panel: &mut *panel,
+                                out: &mut *out,
+                                tr: scene.tr,
+                                word_audio: scene.word_audio,
+                                #[cfg(test)]
+                                drawn: &mut state.drawn,
+                            };
+                            body(ui, &mut d, p, level);
+                        });
                         measured = Some(scroll.content_size.y);
                     });
                 grips(ui, panel, rect, side, layer.id, &resize_name);
@@ -2276,7 +2288,7 @@ mod tests {
         h.run();
         assert_eq!(h.state().drawn, [0]);
         let rect = panel(&h, 0);
-        let layer = LayerId::new(Order::Foreground, Id::unique(("popup", 1_u64)));
+        let layer = LayerId::new(Order::Foreground, Id::unique(("popup", 0_usize)));
         let shown = h
             .ctx
             .memory(|m| m.area_rect(layer.id))
