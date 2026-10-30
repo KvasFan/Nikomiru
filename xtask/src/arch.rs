@@ -15,10 +15,10 @@ use crate::util::{self, rel, split_comment, walk};
 pub const SPDX: &str = "// SPDX-License-Identifier: GPL-3.0-only";
 
 /// Directories that contain project sources.
-const SOURCE_DIRS: [&str; 4] = ["crates", "xtask", "spikes", "tests"];
+const SOURCE_DIRS: [&str; 3] = ["crates", "xtask", "tests"];
 
-/// Source extensions that need the SPDX header: Rust, and the C++ and QML of the
-/// spikes.
+/// Source extensions that need the SPDX header: Rust, and C++ and QML should
+/// any come back.
 const SOURCE_EXTENSIONS: [&str; 5] = ["rs", "cpp", "h", "hpp", "qml"];
 
 /// C++ extensions: no C++ in the crates since D-13 (ARC-011).
@@ -265,10 +265,6 @@ pub fn check_sync_reads(root: &Path) -> Result<Vec<String>> {
     let mut problems = Vec::new();
     let player = root.join("crates/nikomiru-player");
     for file in source_files(root, &["rs"])? {
-        // the spikes are standalone experiments, outside the product
-        if file.starts_with(root.join("spikes")) {
-            continue;
-        }
         let in_player = file.starts_with(&player);
         let is_harness = file.file_name().is_some_and(|n| n == "harness.rs");
         let text = std::fs::read_to_string(&file)?;
@@ -349,7 +345,7 @@ pub fn check_panic_lints(root: &Path) -> Result<Vec<String>> {
     for file in source_files(root, &["rs"])? {
         let r = rel(&file);
         // integration tests (`tests/` folders) may unwrap, like unit tests
-        if r.contains("/tests/") || r.starts_with("tests/") || r.starts_with("spikes/") {
+        if r.contains("/tests/") || r.starts_with("tests/") {
             continue;
         }
         let text = std::fs::read_to_string(&file)?;

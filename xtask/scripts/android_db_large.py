@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""A synthetic android.db with the schema of the Local Audio Server for
-Yomichan (spike S3): `entries(id, expression, reading, source, speaker,
+"""A large synthetic android.db with the schema of the Local Audio Server for
+Yomichan, first written for spike S3 and kept for the L4 test of T-AUD-003: `entries(id, expression, reading, source, speaker,
 display, file)` and `android(file, source, data)`, with the indexes the real
 file ships with. The words are made up and the audio is random bytes: no
 third-party content.
 
-    python3 make_db.py OUT.db [ENTRIES]
+    python3 -I xtask/scripts/android_db_large.py target/fixtures/audio-large/android.db 300000
 
 Writes OUT.db and OUT.db.words (the words to query, a tenth of them absent).
 """

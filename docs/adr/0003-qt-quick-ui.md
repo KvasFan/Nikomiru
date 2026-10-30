@@ -6,7 +6,7 @@
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §1.1, §1.2 (objective 1: "the quality of mpv"), §4, §5 |
 | Supersedes | The UI part of SPECIFICATION §1.1/§4/§5 and the composition of [ADR 0001](0001-video-composition.md) |
-| Spike | S1q — code in [`spikes/s1q-qt/`](../../spikes/s1q-qt/) |
+| Spike | S1q — code in [`spikes/s1q-qt/`](https://github.com/KvasFan/nikomiru/tree/v1.0.0/spikes/s1q-qt) (removed after 1.0.0; in the tag `v1.0.0`) |
 
 ## Context
 

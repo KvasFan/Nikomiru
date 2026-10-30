@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Removed
+
+- The spikes (`spikes/`): their decisions are in the ADRs and their code in the tag `v1.0.0`. The large synthetic audio database of spike S3 is now made by `xtask/scripts/android_db_large.py`.
+
 ## [1.0.0] - 2026-10-30
 
 Packages, the words in the subtitles and moving pictures (M8, M9, M10).
