@@ -141,7 +141,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10); what is left is the checks by hand of each milestone. Until 1.0 the focus is video with clickable subtitles; books, manga and online resources come after (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10); what is left is the checks by hand of each milestone. Next, in this order (D-19): Jellyfin and Plex (1.1.0), backup and WebDAV sync (1.2.0), advanced ASS and screenshots with subtitles (1.3.0), clipboard lookup and a texthooker (1.4.0), MDict, StarDict and DSL dictionaries (1.5.0), then books, manga and audiobooks (2.0.0, D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 

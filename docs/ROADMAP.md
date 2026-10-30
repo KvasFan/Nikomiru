@@ -26,6 +26,12 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
                                          ▲
       M9 Words in the subtitles (D-17) ──┤ (merged while M8's manual
       M10 Moving pictures (D-18) ────────┘  checks wait: they ship with 1.0.0)
+
+1.0.0 ──► M11 Jellyfin, Plex (1.1.0) ──► M12 Backup, WebDAV (1.2.0)
+      ──► M13 Advanced ASS, screenshots (1.3.0) ──► M14 Clipboard, texthooker (1.4.0)
+      ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
+      ──► the rest of the backlog
+      (Ports, from spike S6, run alongside: D-16)
 ```
 
 | Milestone | Title | Size | Release | Status |
@@ -43,6 +49,12 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
+| M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | not started |
+| M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | not started |
+| M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | not started |
+| M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | not started |
+| M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | not started |
+| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | not started |
 
 ---
 
@@ -431,7 +443,7 @@ Asked by the maintainer while 1.0.0 waits for its manual checks (D-17).
 
 - [x] T-LKP-051, T-LKP-060, T-LKP-061, T-PERF-10, T-E2E-WORDS-001 green.
 - [ ] The furigana checked by the maintainer on real subtitles and a real dictionary (JMdict).
-- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
+- [x] Released with 1.0.0 (2026-10-30).
 
 ---
 
@@ -455,24 +467,136 @@ Proposed after M9, when the maintainer asked to go on (D-18).
 
 - [x] T-ANK-042, T-E2E-ANK-042, T-PLY-014 and T-E2E-PLY-014 green.
 - [ ] An animated card checked by the maintainer in Anki desktop and AnkiDroid.
-- [ ] Released with 1.0.0: merged into `main` while M8's manual checks wait.
+- [x] Released with 1.0.0 (2026-10-30).
 
 ---
 
-## After 1.0 (backlog, in no binding order)
+## After 1.0
+
+The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of the backlog. Every milestone starts with its requirements written into SPECIFICATION.md (with their tests in TEST.md) and accepted by the maintainer; until then, its deliverables below are a scope, not a design. Fixes found by the manual checks of 1.0.0 go out as 1.0.x patches meanwhile.
+
+## M11 — Jellyfin and Plex → 1.1.0
+
+**Goal**: watch the series of a Jellyfin or Plex server with the same subtitles, lookups and cards as a local file.
+
+**Deliverables (scope)**
+
+- Settings → Media servers: a Jellyfin server (address, user, password → access token) and a Plex account (plex.tv PIN login → token); tokens kept like the other keys (MET-005).
+- The servers' libraries in the library page: series, seasons, episodes, covers, watched state.
+- Playback through mpv from the server's stream URL (direct play, no transcoding asked); the server's external and embedded subtitles; the position and watched state reported back.
+- Cards from a streamed episode: audio, frame and clip cut by ffmpeg from the stream URL; the scene link reopens the episode on its server.
+- Nothing goes online unless a server is configured (PRV-001).
+
+**Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency expected. Test servers simulated as for AniList and Jimaku; a live check against a real Jellyfin (container) and the maintainer's Plex.
+
+**Exit criteria**
+
+- [ ] Requirements in SPECIFICATION.md accepted; their tests green on simulated servers.
+- [ ] An episode from a real Jellyfin and from a real Plex: played, looked up, made into a card whose link reopens it.
+- [ ] **Release 1.1.0**.
+
+---
+
+## M12 — Backup, restore and WebDAV sync → 1.2.0
+
+**Goal**: keep the library, the statistics and the settings safe, and the same on two computers.
+
+**Deliverables (scope)**
+
+- Backup and restore to a file: `config.toml`, `library.redb` (positions, statistics, mined words), the dictionaries registry; the dictionaries themselves optional (large).
+- Sync through a WebDAV server (Nextcloud and the like): the same data, merged per record rather than overwritten, with the conflicts' rule written in the specification; credentials kept like the other keys.
+
+**Notes**: WebDAV is HTTP (`PROPFIND`, `PUT`, `GET`) over the client in use. Cloud sync, iroh P2P and the like stay out (SPECIFICATION §1.3).
+
+**Exit criteria**
+
+- [ ] Requirements accepted; restore round-trip and merge tests green, against a simulated WebDAV server.
+- [ ] Two computers synced through a real Nextcloud.
+- [ ] **Release 1.2.0**.
+
+---
+
+## M13 — Advanced ASS and screenshots with subtitles → 1.3.0
+
+**Goal**: typeset fansubs drawn as their authors meant, and screenshots with what is on screen.
+
+**Deliverables (scope)**
+
+- SUB-019 in Nikomiru's own renderer: `\t`, `\move`, `\fad`, `\clip`, karaoke `\k`, rotations; every drawn character still clickable.
+- PLY-015: `Shift+S` saves the frame with the overlay subtitles composited on it.
+
+**Exit criteria**
+
+- [ ] Requirements accepted; golden images for each tag green.
+- [ ] Real typeset fansubs checked by hand against mpv's libass.
+- [ ] **Release 1.3.0**.
+
+---
+
+## M14 — Clipboard lookup and texthooker → 1.4.0
+
+**Goal**: the dictionary and the cards for visual novels and games, through Textractor or LunaTranslator.
+
+**Deliverables (scope)**
+
+- A texthooker page: the lines read from the clipboard or from a WebSocket (the protocol of Textractor's and LunaTranslator's plugins), clickable as subtitles, with lookups and cards (sentence; picture and audio when given).
+
+**Notes**: `tokio-tungstenite` (MIT) for the WebSocket; the clipboard through egui-winit.
+
+**Exit criteria**
+
+- [ ] Requirements accepted; tests green with a simulated hooker.
+- [ ] A real visual novel through Textractor or LunaTranslator.
+- [ ] **Release 1.4.0**.
+
+---
+
+## M15 — MDict, StarDict and DSL dictionaries → 1.5.0
+
+**Goal**: the dictionaries that are not in Yomitan's format (DIC-004).
+
+**Deliverables (scope)**
+
+- Import of MDict (`.mdx`, `.mdd`), StarDict and DSL into the same store as the Yomitan dictionaries, their HTML cleaned and shown in the popup.
+
+**Notes**: `ammonia` (MIT/Apache) for the HTML; the formats' readers written in the project unless a crate passes the license policy.
+
+**Exit criteria**
+
+- [ ] Requirements accepted; import tests green on project-made files of each format.
+- [ ] Real dictionaries of each format imported by the maintainer.
+- [ ] **Release 1.5.0**.
+
+---
+
+## M16 — Books, manga and audiobooks → 2.0.0
+
+**Goal**: the direction of D-12: reading with the same dictionary and cards.
+
+**Deliverables (scope)**, each about as large as the MVP, in this order, each possibly a release of its own:
+
+- Books: EPUB, with the ttu reader's sync format.
+- Manga: pages with the text found by OCR, clickable.
+- Audiobooks: an audiobook with its text, played in sync.
+
+**Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video. The OCR's engine and its license are decided with the requirements.
+
+**Exit criteria**
+
+- [ ] Requirements of each part accepted; split into milestones of their own if needed.
+- [ ] **Release 2.0.0**.
+
+---
+
+## Backlog after M16 (in no binding order)
 
 Every item requires a change to SPECIFICATION.md before work starts.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
 | WebM video clips with sound (ANK-043) | libvpx (BSD) **inside the system ffmpeg**: an external process, not a crate |
-| Advanced ASS (SUB-019), screenshots with subtitles (PLY-015) | |
-| Lookup from the clipboard and WebSocket texthooker (visual novels with external Textractor/LunaTranslator) | `tokio-tungstenite` (MIT) |
-| MDict, StarDict, DSL import (DIC-004) | `ammonia` (MIT/Apache) for the HTML |
-| Books (EPUB, with the ttu sync format), manga, audiobooks and online resources | Planned after 1.0 (D-12). Each is as large as the MVP; they reuse the text, dictionary and Anki crates, which know nothing about video |
+| Online resources (D-12) | |
 | Built-in SRS | `fsrs` is BSD-3-Clause: either an exception, or our own GPL implementation of FSRS from the published algorithm |
-| Backup/restore and WebDAV sync | |
-| Jellyfin and Plex browsing | |
 | AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |
 | API keys in the keyring (MET-005) | `oo7` or `secret-service` (check the licenses) |
 | Japanese interface | Fluent `ja` |
@@ -493,6 +617,6 @@ Every item requires a change to SPECIFICATION.md before work starts.
 
 ## Versions
 
-- SemVer. Until 1.0, `0.MINOR.PATCH`: MINOR for each milestone, PATCH for fixes.
+- SemVer. Until 1.0, `0.MINOR.PATCH`: MINOR for each milestone, PATCH for fixes. From 1.0, MINOR for each milestone that adds features, PATCH for fixes, MAJOR for a change that drops what users relied on, and for M16, which makes Nikomiru a reader too (D-19).
 - The `library.redb` schema can only change with a migration (DAT-001), even before 1.0.
 - CHANGELOG in the *Keep a Changelog* format.

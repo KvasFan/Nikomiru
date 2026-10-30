@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- ROADMAP: the milestones after 1.0, in the maintainer's order (D-19): M11 Jellyfin and Plex, M12 backup and WebDAV sync, M13 advanced ASS and screenshots with subtitles, M14 clipboard lookup and texthooker, M15 MDict, StarDict and DSL, M16 books, manga and audiobooks.
+
 ## [1.0.0] - 2026-10-30
 
 Packages, the words in the subtitles and moving pictures (M8, M9, M10).
