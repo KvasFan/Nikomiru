@@ -40,9 +40,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | released |
 | Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
-| M8 | Stabilization and packages | M | **1.0.0** | in progress (manual checks open) |
-| M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | done (maintainer's check open) |
-| M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | done (maintainer's check open) |
+| M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
+| M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
+| M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
 
 ---
 
@@ -407,7 +407,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - [ ] All automatic tests green; no open P1 bugs.
 - [ ] Manual release checklist TEST §9 complete on: GNOME Wayland, KDE Wayland, X11 (Xfce or i3), Intel, AMD and NVIDIA GPUs (proprietary driver).
 - [x] `THIRD_PARTY_LICENSES.html` included in the packages and visible in "About" (2026-10-26: the PKGBUILD and the Flatpak install it where About finds it; `ci` checks the Flatpak's copy).
-- [ ] **Release 1.0.0**.
+- [x] **Release 1.0.0** (2026-10-30, tag `v1.0.0`, at the maintainer's request; the manual checklist of TEST §9, in `docs/qa/1.0.0.md`, and the publishing on the AUR and Flathub follow it).
 
 ---
 

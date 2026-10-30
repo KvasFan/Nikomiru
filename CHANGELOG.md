@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-30
+
+Packages, the words in the subtitles and moving pictures (M8, M9, M10).
+
 ### Added
 
 - Moving pictures (M10, D-18): a card's picture can be its sentence as an animated WebP or AVIF (ANK-042), chosen in Settings → Anki → Image format.
@@ -21,6 +25,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Covers are decoded within the limits of the dictionaries' images (format by the bytes, size, sides and memory bounded): since 0.4.0 one can come from the network.
 - A subtitle file larger than 64 MiB is refused instead of read whole.
+
+### Fixed
+
+- A long session no longer grows in memory (T-REL-003): each dictionary popup no longer leaves a layer behind in the interface, the GL fence mpv 0.41 makes at every frame drawn is deleted, and the memory freed is given back to the system. Two hours of playback with lookups: 101 → 122 MiB, where it was 110 → 195.
 
 ## [0.4.0] - 2026-10-26
 
