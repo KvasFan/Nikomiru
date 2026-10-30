@@ -13,7 +13,7 @@ use nikomiru_app::shell::{ProxyWaker, Shell, UserEvent};
 use nikomiru_app::{cli, instance, linux, logging};
 use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
 use nikomiru_library::{DictionaryManager, Library};
-use nikomiru_player::{Player, VideoOutput};
+use nikomiru_player::{Player, PlayerEvent, VideoOutput};
 use nikomiru_ui::dictionaries::{DictionaryService, Done};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::popup::Reply;
@@ -374,6 +374,11 @@ fn run(
 
     let sink = waker.clone();
     let player = match Player::new(VideoOutput::RenderApi, move |e| {
+        // the decoders of the last file are gone: what they freed goes back
+        // to the system (T-REL-003)
+        if e.value == PlayerEvent::FileLoaded {
+            linux::release_free_memory();
+        }
         sink.wake(Inbound::Player(e))
     }) {
         Ok(player) => player,

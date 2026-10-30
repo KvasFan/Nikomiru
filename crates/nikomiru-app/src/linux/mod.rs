@@ -42,6 +42,20 @@ pub fn force_c_numeric_locale() {
     }
 }
 
+/// Gives the free pages of every malloc arena back to the system (T-REL-003).
+/// mpv starts decoder threads for each file and ends them with it; glibc keeps
+/// what they freed in their arenas, so without this every change of file left
+/// a few MiB behind for good, though nothing was still allocated. Thread-safe;
+/// it takes a few milliseconds, so not for every frame.
+pub fn release_free_memory() {
+    #[cfg(target_env = "gnu")]
+    // SAFETY: `malloc_trim` only walks glibc's own arenas under their locks; it
+    // takes no pointer and is safe to call from any thread.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
 /// The signals that ask Nikomiru to quit: a session logout, `kill`, Ctrl+C.
 const TERMINATION: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
 
