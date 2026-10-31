@@ -431,6 +431,12 @@ pub const ANILIST_URL: &str = "https://graphql.anilist.co";
 
 /// Jikan's address (MET-002).
 pub const JIKAN_URL: &str = "https://api.jikan.moe/v4";
+/// The real plex.tv (SRV-003).
+pub const PLEX_TV_URL: &str = "https://plex.tv/";
+
+fn is_plex_tv_url(url: &str) -> bool {
+    url == PLEX_TV_URL
+}
 
 fn is_anilist_url(url: &str) -> bool {
     url == ANILIST_URL
@@ -539,6 +545,9 @@ pub struct OnlineConfig {
     /// Jikan's address, another one for the tests.
     #[serde(skip_serializing_if = "is_jikan_url")]
     pub jikan_url: String,
+    /// Another plex.tv, for the tests (SRV-003).
+    #[serde(skip_serializing_if = "is_plex_tv_url")]
+    pub plex_tv_url: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -558,6 +567,7 @@ impl Default for OnlineConfig {
             metadata: "anilist".into(),
             anilist_url: ANILIST_URL.into(),
             jikan_url: JIKAN_URL.into(),
+            plex_tv_url: PLEX_TV_URL.into(),
             other: toml::Table::new(),
         }
     }

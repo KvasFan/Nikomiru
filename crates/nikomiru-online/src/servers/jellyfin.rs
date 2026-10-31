@@ -77,6 +77,10 @@ fn item_of(value: &Value) -> Option<Item> {
         kind,
         title: value["Name"].as_str().unwrap_or_default().to_string(),
         series: value["SeriesName"].as_str().map(str::to_string),
+        parent: value["SeasonId"]
+            .as_str()
+            .or_else(|| value["ParentId"].as_str())
+            .map(str::to_string),
         season: number(&value["ParentIndexNumber"]),
         episode: number(&value["IndexNumber"]),
         played: user["Played"].as_bool().unwrap_or(false),

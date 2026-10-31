@@ -23,6 +23,8 @@ pub enum SettingsTab {
     Subtitles,
     /// The subtitle services, their keys and the proxy (MET-011).
     Services,
+    /// Media servers (SRV-001).
+    Servers,
     /// The dictionaries, their order and their styles (DIC-*).
     Dictionaries,
     /// The lookups and the popups.
@@ -41,11 +43,12 @@ pub enum SettingsTab {
 
 impl SettingsTab {
     /// Every tab, in the order shown.
-    pub const ALL: [SettingsTab; 11] = [
+    pub const ALL: [SettingsTab; 12] = [
         Self::General,
         Self::Player,
         Self::Subtitles,
         Self::Services,
+        Self::Servers,
         Self::Dictionaries,
         Self::Lookup,
         Self::Audio,
@@ -76,6 +79,7 @@ impl SettingsTab {
             Self::Player => "player",
             Self::Subtitles => "subtitles",
             Self::Services => "services",
+            Self::Servers => "servers",
             Self::Dictionaries => "dictionaries",
             Self::Lookup => "lookup",
             Self::Audio => "audio",
@@ -98,6 +102,7 @@ impl SettingsTab {
             Self::Player => "settings-player",
             Self::Subtitles => "settings-subtitles",
             Self::Services => "settings-services",
+            Self::Servers => "settings-servers",
             Self::Dictionaries => "settings-dictionaries",
             Self::Lookup => "settings-lookup",
             Self::Audio => "settings-audio",

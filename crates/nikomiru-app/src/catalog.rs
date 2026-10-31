@@ -108,8 +108,22 @@ impl Worker {
     fn home(&self) -> Result<Home, String> {
         let lib = &self.parts.library;
         let e = |e| self.message(&e);
+        let continue_watching = lib.continue_watching(CONTINUE).map_err(e)?;
+        let server_titles = continue_watching
+            .iter()
+            .filter_map(|(uid, _)| {
+                let item = lib.server_item(uid).ok().flatten()?;
+                let title = if item.series.is_empty() {
+                    item.title
+                } else {
+                    format!("{} — {}", item.series, item.title)
+                };
+                Some((uid.clone(), title))
+            })
+            .collect();
         Ok(Home {
-            continue_watching: lib.continue_watching(CONTINUE).map_err(e)?,
+            continue_watching,
+            server_titles,
             series: lib.series_list().map_err(e)?,
             folders: lib.folders().map_err(e)?,
         })

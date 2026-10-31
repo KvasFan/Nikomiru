@@ -624,3 +624,32 @@ stats-session = { $time } · { $chars } caratteri · { $lookups } { $lookups ->
 }
 stats-delete = Cancella
 stats-delete-session = Cancella la sessione del { $date }, { $name }
+
+settings-servers = Server multimediali
+servers-added = Server aggiunti
+servers-none = Ancora nessun server. Nikomiru si collega a un server solo dopo che lo aggiungi.
+servers-add-jellyfin = Aggiungi un server Jellyfin
+servers-address = Indirizzo
+servers-address-hint = http://192.168.1.10:8096
+servers-user = Utente
+servers-password = Password
+servers-unencrypted = Consenti una connessione non cifrata
+servers-unencrypted-warning = Password e token viaggeranno in chiaro. Serve solo per un indirizzo http:// fuori dalla tua rete.
+servers-log-in = Accedi
+servers-add-plex = Aggiungi server Plex
+servers-plex-hint = Accedi su plex.tv dal browser: nessuna password passa da Nikomiru.
+servers-sign-in-plex = Accedi con Plex
+servers-cancel = Annulla
+servers-plex-stopped = L'accesso a Plex si è fermato prima di finire.
+servers-check = Librerie
+servers-remove = Rimuovi
+servers-added-count = { $count ->
+    [one] Un server aggiunto.
+   *[other] { $count } server aggiunti.
+}
+servers-this-server = Questo server
+servers-search = Cerca in questa libreria
+servers-empty = Qui non c'è niente.
+servers-more = Altri
+servers-watched = Visto
+servers-started = Iniziato

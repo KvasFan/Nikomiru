@@ -203,6 +203,7 @@ fn item_of(value: &Value) -> Option<Item> {
         kind,
         title: value["title"].as_str().unwrap_or_default().to_string(),
         series: series.map(str::to_string),
+        parent: value["parentRatingKey"].as_str().map(str::to_string),
         season: number(&value["parentIndex"]),
         episode: number(&value["index"]),
         cover: value["thumb"].as_str().map(str::to_string),

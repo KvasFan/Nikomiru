@@ -22,6 +22,8 @@ pub struct Home {
     pub series: Vec<SeriesSummary>,
     /// The imported folders, by path.
     pub folders: Vec<(String, FolderRecord)>,
+    /// The titles of the media servers' videos (SRV-006), by uid.
+    pub server_titles: std::collections::BTreeMap<String, String>,
 }
 
 impl Home {

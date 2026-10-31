@@ -23,6 +23,7 @@ pub(crate) mod palette;
 mod player_page;
 mod popups;
 mod prefs_page;
+mod servers_page;
 mod services_page;
 pub(crate) mod settings;
 mod shortcuts_page;
@@ -170,6 +171,8 @@ pub(crate) struct View {
     pub audio: audio_page::State,
     /// What it keeps.
     pub services: services_page::State,
+    pub servers_page_open: bool,
+    pub servers: servers_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
     /// Ctrl+, asked for the settings: they open at the next frame.
@@ -230,6 +233,7 @@ impl View {
                 } else if self.library_page_open {
                     self.close_library_page();
                 } else if self.services_page_open
+                    || self.servers_page_open
                     || self.audio_page_open
                     || self.dict_page_open
                     || self.prefs_open.is_some()
@@ -320,6 +324,10 @@ impl View {
                 self.services_page_open = true;
                 out.push(Command::ServicesOpen);
             }
+            SettingsTab::Servers => {
+                self.servers_page_open = true;
+                out.push(Command::ServersOpen);
+            }
             SettingsTab::Dictionaries => self.open_dict_page(out),
             SettingsTab::Audio => {
                 self.audio_page_open = true;
@@ -345,6 +353,7 @@ impl View {
             || self.anki_page_open
             || self.dict_page_open
             || self.services_page_open
+            || self.servers_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
     }
@@ -358,6 +367,8 @@ impl View {
         self.prefs = prefs_page::State::default();
         self.services_page_open = false;
         self.services = services_page::State::default();
+        self.servers_page_open = false;
+        self.servers = servers_page::State::default();
         self.audio_page_open = false;
         self.audio = audio_page::State::default();
     }
@@ -449,6 +460,7 @@ impl View {
             || self.online_page_open
             || self.player_page_open
             || self.services_page_open
+            || self.servers_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
             || self.library_page_open
@@ -474,6 +486,9 @@ impl View {
         }
         if self.services_page_open {
             services_page::show(&ctx, s, self, &mut out);
+        }
+        if self.servers_page_open {
+            servers_page::show(&ctx, s, self, &mut out);
         }
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);

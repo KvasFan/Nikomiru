@@ -9,6 +9,7 @@
 
 mod drag;
 mod perf;
+mod servers;
 mod support;
 
 use std::time::Duration;

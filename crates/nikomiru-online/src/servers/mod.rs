@@ -11,7 +11,7 @@ pub mod relay;
 
 use std::net::IpAddr;
 
-use reqwest::Url;
+pub use reqwest::Url;
 
 use crate::error::OnlineError;
 use crate::http::{Http, Response};
@@ -95,6 +95,8 @@ pub struct Item {
     pub title: String,
     /// The title of its series.
     pub series: Option<String>,
+    /// The season or series it is in, for what comes next (SRV-008).
+    pub parent: Option<String>,
     /// The number of its season.
     pub season: Option<u32>,
     /// The number of the episode, or of the season for a season.
@@ -350,6 +352,12 @@ pub fn parse_time(text: &str) -> Option<i64> {
         }
     };
     Some(days * 86_400 + hour * 3600 + minute * 60 + second - shift)
+}
+
+/// The episode after `id` among `items`, in their order (SRV-008).
+pub fn next_of<'a>(items: &'a [Item], id: &str) -> Option<&'a Item> {
+    let at = items.iter().position(|i| i.id == id)?;
+    items[at + 1..].iter().find(|i| i.kind.playable())
 }
 
 /// The position to start from: the one saved last, the local one on a tie

@@ -335,6 +335,7 @@ mod tests {
                 season: None,
                 episode: Some(1),
                 anilist_id: None,
+                folder: None,
             }),
             results: Some(OnlineResults {
                 candidates: vec![

@@ -4,6 +4,7 @@
 //! `$XDG_DATA_HOME/nikomiru/subtitles/<hash>/<video name>.<language>.<ext>`,
 //! never next to the video.
 
+use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +15,14 @@ use crate::language::{extension, is_subtitle};
 /// folder of the downloaded subtitles (`$XDG_DATA_HOME/nikomiru/subtitles`).
 pub fn folder(subtitles_dir: &Path, hash: &VideoHash) -> PathBuf {
     subtitles_dir.join(hash.hex())
+}
+
+/// The folder of a media server's video, which has no OpenSubtitles hash
+/// (SRV-010): the SHA-256 of its uid.
+pub fn server_folder(subtitles_dir: &Path, uid: &str) -> PathBuf {
+    let digest = Sha256::digest(uid.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    subtitles_dir.join(hex)
 }
 
 /// A file name part without the characters file systems or shells mind.
