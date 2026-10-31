@@ -6,7 +6,7 @@
 | Date | 2026-10-19 |
 | Requirements | NFR-PERF-03, SPECIFICATION §5.2, ARC-001…ARC-004, PLY-005, PLY-009 |
 | Risk | R-1 (transparent webview + GLArea composition not smooth) |
-| Spike | S1 — code in [`spikes/s1-composition/`](../../spikes/s1-composition/) |
+| Spike | S1 — code in [`spikes/s1-composition/`](https://github.com/KvasFan/nikomiru/tree/v1.0.0/spikes/s1-composition) (removed after 1.0.0; in the tag `v1.0.0`) |
 
 ## Context
 

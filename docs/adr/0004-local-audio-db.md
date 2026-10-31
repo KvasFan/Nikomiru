@@ -15,7 +15,7 @@ SQLite's own library is public domain, not in the license list (SPECIFICATION §
 
 ## The spike
 
-No real `android.db` was at hand, and its audio is third-party content. `spikes/s3-local-audio/make_db.py` writes a synthetic one with Python's `sqlite3` (SQLite itself): the same schema and indexes, 300 000 entries over four sub-sources (forvo with up to four speakers per word), 2.2 GB of random "audio" of 2–12 KB per row. 2000 lookups, a tenth of them for absent words and a third with a reading the file does not have (so the expression alone is asked), each including the blob of the file chosen. NVMe disk; "cold" means the file dropped from the page cache first (`posix_fadvise(DONTNEED)`).
+No real `android.db` was at hand, and its audio is third-party content. `spikes/s3-local-audio/make_db.py` (now `xtask/scripts/android_db_large.py`; the spike is in the tag `v1.0.0`) writes a synthetic one with Python's `sqlite3` (SQLite itself): the same schema and indexes, 300 000 entries over four sub-sources (forvo with up to four speakers per word), 2.2 GB of random "audio" of 2–12 KB per row. 2000 lookups, a tenth of them for absent words and a third with a reading the file does not have (so the expression alone is asked), each including the blob of the file chosen. NVMe disk; "cold" means the file dropped from the page cache first (`posix_fadvise(DONTNEED)`).
 
 | Reader | open | p50 warm | p95 warm | p95 cold | max cold |
 |---|---|---|---|---|---|

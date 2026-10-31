@@ -6,7 +6,7 @@
 | Date | 2026-10-20 |
 | Requirements | NFR-PERF-03, NFR-PERF-06, NFR-A11Y-01, ARC-010, ARC-011, SPECIFICATION §3 (licenses) and §5.2 |
 | Supersedes | [ADR 0003](0003-qt-quick-ui.md) (Qt 6 Quick, D-10) and the QML part of [ADR 0005](0005-popup-qml.md) |
-| Spike | S5 — code in [`spikes/s5-toolkits/`](../../spikes/s5-toolkits/) |
+| Spike | S5 — code in [`spikes/s5-toolkits/`](https://github.com/KvasFan/nikomiru/tree/v1.0.0/spikes/s5-toolkits) (removed after 1.0.0; in the tag `v1.0.0`) |
 
 ## Context
 

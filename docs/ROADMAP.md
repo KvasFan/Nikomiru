@@ -97,7 +97,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 
 - Deliverable 6 (CI pipeline) waits for the repository to be published: for now CI runs locally with `cargo xtask ci`.
 - The automatic S1 and S1q measurements run in an off-screen virtual KWin (`spikes/s1-composition/run-virtual.sh`, `spikes/s1q-qt/run-virtual.sh`): on the session in use, the window opened behind the others and, being covered, did not draw (see ADR 0001).
-- D-10 replaced Dioxus with Qt 6 Quick ([ADR 0003](adr/0003-qt-quick-ui.md)). The code of spike S1 stays in `spikes/s1-composition/` for reference.
+- D-10 replaced Dioxus with Qt 6 Quick ([ADR 0003](adr/0003-qt-quick-ui.md)). The code of the spikes stayed in `spikes/` until 1.0.0 and is in the tag `v1.0.0`.
 
 ---
 
