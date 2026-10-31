@@ -3,7 +3,7 @@
 //! Online services chosen by the user ([ADR 0008]): subtitles from Jimaku and
 //! OpenSubtitles, searched by hand or automatically (MET-003, MET-004,
 //! MET-007…MET-010), and the metadata of series from AniList and Jikan
-//! (MET-001, MET-002).
+//! (MET-001, MET-002). Jellyfin and Plex are here too ([`servers`], M11).
 //!
 //! [ADR 0008]: ../../../docs/adr/0008-online-subtitles.md
 
@@ -15,6 +15,8 @@ pub mod audio;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
+#[cfg(feature = "test-support")]
+pub mod fake_servers;
 pub mod hash;
 pub mod http;
 pub mod jimaku;
@@ -23,6 +25,7 @@ pub mod metadata;
 pub mod opensubtitles;
 pub mod rank;
 pub mod search;
+pub mod servers;
 pub mod store;
 
 pub use error::OnlineError;

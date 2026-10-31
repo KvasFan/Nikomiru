@@ -310,6 +310,7 @@ error-online-unauthorized = { $provider } ha rifiutato la chiave API o l'accesso
 error-online-rate-limited = Troppe richieste a { $provider }: riprova tra { $seconds } s.
 error-online-quota = I download di oggi da { $provider } sono finiti.
 error-online-http = { $provider } non ha potuto rispondere (HTTP { $status }).
+error-online-gone = { $provider } non ce l'ha più.
 error-online-protocol = { $provider } ha dato una risposta inattesa ({ $reason }).
 error-online-too-large = Il file è più grande di { $limit } MiB.
 error-online-archive = L'archivio non si può usare ({ $reason }).

@@ -310,6 +310,7 @@ error-online-unauthorized = { $provider } refused the API key or the login: chec
 error-online-rate-limited = Too many requests to { $provider }: try again in { $seconds } s.
 error-online-quota = The { $provider } downloads of today are used up.
 error-online-http = { $provider } could not answer (HTTP { $status }).
+error-online-gone = { $provider } no longer has this.
 error-online-protocol = { $provider } gave an unexpected answer ({ $reason }).
 error-online-too-large = The file is larger than { $limit } MiB.
 error-online-archive = The archive cannot be used ({ $reason }).
