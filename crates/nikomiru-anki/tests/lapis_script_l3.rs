@@ -161,7 +161,7 @@ fn hostile_text_cannot_change_the_lapis_scripts() {
         }
     }
     // the tags Lapis pastes into a script
-    for tag in compose::tags(&[hostile.to_string()]) {
+    for tag in compose::tags(&[hostile.to_string()], Some(hostile)) {
         assert!(!tag.contains(['`', '$', '\\', '<', '>']), "{tag}");
     }
 }

@@ -488,20 +488,25 @@ pub fn clip_timestamp(start_ms: i64, end_ms: i64) -> String {
 }
 
 /// The tags of a card (ANK-027): the user's, then `nikomiru` and `video`,
-/// without repeats, in order. The series tag waits for series (M5).
+/// the series' title with `_` for its spaces, without repeats, in order.
 /// Templates paste the tags into scripts unescaped (Lapis' `{{Tags}}`), so the
 /// characters that would end a literal or a script there are left out.
-pub fn tags(user: &[String]) -> Vec<String> {
+pub fn tags(user: &[String], series: Option<&str>) -> Vec<String> {
+    let series = series
+        .map(|s| s.split_whitespace().collect::<Vec<_>>().join("_"))
+        .into_iter();
     let mut out: Vec<String> = Vec::new();
     for t in user
         .iter()
         .flat_map(|t| t.split_whitespace())
+        .map(str::to_string)
+        .chain(["nikomiru".to_string(), "video".to_string()])
+        .chain(series)
         .map(|t| {
             t.chars()
                 .filter(|c| !"`$\\<>".contains(*c))
                 .collect::<String>()
         })
-        .chain(["nikomiru".to_string(), "video".to_string()])
     {
         if !t.is_empty() && !out.contains(&t) {
             out.push(t);
@@ -773,15 +778,23 @@ mod tests {
     // T-ANK-027
     #[test]
     fn tags_are_the_users_then_nikomiru_and_video() {
-        assert_eq!(tags(&[]), ["nikomiru", "video"]);
+        assert_eq!(tags(&[], None), ["nikomiru", "video"]);
         assert_eq!(
-            tags(&["mine nikomiru".into(), "jp::vocab".into(), "mine".into()]),
+            tags(
+                &["mine nikomiru".into(), "jp::vocab".into(), "mine".into()],
+                None
+            ),
             ["mine", "nikomiru", "jp::vocab", "video"]
         );
         // nothing that would end the script Lapis pastes them into
         assert_eq!(
-            tags(&["a`b ${c} </script> `".into()]),
+            tags(&["a`b ${c} </script> `".into()], None),
             ["ab", "{c}", "/script", "nikomiru", "video"]
+        );
+        // the series, once a word, and as safe
+        assert_eq!(
+            tags(&[], Some("Sousou no  Frieren`")),
+            ["nikomiru", "video", "Sousou_no_Frieren"]
         );
     }
 

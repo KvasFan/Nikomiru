@@ -2316,6 +2316,7 @@ dependencies = [
  "nikomiru-core",
  "nikomiru-online",
  "nikomiru-text",
+ "proptest",
  "reqwest",
  "serde_json",
  "sha2",

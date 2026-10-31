@@ -156,7 +156,12 @@ fn read_head(connection: &mut TcpStream) -> Option<(String, String, Option<Strin
             Ok(n) => buffer.extend_from_slice(&chunk[..n]),
         }
     }
-    let head = String::from_utf8_lossy(&buffer);
+    parse_head(&buffer)
+}
+
+/// The method, target and `Range` of a request head.
+fn parse_head(buffer: &[u8]) -> Option<(String, String, Option<String>)> {
+    let head = String::from_utf8_lossy(buffer);
     let mut lines = head.lines();
     let mut first = lines.next()?.split_whitespace();
     let (method, target) = (first.next()?.to_string(), first.next()?.to_string());
@@ -220,6 +225,34 @@ fn serve(connection: &mut TcpStream, shared: &Shared) {
             // the client left: dropping `upstream` ends the server's answer
             Ok(n) if connection.write_all(&chunk[..n]).is_err() => return,
             Ok(_) => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    #[test]
+    fn a_head_gives_its_method_target_and_range() {
+        let head = b"GET /a/video HTTP/1.1\r\nHost: x\r\nRANGE: bytes=1-2\r\n\r\n";
+        assert_eq!(
+            parse_head(head),
+            Some((
+                "GET".to_string(),
+                "/a/video".to_string(),
+                Some("bytes=1-2".to_string())
+            ))
+        );
+    }
+
+    proptest! {
+        // T-SRV-013: what reaches the relay's port is untrusted
+        #[test]
+        fn any_head_is_refused_or_read(bytes in prop::collection::vec(any::<u8>(), 0..512)) {
+            let _ = parse_head(&bytes);
         }
     }
 }

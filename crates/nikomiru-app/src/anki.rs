@@ -678,7 +678,17 @@ impl Worker {
         };
         let audio_name = audio.as_ref().map(|a| actual(&a.0));
         let image_name = image.as_ref().map(|i| actual(&i.0));
-        let tags = compose::tags(&self.parts.config.tags);
+        // ANK-027
+        let series = r.uid.as_deref().and_then(|uid| {
+            self.parts
+                .library
+                .as_ref()?
+                .series_title_of_video(uid)
+                .inspect_err(|e| tracing::warn!("library: {e}"))
+                .ok()
+                .flatten()
+        });
+        let tags = compose::tags(&self.parts.config.tags, series.as_deref());
         let outcome = match r.action {
             CardAction::Add | CardAction::AddAnyway => {
                 match render(audio_name.as_deref(), image_name.as_deref(), &fields) {

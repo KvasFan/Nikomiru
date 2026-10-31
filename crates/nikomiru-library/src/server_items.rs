@@ -51,6 +51,18 @@ impl Library {
         })
     }
 
+    /// The title of the series of video `uid`, on a server or in the library
+    /// (ANK-027).
+    pub fn series_title_of_video(&self, uid: &str) -> Result<Option<String>, LibraryError> {
+        if let Some(item) = self.server_item(uid)? {
+            return Ok(Some(item.series).filter(|s| !s.is_empty()));
+        }
+        let Some(series) = self.video(uid)?.and_then(|v| v.series) else {
+            return Ok(None);
+        };
+        Ok(self.series(series)?.map(|s| s.title))
+    }
+
     /// Saves what is known of the server's video `uid`.
     pub fn set_server_item(
         &self,
@@ -95,5 +107,10 @@ mod tests {
         lib.set_server_item("srv:a:b", &record).unwrap();
         assert_eq!(lib.server_item("srv:a:b").unwrap(), Some(record));
         assert_eq!(lib.server_item("srv:a:c").unwrap(), None);
+        assert_eq!(
+            lib.series_title_of_video("srv:a:b").unwrap().as_deref(),
+            Some("A Series")
+        );
+        assert_eq!(lib.series_title_of_video("video/none").unwrap(), None);
     }
 }
