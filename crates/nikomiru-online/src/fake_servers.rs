@@ -87,14 +87,9 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl FakeServers {
     /// Starts it on a free port.
-    ///
-    /// # Panics
-    ///
-    /// If it cannot listen.
-    #[allow(clippy::expect_used)]
-    pub fn start(data: Data) -> Self {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("a free port");
-        let port = listener.local_addr().expect("its address").port();
+    pub fn start(data: Data) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", 0))?;
+        let port = listener.local_addr()?.port();
         let shared = Arc::new(Shared {
             data: Mutex::new(data),
             requests: Mutex::new(Vec::new()),
@@ -115,12 +110,12 @@ impl FakeServers {
                 std::thread::spawn(move || handle(&mut connection, &shared));
             }
         });
-        Self {
+        Ok(Self {
             port,
             shared,
             stop,
             thread: Some(thread),
-        }
+        })
     }
 
     /// The fake Jellyfin's address.

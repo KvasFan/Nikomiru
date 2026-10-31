@@ -26,7 +26,7 @@ fn protocol(reason: &str) -> OnlineError {
     }
 }
 
-fn identity<'a>(client: &'a str) -> [(&'static str, &'a str); 3] {
+fn identity(client: &str) -> [(&'static str, &str); 3] {
     [
         ("X-Plex-Client-Identifier", client),
         ("X-Plex-Product", "Nikomiru"),

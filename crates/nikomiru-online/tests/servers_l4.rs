@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The media servers against fake ones (M11).
+//! L4: the media servers against fake ones (TEST §6.13, M11).
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -66,7 +68,7 @@ fn plex(fake: &FakeServers) -> Plex {
 // T-SRV-002
 #[test]
 fn jellyfin_logs_in_and_keeps_only_the_token() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     let server = jellyfin(&fake);
     assert_eq!(server.token(), TOKEN);
     assert_eq!(server.user_id(), "user-1");
@@ -93,7 +95,7 @@ fn jellyfin_logs_in_and_keeps_only_the_token() {
 // T-SRV-002: an expired token
 #[test]
 fn a_refused_token_is_reported() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     let http = Http::new("").unwrap();
     let mut server = Jellyfin::new(http, url(&fake.jellyfin_url()), "old", "user-1", "device");
     assert!(matches!(
@@ -108,7 +110,8 @@ fn plex_signs_in_with_a_pin() {
     let fake = FakeServers::start(Data {
         pin_polls: 2,
         ..data()
-    });
+    })
+    .unwrap();
     let tv = PlexTv::new(Http::new("").unwrap(), url(&fake.plex_tv_url()), "device");
     let pin = tv.pin().unwrap();
     let page = tv.sign_in_url(&pin);
@@ -172,7 +175,7 @@ fn browse(server: &mut dyn MediaServer) {
 // T-SRV-006, T-SRV-013
 #[test]
 fn jellyfin_lists_its_library() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     browse(&mut jellyfin(&fake));
     let item = jellyfin(&fake).item("e3").unwrap();
     assert_eq!(item.anilist_id, Some(1234));
@@ -182,7 +185,7 @@ fn jellyfin_lists_its_library() {
 // T-SRV-006, T-SRV-013
 #[test]
 fn plex_lists_its_library() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     browse(&mut plex(&fake));
 }
 
@@ -212,7 +215,7 @@ fn play(server: &mut dyn MediaServer, fake: &FakeServers) {
 // T-SRV-010, T-SRV-011
 #[test]
 fn jellyfin_plays_and_reports() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     play(&mut jellyfin(&fake), &fake);
     let requests = fake.requests();
     let progress = requests
@@ -245,7 +248,7 @@ fn jellyfin_plays_and_reports() {
 // T-SRV-010, T-SRV-011
 #[test]
 fn plex_plays_and_reports() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     play(&mut plex(&fake), &fake);
     let requests = fake.requests();
     let reported = |state: &str| {
@@ -290,7 +293,7 @@ fn stream_of(server: &mut dyn MediaServer) -> Stream {
 // T-SRV-009, T-SRV-004: the token is added by the relay, and only there
 #[test]
 fn the_relay_serves_ranges_with_the_token() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     for stream in [stream_of(&mut jellyfin(&fake)), stream_of(&mut plex(&fake))] {
         assert!(!format!("{stream:?}").contains(TOKEN));
         assert!(!stream.url.as_str().contains(TOKEN));
@@ -317,7 +320,7 @@ fn the_relay_serves_ranges_with_the_token() {
 // T-SRV-009
 #[test]
 fn the_relay_answers_nothing_else() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     let relay = Relay::start(stream_of(&mut jellyfin(&fake)), "").unwrap();
     let (address, path) = split(&relay);
     let status = |request: String| {
@@ -335,8 +338,8 @@ fn the_relay_answers_nothing_else() {
 // T-SRV-004: a redirect would take the token elsewhere
 #[test]
 fn the_relay_does_not_follow_redirects() {
-    let fake = FakeServers::start(data());
-    let other = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
+    let other = FakeServers::start(data()).unwrap();
     fake.data().redirect_to = Some(format!("{}Videos/e3/stream", other.jellyfin_url()));
     let relay = Relay::start(stream_of(&mut jellyfin(&fake)), "").unwrap();
     let (address, path) = split(&relay);
@@ -350,7 +353,7 @@ fn the_relay_does_not_follow_redirects() {
 // T-SRV-009
 #[test]
 fn the_relay_limits_connections_and_lets_go() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     let relay = Relay::start(stream_of(&mut jellyfin(&fake)), "").unwrap();
     let (address, path) = split(&relay);
     // idle connections hold their place until they ask or time out
@@ -384,7 +387,7 @@ fn the_relay_limits_connections_and_lets_go() {
 // T-SRV-013
 #[test]
 fn a_server_that_dies_is_an_error() {
-    let fake = FakeServers::start(data());
+    let fake = FakeServers::start(data()).unwrap();
     let mut server = jellyfin(&fake);
     drop(fake);
     assert!(matches!(
