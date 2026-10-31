@@ -157,7 +157,8 @@ fn damaged_files_give_errors() {
 #[test]
 #[ignore = "L4: needs target/fixtures/audio-large/android.db (xtask/scripts/android_db_large.py)"]
 fn the_large_database_is_read_quickly() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/fixtures/audio-large/android.db");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/fixtures/audio-large/android.db");
     let Ok(words) = std::fs::read_to_string(path.with_extension("db.words")) else {
         return;
     };
