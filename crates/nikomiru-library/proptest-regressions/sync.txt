@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3f3ccf616887e63634d918eedb8458a18c405107c92fa5abc5788b828d579785 # shrinks to a = DeviceState { format: 1, videos: {}, coverage: {}, credit: {"b": CueCredit { key: "x", counted: {0, 1, 2}, played: {} }}, sessions: {}, cards: {}, deleted: {} }, b = DeviceState { format: 1, videos: {}, coverage: {}, credit: {"b": CueCredit { key: "x", counted: {3}, played: {} }}, sessions: {}, cards: {}, deleted: {} }, c = DeviceState { format: 1, videos: {}, coverage: {}, credit: {"b": CueCredit { key: "y", counted: {0}, played: {} }}, sessions: {}, cards: {}, deleted: {} }

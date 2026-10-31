@@ -32,6 +32,8 @@ pub enum Inbound {
     },
     /// An answer for the pages of media servers.
     Servers(Box<crate::servers::ServerAnswer>),
+    /// An answer for the Backup page.
+    Sync(Box<crate::sync::SyncAnswer>),
     /// A subtitle load ended.
     Subtitles {
         /// The session's load generation.
@@ -248,6 +250,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::IdentityCover { .. } => "IdentityCover",
             Inbound::ServerReady { .. } => "ServerReady",
             Inbound::Servers(_) => "Servers",
+            Inbound::Sync(_) => "Sync",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -426,6 +429,20 @@ pub(crate) enum Command {
     /// "Use" on one of its results.
     OnlineUse(usize),
     /// Save these online settings.
+    /// The Backup tab opened.
+    BackupOpen,
+    /// New settings of the WebDAV folder.
+    SyncSave(Box<nikomiru_core::config::SyncConfig>),
+    SyncCheck,
+    SyncNow,
+    BackupOptions(crate::sync::Options),
+    /// Asks where to write a backup.
+    BackupMake,
+    /// Asks for a backup to restore.
+    BackupChoose,
+    /// The backup chosen, confirmed.
+    BackupRestore,
+    BackupCancel,
     /// The Media servers tab opened.
     ServersOpen,
     /// A login to a Jellyfin (SRV-002).
@@ -733,6 +750,8 @@ impl Ui {
                         .library_import(path, nikomiru_library::Grouping::BySeries),
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                     Dialog::StatsExport => self.session.stats_export(path),
+                    Dialog::BackupSave => self.session.backup_to(path),
+                    Dialog::BackupOpen => self.session.backup_chosen(path),
                 }
                 true
             }
@@ -770,6 +789,10 @@ impl Ui {
             }
             Inbound::ServerReady { uid, result } => {
                 self.session.server_ready(&uid, *result);
+                true
+            }
+            Inbound::Sync(answer) => {
+                self.session.sync_answer(*answer);
                 true
             }
             Inbound::Servers(answer) => {
@@ -1093,6 +1116,15 @@ impl Ui {
                 episode,
             } => s.online_search(title, season, episode),
             Command::OnlineUse(index) => s.online_use(index),
+            Command::BackupOpen => s.backup_open(),
+            Command::SyncSave(sync) => s.sync_save(*sync),
+            Command::SyncCheck => s.sync_check(),
+            Command::SyncNow => s.sync_now(),
+            Command::BackupOptions(options) => s.backup_page.options = options,
+            Command::BackupMake => self.view.dialog = Some(Dialog::BackupSave),
+            Command::BackupChoose => self.view.dialog = Some(Dialog::BackupOpen),
+            Command::BackupRestore => s.backup_restore(),
+            Command::BackupCancel => s.backup_page.chosen = None,
             Command::ServersOpen => self.session.servers_open(),
             Command::ServerJellyfin {
                 url,
@@ -1265,6 +1297,34 @@ impl Ui {
                 LibraryJob::ExportCsv(path) => {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
+            }
+        }
+        for job in self.session.take_sync_jobs() {
+            use crate::sync::{SyncAnswer, SyncJob};
+            let waker = self.waker.clone();
+            let send = move |answer: SyncAnswer| waker.wake(Inbound::Sync(Box::new(answer)));
+            let sync = self.session.sync();
+            match job {
+                SyncJob::Check => sync.check(Box::new(move |r| send(SyncAnswer::Checked(r)))),
+                SyncJob::Now => sync.sync(Box::new(move |r| send(SyncAnswer::Synced(r)))),
+                SyncJob::Backup(path, config, options) => sync.backup(
+                    path,
+                    config,
+                    options,
+                    Box::new(move |r| send(SyncAnswer::BackedUp(r))),
+                ),
+                SyncJob::Inspect(path) => {
+                    let chosen = path.clone();
+                    sync.inspect(
+                        path,
+                        Box::new(move |r| send(SyncAnswer::Inspected(chosen, r))),
+                    );
+                }
+                SyncJob::Restore(path, config) => sync.restore(
+                    path,
+                    config,
+                    Box::new(move |r| send(SyncAnswer::Restored(r))),
+                ),
             }
         }
         for job in self.session.take_server_jobs() {

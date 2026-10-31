@@ -126,6 +126,12 @@ Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indiriz
 
 Ogni scheda ha **Salva** e **Ripristina**. Puoi modificare anche `~/.config/nikomiru/config.toml` a mano: Nikomiru conserva i tuoi commenti.
 
+### Backup e sincronizzazione
+
+Impostazioni → Backup scrive impostazioni, libreria, statistiche e sottotitoli scaricati in un solo file, con i dizionari se li spunti. Chiavi e password restano fuori, a meno che non spunti anche quelle. Per ripristinare scegli un backup e riapri Nikomiru: ciò che c'era resta in `before-restore`.
+
+Con una cartella WebDAV (Nextcloud e simili, con una password per app), "Sincronizza ora" mantiene uguali avanzamento, statistiche e carte sui tuoi computer. Impostazioni, serie e dizionari restano su ogni computer, e i file sul server non sono cifrati. Un video è lo stesso su due computer quando il suo file ha lo stesso nome.
+
 ## 9. Tastiera
 
 Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio e Spazio comandano i controlli. Ogni scorciatoia è elencata, e si può cambiare, in Impostazioni → Scorciatoie.

@@ -270,6 +270,8 @@ enum Handle {
 pub struct Library {
     db: Handle,
     schema: u32,
+    /// Its file, for a backup (BAK-001).
+    path: std::path::PathBuf,
 }
 
 impl std::fmt::Debug for Library {
@@ -366,6 +368,7 @@ impl Library {
                 return Ok(Self {
                     db: Handle::ReadOnly(ro),
                     schema: v,
+                    path: path.to_path_buf(),
                 });
             }
             let from = found.unwrap_or(0);
@@ -402,6 +405,7 @@ impl Library {
             return Ok(Self {
                 db: Handle::ReadWrite(db),
                 schema: current,
+                path: path.to_path_buf(),
             });
         }
         if let Some(dir) = path.parent() {
@@ -418,7 +422,31 @@ impl Library {
         Ok(Self {
             db: Handle::ReadWrite(db),
             schema: current,
+            path: path.to_path_buf(),
         })
+    }
+
+    /// A copy of the file at `to` (BAK-001): no transaction can commit while
+    /// it is made, so it is what the library is at one moment.
+    pub fn copy_to(&self, to: &Path) -> Result<(), LibraryError> {
+        let copy = || {
+            std::fs::copy(&self.path, to).map_err(|source| LibraryError::Io {
+                path: to.to_path_buf(),
+                source,
+            })
+        };
+        match &self.db {
+            Handle::ReadWrite(db) => {
+                let held = db_err!(db.begin_write())?;
+                let copied = copy();
+                db_err!(held.abort())?;
+                copied?;
+            }
+            Handle::ReadOnly(_) => {
+                copy()?;
+            }
+        }
+        Ok(())
     }
 
     /// Whether the library is read-only (DAT-002).

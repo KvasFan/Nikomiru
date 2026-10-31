@@ -395,3 +395,27 @@ fn a_server_that_dies_is_an_error() {
         Err(OnlineError::Unreachable { .. } | OnlineError::Timeout { .. })
     ));
 }
+
+// T-BAK-004, T-BAK-006
+#[test]
+fn a_webdav_folder_keeps_each_devices_file() {
+    use nikomiru_online::webdav::WebDav;
+    let fake = FakeServers::start(data()).unwrap();
+    let dav = WebDav::new(&fake.webdav_url(), "dav", "pass", false, "").unwrap();
+    dav.prepare().unwrap();
+    dav.write("one", vec![1, 0, 255]).unwrap();
+    dav.write("two", b"two".to_vec()).unwrap();
+    assert_eq!(dav.devices().unwrap(), ["one", "two"]);
+    assert_eq!(dav.read("one").unwrap(), [1, 0, 255]);
+    let refused = WebDav::new(&fake.webdav_url(), "dav", "wrong", false, "").unwrap();
+    assert!(matches!(
+        refused.devices(),
+        Err(OnlineError::Unauthorized { .. })
+    ));
+    // T-BAK-010: a full server says so
+    fake.data().dav_full = true;
+    assert!(matches!(
+        dav.write("one", vec![1]),
+        Err(OnlineError::Quota { .. })
+    ));
+}

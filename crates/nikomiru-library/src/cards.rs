@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{Library, LibraryError};
 
-const MINED_CARDS: TableDefinition<u64, &[u8]> = TableDefinition::new("mined_cards");
+pub(crate) const MINED_CARDS: TableDefinition<u64, &[u8]> = TableDefinition::new("mined_cards");
 
 /// A card made from a scene (SPECIFICATION §8).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

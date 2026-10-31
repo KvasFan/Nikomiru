@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Backup and sync (M12, BAK-001…BAK-010): Settings → Backup writes a backup to a file and restores one at the next start; a WebDAV folder keeps progress, statistics and cards the same on your computers, merged record by record, by hand or at start and close.
 - Media servers (M11, SRV-001…SRV-013): Jellyfin and Plex in Settings → Media servers, a tab for each on the library page, their videos played with the same subtitles, lookups and cards as a file. Direct play only; the position and watched state go back to the server. Tokens stay inside Nikomiru: mpv and ffmpeg read through a relay on this computer.
 
 ### Fixed
@@ -18,8 +19,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- SPECIFICATION: backup and WebDAV sync of M12, proposed (BAK-001…BAK-010, D-21), with their tests in TEST.
-- SPECIFICATION: the media servers of M11, proposed (SRV-001…SRV-013, D-20), with their tests in TEST.
+- SPECIFICATION: backup and WebDAV sync of M12 (BAK-001…BAK-010, D-21), with their tests in TEST.
+- SPECIFICATION: the media servers of M11 (SRV-001…SRV-013, D-20), with their tests in TEST.
 - ROADMAP: the milestones after 1.0, in the maintainer's order (D-19): M11 Jellyfin and Plex, M12 backup and WebDAV sync, M13 advanced ASS and screenshots with subtitles, M14 clipboard lookup and texthooker, M15 MDict, StarDict and DSL, M16 books, manga and audiobooks.
 
 ## [1.0.0] - 2026-10-30
