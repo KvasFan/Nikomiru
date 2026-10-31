@@ -152,11 +152,12 @@ fn damaged_files_give_errors() {
     assert!(started.elapsed() < std::time::Duration::from_secs(30));
 }
 
-// T-AUD-003: the synthetic database of spike S3 (300k entries), when there
+// T-AUD-003: the large synthetic database (300k entries,
+// `xtask/scripts/android_db_large.py`), when there
 #[test]
-#[ignore = "L4: needs the database of spike S3 in target/spike-s3"]
-fn the_spike_database_is_read_quickly() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/spike-s3/android.db");
+#[ignore = "L4: needs target/fixtures/audio-large/android.db (xtask/scripts/android_db_large.py)"]
+fn the_large_database_is_read_quickly() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/fixtures/audio-large/android.db");
     let Ok(words) = std::fs::read_to_string(path.with_extension("db.words")) else {
         return;
     };

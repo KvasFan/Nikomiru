@@ -6,7 +6,7 @@
 | Date | 2026-10-19 |
 | Requirements | DIC-013, DIC-020, NFR-PERF-04, NFR-PERF-05 |
 | Risk | R-5 (redb performance not sufficient for lookup) |
-| Spike | S2 — code in [`spikes/s2-storage/`](../../spikes/s2-storage/) |
+| Spike | S2 — code in [`spikes/s2-storage/`](https://github.com/KvasFan/nikomiru/tree/v1.0.0/spikes/s2-storage) (removed after 1.0.0; in the tag `v1.0.0`) |
 
 ## Context
 
