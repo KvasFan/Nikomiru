@@ -56,6 +56,8 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 3. Each type has its own list, ordered by priority; drag a dictionary by its handle to change its place.
 4. **CSS** lets you restyle a dictionary's entries. Only a safe subset of CSS applies.
 
+Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL (`.dsl`, `.dsl.dz`) and MDict (`.mdx`) dictionaries. Their definitions show as plain text, without pictures. An MDict locked to a user cannot be read.
+
 ## 4. Looking words up
 
 - **Click** a character of a subtitle: the popup shows the longest word that starts there, its readings, meanings, pitch accent and frequencies.

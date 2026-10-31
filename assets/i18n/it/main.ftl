@@ -260,6 +260,7 @@ error-job-failed = { $program } non è riuscito: { $reason }
 # Dictionaries (nikomiru-dict ImportError, StoreError)
 error-dict-io = { $path } non si può usare ({ $reason }).
 error-dict-zip = Il file non è un archivio zip valido ({ $reason }).
+error-dict-foreign = { $file } non si può leggere ({ $reason }).
 error-dict-unsafe = Il dizionario contiene un file non sicuro ({ $entry }): non è stato importato.
 error-dict-no-index = Questo non è un dizionario Yomitan: manca index.json.
 error-dict-format = { $file } non è nel formato Yomitan ({ $reason }).
@@ -389,7 +390,7 @@ kanji-radical = radicale: { $radical }
 # Pagina dei dizionari
 dict-page-title = Dizionari
 dict-import = Importa…
-dict-import-filter = Dizionari Yomitan
+dict-import-filter = Dizionari (Yomitan, StarDict, DSL, MDict)
 dict-empty = Nessun dizionario. Importa un dizionario Yomitan (.zip), per esempio JMdict o Jitendex, un dizionario di frequenze o di accento tonale, oppure trascinalo sulla finestra.
 dict-importing = Importazione
 dict-cancel = Annulla

@@ -56,6 +56,8 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 3. Ogni tipo ha il suo elenco, ordinato per priorità; per spostare un dizionario trascinalo dalla sua maniglia.
 4. **CSS** ti permette di cambiare lo stile delle voci di un dizionario. Si applica solo un sottoinsieme sicuro del CSS.
 
+Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.ifo`), DSL (`.dsl`, `.dsl.dz`) e MDict (`.mdx`). Le definizioni appaiono come testo semplice, senza immagini. Un MDict legato a un utente non si può leggere.
+
 ## 4. Cercare le parole
 
 - **Clic** su un carattere di un sottotitolo: il popup mostra la parola più lunga che comincia lì, con letture, significati, accento tonale e frequenze.

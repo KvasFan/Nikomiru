@@ -499,7 +499,7 @@ While a page or a dialog covers the video (the library, the settings, the dialog
 | DIC-001 | MUST import **Yomitan/Yomichan** dictionaries (zip with `index.json`, format 3; format 1/2 is SHOULD): `term_bank_*`, `term_meta_bank_*` (`freq`, `pitch`, `ipa`), `kanji_bank_*`, `kanji_meta_bank_*` (`freq`), `tag_bank_*`, `styles.css`, media files | `importer.cpp` |
 | DIC-002 | Unlike Fushi, MUST import the `tag_bank_*` files (category, order, notes, score) and use them for chips and for sorting. MUST keep `sequence` and `score` | Fushi gap |
 | DIC-003 | Frequencies: values as a number, `{value, displayValue?}` and `{reading, frequency}` (also written `{reading, value}`, which Fushi reads too). Unlike Fushi, MUST also accept string values (reading the leading integer) and respect `frequencyMode` from `index.json` (`rank-based` default; `occurrence-based` = higher is better) | Fushi gap |
-| DIC-004 | MDict, StarDict, DSL, Migaku: post-1.0 | |
+| DIC-004 | **Other formats** (M15, D-24): StarDict (`.ifo`, with `.idx` or `.idx.gz` and `.dict` or `.dict.dz`), DSL (`.dsl`, `.dsl.dz`; UTF-16 or UTF-8) and MDict `.mdx` (engines 1.2 and 2.0; zlib blocks; UTF-8 or UTF-16; an index obscured by `Encrypted="2"`), imported into the same store as Yomitan's, with its checks: cancellable, nothing left behind, every size in a file checked against the file, damage refused. Headwords written `かな【漢字・漢字】` give each spelling with the reading. Definitions become plain text with their lines kept: HTML is not drawn (NFR-SEC-01), so bold, colours and pictures go. Refused, with a message: MDict locked to a user, LZO blocks, other encodings. Not read: `.mdd` media, StarDict `.syn`. Migaku: out of scope. | |
 
 #### 6.5.2 Import pipeline
 
@@ -994,6 +994,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-21 | Design of M12 | **Approved** (2026-10-31): (a) one file per device instead of a shared file, so no locks; (b) settings, series and dictionaries are not synced, only what the user did: progress, statistics, cards; (c) a backup leaves keys out unless asked; (d) no encryption of the files on the WebDAV server in 1.2.0: they hold what was watched and studied, on a server of the user's own choosing; (e) by hand by default, automatic only if ticked |
 | D-22 | Design of M13 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: effects only with `respect_ass_styles` on, as styles are, so the default look stays plain; one set of effects per cue; `Shift+S` reads the window instead of compositing the overlay into mpv's frame, so the picture is what was seen, at the window's size |
 | D-23 | Design of M14 | **Approved** (2026-10-31): the WebSocket first, since a background program cannot read the clipboard everywhere; the clipboard by Ctrl+V, and by `wl-paste` or `xclip` where they can; cards from a game with text only |
+| D-24 | Design of M15 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: the formats are read into Yomitan's terms instead of a store of their own, so lookups and cards need no change; definitions as plain text, so no HTML sanitizer (`ammonia`) and no new dependency; own readers, with RIPEMD-128 written here for MDict's index, which is only an obscuring |
 
 ### 10.2 Risks
 

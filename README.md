@@ -84,6 +84,7 @@ Version 1.0.0 is the first release with packages, for Linux. The status of each 
 | Backup to a file, sync of progress, statistics and cards through WebDAV | Next version; works against a simulated server, a real Nextcloud still to check (M12) |
 | Advanced ASS, screenshots with subtitles | Next version; real typeset fansubs still to compare with libass (M13) |
 | Texthooker for visual novels, with lookups and cards of text only | Next version; works with a simulated hooker (M14) |
+| StarDict, DSL and MDict dictionaries, their definitions as plain text | Next version; works on files made by the tests, real dictionaries still to check (M15) |
 | Words in the subtitles: the words already in Anki underlined, readings over the kanji, ← → word by word | Works with the project's test dictionaries; to check with JMdict (M9) |
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |

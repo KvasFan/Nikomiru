@@ -53,7 +53,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | done (live check open) |
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | done (check by hand open) |
 | M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | done (live check open) |
-| M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | not started |
+| M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | done (real dictionaries open) |
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | not started |
 
 ---
@@ -575,15 +575,16 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the dictionaries that are not in Yomitan's format (DIC-004).
 
-**Deliverables (scope)**
+**Requirements**: DIC-004 (D-24).
 
-- Import of MDict (`.mdx`, `.mdd`), StarDict and DSL into the same store as the Yomitan dictionaries, their HTML cleaned and shown in the popup.
+**Status as of 2026-10-31**
 
-**Notes**: `ammonia` (MIT/Apache) for the HTML; the formats' readers written in the project unless a crate passes the license policy.
+- Done on files made by the tests: the three formats, read into the same store, from a file to a lookup (T-DIC-004).
+- Open: real dictionaries. The MDict reader and the MDict files of its tests come from the same reading of the format, so only a real `.mdx` can prove it. `.mdd` media are not read, and definitions are plain text.
 
 **Exit criteria**
 
-- [ ] Requirements accepted; import tests green on project-made files of each format.
+- [x] DIC-004 specified (D-24); T-DIC-004 green on project-made files of each format.
 - [ ] Real dictionaries of each format imported by the maintainer.
 - [ ] **Release 1.5.0**.
 

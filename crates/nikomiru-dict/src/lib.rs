@@ -12,6 +12,7 @@
 mod bloom;
 pub mod css;
 pub mod deinflect;
+pub mod foreign;
 pub mod frequency;
 pub mod import;
 pub mod local_audio;
