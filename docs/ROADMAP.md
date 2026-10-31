@@ -488,7 +488,12 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - `nikomiru-ui`: Settings → Media servers, a tab for each server.
 - `nikomiru-app`: playback, subtitles, progress and scene links for server videos.
 
-**Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency expected. Test servers simulated as for AniList and Jimaku; the live checks need a real Jellyfin and the maintainer's Plex, since the development machine has no container runtime.
+**Status as of 2026-10-31**
+
+- Done on simulated servers: the Jellyfin and Plex clients, the relay, the settings tab, a tab for each server, playback, subtitles, progress, scene links (T-SRV-001…T-SRV-013 except what is listed below).
+- Open: the live checks (T-SRV-LIVE-*), on a real Jellyfin and the maintainer's Plex; a kittest of the server's tab of the library; the fuzz target of T-SRV-013.
+
+**Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency. Test servers simulated as for AniList and Jimaku; the live checks need a real Jellyfin and the maintainer's Plex, since the development machine has no container runtime.
 
 **Exit criteria**
 

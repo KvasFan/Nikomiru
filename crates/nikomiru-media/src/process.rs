@@ -15,9 +15,17 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub use nikomiru_core::Cancel;
 
+/// What starts the address of the relay of a media server (SRV-009). An
+/// actual file's path is absolute, so it cannot start like this.
+pub const RELAY_PREFIX: &str = "http://127.0.0.1:";
+
 /// `file:` + path: an input that starts with `-` or contains `:` cannot be
-/// taken for an option or a protocol (EXT-002).
+/// taken for an option or a protocol (EXT-002). The address of a media
+/// server's relay stays as it is.
 pub fn file_arg(path: &Path) -> OsString {
+    if path.as_os_str().to_string_lossy().starts_with(RELAY_PREFIX) {
+        return path.as_os_str().to_os_string();
+    }
     let mut arg = OsString::from("file:");
     arg.push(path.as_os_str());
     arg
@@ -259,6 +267,18 @@ mod tests {
         let dir = Path::new(nikomiru_core::error::I18N_DIR);
         let problems = nikomiru_core::error::message_problems(dir, &all);
         assert!(problems.is_empty(), "{problems:#?}");
+    }
+
+    #[test]
+    // T-SRV-008
+    fn the_relay_is_not_a_file() {
+        let relay = Path::new("http://127.0.0.1:4000/abc/video");
+        assert_eq!(
+            file_arg(relay),
+            OsString::from("http://127.0.0.1:4000/abc/video")
+        );
+        let local = Path::new("http:/127.0.0.1/x");
+        assert_eq!(file_arg(local), OsString::from("file:http:/127.0.0.1/x"));
     }
 
     #[test]

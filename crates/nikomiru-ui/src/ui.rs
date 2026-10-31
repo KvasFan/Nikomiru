@@ -23,6 +23,15 @@ use crate::view::{Dialog, FileDialog, View};
 pub enum Inbound {
     /// A player event.
     Player(Stamped<PlayerEvent>),
+    /// A media server's video is ready, or is not (SRV-008).
+    ServerReady {
+        /// Its uid.
+        uid: String,
+        /// The answer.
+        result: Box<Result<crate::servers::ServerVideo, String>>,
+    },
+    /// An answer for the pages of media servers.
+    Servers(Box<crate::servers::ServerAnswer>),
     /// A subtitle load ended.
     Subtitles {
         /// The session's load generation.
@@ -237,6 +246,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::SystemTheme(_) => "SystemTheme",
             Inbound::Identified { .. } => "Identified",
             Inbound::IdentityCover { .. } => "IdentityCover",
+            Inbound::ServerReady { .. } => "ServerReady",
+            Inbound::Servers(_) => "Servers",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -415,6 +426,35 @@ pub(crate) enum Command {
     /// "Use" on one of its results.
     OnlineUse(usize),
     /// Save these online settings.
+    /// The Media servers tab opened.
+    ServersOpen,
+    /// A login to a Jellyfin (SRV-002).
+    ServerJellyfin {
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+    },
+    /// A sign-in to Plex (SRV-003).
+    ServerPlex,
+    /// Stops the sign-in.
+    ServerCancel,
+    ServerRename(String, String),
+    ServerRemove(String),
+    /// Asks a server for its libraries, on the settings page.
+    ServerCheck(String),
+    /// The libraries shown of a server (SRV-006).
+    ServerShowLibraries(String, Vec<String>),
+    /// A server's tab opened.
+    ServerShow(String),
+    /// Goes to a place of the tab.
+    ServerGo(Vec<crate::servers::Place>),
+    ServerSearch(String),
+    ServerMore,
+    /// Asks for a cover: its item and where it is.
+    ServerCover(String, String),
+    /// Plays an item of the tab.
+    ServerPlay(String),
     OnlineSave(
         Box<(
             nikomiru_core::config::OnlineConfig,
@@ -728,6 +768,14 @@ impl Ui {
                 self.pump();
                 true
             }
+            Inbound::ServerReady { uid, result } => {
+                self.session.server_ready(&uid, *result);
+                true
+            }
+            Inbound::Servers(answer) => {
+                self.session.server_answer(*answer);
+                true
+            }
             Inbound::Quit => {
                 self.quit();
                 true
@@ -804,6 +852,7 @@ impl Ui {
     /// The web links the user clicked since the last call: the app opens them
     /// with the system's browser.
     pub fn take_external(&mut self) -> Vec<String> {
+        self.external.extend(self.session.take_external_links());
         std::mem::take(&mut self.external)
     }
 
@@ -888,6 +937,7 @@ impl Ui {
 
     /// Saves the position; the app then leaves its event loop.
     pub fn quit(&mut self) {
+        self.session.quitting();
         self.session.flush_position();
         self.quit = true;
         #[cfg(feature = "test-harness")]
@@ -1043,6 +1093,26 @@ impl Ui {
                 episode,
             } => s.online_search(title, season, episode),
             Command::OnlineUse(index) => s.online_use(index),
+            Command::ServersOpen => self.session.servers_open(),
+            Command::ServerJellyfin {
+                url,
+                user,
+                password,
+                allow_unencrypted,
+            } => self
+                .session
+                .server_jellyfin(url, user, password, allow_unencrypted),
+            Command::ServerPlex => self.session.server_plex(),
+            Command::ServerCancel => self.session.server_cancel(),
+            Command::ServerRename(id, name) => self.session.server_rename(&id, name),
+            Command::ServerRemove(id) => self.session.server_remove(&id),
+            Command::ServerCheck(id) | Command::ServerShow(id) => self.session.server_show(id),
+            Command::ServerShowLibraries(id, list) => self.session.server_libraries(&id, list),
+            Command::ServerGo(path) => self.session.server_go(path),
+            Command::ServerSearch(query) => self.session.server_search(query),
+            Command::ServerMore => self.session.server_more(),
+            Command::ServerCover(item, cover) => self.session.server_cover(item, cover),
+            Command::ServerPlay(item) => self.session.server_play(&item),
             Command::OnlineSave(settings) => {
                 let (online, network) = *settings;
                 s.online_save(online, network);
@@ -1195,6 +1265,98 @@ impl Ui {
                 LibraryJob::ExportCsv(path) => {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
+            }
+        }
+        for job in self.session.take_server_jobs() {
+            let reply = |waker: &Arc<dyn Waker>| {
+                let waker = waker.clone();
+                move |answer: crate::servers::ServerAnswer| {
+                    waker.wake(Inbound::Servers(Box::new(answer)));
+                }
+            };
+            let waker = self.waker.clone();
+            let send = reply(&self.waker);
+            let servers = self.session.servers();
+            match job {
+                crate::servers::ServerJob::Prepare(uid) => {
+                    let id = uid.clone();
+                    servers.prepare(
+                        uid,
+                        Box::new(move |result| {
+                            waker.wake(Inbound::ServerReady {
+                                uid: id,
+                                result: Box::new(result),
+                            });
+                        }),
+                    );
+                }
+                crate::servers::ServerJob::Jellyfin {
+                    url,
+                    user,
+                    password,
+                    allow_unencrypted,
+                } => servers.jellyfin_login(
+                    url,
+                    user,
+                    password,
+                    allow_unencrypted,
+                    Box::new(move |r| {
+                        send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
+                    }),
+                ),
+                crate::servers::ServerJob::Plex => {
+                    let sent = reply(&self.waker);
+                    servers.plex_login(
+                        Box::new(move |r| sent(crate::servers::ServerAnswer::SignIn(r))),
+                        Box::new(move |r| send(crate::servers::ServerAnswer::Added(r))),
+                    );
+                }
+                crate::servers::ServerJob::Libraries(server) => {
+                    let id = server.clone();
+                    servers.libraries(
+                        server,
+                        Box::new(move |r| send(crate::servers::ServerAnswer::Libraries(id, r))),
+                    );
+                }
+                crate::servers::ServerJob::List {
+                    server,
+                    parent,
+                    start,
+                    kind,
+                } => {
+                    let key = parent.clone();
+                    servers.children(
+                        server,
+                        parent,
+                        start,
+                        kind,
+                        Box::new(move |r| send(crate::servers::ServerAnswer::Listed(key, r))),
+                    );
+                }
+                crate::servers::ServerJob::Search {
+                    server,
+                    library,
+                    query,
+                    start,
+                } => {
+                    let key = query.clone();
+                    servers.search(
+                        server,
+                        library,
+                        query,
+                        start,
+                        Box::new(move |r| send(crate::servers::ServerAnswer::Listed(key, r))),
+                    );
+                }
+                crate::servers::ServerJob::Cover {
+                    server,
+                    item,
+                    cover,
+                } => servers.cover(
+                    server,
+                    cover,
+                    Box::new(move |r| send(crate::servers::ServerAnswer::Cover(item, r))),
+                ),
             }
         }
         for job in self.session.take_online_jobs() {

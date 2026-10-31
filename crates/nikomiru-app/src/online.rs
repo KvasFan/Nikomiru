@@ -301,9 +301,13 @@ impl Worker {
             title: q.title.clone(),
             season: q.season,
             episode: q.episode,
-            hash: nikomiru_online::hash::video_hash(&q.video)
-                .inspect_err(|e| tracing::warn!("{}: {e}", q.video.display()))
-                .ok(),
+            hash: if q.folder.is_some() {
+                None
+            } else {
+                nikomiru_online::hash::video_hash(&q.video)
+                    .inspect_err(|e| tracing::warn!("{}: {e}", q.video.display()))
+                    .ok()
+            },
             language: self.parts.language.clone(),
             providers: self.providers.iter().map(|p| p.id()).collect(),
             anilist_id: q.anilist_id,
@@ -328,19 +332,22 @@ impl Worker {
         candidate: &Candidate,
         file: &SubtitleFile,
     ) -> Result<Downloaded, String> {
-        let hash = request.hash.ok_or_else(|| {
-            self.message(&OnlineError::Io(format!(
-                "{} cannot be read",
-                q.video.display()
-            )))
-        })?;
+        let folder = match (&q.folder, request.hash) {
+            (Some(folder), _) => folder.clone(),
+            (None, Some(hash)) => store::folder(&self.parts.subtitles_dir, &hash),
+            (None, None) => {
+                return Err(self.message(&OnlineError::Io(format!(
+                    "{} cannot be read",
+                    q.video.display()
+                ))));
+            }
+        };
         // a file of unknown language on Jimaku is Japanese (ADR 0008 §8)
         let language = candidate
             .language
             .clone()
             .or_else(|| subtitle_language(&file.name).map(str::to_string))
             .unwrap_or_else(|| self.parts.language.clone());
-        let folder = store::folder(&self.parts.subtitles_dir, &hash);
         let path = store::save(&folder, &q.video, &language, &file.name, &file.bytes)
             .map_err(|e| self.message(&OnlineError::Io(e.to_string())))?;
         tracing::info!(

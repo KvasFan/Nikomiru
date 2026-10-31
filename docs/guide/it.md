@@ -107,6 +107,10 @@ Nulla va online se non lo chiedi.
   - un calendario dell'anno;
   - un'esportazione CSV.
 
+### Jellyfin e Plex
+
+Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione.
+
 ## 8. Impostazioni
 
 ⚙ nella barra, oppure Ctrl+, apre le impostazioni. Le schede sono in colonna a sinistra.

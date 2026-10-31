@@ -241,7 +241,7 @@ impl Drop for FakeOnline {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Option<Request> {
+pub(crate) fn read_request(stream: &mut TcpStream) -> Option<Request> {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 8192];
     let head_end = loop {

@@ -27,6 +27,7 @@ pub mod linux;
 pub mod logging;
 pub mod online;
 pub mod portal;
+pub mod servers;
 pub mod shell;
 pub mod subtitles;
 pub mod thumbnails;

@@ -107,6 +107,10 @@ Nothing goes online unless you ask for it.
   - a calendar of the year;
   - a CSV export.
 
+### Jellyfin and Plex
+
+Add a server in Settings → Media servers: for Jellyfin the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays.
+
 ## 8. Settings
 
 ⚙ in the bar, or Ctrl+, opens the settings. The tabs run down the left side.
