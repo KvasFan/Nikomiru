@@ -76,6 +76,14 @@ pub enum ImportError {
     /// Not a readable zip.
     #[error("not a zip file: {0}")]
     Zip(String),
+    /// A StarDict, DSL or MDict file that cannot be used (DIC-004).
+    #[error("{file}: {reason}")]
+    Foreign {
+        /// The file.
+        file: String,
+        /// Why.
+        reason: String,
+    },
     /// An entry was refused.
     #[error("unsafe entry {entry}: {reason:?}")]
     Unsafe {
@@ -134,6 +142,7 @@ impl nikomiru_core::Localized for ImportError {
         match self {
             ImportError::Io { .. } => "error-dict-io",
             ImportError::Zip(_) => "error-dict-zip",
+            ImportError::Foreign { .. } => "error-dict-foreign",
             ImportError::Unsafe { .. } => "error-dict-unsafe",
             ImportError::NoIndex => "error-dict-no-index",
             ImportError::Format { .. } => "error-dict-format",
@@ -153,6 +162,9 @@ impl nikomiru_core::Localized for ImportError {
                 ("reason", source.to_string()),
             ],
             ImportError::Zip(reason) => vec![("reason", reason.clone())],
+            ImportError::Foreign { file, reason } => {
+                vec![("file", file.clone()), ("reason", reason.clone())]
+            }
             ImportError::Unsafe { entry, .. } => vec![("entry", entry.clone())],
             ImportError::Format { file, error } => {
                 vec![("file", file.clone()), ("reason", error.to_string())]
@@ -431,6 +443,9 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<File>, ImportError> {
 /// The `index.json` of a zip, to compare title and revision with the
 /// installed dictionaries before importing (DIC-016).
 pub fn read_index(path: &Path) -> Result<Index, ImportError> {
+    if let Some(kind) = crate::foreign::kind_of(path) {
+        return crate::foreign::read_index(path, kind);
+    }
     let mut zip = open_zip(path)?;
     let entries = checked_entries(&mut zip, path)?;
     let entry = entries
@@ -514,6 +529,41 @@ fn parsed<T>(file: &str, rows: Result<Option<Vec<T>>, FormatError>) -> Result<Ve
     }
 }
 
+/// A StarDict, DSL or MDict file, into the same store (DIC-004).
+fn write_foreign(
+    path: &Path,
+    kind: crate::foreign::Kind,
+    staging: &Path,
+    cancel: &Cancel,
+    progress: &mut impl FnMut(Progress),
+) -> Result<DictInfo, ImportError> {
+    let index = crate::foreign::read_index(path, kind)?;
+    let mut state = Progress {
+        files_done: 0,
+        files_total: 1,
+        entries: 0,
+    };
+    progress(state);
+    let terms = crate::foreign::read_terms(path, kind, cancel)?;
+    if terms.is_empty() {
+        return Err(ImportError::Empty);
+    }
+    state.entries = terms.len() as u64;
+    let mut writer = StoreWriter::create(&staging.join(DB_FILE))?;
+    write_rows(terms, cancel, |rows| writer.add_terms(rows))?;
+    state.files_done = 1;
+    progress(state);
+    let kinds = yomitan::detect_kinds(yomitan::Rows {
+        terms: writer.counts().terms,
+        kanji: 0,
+        frequencies: 0,
+        pitches: 0,
+    });
+    writer
+        .finish(index, kinds, String::new(), cancel)?
+        .ok_or(ImportError::Cancelled)
+}
+
 /// Writes `rows` to the store a [`WRITE_CHUNK`] at a time, looking at
 /// `cancel` between chunks: a large bank takes seconds to write.
 fn write_rows<T>(
@@ -540,6 +590,9 @@ fn write(
     cancel: &Cancel,
     progress: &mut impl FnMut(Progress),
 ) -> Result<DictInfo, ImportError> {
+    if let Some(kind) = crate::foreign::kind_of(path) {
+        return write_foreign(path, kind, staging, cancel, progress);
+    }
     let mut zip = open_zip(path)?;
     let entries = checked_entries(&mut zip, path)?;
     let index_entry = entries

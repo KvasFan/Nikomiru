@@ -108,7 +108,10 @@ impl FileDialog {
             ),
             Dialog::Dictionary => (
                 tr("dict-import"),
-                vec![(tr("dict-import-filter"), vec!["*.zip"])],
+                vec![(
+                    tr("dict-import-filter"),
+                    vec!["*.zip", "*.ifo", "*.dsl", "*.dsl.dz", "*.mdx"],
+                )],
             ),
             Dialog::Locate => (
                 tr("link-locate"),

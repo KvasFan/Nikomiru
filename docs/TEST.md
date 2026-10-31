@@ -284,6 +284,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-001 | Import of `mini-ja` | The counts of terms, meta, kanji, tags and media match the source; `styles.css` preserved | L4 |
 | T-DIC-002 | Tag bank and `sequence` | The `v5k` tag has category and notes; `sequence` preserved | L4 |
 | T-DIC-003 | `mini-freq-occ` | String values read; inverted ordering (higher = better) | L4 |
+| T-DIC-004 | Other formats | StarDict, DSL and MDict made by the tests, of each variant, read to their terms; a DSL from its file to a lookup of a conjugated form; RIPEMD-128 and Adler-32 against published vectors; broken, cut and damaged files refused; HTML reduced to text | L1/L4 |
+| T-DIC-LIVE-* | Real dictionaries | One real dictionary of each format, imported by hand | L7 |
 | T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files. A cancel inside one large bank (60k entries, while it is read, parsed or written) or in the final step stops the import in < 1 s; the parser, the writes and the final step stop at their next check | L1, L4 |
 | T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted. The zips of `import.json` (§5.3): wrapper folders, macOS files, directory entries, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, a damaged dictionary file | L4 |
 | T-DIC-012 | Limits | A glossary > 10 MiB makes the import fail cleanly | L4 |
