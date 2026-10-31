@@ -24,6 +24,7 @@ pub mod popup;
 pub mod popup_view;
 pub mod screensaver;
 pub mod screenshot;
+pub mod servers;
 pub mod session;
 pub mod shortcuts;
 pub mod study;

@@ -71,6 +71,12 @@ pub enum OnlineError {
         /// The limit, in MiB.
         limit_mib: u64,
     },
+    /// What was asked is no longer there (a media server's HTTP 404, SRV-013).
+    #[error("{provider} no longer has it")]
+    Gone {
+        /// The provider.
+        provider: String,
+    },
     /// A ZIP archive that cannot be read, or no subtitle file in it.
     #[error("the archive cannot be used: {0}")]
     Archive(String),
@@ -95,6 +101,7 @@ impl nikomiru_core::Localized for OnlineError {
             OnlineError::Http { .. } => "error-online-http",
             OnlineError::Protocol { .. } => "error-online-protocol",
             OnlineError::TooLarge { .. } => "error-online-too-large",
+            OnlineError::Gone { .. } => "error-online-gone",
             OnlineError::Archive(_) => "error-online-archive",
             OnlineError::Unusable(_) => "error-online-unusable",
             OnlineError::Io(_) => "error-online-io",
@@ -105,7 +112,8 @@ impl nikomiru_core::Localized for OnlineError {
         match self {
             OnlineError::NoKey { provider }
             | OnlineError::Unauthorized { provider }
-            | OnlineError::Quota { provider } => vec![("provider", provider.clone())],
+            | OnlineError::Quota { provider }
+            | OnlineError::Gone { provider } => vec![("provider", provider.clone())],
             OnlineError::BadUrl(url) => vec![("url", url.clone())],
             OnlineError::Unreachable { host, reason } => {
                 vec![("host", host.clone()), ("reason", reason.clone())]
@@ -166,6 +174,7 @@ mod tests {
                 reason: "r".into(),
             },
             OnlineError::TooLarge { limit_mib: 64 },
+            OnlineError::Gone { provider: p() },
             OnlineError::Archive("r".into()),
             OnlineError::Unusable("a.rar".into()),
             OnlineError::Io("r".into()),

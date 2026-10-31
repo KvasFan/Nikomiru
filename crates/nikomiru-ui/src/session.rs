@@ -183,6 +183,8 @@ pub struct Services {
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
     pub online: Box<dyn crate::online::OnlineService>,
+    /// Media servers (SPECIFICATION §6.13).
+    pub servers: Box<dyn crate::servers::ServerService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -233,11 +235,25 @@ impl std::fmt::Debug for Services {
 
 struct Current {
     uid: Option<String>,
+    /// The file; for a media server's video, the relay's address (SRV-009).
     path: PathBuf,
-    /// The OpenSubtitles hash: the folder of its downloaded subtitles
-    /// (MET-008).
-    hash: Option<nikomiru_online::VideoHash>,
+    /// The folder of its downloaded subtitles (MET-008, SRV-010).
+    subtitles: Option<PathBuf>,
+    /// What a media server says of it.
+    server: Option<ServerPlaying>,
 }
+
+/// A media server's video playing (SRV-011).
+struct ServerPlaying {
+    video: crate::servers::ServerVideo,
+    /// When the server was last told.
+    reported: std::time::Duration,
+    /// It was marked watched.
+    played: bool,
+}
+
+/// How often the server hears of a video playing (SRV-011).
+const SERVER_REPORT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The settings page whose settings are being written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -367,6 +383,15 @@ pub struct Session {
     saving_page: SavingPage,
     /// Online jobs, started by the UI layer (ADR 0008).
     online_jobs: Vec<crate::online::OnlineJob>,
+    server_jobs: Vec<crate::servers::ServerJob>,
+    /// Pages to open in the browser.
+    external_links: Vec<String>,
+    /// The server's video being made ready (SRV-008).
+    server_pending: Option<String>,
+    /// That video, ready, for `open` to take.
+    server_ready: Option<crate::servers::ServerVideo>,
+    /// The tabs of the servers and their settings page.
+    pub servers_page: crate::servers::ServersPage,
     /// The Online subtitles page (MET-009).
     pub online_page: crate::online::OnlinePage,
     /// The last message of the Subtitle services tab, and whether it is good
@@ -504,6 +529,31 @@ impl Drop for Session {
     }
 }
 
+/// What a server says of a video, in its record (SRV-007, SRV-011).
+fn apply_server_item(record: &mut VideoRecord, item: &nikomiru_online::servers::Item) {
+    record.last_position_ms = nikomiru_online::servers::later_position(
+        record.last_position_ms,
+        record.last_played_at.map(|ms| ms / 1000),
+        item.position_ms,
+        item.last_played_s,
+    );
+    if item.duration_ms > 0 {
+        record.duration_ms = Some(item.duration_ms);
+    }
+    record.season = item.season;
+    record.episode = item.episode;
+}
+
+fn server_item_record(
+    item: &nikomiru_online::servers::Item,
+) -> nikomiru_library::server_items::ServerItemRecord {
+    nikomiru_library::server_items::ServerItemRecord {
+        series: item.series.clone().unwrap_or_default(),
+        title: item.title.clone(),
+        anilist_id: item.anilist_id,
+    }
+}
+
 impl Session {
     /// A new session.
     pub fn new(services: Services) -> Self {
@@ -584,6 +634,11 @@ impl Session {
             keep_status: false,
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
+            server_jobs: Vec::new(),
+            external_links: Vec::new(),
+            server_pending: None,
+            server_ready: None,
+            servers_page: crate::servers::ServersPage::default(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
             settings_status: None,
@@ -650,6 +705,21 @@ impl Session {
             self.pending = Some(path.to_path_buf());
             return;
         }
+        // a server's video needs its relay first (SRV-008): `server_ready`
+        // comes back here
+        let server = self.server_ready.take();
+        let text = path.to_string_lossy();
+        if server.is_none() && nikomiru_library::server_items::parse_server_uid(&text).is_some() {
+            let uid = text.into_owned();
+            self.server_pending = Some(uid.clone());
+            self.server_jobs
+                .push(crate::servers::ServerJob::Prepare(uid));
+            return;
+        }
+        let closing_server = self.report_stopped();
+        if closing_server && server.is_none() {
+            self.services.servers.close();
+        }
         self.flush_position();
         self.end_replay();
         if self.start_at.is_none() {
@@ -662,22 +732,31 @@ impl Session {
             w.wait();
         }
         self.view.error = None;
-        let path = nikomiru_library::scan::identity(path);
+        let path = match &server {
+            Some(video) => PathBuf::from(&video.url),
+            None => nikomiru_library::scan::identity(path),
+        };
         let meta = std::fs::metadata(&path).ok();
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = VideoRecord::default();
         let uid = library.and_then(|lib| {
-            let uid = lib
-                .uid_for_path(&path)
-                .inspect_err(|e| tracing::warn!("library: {e}"))
-                .ok()?;
+            let uid = match &server {
+                Some(video) => video.uid.clone(),
+                None => lib
+                    .uid_for_path(&path)
+                    .inspect_err(|e| tracing::warn!("library: {e}"))
+                    .ok()?,
+            };
             record = lib
                 .video(&uid)
                 .inspect_err(|e| tracing::warn!("library: {e}"))
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| VideoRecord {
-                    path: path.to_string_lossy().into_owned(),
+                    path: match &server {
+                        Some(video) => video.uid.clone(),
+                        None => path.to_string_lossy().into_owned(),
+                    },
                     ..VideoRecord::default()
                 });
             if let Some(m) = &meta {
@@ -690,6 +769,9 @@ impl Session {
             }
             Some(uid)
         });
+        if let Some(video) = &server {
+            apply_server_item(&mut record, &video.item);
+        }
         // STA-001: the watched intervals of the video, and what the last one
         // leaves to save
         let coverage = match (&uid, library) {
@@ -713,8 +795,14 @@ impl Session {
         self.own_audio = record.aid.is_some();
         if let (Some(uid), Some(w)) = (&uid, &self.writer) {
             let (uid, record) = (uid.clone(), record.clone());
+            let item = server.as_ref().map(|video| server_item_record(&video.item));
             w.run(move |lib| {
                 if let Err(e) = lib.put_video(&uid, &record) {
+                    tracing::warn!("library: {e}");
+                }
+                if let Some(item) = item
+                    && let Err(e) = lib.set_server_item(&uid, &item)
+                {
                     tracing::warn!("library: {e}");
                 }
             });
@@ -753,10 +841,13 @@ impl Session {
             self.subs.timeline_mut().delay_ms = delay;
         }
         self.view.loaded = false;
-        self.view.title = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        self.view.title = match &server {
+            Some(video) => video.item.title.clone(),
+            None => path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        };
         tracing::info!(
             "opening {} (resume at {:?} s)",
             path.display(),
@@ -771,15 +862,39 @@ impl Session {
             }
         }
         // the downloaded subtitles of this video, and online answers for it only
-        let hash = nikomiru_online::hash::video_hash(&path)
-            .inspect_err(|e| tracing::warn!("{}: {e}", path.display()))
-            .ok();
+        let hash = match &server {
+            Some(_) => None,
+            None => nikomiru_online::hash::video_hash(&path)
+                .inspect_err(|e| tracing::warn!("{}: {e}", path.display()))
+                .ok(),
+        };
+        let subtitles = match &server {
+            Some(video) => Some(nikomiru_online::store::server_folder(
+                &self.services.subtitles_dir,
+                &video.uid,
+            )),
+            None => hash
+                .as_ref()
+                .map(|h| nikomiru_online::store::folder(&self.services.subtitles_dir, h)),
+        };
         self.online_generation += 1;
         self.auto_online = None;
         self.online_page.busy = false;
-        // a stream has no thumbnails: ffmpeg would download it again
-        self.thumbnails.open(path.is_file().then(|| path.clone()));
-        self.current = Some(Current { uid, path, hash });
+        // a stream has no thumbnails: ffmpeg would download it again; a
+        // server's file has, its relay reading only what ffmpeg seeks to
+        self.thumbnails
+            .open((path.is_file() || server.is_some()).then(|| path.clone()));
+        let now = self.services.clock.monotonic();
+        self.current = Some(Current {
+            uid,
+            path,
+            subtitles,
+            server: server.map(|video| ServerPlaying {
+                video,
+                reported: now,
+                played: false,
+            }),
+        });
     }
 
     /// A player event; returns whether the view changed.
@@ -791,6 +906,7 @@ impl Session {
         match event {
             PlayerEvent::FileLoaded => {
                 tracing::info!("file loaded");
+                self.report_server(nikomiru_online::servers::PlayState::Started);
                 self.events.push(UiEvent::FileLoaded);
                 self.view.loaded = true;
                 self.saver.ready();
@@ -818,6 +934,14 @@ impl Session {
             }
             PlayerEvent::Duration(d) => self.view.duration = d,
             PlayerEvent::Pause(p) => {
+                if self.current.as_ref().is_some_and(|c| c.server.is_some()) {
+                    use nikomiru_online::servers::PlayState;
+                    self.report_server(if p {
+                        PlayState::Paused
+                    } else {
+                        PlayState::Playing
+                    });
+                }
                 // STA-001: what played up to the pause counts, the pause does not
                 self.study_sample(!p);
                 self.view.paused = p;
@@ -879,6 +1003,7 @@ impl Session {
         if self.next_up.as_ref().is_some_and(|n| now >= n.at) {
             self.play_next();
         }
+        self.tick_server(now);
         if self
             .hover
             .expired(now, self.services.config.lookup.resume_on_leave)
@@ -952,7 +1077,15 @@ impl Session {
             .as_ref()
             .and_then(|lib| lib.video(&link.uid).ok().flatten());
         match record.map(|r| PathBuf::from(r.path)) {
-            Some(path) if path.is_file() => self.open_at_link(&path, &link),
+            Some(path)
+                if path.is_file()
+                    || nikomiru_library::server_items::parse_server_uid(
+                        &path.to_string_lossy(),
+                    )
+                    .is_some() =>
+            {
+                self.open_at_link(&path, &link);
+            }
             other => {
                 self.missing_link = Some(MissingLink {
                     link,
@@ -1201,6 +1334,9 @@ impl Session {
     /// The AniList id of the series of the video playing, once identified
     /// (MET-001): Jimaku is asked by it first (MET-003).
     fn anilist_id(&self) -> Option<u64> {
+        if let Some(playing) = self.current.as_ref()?.server.as_ref() {
+            return playing.video.item.anilist_id;
+        }
         let uid = self.current.as_ref()?.uid.as_ref()?;
         let library = self.services.library.as_ref()?;
         library.anilist_id_of_video(uid).ok().flatten()
@@ -1208,6 +1344,19 @@ impl Session {
 
     /// The online query of `video`, from its file name and its series.
     fn online_query(&self, video: PathBuf) -> crate::online::OnlineQuery {
+        let current = self.current.as_ref();
+        // SRV-010: a server knows what its video is, and it has no hash
+        if let Some(playing) = current.and_then(|c| c.server.as_ref()) {
+            let item = &playing.video.item;
+            return crate::online::OnlineQuery {
+                video,
+                title: item.series.clone().unwrap_or_else(|| item.title.clone()),
+                season: item.season,
+                episode: item.episode,
+                anilist_id: item.anilist_id,
+                folder: current.and_then(|c| c.subtitles.clone()),
+            };
+        }
         crate::online::OnlineQuery {
             anilist_id: self.anilist_id(),
             ..crate::online::OnlineQuery::of_video(video)
@@ -1236,12 +1385,18 @@ impl Session {
             return;
         };
         let anilist_id = self.anilist_id();
+        let folder = self
+            .current
+            .as_ref()
+            .filter(|c| c.server.is_some())
+            .and_then(|c| c.subtitles.clone());
         let query = crate::online::OnlineQuery {
             video,
             title,
             season,
             episode,
             anilist_id,
+            folder,
         };
         self.online_page.query = Some(query.clone());
         self.online_page.results = None;
@@ -1924,6 +2079,18 @@ impl Session {
         if !self.services.config.player.auto_next || self.next_up.is_some() {
             return;
         }
+        // SRV-008: on a server, what comes next is its own
+        if let Some(playing) = self.current.as_ref().and_then(|c| c.server.as_ref()) {
+            if let Some((uid, title)) = playing.video.next.clone() {
+                self.next_up = Some(NextUp {
+                    path: PathBuf::from(uid),
+                    title,
+                    at: now + NEXT_COUNTDOWN,
+                });
+                self.events.push(UiEvent::NextUp);
+            }
+            return;
+        }
         let uid = self.current.as_ref().and_then(|c| c.uid.clone());
         let next = uid.and_then(|uid| {
             self.services
@@ -2299,6 +2466,343 @@ impl Session {
         std::mem::take(&mut self.online_jobs)
     }
 
+    /// The server's worker.
+    pub fn servers(&self) -> &dyn crate::servers::ServerService {
+        self.services.servers.as_ref()
+    }
+
+    /// The jobs for the server's worker.
+    pub fn take_server_jobs(&mut self) -> Vec<crate::servers::ServerJob> {
+        std::mem::take(&mut self.server_jobs)
+    }
+
+    /// A server's video is ready, or could not be made so (SRV-012, SRV-013).
+    pub fn server_ready(&mut self, uid: &str, result: Result<crate::servers::ServerVideo, String>) {
+        if self.server_pending.as_deref() != Some(uid) {
+            return;
+        }
+        self.server_pending = None;
+        match result {
+            Ok(video) => {
+                self.server_ready = Some(video);
+                self.open(Path::new(uid));
+            }
+            Err(message) => {
+                self.start_at = None;
+                self.link_clip = None;
+                self.toasts.push(message);
+            }
+        }
+    }
+
+    /// The pages to open in the browser.
+    pub fn take_external_links(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.external_links)
+    }
+
+    /// The media servers added.
+    pub fn server_list(&self) -> &[nikomiru_core::config::ServerConfig] {
+        &self.services.config.servers
+    }
+
+    /// The Media servers tab opened.
+    pub fn servers_open(&mut self) {
+        self.servers_page.status = None;
+    }
+
+    fn server_device(&mut self) {
+        let network = &mut self.services.config.network;
+        if network.device_id.is_empty() {
+            network.device_id = uuid::Uuid::new_v4().simple().to_string();
+        }
+    }
+
+    /// Saves the servers and tells the worker.
+    fn servers_changed(&mut self) {
+        let config = &self.services.config;
+        self.services.servers.configure(
+            config.servers.clone(),
+            config.network.proxy.clone(),
+            config.network.device_id.clone(),
+        );
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        } else {
+            let text = self.tr("anki-config-not-saved", &[]);
+            self.servers_page.status = Some((text, false));
+        }
+    }
+
+    fn add_servers(&mut self, found: crate::servers::Found) {
+        let count = found.len();
+        self.services.config.servers.extend(found);
+        self.servers_changed();
+        let text = self.tr("servers-added-count", &[("count", count.to_string())]);
+        self.servers_page.status = Some((text, true));
+    }
+
+    /// A Jellyfin login from the page.
+    pub fn server_jellyfin(&mut self, url: String, user: String, password: String, allow: bool) {
+        self.server_device();
+        self.servers_changed();
+        self.servers_page.logging_in = true;
+        self.servers_page.status = None;
+        self.server_jobs.push(crate::servers::ServerJob::Jellyfin {
+            url,
+            user,
+            password,
+            allow_unencrypted: allow,
+        });
+    }
+
+    /// A Plex sign-in from the page.
+    pub fn server_plex(&mut self) {
+        self.server_device();
+        self.servers_changed();
+        self.servers_page.logging_in = true;
+        self.servers_page.status = None;
+        self.server_jobs.push(crate::servers::ServerJob::Plex);
+    }
+
+    /// Stops the Plex sign-in.
+    pub fn server_cancel(&mut self) {
+        self.services.servers.plex_cancel();
+    }
+
+    /// A new name for a server.
+    pub fn server_rename(&mut self, id: &str, name: String) {
+        if let Some(server) = self.services.config.servers.iter_mut().find(|s| s.id == id) {
+            server.name = name;
+            self.servers_changed();
+        }
+    }
+
+    /// Removes a server: what the library knows of its videos stays (SRV-001).
+    pub fn server_remove(&mut self, id: &str) {
+        let servers = &mut self.services.config.servers;
+        let Some(at) = servers.iter().position(|s| s.id == id) else {
+            return;
+        };
+        let server = servers.remove(at);
+        self.services.servers.logout(server);
+        if self.servers_page.server.as_deref() == Some(id) {
+            self.servers_page = crate::servers::ServersPage::default();
+        }
+        self.servers_changed();
+    }
+
+    /// The libraries shown of a server (SRV-006).
+    pub fn server_libraries(&mut self, id: &str, list: Vec<String>) {
+        if let Some(server) = self.services.config.servers.iter_mut().find(|s| s.id == id) {
+            server.libraries = list;
+            self.servers_changed();
+        }
+    }
+
+    /// A server's tab opened: its libraries are asked for (SRV-004).
+    pub fn server_show(&mut self, id: String) {
+        let status = self.servers_page.status.take();
+        self.servers_page = crate::servers::ServersPage {
+            server: Some(id.clone()),
+            busy: true,
+            status,
+            ..Default::default()
+        };
+        self.server_jobs
+            .push(crate::servers::ServerJob::Libraries(id));
+    }
+
+    /// Goes to a place of the tab.
+    pub fn server_go(&mut self, path: Vec<crate::servers::Place>) {
+        let page = &mut self.servers_page;
+        page.path = path;
+        page.search = None;
+        page.listing = None;
+        self.server_list_more();
+    }
+
+    fn server_list_more(&mut self) {
+        let page = &mut self.servers_page;
+        let (Some(server), Some(place)) = (page.server.clone(), page.path.last()) else {
+            return;
+        };
+        let start = page.listing.as_ref().map_or(0, |l| l.items.len());
+        page.busy = true;
+        page.error = None;
+        let job = match &page.search {
+            Some(query) => crate::servers::ServerJob::Search {
+                server,
+                library: page.path[0].parent.clone(),
+                query: query.clone(),
+                start,
+            },
+            None => crate::servers::ServerJob::List {
+                server,
+                parent: place.parent.clone(),
+                start,
+                kind: place.kind,
+            },
+        };
+        self.server_jobs.push(job);
+    }
+
+    /// A search in the library shown; empty, back to the library.
+    pub fn server_search(&mut self, query: String) {
+        let page = &mut self.servers_page;
+        page.search = (!query.is_empty()).then_some(query);
+        page.listing = None;
+        self.server_list_more();
+    }
+
+    /// The next page of what is shown.
+    pub fn server_more(&mut self) {
+        if !self.servers_page.busy {
+            self.server_list_more();
+        }
+    }
+
+    /// Asks for a cover, once.
+    pub fn server_cover(&mut self, item: String, cover: String) {
+        let page = &mut self.servers_page;
+        if let Some(server) = page.server.clone()
+            && page.asked.insert(item.clone())
+        {
+            self.server_jobs.push(crate::servers::ServerJob::Cover {
+                server,
+                item,
+                cover,
+            });
+        }
+    }
+
+    /// Plays an item of the tab.
+    pub fn server_play(&mut self, item: &str) {
+        if let Some(server) = self.servers_page.server.clone() {
+            let uid = nikomiru_library::server_items::server_uid(&server, item);
+            self.open(Path::new(&uid));
+        }
+    }
+
+    /// An answer for the pages of media servers.
+    pub fn server_answer(&mut self, answer: crate::servers::ServerAnswer) {
+        use crate::servers::ServerAnswer;
+        let page = &mut self.servers_page;
+        match answer {
+            ServerAnswer::Added(result) => {
+                page.logging_in = false;
+                match result {
+                    Ok(found) => self.add_servers(found),
+                    Err(e) => page.status = Some((e, false)),
+                }
+            }
+            ServerAnswer::SignIn(Ok(sign_in)) => self.external_links.push(sign_in.url),
+            ServerAnswer::SignIn(Err(e)) => {
+                page.logging_in = false;
+                page.status = Some((e, false));
+            }
+            ServerAnswer::Libraries(server, result) => {
+                if page.server.as_deref() != Some(server.as_str()) {
+                    return;
+                }
+                page.busy = false;
+                match result {
+                    Ok(libraries) => {
+                        let shown = self
+                            .services
+                            .config
+                            .servers
+                            .iter()
+                            .find(|s| s.id == server)
+                            .map(|s| s.libraries.clone())
+                            .unwrap_or_default();
+                        page.libraries = libraries
+                            .into_iter()
+                            .filter(|l| shown.is_empty() || shown.contains(&l.id))
+                            .collect();
+                    }
+                    Err(e) => page.error = Some(e),
+                }
+            }
+            ServerAnswer::Listed(key, result) => {
+                let shown = page.search.as_ref().or(page.path.last().map(|p| &p.parent));
+                if shown != Some(&key) {
+                    return;
+                }
+                page.busy = false;
+                match result {
+                    Ok(listing) => {
+                        let list = page.listing.get_or_insert(crate::servers::Listing {
+                            items: Vec::new(),
+                            total: 0,
+                        });
+                        list.items.extend(listing.items);
+                        list.total = listing.total;
+                    }
+                    Err(e) => page.error = Some(e),
+                }
+            }
+            ServerAnswer::Cover(item, Ok(bytes)) => {
+                // within the limits of every cover (SRV-013)
+                match crate::catalog::Cover::decode(&bytes) {
+                    Ok(cover) => {
+                        page.covers.insert(item, cover);
+                    }
+                    Err(e) => tracing::debug!("a server's cover: {e}"),
+                }
+            }
+            ServerAnswer::Cover(_, Err(e)) => tracing::debug!("a server's cover: {e}"),
+        }
+    }
+
+    /// Tells the server of the video playing, if there is one.
+    fn report_server(&self, state: nikomiru_online::servers::PlayState) {
+        if let Some(playing) = self.current.as_ref().and_then(|c| c.server.as_ref()) {
+            self.services.servers.report(
+                playing.video.uid.clone(),
+                playing.video.source.clone(),
+                state,
+                (self.view.time_pos * 1000.0) as u64,
+                (self.view.duration * 1000.0) as u64,
+            );
+        }
+    }
+
+    /// Nikomiru closes: the server hears of it.
+    pub fn quitting(&mut self) {
+        self.report_stopped();
+    }
+
+    /// The server hears that its video closed; whether one was playing.
+    fn report_stopped(&mut self) -> bool {
+        self.report_server(nikomiru_online::servers::PlayState::Stopped);
+        self.current
+            .as_mut()
+            .and_then(|c| c.server.take())
+            .is_some()
+    }
+
+    /// SRV-011: every 10 s while playing, and watched at 90% (LIB-008).
+    fn tick_server(&mut self, now: std::time::Duration) {
+        use nikomiru_online::servers::PlayState;
+        let paused = self.view.paused;
+        let share = self.view.time_pos / self.view.duration.max(1.0);
+        let Some(playing) = self.current.as_mut().and_then(|c| c.server.as_mut()) else {
+            return;
+        };
+        let due = !paused && now.saturating_sub(playing.reported) >= SERVER_REPORT;
+        if due {
+            playing.reported = now;
+        }
+        let watched = !playing.played && share >= 0.9;
+        if watched {
+            playing.played = true;
+            self.services.servers.mark_played(playing.video.uid.clone());
+        }
+        if due {
+            self.report_server(PlayState::Playing);
+        }
+    }
+
     /// The online service.
     pub fn online(&self) -> &dyn crate::online::OnlineService {
         self.services.online.as_ref()
@@ -2467,11 +2971,14 @@ impl Session {
             clip,
             position_ms: (self.view.time_pos * 1000.0) as i64,
             uid: current.uid.clone(),
-            title: current
-                .path
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+            title: match &current.server {
+                Some(playing) => playing.video.item.title.clone(),
+                None => current
+                    .path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            },
             action,
             frame: FrameChoice::Click,
             audio: true,
@@ -3433,13 +3940,8 @@ impl Session {
         let downloaded = self
             .current
             .as_ref()
-            .and_then(|c| c.hash)
-            .map(|h| {
-                nikomiru_online::store::list(&nikomiru_online::store::folder(
-                    &self.services.subtitles_dir,
-                    &h,
-                ))
-            })
+            .and_then(|c| c.subtitles.as_ref())
+            .map(|folder| nikomiru_online::store::list(folder))
             .unwrap_or_default();
         let mut externals = select::external_files(&video, &entries);
         if externals.is_empty() {
