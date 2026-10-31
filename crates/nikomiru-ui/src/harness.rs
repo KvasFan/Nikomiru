@@ -419,6 +419,7 @@ pub fn state() -> Result<Value, String> {
             "look": look,
             "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
             "library_page": library_page,
+            "chapters": v.chapters.iter().map(|c| c.time).collect::<Vec<_>>(),
             "sub_list_open": ui.view.sub_list_open,
             "services_page": json!({
                 "open": ui.view.services_page_open,

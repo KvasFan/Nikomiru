@@ -1061,6 +1061,17 @@ fn entry(
                         entry: k,
                     });
                 }
+            } else {
+                // AUD-009: no source yet: the way to add one, not silence
+                ui.add_space(4.0);
+                let name = d.tr("word-audio-setup");
+                let sound = chip(ui, "♪?", popup_colors().chip, 15.0, &name)
+                    .interact(Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand);
+                sound.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
+                if sound.clicked() {
+                    d.out.push(Command::WordAudioSetup);
+                }
             }
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
         });

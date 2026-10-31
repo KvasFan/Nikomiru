@@ -70,6 +70,8 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 - **♪** plays the word itself, if you set up a word audio source in Settings → Word audio.
 - **Words you already mined** are underlined in green in the subtitles and in the subtitle list. In Settings → Subtitles you can turn that off, or turn on readings over the kanji. Both come from your dictionaries, which split each line into words: where a word is cut wrong, its reading can be wrong too.
 
+To hear a word, Nikomiru needs a source of pronunciations: none comes with it. Without one, the popup shows `♪?`, which opens Settings → Word audio: add a local Local Audio Server `android.db`, or an address with `{term}` and `{reading}`.
+
 ## 5. Anki cards
 
 1. Install the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on in Anki (code `2055492159`) and keep Anki open.

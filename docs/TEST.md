@@ -373,6 +373,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-008 | After loading | `sid = no`, `sub-visibility = no`; `aid` adopted | L5 |
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
+| T-PLY-019 | Chapters shown | The current one is the last started; marks at their share of the duration; L6: the fixture's chapters reach the bar | L1/L6 |
 | T-PLY-015 | Screenshot with subtitles | `Shift+S`: a PNG other than `S`'s of the same frame, the right way up, with the bar left out | L1/L6 |
 | T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles; a taken name gets ` (2)`…, and 16 screenshots at once get 16 names | L1/L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
@@ -450,6 +451,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-AUD-006 | Autoplay | On → the audio starts when the popup opens (L6, the video still paused); off → only with ♪ | L1/L6 |
 | T-AUD-007 | No third-party default URL | The default configuration contains no remote sources | L1 |
 | T-AUD-008 | Cache | Above 500 MiB, LRU eviction | L1 |
+| T-AUD-009 | No source | With no source on, the popup offers the settings instead of ♪ | L3 |
 
 ### 6.11 Statistics
 

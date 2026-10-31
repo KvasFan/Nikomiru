@@ -70,6 +70,8 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 - **♪** riproduce la parola stessa, se hai impostato una fonte in Impostazioni → Audio delle parole.
 - **Le parole che hai già minato** sono sottolineate in verde nei sottotitoli e nella lista dei sottotitoli. In Impostazioni → Sottotitoli puoi spegnere la sottolineatura, o accendere le letture sopra i kanji. Entrambe vengono dai tuoi dizionari, che dividono ogni battuta in parole: dove una parola è tagliata male, anche la sua lettura può essere sbagliata.
 
+Per sentire una parola, Nikomiru ha bisogno di una fonte di pronunce: non ne include nessuna. Senza fonte il popup mostra `♪?`, che apre Impostazioni → Audio delle parole: aggiungi un `android.db` di Local Audio Server, oppure un indirizzo con `{term}` e `{reading}`.
+
 ## 5. Carte Anki
 
 1. Installa in Anki il componente aggiuntivo [AnkiConnect](https://ankiweb.net/shared/info/2055492159) (codice `2055492159`) e tieni Anki aperto.

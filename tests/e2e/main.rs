@@ -134,6 +134,21 @@ fn shift_s_saves_the_frame_with_its_subtitles() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-019
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_chapters_of_a_file_reach_the_bar() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    let state = h.state_until("the chapters", |s| {
+        s["chapters"].as_array().is_some_and(|c| !c.is_empty())
+    });
+    assert!(state["chapters"].as_array().unwrap().len() >= 2, "{state}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
