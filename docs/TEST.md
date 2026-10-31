@@ -397,7 +397,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-021…025 | Placeholders | HTML snapshots for `{glossary}` (label only on the first sense of each dictionary and a repeated part of speech left out, on an entry of five senses from two dictionaries; scoped `<style>`, `data-sc-*` attributes, the hostile `mini-ja` entry reduced to the allowlist), `{frequencies}`, `{pitch-accent-positions}`, `{pitch-accent-categories}`, compared with Fushi's output on `mini-ja`; every value escaped | L3 |
 | T-ANK-024 | `{sentence}` | Valid offset → `<b>` at the exact position even if the word appears twice; an offset that is not a character boundary, out of the text or on another word → first occurrence; lines joined by `<br>`; `<` in the cue escaped | L1 |
 | T-ANK-026 | Empty fields | Empty first field → dedicated error; fields that do not exist in the note type are not sent | L1 |
-| T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; from M5 with the series tag (`Sousou_no_Frieren`) | L1 |
+| T-ANK-027 | Tags | User tags `mine nikomiru` → `["mine", "nikomiru", "video"]`, deduplicated and in order; with the series tag (`Sousou_no_Frieren`) | L1 |
 | T-ANK-030 | Duplicates | `canAddNotesWithErrorDetail` with the same options as `addNote`, one request for all the entries of a popup; only the duplicate text means ✓; on "unsupported action" → fallback to `findNotes`; after a transport error, 30 s pause (fake clock), started also by a card with an unknown outcome and ended by any answer ("Open in Anki"); a URL that is not loopback (`0.0.0.0`, which Linux connects here) is never checked, while a card goes through | L4 |
 | T-ANK-031 | Reference cue | The cue the lookup started from, else the current one, else the one at the position | L1 |
 | T-ANK-032 | Audio interval | Cue [10000, 12000], padding 120/200, previous cue ending at 9950, next cue starting at 12100, `delay` +300 → **[10250, 12400]** | L1 |
@@ -502,7 +502,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SRV-010 | Subtitles | External ones listed and cached, embedded through the relay; the online search with title, season and episode and no file hash | L2/L6 |
 | T-SRV-011 | Progress | The later position wins, both ways; the reports' moments; a failed report dropped and playback unaffected; played at 90% | L2/L6 |
 | T-SRV-012 | Cards | The link reopens the scene; with the server gone, its message and nothing else | L6 |
-| T-SRV-013 | Errors | Each failure's message; truncated, oversized and wrong JSON never panic (fuzz target with T-SEC); the server failing during playback keeps the position | L2/L5 |
+| T-SRV-013 | Errors | Each failure's message; truncated, oversized and wrong JSON never panic (L2, `crates/nikomiru-online/tests/servers_fuzz.rs`); the server failing during playback keeps the position | L2/L5 |
 | T-SRV-LIVE-* | Real servers | Smoke tests with an address and token from environment variables: Jellyfin and Plex | L7 |
 
 ### 6.14 Reliability and fuzzing

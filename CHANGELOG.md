@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Media servers (M11, SRV-001…SRV-013): Jellyfin and Plex in Settings → Media servers, a tab for each on the library page, their videos played with the same subtitles, lookups and cards as a file. Direct play only; the position and watched state go back to the server. Tokens stay inside Nikomiru: mpv and ffmpeg read through a relay on this computer.
 
+### Fixed
+
+- A card has the tag of its series (ANK-027): it was written in the specification, and never made.
+
 ### Removed
 
 - The spikes (`spikes/`): their decisions are in the ADRs and their code in the tag `v1.0.0`. The large synthetic audio database of spike S3 is now made by `xtask/scripts/android_db_large.py`.

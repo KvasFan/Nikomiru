@@ -959,10 +959,13 @@ mod tests {
     use egui_kittest::kittest::Queryable;
     use nikomiru_library::home::SeriesSummary;
     use nikomiru_library::{FolderRecord, SeriesRecord};
+    use nikomiru_online::servers::Item;
 
     struct Test {
         page: LibraryPage,
         first_steps: Option<[bool; 3]>,
+        servers: Vec<nikomiru_core::config::ServerConfig>,
+        server_page: crate::servers::ServersPage,
         state: State,
         out: Vec<Command>,
         closed: bool,
@@ -976,13 +979,12 @@ mod tests {
                 |ui, t: &mut Test| {
                     let _ = ui.interact(ui.max_rect(), Id::unique("video"), Sense::click());
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
-                    let server_page = crate::servers::ServersPage::default();
                     let scene = Scene {
                         page: &t.page,
                         today: 0,
                         first_steps: t.first_steps,
-                        servers: &[],
-                        server_page: &server_page,
+                        servers: &t.servers,
+                        server_page: &t.server_page,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -990,6 +992,8 @@ mod tests {
                 Test {
                     page,
                     first_steps: None,
+                    servers: Vec::new(),
+                    server_page: crate::servers::ServersPage::default(),
                     state: State::default(),
                     out: Vec::new(),
                     closed: false,
@@ -1036,6 +1040,83 @@ mod tests {
             folders: vec![("/v".into(), FolderRecord::default())],
             server_titles: Default::default(),
         }
+    }
+
+    fn server_item(id: &str, kind: nikomiru_online::servers::ItemKind) -> Item {
+        Item {
+            id: id.into(),
+            kind,
+            title: format!("Title {id}"),
+            series: None,
+            parent: None,
+            season: None,
+            episode: None,
+            cover: None,
+            played: false,
+            position_ms: 0,
+            duration_ms: 0,
+            last_played_s: None,
+            anilist_id: None,
+        }
+    }
+
+    // T-SRV-006: a server's tab, from its libraries to a video
+    #[test]
+    fn a_server_is_browsed_from_its_tab() {
+        use nikomiru_online::servers::{ItemKind, Library, ParentKind};
+
+        use crate::servers::{Listing, Place};
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            ..LibraryPage::default()
+        });
+        h.state_mut().servers = vec![nikomiru_core::config::ServerConfig {
+            id: "a".into(),
+            name: "Home".into(),
+            ..Default::default()
+        }];
+        h.run();
+        let out = click(&mut h, "Home");
+        assert!(matches!(out.as_slice(), [Command::ServerShow(id)] if id == "a"));
+        h.state_mut().server_page.libraries = vec![Library {
+            id: "lib".into(),
+            title: "Anime".into(),
+        }];
+        h.run();
+        let out = click(&mut h, "Anime");
+        assert!(matches!(
+            out.as_slice(),
+            [Command::ServerGo(path)] if path.len() == 1 && path[0].parent == "lib"
+        ));
+        h.state_mut().server_page.path = vec![Place {
+            parent: "lib".into(),
+            title: "Anime".into(),
+            kind: ParentKind::Library,
+        }];
+        h.state_mut().server_page.listing = Some(Listing {
+            items: vec![
+                server_item("s", ItemKind::Series),
+                server_item("e", ItemKind::Episode),
+            ],
+            total: 3,
+        });
+        h.run();
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Title s")
+            .click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(matches!(
+            out.as_slice(),
+            [Command::ServerGo(path)] if path.len() == 2 && path[1].parent == "s"
+        ));
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Title e")
+            .click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(matches!(out.as_slice(), [Command::ServerPlay(id)] if id == "e"));
+        // 2 of 3: there is more
+        let out = click(&mut h, "servers-more");
+        assert!(matches!(out.as_slice(), [Command::ServerMore]));
     }
 
     // T-MET-001: a series asked online, the result chosen, forgotten
