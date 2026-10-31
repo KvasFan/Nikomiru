@@ -479,19 +479,20 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: watch the series of a Jellyfin or Plex server with the same subtitles, lookups and cards as a local file.
 
-**Deliverables (scope)**
+**Requirements**: SRV-001…SRV-013 (proposed, to accept with D-20).
 
-- Settings → Media servers: a Jellyfin server (address, user, password → access token) and a Plex account (plex.tv PIN login → token); tokens kept like the other keys (MET-005).
-- The servers' libraries in the library page: series, seasons, episodes, covers, watched state.
-- Playback through mpv from the server's stream URL (direct play, no transcoding asked); the server's external and embedded subtitles; the position and watched state reported back.
-- Cards from a streamed episode: audio, frame and clip cut by ffmpeg from the stream URL; the scene link reopens the episode on its server.
-- Nothing goes online unless a server is configured (PRV-001).
+**Deliverables**
 
-**Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency expected. Test servers simulated as for AniList and Jimaku; a live check against a real Jellyfin (container) and the maintainer's Plex.
+- `nikomiru-online`: the Jellyfin and Plex clients and the loopback relay.
+- `nikomiru-library`: the table `server_items`, server videos in "Continue watching".
+- `nikomiru-ui`: Settings → Media servers, a tab for each server.
+- `nikomiru-app`: playback, subtitles, progress and scene links for server videos.
+
+**Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency expected. Test servers simulated as for AniList and Jimaku; the live checks need a real Jellyfin and the maintainer's Plex, since the development machine has no container runtime.
 
 **Exit criteria**
 
-- [ ] Requirements in SPECIFICATION.md accepted; their tests green on simulated servers.
+- [ ] SRV-001…SRV-013 accepted (D-20); T-SRV-001…T-SRV-013 green on simulated servers.
 - [ ] An episode from a real Jellyfin and from a real Plex: played, looked up, made into a card whose link reopens it.
 - [ ] **Release 1.1.0**.
 
