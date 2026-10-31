@@ -14,6 +14,7 @@ test-harness = ["nikomiru-player/test-support"]
 
 [dependencies]
 nikomiru-anki.workspace = true
+nikomiru-books.workspace = true
 nikomiru-core.workspace = true
 nikomiru-dict.workspace = true
 nikomiru-text.workspace = true

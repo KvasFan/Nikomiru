@@ -251,7 +251,8 @@ nikomiru/
 ├── crates/
 │   ├── nikomiru-core/       # shared types, config, paths, errors, clock
 │   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count, file names
-│   ├── nikomiru-dict/       # Yomitan import, redb storage, deinflection, lookup, word audio
+│   ├── nikomiru-books/      # EPUB read into clean text
+│   ├── nikomiru-dict/       # Yomitan import, other formats, redb storage, deinflection, lookup, word audio
 │   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
 │   ├── nikomiru-player/     # libmpv core (libmpv2): init, properties, commands, events;
@@ -269,7 +270,7 @@ nikomiru/
 **ARC-010 — Dependency rules** (verified by T-ARC-010 with `cargo metadata`):
 
 - `nikomiru-core` depends on no workspace crate.
-- `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
+- `nikomiru-text`, `nikomiru-books`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
 - Only `nikomiru-player` depends on `libmpv2` (and `libmpv2-sys`). Only `nikomiru-ui` and `nikomiru-app` depend on the UI toolkit. No crate depends on a retired toolkit (Dioxus, D-10; Qt through cxx-qt, D-13).
 - **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI and the render context), in `nikomiru-app::linux` (environment, `setlocale`, signals, iconv, the Wayland connection for drag and drop) and in `nikomiru-app::window` (the OpenGL context through glutin, the GL state around mpv's render). There is no C++. Every `unsafe` block MUST have a `// SAFETY:` comment on the line above it. `nikomiru-app` declares `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on those modules; every other crate except `nikomiru-player` declares `#![forbid(unsafe_code)]`.
 
@@ -802,6 +803,21 @@ The dictionary and the cards for games, on a page of their own, opened from the 
 | HOK-004 | **Lookup**: a click on a line looks up from that character, as on a subtitle; the popups work over the page as over the video. |
 | HOK-005 | **Cards**: a card from a line has the word and the sentence, and no picture, audio or link, there being no video (ANK-050). |
 
+### 6.16 Books (BOK) — milestone M16 (D-12, D-25)
+
+Reading with the same dictionary and cards. Manga and audiobooks come later in M16.
+
+| ID | Requirement |
+|---|---|
+| BOK-001 | **EPUB**: `META-INF/container.xml`, then the package's manifest and spine, in reading order, with paths relative to the package and never out of the archive. A book is untrusted: at most 100 000 files, 64 MiB a file, 1 GiB of text, counted as they are read. A book with no text (pictures only) says so. |
+| BOK-002 | **Text**: each file of the spine is a chapter, split into paragraphs at block tags; scripts, styles, `head` and SVG are not read, and nothing but text comes out (NFR-SEC-01). `<ruby>` readings go apart from the text, which the lookup reads as it is written. Pictures are not shown. |
+| BOK-003 | A chapter's title is its first heading. |
+| BOK-004 | **Books page**, opened from the Library page: "Add a book…", the books with their authors and the share read, the last read first; removing one leaves its file (LIB-012). A book is known by its title, author and length, so a moved file keeps its place; a file gone is a message. |
+| BOK-005 | **Reading**: horizontal text in a column at most 860 points wide, furigana above their bases, one chapter at a time, with previous and next. The place is the paragraph at the top, saved on changing chapter, closing and quitting, and reopened there; the share read counts characters, not pages. Esc closes the book, then the page. |
+| BOK-006 | **Lookup**: a click looks up from that character as on a subtitle (free text, LKP-002), and the popups work over the page. |
+| BOK-007 | **Cards**: a card has the word and the sentence around it (ANK-024), with no picture, audio or link. |
+| BOK-008 | **Statistics**: closing a book adds a session (STA-004) with the time it was open and the characters advanced. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -843,6 +859,7 @@ The dictionary and the cards for games, on a page of their own, opened from the 
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
 | `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
+| `books` | `&str` uid | path, title, author, characters, characters read, chapter, paragraph, last read (BOK-004, BOK-005; a new table: the schema version does not change) |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
 | `server_items` | `&str` uid | server id, kind (Jellyfin or Plex), item id, media source or part, series and episode titles (SRV-007; a new table: the schema version does not change, and older versions see these `videos` rows as missing files) |
 
@@ -995,6 +1012,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-22 | Design of M13 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: effects only with `respect_ass_styles` on, as styles are, so the default look stays plain; one set of effects per cue; `Shift+S` reads the window instead of compositing the overlay into mpv's frame, so the picture is what was seen, at the window's size |
 | D-23 | Design of M14 | **Approved** (2026-10-31): the WebSocket first, since a background program cannot read the clipboard everywhere; the clipboard by Ctrl+V, and by `wl-paste` or `xclip` where they can; cards from a game with text only |
 | D-24 | Design of M15 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: the formats are read into Yomitan's terms instead of a store of their own, so lookups and cards need no change; definitions as plain text, so no HTML sanitizer (`ammonia`) and no new dependency; own readers, with RIPEMD-128 written here for MDict's index, which is only an obscuring |
+| D-25 | Design of the books of M16 | **Asked by the maintainer** (2026-10-31, "avanti m16"), to change at will: horizontal text first, vertical writing later; chapters one at a time, scrolled, not paged; a book's place in characters, as ttu counts them, which leaves the ttu sync possible, but that sync is not made: its file names are not documented, and they need checking against the real reader; book progress is not in the WebDAV sync yet; manga and audiobooks wait for their own requirements |
 
 ### 10.2 Risks
 

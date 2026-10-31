@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Books (M16, BOK-001…BOK-008): a Books page reads EPUB files, with furigana, lookups by click, cards of the sentence, and each book's place kept.
 - StarDict, DSL and MDict dictionaries (M15, DIC-004): imported like Yomitan's, their definitions as plain text.
 - Chapters show (PLY-019): marks on the progress bar, the current one next to the time, the one under the pointer, and a menu to go to one. They could only be reached with PageUp and PageDown.
 - With no word audio source, the popup offers the way to add one (AUD-009), instead of nothing.

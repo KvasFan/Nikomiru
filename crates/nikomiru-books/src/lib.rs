@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! EPUB books read into clean text (BOK-001…BOK-003): the chapters of the
+//! spine, each a list of paragraphs, their furigana apart from the text, as
+//! the lookup needs it. A book is untrusted: its archive is read within
+//! limits, and its scripts, styles and links are simply not read.
+
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
+mod epub;
+mod markup;
+#[cfg(feature = "test-support")]
+pub mod sample;
+
+use std::ops::Range;
+
+pub use epub::read;
+
+/// Furigana: the bytes of the paragraph's text it goes over, and its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ruby {
+    /// Its base.
+    pub range: Range<usize>,
+    /// Its reading.
+    pub text: String,
+}
+
+/// A paragraph.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Paragraph {
+    /// Its text, without furigana.
+    pub text: String,
+    /// Its furigana.
+    pub ruby: Vec<Ruby>,
+    /// It is a heading.
+    pub heading: bool,
+}
+
+/// A file of the spine with text in it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Chapter {
+    /// Its first heading, if it has one.
+    pub title: Option<String>,
+    /// Its paragraphs.
+    pub paragraphs: Vec<Paragraph>,
+}
+
+/// A book.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Book {
+    /// Its title.
+    pub title: String,
+    /// Its author.
+    pub author: String,
+    /// Its chapters, in reading order.
+    pub chapters: Vec<Chapter>,
+}
+
+impl Book {
+    /// Characters before chapter `chapter`, paragraph `paragraph`: the
+    /// position kept for it, which does not change with the font.
+    pub fn chars_before(&self, chapter: usize, paragraph: usize) -> u64 {
+        let count = |p: &Paragraph| p.text.chars().count() as u64;
+        let earlier: u64 = self
+            .chapters
+            .iter()
+            .take(chapter)
+            .flat_map(|c| &c.paragraphs)
+            .map(count)
+            .sum();
+        let here: u64 = self
+            .chapters
+            .get(chapter)
+            .map(|c| c.paragraphs.iter().take(paragraph).map(count).sum())
+            .unwrap_or(0);
+        earlier + here
+    }
+
+    /// Every character.
+    pub fn chars(&self) -> u64 {
+        self.chars_before(self.chapters.len(), 0)
+    }
+}
+
+/// Why a book cannot be read.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BookError {
+    /// Reading the file.
+    #[error("{0}")]
+    Io(String),
+    /// It is not an EPUB, or it is damaged.
+    #[error("not an EPUB: {0}")]
+    NotEpub(String),
+    /// Past the limits of an archive.
+    #[error("the EPUB is too large")]
+    TooLarge,
+    /// It has no text: a book of pictures.
+    #[error("the EPUB has no text")]
+    NoText,
+}
+
+impl nikomiru_core::Localized for BookError {
+    fn message_id(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "error-book-io",
+            Self::NotEpub(_) => "error-book-format",
+            Self::TooLarge => "error-book-too-large",
+            Self::NoText => "error-book-no-text",
+        }
+    }
+
+    fn message_args(&self) -> Vec<(&'static str, String)> {
+        match self {
+            Self::Io(reason) | Self::NotEpub(reason) => vec![("reason", reason.clone())],
+            Self::TooLarge | Self::NoText => Vec::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-ERR-001
+    #[test]
+    fn every_error_has_its_message() {
+        let errors = [
+            BookError::Io("r".into()),
+            BookError::NotEpub("r".into()),
+            BookError::TooLarge,
+            BookError::NoText,
+        ];
+        let refs: Vec<&dyn nikomiru_core::Localized> = errors
+            .iter()
+            .map(|e| e as &dyn nikomiru_core::Localized)
+            .collect();
+        let i18n = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/i18n");
+        let problems = nikomiru_core::error::message_problems(&i18n, &refs);
+        assert!(problems.is_empty(), "{problems:#?}");
+    }
+
+    // T-BOK-005
+    #[test]
+    fn a_position_counts_characters() {
+        let paragraph = |text: &str| Paragraph {
+            text: text.into(),
+            ..Paragraph::default()
+        };
+        let book = Book {
+            chapters: vec![
+                Chapter {
+                    title: None,
+                    paragraphs: vec![paragraph("一二"), paragraph("三")],
+                },
+                Chapter {
+                    title: None,
+                    paragraphs: vec![paragraph("四五六")],
+                },
+            ],
+            ..Book::default()
+        };
+        assert_eq!(book.chars_before(0, 1), 2);
+        assert_eq!(book.chars_before(1, 0), 3);
+        assert_eq!(book.chars(), 6);
+    }
+}

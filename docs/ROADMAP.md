@@ -54,7 +54,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | done (check by hand open) |
 | M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | done (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | done (real dictionaries open) |
-| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | not started |
+| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books done) |
 
 ---
 
@@ -594,17 +594,20 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the direction of D-12: reading with the same dictionary and cards.
 
-**Deliverables (scope)**, each about as large as the MVP, in this order, each possibly a release of its own:
+**Requirements**: BOK-001…BOK-008 for books (D-25); manga and audiobooks to be written.
 
-- Books: EPUB, with the ttu reader's sync format.
-- Manga: pages with the text found by OCR, clickable.
-- Audiobooks: an audiobook with its text, played in sync.
+**Status as of 2026-10-31**
 
-**Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video. The OCR's engine and its license are decided with the requirements.
+- Books done with a small EPUB made by the tests: reading, furigana, lookups, cards of text only, the place kept, a session in the statistics (T-BOK-001…T-BOK-008).
+- Open for books: real EPUBs; vertical writing; pictures; the ttu sync, whose format needs checking against the real reader; book progress in the WebDAV sync.
+- Not started: manga (the OCR's engine and its license are decided with the requirements) and audiobooks (an audiobook with its text, played in sync).
+
+**Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.
 
 **Exit criteria**
 
 - [ ] Requirements of each part accepted; split into milestones of their own if needed.
+- [ ] Real books, manga and audiobooks checked by hand.
 - [ ] **Release 2.0.0**.
 
 ---

@@ -543,6 +543,20 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-HOK-005 | Cards | A card from a line has the sentence and no media | L6 |
 | T-HOK-LIVE-* | Real hooker | A real visual novel through Textractor or LunaTranslator | L7 |
 
+### 6.13d Books (M16)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-BOK-001 | EPUB | The spine's order, relative and escaped paths, none out of the archive; broken books say why; L6: from a file to its pages | L1/L6 |
+| T-BOK-002 | Text | Paragraphs, furigana apart, scripts and styles gone, broken markup harmless | L1 |
+| T-BOK-003 | Titles | The first heading | L1 |
+| T-BOK-004 | Books page | Added, listed by last read, removed with the file left; the same book found again | L1/L3/L6 |
+| T-BOK-005 | Reading | The place in characters, chapters one by one, reopened where left | L1/L3/L6 |
+| T-BOK-006 | Lookup | A click gives the paragraph and the byte of the character; the popup opens over the page | L3/L6 |
+| T-BOK-007 | Cards | The sentence, and no media | L6 |
+| T-BOK-008 | Statistics | Closing adds a session | L6 |
+| T-BOK-LIVE-* | Real books | Real EPUBs, by hand | L7 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

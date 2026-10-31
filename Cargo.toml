@@ -15,6 +15,7 @@ publish = false
 # Workspace crates
 nikomiru-core = { path = "crates/nikomiru-core" }
 nikomiru-text = { path = "crates/nikomiru-text" }
+nikomiru-books = { path = "crates/nikomiru-books" }
 nikomiru-dict = { path = "crates/nikomiru-dict" }
 nikomiru-subs = { path = "crates/nikomiru-subs" }
 nikomiru-media = { path = "crates/nikomiru-media" }

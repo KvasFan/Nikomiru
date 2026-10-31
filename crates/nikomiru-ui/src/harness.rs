@@ -448,6 +448,14 @@ pub fn state() -> Result<Value, String> {
             "dictionaries": s.dict_page.json(),
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["books"] = json!({
+            "list": s.books_page.list.iter().map(|(_, b)| {
+                json!({ "title": b.title, "read": b.read_chars, "chapter": b.chapter })
+            }).collect::<Vec<_>>(),
+            "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
+            "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
+            "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
+        });
         state["hooker"] = json!({
             "lines": s.hooker_page.lines,
             "connected": s.hooker_page.connected,
@@ -651,6 +659,42 @@ pub fn services(providers: Vec<String>, auto: Option<bool>) -> Result<(), String
             online.auto_subtitles = auto;
         }
         ui.run(Command::OnlineSave(Box::new((online, network))));
+    })
+}
+
+/// The Books page (BOK-004…BOK-006): `open`, `add` (`path`), `click`
+/// (`paragraph`, `offset`), `next`, `close`.
+pub fn books(
+    action: &str,
+    path: Option<String>,
+    paragraph: Option<usize>,
+    offset: Option<usize>,
+) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        let mut out = Vec::new();
+        match action.as_str() {
+            "open" => ui.view.open_books_page(&mut out),
+            "add" => ui
+                .session
+                .book_add(PathBuf::from(path.clone().unwrap_or_default())),
+            "next" => out.push(Command::BookChapter(
+                ui.session
+                    .books_page
+                    .open
+                    .as_ref()
+                    .map_or(0, |o| o.chapter + 1),
+            )),
+            "click" => out.push(Command::BookClicked {
+                paragraph: paragraph.unwrap_or(0),
+                offset: offset.unwrap_or(0),
+                anchor: crate::popup::Rect::default(),
+            }),
+            _ => out.push(Command::BookClose),
+        }
+        for c in out {
+            ui.run(c);
+        }
     })
 }
 
