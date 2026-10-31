@@ -629,6 +629,7 @@ settings-servers = Media servers
 servers-added = Servers added
 servers-none = No server yet. Nikomiru connects to one only after you add it.
 servers-add-jellyfin = Add a Jellyfin server
+servers-name = Name
 servers-address = Address
 servers-address-hint = http://192.168.1.10:8096
 servers-user = User

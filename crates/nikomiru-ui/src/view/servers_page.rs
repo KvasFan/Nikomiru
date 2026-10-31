@@ -99,14 +99,17 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::Grid::new("server-login")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label(tr(s, "servers-address"));
-            ui.add(TextEdit::singleline(&mut state.url).hint_text(tr(s, "servers-address-hint")));
+            let label = ui.label(tr(s, "servers-address"));
+            ui.add(TextEdit::singleline(&mut state.url).hint_text(tr(s, "servers-address-hint")))
+                .labelled_by(label.id);
             ui.end_row();
-            ui.label(tr(s, "servers-user"));
-            ui.text_edit_singleline(&mut state.user);
+            let label = ui.label(tr(s, "servers-user"));
+            ui.text_edit_singleline(&mut state.user)
+                .labelled_by(label.id);
             ui.end_row();
-            ui.label(tr(s, "servers-password"));
-            ui.add(TextEdit::singleline(&mut state.password).password(true));
+            let label = ui.label(tr(s, "servers-password"));
+            ui.add(TextEdit::singleline(&mut state.password).password(true))
+                .labelled_by(label.id);
             ui.end_row();
         });
     ui.checkbox(&mut state.allow_unencrypted, tr(s, "servers-unencrypted"));
@@ -159,7 +162,10 @@ fn row(
                     .names
                     .entry(server.id.clone())
                     .or_insert_with(|| server.name.clone());
-                let edit = ui.add(TextEdit::singleline(name).desired_width(200.0));
+                let label = ui.label(tr(s, "servers-name"));
+                let edit = ui
+                    .add(TextEdit::singleline(name).desired_width(200.0))
+                    .labelled_by(label.id);
                 if edit.lost_focus() && *name != server.name && !name.trim().is_empty() {
                     out.push(Command::ServerRename(
                         server.id.clone(),
