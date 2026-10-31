@@ -5,6 +5,7 @@
 //! SRT files that carry them, SUB-001) and ASS text escapes `\N \n \h`.
 
 use crate::cue::{Markup, Rgb, Ruby, Run, RunStyle};
+use crate::effects::{Clip, Effects, Fade, Move, Syllable, Targets, Transform};
 
 /// Accumulates text with the current style.
 #[derive(Debug, Default)]
@@ -20,6 +21,10 @@ pub(crate) struct TextBuilder {
     pub pos: Option<(f64, f64)>,
     /// ASS drawing mode (`\p1`…): text is not part of the cue.
     pub drawing: bool,
+    /// What ASS adds to the text (SUB-019), in file coordinates.
+    pub effects: Effects,
+    /// Where the next syllable of karaoke starts.
+    karaoke_ms: i64,
 }
 
 impl TextBuilder {
@@ -102,11 +107,31 @@ impl TextBuilder {
                 })
             })
             .collect();
+        let mut effects = self.effects;
+        if let Some(last) = effects.karaoke.last_mut() {
+            last.range.end = self.text.len();
+        }
+        effects.karaoke = std::mem::take(&mut effects.karaoke)
+            .into_iter()
+            .filter_map(|s| clip(&s.range).map(|range| Syllable { range, ..s }))
+            .collect();
+        effects.movement = effects.movement.map(|m| Move {
+            from: to_fraction(m.from),
+            to: to_fraction(m.to),
+            ..m
+        });
+        effects.origin = effects.origin.map(&to_fraction);
+        effects.clip = effects.clip.map(|c| Clip {
+            min: to_fraction(c.min),
+            max: to_fraction(c.max),
+            ..c
+        });
         let markup = Markup {
+            effects: (effects != Effects::default()).then(|| Box::new(effects)),
             runs,
             ruby,
             anchor: self.anchor,
-            pos: self.pos.map(to_fraction),
+            pos: self.pos.map(&to_fraction),
             vtt: None,
         };
         (text, markup)
@@ -179,8 +204,175 @@ fn number_args(args: &str) -> Vec<f64> {
 
 /// Applies the tags of one override block (`{…}` without the braces). The SUB-003
 /// subset is honoured; every other tag is ignored without error (SUB-019).
+/// `\alpha&H80&`, as opacity.
+fn opacity(value: &str) -> Option<f32> {
+    let hex = value
+        .trim()
+        .trim_matches('&')
+        .trim_start_matches(['H', 'h']);
+    let hex = hex.trim_end_matches('&');
+    u8::from_str_radix(hex, 16)
+        .ok()
+        .map(|a| 1.0 - f32::from(a) / 255.0)
+}
+
+/// The rectangle of `\clip`: its corners, or around a drawing's points.
+fn clip_of(args: &str, inverse: bool) -> Option<Clip> {
+    let inner = args.trim_start_matches('(').trim_end_matches(')');
+    let numbers = number_args(args);
+    if let [x1, y1, x2, y2] = numbers[..] {
+        return Some(Clip {
+            min: (x1.min(x2), y1.min(y2)),
+            max: (x1.max(x2), y1.max(y2)),
+            inverse,
+        });
+    }
+    let drawing = inner.rsplit(',').next()?;
+    let points: Vec<f64> = drawing
+        .split_whitespace()
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    let (mut min, mut max) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+    for [x, y] in points.as_chunks::<2>().0 {
+        min = (min.0.min(*x), min.1.min(*y));
+        max = (max.0.max(*x), max.1.max(*y));
+    }
+    (min.0 <= max.0).then_some(Clip { min, max, inverse })
+}
+
+/// What the tags of a `\t` change.
+fn targets(tags: &str) -> Targets {
+    let mut to = Targets::default();
+    let number = |s: &str| s.parse::<f32>().ok();
+    for tag in split_tags(tags) {
+        if let Some(v) = tag.strip_prefix("frx") {
+            to.rotation[0] = number(v);
+        } else if let Some(v) = tag.strip_prefix("fry") {
+            to.rotation[1] = number(v);
+        } else if let Some(v) = tag.strip_prefix("frz").or_else(|| tag.strip_prefix("fr")) {
+            to.rotation[2] = number(v);
+        } else if let Some(v) = tag.strip_prefix("fscx") {
+            to.scale[0] = number(v).map(|n| n / 100.0);
+        } else if let Some(v) = tag.strip_prefix("fscy") {
+            to.scale[1] = number(v).map(|n| n / 100.0);
+        } else if let Some(v) = tag.strip_prefix("fs") {
+            to.size = number(v);
+        } else if let Some(v) = tag.strip_prefix("alpha").or_else(|| tag.strip_prefix("1a")) {
+            to.opacity = opacity(v);
+        } else if let Some(v) = tag.strip_prefix("1c").or_else(|| tag.strip_prefix('c')) {
+            to.color = ass_color(v);
+        }
+    }
+    to
+}
+
+/// `\t(…)`: its times and acceleration, then its tags.
+fn transform(args: &str) -> Option<Transform> {
+    let inner = args.strip_prefix('(')?.strip_suffix(')').unwrap_or(args);
+    let at = inner.find('\\')?;
+    let head = number_args(&inner[..at]);
+    let (time, accel) = match head[..] {
+        [] => (None, 1.0),
+        [accel] => (None, accel),
+        [t1, t2] => (Some((t1 as i64, t2 as i64)), 1.0),
+        [t1, t2, accel, ..] => (Some((t1 as i64, t2 as i64)), accel),
+    };
+    Some(Transform {
+        time,
+        accel: accel as f32,
+        to: targets(&inner[at..]),
+    })
+}
+
+/// A tag of [`Effects`]; whether it was one.
+fn effect_tag(tag: &str, b: &mut TextBuilder) -> bool {
+    let number = |s: &str| s.parse::<f32>().ok();
+    let scaled = |s: &str| number(s).map(|n| n / 100.0);
+    let start = b.text.len();
+    let e = &mut b.effects;
+    if let Some(args) = tag.strip_prefix("fade(") {
+        if let [a1, a2, a3, t1, t2, t3, t4] = number_args(args)[..] {
+            let level = |a: f64| 1.0 - a as f32 / 255.0;
+            e.fade.get_or_insert(Fade::Full(
+                [level(a1), level(a2), level(a3)],
+                [t1 as i64, t2 as i64, t3 as i64, t4 as i64],
+            ));
+        }
+    } else if let Some(args) = tag.strip_prefix("fad(") {
+        if let [fade_in, fade_out] = number_args(args)[..] {
+            e.fade
+                .get_or_insert(Fade::Simple(fade_in as i64, fade_out as i64));
+        }
+    } else if let Some(args) = tag.strip_prefix("move") {
+        let n = number_args(args);
+        if let [x1, y1, x2, y2, ..] = n[..] {
+            let time = match n[4..] {
+                [t1, t2] if t1 != 0.0 || t2 != 0.0 => Some((t1 as i64, t2 as i64)),
+                _ => None,
+            };
+            e.movement.get_or_insert(Move {
+                from: (x1, y1),
+                to: (x2, y2),
+                time,
+            });
+        }
+    } else if let Some(args) = tag.strip_prefix("org") {
+        if let [x, y] = number_args(args)[..] {
+            e.origin.get_or_insert((x, y));
+        }
+    } else if let Some(args) = tag.strip_prefix("iclip") {
+        e.clip = e.clip.or(clip_of(args, true));
+    } else if let Some(args) = tag.strip_prefix("clip") {
+        e.clip = e.clip.or(clip_of(args, false));
+    } else if let Some(args) = tag.strip_prefix("t(") {
+        e.transforms.extend(transform(&format!("({args}")));
+    } else if let Some(v) = tag.strip_prefix("frx") {
+        e.rotation[0] = number(v).unwrap_or(0.0);
+    } else if let Some(v) = tag.strip_prefix("fry") {
+        e.rotation[1] = number(v).unwrap_or(0.0);
+    } else if let Some(v) = tag.strip_prefix("frz") {
+        e.rotation[2] = number(v).unwrap_or(0.0);
+    } else if let Some(v) = tag.strip_prefix("fscx") {
+        e.scale[0] = scaled(v).unwrap_or(1.0);
+    } else if let Some(v) = tag.strip_prefix("fscy") {
+        e.scale[1] = scaled(v).unwrap_or(1.0);
+    } else if let Some(v) = tag.strip_prefix("alpha").or_else(|| tag.strip_prefix("1a")) {
+        e.opacity = opacity(v).unwrap_or(1.0);
+    } else if let Some(v) = tag.strip_prefix("2c") {
+        e.unsung = ass_color(v);
+    } else if let Some((v, sweep)) = tag
+        .strip_prefix("kf")
+        .map(|v| (v, true))
+        .or_else(|| tag.strip_prefix("ko").map(|v| (v, false)))
+        .or_else(|| tag.strip_prefix('K').map(|v| (v, true)))
+        .or_else(|| tag.strip_prefix('k').map(|v| (v, false)))
+        && let Ok(centiseconds) = v.parse::<i64>()
+    {
+        if let Some(last) = e.karaoke.last_mut() {
+            last.range.end = start;
+        }
+        let begin = b.karaoke_ms;
+        b.karaoke_ms += centiseconds * 10;
+        b.effects.karaoke.push(Syllable {
+            range: start..start,
+            time: (begin, b.karaoke_ms),
+            sweep,
+        });
+    } else if let Some(v) = tag.strip_prefix("fr")
+        && v.parse::<f32>().is_ok()
+    {
+        e.rotation[2] = number(v).unwrap_or(0.0);
+    } else {
+        return false;
+    }
+    true
+}
+
 pub(crate) fn apply_override(block: &str, b: &mut TextBuilder) {
     for tag in split_tags(block) {
+        if effect_tag(tag, b) {
+            continue;
+        }
         // longest names first: `pos` before `p`, `fscx` before `fs`, `an` before `a`
         if let Some(args) = tag.strip_prefix("pos") {
             if b.pos.is_none()
@@ -552,5 +744,125 @@ mod tests {
         assert_eq!(html_color("#f00"), Some(Rgb(255, 0, 0)));
         assert_eq!(html_color("yellow"), Some(Rgb(255, 255, 0)));
         assert_eq!(decode_entities("a&#x41;&#66;&bogus;"), "aAB&bogus;");
+    }
+}
+
+#[cfg(test)]
+mod effect_tests {
+    use super::*;
+
+    fn cue(text: &str) -> (String, Markup) {
+        let mut b = TextBuilder::default();
+        push_ass_text(text, &mut b, false);
+        b.finish(|(x, y)| (x / 100.0, y / 100.0))
+    }
+
+    fn effects(text: &str) -> Effects {
+        *cue(text).1.effects.expect("effects")
+    }
+
+    // T-SUB-019
+    #[test]
+    fn the_tags_are_read() {
+        assert_eq!(
+            effects(r"{\fad(100,200)}a").fade,
+            Some(Fade::Simple(100, 200))
+        );
+        assert_eq!(
+            effects(r"{\fade(255,0,128,0,10,20,30)}a").fade,
+            Some(Fade::Full([0.0, 1.0, 1.0 - 128.0 / 255.0], [0, 10, 20, 30]))
+        );
+        assert_eq!(
+            effects(r"{\move(10,20,30,40,5,6)}a").movement,
+            Some(Move {
+                from: (0.1, 0.2),
+                to: (0.3, 0.4),
+                time: Some((5, 6)),
+            })
+        );
+        assert_eq!(
+            effects(r"{\move(10,20,30,40)}a").movement.unwrap().time,
+            None
+        );
+        assert_eq!(effects(r"{\org(50,50)}a").origin, Some((0.5, 0.5)));
+        let e = effects(r"{\frz45\frx1\fry2\fscx150\fscy50\alpha&H80&}a");
+        assert_eq!(e.rotation, [1.0, 2.0, 45.0]);
+        assert_eq!(e.scale, [1.5, 0.5]);
+        assert!((e.opacity - (1.0 - 128.0 / 255.0)).abs() < 1e-6);
+        assert_eq!(effects(r"{\fr30}a").rotation[2], 30.0);
+    }
+
+    // T-SUB-019
+    #[test]
+    fn a_clip_is_a_rectangle() {
+        let c = effects(r"{\clip(10,20,30,40)}a").clip.unwrap();
+        assert_eq!((c.min, c.max, c.inverse), ((0.1, 0.2), (0.3, 0.4), false));
+        let c = effects(r"{\iclip(30,40,10,20)}a").clip.unwrap();
+        assert_eq!((c.min, c.max, c.inverse), ((0.1, 0.2), (0.3, 0.4), true));
+        // a drawing comes to the rectangle around it
+        let c = effects(r"{\clip(m 10 20 l 30 20 30 40)}a").clip.unwrap();
+        assert_eq!((c.min, c.max), ((0.1, 0.2), (0.3, 0.4)));
+    }
+
+    // T-SUB-019
+    #[test]
+    fn a_transform_keeps_its_times_and_tags() {
+        let t =
+            &effects(r"{\t(100,200,2,\frz90\fscx200\c&H0000FF&\fs40\alpha&HFF&)}a").transforms[0];
+        assert_eq!((t.time, t.accel), (Some((100, 200)), 2.0));
+        assert_eq!(t.to.rotation[2], Some(90.0));
+        assert_eq!(t.to.scale[0], Some(2.0));
+        assert_eq!(t.to.size, Some(40.0));
+        assert_eq!(t.to.color, Some(Rgb(255, 0, 0)));
+        assert_eq!(t.to.opacity, Some(0.0));
+        let t = &effects(r"{\t(\frz90)}a").transforms[0];
+        assert_eq!((t.time, t.accel), (None, 1.0));
+    }
+
+    // T-SUB-019: every character stays in `plain_text`
+    #[test]
+    fn karaoke_splits_the_text_in_syllables() {
+        let (text, markup) = cue(r"{\k10}か{\kf20}ら{\K30}お{\ko5\2c&H00FF00&}け");
+        assert_eq!(text, "からおけ");
+        let e = markup.effects.unwrap();
+        let times: Vec<_> = e
+            .karaoke
+            .iter()
+            .map(|s| (s.range.clone(), s.time, s.sweep))
+            .collect();
+        assert_eq!(
+            times,
+            [
+                (0..3, (0, 100), false),
+                (3..6, (100, 300), true),
+                (6..9, (300, 600), true),
+                (9..12, (600, 650), false),
+            ]
+        );
+        assert_eq!(e.unsung, Some(Rgb(0, 255, 0)));
+    }
+
+    // T-SUB-019: what was read before still is
+    #[test]
+    fn other_tags_are_not_taken_for_effects() {
+        let (text, markup) = cue(r"{\b1\c&H0000FF&\fs30\an8}a");
+        assert_eq!(text, "a");
+        assert_eq!(markup.effects, None);
+        assert_eq!(markup.anchor, Some(8));
+        assert_eq!(markup.runs[0].style.color, Some(Rgb(255, 0, 0)));
+    }
+
+    #[test]
+    fn broken_tags_are_only_ignored() {
+        for text in [
+            r"{\move(1,2)}a",
+            r"{\t()}a",
+            r"{\clip()}a",
+            r"{\fade(1)}a",
+            r"{\k}a",
+            r"{\t(}a",
+        ] {
+            assert_eq!(cue(text).0, "a", "{text}");
+        }
     }
 }

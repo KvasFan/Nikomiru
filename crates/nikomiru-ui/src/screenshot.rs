@@ -73,6 +73,58 @@ pub fn start(
     }
 }
 
+/// What is on screen, as the window drew it (PLY-015).
+#[derive(Debug)]
+pub struct Pixels {
+    /// Its width.
+    pub width: u32,
+    /// Its height.
+    pub height: u32,
+    /// RGBA, the bottom row first, as OpenGL reads them.
+    pub rgba: Vec<u8>,
+}
+
+/// Saves `pixels` as `dir/name` on a thread of its own, like [`start`].
+pub fn start_pixels(
+    pixels: Pixels,
+    dir: PathBuf,
+    name: String,
+    done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
+) {
+    let spawned = std::thread::Builder::new()
+        .name("screenshot".into())
+        .spawn(move || done(save_pixels(pixels, &dir, &name)));
+    if let Err(e) = spawned {
+        tracing::error!("cannot start the screenshot thread: {e}");
+    }
+}
+
+fn save_pixels(pixels: Pixels, dir: &Path, name: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let path = reserve(&dir.join(name)).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let row = pixels.width as usize * 4;
+    let mut rgba = Vec::with_capacity(pixels.rgba.len());
+    for line in pixels.rgba.chunks_exact(row.max(1)).rev() {
+        rgba.extend(
+            line.as_chunks::<4>()
+                .0
+                .iter()
+                .flat_map(|[r, g, b, _]| [*r, *g, *b, 255]),
+        );
+    }
+    let written = image::RgbaImage::from_raw(pixels.width, pixels.height, rgba)
+        .ok_or_else(|| "bad frame".to_string())
+        .and_then(|image| {
+            image
+                .save_with_format(&path, image::ImageFormat::Png)
+                .map_err(|e| e.to_string())
+        });
+    if written.is_err() {
+        let _ = std::fs::remove_file(&path);
+    }
+    written.map(|()| path)
+}
+
 fn save(player: &PlayerHandle, dir: &Path, name: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let path = reserve(&dir.join(name)).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -105,6 +157,21 @@ mod tests {
         let name = file_name(Path::new(&long), 1.0);
         assert!(name.len() < 230, "{}", name.len());
         assert!(name.ends_with(" 00-00-01.000.png"));
+    }
+
+    // T-PLY-015: the top row first in the file, every pixel opaque
+    #[test]
+    fn pixels_become_a_picture_the_right_way_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let pixels = Pixels {
+            width: 1,
+            height: 2,
+            rgba: vec![1, 2, 3, 0, 4, 5, 6, 0],
+        };
+        let path = save_pixels(pixels, dir.path(), "a.png").unwrap();
+        let image = image::open(path).unwrap().to_rgba8();
+        assert_eq!(image.get_pixel(0, 0).0, [4, 5, 6, 255]);
+        assert_eq!(image.get_pixel(0, 1).0, [1, 2, 3, 255]);
     }
 
     #[test]

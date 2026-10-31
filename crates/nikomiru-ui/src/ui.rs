@@ -938,6 +938,31 @@ impl Ui {
             self.apply(command);
         }
         self.pump();
+        // PLY-015: the next frame is drawn for the picture
+        if self.session.capture_pending() {
+            ui.ctx().request_repaint();
+        }
+    }
+
+    /// The part of the window to read now that the frame is drawn, in pixels
+    /// from its top-left corner: x, y, width and height (PLY-015).
+    pub fn take_capture(&mut self) -> Option<[i32; 4]> {
+        let (at, size) = self.view.capture.take()?;
+        Some([
+            at.x.round() as i32,
+            at.y.round() as i32,
+            size.x.round() as i32,
+            size.y.round() as i32,
+        ])
+    }
+
+    /// What [`Ui::take_capture`] read.
+    pub fn captured(&mut self, pixels: crate::screenshot::Pixels) {
+        let waker = self.waker.clone();
+        self.session.start_capture(
+            pixels,
+            Box::new(move |result| waker.wake(Inbound::Screenshot(result))),
+        );
     }
 
     /// The frame just drawn is on screen (after the swap). The test harness's

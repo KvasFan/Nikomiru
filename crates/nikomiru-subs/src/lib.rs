@@ -12,6 +12,7 @@
 pub mod align;
 pub mod ass;
 pub mod cue;
+pub mod effects;
 pub mod encoding;
 mod markup;
 pub mod select;

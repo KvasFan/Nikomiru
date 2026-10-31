@@ -215,6 +215,34 @@ impl GlWindow {
         }
     }
 
+    /// The pixels of a part of the frame drawn, before it is presented:
+    /// `[x, y, width, height]` from the top-left corner (PLY-015).
+    pub fn read_pixels(&self, [x, y, width, height]: [i32; 4]) -> nikomiru_ui::screenshot::Pixels {
+        let (_, window_height) = self.size();
+        let (w, h) = (width.max(0), height.max(0));
+        let mut rgba = vec![0u8; w as usize * h as usize * 4];
+        // SAFETY: the context is current on this thread, and `rgba` has room
+        // for `w`×`h` pixels of four bytes, tightly packed.
+        unsafe {
+            self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            self.gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+            self.gl.read_pixels(
+                x,
+                window_height - y - h,
+                w,
+                h,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut rgba)),
+            );
+        }
+        nikomiru_ui::screenshot::Pixels {
+            width: w as u32,
+            height: h as u32,
+            rgba,
+        }
+    }
+
     /// A black frame, while there is no video to draw.
     pub fn clear(&self) {
         let (w, h) = self.size();

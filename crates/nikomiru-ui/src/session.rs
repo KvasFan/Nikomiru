@@ -386,6 +386,8 @@ pub struct Session {
     /// Online jobs, started by the UI layer (ADR 0008).
     online_jobs: Vec<crate::online::OnlineJob>,
     server_jobs: Vec<crate::servers::ServerJob>,
+    /// The name of the picture of the screen to take (PLY-015).
+    capture: Option<String>,
     sync_jobs: Vec<crate::sync::SyncJob>,
     /// Settings → Backup.
     pub backup_page: crate::sync::BackupPage,
@@ -640,6 +642,7 @@ impl Session {
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
+            capture: None,
             sync_jobs: Vec::new(),
             backup_page: crate::sync::BackupPage::default(),
             external_links: Vec::new(),
@@ -3848,6 +3851,13 @@ impl Session {
                 }
                 Ok(())
             }
+            Action::ScreenshotSubtitles => {
+                if let Some(current) = &self.current {
+                    let name = crate::screenshot::file_name(&current.path, self.view.time_pos);
+                    self.capture = Some(name);
+                }
+                Ok(())
+            }
             Action::ChapterPrev => p.chapter(-1),
             Action::ChapterNext => p.chapter(1),
             Action::SubPrev | Action::SubNext => {
@@ -4688,6 +4698,24 @@ impl Session {
         self.toasts.push(message);
         if let Ok(path) = result {
             self.events.push(UiEvent::ScreenshotSaved(path));
+        }
+    }
+
+    /// Whether the next frame is for a picture (PLY-015): only the video and
+    /// the subtitles are drawn.
+    pub fn capture_pending(&self) -> bool {
+        self.capture.is_some()
+    }
+
+    /// Saves what the frame drew, off the UI thread.
+    pub fn start_capture(
+        &mut self,
+        pixels: crate::screenshot::Pixels,
+        done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
+    ) {
+        if let Some(name) = self.capture.take() {
+            let dir = self.services.screenshots_dir.clone();
+            crate::screenshot::start_pixels(pixels, dir, name, done);
         }
     }
 

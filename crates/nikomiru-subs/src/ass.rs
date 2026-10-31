@@ -91,6 +91,7 @@ fn style(fields: &[(&str, &str)], legacy: bool) -> AssStyle {
         font: get(fields, "fontname").to_string(),
         size: number("fontsize", 18.0),
         primary: color("primarycolour", Rgb(255, 255, 255)),
+        secondary: color("secondarycolour", Rgb(255, 0, 0)),
         outline_color: color("outlinecolour", Rgb(0, 0, 0)),
         back_color: color("backcolour", Rgb(0, 0, 0)),
         bold: flag(get(fields, "bold")),

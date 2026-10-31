@@ -188,6 +188,8 @@ pub(crate) struct View {
     pub servers_page_open: bool,
     pub servers: servers_page::State,
     pub backup_page_open: bool,
+    /// The part of the window to read after this frame (PLY-015), in pixels.
+    pub capture: Option<(egui::Pos2, egui::Vec2)>,
     pub backup: backup_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
@@ -463,6 +465,13 @@ impl View {
 
         let bar_height = if controls { self.bar.height } else { 0.0 };
         overlay::show(&ctx, s, &mut self.overlay, bar_height, &mut out);
+        // PLY-015: a frame of the video and its subtitles, and nothing else
+        if s.capture_pending() {
+            let area = overlay::video_rect(screen, s.view.video_size);
+            let ppp = ctx.pixels_per_point();
+            self.capture = Some((area.min * ppp, area.size() * ppp));
+            return out;
+        }
         if self.sub_list_open {
             self.sub_list_open = list::show(
                 &ctx,

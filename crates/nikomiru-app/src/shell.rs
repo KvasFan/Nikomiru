@@ -242,6 +242,9 @@ impl<'a> Shell<'a> {
             None => gl.clear(),
         }
         egui.paint(&gl.window);
+        if let Some(area) = ui.take_capture() {
+            ui.captured(gl.read_pixels(area));
+        }
         if let Err(e) = gl.swap() {
             tracing::warn!("{e}");
         }

@@ -23,6 +23,7 @@ use egui::{
     Pos2, Rect, Role, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use nikomiru_subs::cue::VttLine;
+use nikomiru_subs::effects::{Frame, blend};
 use nikomiru_subs::{AssStyle, Rgb, RunStyle, TextAlign};
 
 use super::theme;
@@ -254,7 +255,15 @@ pub(crate) fn draw(
                 anchor,
             });
         }
-        let over = ui.interact(rect, cue_id, Sense::hover());
+        let warp = cue
+            .frame
+            .as_ref()
+            .and_then(|f| Warp::of(f, rect, cue.anchor, video, units.ass));
+        let over = ui.interact(
+            warp.map_or(rect, |w| w.around(rect)),
+            cue_id,
+            Sense::hover(),
+        );
         over.widget_info(|| WidgetInfo::labeled(Role::Label, true, cue.text));
         inside |= over.contains_pointer();
         let (mode, cue_units) = match &scene.secondary {
@@ -264,11 +273,15 @@ pub(crate) fn draw(
         // hidden: not drawn, but still hoverable (which reveals it) and clickable
         let painted = mode != Obscure::Hidden;
         if painted {
-            paint(painter, cue, offset, mode, cue_units, ppp);
+            for region in clip_regions(cue.frame.as_ref(), video, window) {
+                let painter = painter.with_clip_rect(region);
+                paint(&painter, cue, offset, mode, cue_units, ppp, warp);
+            }
         }
         for hit in &cue.graphemes {
+            let target = hit.rect.translate(offset);
             let response = ui.interact(
-                hit.rect.translate(offset),
+                warp.map_or(target, |w| w.around(target)),
                 id.with((cue.index, hit.offset)),
                 Sense::CLICK,
             );
@@ -301,7 +314,10 @@ pub(crate) fn draw(
             graphemes: cue
                 .graphemes
                 .iter()
-                .map(|g| (g.offset, g.rect.translate(offset)))
+                .map(|g| {
+                    let target = g.rect.translate(offset);
+                    (g.offset, warp.map_or(target, |w| w.around(target)))
+                })
                 .collect(),
             highlighted: cue.highlight.len(),
             readings: cue.readings,
@@ -391,7 +407,8 @@ fn anchor(shown: &Shown<'_>) -> u8 {
 
 pub(crate) fn place(shown: &Shown<'_>) -> Place {
     let markup = &shown.cue.markup;
-    if let Some((x, y)) = markup.pos {
+    let moved = shown.frame.as_ref().and_then(|(f, _)| f.position);
+    if let Some((x, y)) = moved.or(markup.pos) {
         return Place::Point {
             x: x as f32,
             y: y as f32,
@@ -615,6 +632,114 @@ struct Laid<'a> {
     mined: Vec<Rect>,
     /// A cue of the secondary subtitle: drawn, never clicked (SUB-017).
     secondary: bool,
+    /// What ASS does to it at this moment (SUB-019).
+    frame: Option<Frame>,
+    /// Its numpad anchor: what it scales and turns around.
+    anchor: u8,
+}
+
+/// Where a point of a cue goes: scaled around its anchor, then turned around
+/// its origin, the two rotations out of the screen seen in perspective, as
+/// libass does (SUB-019).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Warp {
+    anchor: Pos2,
+    origin: Pos2,
+    scale: [f32; 2],
+    /// Radians around x, y and z.
+    turn: [f32; 3],
+    /// How far the camera is, in points.
+    distance: f32,
+}
+
+/// libass's camera, in the script's pixels.
+const CAMERA: f32 = 312.5;
+
+impl Warp {
+    fn of(frame: &Frame, rect: Rect, anchor: u8, video: Rect, unit: f32) -> Option<Self> {
+        if !frame.transformed() {
+            return None;
+        }
+        let x = match anchor {
+            1 | 4 | 7 => rect.min.x,
+            3 | 6 | 9 => rect.max.x,
+            _ => rect.center().x,
+        };
+        let y = match anchor {
+            7..=9 => rect.min.y,
+            4..=6 => rect.center().y,
+            _ => rect.max.y,
+        };
+        let anchor = pos2(x, y);
+        let origin = frame.origin.map_or(anchor, |(x, y)| {
+            pos2(
+                video.min.x + x as f32 * video.width(),
+                video.min.y + y as f32 * video.height(),
+            )
+        });
+        Some(Self {
+            anchor,
+            origin,
+            scale: frame.scale,
+            turn: frame.rotation.map(f32::to_radians),
+            distance: CAMERA * unit,
+        })
+    }
+
+    fn apply(&self, p: Pos2) -> Pos2 {
+        let scaled = self.anchor + (p - self.anchor) * vec2(self.scale[0], self.scale[1]);
+        let v = scaled - self.origin;
+        // in ASS, positive angles turn anticlockwise on a screen whose y grows down
+        let (sin, cos) = self.turn[2].sin_cos();
+        let (x, y) = (v.x * cos + v.y * sin, v.y * cos - v.x * sin);
+        let (sin, cos) = self.turn[0].sin_cos();
+        let (y, z) = (y * cos, y * sin);
+        let (sin, cos) = self.turn[1].sin_cos();
+        let (x, z) = (x * cos + z * sin, z * cos - x * sin);
+        let near = self.distance / (self.distance + z).max(1.0);
+        self.origin + vec2(x * near, y * near)
+    }
+
+    /// The rectangle around `rect` once moved.
+    fn around(&self, rect: Rect) -> Rect {
+        let corners = [
+            rect.left_top(),
+            rect.right_top(),
+            rect.left_bottom(),
+            rect.right_bottom(),
+        ];
+        Rect::from_points(&corners.map(|c| self.apply(c)))
+    }
+}
+
+/// Where a cue may show, on the screen: all of it, or inside `\\clip`, or
+/// around `\\iclip`.
+fn clip_regions(frame: Option<&Frame>, video: Rect, window: Rect) -> Vec<Rect> {
+    let Some(clip) = frame.and_then(|f| f.clip) else {
+        return vec![window];
+    };
+    let at = |(x, y): (f64, f64)| {
+        pos2(
+            video.min.x + x as f32 * video.width(),
+            video.min.y + y as f32 * video.height(),
+        )
+    };
+    let inner = Rect::from_min_max(at(clip.min), at(clip.max));
+    if !clip.inverse {
+        return vec![inner];
+    }
+    vec![
+        Rect::from_min_max(window.min, pos2(window.max.x, inner.min.y)),
+        Rect::from_min_max(pos2(window.min.x, inner.max.y), window.max),
+        Rect::from_min_max(
+            pos2(window.min.x, inner.min.y),
+            pos2(inner.min.x, inner.max.y),
+        ),
+        Rect::from_min_max(
+            pos2(inner.max.x, inner.min.y),
+            pos2(window.max.x, inner.max.y),
+        ),
+    ]
 }
 
 /// A line being laid out: its job, the byte offset and the chars (in the
@@ -636,6 +761,7 @@ fn lay_out<'a>(
     wrap: f32,
     marks: Option<&Marks>,
 ) -> Laid<'a> {
+    let frame = shown.frame.as_ref().map(|(f, _)| f);
     let align = h_align(shown);
     let fill = shown.style.map_or(Color32::WHITE, |s| color(s.primary));
     let outline = shown.style.map_or(OUTLINE, |s| color(s.outline_color));
@@ -671,13 +797,33 @@ fn lay_out<'a>(
         };
         let look = look(g.style, shown.style, respect);
         let px = look.size.map_or(units.font, |s| (s * units.ass).max(1.0));
+        // SUB-019: `\\t` to another size
+        let px = match frame.and_then(|f| f.size) {
+            Some((to, by)) => px + ((to * units.ass).max(1.0) - px) * by,
+            None => px,
+        };
         let family = if look.bold {
             theme::bold()
         } else {
             FontFamily::Proportional
         };
         // text that sets no colour takes the cue's, and its copies the outline's
-        let ink = look.color.map_or(Color32::PLACEHOLDER, color);
+        let mut ink = look.color.map_or(Color32::PLACEHOLDER, color);
+        if let Some((to, by)) = frame.and_then(|f| f.color) {
+            let from = look.color.unwrap_or(Rgb(255, 255, 255));
+            ink = color(blend(from, to, by));
+        }
+        // karaoke not yet sung
+        if let (Some(effects), Some((_, elapsed))) =
+            (shown.cue.markup.effects.as_ref(), shown.frame.as_ref())
+            && effects.sung(g.offset, *elapsed) == Some(false)
+        {
+            let unsung = effects
+                .unsung
+                .or(shown.style.map(|s| s.secondary))
+                .unwrap_or(Rgb(255, 0, 0));
+            ink = color(unsung);
+        }
         let stroke = |on: bool| {
             if on {
                 Stroke::new((px / 16.0).max(1.0), ink)
@@ -733,6 +879,8 @@ fn lay_out<'a>(
         readings: 0,
         mined: Vec::new(),
         secondary: false,
+        frame: frame.cloned(),
+        anchor: anchor(shown),
     };
     // lines with nothing in them take no room, as in a column of rows
     let galleys: Vec<_> = lines
@@ -858,27 +1006,74 @@ fn grapheme_rect(galley: &Galley, chars: Range<usize>) -> Option<Rect> {
 // ---------------------------------------------------------------------------
 // Painting
 
-fn text_copy(painter: &Painter, at: Pos2, galley: &Arc<Galley>, color: Color32) {
-    let mut shape = TextShape::new(at, Arc::clone(galley), color);
-    shape.override_text_color = Some(color);
-    painter.add(shape);
+/// How the text of a cue with effects goes on the screen (SUB-019).
+#[derive(Clone, Copy)]
+struct Ink {
+    opacity: f32,
+    warp: Option<Warp>,
+    fill: Color32,
+}
+
+/// `galley` at `at`, in `color` if given, else in its own colours. Moved
+/// glyph by glyph when it has to be: a text shape only turns as a whole.
+fn draw_text(painter: &Painter, at: Pos2, galley: &Arc<Galley>, color: Option<Color32>, ink: Ink) {
+    if ink.warp.is_none() && ink.opacity >= 1.0 {
+        let mut shape = TextShape::new(at, Arc::clone(galley), color.unwrap_or(ink.fill));
+        shape.override_text_color = color;
+        painter.add(shape);
+        return;
+    }
+    for row in &galley.rows {
+        let mut mesh = row.visuals.mesh.clone();
+        if mesh.is_empty() {
+            continue;
+        }
+        let shift = at.to_vec2() + row.pos.to_vec2();
+        for vertex in &mut mesh.vertices {
+            let own = if vertex.color == Color32::PLACEHOLDER {
+                ink.fill
+            } else {
+                vertex.color
+            };
+            vertex.color = color.unwrap_or(own).gamma_multiply(ink.opacity);
+            let place = vertex.pos + shift;
+            vertex.pos = ink.warp.map_or(place, |w| w.apply(place));
+        }
+        painter.add(mesh);
+    }
 }
 
 /// The highlight under the text, then the shadow, the outline and the text;
 /// or, blurred, a smear of translucent copies (SUB-014).
-fn paint(painter: &Painter, cue: &Laid<'_>, offset: Vec2, mode: Obscure, units: &Units, ppp: f32) {
+fn paint(
+    painter: &Painter,
+    cue: &Laid<'_>,
+    offset: Vec2,
+    mode: Obscure,
+    units: &Units,
+    ppp: f32,
+    warp: Option<Warp>,
+) {
+    let opacity = cue.frame.as_ref().map_or(1.0, |f| f.opacity);
+    let ink = Ink {
+        opacity,
+        warp,
+        fill: cue.fill,
+    };
+    let moved = |rect: Rect| warp.map_or(rect, |w| w.around(rect));
     for rect in &cue.highlight {
-        painter.rect_filled(rect.translate(offset), 3.0, HIGHLIGHT);
+        painter.rect_filled(moved(rect.translate(offset)), 3.0, HIGHLIGHT);
     }
     // the shadow: blurred by half of the blur's reach, 1 px down
     let sigma = blur_sigma(f64::from(units.font)) as f32;
     let reach = (2.0 * sigma).round().min(64.0);
-    for row in &cue.rows {
+    // a turned cue has no box around its ink
+    for row in cue.rows.iter().filter(|_| warp.is_none()) {
         painter.add(
             RectShape::filled(
                 row.translate(offset + vec2(0.0, 1.0)),
                 CornerRadius::same(4),
-                SHADOW,
+                SHADOW.gamma_multiply(opacity),
             )
             .with_blur_width(reach / 2.0),
         );
@@ -891,7 +1086,8 @@ fn paint(painter: &Painter, cue: &Laid<'_>, offset: Vec2, mode: Obscure, units: 
             let a = k as f32 * golden;
             let shift = offset + vec2(r * a.cos(), r * a.sin());
             for (at, galley) in &cue.texts {
-                text_copy(painter, *at + shift, galley, cue.fill.gamma_multiply(0.12));
+                let faint = Some(cue.fill.gamma_multiply(0.12));
+                draw_text(painter, *at + shift, galley, faint, ink);
             }
         }
         return;
@@ -901,14 +1097,14 @@ fn paint(painter: &Painter, cue: &Laid<'_>, offset: Vec2, mode: Obscure, units: 
     for (dx, dy) in AROUND {
         let shift = offset + vec2(dx, dy) * width;
         for (at, galley) in &cue.texts {
-            text_copy(painter, *at + shift, galley, cue.outline);
+            draw_text(painter, *at + shift, galley, Some(cue.outline), ink);
         }
     }
     for (at, galley) in &cue.texts {
-        painter.add(TextShape::new(*at + offset, Arc::clone(galley), cue.fill));
+        draw_text(painter, *at + offset, galley, None, ink);
     }
     for line in &cue.mined {
-        let line = line.translate(offset);
+        let line = moved(line.translate(offset));
         painter.rect_filled(line.expand(width), 1.0, cue.outline);
         painter.rect_filled(line, 1.0, MINED);
     }
@@ -1155,6 +1351,135 @@ mod tests {
                 },
                 (subs, State::default(), Vec::new()),
             )
+    }
+
+    /// A cue of an ASS script, with ASS styles respected, drawn 1.5 s in.
+    fn ass_harness(text: &str) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        let script = format!(
+            "[Script Info]\nPlayResX: 1920\nPlayResY: 1080\n\n[Events]\n\
+             Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n\
+             Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{text}\n"
+        );
+        let subs = subtitles(&script, Format::Ass, 2000);
+        Harness::builder()
+            .with_size(vec2(1280.0, 720.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, (subs, state, out)| {
+                    let scene = Scene {
+                        subs,
+                        video_size: (1920, 1080),
+                        font_size: 36.0,
+                        respect_ass: true,
+                        obscure: Obscure::None,
+                        secondary: None,
+                        keyboard: None,
+                        marks: HashMap::new(),
+                    };
+                    draw(ui.ctx(), &scene, state, 0.0, out);
+                },
+                (subs, State::default(), Vec::new()),
+            )
+    }
+
+    fn graphemes(h: &Harness<'_, (Subtitles, State, Vec<Command>)>) -> Vec<(usize, Rect)> {
+        h.state().1.drawn[0].graphemes.clone()
+    }
+
+    // T-SUB-019: a quarter turn stands the text up, and its characters still
+    // take clicks
+    #[test]
+    fn a_turned_cue_is_clicked_where_it_is_drawn() {
+        let mut h = ass_harness(r"{\pos(960,540)\an5\frz90}食べました");
+        h.run();
+        let all = graphemes(&h);
+        let (first, last) = (all[0].1.center(), all[all.len() - 1].1.center());
+        assert!((first.x - last.x).abs() < 2.0, "{first:?} {last:?}");
+        // anticlockwise: it reads upwards
+        assert!(first.y > last.y + 50.0, "{first:?} {last:?}");
+        let (offset, rect) = all[1];
+        click(&mut h, rect.center());
+        assert!(
+            h.state()
+                .2
+                .iter()
+                .any(|c| matches!(c, Command::GraphemeClicked { offset: o, .. } if *o == offset)),
+            "{:?}",
+            h.state().2
+        );
+    }
+
+    // T-SUB-019
+    #[test]
+    fn a_move_is_halfway_at_half_time() {
+        let mut h = ass_harness(r"{\an5\move(100,100,1820,100)}字");
+        h.run();
+        let x = graphemes(&h)[0].1.center().x;
+        assert!((x - 640.0).abs() < 2.0, "{x}");
+    }
+
+    // T-SUB-019: scaled around its anchor
+    #[test]
+    fn a_scaled_cue_stays_on_its_anchor() {
+        let mut plain = ass_harness(r"{\pos(960,540)\an5}字字");
+        plain.run();
+        let mut wide = ass_harness(r"{\pos(960,540)\an5\fscx200}字字");
+        wide.run();
+        let width = |h: &Harness<'_, (Subtitles, State, Vec<Command>)>| {
+            let all = graphemes(h);
+            all[1].1.max.x - all[0].1.min.x
+        };
+        assert!((width(&wide) / width(&plain) - 2.0).abs() < 0.05);
+        let all = graphemes(&wide);
+        assert!(((all[0].1.min.x + all[1].1.max.x) / 2.0 - 640.0).abs() < 2.0);
+    }
+
+    // T-SUB-019
+    #[test]
+    fn a_clip_is_where_the_cue_shows() {
+        let frame = |clip| Frame {
+            position: None,
+            origin: None,
+            rotation: [0.0; 3],
+            scale: [1.0; 2],
+            opacity: 1.0,
+            size: None,
+            color: None,
+            clip,
+        };
+        let window = window();
+        assert_eq!(clip_regions(None, window, window), [window]);
+        let clip = nikomiru_subs::effects::Clip {
+            min: (0.25, 0.25),
+            max: (0.75, 0.75),
+            inverse: false,
+        };
+        let inner = Rect::from_min_max(pos2(320.0, 180.0), pos2(960.0, 540.0));
+        assert_eq!(
+            clip_regions(Some(&frame(Some(clip))), window, window),
+            [inner]
+        );
+        let outside = clip_regions(
+            Some(&frame(Some(nikomiru_subs::effects::Clip {
+                inverse: true,
+                ..clip
+            }))),
+            window,
+            window,
+        );
+        assert_eq!(outside.len(), 4);
+        assert!(outside.iter().all(|r| !r.intersects(inner.shrink(1.0))));
+    }
+
+    // T-SUB-019: with ASS styles not respected, the text is only text
+    #[test]
+    fn effects_follow_the_setting() {
+        let script = "[Script Info]\nPlayResX: 1920\nPlayResY: 1080\n\n[Events]\n\
+             Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n\
+             Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\frz90}字\n";
+        let subs = subtitles(script, Format::Ass, 2000);
+        assert!(subs.shown(false).all(|s| s.frame.is_none()));
+        assert!(subs.shown(true).all(|s| s.frame.is_some()));
     }
 
     fn click(h: &mut Harness<'_, (Subtitles, State, Vec<Command>)>, at: Pos2) {

@@ -104,6 +104,36 @@ fn files_open_from_the_command_line_and_by_drag_and_drop() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-015: Shift+S is what is on screen, the subtitle in it and no bar
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn shift_s_saves_the_frame_with_its_subtitles() {
+    let mut desk = Desktop::start();
+    let pictures = desk.path("pictures");
+    desk.set_env("XDG_PICTURES_DIR", &pictures.to_string_lossy());
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    h.state_until("a subtitle", |s| {
+        s["subtitles"]["visible"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    });
+    h.key("Space");
+    h.state_until("the pause", |s| s["paused"] == true);
+    h.key("KeyS");
+    let plain = h.wait("screenshot-saved");
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "KeyS", "mods": ["Shift"] }));
+    let shown = h.wait("screenshot-saved");
+    let read = |saved: &serde_json::Value| std::fs::read(saved["path"].as_str().unwrap()).unwrap();
+    let (plain, shown) = (read(&plain), read(&shown));
+    assert_eq!(&shown[..8], b"\x89PNG\r\n\x1a\n");
+    let int = |at: usize| u32::from_be_bytes(shown[at..at + 4].try_into().unwrap());
+    assert!(int(16) > 0 && int(20) > 0);
+    assert_ne!(plain, shown);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

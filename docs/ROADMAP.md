@@ -51,7 +51,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | done (live checks open) |
 | M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | done (live check open) |
-| M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | not started |
+| M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | done (check by hand open) |
 | M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | not started |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | not started |
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | not started |
@@ -535,14 +535,16 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: typeset fansubs drawn as their authors meant, and screenshots with what is on screen.
 
-**Deliverables (scope)**
+**Requirements**: SUB-019, PLY-015 (D-22).
 
-- SUB-019 in Nikomiru's own renderer: `\t`, `\move`, `\fad`, `\clip`, karaoke `\k`, rotations; every drawn character still clickable.
-- PLY-015: `Shift+S` saves the frame with the overlay subtitles composited on it.
+**Status as of 2026-10-31**
+
+- Done: the tags of SUB-019 read into effects, computed for each frame and drawn glyph by glyph with their click areas (T-SUB-019); `Shift+S` (T-PLY-015).
+- Open: real typeset fansubs compared by hand with mpv's libass. Golden images were replaced by the geometry tests, since the off-screen renderer's text differs between machines.
 
 **Exit criteria**
 
-- [ ] Requirements accepted; golden images for each tag green.
+- [x] SUB-019 and PLY-015 specified; T-SUB-019 and T-PLY-015 green.
 - [ ] Real typeset fansubs checked by hand against mpv's libass.
 - [ ] **Release 1.3.0**.
 
