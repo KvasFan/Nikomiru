@@ -55,6 +55,16 @@ fn main() -> ExitCode {
         Err(e) => return fatal(&e),
     };
     tracing::info!("Nikomiru {VERSION}");
+    // BAK-003: a backup put in place before anything opens the files
+    match nikomiru_library::backup::finish(
+        &paths.data_dir,
+        &paths.config_file(),
+        &paths.mpv_presets_dir(),
+    ) {
+        Ok(true) => tracing::info!("a backup was restored"),
+        Ok(false) => {}
+        Err(e) => tracing::error!("restoring a backup: {e}"),
+    }
     if !imports.is_empty() {
         return import_dictionaries(&paths, &imports);
     }
@@ -432,6 +442,17 @@ fn run(
         covers_dir: paths.cache_dir.join("servers"),
         translator: translator.clone(),
     });
+    // SPECIFICATION §6.14
+    let sync = nikomiru_app::sync::SyncWorker::start(nikomiru_app::sync::Parts {
+        sync: config.sync.clone(),
+        proxy: config.network.proxy.clone(),
+        device_id: config.network.device_id.clone(),
+        library: library.clone(),
+        data_dir: paths.data_dir.clone(),
+        presets_dir: paths.mpv_presets_dir(),
+        translator: translator.clone(),
+        clock: Arc::new(SystemClock::new()),
+    });
     // LIB-002…LIB-012
     let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {
         Some(library) => Box::new(nikomiru_app::catalog::Catalog::start(
@@ -481,6 +502,7 @@ fn run(
         anki: Box::new(anki),
         online: Box::new(online),
         servers: Box::new(servers),
+        sync: Box::new(sync),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

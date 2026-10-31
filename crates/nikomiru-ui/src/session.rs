@@ -185,6 +185,8 @@ pub struct Services {
     pub online: Box<dyn crate::online::OnlineService>,
     /// Media servers (SPECIFICATION §6.13).
     pub servers: Box<dyn crate::servers::ServerService>,
+    /// Backup and sync (SPECIFICATION §6.14).
+    pub sync: Box<dyn crate::sync::SyncService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -384,6 +386,9 @@ pub struct Session {
     /// Online jobs, started by the UI layer (ADR 0008).
     online_jobs: Vec<crate::online::OnlineJob>,
     server_jobs: Vec<crate::servers::ServerJob>,
+    sync_jobs: Vec<crate::sync::SyncJob>,
+    /// Settings → Backup.
+    pub backup_page: crate::sync::BackupPage,
     /// Pages to open in the browser.
     external_links: Vec<String>,
     /// The server's video being made ready (SRV-008).
@@ -635,6 +640,8 @@ impl Session {
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
+            sync_jobs: Vec::new(),
+            backup_page: crate::sync::BackupPage::default(),
             external_links: Vec::new(),
             server_pending: None,
             server_ready: None,
@@ -2493,6 +2500,108 @@ impl Session {
                 self.toasts.push(message);
             }
         }
+    }
+
+    /// The worker of backups and sync.
+    pub fn sync(&self) -> &dyn crate::sync::SyncService {
+        self.services.sync.as_ref()
+    }
+
+    /// The jobs for that worker.
+    pub fn take_sync_jobs(&mut self) -> Vec<crate::sync::SyncJob> {
+        std::mem::take(&mut self.sync_jobs)
+    }
+
+    /// The WebDAV folder as saved.
+    pub fn sync_config(&self) -> &nikomiru_core::config::SyncConfig {
+        &self.services.config.sync
+    }
+
+    /// The Backup tab opened.
+    pub fn backup_open(&mut self) {
+        self.backup_page.status = None;
+        self.backup_page.chosen = None;
+    }
+
+    /// New settings of the WebDAV folder (BAK-004).
+    pub fn sync_save(&mut self, sync: nikomiru_core::config::SyncConfig) {
+        self.server_device();
+        self.services.config.sync = sync.clone();
+        let network = &self.services.config.network;
+        self.services
+            .sync
+            .configure(sync, network.proxy.clone(), network.device_id.clone());
+        self.servers_changed();
+        let text = self.tr("sync-saved", &[]);
+        self.backup_page.status = Some((text, true));
+    }
+
+    /// "Check".
+    pub fn sync_check(&mut self) {
+        self.backup_page.busy = true;
+        self.backup_page.status = None;
+        self.sync_jobs.push(crate::sync::SyncJob::Check);
+    }
+
+    /// "Sync now".
+    pub fn sync_now(&mut self) {
+        self.flush_position();
+        self.backup_page.busy = true;
+        self.backup_page.status = None;
+        self.sync_jobs.push(crate::sync::SyncJob::Now);
+    }
+
+    /// The file for a backup was chosen.
+    pub fn backup_to(&mut self, path: PathBuf) {
+        self.flush_position();
+        self.backup_page.busy = true;
+        self.backup_page.status = None;
+        let config = Box::new(self.services.config.clone());
+        let options = self.backup_page.options;
+        self.sync_jobs
+            .push(crate::sync::SyncJob::Backup(path, config, options));
+    }
+
+    /// A backup to restore was chosen: its contents, to confirm.
+    pub fn backup_chosen(&mut self, path: PathBuf) {
+        self.backup_page.busy = true;
+        self.backup_page.status = None;
+        self.sync_jobs.push(crate::sync::SyncJob::Inspect(path));
+    }
+
+    /// The restore was confirmed.
+    pub fn backup_restore(&mut self) {
+        if let Some((path, _)) = self.backup_page.chosen.take() {
+            self.backup_page.busy = true;
+            let config = Box::new(self.services.config.clone());
+            self.sync_jobs
+                .push(crate::sync::SyncJob::Restore(path, config));
+        }
+    }
+
+    /// An answer for the Backup page.
+    pub fn sync_answer(&mut self, answer: crate::sync::SyncAnswer) {
+        use crate::sync::SyncAnswer;
+        self.backup_page.busy = false;
+        let status = match answer {
+            SyncAnswer::Checked(r) => r.map(|()| self.tr("sync-checked", &[])),
+            SyncAnswer::Synced(r) => r.map(|done| {
+                let devices = done.devices.to_string();
+                let skipped = done.skipped.to_string();
+                self.tr("sync-done", &[("devices", devices), ("skipped", skipped)])
+            }),
+            SyncAnswer::BackedUp(r) => r.map(|_| self.tr("backup-done", &[])),
+            SyncAnswer::Restored(r) => r.map(|()| self.tr("backup-restored", &[])),
+            SyncAnswer::Inspected(path, Ok(manifest)) => {
+                self.backup_page.chosen = Some((path, manifest));
+                return;
+            }
+            SyncAnswer::Inspected(_, Err(e)) => Err(e),
+        };
+        self.backup_page.status = Some(match status {
+            Ok(text) => (text, true),
+            Err(text) => (text, false),
+        });
     }
 
     /// The pages to open in the browser.

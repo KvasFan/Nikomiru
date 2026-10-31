@@ -81,6 +81,7 @@ Version 1.0.0 is the first release with packages, for Linux. The status of each 
 | Statistics, the full settings (themes, languages, shortcuts), cards made by hand, the keyboard alone | Works (M6) |
 | Series identified online (AniList, Jikan); Jimaku by AniList id | Works against simulated services and the real AniList (M7) |
 | Media servers: Jellyfin and Plex, in a tab of their own, played with subtitles, lookups and cards | Next version; works against simulated servers, real ones still to check (M11) |
+| Backup to a file, sync of progress, statistics and cards through WebDAV | Next version; works against a simulated server, a real Nextcloud still to check (M12) |
 | Words in the subtitles: the words already in Anki underlined, readings over the kanji, ← → word by word | Works with the project's test dictionaries; to check with JMdict (M9) |
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |

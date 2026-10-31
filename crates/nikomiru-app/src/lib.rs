@@ -30,6 +30,7 @@ pub mod portal;
 pub mod servers;
 pub mod shell;
 pub mod subtitles;
+pub mod sync;
 pub mod thumbnails;
 #[allow(unsafe_code)]
 pub mod window;

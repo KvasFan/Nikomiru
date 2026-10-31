@@ -126,3 +126,50 @@ fn a_server_that_is_gone_is_only_a_message() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-BAK-009, T-PRV-001: with "Sync at start and close", this device's file
+// reaches the folder; another's progress reaches the library, and nothing
+// else is asked of the server
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_device_syncs_at_start_and_close() {
+    use nikomiru_library::sync::{DeviceState, FORMAT, VideoState};
+    let fake = fake();
+    let mut other = DeviceState {
+        format: FORMAT,
+        ..DeviceState::default()
+    };
+    let video = fixture("av_basic.mkv");
+    other.videos.insert(
+        "video/av_basic".into(),
+        VideoState {
+            position_ms: 3000,
+            last_played_at: Some(i64::MAX / 2),
+            ..VideoState::default()
+        },
+    );
+    fake.data()
+        .dav_files
+        .insert("other.sync".into(), other.encode().unwrap());
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[network]\ndevice_id = \"mine\"\n\n[player]\nmpv_options = {{ ao = \"null\" }}\n\n\
+         [sync]\nurl = \"{}\"\nuser = \"dav\"\npassword = \"pass\"\nautomatic = true\n",
+        fake.webdav_url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    until(Duration::from_secs(10), "this device's file", || {
+        fake.data()
+            .dav_files
+            .contains_key("mine.sync")
+            .then_some(())
+    });
+    h.open(&video);
+    h.wait("first-frame");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(40)).success());
+    let bytes = fake.data().dav_files["mine.sync"].clone();
+    let mine = DeviceState::decode(&bytes).unwrap();
+    assert_eq!(mine.videos["video/av_basic"].position_ms, 3000, "{mine:?}");
+}

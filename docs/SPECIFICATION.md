@@ -779,7 +779,7 @@ Fushi has no counterpart to follow: its sync goes through other services.
 | BAK-001 | **Backup to a file** (Settings → Backup): a `.nikomiru-backup` file, a ZIP with `manifest.json` (format, Nikomiru's version, schema, date), `config.toml`, `library.redb`, the dictionaries' registry, the mpv presets and the downloaded subtitles. Dictionaries are optional, being large, and off by default. `library.redb` is a copy taken inside one read transaction, so a backup made during playback is consistent. |
 | BAK-002 | **Secrets in a backup**: keys, passwords and tokens (MET-005, SRV-004) are left out of `config.toml` unless "Include keys and passwords" is ticked, which warns that the file then holds them in clear. The file is written with permissions 0600 either way. |
 | BAK-003 | **Restore**: a chosen backup shows its date, version and contents, and asks for confirmation; it is unpacked beside the data, and the next start of Nikomiru moves what is there into `$XDG_DATA_HOME/nikomiru/before-restore/` (only the latest is kept) and puts the backup in place, before anything opens the files. Keys left out of the backup keep their current values. A backup from a newer schema is refused (DAT-002); one from an older schema is migrated (DAT-001). Paths in the archive are checked: nothing is written outside the data folders (NFR-SEC-02), with sizes bounded. |
-| BAK-004 | **WebDAV** (Settings → Backup): an address, a user and a password (an app password on Nextcloud), kept like the API keys (MET-005). `PROPFIND`, `MKCOL`, `PUT`, `GET` on the client in use, with Basic authentication; addresses follow SRV-005. Nothing connects until the user has set it up (PRV-001); "Check" says whether the folder can be written. |
+| BAK-004 | **WebDAV** (Settings → Backup, `[sync]`): an address, a user and a password (an app password on Nextcloud), kept like the API keys (MET-005). `PROPFIND`, `MKCOL`, `PUT`, `GET` on the client in use, with Basic authentication; addresses follow SRV-005. Nothing connects until the user has set it up (PRV-001); "Check" says whether the folder can be written. |
 | BAK-005 | **What syncs**: the progress of videos, the watched time and intervals, cue credit, study sessions and mined cards, by uid (DAT-003: the same file name on two computers is the same video; server videos by their `srv:` uid). Not synced: settings, keys, folders, series, dictionaries, subtitles. Series, grouping and paths belong to a computer. |
 | BAK-006 | **One file per device**: each computer writes only `nikomiru/devices/<device id>.sync` on the server, and reads the others', so no two computers ever write the same file and no lock is needed. Each file holds that device's records with a format version, compressed; a file of a newer format is skipped with a message, and one damaged is skipped without touching the library. |
 | BAK-007 | **Merge**: per record, never by overwriting a whole file. A video's position: the one played last (`last_played_at`), the further one on a tie. Watched: the earliest `completed_at`. Intervals: the union. Cue credit: the union for the same subtitle file; for two different ones, one of them, the same on every device. Study sessions and mined cards: the union by id, the later version of the same one. Merging twice changes nothing, and the order of the devices changes nothing. |
@@ -922,6 +922,13 @@ opensubtitles_api_key = ""
 opensubtitles_username = ""
 opensubtitles_password = ""
 # jimaku_url, opensubtitles_url: other base URLs, for the tests
+
+[sync]                      # WebDAV (BAK-004), none by default
+url = ""
+user = ""
+password = ""               # like the API keys (MET-005)
+allow_unencrypted = false   # SRV-005
+automatic = false           # at start and close (BAK-009)
 
 # [[servers]]               # media servers (SRV-001), none by default
 # id = "…"                  # random, for the uids (SRV-007)

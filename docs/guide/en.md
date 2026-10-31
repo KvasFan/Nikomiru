@@ -126,6 +126,12 @@ Add a server in Settings → Media servers: for Jellyfin the address, user and p
 
 Each tab has **Save** and **Reset**. `~/.config/nikomiru/config.toml` can also be edited by hand: Nikomiru keeps your comments.
 
+### Backup and sync
+
+Settings → Backup writes your settings, library, statistics and downloaded subtitles to one file, with the dictionaries if you tick them. Keys and passwords stay out unless you tick them too. To restore, choose a backup and reopen Nikomiru: what was there stays in `before-restore`.
+
+With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" keeps progress, statistics and cards the same on your computers. Settings, series and dictionaries stay on each computer, and the files on the server are not encrypted. A video is the same on two computers when its file has the same name.
+
 ## 9. Keyboard
 
 The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, Enter and Space drive the controls. Every shortcut is listed, and can be changed, in Settings → Shortcuts.

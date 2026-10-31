@@ -944,6 +944,11 @@ impl Config {
         }
     }
 
+    /// These settings as the text of a `config.toml` (BAK-001).
+    pub fn to_text(&self) -> Result<String, ConfigError> {
+        Ok(toml::to_string_pretty(self)?)
+    }
+
     /// These settings with every key, password and token blank, for a backup
     /// (BAK-002).
     pub fn without_secrets(&self) -> Self {

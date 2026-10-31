@@ -49,8 +49,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
-| M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | not started |
-| M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | not started |
+| M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | done (live checks open) |
+| M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | done (live check open) |
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | not started |
 | M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | not started |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | not started |
@@ -516,11 +516,16 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - `nikomiru-app`: the backup, the restore and the `sync` worker.
 - `nikomiru-ui`: Settings → Backup.
 
+**Status as of 2026-10-31**
+
+- Done against a simulated WebDAV server: the backup and its restore at the next start, the device files, the merge, the tombstones, Settings → Backup, the sync at start and close (T-BAK-001…T-BAK-010).
+- Open: the live check on a real Nextcloud (T-BAK-LIVE-*).
+
 **Notes**: WebDAV is HTTP over the client in use, and the archives use `zip`: no new dependency expected. The live check needs a real Nextcloud (a container, once Podman has its network). Cloud sync, iroh P2P and the like stay out (SPECIFICATION §1.3).
 
 **Exit criteria**
 
-- [ ] BAK-001…BAK-010 accepted (D-21); T-BAK-001…T-BAK-010 green, against a simulated WebDAV server.
+- [x] BAK-001…BAK-010 accepted (D-21); T-BAK-001…T-BAK-010 green, against a simulated WebDAV server.
 - [ ] Two computers synced through a real Nextcloud.
 - [ ] **Release 1.2.0**.
 

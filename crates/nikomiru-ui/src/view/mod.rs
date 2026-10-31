@@ -10,6 +10,7 @@
 
 mod anki_page;
 mod audio_page;
+mod backup_page;
 mod bar;
 mod chrome;
 mod dict_page;
@@ -59,6 +60,10 @@ pub enum Dialog {
     AudioDatabase,
     /// Where to export the study sessions (STA-005).
     StatsExport,
+    /// Where to write a backup (BAK-001).
+    BackupSave,
+    /// A backup to restore (BAK-003).
+    BackupOpen,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -125,6 +130,14 @@ impl FileDialog {
                 tr("stats-export"),
                 vec![(tr("stats-csv-filter"), vec!["*.csv"]), all],
             ),
+            Dialog::BackupSave => (
+                tr("backup-make"),
+                vec![(tr("backup-filter"), vec!["*.nikomiru-backup"]), all],
+            ),
+            Dialog::BackupOpen => (
+                tr("backup-restore"),
+                vec![(tr("backup-filter"), vec!["*.nikomiru-backup"]), all],
+            ),
         };
         Self {
             dialog,
@@ -133,6 +146,7 @@ impl FileDialog {
             save_as: match dialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
+                Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
                 _ => None,
             },
             folder: match dialog {
@@ -173,6 +187,8 @@ pub(crate) struct View {
     pub services: services_page::State,
     pub servers_page_open: bool,
     pub servers: servers_page::State,
+    pub backup_page_open: bool,
+    pub backup: backup_page::State,
     /// The tab of the settings shown last: ⚙ opens it again.
     pub settings_tab: settings::SettingsTab,
     /// Ctrl+, asked for the settings: they open at the next frame.
@@ -234,6 +250,7 @@ impl View {
                     self.close_library_page();
                 } else if self.services_page_open
                     || self.servers_page_open
+                    || self.backup_page_open
                     || self.audio_page_open
                     || self.dict_page_open
                     || self.prefs_open.is_some()
@@ -328,6 +345,10 @@ impl View {
                 self.servers_page_open = true;
                 out.push(Command::ServersOpen);
             }
+            SettingsTab::Backup => {
+                self.backup_page_open = true;
+                out.push(Command::BackupOpen);
+            }
             SettingsTab::Dictionaries => self.open_dict_page(out),
             SettingsTab::Audio => {
                 self.audio_page_open = true;
@@ -354,6 +375,7 @@ impl View {
             || self.dict_page_open
             || self.services_page_open
             || self.servers_page_open
+            || self.backup_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
     }
@@ -369,6 +391,8 @@ impl View {
         self.services = services_page::State::default();
         self.servers_page_open = false;
         self.servers = servers_page::State::default();
+        self.backup_page_open = false;
+        self.backup = backup_page::State::default();
         self.audio_page_open = false;
         self.audio = audio_page::State::default();
     }
@@ -461,6 +485,7 @@ impl View {
             || self.player_page_open
             || self.services_page_open
             || self.servers_page_open
+            || self.backup_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
             || self.library_page_open
@@ -489,6 +514,9 @@ impl View {
         }
         if self.servers_page_open {
             servers_page::show(&ctx, s, self, &mut out);
+        }
+        if self.backup_page_open {
+            backup_page::show(&ctx, s, self, &mut out);
         }
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);

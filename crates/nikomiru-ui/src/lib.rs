@@ -29,6 +29,7 @@ pub mod session;
 pub mod shortcuts;
 pub mod study;
 pub mod subtitles;
+pub mod sync;
 pub mod thumbnails;
 mod ui;
 pub mod view;
