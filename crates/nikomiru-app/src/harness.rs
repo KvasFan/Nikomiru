@@ -156,6 +156,11 @@ fn run(command: &Value) -> Result<Value, String> {
             command["url"].as_str().map(str::to_string),
         )
         .map(|()| Value::Null),
+        Some("hooker") => harness::hooker(
+            text(command, "action")?,
+            command["line"].as_u64().map(|l| l as usize),
+        )
+        .map(|()| Value::Null),
         Some("library") => harness::library(
             text(command, "action")?,
             command["path"].as_str().map(str::to_string),

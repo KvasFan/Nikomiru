@@ -20,6 +20,7 @@ pub mod dbus;
 pub mod dictionaries;
 #[cfg(feature = "test-harness")]
 pub mod harness;
+pub mod hooker;
 pub mod inhibit;
 pub mod instance;
 #[allow(unsafe_code)]

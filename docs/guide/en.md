@@ -109,6 +109,10 @@ Nothing goes online unless you ask for it.
   - a calendar of the year;
   - a CSV export.
 
+### Texthooker
+
+For visual novels and games: "Texthooker" on the Library page shows the lines Textractor or LunaTranslator send over their WebSocket (`ws://127.0.0.1:6677` by default). Click a word to look it up; a card from there has the word and the sentence, with no picture or audio. Ctrl+V adds what you copied. Reading the clipboard by itself needs `wl-paste` or `xclip`, and does not work on GNOME Wayland.
+
 ### Jellyfin and Plex
 
 Add a server in Settings → Media servers: for Jellyfin the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays.

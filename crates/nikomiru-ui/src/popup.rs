@@ -39,6 +39,14 @@ pub enum Origin {
         /// Byte offset of the query in the cue's text.
         start: usize,
     },
+    /// A line of the Texthooker page: which, and the byte where the query
+    /// starts (HOK-004).
+    Hooked {
+        /// Line index.
+        line: usize,
+        /// Byte offset of the query in the line.
+        start: usize,
+    },
     /// Text inside the popup below (a link or a selection).
     Glossary,
 }
@@ -273,7 +281,7 @@ impl Popups {
     pub fn root_cue(&self) -> Option<usize> {
         match self.stack.first()?.origin {
             Origin::Subtitle { cue, .. } => Some(cue),
-            Origin::Glossary => None,
+            Origin::Hooked { .. } | Origin::Glossary => None,
         }
     }
 

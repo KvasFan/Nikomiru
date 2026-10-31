@@ -187,6 +187,8 @@ pub struct Services {
     pub servers: Box<dyn crate::servers::ServerService>,
     /// Backup and sync (SPECIFICATION §6.14).
     pub sync: Box<dyn crate::sync::SyncService>,
+    /// The text of games (SPECIFICATION §6.15).
+    pub hooker: Box<dyn crate::hooker::HookerService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -386,6 +388,10 @@ pub struct Session {
     /// Online jobs, started by the UI layer (ADR 0008).
     online_jobs: Vec<crate::online::OnlineJob>,
     server_jobs: Vec<crate::servers::ServerJob>,
+    /// The Texthooker page.
+    pub hooker_page: crate::hooker::HookerPage,
+    /// The hooker worker is to start, or to stop.
+    hooker_run: Option<bool>,
     /// The name of the picture of the screen to take (PLY-015).
     capture: Option<String>,
     sync_jobs: Vec<crate::sync::SyncJob>,
@@ -642,6 +648,8 @@ impl Session {
             saving_page: SavingPage::default(),
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
+            hooker_page: crate::hooker::HookerPage::default(),
+            hooker_run: None,
             capture: None,
             sync_jobs: Vec::new(),
             backup_page: crate::sync::BackupPage::default(),
@@ -817,7 +825,19 @@ impl Session {
                 }
             });
         }
-        let (options, report) = options::load_options(&self.services.config.player);
+        #[cfg_attr(not(feature = "test-harness"), allow(unused_mut))]
+        let (mut options, report) = options::load_options(&self.services.config.player);
+        // the GUI tests play without a sound server: under load, PipeWire can
+        // hang in mpv's core when it fails to connect, and the app with it
+        #[cfg(feature = "test-harness")]
+        if let Ok(value) = std::env::var("NIKOMIRU_TEST_AO")
+            && !options.iter().any(|o| o.key == "ao")
+        {
+            options.push(options::MpvOption {
+                key: "ao".into(),
+                value,
+            });
+        }
         // Names only: a raw option's value may hold a token (PRV-002).
         for line in report {
             match line {
@@ -3053,6 +3073,33 @@ impl Session {
         action: crate::mining::CardAction,
     ) -> Option<(u64, crate::mining::MineRequest)> {
         use crate::mining::{FrameChoice, MineRequest};
+        // HOK-005: a line of a game has no video: its card is only text
+        if let Some(Origin::Hooked { line, start }) =
+            self.popups.stack().first().map(|p| p.origin.clone())
+        {
+            let p = self.popups.stack().get(level)?;
+            let e = p.reply.as_ref()?.content.entries.get(entry)?;
+            let request = MineRequest {
+                query: p.query.clone(),
+                entry,
+                expression: e.expression.clone(),
+                reading: e.reading.clone(),
+                matched: e.matched.clone(),
+                sentence: self.hooker_page.lines.get(line)?.clone(),
+                offset: (level == 0).then_some(start),
+                video: PathBuf::new(),
+                audio_input: PathBuf::new(),
+                audio_stream: None,
+                clip: None,
+                position_ms: 0,
+                uid: None,
+                title: self.tr("hooker-title", &[]),
+                action,
+                frame: FrameChoice::None,
+                audio: false,
+            };
+            return Some((p.generation, request));
+        }
         let current = self.current.as_ref()?;
         let p = self.popups.stack().get(level)?;
         let e = p.reply.as_ref()?.content.entries.get(entry)?;
@@ -4538,6 +4585,74 @@ impl Session {
         let commands =
             self.popups
                 .open_from_subtitle(playing, query, Origin::Subtitle { cue, start }, anchor);
+        self.run_popup_commands(commands);
+    }
+
+    /// The Texthooker page opened (HOK-001): the reading starts.
+    pub fn hooker_open(&mut self) {
+        self.hooker_run = Some(true);
+    }
+
+    /// It closed: the reading stops.
+    pub fn hooker_close(&mut self) {
+        self.hooker_page.connected = false;
+        self.hooker_run = Some(false);
+    }
+
+    /// New settings of the page.
+    pub fn hooker_save(&mut self, hooker: nikomiru_core::config::HookerConfig) {
+        self.services.config.hooker = hooker;
+        self.hooker_run = Some(true);
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// What the worker is to do, and with what, taken by the UI layer.
+    pub fn take_hooker_run(&mut self) -> Option<bool> {
+        self.hooker_run.take()
+    }
+
+    /// The hooker worker.
+    pub fn hooker(&self) -> &dyn crate::hooker::HookerService {
+        self.services.hooker.as_ref()
+    }
+
+    /// The `[hooker]` settings.
+    pub fn hooker_config(&self) -> &nikomiru_core::config::HookerConfig {
+        &self.services.config.hooker
+    }
+
+    /// A report of the worker.
+    pub fn hooker_event(&mut self, event: crate::hooker::HookerEvent) {
+        use crate::hooker::HookerEvent;
+        match event {
+            HookerEvent::Line(line) => self.hooker_page.push(line),
+            HookerEvent::Connected(on) => self.hooker_page.connected = on,
+            HookerEvent::NoClipboard => {
+                let text = self.tr("hooker-no-clipboard", &[]);
+                self.hooker_page.status = Some((text, false));
+            }
+        }
+    }
+
+    /// A click on the line `line`, at byte `offset` (HOK-004).
+    pub fn hooker_clicked(&mut self, line: usize, offset: usize, anchor: Rect) {
+        let Some(text) = self.hooker_page.lines.get(line).cloned() else {
+            return;
+        };
+        if offset >= text.len() {
+            return;
+        }
+        let range = nikomiru_text::scan::query(&text, offset, nikomiru_text::scan::Context::Cue);
+        let query = nikomiru_text::scan::normalize(&text[range.clone()]);
+        if query.is_empty() {
+            return;
+        }
+        let start = range.start + text[range].find(query.as_str()).unwrap_or(0);
+        let commands =
+            self.popups
+                .open_from_subtitle(false, query, Origin::Hooked { line, start }, anchor);
         self.run_popup_commands(commands);
     }
 

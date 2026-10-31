@@ -503,6 +503,7 @@ fn run(
         online: Box::new(online),
         servers: Box::new(servers),
         sync: Box::new(sync),
+        hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

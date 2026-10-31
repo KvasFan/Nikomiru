@@ -530,6 +530,17 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BAK-010 | Errors | Each failure's message; truncated and random answers never panic | L2 |
 | T-BAK-LIVE-* | Real server | Two computers, or two profiles, through a real Nextcloud | L7 |
 
+### 6.13c Texthooker (M14)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-HOK-001 | WebSocket | Loopback `ws` only; a fake hooker's lines arrive; nothing connects unless the page is open | L1/L4/L6 |
+| T-HOK-002 | Lines | Plain and JSON; cleaning and the limit; a repeat counts once; the last 500 stay | L1 |
+| T-HOK-003 | Clipboard | Only text with Japanese characters is kept | L1 |
+| T-HOK-004 | Lookup | A click gives the line and the byte of the character; the popup opens over the page | L3/L6 |
+| T-HOK-005 | Cards | A card from a line has the sentence and no media | L6 |
+| T-HOK-LIVE-* | Real hooker | A real visual novel through Textractor or LunaTranslator | L7 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

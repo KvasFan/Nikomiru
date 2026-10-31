@@ -510,6 +510,7 @@ impl Desktop {
             .env("XDG_RUNTIME_DIR", self.path("run"))
             .env("QT_FORCE_STDERR_LOGGING", "1")
             .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .env("NIKOMIRU_TEST_AO", "null")
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null())
             .stdout(log.try_clone().unwrap())

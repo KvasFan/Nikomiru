@@ -52,7 +52,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | done (live checks open) |
 | M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | done (live check open) |
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | done (check by hand open) |
-| M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | not started |
+| M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | done (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | not started |
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | not started |
 
@@ -554,15 +554,18 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the dictionary and the cards for visual novels and games, through Textractor or LunaTranslator.
 
-**Deliverables (scope)**
+**Requirements**: HOK-001…HOK-005 (D-23).
 
-- A texthooker page: the lines read from the clipboard or from a WebSocket (the protocol of Textractor's and LunaTranslator's plugins), clickable as subtitles, with lookups and cards (sentence; picture and audio when given).
+**Status as of 2026-10-31**
 
-**Notes**: `tokio-tungstenite` (MIT) for the WebSocket; the clipboard through egui-winit.
+- Done with a simulated hooker: the WebSocket client, the page, lookups, cards of text only, Ctrl+V and the clipboard through `wl-paste` or `xclip` (T-HOK-001…T-HOK-005).
+- Open: a real visual novel through Textractor or LunaTranslator. No highlight of the word on the line yet, as a subtitle has.
+
+**Notes**: `tungstenite` (MIT/Apache) for the WebSocket: blocking, like the rest of the workers.
 
 **Exit criteria**
 
-- [ ] Requirements accepted; tests green with a simulated hooker.
+- [x] HOK-001…HOK-005 accepted (D-23); T-HOK-001…T-HOK-005 green with a simulated hooker.
 - [ ] A real visual novel through Textractor or LunaTranslator.
 - [ ] **Release 1.4.0**.
 

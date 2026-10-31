@@ -419,7 +419,6 @@ pub fn state() -> Result<Value, String> {
             "look": look,
             "next_up": s.next_up().map(|(t, n)| json!({ "title": t, "seconds": n })),
             "library_page": library_page,
-            "chapters": v.chapters.iter().map(|c| c.time).collect::<Vec<_>>(),
             "sub_list_open": ui.view.sub_list_open,
             "services_page": json!({
                 "open": ui.view.services_page_open,
@@ -447,6 +446,11 @@ pub fn state() -> Result<Value, String> {
                 "path": m.path,
             })),
             "dictionaries": s.dict_page.json(),
+        });
+        state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["hooker"] = json!({
+            "lines": s.hooker_page.lines,
+            "connected": s.hooker_page.connected,
         });
         state["bar_progress"] = bar_progress;
         state["thumbnail"] = thumbnail.unwrap_or(Value::Null);
@@ -647,6 +651,27 @@ pub fn services(providers: Vec<String>, auto: Option<bool>) -> Result<(), String
             online.auto_subtitles = auto;
         }
         ui.run(Command::OnlineSave(Box::new((online, network))));
+    })
+}
+
+/// The Texthooker page (HOK-001…HOK-004): `open`, `close`, `click` (`line`,
+/// at its first character).
+pub fn hooker(action: &str, line: Option<usize>) -> Result<(), String> {
+    let action = action.to_string();
+    call(move |ui| {
+        let mut out = Vec::new();
+        match action.as_str() {
+            "open" => ui.view.open_hooker_page(&mut out),
+            "close" => ui.view.close_hooker_page(&mut out),
+            _ => out.push(Command::HookerClicked {
+                line: line.unwrap_or(0),
+                offset: 0,
+                anchor: crate::popup::Rect::default(),
+            }),
+        }
+        for c in out {
+            ui.run(c);
+        }
     })
 }
 

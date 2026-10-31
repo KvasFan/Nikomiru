@@ -34,6 +34,8 @@ pub enum Inbound {
     Servers(Box<crate::servers::ServerAnswer>),
     /// An answer for the Backup page.
     Sync(Box<crate::sync::SyncAnswer>),
+    /// A report of the hooker worker.
+    Hooker(crate::hooker::HookerEvent),
     /// A subtitle load ended.
     Subtitles {
         /// The session's load generation.
@@ -251,6 +253,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::ServerReady { .. } => "ServerReady",
             Inbound::Servers(_) => "Servers",
             Inbound::Sync(_) => "Sync",
+            Inbound::Hooker(_) => "Hooker",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -431,6 +434,19 @@ pub(crate) enum Command {
     /// Save these online settings.
     /// The Word audio tab of the settings, for a first source (AUD-009).
     WordAudioSetup,
+    /// The Texthooker page opened.
+    HookerOpen,
+    HookerClose,
+    HookerClear,
+    HookerSave(Box<nikomiru_core::config::HookerConfig>),
+    /// Text pasted on the page (HOK-003).
+    HookerPaste(String),
+    /// A click on a line.
+    HookerClicked {
+        line: usize,
+        offset: usize,
+        anchor: Rect,
+    },
     /// The Backup tab opened.
     BackupOpen,
     /// New settings of the WebDAV folder.
@@ -793,6 +809,10 @@ impl Ui {
                 self.session.server_ready(&uid, *result);
                 true
             }
+            Inbound::Hooker(event) => {
+                self.session.hooker_event(event);
+                true
+            }
             Inbound::Sync(answer) => {
                 self.session.sync_answer(*answer);
                 true
@@ -1151,6 +1171,20 @@ impl Ui {
                     self.run(command);
                 }
             }
+            Command::HookerOpen => s.hooker_open(),
+            Command::HookerClose => s.hooker_close(),
+            Command::HookerClear => s.hooker_page.lines.clear(),
+            Command::HookerSave(hooker) => s.hooker_save(*hooker),
+            Command::HookerPaste(text) => {
+                if let Some(line) = nikomiru_online::hooker::clean(&text) {
+                    s.hooker_page.push(line);
+                }
+            }
+            Command::HookerClicked {
+                line,
+                offset,
+                anchor,
+            } => s.hooker_clicked(line, offset, anchor),
             Command::BackupOpen => s.backup_open(),
             Command::SyncSave(sync) => s.sync_save(*sync),
             Command::SyncCheck => s.sync_check(),
@@ -1333,6 +1367,18 @@ impl Ui {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
             }
+        }
+        match self.session.take_hooker_run() {
+            Some(true) => {
+                let waker = self.waker.clone();
+                let config = self.session.hooker_config().clone();
+                self.session.hooker().start(
+                    config,
+                    Box::new(move |event| waker.wake(Inbound::Hooker(event))),
+                );
+            }
+            Some(false) => self.session.hooker().stop(),
+            None => {}
         }
         for job in self.session.take_sync_jobs() {
             use crate::sync::{SyncAnswer, SyncJob};

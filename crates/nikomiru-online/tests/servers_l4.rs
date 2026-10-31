@@ -419,3 +419,20 @@ fn a_webdav_folder_keeps_each_devices_file() {
         Err(OnlineError::Quota { .. })
     ));
 }
+
+// T-HOK-001, T-HOK-002
+#[test]
+fn a_hook_reads_lines_until_the_hooker_goes() {
+    use nikomiru_online::fake_servers::FakeHooker;
+    use nikomiru_online::hooker::{Hook, checked_hook_url};
+    let fake = FakeHooker::start(vec!["一行目".into(), r#"{"sentence":"二行目"}"#.into()]).unwrap();
+    let mut hook = Hook::connect(&checked_hook_url(&fake.url()).unwrap()).unwrap();
+    let mut lines = Vec::new();
+    let started = Instant::now();
+    while lines.len() < 2 && started.elapsed() < Duration::from_secs(5) {
+        lines.extend(hook.read().unwrap());
+    }
+    assert_eq!(lines, ["一行目", "二行目"]);
+    // nothing more for now: not an error
+    assert_eq!(hook.read().unwrap(), None);
+}

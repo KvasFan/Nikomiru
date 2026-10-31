@@ -790,6 +790,18 @@ Fushi has no counterpart to follow: its sync goes through other services.
 | BAK-009 | **When**: by hand with "Sync now"; with "Sync at start and close" (off by default) also then, on the `servers` worker's pattern: a worker of its own, so nothing waits for it, at most 30 s at close. Failures are a message, never a loss: the library is written only after everything was read and merged. |
 | BAK-010 | **Errors**: unreachable, refused, full (507), a server that lies about its files: each its own message (ERR-001); answers are untrusted and bounded (64 MiB for a device's file). |
 
+### 6.15 Texthooker (HOK) — milestone M14 (D-23)
+
+The dictionary and the cards for games, on a page of their own, opened from the Library page.
+
+| ID | Requirement |
+|---|---|
+| HOK-001 | **WebSocket**: while the Texthooker page is open, Nikomiru connects to a hooker's WebSocket as a client (`[hooker] url`, default `ws://127.0.0.1:6677`, Textractor's and LunaTranslator's; loopback and `ws` only, PRV-001), trying again every 3 s, and stops when the page closes. |
+| HOK-002 | **Lines**: a message is plain text, or JSON with `sentence` or `text`. Control characters go, blanks shrink, a line is cut at 4096 characters; a line repeated at once counts once; the page keeps the last 500, in memory only, never in the logs (PRV-002). |
+| HOK-003 | **Clipboard**: Ctrl+V on the page adds what was copied. With "Read the clipboard too" (`[hooker] clipboard`, off by default) `wl-paste` or `xclip`, when installed, are read every second while the page is open, and only text with Japanese characters is kept. A program in the background cannot read it on GNOME Wayland: the page says so, and the WebSocket is the way there. |
+| HOK-004 | **Lookup**: a click on a line looks up from that character, as on a subtitle; the popups work over the page as over the video. |
+| HOK-005 | **Cards**: a card from a line has the word and the sentence, and no picture, audio or link, there being no video (ANK-050). |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -933,6 +945,10 @@ password = ""               # like the API keys (MET-005)
 allow_unencrypted = false   # SRV-005
 automatic = false           # at start and close (BAK-009)
 
+[hooker]                    # HOK-001, HOK-003
+url = "ws://127.0.0.1:6677"
+clipboard = false
+
 # [[servers]]               # media servers (SRV-001), none by default
 # id = "…"                  # random, for the uids (SRV-007)
 # kind = "jellyfin"         # or "plex"
@@ -977,6 +993,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-20 | Design of M11 | **Approved** (2026-10-31): (a) direct play only, no transcoding; (b) a loopback relay, so that tokens never reach mpv or ffmpeg and one path handles the proxy, the limits and the redirects; (c) a tab per server, not mixed in the series grid, with only "Continue watching" shared; (d) plain HTTP allowed without asking only on private addresses; (e) self-signed certificates not supported in 1.1.0 (use HTTP on a home network, or a real certificate); (f) the later position wins, no merge of the watch history; (g) the server's data is not cached for offline use, except covers. Live checks need a real Jellyfin and the maintainer's Plex: no container runtime on the development machine |
 | D-21 | Design of M12 | **Approved** (2026-10-31): (a) one file per device instead of a shared file, so no locks; (b) settings, series and dictionaries are not synced, only what the user did: progress, statistics, cards; (c) a backup leaves keys out unless asked; (d) no encryption of the files on the WebDAV server in 1.2.0: they hold what was watched and studied, on a server of the user's own choosing; (e) by hand by default, automatic only if ticked |
 | D-22 | Design of M13 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: effects only with `respect_ass_styles` on, as styles are, so the default look stays plain; one set of effects per cue; `Shift+S` reads the window instead of compositing the overlay into mpv's frame, so the picture is what was seen, at the window's size |
+| D-23 | Design of M14 | **Approved** (2026-10-31): the WebSocket first, since a background program cannot read the clipboard everywhere; the clipboard by Ctrl+V, and by `wl-paste` or `xclip` where they can; cards from a game with text only |
 
 ### 10.2 Risks
 

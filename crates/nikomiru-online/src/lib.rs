@@ -18,6 +18,7 @@ pub mod fake;
 #[cfg(feature = "test-support")]
 pub mod fake_servers;
 pub mod hash;
+pub mod hooker;
 pub mod http;
 pub mod jimaku;
 pub mod language;
