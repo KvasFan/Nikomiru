@@ -762,7 +762,7 @@ Jellyfin and Plex: their videos are watched as local ones are, with the same sub
 | SRV-004 | **Secrets and privacy**: tokens are kept in the config like API keys (MET-005) and never appear in a log, a command line, an mpv property or a URL given to another program (PRV-002). No request reaches a server until the user has added it, and then only while its page is open or one of its videos plays (PRV-001). Each request carries only that server's token (a redirect to another host drops it). |
 | SRV-005 | **Connections** (exception to ADR 0008 §6, for these servers only): HTTPS always; plain HTTP without asking only to loopback or a private, link-local or CGNAT address (a home network, Tailscale); to any other address only with "Allow an unencrypted connection" ticked on that server, which warns that the password and token travel in clear. Certificates are checked against the system's store. `[network] proxy` applies (SET-007), except to loopback and private addresses. |
 | SRV-006 | **Library**: a tab for each server on the library page, with the libraries of type series or movies chosen in its settings (all by default), series → seasons → episodes, and movies. Covers, titles and watched, in-progress and new marks come from the server; requests are paged (100 items); covers are cached in `$XDG_CACHE_HOME/nikomiru/servers/`, at most 500 MiB, oldest out first; the rest is asked again each time the tab opens. Search by title in the tab. Server episodes also appear in "Continue watching" (LIB-005), not in the series grid, and a rescan never touches them (LIB-004). |
-| SRV-007 | **Identity**: a server's video has the uid `srv:<server id>:<item id>`, so the `videos`, statistics and `mined_cards` records work as for a local file, and the table `server_items` tells where it is. A server that gives a video a new id is a new video: nothing is matched across ids. |
+| SRV-007 | **Identity**: a server's video has the uid and path `srv:<server id>:<item id>`, so the `videos`, statistics and `mined_cards` records work as for a local file, and the table `server_items` tells where it is. A server that gives a video a new id is a new video: nothing is matched across ids. |
 | SRV-008 | **Playback**: only direct play: the original file, never a transcode, from `GET /Videos/{id}/stream?static=true` on Jellyfin and the part's `key` on Plex. mpv and ffmpeg read it through the **relay** (SRV-009). A video the network cannot carry stutters, and that is not handled. Next episode (LIB-009) follows the server's order. Everything that reads the file works on the relay's address: card clips, frames, thumbnails (PLY-014), embedded subtitles, the alignment (SUB-018), with the timeouts of EXT-003 doubled, since the file comes over a network. |
 | SRV-009 | **Relay**: a thread pool of `nikomiru-online`, on 127.0.0.1 with a free port, alive only while a server video is open: `GET`/`HEAD` with `Range` under an unguessable path (128 random bits, new for each video) are forwarded with the token added, and nothing else is answered. It stops reading from the server when the client leaves, and takes at most 8 connections at once. ffmpeg's input protocol is limited to `http,tcp` for it, and its address appears in its command line instead of the token. |
 | SRV-010 | **Subtitles**: the server's external subtitles are offered with those next to a file (SUB-006), fetched as text (`/Videos/{id}/{source}/Subtitles/{index}/Stream.<format>` on Jellyfin, the stream's `key` on Plex) and cached like downloads (MET-008, `<hash>` being the uid's SHA-256); embedded ones come through the relay like a file's. Image subtitles stay unsupported as in local files. The online search (MET-009) and MET-007 use the title, season and episode from the server and, on Jellyfin, its AniList id when given; never the file hash (MET-004), so no download of the file's head and tail. |
@@ -886,6 +886,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 [network]
 proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
+device_id = ""              # random, made for the first media server (SRV-002, SRV-003)
 
 [word_audio]                # AUD-001…AUD-008
 autoplay = true             # AUD-006
@@ -909,14 +910,12 @@ opensubtitles_password = ""
 # id = "…"                  # random, for the uids (SRV-007)
 # kind = "jellyfin"         # or "plex"
 # name = "Home"
-# url = "http://192.168.1.10:8096"   # Plex: the addresses come from the account
+# url = "http://192.168.1.10:8096"
+# other_urls = []           # Plex: the account's other addresses
 # token = ""                # like the API keys (MET-005)
 # user_id = ""
 # libraries = []            # the ones shown; empty = all (SRV-006)
 # allow_unencrypted = false # SRV-005
-
-# [servers_device]
-# device_id = "…"           # random, sent as DeviceId and X-Plex-Client-Identifier
 ```
 
 ---

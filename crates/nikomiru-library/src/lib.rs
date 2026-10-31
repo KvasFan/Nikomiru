@@ -18,6 +18,7 @@ pub mod policy;
 pub mod progress;
 pub mod scan;
 pub mod series_info;
+pub mod server_items;
 pub mod stats;
 pub mod uid;
 pub mod writer;

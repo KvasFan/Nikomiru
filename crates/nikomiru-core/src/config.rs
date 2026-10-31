@@ -76,6 +76,9 @@ pub struct Config {
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
+    /// `[[servers]]`: the media servers added (SRV-001).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub servers: Vec<ServerConfig>,
     /// Sections this version does not know, kept as they are.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -361,9 +364,52 @@ pub struct NetworkConfig {
     /// The proxy of the online services (`http://host:port`, `socks5://…`);
     /// empty: none. The environment's proxy variables are never used.
     pub proxy: String,
+    /// This installation's id for media servers (SRV-002, SRV-003): made when
+    /// the first one is added.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub device_id: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// A media server (SRV-001).
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerConfig {
+    /// Random, for the uids of its videos (SRV-007).
+    pub id: String,
+    /// `jellyfin` or `plex`.
+    pub kind: String,
+    /// The name shown.
+    pub name: String,
+    /// Its address; for Plex, the ones the account gave, the one to try first
+    /// in front.
+    pub url: String,
+    /// The other addresses of a Plex server.
+    pub other_urls: Vec<String>,
+    /// Its token (MET-005).
+    pub token: String,
+    /// The user's id on Jellyfin.
+    pub user_id: String,
+    /// The libraries shown; empty: all (SRV-006).
+    pub libraries: Vec<String>,
+    /// Plain HTTP allowed outside the user's own networks (SRV-005).
+    pub allow_unencrypted: bool,
+}
+
+impl std::fmt::Debug for ServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // never the token (SRV-004)
+        f.debug_struct("ServerConfig")
+            .field("id", &self.id)
+            .field("kind", &self.kind)
+            .field("name", &self.name)
+            .field("url", &without_userinfo(&self.url))
+            .field("libraries", &self.libraries)
+            .field("allow_unencrypted", &self.allow_unencrypted)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for NetworkConfig {
@@ -633,6 +679,7 @@ impl Default for Config {
             online: OnlineConfig::default(),
             word_audio: WordAudioConfig::default(),
             shortcuts: BTreeMap::new(),
+            servers: Vec::new(),
             other: toml::Table::new(),
         }
     }
