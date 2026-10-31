@@ -271,6 +271,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-018 | Alignment with the audio | Cues and levels on the grid (Fushi's vectors: a cue past the end left out, silence as 0); 20 minutes of speech-like audio and its cues moved by 0, +1.2, −3.4, +9.9, −14.8 s → the offset ±100 ms; audio unrelated to the cues → not applied; the PCM levels and the ffmpeg arguments; L4: the tones of `av_basic.mkv` put its cues moved by +1.2 and −0.7 s back; L6: an SRT written 1.2 s early, dropped on `av_basic.mkv`, aligned from the menu → offset +1200 ± 100 ms | L1/L4/L6 |
 | T-FUZZ-001…003 | SRT / VTT / ASS parsers on arbitrary bytes | No panic; for every cue produced, `start ≤ end` | L2 |
 
+### 6.3b Advanced ASS (M13)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-SUB-019 | Advanced ASS | Each tag read, broken tags ignored, `plain_text` unchanged; opacity, position, rotation, scale, colour and size at chosen moments; karaoke by syllable; overlay: a quarter turn stands the text up and it is clicked where it is drawn, a move is halfway at half time, scaling keeps the anchor, clips, no effects with ASS styles off | L1/L3 |
+
 ### 6.4 Dictionaries: import and management
 
 | ID | Check | Expected | L |
@@ -367,6 +373,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-008 | After loading | `sid = no`, `sub-visibility = no`; `aid` adopted | L5 |
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
+| T-PLY-015 | Screenshot with subtitles | `Shift+S`: a PNG other than `S`'s of the same frame, the right way up, with the bar left out | L1/L6 |
 | T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles; a taken name gets ` (2)`…, and 16 screenshots at once get 16 names | L1/L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
 | T-PLY-013 | Screensaver | During playback the inhibition is active; when paused for > 1 min it is released (spy portal) | L4 |

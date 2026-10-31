@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 
+use nikomiru_subs::effects::Frame;
 use nikomiru_subs::timeline::Timeline;
 use nikomiru_subs::{AssStyle, Cue, Format, Track};
 
@@ -140,12 +141,17 @@ pub struct Shown<'a> {
     /// The bytes to highlight: the text the popup matched, or the clicked
     /// grapheme while the lookup runs (POP-002).
     pub highlight: Option<std::ops::Range<usize>>,
+    /// Its ASS effects at this moment, only when ASS styles are respected
+    /// (SUB-019), and the ms since it started.
+    pub frame: Option<(Frame, i64)>,
 }
 
 /// The subtitles of the current file.
 #[derive(Debug, Default)]
 pub struct Subtitles {
     timeline: Timeline,
+    /// The video's position at the last update.
+    pos_ms: i64,
     format: Option<Format>,
     styles: Vec<AssStyle>,
     play_res: Option<(u32, u32)>,
@@ -219,6 +225,7 @@ impl Subtitles {
 
     /// Updates the active cues; returns the cues that just appeared.
     pub fn update(&mut self, pos_ms: i64) -> Vec<usize> {
+        self.pos_ms = pos_ms;
         let active = self.timeline.active(pos_ms);
         if active == self.active {
             return Vec::new();
@@ -263,12 +270,20 @@ impl Subtitles {
         active.iter().filter_map(move |&index| {
             let cue = self.cue(index)?;
             let style = respect_ass.then(|| self.style_of(cue)).flatten();
+            let elapsed = self.pos_ms - self.timeline.delay_ms - cue.start_ms;
+            let frame = cue
+                .markup
+                .effects
+                .as_ref()
+                .filter(|_| respect_ass)
+                .map(|e| (e.at(elapsed, cue.end_ms - cue.start_ms), elapsed));
             Some(Shown {
                 index,
                 cue,
                 style,
                 anchor: cue.markup.anchor.or(style.map(|s| s.alignment)),
                 highlight: self.highlight_range(index),
+                frame,
             })
         })
     }

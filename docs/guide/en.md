@@ -149,6 +149,7 @@ The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, En
 | Z / X | Subtitles 100 ms earlier / later |
 | F, F11 | Fullscreen |
 | S | Save the frame |
+| Shift+S | Save the frame with its subtitles |
 | Ctrl+O | Open a file |
 | Ctrl+, | Settings |
 | Esc | Back |

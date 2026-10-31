@@ -52,6 +52,8 @@ pub enum Action {
     FrameNext,
     /// Saves the frame shown, without subtitles (PLY-011).
     Screenshot,
+    /// Saves what is on screen: the frame with the subtitles (PLY-015).
+    ScreenshotSubtitles,
     /// Fullscreen on/off.
     Fullscreen,
     /// Previous chapter.
@@ -109,7 +111,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 39] = [
+    pub const ALL: [Action; 40] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -123,6 +125,7 @@ impl Action {
         Action::FramePrev,
         Action::FrameNext,
         Action::Screenshot,
+        Action::ScreenshotSubtitles,
         Action::Fullscreen,
         Action::ChapterPrev,
         Action::ChapterNext,
@@ -167,6 +170,7 @@ impl Action {
             Action::FramePrev => "frame_prev",
             Action::FrameNext => "frame_next",
             Action::Screenshot => "screenshot",
+            Action::ScreenshotSubtitles => "screenshot_subtitles",
             Action::Fullscreen => "fullscreen",
             Action::ChapterPrev => "chapter_prev",
             Action::ChapterNext => "chapter_next",
@@ -263,6 +267,7 @@ impl Action {
             Action::FramePrev => &["Comma"],
             Action::FrameNext => &["Period"],
             Action::Screenshot => &["KeyS"],
+            Action::ScreenshotSubtitles => &["Shift+KeyS"],
             Action::Fullscreen => &["KeyF", "F11"],
             Action::ChapterPrev => &["PageUp"],
             Action::ChapterNext => &["PageDown"],
@@ -612,6 +617,7 @@ mod tests {
         for once in [
             Action::PlayPause,
             Action::Screenshot,
+            Action::ScreenshotSubtitles,
             Action::CreateCard,
             Action::Back,
             Action::Fullscreen,

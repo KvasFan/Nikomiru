@@ -149,6 +149,7 @@ Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio 
 | Z / X | Sottotitoli 100 ms prima / dopo |
 | F, F11 | Schermo intero |
 | S | Salva il fotogramma |
+| Shift+S | Salva il fotogramma con i sottotitoli |
 | Ctrl+O | Apri un file |
 | Ctrl+, | Impostazioni |
 | Esc | Indietro |

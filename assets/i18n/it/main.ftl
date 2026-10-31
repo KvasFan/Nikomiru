@@ -161,6 +161,7 @@ action-hold-speed = 2× tenendo premuto
 action-frame-prev = Fotogramma precedente
 action-frame-next = Fotogramma successivo
 action-screenshot = Salva il fotogramma
+action-screenshot-subtitles = Salva il fotogramma con i sottotitoli
 action-fullscreen = Schermo intero
 action-chapter-prev = Capitolo precedente
 action-chapter-next = Capitolo successivo

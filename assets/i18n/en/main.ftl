@@ -161,6 +161,7 @@ action-hold-speed = 2× while held
 action-frame-prev = Previous frame
 action-frame-next = Next frame
 action-screenshot = Save the frame
+action-screenshot-subtitles = Save the frame with its subtitles
 action-fullscreen = Fullscreen
 action-chapter-prev = Previous chapter
 action-chapter-next = Next chapter

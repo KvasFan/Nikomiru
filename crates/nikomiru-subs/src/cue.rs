@@ -128,6 +128,8 @@ pub struct VttSettings {
 /// What only drawing needs (SUB-004).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Markup {
+    /// What ASS adds to the text (SUB-019), in fractions of the video.
+    pub effects: Option<Box<crate::effects::Effects>>,
     /// Styled runs, sorted and not overlapping; unstyled text has no run.
     pub runs: Vec<Run>,
     /// Readings.
@@ -223,6 +225,8 @@ pub struct AssStyle {
     pub size: f32,
     /// Primary (fill) colour.
     pub primary: Rgb,
+    /// The colour of karaoke not yet sung.
+    pub secondary: Rgb,
     /// Outline colour.
     pub outline_color: Rgb,
     /// Shadow/back colour.
