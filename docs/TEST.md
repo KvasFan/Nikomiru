@@ -505,6 +505,22 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SRV-013 | Errors | Each failure's message; truncated, oversized and wrong JSON never panic (L2, `crates/nikomiru-online/tests/servers_fuzz.rs`); the server failing during playback keeps the position | L2/L5 |
 | T-SRV-LIVE-* | Real servers | Smoke tests with an address and token from environment variables: Jellyfin and Plex | L7 |
 
+### 6.13b Backup and sync (M12)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-BAK-001 | Backup | The archive's contents and manifest; dictionaries only if asked; a backup during playback opens as a consistent library | L2/L6 |
+| T-BAK-002 | Secrets | No key, password or token in the archive unless ticked; 0600 either way | L2 |
+| T-BAK-003 | Restore | A round trip gives the same library; the state before kept; a newer schema refused, an older one migrated; zip-slip paths and oversized entries refused | L2 |
+| T-BAK-004 | WebDAV | Fake server: `PROPFIND`, `MKCOL`, `PUT`, `GET`, Basic authentication, the addresses of SRV-005; no request until set up (T-PRV-001) | L2 |
+| T-BAK-005 | What syncs | Only what is listed; settings and keys never in a device file | L2 |
+| T-BAK-006 | Devices | Each writes only its own file; a newer format skipped, a damaged file skipped with the library untouched | L2 |
+| T-BAK-007 | Merge | Properties: idempotent, commutative, position by last played, the earliest watched, unions | L2 |
+| T-BAK-008 | Deletions | A deleted session does not return; a tombstone goes after 180 days | L2 |
+| T-BAK-009 | When | By hand; at start and close only if ticked; playback never waits; a failure changes nothing | L2/L6 |
+| T-BAK-010 | Errors | Each failure's message; truncated and random answers never panic | L2 |
+| T-BAK-LIVE-* | Real server | Two computers, or two profiles, through a real Nextcloud | L7 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

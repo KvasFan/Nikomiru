@@ -507,16 +507,20 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: keep the library, the statistics and the settings safe, and the same on two computers.
 
-**Deliverables (scope)**
+**Requirements**: BAK-001…BAK-010 (proposed, to accept with D-21).
 
-- Backup and restore to a file: `config.toml`, `library.redb` (positions, statistics, mined words), the dictionaries registry; the dictionaries themselves optional (large).
-- Sync through a WebDAV server (Nextcloud and the like): the same data, merged per record rather than overwritten, with the conflicts' rule written in the specification; credentials kept like the other keys.
+**Deliverables**
 
-**Notes**: WebDAV is HTTP (`PROPFIND`, `PUT`, `GET`) over the client in use. Cloud sync, iroh P2P and the like stay out (SPECIFICATION §1.3).
+- `nikomiru-library`: the consistent copy, the export and merge of records, the tombstones.
+- `nikomiru-online`: the WebDAV client.
+- `nikomiru-app`: the backup, the restore and the `sync` worker.
+- `nikomiru-ui`: Settings → Backup.
+
+**Notes**: WebDAV is HTTP over the client in use, and the archives use `zip`: no new dependency expected. The live check needs a real Nextcloud (a container, once Podman has its network). Cloud sync, iroh P2P and the like stay out (SPECIFICATION §1.3).
 
 **Exit criteria**
 
-- [ ] Requirements accepted; restore round-trip and merge tests green, against a simulated WebDAV server.
+- [ ] BAK-001…BAK-010 accepted (D-21); T-BAK-001…T-BAK-010 green, against a simulated WebDAV server.
 - [ ] Two computers synced through a real Nextcloud.
 - [ ] **Release 1.2.0**.
 
