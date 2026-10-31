@@ -750,6 +750,26 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 
 ---
 
+### 6.13 Media servers (SRV) — milestone M11 (D-20)
+
+Jellyfin and Plex: their videos are watched as local ones are, with the same subtitles, lookups and cards. Fushi has no counterpart.
+
+| ID | Requirement |
+|---|---|
+| SRV-001 | **Servers in the settings** (Settings → Media servers, SET-008): any number of servers, each added, renamed, checked and removed by hand; none by default, and with none nothing changes. Removing one logs out and keeps what the library knows of its videos (progress, statistics, cards). |
+| SRV-002 | **Jellyfin login**: address, user and password; `POST /Users/AuthenticateByName` with the `Authorization: MediaBrowser Client=…, Device=…, DeviceId=…, Version=…` header (`DeviceId` random, one per installation). The access token and user id are saved; the password never is. An expired token (401) asks for the password again. |
+| SRV-003 | **Plex login**: the plex.tv PIN flow: `POST https://plex.tv/api/v2/pins?strong=true`, the sign-in page opened in the browser (no password goes through Nikomiru), `GET /api/v2/pins/{id}` every 2 s for at most 10 min until the token comes, cancellable; then `GET /api/v2/resources` lists the account's servers and their addresses, tried local first. `X-Plex-Client-Identifier` as `DeviceId` above. The token goes only to plex.tv and that account's servers. |
+| SRV-004 | **Secrets and privacy**: tokens are kept in the config like API keys (MET-005) and never appear in a log, a command line, an mpv property or a URL given to another program (PRV-002). No request reaches a server until the user has added it, and then only while its page is open or one of its videos plays (PRV-001). Each request carries only that server's token (a redirect to another host drops it). |
+| SRV-005 | **Connections** (exception to ADR 0008 §6, for these servers only): HTTPS always; plain HTTP without asking only to loopback or a private, link-local or CGNAT address (a home network, Tailscale); to any other address only with "Allow an unencrypted connection" ticked on that server, which warns that the password and token travel in clear. Certificates are checked against the system's store. `[network] proxy` applies (SET-007), except to loopback and private addresses. |
+| SRV-006 | **Library**: a tab for each server on the library page, with the libraries of type series or movies chosen in its settings (all by default), series → seasons → episodes, and movies. Covers, titles and watched, in-progress and new marks come from the server; requests are paged (100 items); covers are cached in `$XDG_CACHE_HOME/nikomiru/servers/`, at most 500 MiB, oldest out first; the rest is asked again each time the tab opens. Search by title in the tab. Server episodes also appear in "Continue watching" (LIB-005), not in the series grid, and a rescan never touches them (LIB-004). |
+| SRV-007 | **Identity**: a server's video has the uid and path `srv:<server id>:<item id>`, so the `videos`, statistics and `mined_cards` records work as for a local file, and the table `server_items` tells where it is. A server that gives a video a new id is a new video: nothing is matched across ids. Cards of a server's video have no series tag (ANK-027), the series being only on the server. |
+| SRV-008 | **Playback**: only direct play: the original file, never a transcode, from `GET /Videos/{id}/stream?static=true` on Jellyfin and the part's `key` on Plex. mpv and ffmpeg read it through the **relay** (SRV-009). A video the network cannot carry stutters, and that is not handled. Next episode (LIB-009) follows the server's order within the season. Everything that reads the file works on the relay's address: card clips, frames, thumbnails (PLY-014), embedded subtitles, the alignment (SUB-018), with the timeouts of EXT-003 doubled, since the file comes over a network. |
+| SRV-009 | **Relay**: a thread pool of `nikomiru-online`, on 127.0.0.1 with a free port, alive only while a server video is open: `GET`/`HEAD` with `Range` under an unguessable path (128 random bits, new for each video) are forwarded with the token added, and nothing else is answered. It stops reading from the server when the client leaves, and takes at most 8 connections at once. Its address, not the token, is what appears in ffmpeg's command line (EXT-002 lets only this address through without `file:`). |
+| SRV-010 | **Subtitles**: the server's external subtitles are offered with those next to a file (SUB-006), fetched as text (`/Videos/{id}/{source}/Subtitles/{index}/Stream.<format>` on Jellyfin, the stream's `key` on Plex) and cached like downloads (MET-008, `<hash>` being the uid's SHA-256); embedded ones come through the relay like a file's. Image subtitles stay unsupported as in local files. The online search (MET-009) and MET-007 use the title, season and episode from the server and, on Jellyfin, its AniList id when given; never the file hash (MET-004), so no download of the file's head and tail. |
+| SRV-011 | **Progress**: at opening, the later of the two positions (the server's by its `LastPlayedDate` or `lastViewedAt`, the local by `last_played_at`), then LIB-007. Reported to the server on start, every 10 s while playing, on pause and on stop (`/Sessions/Playing*` on Jellyfin, `/:/timeline` on Plex), on the `servers` worker so that playback never waits; a report that fails is dropped, and only the last one is retried, at the next tick. At 90% (LIB-008) the video is marked played on the server. Statistics stay local. |
+| SRV-012 | **Cards**: a card from a server's video is made as from a file. Its `{source-link}` (ANK-050) carries the uid: opening it plays the scene from that server; with the server gone or unreachable, a message names it and nothing else happens. |
+| SRV-013 | **Errors**: unreachable server, 401, 403, 404 and a video gone each have their own translated message (ERR-001); answers are bounded (`ANSWER_LIMIT`), parsed as untrusted data and never rendered as markup (NFR-SEC-01); titles and covers from a server go through the limits of the covers (M8 security review). A server failing during playback stops at what mpv buffered, with the message, and keeps the position. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -792,6 +812,7 @@ Online subtitles follow [ADR 0008](adr/0008-online-subtitles.md).
 | `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
+| `server_items` | `&str` uid | server id, kind (Jellyfin or Plex), item id, media source or part, series and episode titles (SRV-007; a new table: the schema version does not change, and older versions see these `videos` rows as missing files) |
 
 `SubtitleChoice = File(path) | Embedded { ff_index, lang, title } | Off` (a downloaded file is a `File`, MET-008)
 
@@ -865,6 +886,7 @@ ffmpeg = ""                 # empty = search in PATH
 
 [network]
 proxy = ""                  # "http://host:port" or "socks5://…"; empty = none (SET-007)
+device_id = ""              # random, made for the first media server (SRV-002, SRV-003)
 
 [word_audio]                # AUD-001…AUD-008
 autoplay = true             # AUD-006
@@ -883,6 +905,17 @@ opensubtitles_api_key = ""
 opensubtitles_username = ""
 opensubtitles_password = ""
 # jimaku_url, opensubtitles_url: other base URLs, for the tests
+
+# [[servers]]               # media servers (SRV-001), none by default
+# id = "…"                  # random, for the uids (SRV-007)
+# kind = "jellyfin"         # or "plex"
+# name = "Home"
+# url = "http://192.168.1.10:8096"
+# other_urls = []           # Plex: the account's other addresses
+# token = ""                # like the API keys (MET-005)
+# user_id = ""
+# libraries = []            # the ones shown; empty = all (SRV-006)
+# allow_unencrypted = false # SRV-005
 ```
 
 ---
@@ -913,6 +946,8 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-16 | Other platforms | **Asked by the maintainer** (2026-10-25, with 0.4.0): builds for macOS, Windows and Android. Recorded as the milestone "Ports" after M7, which starts with spike S6; the release that ships each port follows from S6. Before: Windows and macOS after 1.0, Android excluded (§1.3) |
 | D-17 | The next version, while 1.0.0 waits for its manual checks | **Asked by the maintainer** (2026-10-26): work goes on with the next version while M8's manual checks are open. Recorded as M9 "Words in the subtitles": the segmentation of LKP-060 in the subtitles, automatic furigana (LKP-051, until now post-1.0) and the words already mined underlined (LKP-061), on by default except the furigana. Planned for 1.1.0; merged into `main` while M8's manual checks wait, so it ships with 1.0.0 |
 | D-18 | After M9 | **Proposed** (2026-10-26, the maintainer asked to go on; to change at will): M10 "Moving pictures", merged into `main` while M8's manual checks wait, so it ships with 1.0.0: the card's picture as the moving sentence (ANK-042) and thumbnails on the progress bar (PLY-014), both made by the system's ffmpeg with no new dependency. WebM clips with sound (ANK-043) stay in the backlog |
+| D-19 | Order after 1.0 | **Asked by the maintainer** (2026-10-30): M11 Jellyfin and Plex (1.1.0), M12 backup, restore and WebDAV sync (1.2.0), M13 advanced ASS (SUB-019) and screenshots with subtitles (PLY-015) (1.3.0), M14 clipboard lookup and texthooker (1.4.0), M15 MDict, StarDict and DSL (DIC-004, 1.5.0), M16 books, manga and audiobooks (D-12, 2.0.0); then the rest of the backlog. Each milestone's requirements are written here before its work starts; fixes from the manual checks of 1.0.0 go out as 1.0.x meanwhile. The ports (D-16) run alongside |
+| D-20 | Design of M11 | **Proposed** (2026-10-31, to accept with §6.13): (a) direct play only, no transcoding; (b) a loopback relay, so that tokens never reach mpv or ffmpeg and one path handles the proxy, the limits and the redirects; (c) a tab per server, not mixed in the series grid, with only "Continue watching" shared; (d) plain HTTP allowed without asking only on private addresses; (e) self-signed certificates not supported in 1.1.0 (use HTTP on a home network, or a real certificate); (f) the later position wins, no merge of the watch history; (g) the server's data is not cached for offline use, except covers. Live checks need a real Jellyfin and the maintainer's Plex: no container runtime on the development machine |
 
 ### 10.2 Risks
 

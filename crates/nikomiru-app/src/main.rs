@@ -422,6 +422,16 @@ fn run(
         subtitles_dir: paths.subtitles_dir(),
         translator: translator.clone(),
     });
+    // SPECIFICATION §6.13
+    let servers = nikomiru_app::servers::Servers::start(nikomiru_app::servers::Parts {
+        servers: config.servers.clone(),
+        proxy: config.network.proxy.clone(),
+        device_id: config.network.device_id.clone(),
+        plex_tv_url: config.online.plex_tv_url.clone(),
+        subtitles_dir: paths.subtitles_dir(),
+        covers_dir: paths.cache_dir.join("servers"),
+        translator: translator.clone(),
+    });
     // LIB-002…LIB-012
     let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {
         Some(library) => Box::new(nikomiru_app::catalog::Catalog::start(
@@ -470,6 +480,7 @@ fn run(
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
         online: Box::new(online),
+        servers: Box::new(servers),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

@@ -42,6 +42,12 @@ pub(crate) struct State {
     move_to: Option<u64>,
     /// The name of a series split off.
     split_name: String,
+    /// The media server whose tab is shown (SRV-006).
+    server: Option<String>,
+    /// What is typed in its search.
+    server_search: String,
+    /// Its covers as textures, by item.
+    server_textures: HashMap<String, TextureHandle>,
     /// The Statistics tab is shown (STA-005).
     statistics: bool,
     /// What it keeps.
@@ -89,6 +95,10 @@ pub(crate) struct Scene<'a> {
     pub today: i64,
     /// The first steps and whether each is done (LIB-013), while shown.
     pub first_steps: Option<[bool; 3]>,
+    /// The media servers added, each a tab (SRV-006).
+    pub servers: &'a [nikomiru_core::config::ServerConfig],
+    /// What is shown of one.
+    pub server_page: &'a crate::servers::ServersPage,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -99,6 +109,8 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         page: &s.library_page,
         today: s.today(),
         first_steps: s.first_steps(),
+        servers: s.server_list(),
+        server_page: &s.servers_page,
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
@@ -163,6 +175,13 @@ pub(crate) fn draw(
             state.textures.insert(*id, texture);
         }
     }
+    for (id, cover) in &s.server_page.covers {
+        if !state.server_textures.contains_key(id) {
+            let image = egui::ColorImage::from_rgba_unmultiplied(cover.size, &cover.rgba);
+            let texture = ctx.load_texture(format!("server-cover-{id}"), image, Default::default());
+            state.server_textures.insert(id.clone(), texture);
+        }
+    }
     let screen = ctx.content_rect();
     let mut close = false;
     full_screen(ctx, "library-page", palette::current().page, |ui| {
@@ -179,17 +198,32 @@ pub(crate) fn draw(
             for (statistics, id) in [(false, "library-title"), (true, "stats-title")] {
                 let text = RichText::new(tr(s, id)).size(24.0).family(theme::bold());
                 if ui
-                    .selectable_label(state.statistics == statistics, text)
+                    .selectable_label(
+                        state.server.is_none() && state.statistics == statistics,
+                        text,
+                    )
                     .clicked()
                 {
                     state.statistics = statistics;
+                    state.server = None;
+                }
+            }
+            for server in s.servers {
+                let text = RichText::new(&server.name).size(24.0).family(theme::bold());
+                let chosen = state.server.as_ref() == Some(&server.id);
+                if ui.selectable_label(chosen, text).clicked() && !chosen {
+                    state.server = Some(server.id.clone());
+                    state.statistics = false;
+                    state.server_search.clear();
+                    out.push(Command::ServerShow(server.id.clone()));
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button(tr(s, "library-close")).clicked() {
                     close = true;
                 }
-                if state.statistics {
+                if state.server.is_some() {
+                } else if state.statistics {
                     if ui.button(tr(s, "stats-export")).clicked() {
                         out.push(Command::StatsExport);
                     }
@@ -218,6 +252,7 @@ pub(crate) fn draw(
             .id_salt("library-page")
             .auto_shrink([false, false])
             .show(&mut ui, |ui| match &s.page.series {
+                _ if state.server.is_some() => server_tab(ui, s, state, out),
                 _ if state.statistics => super::stats_view::draw(
                     ui,
                     s.page.stats.as_ref(),
@@ -247,6 +282,104 @@ pub(crate) fn draw(
             });
     });
     close
+}
+
+/// A media server's tab (SRV-006): its libraries, then what they hold.
+fn server_tab(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    use nikomiru_online::servers::ParentKind;
+
+    use crate::servers::Place;
+    let page = s.server_page;
+    if let Some(error) = &page.error {
+        ui.add(egui::Label::new(RichText::new(error).color(palette::current().bad)).wrap());
+    }
+    ui.horizontal_wrapped(|ui| {
+        for library in &page.libraries {
+            let chosen = page.path.first().is_some_and(|p| p.parent == library.id);
+            if ui.selectable_label(chosen, &library.title).clicked() {
+                out.push(Command::ServerGo(vec![Place {
+                    parent: library.id.clone(),
+                    title: library.title.clone(),
+                    kind: ParentKind::Library,
+                }]));
+            }
+        }
+        if page.busy {
+            ui.spinner();
+        }
+    });
+    if page.path.is_empty() {
+        return;
+    }
+    ui.horizontal(|ui| {
+        if page.path.len() > 1 && ui.button(tr(s, "library-back")).clicked() {
+            out.push(Command::ServerGo(page.path[..page.path.len() - 1].to_vec()));
+        }
+        if let Some(place) = page.path.last() {
+            ui.label(RichText::new(&place.title).family(theme::bold()));
+        }
+        let search = ui.add(
+            egui::TextEdit::singleline(&mut state.server_search)
+                .hint_text(tr(s, "servers-search"))
+                .desired_width(220.0),
+        );
+        if search.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            out.push(Command::ServerSearch(
+                state.server_search.trim().to_string(),
+            ));
+        }
+    });
+    let Some(listing) = &page.listing else {
+        return;
+    };
+    if listing.items.is_empty() && !page.busy {
+        ui.label(RichText::new(tr(s, "servers-empty")).color(palette::current().details));
+    }
+    rows(ui, 200.0, &listing.items, |ui, item| {
+        if let Some(cover) = &item.cover
+            && !page.asked.contains(&item.id)
+        {
+            out.push(Command::ServerCover(item.id.clone(), cover.clone()));
+        }
+        let texture = state.server_textures.get(&item.id);
+        let number = match (item.kind.playable(), item.episode) {
+            (true, Some(n)) => format!("{n}. "),
+            _ => String::new(),
+        };
+        let name = format!("{number}{}", item.title);
+        let mut unused = false;
+        let clicked = card(ui, 200.0, texture, &name, &mut unused, |ui| {
+            ui.add(egui::Label::new(RichText::new(&name).family(theme::bold())).truncate());
+            let mark = if item.played {
+                tr(s, "servers-watched")
+            } else if item.position_ms > 0 {
+                tr(s, "servers-started")
+            } else {
+                String::new()
+            };
+            ui.label(RichText::new(mark).color(palette::current().details));
+        });
+        if clicked {
+            if item.kind.playable() {
+                out.push(Command::ServerPlay(item.id.clone()));
+            } else {
+                let mut path = page.path.clone();
+                path.push(Place {
+                    parent: item.id.clone(),
+                    title: item.title.clone(),
+                    kind: ParentKind::Item,
+                });
+                out.push(Command::ServerGo(path));
+            }
+        }
+    });
+    if listing.items.len() < listing.total
+        && ui
+            .add_enabled(!page.busy, Button::new(tr(s, "servers-more")))
+            .clicked()
+    {
+        out.push(Command::ServerMore);
+    }
 }
 
 /// Cards `width` wide in rows that fit the page, one row under the other:
@@ -405,7 +538,12 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         section(ui, &tr(s, "library-continue"));
         rows(ui, WIDE, &home.continue_watching, |ui, (uid, v)| {
             let series = v.series.and_then(|id| home.series_title(id));
-            let title = series.map_or_else(|| file_title(&v.path), str::to_string);
+            let title = home
+                .server_titles
+                .get(uid)
+                .map(String::as_str)
+                .or(series)
+                .map_or_else(|| file_title(&v.path), str::to_string);
             let left = v
                 .duration_ms
                 .map(|d| d.saturating_sub(v.last_position_ms) as i64);
@@ -838,10 +976,13 @@ mod tests {
                 |ui, t: &mut Test| {
                     let _ = ui.interact(ui.max_rect(), Id::unique("video"), Sense::click());
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
+                    let server_page = crate::servers::ServersPage::default();
                     let scene = Scene {
                         page: &t.page,
                         today: 0,
                         first_steps: t.first_steps,
+                        servers: &[],
+                        server_page: &server_page,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -893,6 +1034,7 @@ mod tests {
             )],
             series: vec![summary(1, "Alpha", 3, 1), summary(2, "Beta", 1, 0)],
             folders: vec![("/v".into(), FolderRecord::default())],
+            server_titles: Default::default(),
         }
     }
 

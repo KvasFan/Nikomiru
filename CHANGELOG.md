@@ -4,9 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-### Removed
+### Added
 
-- The spikes (`spikes/`): their decisions are in the ADRs and their code in the tag `v1.0.0`. The large synthetic audio database of spike S3 is now made by `xtask/scripts/android_db_large.py`.
+- Media servers (M11, SRV-001…SRV-013): Jellyfin and Plex in Settings → Media servers, a tab for each on the library page, their videos played with the same subtitles, lookups and cards as a file. Direct play only; the position and watched state go back to the server. Tokens stay inside Nikomiru: mpv and ffmpeg read through a relay on this computer.
+
+### Changed
+
+- SPECIFICATION: the media servers of M11, proposed (SRV-001…SRV-013, D-20), with their tests in TEST.
+- ROADMAP: the milestones after 1.0, in the maintainer's order (D-19): M11 Jellyfin and Plex, M12 backup and WebDAV sync, M13 advanced ASS and screenshots with subtitles, M14 clipboard lookup and texthooker, M15 MDict, StarDict and DSL, M16 books, manga and audiobooks.
 
 ## [1.0.0] - 2026-10-30
 

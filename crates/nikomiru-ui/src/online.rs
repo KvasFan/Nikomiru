@@ -26,6 +26,9 @@ pub struct OnlineQuery {
     pub episode: Option<u32>,
     /// The AniList id of its series, once identified (MET-001, MET-003).
     pub anilist_id: Option<u64>,
+    /// Where its subtitles are kept, for a media server's video, which has
+    /// no hash (SRV-010).
+    pub folder: Option<PathBuf>,
 }
 
 impl OnlineQuery {
@@ -38,6 +41,7 @@ impl OnlineQuery {
             season: info.season,
             episode: info.episode,
             anilist_id: None,
+            folder: None,
         }
     }
 }

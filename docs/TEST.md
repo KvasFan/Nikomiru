@@ -490,6 +490,20 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-MET-011 | Subtitle services | `[online] providers` read in its order, once each, unknown names left out; the service preferred first among equal files, the language still first (L1). kittest: a service moved up, one left out, the keys on each row, Save sends them in order, a service left out listed last. L6: with `providers = ["jimaku"]` a search asks only the fake Jimaku; saved from the tab as `["opensubtitles", "jimaku"]`, `config.toml` has them and the next search asks OpenSubtitles too | L1/L3/L6 |
 | T-MET-010 | File names | Fushi's vectors (groups, `SxxEyy`, `第N話`, `EP`, `#`, ` - N`, trailing numbers, Netflix-style dotted names, titles only in brackets, tilde secondary titles, explicit `{[s=…;e=…]}` blocks) and the season of the folder | L1 |
 | T-MET-LIVE-* | Real services | Smoke tests with keys from environment variables | L7 |
+| T-SRV-001 | Servers in the settings | kittest: add, rename, check, remove; none by default; removal logs out and keeps progress, statistics and cards | L3 |
+| T-SRV-002 | Jellyfin login | Fake server: the header's fields, the token and user id saved, the password nowhere in the config or logs; 401 asks again | L2 |
+| T-SRV-003 | Plex login | Fake plex.tv: PIN, polling that stops at the token, at the limit and on cancel; addresses local first | L2 |
+| T-SRV-004 | Secrets | The token never in a log, an `mpv_property`, or the arguments of a process; a redirect to another host loses it; no request with no server, or with a server whose page is closed (with T-PRV-001) | L2/L6 |
+| T-SRV-005 | Connections | The table of addresses: HTTP accepted on loopback, private, link-local and CGNAT, refused elsewhere unless ticked; the proxy skipped on private addresses | L1 |
+| T-SRV-006 | Library | Fake servers with 250 items: paging, series → seasons → episodes, movies, marks, search, the libraries chosen; the cover cache's limit; kittest of the tab | L2/L3 |
+| T-SRV-007 | Identity | The uid; a new id makes a new video; a rescan leaves server videos alone; the database opens with and without `server_items` | L1/L2 |
+| T-SRV-008 | Playback | E2E against a fake server serving the fixtures: first frame, seek, next episode, a thumbnail, a card's clip and frame | L6 |
+| T-SRV-009 | Relay | `Range` forwarded and answered with 206, the token added, a wrong path 404, methods other than `GET`/`HEAD` refused, the limit of connections, a client that leaves stops the upstream, the relay gone once the video closes | L2 |
+| T-SRV-010 | Subtitles | External ones listed and cached, embedded through the relay; the online search with title, season and episode and no file hash | L2/L6 |
+| T-SRV-011 | Progress | The later position wins, both ways; the reports' moments; a failed report dropped and playback unaffected; played at 90% | L2/L6 |
+| T-SRV-012 | Cards | The link reopens the scene; with the server gone, its message and nothing else | L6 |
+| T-SRV-013 | Errors | Each failure's message; truncated, oversized and wrong JSON never panic (fuzz target with T-SEC); the server failing during playback keeps the position | L2/L5 |
+| T-SRV-LIVE-* | Real servers | Smoke tests with an address and token from environment variables: Jellyfin and Plex | L7 |
 
 ### 6.14 Reliability and fuzzing
 
