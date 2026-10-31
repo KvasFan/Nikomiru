@@ -173,3 +173,58 @@ fn a_device_syncs_at_start_and_close() {
     let mine = DeviceState::decode(&bytes).unwrap();
     assert_eq!(mine.videos["video/av_basic"].position_ms, 3000, "{mine:?}");
 }
+
+// T-HOK-001, T-HOK-004, T-HOK-005: the lines of a game, a word of one looked
+// up, and a card with no video, only text
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_line_of_a_game_becomes_a_card() {
+    use nikomiru_anki::fake::FakeAnki;
+    use nikomiru_online::fake_servers::FakeHooker;
+    let anki = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&anki.url(), "").unwrap()).unwrap();
+    let hooker = FakeHooker::start(vec!["食べました".into()]).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!(
+        "[hooker]\nurl = \"{}\"\n[anki]\nurl = \"{}\"\n",
+        hooker.url(),
+        anki.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    // T-HOK-001: nothing connects until the page is open
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(hooker.connections(), 0);
+    h.cmd(json!({ "cmd": "hooker", "action": "open" }));
+    h.state_until("the line", |s| {
+        s["hooker"]["connected"] == true && s["hooker"]["lines"][0] == "食べました"
+    });
+    h.cmd(json!({ "cmd": "hooker", "action": "click", "line": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = h.cmd(json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }));
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let collection = anki.collection();
+        let note = collection.notes.iter().find(|n| n.id == note_id).unwrap();
+        assert!(
+            note.fields
+                .iter()
+                .any(|(name, value)| name == "Sentence" && value.contains("ました")),
+            "{:?}",
+            note.fields
+        );
+        assert!(collection.media.is_empty(), "no picture, no audio");
+    }
+    // T-HOK-001: closing it ends the reading, and the app does not come back
+    h.key("Escape");
+    h.key("Escape");
+    h.state_until("the page closed", |s| s["hooker"]["connected"] == false);
+    let connections = hooker.connections();
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(hooker.connections(), connections);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

@@ -15,6 +15,7 @@ pub mod controls;
 pub mod dictionaries;
 #[cfg(feature = "test-harness")]
 pub mod harness;
+pub mod hooker;
 pub mod hover;
 pub mod i18n;
 pub mod mining;

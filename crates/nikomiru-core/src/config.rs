@@ -78,6 +78,8 @@ pub struct Config {
     pub shortcuts: BTreeMap<String, Vec<String>>,
     /// `[sync]`: WebDAV (BAK-004).
     pub sync: SyncConfig,
+    /// `[hooker]`: the text of games (HOK-001).
+    pub hooker: HookerConfig,
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
@@ -373,6 +375,29 @@ pub struct NetworkConfig {
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// `[hooker]`: where the text of games comes from (HOK-001, HOK-003).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HookerConfig {
+    /// The hooker's WebSocket, on this computer.
+    pub url: String,
+    /// Watch the clipboard too.
+    pub clipboard: bool,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for HookerConfig {
+    fn default() -> Self {
+        Self {
+            url: "ws://127.0.0.1:6677".into(),
+            clipboard: false,
+            other: toml::Table::new(),
+        }
+    }
 }
 
 /// `[sync]`: the WebDAV folder (BAK-004).
@@ -722,6 +747,7 @@ impl Default for Config {
             word_audio: WordAudioConfig::default(),
             shortcuts: BTreeMap::new(),
             sync: SyncConfig::default(),
+            hooker: HookerConfig::default(),
             servers: Vec::new(),
             other: toml::Table::new(),
         }
@@ -1004,6 +1030,7 @@ impl Config {
         out.extend(self.network.other.keys().map(|k| format!("network.{k}")));
         out.extend(self.online.other.keys().map(|k| format!("online.{k}")));
         out.extend(self.sync.other.keys().map(|k| format!("sync.{k}")));
+        out.extend(self.hooker.other.keys().map(|k| format!("hooker.{k}")));
         out.extend(
             self.word_audio
                 .other

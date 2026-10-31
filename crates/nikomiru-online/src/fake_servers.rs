@@ -525,3 +525,71 @@ fn plex_tv(stream: &mut TcpStream, request: &Request, path: &str, shared: &Share
         _ => respond(stream, 404, "", b""),
     }
 }
+
+/// A fake hooker: a WebSocket on `127.0.0.1` that sends lines to whoever
+/// connects, and goes on until dropped (HOK-001).
+#[derive(Debug)]
+pub struct FakeHooker {
+    port: u16,
+    stop: Arc<AtomicBool>,
+    connections: Arc<AtomicUsize>,
+}
+
+impl FakeHooker {
+    /// Starts it; each connection gets `lines`, then stays open.
+    pub fn start(lines: Vec<String>) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", 0))?;
+        let port = listener.local_addr()?.port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::clone(&stop);
+        let connections = Arc::new(AtomicUsize::new(0));
+        let counting = Arc::clone(&connections);
+        std::thread::spawn(move || {
+            for connection in listener.incoming() {
+                if stopping.load(Ordering::SeqCst) {
+                    return;
+                }
+                let Ok(connection) = connection else {
+                    continue;
+                };
+                counting.fetch_add(1, Ordering::SeqCst);
+                let (lines, stopping) = (lines.clone(), Arc::clone(&stopping));
+                std::thread::spawn(move || {
+                    let Ok(mut socket) = tungstenite::accept(connection) else {
+                        return;
+                    };
+                    for line in lines {
+                        if socket.send(line.into()).is_err() {
+                            return;
+                        }
+                    }
+                    while !stopping.load(Ordering::SeqCst) {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                });
+            }
+        });
+        Ok(Self {
+            port,
+            stop,
+            connections,
+        })
+    }
+
+    /// Its address.
+    pub fn url(&self) -> String {
+        format!("ws://127.0.0.1:{}", self.port)
+    }
+
+    /// How many connected so far.
+    pub fn connections(&self) -> usize {
+        self.connections.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for FakeHooker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+    }
+}

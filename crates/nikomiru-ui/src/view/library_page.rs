@@ -57,6 +57,8 @@ pub(crate) struct State {
     focused_view: Option<Option<u64>>,
     /// This frame gives the keyboard to the first card or episode.
     focus_first: bool,
+    /// The Texthooker page was asked for (HOK-001).
+    pub(crate) open_hooker: bool,
     /// A tab of the settings a first step asked for (LIB-013).
     pub(crate) open_settings: Option<super::settings::SettingsTab>,
 }
@@ -221,6 +223,9 @@ pub(crate) fn draw(
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button(tr(s, "library-close")).clicked() {
                     close = true;
+                }
+                if ui.button(tr(s, "hooker-title")).clicked() {
+                    state.open_hooker = true;
                 }
                 if state.server.is_some() {
                 } else if state.statistics {

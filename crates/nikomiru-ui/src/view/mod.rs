@@ -14,6 +14,7 @@ mod backup_page;
 mod bar;
 mod chrome;
 mod dict_page;
+mod hooker_page;
 mod library_page;
 mod link;
 mod list;
@@ -188,6 +189,10 @@ pub(crate) struct View {
     pub servers_page_open: bool,
     pub servers: servers_page::State,
     pub backup_page_open: bool,
+    pub hooker_page_open: bool,
+    /// Esc, or a file opened: the Texthooker page closes at the next frame.
+    hooker_closing: bool,
+    pub hooker: hooker_page::State,
     /// The part of the window to read after this frame (PLY-015), in pixels.
     pub capture: Option<(egui::Pos2, egui::Vec2)>,
     pub backup: backup_page::State,
@@ -248,6 +253,8 @@ impl View {
                 // popups were closed by the session already (POP-012)
                 if self.online_page_open {
                     self.close_online_page();
+                } else if self.hooker_page_open {
+                    self.hooker_closing = true;
                 } else if self.library_page_open {
                     self.close_library_page();
                 } else if self.services_page_open
@@ -415,6 +422,19 @@ impl View {
         }
     }
 
+    /// The Texthooker page opens (HOK-001), in place of the Library page.
+    pub fn open_hooker_page(&mut self, out: &mut Vec<Command>) {
+        self.close_library_page();
+        self.hooker_page_open = true;
+        out.push(Command::HookerOpen);
+    }
+
+    pub fn close_hooker_page(&mut self, out: &mut Vec<Command>) {
+        self.hooker_page_open = false;
+        self.hooker = hooker_page::State::default();
+        out.push(Command::HookerClose);
+    }
+
     pub fn close_library_page(&mut self) {
         self.library_page_open = false;
         self.library.reset();
@@ -436,9 +456,13 @@ impl View {
         if s.opened() != self.opened {
             self.opened = s.opened();
             self.close_library_page();
+            self.hooker_closing = self.hooker_page_open;
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if std::mem::take(&mut self.hooker_closing) {
+            self.close_hooker_page(&mut out);
+        }
         if std::mem::take(&mut self.library_asked) {
             self.open_library_page(&mut out);
         }
@@ -509,6 +533,9 @@ impl View {
         if self.library_page_open {
             library_page::show(&ctx, s, self, &mut out);
         }
+        if std::mem::take(&mut self.library.open_hooker) {
+            self.open_hooker_page(&mut out);
+        }
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
         }
@@ -526,6 +553,9 @@ impl View {
         }
         if self.backup_page_open {
             backup_page::show(&ctx, s, self, &mut out);
+        }
+        if self.hooker_page_open {
+            hooker_page::show(&ctx, s, self, &mut out);
         }
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);
