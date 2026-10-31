@@ -10,6 +10,7 @@ use egui::{
     Align2, Area, Button, Color32, ComboBox, Frame, Id, Margin, Order, RichText, Role, Slider,
     WidgetInfo, pos2,
 };
+use nikomiru_player::player::Chapter;
 
 use super::palette;
 use super::settings::SettingsTab;
@@ -235,6 +236,50 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
     }
 }
 
+/// The chapter at `seconds` (PLY-019): the last one that has started.
+fn chapter_at(chapters: &[Chapter], seconds: f64) -> Option<usize> {
+    chapters.iter().rposition(|c| c.time <= seconds)
+}
+
+/// The name of chapter `index`: its title, or its number.
+fn chapter_name(s: &Session, chapters: &[Chapter], index: usize) -> String {
+    chapters
+        .get(index)
+        .and_then(|c| c.title.clone())
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| {
+            s.translator()
+                .tr("chapter-n", &[("n", (index + 1).to_string())])
+        })
+}
+
+/// The places of the chapters on the rail, from 0 to 1: the first one, at
+/// the start of the video, shows nothing.
+fn chapter_marks(chapters: &[Chapter], duration: f64) -> Vec<f32> {
+    chapters
+        .iter()
+        .filter(|c| c.time > 0.0 && c.time < duration)
+        .map(|c| (c.time / duration) as f32)
+        .collect()
+}
+
+/// The list of chapters: a click goes to one (PLY-019).
+fn chapter_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Command>) {
+    let v = &s.view;
+    let current = chapter_at(&v.chapters, v.time_pos);
+    for (index, chapter) in v.chapters.iter().enumerate() {
+        let label = format!(
+            "{}  {}",
+            clock((chapter.time * 1000.0) as i64),
+            chapter_name(s, &v.chapters, index)
+        );
+        if ui.selectable_label(current == Some(index), label).clicked() {
+            out.push(Command::SeekTo(chapter.time));
+            ui.close();
+        }
+    }
+}
+
 /// The time under the pointer over the progress bar, and its thumbnail once
 /// made (PLY-014).
 fn preview(
@@ -293,6 +338,11 @@ fn preview(
                                 .monospace()
                                 .color(Color32::WHITE),
                         );
+                        let chapters = &s.view.chapters;
+                        if let Some(index) = chapter_at(chapters, at_ms as f64 / 1000.0) {
+                            let name = chapter_name(s, chapters, index);
+                            ui.label(RichText::new(name).color(Color32::WHITE));
+                        }
                     });
                 });
         });
@@ -342,6 +392,16 @@ pub(crate) fn show(
                         view.bar.seek = None;
                     }
                     view.bar.progress = Some(slider.rect);
+                    // PLY-019: where the chapters start
+                    let rail = slider.rect.x_range().shrink(slider.rect.height() / 2.0);
+                    for share in chapter_marks(&v.chapters, duration) {
+                        let x = rail.min + share * rail.span();
+                        ui.painter().vline(
+                            x,
+                            slider.rect.y_range(),
+                            egui::Stroke::new(2.0, Color32::from_white_alpha(0xc0)),
+                        );
+                    }
                     preview(ui.ctx(), s, &mut view.bar, &slider, duration, out);
 
                     ui.horizontal(|ui| {
@@ -373,6 +433,11 @@ pub(crate) fn show(
                             ))
                             .monospace(),
                         );
+                        if let Some(index) = chapter_at(&v.chapters, v.time_pos) {
+                            ui.add(
+                                egui::Label::new(chapter_name(s, &v.chapters, index)).truncate(),
+                            );
+                        }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let (glyph, name) = if view.fullscreen {
                                 ("🗗", tr("exit-fullscreen"))
@@ -394,6 +459,16 @@ pub(crate) fn show(
                             // SET-008: the tab shown last
                             if icon(ui, true, "⚙", &tr("settings-title")) {
                                 view.open_settings(view.settings_tab, out);
+                            }
+                            if !v.chapters.is_empty() {
+                                let menu = ui.menu_button(tr("chapters"), |ui| {
+                                    egui::ScrollArea::vertical()
+                                        .max_height(320.0)
+                                        .show(ui, |ui| {
+                                            chapter_menu(ui, s, out);
+                                        });
+                                });
+                                named(&menu.response, true, &tr("chapters"));
                             }
                             let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
                                 subtitle_menu(ui, s, view, out);
@@ -462,4 +537,38 @@ pub(crate) fn show(
                 });
         });
     view.bar.height = response.response.rect.height();
+}
+
+#[cfg(test)]
+mod chapter_tests {
+    use super::*;
+
+    fn chapters() -> Vec<Chapter> {
+        [0.0, 60.0, 120.0]
+            .map(|time| Chapter { time, title: None })
+            .to_vec()
+    }
+
+    // T-PLY-019
+    #[test]
+    fn the_chapter_is_the_last_one_started() {
+        let c = chapters();
+        assert_eq!(chapter_at(&c, 0.0), Some(0));
+        assert_eq!(chapter_at(&c, 59.9), Some(0));
+        assert_eq!(chapter_at(&c, 60.0), Some(1));
+        assert_eq!(chapter_at(&c, 500.0), Some(2));
+        assert_eq!(chapter_at(&c[1..], 10.0), None);
+        assert_eq!(chapter_at(&[], 10.0), None);
+    }
+
+    // T-PLY-019: nothing at the very start, or past the end
+    #[test]
+    fn marks_sit_where_chapters_start() {
+        let mut c = chapters();
+        c.push(Chapter {
+            time: 900.0,
+            title: None,
+        });
+        assert_eq!(chapter_marks(&c, 240.0), [0.25, 0.5]);
+    }
 }

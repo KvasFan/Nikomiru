@@ -681,3 +681,7 @@ sync-now = Sync now
 sync-saved = Saved.
 sync-checked = The folder can be written.
 sync-done = Synced with { $devices } other devices; { $skipped } skipped.
+
+chapters = Chapters
+chapter-n = Chapter { $n }
+word-audio-setup = No pronunciation source yet: add one in the settings

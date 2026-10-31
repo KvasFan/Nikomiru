@@ -429,6 +429,8 @@ pub(crate) enum Command {
     /// "Use" on one of its results.
     OnlineUse(usize),
     /// Save these online settings.
+    /// The Word audio tab of the settings, for a first source (AUD-009).
+    WordAudioSetup,
     /// The Backup tab opened.
     BackupOpen,
     /// New settings of the WebDAV folder.
@@ -1141,6 +1143,14 @@ impl Ui {
                 episode,
             } => s.online_search(title, season, episode),
             Command::OnlineUse(index) => s.online_use(index),
+            Command::WordAudioSetup => {
+                let mut out = Vec::new();
+                self.view
+                    .open_settings(crate::view::settings::SettingsTab::Audio, &mut out);
+                for command in out {
+                    self.run(command);
+                }
+            }
             Command::BackupOpen => s.backup_open(),
             Command::SyncSave(sync) => s.sync_save(*sync),
             Command::SyncCheck => s.sync_check(),

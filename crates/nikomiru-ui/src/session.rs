@@ -108,8 +108,8 @@ pub struct ViewState {
     pub audio_tracks: Vec<Track>,
     /// Selected audio track.
     pub aid: Option<i64>,
-    /// Number of chapters.
-    pub chapters: usize,
+    /// The chapters of the file, in order (PLY-019).
+    pub chapters: Vec<nikomiru_player::player::Chapter>,
     /// Error to show, already translated (PLY-012, ERR-001).
     pub error: Option<String>,
     /// Display size of the video (anamorphic pixels applied), 0 if unknown.
@@ -129,7 +129,7 @@ impl Default for ViewState {
             speed: 1.0,
             audio_tracks: Vec::new(),
             aid: None,
-            chapters: 0,
+            chapters: Vec::new(),
             error: None,
             video_size: (0, 0),
         }
@@ -981,7 +981,7 @@ impl Session {
             }
             PlayerEvent::VideoSize(w, h) => self.view.video_size = (w, h),
             PlayerEvent::Aid(a) => self.view.aid = a,
-            PlayerEvent::Chapters(c) => self.view.chapters = c.len(),
+            PlayerEvent::Chapters(c) => self.view.chapters = c,
             // LIB-009: the episode ended (`keep-open` holds its last frame)
             PlayerEvent::EofReached(true) => self.episode_ended(now),
             PlayerEvent::EofReached(false) => self.cancel_next(),

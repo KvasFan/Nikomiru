@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Chapters show (PLY-019): marks on the progress bar, the current one next to the time, the one under the pointer, and a menu to go to one. They could only be reached with PageUp and PageDown.
+- With no word audio source, the popup offers the way to add one (AUD-009), instead of nothing.
 - Advanced ASS (M13, SUB-019), with "respect ASS styles" on: fades, moves, rotations, scaling, clips, transforms and karaoke, every character still clickable where it is drawn.
 - `Shift+S` saves the frame with its subtitles (PLY-015).
 - Backup and sync (M12, BAK-001…BAK-010): Settings → Backup writes a backup to a file and restores one at the next start; a WebDAV folder keeps progress, statistics and cards the same on your computers, merged record by record, by hand or at start and close.

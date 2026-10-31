@@ -681,3 +681,7 @@ sync-now = Sincronizza ora
 sync-saved = Salvato.
 sync-checked = La cartella è scrivibile.
 sync-done = Sincronizzato con { $devices } altri dispositivi; { $skipped } saltati.
+
+chapters = Capitoli
+chapter-n = Capitolo { $n }
+word-audio-setup = Nessuna fonte per la pronuncia: aggiungine una nelle impostazioni
