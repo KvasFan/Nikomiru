@@ -277,4 +277,10 @@ fn a_book_is_read_and_mined_and_keeps_its_place() {
     assert_eq!(h.state()["books"]["list"].as_array().unwrap().len(), 1);
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // T-BOK-008: each closing added a session, the first with what it advanced
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let sessions = library.segments().unwrap();
+    assert_eq!(sessions.len(), 2, "{sessions:?}");
+    assert!(sessions.iter().all(|(_, s)| s.media.starts_with("book/")));
+    assert!(sessions.iter().any(|(_, s)| s.chars > 0), "{sessions:?}");
 }
