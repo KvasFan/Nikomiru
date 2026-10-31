@@ -1,0 +1,26 @@
+[package]
+name = "nikomiru-books"
+description = "EPUB books read into clean text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# A small EPUB for the tests (`nikomiru_books::sample`).
+test-support = []
+
+[dependencies]
+nikomiru-core.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+# the pure-Rust deflate backend for zip (SPECIFICATION §4)
+flate2.workspace = true
+
+[dev-dependencies]
+nikomiru-books = { path = ".", features = ["test-support"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

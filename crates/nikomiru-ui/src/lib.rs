@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod books;
 pub mod catalog;
 pub mod controls;
 pub mod dictionaries;

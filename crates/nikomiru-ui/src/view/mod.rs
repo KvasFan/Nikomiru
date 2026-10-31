@@ -12,6 +12,7 @@ mod anki_page;
 mod audio_page;
 mod backup_page;
 mod bar;
+mod books_page;
 mod chrome;
 mod dict_page;
 mod hooker_page;
@@ -61,6 +62,8 @@ pub enum Dialog {
     AudioDatabase,
     /// Where to export the study sessions (STA-005).
     StatsExport,
+    /// A book to add (BOK-004).
+    Book,
     /// Where to write a backup (BAK-001).
     BackupSave,
     /// A backup to restore (BAK-003).
@@ -134,6 +137,10 @@ impl FileDialog {
                 tr("stats-export"),
                 vec![(tr("stats-csv-filter"), vec!["*.csv"]), all],
             ),
+            Dialog::Book => (
+                tr("books-add"),
+                vec![(tr("books-filter"), vec!["*.epub"]), all],
+            ),
             Dialog::BackupSave => (
                 tr("backup-make"),
                 vec![(tr("backup-filter"), vec!["*.nikomiru-backup"]), all],
@@ -193,8 +200,11 @@ pub(crate) struct View {
     pub servers: servers_page::State,
     pub backup_page_open: bool,
     pub hooker_page_open: bool,
+    pub books_page_open: bool,
     /// Esc, or a file opened: the Texthooker page closes at the next frame.
     hooker_closing: bool,
+    /// Esc, or a file opened: the book, then the Books page, close.
+    books_closing: bool,
     pub hooker: hooker_page::State,
     /// The part of the window to read after this frame (PLY-015), in pixels.
     pub capture: Option<(egui::Pos2, egui::Vec2)>,
@@ -258,6 +268,8 @@ impl View {
                     self.close_online_page();
                 } else if self.hooker_page_open {
                     self.hooker_closing = true;
+                } else if self.books_page_open {
+                    self.books_closing = true;
                 } else if self.library_page_open {
                     self.close_library_page();
                 } else if self.services_page_open
@@ -425,6 +437,18 @@ impl View {
         }
     }
 
+    /// The Books page opens (BOK-004), in place of the Library page.
+    pub fn open_books_page(&mut self, out: &mut Vec<Command>) {
+        self.close_library_page();
+        self.books_page_open = true;
+        out.push(Command::BooksOpen);
+    }
+
+    pub fn close_books_page(&mut self, out: &mut Vec<Command>) {
+        self.books_page_open = false;
+        out.push(Command::BookClose);
+    }
+
     /// The Texthooker page opens (HOK-001), in place of the Library page.
     pub fn open_hooker_page(&mut self, out: &mut Vec<Command>) {
         self.close_library_page();
@@ -460,11 +484,19 @@ impl View {
             self.opened = s.opened();
             self.close_library_page();
             self.hooker_closing = self.hooker_page_open;
+            self.books_closing = self.books_page_open;
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
         if std::mem::take(&mut self.hooker_closing) {
             self.close_hooker_page(&mut out);
+        }
+        if std::mem::take(&mut self.books_closing) {
+            if s.books_page.open.is_some() {
+                out.push(Command::BookClose);
+            } else {
+                self.close_books_page(&mut out);
+            }
         }
         if std::mem::take(&mut self.library_asked) {
             self.open_library_page(&mut out);
@@ -539,6 +571,9 @@ impl View {
         if std::mem::take(&mut self.library.open_hooker) {
             self.open_hooker_page(&mut out);
         }
+        if std::mem::take(&mut self.library.open_books) {
+            self.open_books_page(&mut out);
+        }
         if self.dict_page_open {
             dict_page::show(&ctx, s, self, &mut out);
         }
@@ -559,6 +594,9 @@ impl View {
         }
         if self.hooker_page_open {
             hooker_page::show(&ctx, s, self, &mut out);
+        }
+        if self.books_page_open {
+            books_page::show(&ctx, s, self, &mut out);
         }
         if self.audio_page_open {
             audio_page::show(&ctx, s, self, &mut out);

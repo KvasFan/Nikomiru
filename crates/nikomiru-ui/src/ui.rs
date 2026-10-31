@@ -36,6 +36,13 @@ pub enum Inbound {
     Sync(Box<crate::sync::SyncAnswer>),
     /// A report of the hooker worker.
     Hooker(crate::hooker::HookerEvent),
+    /// A book file was read (BOK-001).
+    BookRead {
+        /// The file.
+        path: PathBuf,
+        /// The book, or why not.
+        read: crate::books::Read,
+    },
     /// A subtitle load ended.
     Subtitles {
         /// The session's load generation.
@@ -254,6 +261,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Servers(_) => "Servers",
             Inbound::Sync(_) => "Sync",
             Inbound::Hooker(_) => "Hooker",
+            Inbound::BookRead { .. } => "BookRead",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -434,6 +442,22 @@ pub(crate) enum Command {
     /// Save these online settings.
     /// The Word audio tab of the settings, for a first source (AUD-009).
     WordAudioSetup,
+    /// The Books page opened.
+    BooksOpen,
+    /// A book of the list.
+    BookChoose(String),
+    BookRemove(String),
+    /// Goes to a chapter.
+    BookChapter(usize),
+    /// The view reached a paragraph.
+    BookAt(usize),
+    BookClose,
+    /// A click on a paragraph.
+    BookClicked {
+        paragraph: usize,
+        offset: usize,
+        anchor: Rect,
+    },
     /// The Texthooker page opened.
     HookerOpen,
     HookerClose,
@@ -768,6 +792,7 @@ impl Ui {
                         .library_import(path, nikomiru_library::Grouping::BySeries),
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                     Dialog::StatsExport => self.session.stats_export(path),
+                    Dialog::Book => self.session.book_add(path),
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                 }
@@ -807,6 +832,10 @@ impl Ui {
             }
             Inbound::ServerReady { uid, result } => {
                 self.session.server_ready(&uid, *result);
+                true
+            }
+            Inbound::BookRead { path, read } => {
+                self.session.book_read(path, read);
                 true
             }
             Inbound::Hooker(event) => {
@@ -1171,6 +1200,17 @@ impl Ui {
                     self.run(command);
                 }
             }
+            Command::BooksOpen => s.books_open(),
+            Command::BookChoose(uid) => s.book_choose(&uid),
+            Command::BookRemove(uid) => s.book_remove(&uid),
+            Command::BookChapter(chapter) => s.book_chapter(chapter),
+            Command::BookAt(paragraph) => s.book_at(paragraph),
+            Command::BookClose => s.book_close(),
+            Command::BookClicked {
+                paragraph,
+                offset,
+                anchor,
+            } => s.book_clicked(paragraph, offset, anchor),
             Command::HookerOpen => s.hooker_open(),
             Command::HookerClose => s.hooker_close(),
             Command::HookerClear => s.hooker_page.lines.clear(),
@@ -1367,6 +1407,14 @@ impl Ui {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
             }
+        }
+        for path in self.session.take_book_reads() {
+            let waker = self.waker.clone();
+            crate::books::start_read(
+                path,
+                self.session.translator_clone(),
+                Box::new(move |path, read| waker.wake(Inbound::BookRead { path, read })),
+            );
         }
         match self.session.take_hooker_run() {
             Some(true) => {

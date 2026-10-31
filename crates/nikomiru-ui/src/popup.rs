@@ -47,6 +47,14 @@ pub enum Origin {
         /// Byte offset of the query in the line.
         start: usize,
     },
+    /// A paragraph of the book open: which, and the byte where the query
+    /// starts (BOK-006).
+    Book {
+        /// Paragraph index in the chapter shown.
+        paragraph: usize,
+        /// Byte offset of the query in the paragraph.
+        start: usize,
+    },
     /// Text inside the popup below (a link or a selection).
     Glossary,
 }
@@ -281,7 +289,7 @@ impl Popups {
     pub fn root_cue(&self) -> Option<usize> {
         match self.stack.first()?.origin {
             Origin::Subtitle { cue, .. } => Some(cue),
-            Origin::Hooked { .. } | Origin::Glossary => None,
+            Origin::Hooked { .. } | Origin::Book { .. } | Origin::Glossary => None,
         }
     }
 

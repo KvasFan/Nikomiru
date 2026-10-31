@@ -60,6 +60,7 @@ tempfile.workspace = true
 nikomiru-anki = { workspace = true, features = ["test-support"] }
 # the fake Jimaku and OpenSubtitles of the online subtitle tests
 nikomiru-online = { workspace = true, features = ["test-support"] }
+nikomiru-books = { workspace = true, features = ["test-support"] }
 # the L6 tests write a large dictionary for an import to interrupt
 zip.workspace = true
 wayland-protocols-wlr.workspace = true

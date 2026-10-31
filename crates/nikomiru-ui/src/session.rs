@@ -390,6 +390,10 @@ pub struct Session {
     server_jobs: Vec<crate::servers::ServerJob>,
     /// The Texthooker page.
     pub hooker_page: crate::hooker::HookerPage,
+    /// The Books page.
+    pub books_page: crate::books::BooksPage,
+    /// Books to read, taken by the UI layer.
+    book_reads: Vec<PathBuf>,
     /// The hooker worker is to start, or to stop.
     hooker_run: Option<bool>,
     /// The name of the picture of the screen to take (PLY-015).
@@ -649,6 +653,8 @@ impl Session {
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
             hooker_page: crate::hooker::HookerPage::default(),
+            books_page: crate::books::BooksPage::default(),
+            book_reads: Vec::new(),
             hooker_run: None,
             capture: None,
             sync_jobs: Vec::new(),
@@ -2899,9 +2905,10 @@ impl Session {
         }
     }
 
-    /// Nikomiru closes: the server hears of it.
+    /// Nikomiru closes: the server hears of it, and a book saves its place.
     pub fn quitting(&mut self) {
         self.report_stopped();
+        self.book_close();
     }
 
     /// The server hears that its video closed; whether one was playing.
@@ -3073,10 +3080,33 @@ impl Session {
         action: crate::mining::CardAction,
     ) -> Option<(u64, crate::mining::MineRequest)> {
         use crate::mining::{FrameChoice, MineRequest};
-        // HOK-005: a line of a game has no video: its card is only text
-        if let Some(Origin::Hooked { line, start }) =
-            self.popups.stack().first().map(|p| p.origin.clone())
-        {
+        // HOK-005, BOK-007: a line of a game or of a book has no video: its
+        // card is only text
+        let text_only = match self.popups.stack().first().map(|p| p.origin.clone()) {
+            Some(Origin::Hooked { line, start }) => Some((
+                self.hooker_page.lines.get(line)?.clone(),
+                start,
+                self.tr("hooker-title", &[]),
+            )),
+            Some(Origin::Book { paragraph, start }) => {
+                let open = self.books_page.open.as_ref()?;
+                let text = &open
+                    .book
+                    .chapters
+                    .get(open.chapter)?
+                    .paragraphs
+                    .get(paragraph)?
+                    .text;
+                let around = nikomiru_text::sentence::sentence(text, start..start);
+                Some((
+                    text[around.range.clone()].to_string(),
+                    start.saturating_sub(around.range.start),
+                    open.book.title.clone(),
+                ))
+            }
+            _ => None,
+        };
+        if let Some((sentence, start, title)) = text_only {
             let p = self.popups.stack().get(level)?;
             let e = p.reply.as_ref()?.content.entries.get(entry)?;
             let request = MineRequest {
@@ -3085,7 +3115,7 @@ impl Session {
                 expression: e.expression.clone(),
                 reading: e.reading.clone(),
                 matched: e.matched.clone(),
-                sentence: self.hooker_page.lines.get(line)?.clone(),
+                sentence,
                 offset: (level == 0).then_some(start),
                 video: PathBuf::new(),
                 audio_input: PathBuf::new(),
@@ -3093,7 +3123,7 @@ impl Session {
                 clip: None,
                 position_ms: 0,
                 uid: None,
-                title: self.tr("hooker-title", &[]),
+                title,
                 action,
                 frame: FrameChoice::None,
                 audio: false,
@@ -4585,6 +4615,208 @@ impl Session {
         let commands =
             self.popups
                 .open_from_subtitle(playing, query, Origin::Subtitle { cue, start }, anchor);
+        self.run_popup_commands(commands);
+    }
+
+    fn books_reload(&mut self) {
+        self.books_page.list = self
+            .services
+            .library
+            .as_ref()
+            .and_then(|lib| {
+                lib.books()
+                    .inspect_err(|e| tracing::warn!("library: {e}"))
+                    .ok()
+            })
+            .unwrap_or_default();
+    }
+
+    /// The Books page opened.
+    pub fn books_open(&mut self) {
+        self.books_page.status = None;
+        self.books_reload();
+    }
+
+    /// A book file was chosen.
+    pub fn book_add(&mut self, path: PathBuf) {
+        self.books_page.busy = true;
+        self.books_page.status = None;
+        self.book_reads.push(path);
+    }
+
+    /// A book of the list was chosen: its file is read again.
+    pub fn book_choose(&mut self, uid: &str) {
+        let path = self
+            .books_page
+            .list
+            .iter()
+            .find(|(u, _)| u == uid)
+            .map(|(_, b)| PathBuf::from(&b.path));
+        if let Some(path) = path {
+            self.book_add(path);
+        }
+    }
+
+    /// The books to read, taken by the UI layer.
+    pub fn take_book_reads(&mut self) -> Vec<PathBuf> {
+        std::mem::take(&mut self.book_reads)
+    }
+
+    /// The interface strings.
+    pub fn translator_clone(&self) -> crate::i18n::Translator {
+        self.services.translator.clone()
+    }
+
+    /// A book was read: it opens where it was left (BOK-004, BOK-005).
+    pub fn book_read(&mut self, path: PathBuf, read: crate::books::Read) {
+        self.books_page.busy = false;
+        let book = match read {
+            Ok(book) => book,
+            Err(e) => {
+                self.books_page.status = Some((e, false));
+                return;
+            }
+        };
+        let chars = book.chars();
+        let uid = nikomiru_library::books::book_uid(&book.title, &book.author, chars);
+        let library = self.services.library.as_ref().filter(|l| !l.read_only());
+        let mut record = library
+            .and_then(|lib| lib.book(&uid).ok().flatten())
+            .unwrap_or_default();
+        record.path = path.to_string_lossy().into_owned();
+        record.title.clone_from(&book.title);
+        record.author.clone_from(&book.author);
+        record.chars = chars;
+        let moment = self.moment();
+        record.last_read_at = Some(moment.unix_ms);
+        if let Some(lib) = library
+            && let Err(e) = lib.put_book(&uid, &record)
+        {
+            tracing::warn!("library: {e}");
+        }
+        let chapter = (record.chapter as usize).min(book.chapters.len().saturating_sub(1));
+        self.books_page.open = Some(crate::books::OpenBook {
+            uid,
+            chapter,
+            paragraph: record.paragraph as usize,
+            jump: true,
+            started: (moment.mono_ms, record.read_chars),
+            book,
+        });
+        self.books_reload();
+    }
+
+    /// The view reached the paragraph at the top of the page.
+    pub fn book_at(&mut self, paragraph: usize) {
+        if let Some(open) = &mut self.books_page.open {
+            open.paragraph = paragraph;
+            open.jump = false;
+        }
+    }
+
+    /// Goes to a chapter.
+    pub fn book_chapter(&mut self, chapter: usize) {
+        self.close_all_popups();
+        self.book_save();
+        if let Some(open) = &mut self.books_page.open
+            && chapter < open.book.chapters.len()
+        {
+            open.chapter = chapter;
+            open.paragraph = 0;
+            open.jump = true;
+        }
+    }
+
+    /// The place reached is saved.
+    fn book_save(&mut self) {
+        let Some(open) = &self.books_page.open else {
+            return;
+        };
+        let read_chars = open.book.chars_before(open.chapter, open.paragraph);
+        let (uid, chapter, paragraph) =
+            (open.uid.clone(), open.chapter as u32, open.paragraph as u32);
+        if let Some(w) = &self.writer {
+            w.run(move |lib| {
+                let saved = lib.book(&uid).and_then(|record| match record {
+                    Some(mut record) => {
+                        record.read_chars = read_chars;
+                        record.chapter = chapter;
+                        record.paragraph = paragraph;
+                        lib.put_book(&uid, &record)
+                    }
+                    None => Ok(()),
+                });
+                if let Err(e) = saved {
+                    tracing::warn!("library: {e}");
+                }
+            });
+        }
+    }
+
+    /// The book closes: its place is saved, and the time read goes into the
+    /// statistics (BOK-008).
+    pub fn book_close(&mut self) {
+        self.close_all_popups();
+        self.book_save();
+        let moment = self.moment();
+        if let (Some(open), Some(w)) = (self.books_page.open.take(), &self.writer) {
+            let (start_mono, start_chars) = open.started;
+            let duration_ms = (moment.mono_ms - start_mono).max(0);
+            let reached = open.book.chars_before(open.chapter, open.paragraph);
+            let (date, hour) =
+                nikomiru_library::stats::local_day_hour(moment.unix_ms, moment.offset_s);
+            let segment = nikomiru_library::stats::Segment {
+                media: open.uid.clone(),
+                start_ms: moment.unix_ms - duration_ms,
+                end_ms: moment.unix_ms,
+                date,
+                hour,
+                duration_ms,
+                chars: reached.saturating_sub(start_chars),
+                lookups: 0,
+                cards: 0,
+            };
+            let id = uuid::Uuid::new_v4().as_u128();
+            w.run(move |lib| {
+                if let Err(e) = lib.save_study(&open.uid, None, None, &[(id, segment)]) {
+                    tracing::warn!("library: {e}");
+                }
+            });
+        }
+        if let Some(w) = &self.writer {
+            w.wait();
+        }
+        self.books_reload();
+    }
+
+    /// Forgets a book: its file stays.
+    pub fn book_remove(&mut self, uid: &str) {
+        if let Some(lib) = self.services.library.as_ref().filter(|l| !l.read_only())
+            && let Err(e) = lib.remove_book(uid)
+        {
+            tracing::warn!("library: {e}");
+        }
+        self.books_reload();
+    }
+
+    /// A click on paragraph `paragraph` of the chapter shown, at byte
+    /// `offset` (BOK-006).
+    pub fn book_clicked(&mut self, paragraph: usize, offset: usize, anchor: Rect) {
+        let text = self.books_page.open.as_ref().and_then(|open| {
+            let chapter = open.book.chapters.get(open.chapter)?;
+            Some(chapter.paragraphs.get(paragraph)?.text.clone())
+        });
+        let Some(text) = text.filter(|t| offset < t.len()) else {
+            return;
+        };
+        let range = nikomiru_text::scan::query(&text, offset, nikomiru_text::scan::Context::Free);
+        let query = nikomiru_text::scan::normalize(&text[range.clone()]);
+        if query.is_empty() {
+            return;
+        }
+        let start = range.start + text[range].find(query.as_str()).unwrap_or(0);
+        let origin = Origin::Book { paragraph, start };
+        let commands = self.popups.open_from_subtitle(false, query, origin, anchor);
         self.run_popup_commands(commands);
     }
 

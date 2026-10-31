@@ -115,6 +115,10 @@ Nulla va online se non lo chiedi.
 
 Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le righe che Textractor o LunaTranslator inviano sul loro WebSocket (`ws://127.0.0.1:6677` di default). Clicca una parola per cercarla; una carta creata da lì ha la parola e la frase, senza immagine né audio. Ctrl+V aggiunge ciò che hai copiato. Leggere gli appunti da solo richiede `wl-paste` o `xclip` e non funziona su GNOME Wayland.
 
+### Libri
+
+"Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. Il testo è orizzontale e le immagini non vengono mostrate.
+
 ### Jellyfin e Plex
 
 Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione.

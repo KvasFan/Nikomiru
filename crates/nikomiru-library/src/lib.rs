@@ -9,6 +9,7 @@
 #![deny(missing_docs)]
 
 pub mod backup;
+pub mod books;
 pub mod cards;
 pub mod db;
 pub mod dictionaries;

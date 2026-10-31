@@ -228,3 +228,53 @@ fn a_line_of_a_game_becomes_a_card() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-BOK-001, T-BOK-004, T-BOK-005, T-BOK-006, T-BOK-007: a book from its file
+// to a card of its sentence, and back where it was left
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_book_is_read_and_mined_and_keeps_its_place() {
+    use nikomiru_anki::fake::FakeAnki;
+    let anki = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&anki.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!("[anki]\nurl = \"{}\"\n", anki.url()));
+    let path = desk.path("book.epub");
+    nikomiru_books::sample::write(&path).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the book", |s| s["books"]["open"] == "見本の本");
+    h.cmd(json!({ "cmd": "books", "action": "next" }));
+    h.state_until("the second chapter", |s| s["books"]["chapter"] == 1);
+    // 明日も食べました: the click is on 食, three characters in
+    h.cmd(json!({ "cmd": "books", "action": "click", "paragraph": 1, "offset": 9 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = h.cmd(json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }));
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let collection = anki.collection();
+        let note = collection.notes.iter().find(|n| n.id == note_id).unwrap();
+        assert!(
+            note.fields
+                .iter()
+                .any(|(name, value)| name == "Sentence" && value.contains("ました")),
+            "{:?}",
+            note.fields
+        );
+        assert!(collection.media.is_empty(), "no picture, no audio");
+    }
+    h.cmd(json!({ "cmd": "books", "action": "close" }));
+    h.state_until("its place", |s| {
+        s["books"]["open"].is_null() && s["books"]["list"][0]["chapter"] == 1
+    });
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the same chapter", |s| s["books"]["chapter"] == 1);
+    assert_eq!(h.state()["books"]["list"].as_array().unwrap().len(), 1);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
