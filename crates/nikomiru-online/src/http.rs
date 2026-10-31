@@ -218,6 +218,32 @@ impl Http {
         Self::read(url, response, ANSWER_LIMIT)
     }
 
+    /// A WebDAV request with Basic authentication, on the API client: no
+    /// redirects, which would take the password elsewhere (BAK-004).
+    pub fn dav(
+        &self,
+        method: &str,
+        url: &Url,
+        login: (&str, &str),
+        depth: Option<&str>,
+        body: Option<Vec<u8>>,
+    ) -> Result<Response, OnlineError> {
+        let method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| OnlineError::Io(method.to_string()))?;
+        let mut request = self
+            .api
+            .request(method, url.clone())
+            .basic_auth(login.0, Some(login.1));
+        if let Some(depth) = depth {
+            request = request.header("Depth", depth);
+        }
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let response = request.send().map_err(|e| failure(url, &e))?;
+        Self::read(url, response, FILE_LIMIT)
+    }
+
     /// `GET url` of a file, at most [`FILE_LIMIT`] bytes.
     pub fn file(&self, url: &Url, headers: &[(&str, &str)]) -> Result<Response, OnlineError> {
         let mut request = self.files.get(url.clone());

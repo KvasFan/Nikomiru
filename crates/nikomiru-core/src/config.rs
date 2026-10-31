@@ -76,6 +76,8 @@ pub struct Config {
     /// `[shortcuts]`: action → keys, only for the bindings changed by the user
     /// (KEY-001). The defaults live in the UI.
     pub shortcuts: BTreeMap<String, Vec<String>>,
+    /// `[sync]`: WebDAV (BAK-004).
+    pub sync: SyncConfig,
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
@@ -371,6 +373,36 @@ pub struct NetworkConfig {
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// `[sync]`: the WebDAV folder (BAK-004).
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SyncConfig {
+    /// The folder's address; empty: no sync.
+    pub url: String,
+    /// The user.
+    pub user: String,
+    /// The password (MET-005).
+    pub password: String,
+    /// Plain HTTP allowed outside the user's own networks (SRV-005).
+    pub allow_unencrypted: bool,
+    /// Sync at start and close (BAK-009).
+    pub automatic: bool,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl std::fmt::Debug for SyncConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // never the password (MET-005, PRV-002)
+        f.debug_struct("SyncConfig")
+            .field("url", &without_userinfo(&self.url))
+            .field("user", &self.user)
+            .field("automatic", &self.automatic)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A media server (SRV-001).
@@ -689,6 +721,7 @@ impl Default for Config {
             online: OnlineConfig::default(),
             word_audio: WordAudioConfig::default(),
             shortcuts: BTreeMap::new(),
+            sync: SyncConfig::default(),
             servers: Vec::new(),
             other: toml::Table::new(),
         }
@@ -911,6 +944,49 @@ impl Config {
         }
     }
 
+    /// These settings with every key, password and token blank, for a backup
+    /// (BAK-002).
+    pub fn without_secrets(&self) -> Self {
+        let mut out = self.clone();
+        out.anki.api_key.clear();
+        out.online.jimaku_api_key.clear();
+        out.online.opensubtitles_api_key.clear();
+        out.online.opensubtitles_password.clear();
+        out.sync.password.clear();
+        for server in &mut out.servers {
+            server.token.clear();
+        }
+        out
+    }
+
+    /// The keys blank here, taken from `current` (BAK-003).
+    pub fn fill_secrets(&mut self, current: &Self) {
+        let fill = |to: &mut String, from: &str| {
+            if to.is_empty() {
+                *to = from.to_string();
+            }
+        };
+        fill(&mut self.anki.api_key, &current.anki.api_key);
+        fill(
+            &mut self.online.jimaku_api_key,
+            &current.online.jimaku_api_key,
+        );
+        fill(
+            &mut self.online.opensubtitles_api_key,
+            &current.online.opensubtitles_api_key,
+        );
+        fill(
+            &mut self.online.opensubtitles_password,
+            &current.online.opensubtitles_password,
+        );
+        fill(&mut self.sync.password, &current.sync.password);
+        for server in &mut self.servers {
+            if let Some(same) = current.servers.iter().find(|s| s.id == server.id) {
+                fill(&mut server.token, &same.token);
+            }
+        }
+    }
+
     /// Dotted names of the keys this version does not know (for a warning).
     pub fn unknown_keys(&self) -> Vec<String> {
         let mut out: Vec<String> = self.other.keys().cloned().collect();
@@ -922,6 +998,7 @@ impl Config {
         out.extend(self.paths.other.keys().map(|k| format!("paths.{k}")));
         out.extend(self.network.other.keys().map(|k| format!("network.{k}")));
         out.extend(self.online.other.keys().map(|k| format!("online.{k}")));
+        out.extend(self.sync.other.keys().map(|k| format!("sync.{k}")));
         out.extend(
             self.word_audio
                 .other
@@ -1194,6 +1271,27 @@ Expression = "{expression}"
     }
 
     // T-MET-005
+    #[test]
+    // T-BAK-002, T-BAK-003
+    fn a_backup_leaves_the_secrets_out_and_a_restore_puts_them_back() {
+        let mut config = Config::default();
+        config.anki.api_key = "s3cret-a".into();
+        config.online.jimaku_api_key = "s3cret-b".into();
+        config.online.opensubtitles_api_key = "s3cret-c".into();
+        config.online.opensubtitles_password = "s3cret-d".into();
+        config.sync.password = "s3cret-e".into();
+        config.servers.push(ServerConfig {
+            id: "a".into(),
+            token: "s3cret-f".into(),
+            ..ServerConfig::default()
+        });
+        let mut blank = config.without_secrets();
+        let text = toml::to_string(&blank).unwrap();
+        assert!(!text.contains("s3cret"), "{text}");
+        blank.fill_secrets(&config);
+        assert_eq!(blank, config);
+    }
+
     #[test]
     fn online_settings_keep_their_secrets() {
         let c = Config::from_toml(

@@ -479,7 +479,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: watch the series of a Jellyfin or Plex server with the same subtitles, lookups and cards as a local file.
 
-**Requirements**: SRV-001…SRV-013 (proposed, to accept with D-20).
+**Requirements**: SRV-001…SRV-013 (D-20).
 
 **Deliverables**
 
@@ -497,7 +497,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Exit criteria**
 
-- [ ] SRV-001…SRV-013 accepted (D-20); T-SRV-001…T-SRV-013 green on simulated servers.
+- [x] SRV-001…SRV-013 accepted (D-20); T-SRV-001…T-SRV-013 green on simulated servers.
 - [ ] An episode from a real Jellyfin and from a real Plex: played, looked up, made into a card whose link reopens it.
 - [ ] **Release 1.1.0**.
 
@@ -507,7 +507,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: keep the library, the statistics and the settings safe, and the same on two computers.
 
-**Requirements**: BAK-001…BAK-010 (proposed, to accept with D-21).
+**Requirements**: BAK-001…BAK-010 (D-21).
 
 **Deliverables**
 

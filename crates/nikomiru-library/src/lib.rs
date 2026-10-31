@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod backup;
 pub mod cards;
 pub mod db;
 pub mod dictionaries;
@@ -20,6 +21,7 @@ pub mod scan;
 pub mod series_info;
 pub mod server_items;
 pub mod stats;
+pub mod sync;
 pub mod uid;
 pub mod writer;
 

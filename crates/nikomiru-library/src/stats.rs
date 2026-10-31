@@ -17,11 +17,11 @@ use serde::{Deserialize, Serialize};
 use crate::db::{Library, LibraryError, db_err};
 
 /// The watched intervals of each video (§8 `watch_coverage`).
-const COVERAGE: TableDefinition<&str, &[u8]> = TableDefinition::new("watch_coverage");
+pub(crate) const COVERAGE: TableDefinition<&str, &[u8]> = TableDefinition::new("watch_coverage");
 /// The cues of each video already counted (§8 `cue_credit`).
-const CREDIT: TableDefinition<&str, &[u8]> = TableDefinition::new("cue_credit");
+pub(crate) const CREDIT: TableDefinition<&str, &[u8]> = TableDefinition::new("cue_credit");
 /// The study sessions (§8 `study_segments`).
-const SEGMENTS: TableDefinition<u128, &[u8]> = TableDefinition::new("study_segments");
+pub(crate) const SEGMENTS: TableDefinition<u128, &[u8]> = TableDefinition::new("study_segments");
 
 /// Merged, sorted intervals `[start, end)` of a video, in ms (STA-001).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -434,6 +434,7 @@ impl Library {
         {
             let mut t = db_err!(tx.open_table(SEGMENTS))?;
             db_err!(t.remove(id))?;
+            crate::sync::bury(&tx, &crate::sync::session_key(id))?;
         }
         db_err!(tx.commit())
     }

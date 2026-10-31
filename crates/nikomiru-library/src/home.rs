@@ -310,7 +310,11 @@ impl Library {
     /// Removes a video from the library (LIB-012): a scan does not bring it
     /// back; the file stays.
     pub fn remove_video(&self, uid: &str) -> Result<(), LibraryError> {
-        self.edit_video(uid, |v| v.removed = true)
+        self.edit_video(uid, |v| v.removed = true)?;
+        // BAK-008
+        let tx = self.write()?;
+        crate::sync::bury(&tx, &crate::sync::video_key(uid))?;
+        db_err!(tx.commit())
     }
 
     /// Sets what the episodes of a series inherit (LIB-010).

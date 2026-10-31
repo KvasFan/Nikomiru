@@ -2281,10 +2281,12 @@ dependencies = [
 name = "nikomiru-library"
 version = "1.0.0"
 dependencies = [
+ "flate2",
  "nikomiru-core",
  "nikomiru-dict",
  "nikomiru-text",
  "postcard",
+ "proptest",
  "redb",
  "regex",
  "serde",

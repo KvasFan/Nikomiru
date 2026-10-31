@@ -18,8 +18,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
-- SPECIFICATION: backup and WebDAV sync of M12, proposed (BAK-001…BAK-010, D-21), with their tests in TEST.
-- SPECIFICATION: the media servers of M11, proposed (SRV-001…SRV-013, D-20), with their tests in TEST.
+- SPECIFICATION: backup and WebDAV sync of M12 (BAK-001…BAK-010, D-21), with their tests in TEST.
+- SPECIFICATION: the media servers of M11 (SRV-001…SRV-013, D-20), with their tests in TEST.
 - ROADMAP: the milestones after 1.0, in the maintainer's order (D-19): M11 Jellyfin and Plex, M12 backup and WebDAV sync, M13 advanced ASS and screenshots with subtitles, M14 clipboard lookup and texthooker, M15 MDict, StarDict and DSL, M16 books, manga and audiobooks.
 
 ## [1.0.0] - 2026-10-30

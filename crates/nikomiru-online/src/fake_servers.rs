@@ -56,6 +56,10 @@ pub struct Data {
     pub pin_polls: usize,
     /// When set, the file answers a redirect to this address.
     pub redirect_to: Option<String>,
+    /// The files of the fake WebDAV, by name.
+    pub dav_files: std::collections::BTreeMap<String, Vec<u8>>,
+    /// The password of the fake WebDAV, Basic-encoded for `dav`:`pass`.
+    pub dav_full: bool,
 }
 
 struct Shared {
@@ -126,6 +130,11 @@ impl FakeServers {
     /// The fake Plex's address.
     pub fn plex_url(&self) -> String {
         format!("http://127.0.0.1:{}/px/", self.port)
+    }
+
+    /// The fake WebDAV's address.
+    pub fn webdav_url(&self) -> String {
+        format!("http://127.0.0.1:{}/dav/", self.port)
     }
 
     /// The fake plex.tv's address.
@@ -236,8 +245,50 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
         plex(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/tv/") {
         plex_tv(stream, &request, path, shared);
+    } else if let Some(path) = path.strip_prefix("/dav/") {
+        webdav(stream, &request, path, shared);
     } else {
         respond(stream, 404, "", b"");
+    }
+}
+
+/// `Basic` of the fake WebDAV's user `dav` and password `pass`.
+const DAV_LOGIN: &str = "Basic ZGF2OnBhc3M=";
+
+fn webdav(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared) {
+    if request.header("authorization") != Some(DAV_LOGIN) {
+        return respond(stream, 401, "", b"");
+    }
+    let name = path.rsplit('/').next().unwrap_or_default().to_string();
+    let mut data = lock(&shared.data);
+    match request.method.as_str() {
+        "MKCOL" => respond(
+            stream,
+            if path.ends_with("devices/") { 405 } else { 201 },
+            "",
+            b"",
+        ),
+        "PROPFIND" => {
+            let files: String = data
+                .dav_files
+                .keys()
+                .map(|n| {
+                    format!("<d:response><d:href>/dav/nikomiru/devices/{n}</d:href></d:response>")
+                })
+                .collect();
+            let body = format!("<d:multistatus xmlns:d=\"DAV:\">{files}</d:multistatus>");
+            respond(stream, 207, "", body.as_bytes());
+        }
+        "PUT" if data.dav_full => respond(stream, 507, "", b""),
+        "PUT" => {
+            data.dav_files.insert(name, request.body_bytes.clone());
+            respond(stream, 201, "", b"");
+        }
+        "GET" => match data.dav_files.get(&name) {
+            Some(bytes) => respond(stream, 200, "", bytes),
+            None => respond(stream, 404, "", b""),
+        },
+        _ => respond(stream, 405, "", b""),
     }
 }
 

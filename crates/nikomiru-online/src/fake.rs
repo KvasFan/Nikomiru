@@ -106,6 +106,8 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
     /// The body.
     pub body: String,
+    /// The body's bytes.
+    pub body_bytes: Vec<u8>,
 }
 
 impl Request {
@@ -283,6 +285,7 @@ pub(crate) fn read_request(stream: &mut TcpStream) -> Option<Request> {
         target,
         headers,
         body: String::from_utf8_lossy(&body).into_owned(),
+        body_bytes: body,
     })
 }
 

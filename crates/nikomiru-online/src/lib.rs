@@ -27,6 +27,7 @@ pub mod rank;
 pub mod search;
 pub mod servers;
 pub mod store;
+pub mod webdav;
 
 pub use error::OnlineError;
 pub use hash::VideoHash;
