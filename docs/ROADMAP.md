@@ -49,12 +49,12 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
-| M11 | Jellyfin and Plex (D-19) | L | 1.1.0 | done (live checks open) |
-| M12 | Backup, restore and WebDAV sync (D-19) | M | 1.2.0 | done (live check open) |
-| M13 | Advanced ASS and screenshots with subtitles (D-19) | L | 1.3.0 | done (check by hand open) |
-| M14 | Clipboard lookup and texthooker (D-19) | M | 1.4.0 | done (live check open) |
-| M15 | MDict, StarDict and DSL dictionaries (D-19) | L | 1.5.0 | done (real dictionaries open) |
-| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books done) |
+| M11 | Jellyfin and Plex (D-19) | L | **1.5.0** (D-26) | released (Plex to check) |
+| M12 | Backup, restore and WebDAV sync (D-19) | M | **1.5.0** (D-26) | released |
+| M13 | Advanced ASS and screenshots with subtitles (D-19) | L | **1.5.0** (D-26) | released (check by hand open) |
+| M14 | Clipboard lookup and texthooker (D-19) | M | **1.5.0** (D-26) | released (live check open) |
+| M15 | MDict, StarDict and DSL dictionaries (D-19) | L | **1.5.0** (D-26) | released (DSL and MDict to check) |
+| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books in 1.5.0) |
 
 ---
 
@@ -500,7 +500,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] SRV-001…SRV-013 accepted (D-20); T-SRV-001…T-SRV-013 green on simulated servers.
 - [ ] An episode from a real Jellyfin and from a real Plex: played, looked up, made into a card whose link reopens it.
-- [ ] **Release 1.1.0**.
+- [x] **Released with 1.5.0** (2026-11-01, tag `v1.5.0`, D-26).
 
 ---
 
@@ -528,7 +528,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] BAK-001…BAK-010 accepted (D-21); T-BAK-001…T-BAK-010 green, against a simulated WebDAV server.
 - [x] A device synced through a real Nextcloud (T-BAK-LIVE-002), with a second device's file put there by the test.
-- [ ] **Release 1.2.0**.
+- [x] **Released with 1.5.0** (2026-11-01, tag `v1.5.0`, D-26).
 
 ---
 
@@ -547,7 +547,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] SUB-019 and PLY-015 specified; T-SUB-019 and T-PLY-015 green.
 - [ ] Real typeset fansubs checked by hand against mpv's libass.
-- [ ] **Release 1.3.0**.
+- [x] **Released with 1.5.0** (2026-11-01, tag `v1.5.0`, D-26).
 
 ---
 
@@ -568,7 +568,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] HOK-001…HOK-005 accepted (D-23); T-HOK-001…T-HOK-005 green with a simulated hooker.
 - [ ] A real visual novel through Textractor or LunaTranslator.
-- [ ] **Release 1.4.0**.
+- [x] **Released with 1.5.0** (2026-11-01, tag `v1.5.0`, D-26).
 
 ---
 
@@ -588,7 +588,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] DIC-004 specified (D-24); T-DIC-004 green on project-made files of each format.
 - [ ] Real dictionaries of each format imported by the maintainer.
-- [ ] **Release 1.5.0**.
+- [x] **Release 1.5.0** (2026-11-01, tag `v1.5.0`, at the maintainer's request; what is left to check is in the status of each milestone).
 
 ---
 

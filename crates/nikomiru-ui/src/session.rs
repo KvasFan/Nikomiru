@@ -4238,6 +4238,9 @@ impl Session {
     /// Shows `source`: mpv draws graphic tracks; text ones are loaded in the
     /// background and drawn by the overlay.
     fn use_subtitles(&mut self, source: Source) {
+        // a choice made: the automatic one must not come after and replace it,
+        // as it did for a file dropped before mpv listed its tracks (SUB-008)
+        self.sub_auto_done = true;
         self.sub_generation += 1;
         self.sub_loads.clear();
         match &source {

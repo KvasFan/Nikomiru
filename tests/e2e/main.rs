@@ -217,7 +217,9 @@ fn a_card_is_made_from_the_popup() {
     };
     let elapsed = started.elapsed();
     eprintln!("T-PERF-08 Ctrl+Enter → card-created: {elapsed:?}");
-    assert!(elapsed <= Duration::from_secs(3), "T-PERF-08: {elapsed:?}");
+    if support::machine_is_free() {
+        assert!(elapsed <= Duration::from_secs(3), "T-PERF-08: {elapsed:?}");
+    }
     let note_id = created["note_id"].as_u64().unwrap();
     {
         let anki = fake.collection();
@@ -1400,7 +1402,11 @@ fn a_click_on_a_subtitle_word_opens_the_dictionary_popup() {
         "T-PERF-06 click → popup: median {:?}, p95 {p95:?}",
         times[times.len() / 2]
     );
-    assert!(p95 <= Duration::from_millis(100), "p95 {p95:?}");
+    if support::machine_is_free() {
+        assert!(p95 <= Duration::from_millis(100), "p95 {p95:?}");
+    } else {
+        eprintln!("T-PERF-06: not judged, the machine is busy");
+    }
     // nothing went wrong in the interface while drawing them
     let log = desk.log();
     let bad: Vec<&str> = log

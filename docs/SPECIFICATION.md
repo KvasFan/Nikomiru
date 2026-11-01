@@ -1013,6 +1013,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-23 | Design of M14 | **Approved** (2026-10-31): the WebSocket first, since a background program cannot read the clipboard everywhere; the clipboard by Ctrl+V, and by `wl-paste` or `xclip` where they can; cards from a game with text only |
 | D-24 | Design of M15 | **Asked by the maintainer** (2026-10-31, "procedi"), to change at will: the formats are read into Yomitan's terms instead of a store of their own, so lookups and cards need no change; definitions as plain text, so no HTML sanitizer (`ammonia`) and no new dependency; own readers, with RIPEMD-128 written here for MDict's index, which is only an obscuring |
 | D-25 | Design of the books of M16 | **Asked by the maintainer** (2026-10-31, "avanti m16"), to change at will: horizontal text first, vertical writing later; chapters one at a time, scrolled, not paged; a book's place in characters, as ttu counts them, which leaves the ttu sync possible, but that sync is not made: its file names are not documented, and they need checking against the real reader; book progress is not in the WebDAV sync yet; manga and audiobooks wait for their own requirements |
+| D-26 | One release for M11–M15 | **Asked by the maintainer** (2026-11-01, "procedi come meglio credi"): their work was merged one after the other before any was tagged, so 1.5.0 ships them all, with the books of M16, in place of the 1.1.0…1.4.0 of D-19 |
 
 ### 10.2 Risks
 
