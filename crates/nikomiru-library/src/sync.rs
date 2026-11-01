@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use redb::{ReadableTable, TableDefinition, WriteTransaction};
 use serde::{Deserialize, Serialize};
 
+use crate::books::{BOOKS, BookRecord};
 use crate::cards::{MINED_CARDS, MinedCard};
 use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
@@ -60,6 +61,19 @@ pub struct VideoState {
     pub duration_ms: Option<u64>,
 }
 
+/// How far a book was read (BAK-005, BOK-005).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct BookState {
+    /// The characters before the place reached.
+    pub read_chars: u64,
+    /// The chapter.
+    pub chapter: u32,
+    /// The paragraph in it.
+    pub paragraph: u32,
+    /// When it was last read (Unix ms).
+    pub last_read_at: Option<i64>,
+}
+
 /// What a device knows.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct DeviceState {
@@ -77,6 +91,9 @@ pub struct DeviceState {
     pub cards: BTreeMap<u64, MinedCard>,
     /// What was deleted, and when.
     pub deleted: BTreeMap<String, i64>,
+    /// How far each book was read, by uid: older files have none.
+    #[serde(default)]
+    pub books: BTreeMap<String, BookState>,
 }
 
 fn merge_video(into: &mut VideoState, from: &VideoState) {
@@ -111,9 +128,25 @@ fn merge_session(into: &mut Segment, from: &Segment) {
     }
 }
 
+fn merge_book(into: &mut BookState, from: &BookState) {
+    // the one read last; on a tie the further one, as for videos (BAK-007)
+    let key = |b: &BookState| (b.last_read_at, b.read_chars, b.chapter, b.paragraph);
+    if key(from) > key(into) {
+        *into = from.clone();
+    }
+}
+
 impl DeviceState {
     /// Takes in what `other` knows (BAK-007).
     pub fn merge(&mut self, other: &DeviceState) {
+        for (uid, book) in &other.books {
+            match self.books.get_mut(uid) {
+                Some(mine) => merge_book(mine, book),
+                None => {
+                    self.books.insert(uid.clone(), book.clone());
+                }
+            }
+        }
         for (uid, video) in &other.videos {
             match self.videos.get_mut(uid) {
                 Some(mine) => merge_video(mine, video),
@@ -267,6 +300,19 @@ impl Library {
             collect::<_, MinedCard>(tx, MINED_CARDS, |id: u64, c| {
                 state.cards.insert(id, c);
             })?;
+            collect::<_, BookRecord>(tx, BOOKS, |uid: &str, b| {
+                if b.last_read_at.is_some() {
+                    state.books.insert(
+                        uid.to_string(),
+                        BookState {
+                            read_chars: b.read_chars,
+                            chapter: b.chapter,
+                            paragraph: b.paragraph,
+                            last_read_at: b.last_read_at,
+                        },
+                    );
+                }
+            })?;
             match tx.open_table(TOMBSTONES) {
                 Ok(t) => {
                     for row in db_err!(t.iter())? {
@@ -311,6 +357,24 @@ impl Library {
             }
             for (uid, record) in changed {
                 db_err!(videos.insert(uid.as_str(), postcard::to_stdvec(&record)?.as_slice()))?;
+            }
+            // a book this computer does not have is left out, as a video is
+            let mut books = db_err!(tx.open_table(BOOKS))?;
+            let mut read = Vec::new();
+            for row in db_err!(books.iter())? {
+                let (uid, value) = db_err!(row)?;
+                let uid = uid.value().to_string();
+                if let Some(b) = state.books.get(&uid) {
+                    let mut record: BookRecord = postcard::from_bytes(value.value())?;
+                    record.read_chars = b.read_chars;
+                    record.chapter = b.chapter;
+                    record.paragraph = b.paragraph;
+                    record.last_read_at = b.last_read_at;
+                    read.push((uid, record));
+                }
+            }
+            for (uid, record) in read {
+                db_err!(books.insert(uid.as_str(), postcard::to_stdvec(&record)?.as_slice()))?;
             }
             let mut coverage = db_err!(tx.open_table(COVERAGE))?;
             for (uid, c) in &state.coverage {
@@ -389,6 +453,17 @@ mod tests {
         })
     }
 
+    fn book() -> impl Strategy<Value = BookState> {
+        (0..50u64, 0..3u32, 0..3u32, proptest::option::of(0..9i64)).prop_map(
+            |(read_chars, chapter, paragraph, last_read_at)| BookState {
+                read_chars,
+                chapter,
+                paragraph,
+                last_read_at,
+            },
+        )
+    }
+
     fn state() -> impl Strategy<Value = DeviceState> {
         let names = prop::sample::select(vec!["a", "b", "c"]);
         (
@@ -405,10 +480,12 @@ mod tests {
             ),
             prop::collection::btree_map(names.clone(), session(), 0..3),
             prop::collection::btree_map(0..3u64, card(), 0..3),
-            prop::collection::btree_map(names, 0..50i64, 0..2),
+            prop::collection::btree_map(names.clone(), 0..50i64, 0..2),
+            prop::collection::btree_map(names, book(), 0..3),
         )
             .prop_map(
-                |(videos, coverage, credit, sessions, cards, deleted)| DeviceState {
+                |(videos, coverage, credit, sessions, cards, deleted, books)| DeviceState {
+                    books: books.into_iter().map(|(k, b)| (k.to_string(), b)).collect(),
                     format: FORMAT,
                     videos: videos
                         .into_iter()
@@ -583,6 +660,37 @@ mod tests {
         state.videos.insert("video/other".into(), video_at(1, 1));
         a.apply_state(&state).unwrap();
         assert_eq!(a.video("video/other").unwrap(), None);
+    }
+
+    // T-BAK-005: a book goes where it was read last, here too
+    #[test]
+    fn a_book_keeps_its_place_across_devices() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (open(&dir, "a.redb"), open(&dir, "b.redb"));
+        let record = |paragraph, at| BookRecord {
+            path: format!("/{paragraph}"),
+            paragraph,
+            read_chars: u64::from(paragraph),
+            last_read_at: Some(at),
+            ..BookRecord::default()
+        };
+        a.put_book("book/x", &record(1, 100)).unwrap();
+        b.put_book("book/x", &record(7, 200)).unwrap();
+        let mut merged = a.export_state(1000).unwrap();
+        merged.merge(&b.export_state(1000).unwrap());
+        a.apply_state(&merged).unwrap();
+        let book = a.book("book/x").unwrap().unwrap();
+        assert_eq!(
+            (book.paragraph, book.path.as_str()),
+            (7, "/1"),
+            "its file stays"
+        );
+        // a file from before books reads as having none
+        let old = br#"{"format":1,"videos":{},"coverage":{},"credit":{},"sessions":{},"cards":{},"deleted":{}}"#;
+        let mut packed = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        packed.write_all(old).unwrap();
+        let state = DeviceState::decode(&packed.finish().unwrap()).unwrap();
+        assert!(state.books.is_empty());
     }
 
     // T-BAK-008

@@ -6,6 +6,10 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use nikomiru_core::Cancel;
+use nikomiru_media::clip::frame_job;
+use nikomiru_media::process::run;
+use nikomiru_media::tools::{Search, find};
 use nikomiru_player::PlayerHandle;
 
 /// How long mpv may take to write the file.
@@ -56,6 +60,29 @@ fn reserve(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
+/// Where else the frame can come from: mpv 0.41 cannot read back a frame the
+/// GPU decoded, and ffmpeg can take the same moment from the file.
+#[derive(Debug, Clone)]
+pub struct FromFile {
+    /// The `paths.ffmpeg` setting.
+    pub ffmpeg: String,
+    /// The video.
+    pub video: PathBuf,
+    /// The moment, in ms.
+    pub at_ms: i64,
+}
+
+impl FromFile {
+    fn save(&self, path: &Path) -> Result<(), String> {
+        let search = Search::from_env(&self.ffmpeg);
+        let (_, ffmpeg, _) = find(&search).map_err(|e| e.to_string())?;
+        let job = frame_job(&ffmpeg, &self.video, self.at_ms, path);
+        run(&job, &Cancel::new())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// Saves the frame shown as `dir/name` (or a free name next to it) on a
 /// thread of its own, and calls `done` with the file written or the reason it
 /// was not.
@@ -63,11 +90,12 @@ pub fn start(
     player: PlayerHandle,
     dir: PathBuf,
     name: String,
+    from_file: Option<FromFile>,
     done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
 ) {
     let spawned = std::thread::Builder::new()
         .name("screenshot".into())
-        .spawn(move || done(save(&player, &dir, &name)));
+        .spawn(move || done(save(&player, &dir, &name, from_file.as_ref())));
     if let Err(e) = spawned {
         tracing::error!("cannot start the screenshot thread: {e}");
     }
@@ -125,7 +153,12 @@ fn save_pixels(pixels: Pixels, dir: &Path, name: &str) -> Result<PathBuf, String
     written.map(|()| path)
 }
 
-fn save(player: &PlayerHandle, dir: &Path, name: &str) -> Result<PathBuf, String> {
+fn save(
+    player: &PlayerHandle,
+    dir: &Path,
+    name: &str,
+    from_file: Option<&FromFile>,
+) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let path = reserve(&dir.join(name)).map_err(|e| format!("{}: {e}", dir.display()))?;
     let written = player
@@ -134,6 +167,13 @@ fn save(player: &PlayerHandle, dir: &Path, name: &str) -> Result<PathBuf, String
         .and_then(|reply| match reply.recv_timeout(TIMEOUT) {
             Ok(result) => result.map_err(|e| e.to_string()),
             Err(e) => Err(e.to_string()),
+        })
+        .or_else(|e| match from_file {
+            Some(file) => {
+                tracing::info!("the player's frame: {e}; ffmpeg instead");
+                file.save(&path)
+            }
+            None => Err(e),
         });
     if written.is_err() && std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
         // the empty file that held the name

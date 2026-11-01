@@ -5025,10 +5025,16 @@ impl Session {
         name: String,
         done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
     ) {
+        let from_file = self.current.as_ref().map(|c| crate::screenshot::FromFile {
+            ffmpeg: self.services.config.paths.ffmpeg.clone(),
+            video: c.path.clone(),
+            at_ms: (self.view.time_pos * 1000.0) as i64,
+        });
         crate::screenshot::start(
             self.services.player.clone(),
             self.services.screenshots_dir.clone(),
             name,
+            from_file,
             done,
         );
     }

@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::db::{Library, LibraryError, db_err};
 
 /// By uid.
-const BOOKS: TableDefinition<&str, &[u8]> = TableDefinition::new("books");
+pub(crate) const BOOKS: TableDefinition<&str, &[u8]> = TableDefinition::new("books");
 
 /// A book's uid, from what it holds.
 pub fn book_uid(title: &str, author: &str, chars: u64) -> String {

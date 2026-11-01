@@ -149,6 +149,47 @@ fn the_chapters_of_a_file_reach_the_bar() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-011: a frame the GPU decoded has to be read back from it
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures --perf`"]
+fn s_saves_a_frame_decoded_by_the_gpu() {
+    let video = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/fixtures/av_hd60_h264.mkv");
+    if !video.exists() {
+        eprintln!("skipped: {} is missing", video.display());
+        return;
+    }
+    let mut desk = Desktop::start();
+    let pictures = desk.path("pictures");
+    desk.set_env("XDG_PICTURES_DIR", &pictures.to_string_lossy());
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch_with(&["--", &video.to_string_lossy()]);
+    h.wait("first-frame");
+    let hwdec = h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": "hwdec-current" }));
+    eprintln!("hwdec {hwdec}");
+    h.key("KeyS");
+    let saved = h.wait("screenshot-saved");
+    let path = std::path::PathBuf::from(saved["path"].as_str().unwrap());
+    let png = std::fs::read(&path).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "{}", desk.log());
+    // T-ANK-034: a card from it has its picture too
+    h.cmd(serde_json::json!({ "cmd": "lookup", "text": "食べました" }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    h.cmd(serde_json::json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 30000 }));
+    assert!(!fake.collection().media.is_empty(), "{}", desk.log());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -691,6 +732,9 @@ fn screenshots_of_the_interface() {
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("online-search.png"));
     h.cmd(serde_json::json!({ "cmd": "online", "action": "close" }));
+    // the Library page covers the player: its keys wait under it
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "close" }));
+    std::thread::sleep(Duration::from_millis(300));
     h.key("KeyL");
     h.state_until("the list", |s| s["sub_list_open"] == true);
     std::thread::sleep(Duration::from_millis(300));
