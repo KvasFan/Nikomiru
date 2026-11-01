@@ -111,7 +111,9 @@ fn call<T: Send + 'static>(f: impl FnOnce(&mut Ui) -> T + Send + 'static) -> Res
     waker.wake(Inbound::Harness(Box::new(move |ui| {
         let _ = tx.send(f(ui));
     })));
-    rx.recv_timeout(Duration::from_secs(10))
+    // long enough for a machine with far more work than cores: the UI thread
+    // waits for mpv's video thread while it draws (`mpv_render_context_render`)
+    rx.recv_timeout(Duration::from_secs(30))
         .map_err(|_| "the UI did not answer".to_string())
 }
 
