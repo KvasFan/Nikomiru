@@ -382,6 +382,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 ("webp", "WebP".to_string()),
                 ("webp-animated", tr(s, "anki-image-webp-animated")),
                 ("avif-animated", tr(s, "anki-image-avif-animated")),
+                ("webm", tr(s, "anki-image-webm")),
             ]
             .into_iter()
             .map(|(f, label)| (f.to_string(), label))

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Comic archives (MNG-001): a CBZ is a zip of pictures, read in the natural
+//! Comic archives and folders of pictures (MNG-001), read in the natural
 //! order of their names. Each page is a chapter of one picture, so a manga
 //! turns its pages, keeps its place and sits in the list as a book does.
 //! Limits, checked against what is read, keep a hostile file small.
@@ -82,12 +82,71 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     if zip.len() > ENTRY_LIMIT {
         return Err(BookError::TooLarge);
     }
-    let mut names: Vec<String> = zip
+    let names: Vec<String> = zip
         .file_names()
         .filter_map(Result::ok)
         .filter(|name| is_page(name))
         .map(std::borrow::Cow::into_owned)
         .collect();
+    assemble(path, names, |name| {
+        let entry = zip.by_name(name).map_err(|e| format(&e.to_string()))?;
+        page_bytes(entry)
+    })
+}
+
+/// A page, up to the limit and one byte past it.
+fn page_bytes(page: impl Read) -> Result<Vec<u8>, BookError> {
+    let mut bytes = Vec::new();
+    page.take(PAGE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format(&e.to_string()))?;
+    Ok(bytes)
+}
+
+/// The pictures under `root`, as paths from it; links are not followed, so a
+/// folder cannot loop.
+fn pictures(root: &Path) -> Result<Vec<String>, BookError> {
+    let io = |e: std::io::Error| BookError::Io(e.to_string());
+    let (mut names, mut folders) = (Vec::new(), vec![String::new()]);
+    let mut seen = 0;
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(root.join(&folder)).map_err(io)? {
+            seen += 1;
+            if seen > ENTRY_LIMIT {
+                return Err(BookError::TooLarge);
+            }
+            let entry = entry.map_err(io)?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let path = if folder.is_empty() {
+                name
+            } else {
+                format!("{folder}/{name}")
+            };
+            let kind = entry.file_type().map_err(io)?;
+            if kind.is_dir() {
+                folders.push(path);
+            } else if kind.is_file() && is_page(&path) {
+                names.push(path);
+            }
+        }
+    }
+    Ok(names)
+}
+
+/// Reads the folder of pictures at `path`.
+pub fn read_folder(path: &Path) -> Result<Book, BookError> {
+    let names = pictures(path)?;
+    assemble(path, names, |name| {
+        page_bytes(File::open(path.join(name)).map_err(|e| BookError::Io(e.to_string()))?)
+    })
+}
+
+/// The book of the pages `names`, each read through `open`.
+fn assemble(
+    path: &Path,
+    mut names: Vec<String>,
+    mut open: impl FnMut(&str) -> Result<Vec<u8>, BookError>,
+) -> Result<Book, BookError> {
     if names.len() > PAGE_LIMIT {
         return Err(BookError::TooLarge);
     }
@@ -99,12 +158,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     let mut total = 0u64;
     let mut chapters = Vec::with_capacity(names.len());
     for name in names {
-        let entry = zip.by_name(&name).map_err(|e| format(&e.to_string()))?;
-        let mut bytes = Vec::new();
-        entry
-            .take(PAGE_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| format(&e.to_string()))?;
+        let bytes = open(&name)?;
         total += bytes.len() as u64;
         if bytes.len() as u64 > PAGE_BYTES || total > TOTAL_BYTES {
             return Err(BookError::TooLarge);
@@ -118,9 +172,14 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
             }],
         });
     }
-    let title = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
+    // a folder's name has no extension to leave out
+    let title = if path.is_dir() {
+        path.file_name()
+    } else {
+        path.file_stem()
+    };
+    let title = title
+        .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     Ok(Book {
         title,
@@ -177,6 +236,33 @@ mod tests {
         assert!(book.manga && book.right_to_left);
         assert_eq!(book.chars(), 3, "a position counts pages");
         assert_eq!(book.chars_before(2, 0), 2);
+    }
+
+    // T-MNG-001: a folder reads like an archive, its sub-folders included
+    #[test]
+    fn a_folder_of_pictures() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("第2巻");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("p10.jpg"), b"ten").unwrap();
+        std::fs::write(root.join("p2.jpg"), b"two").unwrap();
+        std::fs::write(root.join("sub/p3.png"), b"three").unwrap();
+        std::fs::write(root.join("notes.txt"), b"no").unwrap();
+        std::fs::write(root.join(".p0.jpg"), b"no").unwrap();
+        std::os::unix::fs::symlink(&root, root.join("loop")).unwrap();
+        let book = crate::read(&root).unwrap();
+        let pages: Vec<_> = book
+            .chapters
+            .iter()
+            .map(|c| c.paragraphs[0].image.clone().unwrap())
+            .collect();
+        assert_eq!(pages, ["p2.jpg", "p10.jpg", "sub/p3.png"]);
+        assert_eq!(book.images["sub/p3.png"], b"three");
+        assert_eq!(book.title, "第2巻");
+        assert!(book.manga);
+        let empty = dir.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        assert_eq!(crate::read(&empty), Err(BookError::NoPages));
     }
 
     // T-MNG-001

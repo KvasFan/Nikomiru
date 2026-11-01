@@ -81,7 +81,7 @@ Per sentire una parola, Nikomiru ha bisogno di una fonte di pronunce: non ne inc
 3. In un popup, **+** su una voce (o Ctrl+Invio) crea la carta. Contiene:
    - la parola e i suoi significati;
    - la frase con la parola in grassetto;
-   - il fotogramma (oppure, in Impostazioni → Anki → Formato immagine, tutta la battuta come immagine animata) e l'audio della battuta;
+   - il fotogramma (oppure, in Impostazioni → Anki → Formato immagine, tutta la battuta come immagine animata o video WebM con audio) e l'audio della battuta;
    - un link che riapre la scena.
 4. **✓** vuol dire che Anki ha già la parola: dal suo menu apri la carta in Anki, oppure ne aggiungi un'altra comunque.
 5. **Shift+clic su +** (o Ctrl+Shift+Invio) crea la carta a mano. Puoi:
@@ -121,7 +121,7 @@ Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le ri
 
 ### Manga
 
-Aggiungi un CBZ nella pagina dei libri. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.
+Aggiungi un CBZ o una cartella di immagini nella pagina dei libri. "Due pagine" le mostra affiancate, la prima a destra. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.
 
 Per leggere un fumetto, trascina sopra di esso. La prima volta la pagina propone un modello di lettura da 111 MB: arriva da Hugging Face una volta sola, solo se lo chiedi, e poi funziona sul tuo computer, quindi le pagine non vanno da nessuna parte. Il testo compare sopra la pagina: clicca una parola per cercarla, e una carta ha il testo e la parte di pagina. Il modello legge un fumetto o una riga alla volta e impiega qualche secondo.
 

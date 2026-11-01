@@ -46,6 +46,8 @@ pub(crate) struct State {
     column: usize,
     /// An audiobook is to be chosen (ABK-001).
     audiobook: bool,
+    /// A folder of pages is to be chosen (MNG-001).
+    folder: bool,
     /// The book those pictures are of, and the pictures drawn so far, by
     /// their key (BOK-010).
     book: String,
@@ -69,6 +71,8 @@ pub(crate) struct Scene<'a> {
     pub page: &'a BooksPage,
     /// The book is drawn vertically (BOK-009).
     pub vertical: bool,
+    /// A manga shows two pages (MNG-002).
+    pub double: bool,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -78,11 +82,15 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let scene = Scene {
         page: &s.books_page,
         vertical: s.book_vertical(),
+        double: s.book_double(),
         tr: &tr,
     };
     let (close, add) = draw(ctx, &scene, &mut view.books, out);
     if add {
         view.dialog = Some(Dialog::Book);
+    }
+    if std::mem::take(&mut view.books.folder) {
+        view.dialog = Some(Dialog::MangaFolder);
     }
     if std::mem::take(&mut view.books.audiobook) {
         view.dialog = Some(Dialog::Audiobook);
@@ -426,10 +434,19 @@ fn manga_reader(
     let number = (open.chapter + 1).to_string();
     let name = (s.tr)("manga-page", &[("number", number)]);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &name));
-    let key = item.image.as_deref().unwrap_or_default();
-    // pages are large: only the one shown stays in memory
-    state.textures.retain(|k, _| k == key);
-    let Some(handle) = texture(ui.ctx(), state, open, key) else {
+    let key_of = |page: usize| {
+        let item = open.book.chapters.get(page)?.paragraphs.first()?;
+        item.image.clone()
+    };
+    let next = (s.double && open.chapter > 0)
+        .then_some(open.chapter + 1)
+        .and_then(key_of);
+    let key = item.image.clone().unwrap_or_default();
+    // pages are large: only those shown stay in memory
+    state
+        .textures
+        .retain(|k, _| *k == key || Some(k) == next.as_ref());
+    let Some(handle) = texture(ui.ctx(), state, open, &key) else {
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
@@ -439,11 +456,28 @@ fn manga_reader(
         );
         return;
     };
-    let size = handle.size_vec2();
-    let scale = (rect.width() / size.x).min(rect.height() / size.y);
-    let page = egui::Rect::from_center_size(rect.center(), size * scale);
-    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-    ui.painter().image(handle.id(), page, uv, Color32::WHITE);
+    // a wide picture is a spread already, and stays alone
+    let second = next
+        .and_then(|key| texture(ui.ctx(), state, open, &key))
+        .filter(|other| is_upright(other) && is_upright(&handle));
+    let mut pages = Vec::new();
+    let mut place = |page: usize, handle: &egui::TextureHandle, area: egui::Rect, side| {
+        let size = handle.size_vec2();
+        let scale = (area.width() / size.x).min(area.height() / size.y);
+        let drawn = Align2::align_size_within_rect(side, size * scale, area);
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        ui.painter().image(handle.id(), drawn, uv, Color32::WHITE);
+        pages.push((page, drawn));
+    };
+    match &second {
+        // read from the right, and meeting in the middle
+        Some(other) => {
+            let (left, right) = rect.split_left_right_at_x(rect.center().x);
+            place(open.chapter, &handle, right, Align2::LEFT_CENTER);
+            place(open.chapter + 1, other, left, Align2::RIGHT_CENTER);
+        }
+        None => place(open.chapter, &handle, rect, Align2::CENTER_CENTER),
+    }
     if s.page.ocr.installed && response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
@@ -460,15 +494,36 @@ fn manga_reader(
     }
     if response.drag_stopped()
         && let Some(selection) = state.selection.take()
-        && let Some(area) = shares(selection, page)
     {
-        out.push(Command::MangaRead(area));
+        // the page it started on
+        let under = pages.iter().find(|(_, drawn)| drawn.contains(selection.0));
+        if let Some((page, drawn)) = under
+            && let Some(area) = shares(selection, *drawn)
+        {
+            out.push(Command::MangaRead { page: *page, area });
+        }
     }
+    let step = pages.len();
     let (forward, back) = turns(ui, response.hovered());
-    if forward && open.chapter + 1 < open.book.chapters.len() {
-        out.push(Command::BookChapter(open.chapter + 1));
+    if forward && open.chapter + step < open.book.chapters.len() {
+        out.push(Command::BookChapter(open.chapter + step));
     } else if back && open.chapter > 0 {
-        out.push(Command::BookChapter(open.chapter - 1));
+        out.push(Command::BookChapter(open.chapter.saturating_sub(step)));
+    }
+}
+
+/// A picture taller than wide: one page.
+fn is_upright(picture: &egui::TextureHandle) -> bool {
+    let size = picture.size_vec2();
+    size.y >= size.x
+}
+
+/// How many pages a turn goes: two in pairs, once past the cover.
+fn page_step(s: &Scene<'_>, open: &OpenBook) -> usize {
+    if open.book.manga && s.double && open.chapter > 0 {
+        2
+    } else {
+        1
     }
 }
 
@@ -604,6 +659,7 @@ fn reader(
     } else {
         ("books-next", "books-previous")
     };
+    let step = page_step(s, open);
     let mut close = false;
     ui.horizontal(|ui| {
         if ui.button(tr(s, "books-back")).clicked() {
@@ -616,7 +672,7 @@ fn reader(
                 .add_enabled(open.chapter < last, Button::new(tr(s, next)))
                 .clicked()
             {
-                out.push(Command::BookChapter(open.chapter + 1));
+                out.push(Command::BookChapter((open.chapter + step).min(last)));
             }
             let number = format!("{} / {}", open.chapter + 1, open.book.chapters.len());
             ui.label(RichText::new(number).color(palette::current().details));
@@ -624,7 +680,14 @@ fn reader(
                 .add_enabled(open.chapter > 0, Button::new(tr(s, previous)))
                 .clicked()
             {
-                out.push(Command::BookChapter(open.chapter - 1));
+                out.push(Command::BookChapter(open.chapter.saturating_sub(step)));
+            }
+            if manga
+                && ui
+                    .selectable_label(s.double, tr(s, "manga-double"))
+                    .clicked()
+            {
+                out.push(Command::MangaDouble(!s.double));
             }
             if !manga
                 && ui
@@ -736,6 +799,9 @@ fn list(
             if ui.button(tr(s, "books-audiobook")).clicked() {
                 state.audiobook = true;
             }
+            if ui.button(tr(s, "books-folder")).clicked() {
+                state.folder = true;
+            }
             if ui
                 .add_enabled(!s.page.busy, Button::new(tr(s, "books-add")))
                 .clicked()
@@ -833,6 +899,7 @@ mod tests {
     struct Test {
         page: BooksPage,
         vertical: bool,
+        double: bool,
         state: State,
         out: Vec<Command>,
         add: bool,
@@ -852,6 +919,7 @@ mod tests {
                     let scene = Scene {
                         page: &t.page,
                         vertical: t.vertical,
+                        double: t.double,
                         tr: &tr,
                     };
                     t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
@@ -859,6 +927,7 @@ mod tests {
                 Test {
                     page,
                     vertical,
+                    double: false,
                     state: State::default(),
                     out: Vec::new(),
                     add: false,
@@ -1049,13 +1118,103 @@ mod tests {
         h.drop_at(at(0.75, 0.5));
         h.run();
         let area = h.state().out.iter().find_map(|c| match c {
-            Command::MangaRead(area) => Some(*area),
+            Command::MangaRead { page: 0, area } => Some(*area),
             _ => None,
         });
         let area = area.expect("a selection");
         for (got, wanted) in area.iter().zip([0.25, 0.25, 0.5, 0.25]) {
             assert!((got - wanted).abs() < 0.02, "{area:?}");
         }
+    }
+
+    /// Three upright pages, or the last one wide.
+    fn pairs(wide_last: bool) -> OpenBook {
+        let mut open = manga();
+        let mut bytes = Vec::new();
+        let (w, h) = if wide_last { (200, 100) } else { (100, 200) };
+        image::RgbImage::new(w, h)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        open.book.images.insert("p3.png".into(), bytes);
+        open.book.chapters.push(Chapter {
+            title: None,
+            paragraphs: vec![Paragraph {
+                image: Some("p3.png".into()),
+                ..Paragraph::default()
+            }],
+        });
+        open
+    }
+
+    // T-MNG-002: past the cover, the second page is on the left, a selection
+    // reads the page it started on, and a turn goes two pages
+    #[test]
+    fn two_pages_read_from_the_right() {
+        let mut open = pairs(false);
+        open.chapter = 1;
+        let mut h = harness(BooksPage {
+            open: Some(open),
+            ..BooksPage::default()
+        });
+        h.state_mut().double = true;
+        h.state_mut().page.ocr.installed = true;
+        h.run();
+        assert_eq!(h.state().state.textures.len(), 2);
+        let rect = h.get_by_label("manga-page").rect();
+        let y = rect.center().y;
+        let left = rect.center().x - 60.0;
+        h.hover_at(Pos2::new(left, y));
+        h.drag_at(Pos2::new(left, y));
+        h.run();
+        h.hover_at(Pos2::new(left + 30.0, y + 30.0));
+        h.run();
+        h.drop_at(Pos2::new(left + 30.0, y + 30.0));
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::MangaRead { page: 2, .. })),
+            "{:?}",
+            h.state().out
+        );
+        h.get_by_label("books-previous-page").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(0)))
+        );
+    }
+
+    // T-MNG-002: the cover and a wide picture stay alone
+    #[test]
+    fn a_cover_and_a_spread_stay_alone() {
+        let mut h = harness(BooksPage {
+            open: Some(pairs(false)),
+            ..BooksPage::default()
+        });
+        h.state_mut().double = true;
+        h.run();
+        assert_eq!(h.state().state.textures.len(), 1, "the cover");
+        let mut open = pairs(true);
+        open.chapter = 1;
+        h.state_mut().page.open = Some(open);
+        h.run();
+        h.key_press(egui::Key::ArrowLeft);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(2))),
+            "one page: {:?}",
+            h.state().out
+        );
     }
 
     // T-MNG-005: the text read is clicked like a book's

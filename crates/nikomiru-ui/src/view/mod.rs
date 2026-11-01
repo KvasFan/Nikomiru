@@ -66,6 +66,8 @@ pub enum Dialog {
     Book,
     /// An audiobook to play (ABK-001).
     Audiobook,
+    /// A folder of a manga's pages (MNG-001).
+    MangaFolder,
     /// Where to write a backup (BAK-001).
     BackupSave,
     /// A backup to restore (BAK-003).
@@ -146,6 +148,7 @@ impl FileDialog {
                 tr("books-audiobook"),
                 vec![(tr("books-audio-filter"), AUDIO_PATTERNS.to_vec()), all],
             ),
+            Dialog::MangaFolder => (tr("books-folder"), Vec::new()),
             Dialog::Book => (
                 tr("books-add"),
                 vec![(tr("books-filter"), vec!["*.epub", "*.cbz"]), all],
@@ -173,7 +176,7 @@ impl FileDialog {
                 Dialog::MpvImport => s.mpv_conf_folder(),
                 _ => None,
             },
-            directory: dialog == Dialog::LibraryFolder,
+            directory: matches!(dialog, Dialog::LibraryFolder | Dialog::MangaFolder),
         }
     }
 }

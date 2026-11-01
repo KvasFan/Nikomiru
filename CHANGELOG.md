@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-01
+
+Video cards, and what 2.0.0 left out of manga.
+
+### Added
+
+- A card's picture can be its sentence as a WebM video with sound (ANK-043, D-31): Settings → Anki → image format.
+- Manga from a folder of pictures, and two pages side by side, read from the right, with the cover and wide pictures alone (MNG-001, MNG-002).
+
 ## [2.0.0] - 2026-11-01
 
 Manga, with which the direction of D-12 is complete: books, audiobooks and manga read with the same dictionary and cards.

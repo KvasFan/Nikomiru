@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 2.0.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 2.1.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -149,7 +149,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. 1.6.0 brought vertical writing and pictures to books, 1.7.0 audiobooks, 2.0.0 manga (D-12, D-28). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. 1.6.0 brought vertical writing and pictures to books, 1.7.0 audiobooks, 2.0.0 manga (D-12, D-28), 2.1.0 video cards. Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 

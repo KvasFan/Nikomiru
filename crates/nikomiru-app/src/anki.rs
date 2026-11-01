@@ -572,14 +572,17 @@ impl Worker {
     ) -> Result<Media, String> {
         let ext = clip::image_extension(format);
         let out = self.parts.cache_dir.join(format!("{stem}.{ext}"));
-        let job = clip::animated_job(
-            &tools.ffmpeg,
-            &r.video,
-            clip,
-            &out,
-            format,
-            self.parts.config.image_quality_level,
-        );
+        let level = self.parts.config.image_quality_level;
+        let job = if format == ImageFormat::WebmVideo {
+            // without Opus, or with the sound left out, a silent video
+            let sound = r
+                .audio_stream
+                .filter(|_| r.audio && tools.has_encoder("libopus"))
+                .map(|stream| (r.audio_input.as_path(), stream));
+            clip::video_job(&tools.ffmpeg, &r.video, sound, clip, &out, level)
+        } else {
+            clip::animated_job(&tools.ffmpeg, &r.video, clip, &out, format, level)
+        };
         read_output(&job, &out, ext)
     }
 
@@ -633,9 +636,7 @@ impl Worker {
             sentence: sentence.clone(),
             cue_sentence: sentence.clone(),
             sentence_audio: audio.map(|a| format!("[sound:{a}]")).unwrap_or_default(),
-            card_image: image
-                .map(|i| format!(r#"<img src="{}">"#, nikomiru_anki::html::escape(i)))
-                .unwrap_or_default(),
+            card_image: image.map(compose::card_image).unwrap_or_default(),
             audio: String::new(),
             document_title: nikomiru_anki::html::escape(&r.title),
             // without the library there is no link: the title, as in Fushi

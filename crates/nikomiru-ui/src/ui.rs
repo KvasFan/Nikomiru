@@ -461,7 +461,12 @@ pub(crate) enum Command {
     BookAt(usize),
     BookClose,
     /// A part of a page was selected: left, top, width, height, as shares.
-    MangaRead([f32; 4]),
+    MangaRead {
+        page: usize,
+        area: [f32; 4],
+    },
+    /// Two pages side by side, or one.
+    MangaDouble(bool),
     /// The reading model is to be fetched.
     OcrFetch,
     /// A click on a paragraph.
@@ -804,7 +809,7 @@ impl Ui {
                         .library_import(path, nikomiru_library::Grouping::BySeries),
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                     Dialog::StatsExport => self.session.stats_export(path),
-                    Dialog::Book => self.session.book_add(path),
+                    Dialog::Book | Dialog::MangaFolder => self.session.book_add(path),
                     Dialog::Audiobook => self.session.open(&path),
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
@@ -1228,7 +1233,8 @@ impl Ui {
             Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
-            Command::MangaRead(area) => s.manga_read(area),
+            Command::MangaRead { page, area } => s.manga_read(page, area),
+            Command::MangaDouble(double) => s.manga_double(double),
             Command::OcrFetch => s.ocr_fetch(),
             Command::BookClicked {
                 paragraph,

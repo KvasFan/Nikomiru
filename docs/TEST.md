@@ -416,6 +416,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-034 | Image | Long side 1000 px, JPEG; level 3 = original resolution; the frame asked at the click is the picture; without it (the player failed, or was not asked) the card is made without a picture | L4/L5 |
 | T-ANK-042 | Animated picture | Arguments: the clip, at most 10 s, never before 0, the level's size and frame rate, the encoder of each format; on `av_basic.mkv` an animated WebP (`ANIM` chunk) and an AVIF sequence (`ftypavis`), 640×360, about 10 frames for 0.82 s; without its encoder an animated format falls back to its still one | L1, L4 |
 | T-ANK-040 | Advanced mining | kittest: the dialog sends the lines added, the picture, the audio, the preview and Create. L3: the frame at a time taken whole by ffmpeg, the seek before the input. L4: the picture at the start of the sentence, no audio (a video without audio makes a card), no picture. L6: Shift+click (harness) opens the dialog over the popup, Esc closes it alone, the card has the picture and no audio | L3/L4/L6 |
+| T-ANK-043 | Video of the sentence | Arguments: the clip, at most 30 s, the active track or an external one, silent without one; the field is a `<video>` with no autoplay; on `av_basic.mkv` a WebM of VP9 640×360 and Opus | L1, L4 |
 | T-ANK-041 | Merged sentences | The cues joined a line each, the word still bold at its place (`<br>` in `{sentence}`); the clip from the first cue's start to the last one's end, at most 30 s | L1/L6 |
 | T-ANK-035 | Without audio | `av_noaudio.mp4` → mining cancelled with a message; no `addNote` request; the same for a track ffmpeg cannot cut and for an empty clip | L4 |
 | T-ANK-036 | Media | Stable content-based name; always base64 `data`; the name AnkiConnect returns goes into the fields; if `addNote` fails with a known error → `deleteMediaFile` only for the names that did not exist before the attempt; after `CommitUnknown` nothing is deleted; after every attempt `cache/mining` is empty, and at start its files older than ten minutes are removed | L4 |
@@ -484,6 +485,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |
 | T-E2E-WORDS-001 | Words in the subtitles | `mini-ja`, furigana on: `食べました` gets `た` over `食`; a card made from it underlines the word at once; both turned off in the settings, without a restart | L6 |
 | T-E2E-PLY-014 | Bar thumbnail | The pointer in the middle of the progress bar of `av_hd60_h264.mkv` → a 256×144 thumbnail of a step about the middle of the file | L6 |
+| T-E2E-ANK-043 | Video of the sentence | `image_format = "webm"`: a card from `av_basic.mkv` has a WebM in its Picture field | L6 |
 | T-E2E-ANK-042 | Moving picture | `image_format = "webp-animated"`: a card from `av_basic.mkv` has an animated WebP in its Picture field | L6 |
 
 ### 6.13 Online (M7)
@@ -574,8 +576,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Name | Description | Level |
 |---|---|---|---|
-| T-MNG-001 | Files | Pages in natural order, junk left out, what is not a CBZ, a page past the limit | L1/L6 |
-| T-MNG-002 | Reading | Pages turn, the place is kept, the statistics count no characters | L3/L6 |
+| T-MNG-001 | Files | Pages in natural order, junk left out, what is not a CBZ, a page past the limit; a folder, with sub-folders and a link that loops | L1/L6 |
+| T-MNG-002 | Reading | Pages turn, the place is kept, the statistics count no characters; two pages from the right, a selection on the left one, the cover and a spread alone | L3/L6 |
 | T-MNG-003 | Reading the text | A drag becomes shares of the page, kept on it; the crop; grey, square, in range; tokens to text | L1/L3/L6 |
 | T-MNG-004 | The model | Offered, not fetched until asked; a file whole or not at all; the wrong file refused; not fetched twice | L1/L3 |
 | T-MNG-005 | The text | Clicked like a book's | L3/L6 |

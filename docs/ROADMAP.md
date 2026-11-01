@@ -54,7 +54,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | **1.5.0** (D-26) | released (check by hand open) |
 | M14 | Clipboard lookup and texthooker (D-19) | M | **1.5.0** (D-26) | released (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | **1.5.0** (D-26) | released (DSL and MDict to check) |
-| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books in 1.5.0 and 1.6.0, audiobooks in 1.7.0; manga next, D-28) |
+| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | released; real books, manga and audiobooks still to check by hand |
 
 ---
 
@@ -605,7 +605,8 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - Done on 2026-11-01, for 1.6.0: vertical writing, pictures, the word marked, book progress in the WebDAV sync (T-BOK-009, T-BOK-010).
 - Open for books: a real EPUB with furigana; the ttu sync, whose format needs checking against the real reader.
 - Audiobooks done on 2026-11-01, for 1.7.0: sound with timed text beside it, read along in the subtitle list, cards with the sound of the line (T-ABK-001…T-ABK-004). Open: a real audiobook; linking the text to an EPUB.
-- Manga done on 2026-11-01, for 2.0.0: CBZ, one page at a time, a selection read on this computer by a model fetched on request, lookups and cards with the part of the page (T-MNG-001…T-MNG-006). The real model reads computer-set text (T-MNG-LIVE-001). Open: real manga pages; double pages, folders of pictures.
+- Manga done on 2026-11-01, for 2.0.0: CBZ, one page at a time, a selection read on this computer by a model fetched on request, lookups and cards with the part of the page (T-MNG-001…T-MNG-006). The real model reads computer-set text (T-MNG-LIVE-001). Open: real manga pages.
+- Done on 2026-11-01, for 2.1.0: folders of pictures, two pages side by side (T-MNG-001, T-MNG-002), and from the backlog the video of the sentence with sound (ANK-043).
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.
 
@@ -613,7 +614,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 - [x] Requirements of each part accepted (D-25, D-27, D-29, D-30).
 - [ ] Real books, manga and audiobooks checked by hand.
-- [ ] **Release 2.0.0**.
+- [x] **Release 2.0.0** (2026-11-01).
 
 ---
 
@@ -623,7 +624,6 @@ Every item requires a change to SPECIFICATION.md before work starts.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
-| WebM video clips with sound (ANK-043) | libvpx (BSD) **inside the system ffmpeg**: an external process, not a crate |
 | Online resources (D-12) | |
 | Built-in SRS | `fsrs` is BSD-3-Clause: either an exception, or our own GPL implementation of FSRS from the published algorithm |
 | AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |

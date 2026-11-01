@@ -168,15 +168,18 @@ pub enum ImageFormat {
     WebpAnimated,
     /// Animated AVIF of the sentence (ANK-042).
     AvifAnimated,
+    /// WebM video of the sentence, with its sound (ANK-043).
+    WebmVideo,
 }
 
 impl ImageFormat {
     /// All formats, in fallback order.
-    pub const ALL: [ImageFormat; 4] = [
+    pub const ALL: [ImageFormat; 5] = [
         ImageFormat::Jpeg,
         ImageFormat::Webp,
         ImageFormat::WebpAnimated,
         ImageFormat::AvifAnimated,
+        ImageFormat::WebmVideo,
     ];
 
     /// From the `anki.image_format` setting.
@@ -191,19 +194,25 @@ impl ImageFormat {
             ImageFormat::Webp => "webp",
             ImageFormat::WebpAnimated => "webp-animated",
             ImageFormat::AvifAnimated => "avif-animated",
+            ImageFormat::WebmVideo => "webm",
         }
     }
 
     /// A moving picture of the sentence rather than one frame (ANK-042).
     pub fn is_animated(self) -> bool {
-        matches!(self, ImageFormat::WebpAnimated | ImageFormat::AvifAnimated)
+        matches!(
+            self,
+            ImageFormat::WebpAnimated | ImageFormat::AvifAnimated | ImageFormat::WebmVideo
+        )
     }
 
     /// The format of one frame: itself, or the still one an animated
     /// format falls back to without a sentence or an encoder.
     pub fn still(self) -> Self {
         match self {
-            ImageFormat::Jpeg | ImageFormat::AvifAnimated => ImageFormat::Jpeg,
+            ImageFormat::Jpeg | ImageFormat::AvifAnimated | ImageFormat::WebmVideo => {
+                ImageFormat::Jpeg
+            }
             ImageFormat::Webp | ImageFormat::WebpAnimated => ImageFormat::Webp,
         }
     }
@@ -215,6 +224,7 @@ impl ImageFormat {
             ImageFormat::Webp => "libwebp",
             ImageFormat::WebpAnimated => "libwebp_anim",
             ImageFormat::AvifAnimated => "libaom-av1",
+            ImageFormat::WebmVideo => "libvpx-vp9",
         }
     }
 }
@@ -477,13 +487,14 @@ mod tests {
             "libwebp",
             "libwebp_anim",
             "libaom-av1",
+            "libvpx-vp9",
         ]);
         assert_eq!(t.audio_format(AudioFormat::Mp3), Some(AudioFormat::Mp3));
         assert!(t.missing_encoders().is_empty());
         let t = tools(&["libmp3lame"]);
         assert_eq!(t.audio_format(AudioFormat::AacM4a), Some(AudioFormat::Mp3));
         assert_eq!(t.image_format(ImageFormat::Jpeg), None);
-        assert_eq!(t.missing_encoders().len(), 6);
+        assert_eq!(t.missing_encoders().len(), 7);
         // T-ANK-042 an animated format without its encoder: its still one
         let t = tools(&["mjpeg", "libwebp"]);
         for (preferred, got) in [

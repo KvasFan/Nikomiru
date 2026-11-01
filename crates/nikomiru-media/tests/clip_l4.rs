@@ -11,6 +11,7 @@ use std::process::Command;
 
 use nikomiru_media::clip::{
     AudioClip, animated_args, animated_job, image_args, image_job, thumbnail_args, thumbnail_job,
+    video_args, video_job,
 };
 use nikomiru_media::process::{Cancel, JobError, run};
 use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, probe};
@@ -274,6 +275,83 @@ fn animated_picture_arguments() {
     // the still formats of a frame
     let still = shown(&image_args(out, out, ImageFormat::AvifAnimated, 1));
     assert!(still.contains("-c:v mjpeg"), "{still}");
+}
+
+// T-ANK-043
+#[test]
+fn the_arguments_of_a_video() {
+    let (video, out) = (Path::new("/videos/a.mkv"), Path::new("/cache/a.webm"));
+    let sound = shown(&video_args(video, Some((video, 2)), (1_500, 4_000), out, 1));
+    assert_eq!(
+        sound,
+        "-nostdin -hide_banner -loglevel error -y -ss 1.500 -t 2.500 -i file:/videos/a.mkv \
+         -map 0:v:0 -map 0:2 -c:a libopus -ac 2 -b:a 96k -sn -dn -map_chapters -1 \
+         -vf fps=24,scale=w='if(gte(iw,ih),min(640,iw),-2)':h='if(gte(iw,ih),-2,min(640,ih))' \
+         -c:v libvpx-vp9 -deadline realtime -cpu-used 6 -row-mt 1 -b:v 0 -crf 36 \
+         -pix_fmt yuv420p -f webm file:/cache/a.webm"
+    );
+    // an external track is a second input, cut the same
+    let external = Path::new("/videos/a.flac");
+    let two = shown(&video_args(
+        video,
+        Some((external, 0)),
+        (1_500, 4_000),
+        out,
+        1,
+    ));
+    assert!(
+        two.contains("-i file:/videos/a.mkv -ss 1.500 -t 2.500 -i file:/videos/a.flac"),
+        "{two}"
+    );
+    assert!(two.contains("-map 1:0"), "{two}");
+    // silent, and at most the longest clip
+    let silent = shown(&video_args(video, None, (-500, 90_000), out, 3));
+    assert!(silent.contains("-ss 0.000 -t 30.000 -i"), "{silent}");
+    assert!(silent.contains(" -an "), "{silent}");
+    assert!(!silent.contains("libopus"), "{silent}");
+}
+
+// T-ANK-043
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn the_sentence_becomes_a_video_with_its_sound() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("sentence.webm");
+    let input = fixture("av_basic.mkv");
+    let probe = |entries: &str, stream: &str| {
+        let output = Command::new(ffmpeg().with_file_name("ffprobe"))
+            .args(["-v", "error", "-select_streams", stream, "-show_entries"])
+            .args([entries, "-of", "csv=p=0"])
+            .arg(&out)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    let audio = Command::new(ffmpeg().with_file_name("ffprobe"))
+        .args(["-v", "error", "-select_streams", "a:0", "-show_entries"])
+        .args(["stream=index", "-of", "csv=p=0"])
+        .arg(&input)
+        .output()
+        .unwrap();
+    let audio: i64 = String::from_utf8_lossy(&audio.stdout)
+        .trim()
+        .parse()
+        .unwrap();
+    let job = video_job(
+        &ffmpeg(),
+        &input,
+        Some((&input, audio)),
+        (1_880, 2_700),
+        &out,
+        1,
+    );
+    run(&job, &Cancel::new()).unwrap();
+    assert_eq!(std::fs::read(&out).unwrap()[..4], [0x1a, 0x45, 0xdf, 0xa3]);
+    assert_eq!(
+        probe("stream=codec_name,width,height", "v:0"),
+        "vp9,640,360"
+    );
+    assert_eq!(probe("stream=codec_name", "a:0"), "opus");
 }
 
 // T-ANK-042
