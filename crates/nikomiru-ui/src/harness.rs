@@ -452,13 +452,17 @@ pub fn state() -> Result<Value, String> {
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(_, b)| {
-                json!({ "title": b.title, "read": b.read_chars, "chapter": b.chapter })
+                json!({ "title": b.title, "read": b.read_chars, "chapter": b.chapter, "chars": b.chars })
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
             "vertical": s.book_vertical(),
             "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
             "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
+            "page_text": s.books_page.open.as_ref().and_then(|o| {
+                Some(o.book.chapters.get(o.chapter)?.paragraphs.first()?.text.clone())
+            }),
+            "ocr_installed": s.books_page.ocr.installed,
         });
         state["hooker"] = json!({
             "lines": s.hooker_page.lines,
@@ -682,6 +686,7 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
+            "read" => out.push(Command::MangaRead([0.25, 0.25, 0.5, 0.5])),
             "next" => out.push(Command::BookChapter(
                 ui.session
                     .books_page

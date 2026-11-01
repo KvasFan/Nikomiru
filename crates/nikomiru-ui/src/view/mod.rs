@@ -148,7 +148,7 @@ impl FileDialog {
             ),
             Dialog::Book => (
                 tr("books-add"),
-                vec![(tr("books-filter"), vec!["*.epub"]), all],
+                vec![(tr("books-filter"), vec!["*.epub", "*.cbz"]), all],
             ),
             Dialog::BackupSave => (
                 tr("backup-make"),

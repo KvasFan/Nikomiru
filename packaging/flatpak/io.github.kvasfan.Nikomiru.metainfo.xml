@@ -17,6 +17,7 @@
       <li>Anki cards with the sentence, the frame, the audio of the line and a link back to the scene</li>
       <li>Subtitles from Jimaku and OpenSubtitles, aligned with the audio</li>
       <li>A library of your series, statistics of your study</li>
+      <li>Books, audiobooks and manga, read with the same dictionaries and cards</li>
       <li>The whole app works from the keyboard</li>
     </ul>
     <p>Nothing goes online unless you ask for it.</p>
@@ -47,6 +48,7 @@
     <binary>nikomiru</binary>
   </provides>
   <releases>
+    <release version="2.0.0" date="2026-11-01"/>
     <release version="1.7.0" date="2026-11-01"/>
     <release version="1.6.0" date="2026-11-01"/>
     <release version="1.5.0" date="2026-11-01"/>

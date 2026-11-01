@@ -119,6 +119,12 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 
 "Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. "Vertical" switches to vertical writing, with ← and → or the wheel to turn the page; a book that reads from the right opens that way.
 
+### Manga
+
+Add a CBZ on the Books page. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.
+
+To read a balloon, drag across it. The first time, the page offers a reading model of 111 MB: it comes from Hugging Face once, only if you ask, and then runs on your computer, so pages go nowhere. The text appears above the page: click a word to look it up, and a card has the text and the part of the page. The model reads one balloon or line at a time, and takes a few seconds.
+
 ### Audiobooks
 
 "Open an audiobook…" on the Books page plays a sound file. Put its text beside it with the same name, as `.lrc`, `.srt`, `.vtt` or `.ass`: Nikomiru does not make it. The subtitle list opens to read along; click a word to look it up, and a card has the line and its sound.

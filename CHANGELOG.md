@@ -4,6 +4,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-01
+
+Manga, with which the direction of D-12 is complete: books, audiobooks and manga read with the same dictionary and cards.
+
+### Added
+
+- Manga (M16, MNG-001…MNG-006): CBZ files on the Books page, one page at a time, with the place kept. A drag across a balloon reads it on this computer; the text is clicked like a book's, and a card has the text and the part of the page.
+- The reading model, 111 MB, is fetched from Hugging Face only when asked for, at pinned revisions and checked by SHA-256 (D-30). Pages are never sent anywhere.
+
+### Fixed
+
+- A picture of the same name in another book showed the picture of the book read before (BOK-010).
+
 ## [1.7.0] - 2026-11-01
 
 Audiobooks.

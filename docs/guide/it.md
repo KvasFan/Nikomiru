@@ -119,6 +119,12 @@ Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le ri
 
 "Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. "Verticale" passa alla scrittura verticale, con ← e → o la rotella per girare pagina; un libro che si legge da destra si apre così.
 
+### Manga
+
+Aggiungi un CBZ nella pagina dei libri. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.
+
+Per leggere un fumetto, trascina sopra di esso. La prima volta la pagina propone un modello di lettura da 111 MB: arriva da Hugging Face una volta sola, solo se lo chiedi, e poi funziona sul tuo computer, quindi le pagine non vanno da nessuna parte. Il testo compare sopra la pagina: clicca una parola per cercarla, e una carta ha il testo e la parte di pagina. Il modello legge un fumetto o una riga alla volta e impiega qualche secondo.
+
 ### Audiolibri
 
 "Apri un audiolibro…" nella pagina dei libri riproduce un file audio. Mettigli accanto il testo con lo stesso nome, come `.lrc`, `.srt`, `.vtt` o `.ass`: Nikomiru non lo genera. La lista dei sottotitoli si apre per seguire la lettura; clicca una parola per cercarla, e una carta ha la riga e il suo audio.

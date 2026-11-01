@@ -40,6 +40,8 @@ pub struct BooksPage {
     pub busy: bool,
     /// The page's message, and whether it is good news.
     pub status: Option<(String, bool)>,
+    /// Where reading a manga stands (MNG-003).
+    pub ocr: crate::ocr::OcrState,
 }
 
 /// What reading a file came to.

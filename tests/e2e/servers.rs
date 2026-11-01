@@ -285,6 +285,78 @@ fn a_book_is_read_and_mined_and_keeps_its_place() {
     assert!(sessions.iter().any(|(_, s)| s.chars > 0), "{sessions:?}");
 }
 
+// T-MNG-001, T-MNG-002, T-MNG-003, T-MNG-005, T-MNG-006: a CBZ opens, a part
+// of a page is read (by the harness's stand-in for the model), a word of it
+// is looked up, its card has the part of the page, and the place is kept
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_manga_is_read_and_mined() {
+    use nikomiru_anki::fake::FakeAnki;
+    use std::io::Write;
+    let anki = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&anki.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
+    desk.write_config(&format!("[anki]\nurl = \"{}\"\n", anki.url()));
+    let path = desk.path("見本.cbz");
+    let mut page = Vec::new();
+    image::RgbImage::from_pixel(120, 160, image::Rgb([230, 230, 230]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut page),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    for name in ["p10.png", "p2.png"] {
+        zip.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(&page).unwrap();
+    }
+    zip.finish().unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.state_until("the model", |s| s["books"]["ocr_installed"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the manga", |s| s["books"]["open"] == "見本");
+    h.cmd(json!({ "cmd": "books", "action": "next" }));
+    h.state_until("the second page", |s| s["books"]["chapter"] == 1);
+    h.cmd(json!({ "cmd": "books", "action": "read" }));
+    h.state_until("the text", |s| {
+        s["books"]["page_text"] == "明日も食べました"
+    });
+    // the click is on 食, three characters in
+    h.cmd(json!({ "cmd": "books", "action": "click", "paragraph": 0, "offset": 9 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = h.cmd(json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }));
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let collection = anki.collection();
+        let note = collection.notes.iter().find(|n| n.id == note_id).unwrap();
+        assert!(
+            note.fields
+                .iter()
+                .any(|(name, value)| name == "Sentence" && value.contains("ました")),
+            "{:?}",
+            note.fields
+        );
+        assert_eq!(collection.media.len(), 1, "the part of the page, no sound");
+    }
+    h.cmd(json!({ "cmd": "books", "action": "close" }));
+    h.state_until("its place", |s| {
+        s["books"]["open"].is_null() && s["books"]["list"][0]["chapter"] == 1
+    });
+    assert_eq!(h.state()["books"]["list"][0]["chars"], 2, "two pages");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // T-MNG-002: a page is not a number of characters read
+    let library = nikomiru_library::Library::open(&desk.data_file("library.redb")).unwrap();
+    let sessions = library.segments().unwrap();
+    assert!(sessions.iter().all(|(_, s)| s.chars == 0), "{sessions:?}");
+}
+
 // T-SRV-LIVE-002: the app plays an episode of a real Jellyfin, from
 // `NIKOMIRU_JELLYFIN_URL`, `_USER` and `_PASSWORD`
 #[test]

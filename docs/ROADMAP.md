@@ -596,7 +596,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the direction of D-12: reading with the same dictionary and cards.
 
-**Requirements**: BOK-001…BOK-010 for books (D-25, D-27); ABK-001…ABK-004, SUB-020 for audiobooks (D-29); manga to be written.
+**Requirements**: BOK-001…BOK-010 for books (D-25, D-27); ABK-001…ABK-004, SUB-020 for audiobooks (D-29); MNG-001…MNG-006 for manga (D-30).
 
 **Status as of 2026-10-31**
 
@@ -605,13 +605,13 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - Done on 2026-11-01, for 1.6.0: vertical writing, pictures, the word marked, book progress in the WebDAV sync (T-BOK-009, T-BOK-010).
 - Open for books: a real EPUB with furigana; the ttu sync, whose format needs checking against the real reader.
 - Audiobooks done on 2026-11-01, for 1.7.0: sound with timed text beside it, read along in the subtitle list, cards with the sound of the line (T-ABK-001…T-ABK-004). Open: a real audiobook; linking the text to an EPUB.
-- Not started: manga (the OCR's engine and its license are decided with the requirements).
+- Manga done on 2026-11-01, for 2.0.0: CBZ, one page at a time, a selection read on this computer by a model fetched on request, lookups and cards with the part of the page (T-MNG-001…T-MNG-006). The real model reads computer-set text (T-MNG-LIVE-001). Open: real manga pages; double pages, folders of pictures.
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.
 
 **Exit criteria**
 
-- [ ] Requirements of each part accepted; split into milestones of their own if needed.
+- [x] Requirements of each part accepted (D-25, D-27, D-29, D-30).
 - [ ] Real books, manga and audiobooks checked by hand.
 - [ ] **Release 2.0.0**.
 

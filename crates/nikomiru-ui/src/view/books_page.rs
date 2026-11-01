@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The Books page (BOK-004…BOK-006): the books added, and the reading of one,
-//! paragraph by paragraph, each character a target, with its furigana above.
-//! It sits under the popups, which take the same lookups.
+//! paragraph by paragraph, each character a target, with its furigana above,
+//! and of a manga, page by page, a selection read into text below it
+//! (MNG-002…MNG-005). It sits under the popups, which take the same lookups.
 
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
@@ -32,6 +33,8 @@ pub(super) const MARK: Color32 = Color32::from_rgba_premultiplied(40, 70, 120, 1
 const CELL: f32 = 1.12;
 /// A column's width, furigana included, as a share of the text's size.
 const COLUMN_WIDTH: f32 = 1.9;
+/// The smallest selection on a manga's page, in points.
+const MIN_SELECTION: f32 = 8.0;
 
 /// What the page keeps between frames.
 #[derive(Default)]
@@ -43,8 +46,12 @@ pub(crate) struct State {
     column: usize,
     /// An audiobook is to be chosen (ABK-001).
     audiobook: bool,
-    /// The pictures drawn so far, by their key (BOK-010).
+    /// The book those pictures are of, and the pictures drawn so far, by
+    /// their key (BOK-010).
+    book: String,
     textures: HashMap<String, Option<egui::TextureHandle>>,
+    /// The corners of the selection on a manga's page, while it is drawn.
+    selection: Option<(egui::Pos2, egui::Pos2)>,
 }
 
 impl std::fmt::Debug for State {
@@ -128,8 +135,14 @@ fn texture(
         .entry(key.to_string())
         .or_insert_with(|| {
             let bytes = open.book.images.get(key)?;
-            let cover = crate::catalog::Cover::decode(bytes).ok()?;
-            let image = egui::ColorImage::from_rgba_unmultiplied(cover.size, &cover.rgba);
+            let (size, rgba) = if open.book.manga {
+                let page = crate::popup_view::decode_page(bytes)?;
+                (page.size, page.rgba)
+            } else {
+                let cover = crate::catalog::Cover::decode(bytes).ok()?;
+                (cover.size, cover.rgba)
+            };
+            let image = egui::ColorImage::from_rgba_unmultiplied(size, &rgba);
             Some(ctx.load_texture(key, image, Default::default()))
         })
         .clone()
@@ -306,6 +319,159 @@ fn draw_readings(
     }
 }
 
+/// A key for the next page and one for the previous: the page turns to the
+/// left, as the book does. The wheel counts only over the page, not over a
+/// popup on it.
+fn turns(ui: &Ui, over_page: bool) -> (bool, bool) {
+    ui.input(|i| {
+        let wheel = i.events.iter().find_map(|e| match e {
+            egui::Event::MouseWheel { delta, .. } if over_page => Some(delta.y),
+            _ => None,
+        });
+        let wheel = wheel.unwrap_or(0.0);
+        (
+            i.key_pressed(egui::Key::ArrowLeft)
+                || i.key_pressed(egui::Key::PageDown)
+                || i.key_pressed(egui::Key::Space)
+                || wheel < 0.0,
+            i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::PageUp) || wheel > 0.0,
+        )
+    })
+}
+
+/// A selection as shares of the page; `None` if it is hardly one.
+fn shares(selection: (egui::Pos2, egui::Pos2), page: egui::Rect) -> Option<[f32; 4]> {
+    let area = egui::Rect::from_two_pos(selection.0, selection.1).intersect(page);
+    (area.width() >= MIN_SELECTION && area.height() >= MIN_SELECTION).then(|| {
+        [
+            (area.left() - page.left()) / page.width(),
+            (area.top() - page.top()) / page.height(),
+            area.width() / page.width(),
+            area.height() / page.height(),
+        ]
+    })
+}
+
+/// The line over a manga's page: the model to fetch, how it goes, or what to do.
+fn reading_line(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
+    let ocr = &s.page.ocr;
+    if let Some(bytes) = ocr.fetched {
+        let percent = crate::ocr::fetched_percent(bytes).to_string();
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label((s.tr)("manga-fetching", &[("percent", percent)]));
+        });
+    } else if !ocr.installed {
+        let size = (nikomiru_ocr::model_bytes() >> 20).to_string();
+        ui.add(egui::Label::new((s.tr)("manga-offer", &[("size", size)])).wrap());
+        let details = palette::current().details;
+        ui.add(egui::Label::new(RichText::new(tr(s, "manga-credit")).color(details)).wrap());
+        if ui.button(tr(s, "manga-fetch")).clicked() {
+            out.push(Command::OcrFetch);
+        }
+    } else if ocr.reading {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(tr(s, "manga-reading"));
+        });
+    } else {
+        ui.label(RichText::new(tr(s, "manga-hint")).color(palette::current().details));
+    }
+    if let Some((text, ok)) = &s.page.status {
+        let shade = if *ok {
+            palette::current().good
+        } else {
+            palette::current().bad
+        };
+        ui.add(egui::Label::new(RichText::new(text).color(shade)).wrap());
+    }
+}
+
+/// A page of a manga, whole, with a selection drawn on it and the text read
+/// from one under it (MNG-002…MNG-005).
+fn manga_reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let Some(item) = open
+        .book
+        .chapters
+        .get(open.chapter)
+        .and_then(|chapter| chapter.paragraphs.first())
+    else {
+        return;
+    };
+    reading_line(ui, s, out);
+    if !item.text.is_empty() {
+        let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
+        let (clicked, _) = paragraph(ui, item, &item.text, marked);
+        if let Some((offset, rect)) = clicked {
+            out.push(Command::BookClicked {
+                paragraph: 0,
+                offset,
+                anchor: popup::Rect {
+                    x: f64::from(rect.min.x),
+                    y: f64::from(rect.min.y),
+                    w: f64::from(rect.width()),
+                    h: f64::from(rect.height()),
+                },
+            });
+        }
+    }
+    let room = ui.available_rect_before_wrap();
+    let (rect, response) = ui.allocate_exact_size(room.size(), Sense::click_and_drag());
+    let number = (open.chapter + 1).to_string();
+    let name = (s.tr)("manga-page", &[("number", number)]);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &name));
+    let key = item.image.as_deref().unwrap_or_default();
+    // pages are large: only the one shown stays in memory
+    state.textures.retain(|k, _| k == key);
+    let Some(handle) = texture(ui.ctx(), state, open, key) else {
+        ui.painter().text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            tr(s, "manga-bad-page"),
+            FontId::proportional(TEXT_SIZE),
+            palette::current().bad,
+        );
+        return;
+    };
+    let size = handle.size_vec2();
+    let scale = (rect.width() / size.x).min(rect.height() / size.y);
+    let page = egui::Rect::from_center_size(rect.center(), size * scale);
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    ui.painter().image(handle.id(), page, uv, Color32::WHITE);
+    if s.page.ocr.installed && response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+    let pointer = ui.input(|i| (i.pointer.press_origin(), i.pointer.latest_pos()));
+    if response.drag_started()
+        && let (Some(start), Some(now)) = pointer
+    {
+        state.selection = Some((start, now));
+    }
+    if let (Some(selection), Some(now)) = (&mut state.selection, pointer.1) {
+        selection.1 = now;
+        let area = egui::Rect::from_two_pos(selection.0, selection.1);
+        ui.painter().rect_filled(area, 2.0, MARK);
+    }
+    if response.drag_stopped()
+        && let Some(selection) = state.selection.take()
+        && let Some(area) = shares(selection, page)
+    {
+        out.push(Command::MangaRead(area));
+    }
+    let (forward, back) = turns(ui, response.hovered());
+    if forward && open.chapter + 1 < open.book.chapters.len() {
+        out.push(Command::BookChapter(open.chapter + 1));
+    } else if back && open.chapter > 0 {
+        out.push(Command::BookChapter(open.chapter - 1));
+    }
+}
+
 /// A chapter in columns from the right, a page at a time (BOK-009).
 fn vertical_reader(
     ui: &mut Ui,
@@ -398,21 +564,7 @@ fn vertical_reader(
             });
         }
     }
-    // the page turns to the left, as the book does
-    let (forward, back) = ui.input(|i| {
-        let wheel = i.events.iter().find_map(|e| match e {
-            egui::Event::MouseWheel { delta, .. } => Some(delta.y),
-            _ => None,
-        });
-        let wheel = wheel.unwrap_or(0.0);
-        (
-            i.key_pressed(egui::Key::ArrowLeft)
-                || i.key_pressed(egui::Key::PageDown)
-                || i.key_pressed(egui::Key::Space)
-                || wheel < 0.0,
-            i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::PageUp) || wheel > 0.0,
-        )
-    });
+    let (forward, back) = turns(ui, response.hovered());
     let total = columns.columns;
     if forward {
         if state.column + per_page < total {
@@ -441,6 +593,17 @@ fn reader(
     state: &mut State,
     out: &mut Vec<Command>,
 ) -> bool {
+    if state.book != open.uid {
+        // the same name may be another picture in another book
+        state.book.clone_from(&open.uid);
+        state.textures.clear();
+    }
+    let manga = open.book.manga;
+    let (next, previous) = if manga {
+        ("books-next-page", "books-previous-page")
+    } else {
+        ("books-next", "books-previous")
+    };
     let mut close = false;
     ui.horizontal(|ui| {
         if ui.button(tr(s, "books-back")).clicked() {
@@ -450,7 +613,7 @@ fn reader(
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let last = open.book.chapters.len().saturating_sub(1);
             if ui
-                .add_enabled(open.chapter < last, Button::new(tr(s, "books-next")))
+                .add_enabled(open.chapter < last, Button::new(tr(s, next)))
                 .clicked()
             {
                 out.push(Command::BookChapter(open.chapter + 1));
@@ -458,19 +621,24 @@ fn reader(
             let number = format!("{} / {}", open.chapter + 1, open.book.chapters.len());
             ui.label(RichText::new(number).color(palette::current().details));
             if ui
-                .add_enabled(open.chapter > 0, Button::new(tr(s, "books-previous")))
+                .add_enabled(open.chapter > 0, Button::new(tr(s, previous)))
                 .clicked()
             {
                 out.push(Command::BookChapter(open.chapter - 1));
             }
-            if ui
-                .selectable_label(s.vertical, tr(s, "books-vertical"))
-                .clicked()
+            if !manga
+                && ui
+                    .selectable_label(s.vertical, tr(s, "books-vertical"))
+                    .clicked()
             {
                 out.push(Command::BookWriting(!s.vertical));
             }
         });
     });
+    if manga {
+        manga_reader(ui, s, open, state, out);
+        return close;
+    }
     if s.vertical {
         vertical_reader(ui, s, open, state, out);
         return close;
@@ -717,6 +885,7 @@ mod tests {
                 title: "本".into(),
                 author: String::new(),
                 right_to_left: false,
+                manga: false,
                 chapters: vec![chapter("読む本です"), chapter("次")],
                 images: Default::default(),
             },
@@ -820,6 +989,144 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::BookChapter(1)))
         );
+    }
+
+    fn manga() -> OpenBook {
+        let mut bytes = Vec::new();
+        image::RgbImage::from_pixel(100, 200, image::Rgb([200, 200, 200]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let page = |key: &str| Chapter {
+            title: None,
+            paragraphs: vec![Paragraph {
+                image: Some(key.into()),
+                ..Paragraph::default()
+            }],
+        };
+        let mut book = Book {
+            title: "漫画".into(),
+            manga: true,
+            chapters: vec![page("p1.png"), page("p2.png")],
+            ..Book::default()
+        };
+        book.images.insert("p1.png".into(), bytes.clone());
+        book.images.insert("p2.png".into(), bytes);
+        OpenBook {
+            uid: "book/m".into(),
+            book,
+            chapter: 0,
+            paragraph: 0,
+            jump: false,
+            started: (0, 0),
+        }
+    }
+
+    // T-MNG-003: a drag on the page gives the part of it, in shares
+    #[test]
+    fn a_selection_is_a_part_of_the_page() {
+        let mut page = BooksPage {
+            open: Some(manga()),
+            ..BooksPage::default()
+        };
+        page.ocr.installed = true;
+        let mut h = harness(page);
+        h.run();
+        let rect = h.get_by_label("manga-page").rect();
+        let (top, height) = (rect.center().y - rect.height() / 2.0, rect.height());
+        let width = height / 2.0;
+        let left = rect.center().x - width / 2.0;
+        let at = |x: f32, y: f32| Pos2::new(left + x * width, top + y * height);
+        h.hover_at(at(0.25, 0.25));
+        h.drag_at(at(0.25, 0.25));
+        h.run();
+        h.hover_at(at(0.5, 0.4));
+        h.run();
+        h.hover_at(at(0.75, 0.5));
+        h.run();
+        h.drop_at(at(0.75, 0.5));
+        h.run();
+        let area = h.state().out.iter().find_map(|c| match c {
+            Command::MangaRead(area) => Some(*area),
+            _ => None,
+        });
+        let area = area.expect("a selection");
+        for (got, wanted) in area.iter().zip([0.25, 0.25, 0.5, 0.25]) {
+            assert!((got - wanted).abs() < 0.02, "{area:?}");
+        }
+    }
+
+    // T-MNG-005: the text read is clicked like a book's
+    #[test]
+    fn the_text_of_a_page_is_clicked() {
+        let mut open = manga();
+        open.book.chapters[0].paragraphs[0].text = "読む本です".into();
+        let mut h = harness(BooksPage {
+            open: Some(open),
+            ..BooksPage::default()
+        });
+        h.run();
+        h.get_by_label("読む本です").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookClicked { paragraph: 0, .. }))
+        );
+    }
+
+    // T-MNG-004: the model comes only when asked for, and the page says so
+    #[test]
+    fn the_model_is_asked_for() {
+        let mut h = harness(BooksPage {
+            open: Some(manga()),
+            ..BooksPage::default()
+        });
+        h.run();
+        let _ = h.get_by_label("manga-credit");
+        assert!(h.state().out.is_empty(), "{:?}", h.state().out);
+        h.get_by_label("manga-fetch").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::OcrFetch)));
+    }
+
+    // T-MNG-002: the next page is the next one, and the writing is not a choice
+    #[test]
+    fn pages_turn() {
+        let mut h = harness(BooksPage {
+            open: Some(manga()),
+            ..BooksPage::default()
+        });
+        h.run();
+        assert!(h.query_by_label("books-vertical").is_none());
+        h.get_by_label("books-next-page").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(1)))
+        );
+    }
+
+    // T-BOK-010: a picture of the same name in another book is another picture
+    #[test]
+    fn pictures_are_of_their_book() {
+        let mut other = manga();
+        other.uid = "book/n".into();
+        let mut h = harness(BooksPage {
+            open: Some(manga()),
+            ..BooksPage::default()
+        });
+        h.run();
+        let first = h.state().state.textures["p1.png"].clone().unwrap().id();
+        h.state_mut().page.open = Some(other);
+        h.run();
+        let second = h.state().state.textures["p1.png"].clone().unwrap().id();
+        assert_ne!(first, second);
     }
 
     // T-BOK-004

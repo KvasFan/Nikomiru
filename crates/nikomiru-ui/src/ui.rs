@@ -36,6 +36,10 @@ pub enum Inbound {
     Sync(Box<crate::sync::SyncAnswer>),
     /// A report of the hooker worker.
     Hooker(crate::hooker::HookerEvent),
+    /// A report on fetching the reading model (MNG-004).
+    Ocr(crate::ocr::OcrEvent),
+    /// A part of a page was read (MNG-003).
+    OcrRead(crate::ocr::Reading),
     /// A book file was read (BOK-001).
     BookRead {
         /// The file.
@@ -261,6 +265,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::Servers(_) => "Servers",
             Inbound::Sync(_) => "Sync",
             Inbound::Hooker(_) => "Hooker",
+            Inbound::Ocr(_) => "Ocr",
+            Inbound::OcrRead(_) => "OcrRead",
             Inbound::BookRead { .. } => "BookRead",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
@@ -454,6 +460,10 @@ pub(crate) enum Command {
     /// The view reached a paragraph.
     BookAt(usize),
     BookClose,
+    /// A part of a page was selected: left, top, width, height, as shares.
+    MangaRead([f32; 4]),
+    /// The reading model is to be fetched.
+    OcrFetch,
     /// A click on a paragraph.
     BookClicked {
         paragraph: usize,
@@ -837,6 +847,14 @@ impl Ui {
                 self.session.server_ready(&uid, *result);
                 true
             }
+            Inbound::Ocr(event) => {
+                self.session.ocr_event(event);
+                true
+            }
+            Inbound::OcrRead(reading) => {
+                self.session.manga_recognized(reading);
+                true
+            }
             Inbound::BookRead { path, read } => {
                 self.session.book_read(path, read);
                 true
@@ -1210,6 +1228,8 @@ impl Ui {
             Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
+            Command::MangaRead(area) => s.manga_read(area),
+            Command::OcrFetch => s.ocr_fetch(),
             Command::BookClicked {
                 paragraph,
                 offset,
@@ -1418,6 +1438,22 @@ impl Ui {
                 path,
                 self.session.translator_clone(),
                 Box::new(move |path, read| waker.wake(Inbound::BookRead { path, read })),
+            );
+        }
+        if let Some(job) = self.session.take_ocr_job() {
+            let waker = self.waker.clone();
+            self.session.ocr().read(
+                job,
+                self.session.translator_clone(),
+                Box::new(move |reading| waker.wake(Inbound::OcrRead(reading))),
+            );
+        }
+        if self.session.take_ocr_fetch() {
+            let waker = self.waker.clone();
+            self.session.ocr().install(
+                self.session.proxy(),
+                self.session.translator_clone(),
+                Box::new(move |event| waker.wake(Inbound::Ocr(event))),
             );
         }
         match self.session.take_hooker_run() {

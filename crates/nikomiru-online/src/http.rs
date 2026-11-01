@@ -253,6 +253,52 @@ impl Http {
         let response = request.send().map_err(|e| failure(url, &e))?;
         Self::read(url, response, FILE_LIMIT)
     }
+
+    /// `GET url` of a large file, at most `limit` bytes, each piece handed to
+    /// `piece` as it arrives (MNG-004). The answer must be 2xx.
+    pub fn stream(
+        &self,
+        url: &Url,
+        provider: &str,
+        limit: u64,
+        piece: &mut dyn FnMut(&[u8]) -> Result<(), OnlineError>,
+    ) -> Result<(), OnlineError> {
+        let mut response = self
+            .files
+            .get(url.clone())
+            .send()
+            .map_err(|e| failure(url, &e))?;
+        if !response.status().is_success() {
+            return Err(OnlineError::Http {
+                provider: provider.to_string(),
+                status: response.status().as_u16(),
+            });
+        }
+        let too_large = OnlineError::TooLarge {
+            limit_mib: limit >> 20,
+        };
+        if response.content_length().is_some_and(|n| n > limit) {
+            return Err(too_large);
+        }
+        let mut buffer = vec![0u8; 64 << 10];
+        let mut seen = 0u64;
+        loop {
+            let read = response
+                .read(&mut buffer)
+                .map_err(|e| OnlineError::Unreachable {
+                    host: host_of(url),
+                    reason: e.to_string(),
+                })?;
+            if read == 0 {
+                return Ok(());
+            }
+            seen += read as u64;
+            if seen > limit {
+                return Err(too_large);
+            }
+            piece(&buffer[..read])?;
+        }
+    }
 }
 
 #[cfg(test)]

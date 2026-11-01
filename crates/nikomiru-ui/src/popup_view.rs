@@ -59,6 +59,10 @@ const MAX_DECODER_ALLOC: u64 = 128 << 20;
 /// Larger images are scaled down to this side: the popup is at most 560
 /// points wide.
 const MAX_SIDE: u32 = 1280;
+
+/// The largest page of a manga, and the longest side drawn.
+const MAX_PAGE_BYTES: usize = 32 << 20;
+const MAX_PAGE_SIDE: u32 = 2600;
 /// Decoded pixels kept for one popup at most.
 const MAX_POPUP_PIXELS_BYTES: usize = 64 << 20;
 
@@ -209,8 +213,18 @@ pub struct Content {
 /// Decodes a dictionary image, by its bytes (not its name): PNG, JPEG, GIF
 /// (the first frame), WebP or BMP, within limits; scaled down when large.
 pub fn decode_image(bytes: &[u8]) -> Option<Pixels> {
+    decode_within(bytes, MAX_IMAGE_BYTES, MAX_SIDE)
+}
+
+/// A manga's page: larger than the images of a popup, and meant to be read
+/// (MNG-002).
+pub fn decode_page(bytes: &[u8]) -> Option<Pixels> {
+    decode_within(bytes, MAX_PAGE_BYTES, MAX_PAGE_SIDE)
+}
+
+fn decode_within(bytes: &[u8], max_bytes: usize, max_side: u32) -> Option<Pixels> {
     use image::ImageFormat;
-    if bytes.len() > MAX_IMAGE_BYTES {
+    if bytes.len() > max_bytes {
         return None;
     }
     let mut reader = image::ImageReader::new(Cursor::new(bytes))
@@ -234,8 +248,8 @@ pub fn decode_image(bytes: &[u8]) -> Option<Pixels> {
     limits.max_alloc = Some(MAX_DECODER_ALLOC);
     reader.limits(limits);
     let mut decoded = reader.decode().ok()?;
-    if decoded.width() > MAX_SIDE || decoded.height() > MAX_SIDE {
-        decoded = decoded.thumbnail(MAX_SIDE, MAX_SIDE);
+    if decoded.width() > max_side || decoded.height() > max_side {
+        decoded = decoded.thumbnail(max_side, max_side);
     }
     let rgba = decoded.into_rgba8();
     Some(Pixels {

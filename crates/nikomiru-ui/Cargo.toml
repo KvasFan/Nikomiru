@@ -21,6 +21,7 @@ nikomiru-text.workspace = true
 nikomiru-library.workspace = true
 nikomiru-player.workspace = true
 nikomiru-media.workspace = true
+nikomiru-ocr.workspace = true
 nikomiru-online.workspace = true
 nikomiru-subs.workspace = true
 egui.workspace = true

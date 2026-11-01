@@ -480,7 +480,7 @@ impl Worker {
         frame: Option<PendingFrame>,
         stem: &str,
     ) -> Result<Option<Media>, String> {
-        if r.frame == FrameChoice::None {
+        if r.frame == FrameChoice::None && r.picture.is_none() {
             return Ok(None);
         }
         let preferred =
@@ -488,6 +488,14 @@ impl Worker {
         let format = tools
             .image_format(preferred)
             .ok_or_else(|| "ffmpeg has no image encoder".to_string())?;
+        if let Some(bytes) = &r.picture {
+            // the part of a manga's page, in the format of the other cards
+            let made = self.parts.cache_dir.join(format!("{stem}-page.jpg"));
+            std::fs::write(&made, bytes).map_err(|e| e.to_string())?;
+            let media = self.encode(tools, &made, format.still(), stem);
+            let _ = std::fs::remove_file(&made);
+            return media.map(Some);
+        }
         if format.is_animated()
             && let Some(clip) = r.clip
         {

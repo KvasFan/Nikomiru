@@ -258,6 +258,9 @@ pub struct MineRequest {
     pub action: CardAction,
     /// The picture (ANK-034, ANK-040).
     pub frame: FrameChoice,
+    /// A picture already made, in place of a frame: the part of a manga's
+    /// page that was read (MNG-006).
+    pub picture: Option<Vec<u8>>,
     /// The sentence audio goes with the card (ANK-040).
     pub audio: bool,
 }

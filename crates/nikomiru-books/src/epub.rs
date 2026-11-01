@@ -245,6 +245,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
         .any(|t| attribute(t, "page-progression-direction") == Some("rtl"));
     Ok(Book {
         right_to_left,
+        manga: false,
         title: element(&opf, "title")
             .filter(|t| !t.is_empty())
             .unwrap_or(stem),
