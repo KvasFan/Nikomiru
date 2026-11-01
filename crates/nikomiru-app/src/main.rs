@@ -320,7 +320,7 @@ fn run(
     let proxy = event_loop.create_proxy();
     let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
-    let (config, config_notice, invalid) = load_config(paths);
+    let (mut config, config_notice, invalid) = load_config(paths);
     // a file that could not be read is never written over with the defaults
     let config_writable = config_notice.is_none();
     check_ffmpeg(&config.paths.ffmpeg);
@@ -338,6 +338,24 @@ fn run(
                 ("keys", invalid.join(", ")),
             ],
         ));
+    }
+    // MET-005: before anything takes a copy of the settings
+    let secrets = Arc::new(nikomiru_core::secrets::Keeper::new(Arc::new(
+        nikomiru_app::keyring::SystemKeyring,
+    )));
+    if config_writable {
+        match secrets.open(&mut config) {
+            Ok(true) => {
+                if let Err(e) = config.without_secrets().save(&paths.config_file()) {
+                    tracing::warn!("{e}");
+                }
+            }
+            Ok(false) => {}
+            Err(reason) => {
+                tracing::warn!("the keyring: {reason}");
+                notices.push(translator.tr("error-keyring", &[("reason", reason)]));
+            }
+        }
     }
     // a settings folder made with sudo belongs to root: saving would fail
     if let Err(e) = nikomiru_core::config::check_writable(&paths.config_dir) {
@@ -516,6 +534,7 @@ fn run(
         mpv_presets_dir: paths.mpv_presets_dir(),
         user_mpv_conf: paths.user_mpv_conf(),
         config_file: paths.config_file(),
+        secrets,
         mining_dir,
         config_writable,
     };

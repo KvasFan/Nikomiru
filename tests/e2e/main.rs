@@ -2241,6 +2241,40 @@ fn a_secondary_subtitle_follows_the_main_one() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-MET-005: a key goes to a real keyring when asked, leaves the file, comes
+// back at the next start, and returns to the file when the keyring is off
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and gnome-keyring-daemon"]
+fn the_keys_live_in_the_keyring() {
+    const KEY: &str = "a-key-for-jimaku";
+    let mut desk = Desktop::start();
+    desk.start_keyring();
+    desk.write_config(&format!("[online]\njimaku_api_key = \"{KEY}\"\n"));
+    let file = desk.path("config/nikomiru/config.toml");
+    let saved_with = |h: &mut support::Harness, keyring: bool| {
+        h.cmd(serde_json::json!({
+            "cmd": "settings",
+            "tab": "general",
+            "save": format!("[general]\nkeyring = {keyring}\n"),
+        }));
+        let s = h.state_until("saved", |s| !s["settings_status"].is_null());
+        assert_eq!(s["settings_status"]["ok"], true, "{s}");
+    };
+    let (mut app, mut h) = desk.launch();
+    saved_with(&mut h, true);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains(KEY), "{text}");
+    assert!(text.contains("keyring = true"), "{text}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    saved_with(&mut h, false);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains(KEY), "{text}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-SET-002, T-SET-004, T-SET-005: the settings apply at once, the interface
 // scale leaves the subtitles' size alone, the user's file keeps its comments
 #[test]

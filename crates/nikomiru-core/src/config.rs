@@ -107,6 +107,9 @@ pub struct General {
     /// The library shows its first steps until they are done or hidden
     /// (LIB-013).
     pub first_steps: bool,
+    /// Keys and passwords live in the system keyring, not in this file
+    /// (MET-005).
+    pub keyring: bool,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -727,6 +730,7 @@ impl Default for General {
             accent: Self::ACCENT.into(),
             ui_scale: 100,
             first_steps: true,
+            keyring: false,
             study_language: "ja".into(),
             other: toml::Table::new(),
         }
@@ -941,6 +945,7 @@ impl Config {
                 let study = std::mem::take(&mut self.general.study_language);
                 self.general = General {
                     study_language: study,
+                    keyring: self.general.keyring,
                     other,
                     ..d.general
                 };
@@ -992,45 +997,58 @@ impl Config {
         Ok(toml::to_string_pretty(self)?)
     }
 
+    /// Every key, password and token, with a name that stays the same from
+    /// one start to the next (MET-005).
+    pub fn secrets_mut(&mut self) -> Vec<(String, &mut String)> {
+        let mut out = vec![
+            ("anki.api_key".to_string(), &mut self.anki.api_key),
+            (
+                "online.jimaku_api_key".to_string(),
+                &mut self.online.jimaku_api_key,
+            ),
+            (
+                "online.opensubtitles_api_key".to_string(),
+                &mut self.online.opensubtitles_api_key,
+            ),
+            (
+                "online.opensubtitles_password".to_string(),
+                &mut self.online.opensubtitles_password,
+            ),
+            ("sync.password".to_string(), &mut self.sync.password),
+        ];
+        out.extend(
+            self.servers
+                .iter_mut()
+                .map(|s| (format!("servers.{}.token", s.id), &mut s.token)),
+        );
+        out
+    }
+
+    /// The names and values of [`Self::secrets_mut`].
+    pub fn secrets(&self) -> Vec<(String, String)> {
+        let mut own = self.clone();
+        own.secrets_mut()
+            .into_iter()
+            .map(|(name, value)| (name, value.clone()))
+            .collect()
+    }
+
     /// These settings with every key, password and token blank, for a backup
-    /// (BAK-002).
+    /// (BAK-002) and for the file when the keyring holds them (MET-005).
     pub fn without_secrets(&self) -> Self {
         let mut out = self.clone();
-        out.anki.api_key.clear();
-        out.online.jimaku_api_key.clear();
-        out.online.opensubtitles_api_key.clear();
-        out.online.opensubtitles_password.clear();
-        out.sync.password.clear();
-        for server in &mut out.servers {
-            server.token.clear();
+        for (_, value) in out.secrets_mut() {
+            value.clear();
         }
         out
     }
 
     /// The keys blank here, taken from `current` (BAK-003).
     pub fn fill_secrets(&mut self, current: &Self) {
-        let fill = |to: &mut String, from: &str| {
-            if to.is_empty() {
-                *to = from.to_string();
-            }
-        };
-        fill(&mut self.anki.api_key, &current.anki.api_key);
-        fill(
-            &mut self.online.jimaku_api_key,
-            &current.online.jimaku_api_key,
-        );
-        fill(
-            &mut self.online.opensubtitles_api_key,
-            &current.online.opensubtitles_api_key,
-        );
-        fill(
-            &mut self.online.opensubtitles_password,
-            &current.online.opensubtitles_password,
-        );
-        fill(&mut self.sync.password, &current.sync.password);
-        for server in &mut self.servers {
-            if let Some(same) = current.servers.iter().find(|s| s.id == server.id) {
-                fill(&mut server.token, &same.token);
+        let from: std::collections::HashMap<_, _> = current.secrets().into_iter().collect();
+        for (name, value) in self.secrets_mut() {
+            if let (true, Some(same)) = (value.is_empty(), from.get(&name)) {
+                value.clone_from(same);
             }
         }
     }

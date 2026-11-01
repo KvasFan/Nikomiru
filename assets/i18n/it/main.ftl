@@ -102,6 +102,9 @@ settings-theme = Tema
 settings-theme-system = Come il desktop
 settings-theme-dark = Scuro
 settings-theme-light = Chiaro
+settings-keys = Chiavi e password
+settings-keyring = Conservale nel portachiavi di sistema
+settings-keyring-hint = Chiavi API, password e token dei server vanno nel portachiavi del desktop (GNOME Keyring, KWallet) invece che in config.toml, al salvataggio. Lasciano il file solo quando il portachiavi le ha davvero. Un portachiavi bloccato può chiedere la sua password all'avvio di Nikomiru.
 settings-accent = Colore d'accento
 settings-scale = Scala dell'interfaccia
 settings-playback = Riproduzione
@@ -223,6 +226,8 @@ error-config-dir = Nella cartella delle impostazioni { $path } non si può scriv
 error-config-serialize = Le impostazioni non si possono salvare ({ $reason }).
 error-config-values = Alcune impostazioni in { $path } hanno un valore del tipo sbagliato e usano quello predefinito: { $keys }. Salvando le impostazioni vengono sostituite dai valori predefiniti.
 error-paths = HOME non è impostata: Nikomiru non trova le sue cartelle.
+error-keyring = Il portachiavi di sistema non si può leggere ({ $reason }): chiavi e password mancano finché non torna disponibile. Non è stato cancellato nulla.
+error-keyring-kept = Il portachiavi di sistema non si può scrivere ({ $reason }): per ora chiavi e password restano in config.toml.
 
 # Library (nikomiru-library LibraryError)
 error-library = La libreria non si può usare ({ $reason }): posizioni e cronologia non vengono salvate.

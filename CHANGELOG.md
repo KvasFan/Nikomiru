@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-02
+
+Keys and passwords in the system keyring, for those who want them there.
+
+### Added
+
+- Settings → General → Keep them in the system keyring: API keys, passwords and server tokens go to GNOME Keyring, KWallet or the like instead of `config.toml` (MET-005, D-33). Off by default, and off nothing talks to the keyring. A key leaves the file only once the keyring gives it back.
+
 ## [2.2.0] - 2026-11-02
 
 The interface in Japanese.

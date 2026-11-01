@@ -206,6 +206,8 @@ pub struct Services {
     pub user_mpv_conf: PathBuf,
     /// `config.toml`, where the settings pages save.
     pub config_file: PathBuf,
+    /// The keys and passwords in the system keyring (MET-005).
+    pub secrets: std::sync::Arc<nikomiru_core::secrets::Keeper>,
     /// Where the media of a card are made (`$XDG_CACHE_HOME/nikomiru/mining`):
     /// the frame of the click is saved there.
     pub mining_dir: PathBuf,
@@ -1337,6 +1339,11 @@ impl Session {
         let config = self.config_save.take()?;
         self.config_saving = true;
         Some((config, self.services.config_file.clone()))
+    }
+
+    /// The keeper of the keys and passwords (MET-005).
+    pub fn secrets(&self) -> std::sync::Arc<nikomiru_core::secrets::Keeper> {
+        std::sync::Arc::clone(&self.services.secrets)
     }
 
     /// The settings were written, or not.

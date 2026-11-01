@@ -139,7 +139,7 @@ Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indiriz
 
 | Scheda | Cosa contiene |
 |---|---|
-| Generale | Lingua (inglese, italiano o giapponese), tema (chiaro, scuro o come il desktop), colore d'accento, scala dell'interfaccia, passo dei salti, episodio successivo |
+| Generale | Lingua (inglese, italiano o giapponese), tema (chiaro, scuro o come il desktop), colore d'accento, scala dell'interfaccia, passo dei salti, episodio successivo, chiavi e password nel portachiavi di sistema |
 | Player | Le opzioni di mpv come controlli, preset `mpv.conf`, importazione ed esportazione |
 | Sottotitoli | Dimensione, lingue preferite, sfocatura o nascondere finché non ci passi sopra, il sottotitolo secondario, le letture sopra i kanji, le parole minate sottolineate |
 | Ricerca | Risultati in un popup, dimensione del popup, passaggio del puntatore |

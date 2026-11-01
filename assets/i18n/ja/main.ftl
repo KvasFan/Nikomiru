@@ -102,6 +102,9 @@ settings-theme = テーマ
 settings-theme-system = デスクトップに合わせる
 settings-theme-dark = ダーク
 settings-theme-light = ライト
+settings-keys = キーとパスワード
+settings-keyring = システムのキーリングに保管する
+settings-keyring-hint = 保存時に、API キー、パスワード、サーバーのトークンを config.toml ではなくデスクトップのキーリング（GNOME Keyring、KWallet）に保管します。キーリングに保管されたことを確認してから、ファイルから消去します。キーリングがロックされている場合は、Nikomiru の起動時にパスワードを求められることがあります。
 settings-accent = アクセントカラー
 settings-scale = インターフェースの拡大率
 settings-playback = 再生
@@ -223,6 +226,8 @@ error-config-dir = 設定フォルダー { $path } に書き込めません（{ 
 error-config-serialize = 設定を保存できません（{ $reason }）。
 error-config-values = { $path } の一部の設定は値の種類が正しくないため、既定値を使用します: { $keys }。設定を保存すると、既定値で上書きされます。
 error-paths = HOME が設定されていないため、Nikomiru は自分のフォルダーを見つけられません。
+error-keyring = システムのキーリングを読み込めません（{ $reason }）。読み込めるようになるまで、キーとパスワードは使用できません。何も削除されていません。
+error-keyring-kept = システムのキーリングに書き込めません（{ $reason }）。キーとパスワードは当面 config.toml に残ります。
 
 # Library (nikomiru-library LibraryError)
 error-library = ライブラリを使用できません（{ $reason }）。再生位置と履歴は保存されません。

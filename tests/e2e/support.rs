@@ -390,6 +390,42 @@ impl Desktop {
         self.env.push((key.to_string(), value.to_string()));
     }
 
+    /// A real, unlocked keyring on this desktop's bus (MET-005), with its
+    /// files outside the app's home folder.
+    pub fn start_keyring(&mut self) {
+        let home = self.path("keyring");
+        std::fs::create_dir_all(&home).unwrap();
+        let mut daemon = Command::new("gnome-keyring-daemon")
+            .args(["--foreground", "--unlock", "--components=secrets"])
+            .env_clear()
+            .env("HOME", &home)
+            .env("XDG_DATA_HOME", &home)
+            .env("XDG_RUNTIME_DIR", self.path("run"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("gnome-keyring-daemon");
+        // the password of the new keyring, then the end of it
+        daemon.stdin.take().unwrap().write_all(b"test\n").unwrap();
+        self.helpers.push(daemon);
+        let answers = || {
+            Command::new("busctl")
+                .arg(format!("--address={}", self.bus_address))
+                .args(["status", "org.freedesktop.secrets"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while !answers() {
+            assert!(std::time::Instant::now() < deadline, "no keyring");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
     /// A screenshot of the whole desktop, as a PNG at `out` (spectacle).
     pub fn capture(&self, out: &Path) {
         let status = Command::new("spectacle")

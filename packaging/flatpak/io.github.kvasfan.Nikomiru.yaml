@@ -26,6 +26,8 @@ finish-args:
   - --filesystem=xdg-pictures/Nikomiru:create
   # screen readers (NFR-A11Y-01)
   - --talk-name=org.a11y.Bus
+  # keys and passwords in the system keyring, when asked (MET-005)
+  - --talk-name=org.freedesktop.secrets
 
 cleanup:
   - /include
