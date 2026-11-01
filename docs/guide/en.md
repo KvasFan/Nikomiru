@@ -117,7 +117,7 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 
 ### Books
 
-"Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. Text is horizontal, and pictures are not shown.
+"Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. "Vertical" switches to vertical writing, with ← and → or the wheel to turn the page; a book that reads from the right opens that way.
 
 ### Jellyfin and Plex
 

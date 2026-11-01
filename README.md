@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 1.5.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 1.6.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -85,7 +85,7 @@ Version 1.5.0 is for Linux. The status of each area follows the [ROADMAP](docs/R
 | Advanced ASS, screenshots with subtitles | Works; real typeset fansubs still to compare with libass (M13) |
 | Texthooker for visual novels, with lookups and cards of text only | Works with a simulated hooker (M14) |
 | StarDict, DSL and MDict dictionaries, their definitions as plain text | StarDict works with a real dictionary; DSL and MDict only on files made by the tests (M15) |
-| Books: EPUB with furigana, lookups and cards of text only, horizontal text | Works with a real EPUB; a book with furigana still to check (M16) |
+| Books: EPUB with furigana and pictures, vertical or horizontal, lookups and cards of text only | Works with a real EPUB; a book with furigana still to check (M16) |
 | Words in the subtitles: the words already in Anki underlined, readings over the kanji, ← → word by word | Works with the project's test dictionaries; to check with JMdict (M9) |
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |
@@ -147,7 +147,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. Next: the rest of M16, manga and audiobooks (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. 1.6.0 brought vertical writing and pictures to books. Next: audiobooks (1.7.0), then manga (2.0.0) (D-12, D-28). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 

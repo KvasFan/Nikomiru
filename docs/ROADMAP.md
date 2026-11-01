@@ -54,7 +54,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M13 | Advanced ASS and screenshots with subtitles (D-19) | L | **1.5.0** (D-26) | released (check by hand open) |
 | M14 | Clipboard lookup and texthooker (D-19) | M | **1.5.0** (D-26) | released (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | **1.5.0** (D-26) | released (DSL and MDict to check) |
-| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books in 1.5.0) |
+| M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | in progress (books in 1.5.0 and 1.6.0; audiobooks next, D-28) |
 
 ---
 
@@ -596,13 +596,14 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the direction of D-12: reading with the same dictionary and cards.
 
-**Requirements**: BOK-001…BOK-008 for books (D-25); manga and audiobooks to be written.
+**Requirements**: BOK-001…BOK-010 for books (D-25, D-27); manga and audiobooks to be written.
 
 **Status as of 2026-10-31**
 
 - Books done with a small EPUB made by the tests: reading, furigana, lookups, cards of text only, the place kept, a session in the statistics (T-BOK-001…T-BOK-008).
 - Checked on 2026-11-01: a real EPUB of Project Gutenberg (T-BOK-LIVE-001); it has no furigana.
-- Open for books: a real EPUB with furigana; vertical writing; pictures; the ttu sync, whose format needs checking against the real reader; book progress in the WebDAV sync.
+- Done on 2026-11-01, for 1.6.0: vertical writing, pictures, the word marked, book progress in the WebDAV sync (T-BOK-009, T-BOK-010).
+- Open for books: a real EPUB with furigana; the ttu sync, whose format needs checking against the real reader.
 - Not started: manga (the OCR's engine and its license are decided with the requirements) and audiobooks (an audiobook with its text, played in sync).
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.

@@ -22,6 +22,10 @@ const FILE_LIMIT: u64 = 64 << 20;
 const TOTAL_LIMIT: u64 = 1 << 30;
 /// The most chapters.
 const CHAPTER_LIMIT: usize = 20_000;
+/// The largest picture kept.
+const IMAGE_LIMIT: u64 = 32 << 20;
+/// The most bytes of pictures kept.
+const IMAGES_LIMIT: u64 = 512 << 20;
 
 fn format(reason: &str) -> BookError {
     BookError::NotEpub(reason.to_string())
@@ -124,9 +128,24 @@ fn resolve(base: &str, href: &str) -> Option<String> {
 struct Archive {
     zip: ZipArchive<File>,
     left: u64,
+    /// The bytes of pictures still allowed.
+    pictures: u64,
 }
 
 impl Archive {
+    /// A picture, or nothing when it cannot be had: the book reads without.
+    fn image(&mut self, name: &str) -> Option<Vec<u8>> {
+        let entry = self.zip.by_name(name).ok()?;
+        let limit = IMAGE_LIMIT.min(self.pictures);
+        let mut bytes = Vec::new();
+        entry.take(limit + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > limit {
+            return None;
+        }
+        self.pictures -= bytes.len() as u64;
+        Some(bytes)
+    }
+
     fn text(&mut self, name: &str) -> Result<String, BookError> {
         let entry = self
             .zip
@@ -158,6 +177,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     let mut archive = Archive {
         zip,
         left: TOTAL_LIMIT,
+        pictures: IMAGES_LIMIT,
     };
     let container = archive.text("META-INF/container.xml")?;
     let package = tags(&container, "rootfile")
@@ -175,6 +195,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
         return Err(BookError::TooLarge);
     }
     let mut chapters = Vec::new();
+    let mut images = std::collections::BTreeMap::new();
     for itemref in &spine {
         let Some(href) = attribute(itemref, "idref").and_then(|id| manifest.get(id)) else {
             continue;
@@ -183,12 +204,36 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
         let Some(name) = resolve(&package, href) else {
             continue;
         };
-        let chapter = chapter_of(&archive.text(&name)?);
+        let mut chapter = chapter_of(&archive.text(&name)?);
+        // pictures are relative to their chapter, and one that cannot be had
+        // is left out
+        chapter.paragraphs.retain_mut(|paragraph| {
+            let Some(source) = paragraph.image.take() else {
+                return true;
+            };
+            let Some(key) = resolve(&name, &source) else {
+                return false;
+            };
+            if !images.contains_key(&key) {
+                match archive.image(&key) {
+                    Some(bytes) => {
+                        images.insert(key.clone(), bytes);
+                    }
+                    None => return false,
+                }
+            }
+            paragraph.image = Some(key);
+            true
+        });
         if !chapter.paragraphs.is_empty() {
             chapters.push(chapter);
         }
     }
-    if chapters.is_empty() {
+    let has_text = chapters
+        .iter()
+        .flat_map(|c| &c.paragraphs)
+        .any(|p| !p.text.is_empty());
+    if !has_text {
         return Err(BookError::NoText);
     }
     let stem = path
@@ -205,6 +250,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
             .unwrap_or(stem),
         author: element(&opf, "creator").unwrap_or_default(),
         chapters,
+        images,
     })
 }
 
@@ -301,6 +347,46 @@ mod tests {
             Some("a/x y.xhtml")
         );
         assert_eq!(resolve("b.opf", "../d.xhtml"), None);
+    }
+
+    // T-BOK-010: a picture is kept by its place, one that is not there is
+    // left out, and pictures alone are not a book
+    #[test]
+    fn pictures_come_with_the_book() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        epub(
+            &path,
+            &[
+                ("META-INF/container.xml", CONTAINER),
+                ("OEBPS/content.opf", OPF),
+                (
+                    "OEBPS/text/one a.xhtml",
+                    "<p>本文</p><img src='../images/a.png'/><img src='gone.png'/>",
+                ),
+                ("OEBPS/images/a.png", "bytes"),
+                ("two.xhtml", "<p>序</p>"),
+            ],
+        );
+        let book = read(&path).unwrap();
+        assert_eq!(book.images["OEBPS/images/a.png"], b"bytes");
+        let chapter = &book.chapters[1];
+        assert_eq!(chapter.paragraphs.len(), 2, "{chapter:?}");
+        assert_eq!(
+            chapter.paragraphs[1].image.as_deref(),
+            Some("OEBPS/images/a.png")
+        );
+        epub(
+            &path,
+            &[
+                ("META-INF/container.xml", CONTAINER),
+                ("OEBPS/content.opf", OPF),
+                ("OEBPS/text/one a.xhtml", "<img src='a.png'/>"),
+                ("OEBPS/text/a.png", "bytes"),
+                ("two.xhtml", ""),
+            ],
+        );
+        assert_eq!(read(&path), Err(BookError::NoText));
     }
 
     // T-BOK-009

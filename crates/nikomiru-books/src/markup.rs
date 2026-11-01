@@ -95,6 +95,15 @@ impl Builder {
         self.paragraph.text.push_str(text);
     }
 
+    /// A picture: a paragraph of its own.
+    fn image(&mut self, source: String) {
+        self.end_paragraph();
+        self.chapter.paragraphs.push(Paragraph {
+            image: Some(source),
+            ..Paragraph::default()
+        });
+    }
+
     fn end_paragraph(&mut self) {
         let mut paragraph = std::mem::take(&mut self.paragraph);
         self.ruby = None;
@@ -153,6 +162,21 @@ const BLOCKS: [&str; 15] = [
     "br",
 ];
 
+/// The picture a tag names.
+fn source_of(tag: &str) -> Option<String> {
+    ["src", "href", "xlink:href"].iter().find_map(|name| {
+        let at = tag.find(&format!("{name}="))?;
+        // not the end of a longer name
+        if tag[..at].ends_with(|c: char| c.is_alphanumeric() || c == ':') {
+            return None;
+        }
+        let value = &tag[at + name.len() + 1..];
+        let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+        let end = value[1..].find(quote)?;
+        Some(decode(&value[1..=end]))
+    })
+}
+
 /// The chapter a file of the spine holds.
 pub(crate) fn chapter_of(xhtml: &str) -> Chapter {
     let mut b = Builder::default();
@@ -180,11 +204,26 @@ pub(crate) fn chapter_of(xhtml: &str) -> Chapter {
             .to_ascii_lowercase();
         let name = name.rsplit(':').next().unwrap_or_default();
         match name {
-            // what is not reading text, with its contents
+            "img" | "image" if !closing => {
+                if let Some(source) = source_of(tag) {
+                    b.image(source);
+                }
+            }
+            // what is not reading text, with its contents; a picture in an
+            // SVG, as covers have, is a picture still
             "head" | "script" | "style" | "svg" if !closing && !tag.ends_with('/') => {
                 let close = format!("</{name}");
                 let lower = rest.to_ascii_lowercase();
-                rest = lower.find(&close).map_or("", |at| &rest[at..]);
+                let end = lower.find(&close).unwrap_or(rest.len());
+                if name == "svg"
+                    && let Some(source) = rest[..end]
+                        .split('<')
+                        .find(|t| t.starts_with("image"))
+                        .and_then(source_of)
+                {
+                    b.image(source);
+                }
+                rest = &rest[end..];
             }
             "ruby" if !closing => {
                 b.ruby = Some(OpenRuby {
@@ -267,8 +306,34 @@ mod tests {
         let texts = paragraphs(
             "<p>本文<script>alert(1)</script><!-- 注 --></p><svg><text>絵</text></svg><p><img src='x' onerror='y'/>&amp;&#x3042;</p>",
         );
-        let texts: Vec<_> = texts.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(texts[1].image.as_deref(), Some("x"), "the picture stays");
+        let texts: Vec<_> = texts
+            .iter()
+            .filter(|p| p.image.is_none())
+            .map(|p| p.text.as_str())
+            .collect();
         assert_eq!(texts, ["本文", "&あ"]);
+    }
+
+    // T-BOK-010
+    #[test]
+    fn pictures_are_paragraphs_of_their_own() {
+        let p = paragraphs(
+            "<p>前<img src='a.jpg' alt='x'/>後</p><svg><image xlink:href=\"b.png\"/></svg><img alt='none'/>",
+        );
+        let out: Vec<_> = p
+            .iter()
+            .map(|p| (p.text.as_str(), p.image.as_deref()))
+            .collect();
+        assert_eq!(
+            out,
+            [
+                ("前", None),
+                ("", Some("a.jpg")),
+                ("後", None),
+                ("", Some("b.png"))
+            ]
+        );
     }
 
     #[test]

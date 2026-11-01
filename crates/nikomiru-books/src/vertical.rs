@@ -40,6 +40,8 @@ pub struct Cell {
 pub struct Columns {
     /// The cells, in reading order.
     pub cells: Vec<Cell>,
+    /// The pictures: a paragraph and the first column of its page.
+    pub pictures: Vec<(usize, usize)>,
     /// The columns in all.
     pub columns: usize,
 }
@@ -50,11 +52,23 @@ impl Columns {
         self.cells
             .iter()
             .find(|c| c.paragraph >= paragraph)
-            .map_or(0, |c| c.column)
+            .map(|c| c.column)
+            .into_iter()
+            .chain(
+                self.pictures
+                    .iter()
+                    .filter(|(p, _)| *p >= paragraph)
+                    .map(|(_, column)| *column),
+            )
+            .min()
+            .unwrap_or(0)
     }
 
     /// The paragraph that starts or goes on at `column`.
     pub fn paragraph_at(&self, column: usize) -> usize {
+        if let Some((paragraph, _)) = self.pictures.iter().find(|(_, c)| *c == column) {
+            return *paragraph;
+        }
         self.cells
             .iter()
             .find(|c| c.column >= column)
@@ -81,12 +95,20 @@ fn closes(c: char) -> bool {
     )
 }
 
-/// Lays out `paragraphs` in columns of `rows` cells. Each paragraph starts a
-/// column, and a heading leaves one empty after it.
-pub fn lay_out(paragraphs: &[Paragraph], rows: usize) -> Columns {
+/// Lays out `paragraphs` in columns of `rows` cells, on pages of `per_page`
+/// columns. Each paragraph starts a column, a heading leaves one empty after
+/// it, and a picture takes a page of its own (BOK-010).
+pub fn lay_out(paragraphs: &[Paragraph], rows: usize, per_page: usize) -> Columns {
     let rows = rows.max(2);
-    let (mut cells, mut column) = (Vec::new(), 0);
+    let per_page = per_page.max(1);
+    let (mut cells, mut pictures, mut column) = (Vec::new(), Vec::new(), 0usize);
     for (index, item) in paragraphs.iter().enumerate() {
+        if item.image.is_some() {
+            let page = column.div_ceil(per_page) * per_page;
+            pictures.push((index, page));
+            column = page + per_page;
+            continue;
+        }
         let mut row = 0;
         for (offset, ch) in item.text.char_indices() {
             if row == rows {
@@ -125,6 +147,7 @@ pub fn lay_out(paragraphs: &[Paragraph], rows: usize) -> Columns {
     }
     Columns {
         cells,
+        pictures,
         columns: column,
     }
 }
@@ -151,7 +174,7 @@ mod tests {
     // T-BOK-009
     #[test]
     fn columns_fill_and_paragraphs_start_one() {
-        let c = lay_out(&[paragraph("一二三四五"), paragraph("六")], 2);
+        let c = lay_out(&[paragraph("一二三四五"), paragraph("六")], 2, 4);
         assert_eq!(
             places(&c),
             [
@@ -172,7 +195,7 @@ mod tests {
     // T-BOK-009: a line never starts with a closing mark
     #[test]
     fn closing_marks_hang() {
-        let c = lay_out(&[paragraph("一二。三")], 2);
+        let c = lay_out(&[paragraph("一二。三")], 2, 4);
         assert_eq!(
             places(&c),
             [('一', 0, 0), ('二', 0, 1), ('。', 0, 2), ('三', 1, 0)]
@@ -190,19 +213,34 @@ mod tests {
         assert_eq!(stance('A'), Stance::Turned);
     }
 
+    // T-BOK-010: a picture has a page, and the text goes on after it
+    #[test]
+    fn a_picture_takes_a_page() {
+        let picture = Paragraph {
+            image: Some("a".into()),
+            ..Paragraph::default()
+        };
+        let c = lay_out(&[paragraph("一"), picture, paragraph("二")], 9, 4);
+        assert_eq!(c.pictures, [(1, 4)]);
+        assert_eq!(c.column_of(1), 4);
+        assert_eq!(c.column_of(2), 8);
+        assert_eq!(c.paragraph_at(4), 1);
+        assert_eq!(c.columns, 9);
+    }
+
     #[test]
     fn a_heading_leaves_a_column() {
         let heading = Paragraph {
             heading: true,
             ..paragraph("題")
         };
-        let c = lay_out(&[heading, paragraph("本文")], 9);
+        let c = lay_out(&[heading, paragraph("本文")], 9, 4);
         assert_eq!(c.column_of(1), 2);
     }
 
     #[test]
     fn nothing_lays_out_as_nothing() {
-        assert_eq!(lay_out(&[], 9), Columns::default());
-        assert_eq!(lay_out(&[paragraph("字")], 0).cells[0].row, 0);
+        assert_eq!(lay_out(&[], 9, 4), Columns::default());
+        assert_eq!(lay_out(&[paragraph("字")], 0, 4).cells[0].row, 0);
     }
 }

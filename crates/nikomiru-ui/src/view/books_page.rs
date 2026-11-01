@@ -9,6 +9,8 @@ use egui::{
     Align, Align2, Area, Button, Color32, FontId, Frame, Id, Layout, Margin, Order, RichText,
     ScrollArea, Sense, Ui, vec2,
 };
+use std::collections::HashMap;
+
 use nikomiru_books::Paragraph;
 use nikomiru_books::vertical::{Cell, Columns, Stance, lay_out};
 
@@ -32,12 +34,24 @@ const CELL: f32 = 1.12;
 const COLUMN_WIDTH: f32 = 1.9;
 
 /// What the page keeps between frames.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct State {
-    /// The chapter laid out: its book, its number and the rows, and its cells.
-    columns: Option<((String, usize, usize), Columns)>,
+    /// The chapter laid out: its book, its number, the rows and the columns
+    /// of a page, and its cells.
+    columns: Option<((String, usize, usize, usize), Columns)>,
     /// The first column of the page shown.
     column: usize,
+    /// The pictures drawn so far, by their key (BOK-010).
+    textures: HashMap<String, Option<egui::TextureHandle>>,
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+            .field("column", &self.column)
+            .field("pictures", &self.textures.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// What the page shows.
@@ -94,6 +108,35 @@ pub(super) fn range_rects(
         }
     }
     rows
+}
+
+/// A picture of the book, decoded the first time it shows and within the
+/// limits of every picture (SRV-013); `None` if it cannot be.
+fn texture(
+    ctx: &egui::Context,
+    state: &mut State,
+    open: &OpenBook,
+    key: &str,
+) -> Option<egui::TextureHandle> {
+    state
+        .textures
+        .entry(key.to_string())
+        .or_insert_with(|| {
+            let bytes = open.book.images.get(key)?;
+            let cover = crate::catalog::Cover::decode(bytes).ok()?;
+            let image = egui::ColorImage::from_rgba_unmultiplied(cover.size, &cover.rgba);
+            Some(ctx.load_texture(key, image, Default::default()))
+        })
+        .clone()
+}
+
+/// Draws a picture inside `area`, whole and centred.
+fn draw_picture(ui: &Ui, area: egui::Rect, texture: &egui::TextureHandle) {
+    let size = texture.size_vec2();
+    let scale = (area.width() / size.x).min(area.height() / size.y).min(1.0);
+    let rect = egui::Rect::from_center_size(area.center(), size * scale);
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    ui.painter().image(texture.id(), rect, uv, Color32::WHITE);
 }
 
 /// A paragraph: its offset in bytes, if clicked, and the rect it took.
@@ -272,14 +315,15 @@ fn vertical_reader(
     let room = ui.available_rect_before_wrap();
     let rows = ((room.height() / (TEXT_SIZE * CELL)) as usize).max(2);
     let per_page = ((room.width() / (TEXT_SIZE * COLUMN_WIDTH)) as usize).max(1);
-    let key = (open.uid.clone(), open.chapter, rows);
+    let key = (open.uid.clone(), open.chapter, rows, per_page);
     if state.columns.as_ref().map(|(k, _)| k) != Some(&key) {
-        state.columns = Some((key, lay_out(&chapter.paragraphs, rows)));
+        state.columns = Some((key, lay_out(&chapter.paragraphs, rows, per_page)));
         state.column = usize::MAX;
     }
-    let Some((_, columns)) = &state.columns else {
+    let Some((key, columns)) = state.columns.take() else {
         return;
     };
+    let kept = Some((key, ()));
     if open.jump || state.column == usize::MAX {
         state.column = columns.column_of(open.paragraph) / per_page * per_page;
         out.push(Command::BookAt(open.paragraph));
@@ -315,6 +359,14 @@ fn vertical_reader(
     }
     for cell in &cells {
         draw_cell(ui, area, state.column, cell);
+    }
+    let picture = columns
+        .pictures
+        .iter()
+        .find(|(_, column)| *column == state.column)
+        .and_then(|(paragraph, _)| chapter.paragraphs.get(*paragraph)?.image.clone());
+    if let Some(handle) = picture.and_then(|key| texture(ui.ctx(), state, open, &key)) {
+        draw_picture(ui, room, &handle);
     }
     draw_readings(ui, area, state.column, &cells, &chapter.paragraphs);
     if response.hovered() {
@@ -371,6 +423,9 @@ fn vertical_reader(
         } else if open.chapter > 0 {
             out.push(Command::BookChapter(open.chapter - 1));
         }
+    }
+    if let Some((key, _)) = kept {
+        state.columns = Some((key, columns));
     }
 }
 
@@ -433,6 +488,15 @@ fn reader(
                 let top = ui.clip_rect().top();
                 let mut reached = None;
                 for (index, item) in chapter.paragraphs.iter().enumerate() {
+                    if let Some(key) = &item.image {
+                        if let Some(handle) = texture(ui.ctx(), state, open, key) {
+                            let size = handle.size_vec2();
+                            let scale = (ui.available_width() / size.x).min(1.0);
+                            let (rect, _) = ui.allocate_exact_size(size * scale, Sense::hover());
+                            draw_picture(ui, rect, &handle);
+                        }
+                        continue;
+                    }
                     let name = format!("{index}: {}", item.text);
                     let marked = s
                         .page
@@ -629,6 +693,7 @@ mod tests {
                     text: "よ".into(),
                 }],
                 heading: false,
+                image: None,
             }],
         };
         OpenBook {
@@ -638,6 +703,7 @@ mod tests {
                 author: String::new(),
                 right_to_left: false,
                 chapters: vec![chapter("読む本です"), chapter("次")],
+                images: Default::default(),
             },
             chapter: 0,
             paragraph: 0,
