@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- A "List" button in the bar opens the subtitle list, and ⚙ on the Library page opens the settings.
+
 ## [1.5.0] - 2026-11-01
 
 Media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, and the books of M16). They ship together (D-26).

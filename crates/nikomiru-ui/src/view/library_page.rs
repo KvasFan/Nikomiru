@@ -103,6 +103,8 @@ pub(crate) struct Scene<'a> {
     pub servers: &'a [nikomiru_core::config::ServerConfig],
     /// What is shown of one.
     pub server_page: &'a crate::servers::ServersPage,
+    /// The tab of the settings shown last (SET-008).
+    pub settings_tab: super::settings::SettingsTab,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -115,6 +117,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         first_steps: s.first_steps(),
         servers: s.server_list(),
         server_page: &s.servers_page,
+        settings_tab: view.settings_tab,
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
@@ -225,6 +228,16 @@ pub(crate) fn draw(
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button(tr(s, "library-close")).clicked() {
                     close = true;
+                }
+                // SET-008
+                let settings = ui
+                    .button(RichText::new("⚙").size(16.0))
+                    .on_hover_text(tr(s, "settings-title"));
+                settings.widget_info(|| {
+                    WidgetInfo::labeled(Role::Button, true, tr(s, "settings-title"))
+                });
+                if settings.clicked() {
+                    state.open_settings = Some(s.settings_tab);
                 }
                 if ui.button(tr(s, "hooker-title")).clicked() {
                     state.open_hooker = true;
@@ -995,6 +1008,7 @@ mod tests {
                         first_steps: t.first_steps,
                         servers: &t.servers,
                         server_page: &t.server_page,
+                        settings_tab: crate::view::settings::SettingsTab::Anki,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -1068,6 +1082,22 @@ mod tests {
             last_played_s: None,
             anilist_id: None,
         }
+    }
+
+    // T-SET-008: the settings, from the library too
+    #[test]
+    fn the_settings_open_from_the_library() {
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            ..LibraryPage::default()
+        });
+        h.run();
+        click(&mut h, "settings-title");
+        assert_eq!(
+            h.state_mut().state.open_settings.take(),
+            Some(crate::view::settings::SettingsTab::Anki),
+            "the tab shown last"
+        );
     }
 
     // T-SRV-006: a server's tab, from its libraries to a video

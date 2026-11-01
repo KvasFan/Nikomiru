@@ -348,6 +348,7 @@ toast-sub-align-unsure = Non allineati: l'audio non corrisponde chiaramente ai s
 toast-sub-align-none = Niente da allineare: nessun sottotitolo, o nessun suono
 subtitle-encoding = Codifica
 encoding-auto = Automatica
+subtitle-list-short = Lista
 subtitle-list = Elenco dei sottotitoli
 subtitle-search = Cerca nei sottotitoli
 subtitle-list-close = Chiudi l'elenco dei sottotitoli

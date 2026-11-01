@@ -348,6 +348,7 @@ toast-sub-align-unsure = Not aligned: the audio does not match the subtitles cle
 toast-sub-align-none = Nothing to align: no subtitles, or no sound
 subtitle-encoding = Encoding
 encoding-auto = Automatic
+subtitle-list-short = List
 subtitle-list = Subtitle list
 subtitle-search = Search the subtitles
 subtitle-list-close = Close the subtitle list
