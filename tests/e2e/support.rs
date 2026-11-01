@@ -14,6 +14,18 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+/// Whether the machine has room for a measure of time to mean something:
+/// other work on it, such as another project compiling, says nothing of
+/// Nikomiru's speed.
+pub fn machine_is_free() -> bool {
+    let load = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|l| l.split_whitespace().next()?.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    let cores = std::thread::available_parallelism().map_or(1, usize::from);
+    load <= cores as f64
+}
+
 /// A generated fixture (`cargo xtask fixtures`).
 pub fn fixture(name: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

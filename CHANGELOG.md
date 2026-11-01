@@ -28,6 +28,7 @@ Media servers, backup and sync, advanced ASS, a texthooker, more dictionary form
 
 ### Fixed
 
+- A subtitle file dropped on a video that has just opened stays: the automatic choice could come after it and replace it.
 - External subtitles of a real Jellyfin are offered: it names SubRip `subrip`, which gave a file no one read as a subtitle.
 - A card has the tag of its series (ANK-027): it was written in the specification, and never made.
 
