@@ -25,6 +25,7 @@ required-features = ["test-harness"]
 test-harness = ["nikomiru-ui/test-harness"]
 
 [dependencies]
+secret-service.workspace = true
 nikomiru-anki.workspace = true
 nikomiru-core.workspace = true
 nikomiru-dict.workspace = true

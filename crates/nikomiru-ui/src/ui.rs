@@ -1695,14 +1695,27 @@ impl Ui {
         if let Some((config, file)) = self.session.take_config_save() {
             let waker = self.waker.clone();
             let translator = self.session.translator().clone();
+            let secrets = self.session.secrets();
             // an atomic write waits for the disk: never on the UI thread
             let spawned = std::thread::Builder::new()
                 .name("config-save".into())
                 .spawn(move || {
-                    let result = config.save(&file).map_err(|e| {
-                        tracing::warn!("saving the settings: {e}");
-                        translator.error(&e)
-                    });
+                    let (to_write, kept) = secrets.before_save(&config);
+                    let result = to_write
+                        .save(&file)
+                        .map_err(|e| {
+                            tracing::warn!("saving the settings: {e}");
+                            translator.error(&e)
+                        })
+                        .and_then(|()| {
+                            if let Err(e) = secrets.after_save(&config) {
+                                tracing::warn!("the keyring: {e}");
+                            }
+                            kept.map_err(|reason| {
+                                tracing::warn!("the keyring: {reason}");
+                                translator.tr("error-keyring-kept", &[("reason", reason)])
+                            })
+                        });
                     waker.wake(Inbound::ConfigSaved(result));
                 });
             if let Err(e) = spawned {

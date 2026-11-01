@@ -13,6 +13,7 @@ pub mod config;
 pub mod error;
 pub mod fs;
 pub mod paths;
+pub mod secrets;
 
 pub use cancel::Cancel;
 pub use clock::{Clock, ManualClock, SystemClock};

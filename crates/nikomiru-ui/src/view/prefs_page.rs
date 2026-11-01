@@ -188,6 +188,14 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
 }
 
 fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+    general_form(ui, s, draft);
+    let tr = |id: &str| (s.tr)(id, &[]);
+    section(ui, &tr("settings-keys"));
+    ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
+    hint(ui, &tr("settings-keyring-hint"));
+}
+
+fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     section(ui, &tr("settings-interface"));
     form(ui, "settings-general", |ui| {

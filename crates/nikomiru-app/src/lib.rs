@@ -23,6 +23,7 @@ pub mod harness;
 pub mod hooker;
 pub mod inhibit;
 pub mod instance;
+pub mod keyring;
 #[allow(unsafe_code)]
 pub mod linux;
 pub mod logging;

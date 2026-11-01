@@ -102,6 +102,9 @@ settings-theme = Theme
 settings-theme-system = As the desktop
 settings-theme-dark = Dark
 settings-theme-light = Light
+settings-keys = Keys and passwords
+settings-keyring = Keep them in the system keyring
+settings-keyring-hint = API keys, passwords and server tokens go to the keyring of your desktop (GNOME Keyring, KWallet) instead of config.toml, when you save. They leave the file only once the keyring holds them. A locked keyring may ask for its password when Nikomiru starts.
 settings-accent = Accent color
 settings-scale = Interface scale
 settings-playback = Playback
@@ -223,6 +226,8 @@ error-config-dir = The settings folder { $path } cannot be written ({ $reason })
 error-config-serialize = The settings cannot be saved ({ $reason }).
 error-config-values = Some settings in { $path } have a value of the wrong kind and use their default: { $keys }. Saving the settings writes the defaults over them.
 error-paths = HOME is not set: Nikomiru cannot find its folders.
+error-keyring = The system keyring cannot be read ({ $reason }): keys and passwords are missing until it can. Nothing was deleted.
+error-keyring-kept = The system keyring cannot be written ({ $reason }): keys and passwords stay in config.toml for now.
 
 # Library (nikomiru-library LibraryError)
 error-library = The library cannot be used ({ $reason }): positions and history are not saved.
