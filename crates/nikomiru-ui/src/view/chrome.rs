@@ -62,6 +62,15 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
     let opacity = (age / FADE_SECONDS)
         .min((TOAST_SECONDS + FADE_SECONDS - age) / FADE_SECONDS)
         .clamp(0.0, 1.0) as f32;
+    toast(ctx, text, opacity);
+    ctx.request_repaint();
+}
+
+/// A toast at the top of the window, as wide as `text` needs. It sets that
+/// width itself: the area keeps the last toast's, and Japanese would wrap at
+/// any character inside it.
+fn toast(ctx: &egui::Context, text: &str, opacity: f32) {
+    let screen = ctx.content_rect();
     Area::new(Id::unique("toast"))
         .order(Order::Tooltip)
         .interactable(false)
@@ -75,14 +84,20 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
                 .corner_radius(CornerRadius::same(6))
                 .inner_margin(Margin::symmetric(14, 8))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(text.as_str())
-                            .size(18.0)
-                            .color(Color32::WHITE),
-                    );
+                    let width = ui
+                        .painter()
+                        .layout(
+                            text.to_string(),
+                            egui::FontId::proportional(18.0),
+                            Color32::WHITE,
+                            screen.width() * 0.8,
+                        )
+                        .size()
+                        .x;
+                    ui.set_width(width.ceil());
+                    ui.label(RichText::new(text).size(18.0).color(Color32::WHITE));
                 });
         });
-    ctx.request_repaint();
 }
 
 /// LIB-009: the next episode about to start, with "Play now" and "Cancel"
@@ -126,4 +141,34 @@ pub(crate) fn next_up(ctx: &egui::Context, s: &Session, bar_height: f32, out: &m
         });
     // the seconds go down by themselves
     ctx.request_repaint_after(std::time::Duration::from_millis(250));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use egui_kittest::Harness;
+
+    use super::*;
+
+    // AK-BUG-001
+    #[test]
+    fn ak_bug_001_a_toast_is_as_wide_as_its_text() {
+        let text = RefCell::new("Volume");
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(1280.0, 720.0))
+            .allow_missing_glyphs()
+            .build_ui(|ui| toast(ui.ctx(), *text.borrow(), 1.0));
+        h.run();
+        let width = |h: &Harness<'_>| {
+            h.ctx
+                .memory(|m| m.area_rect(Id::unique("toast")))
+                .unwrap()
+                .width()
+        };
+        let short = width(&h);
+        *text.borrow_mut() = "The card went to the deck of the whole collection.";
+        h.run();
+        assert!(width(&h) > short * 3.0, "{} from {short}", width(&h));
+    }
 }

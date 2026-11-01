@@ -607,6 +607,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - Audiobooks done on 2026-11-01, for 1.7.0: sound with timed text beside it, read along in the subtitle list, cards with the sound of the line (T-ABK-001…T-ABK-004). Open: a real audiobook; linking the text to an EPUB.
 - Manga done on 2026-11-01, for 2.0.0: CBZ, one page at a time, a selection read on this computer by a model fetched on request, lookups and cards with the part of the page (T-MNG-001…T-MNG-006). The real model reads computer-set text (T-MNG-LIVE-001). Open: real manga pages.
 - Done on 2026-11-01, for 2.1.0: folders of pictures, two pages side by side (T-MNG-001, T-MNG-002), and from the backlog the video of the sentence with sound (ANK-043).
+- Done on 2026-11-02, for 2.2.0: from the backlog the Japanese interface (T-I18N-003, D-32), not yet read by a native speaker.
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.
 
@@ -628,7 +629,6 @@ Every item requires a change to SPECIFICATION.md before work starts.
 | Built-in SRS | `fsrs` is BSD-3-Clause: either an exception, or our own GPL implementation of FSRS from the published algorithm |
 | AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |
 | API keys in the keyring (MET-005) | `oo7` or `secret-service` (check the licenses) |
-| Japanese interface | Fluent `ja` |
 
 ---
 
@@ -638,7 +638,7 @@ Every item requires a change to SPECIFICATION.md before work starts.
 2. Every implemented requirement has at least one test marked with its ID (`// T-XXX-NNN`).
 3. `cargo xtask ci` is green (fmt, clippy `-D warnings`, deny, test, headers, trace).
 4. Code ported from Fushi or from other GPL projects has the provenance header (SPECIFICATION §2.2).
-5. Visible strings are in Fluent, for `it` and `en`.
+5. Visible strings are in Fluent, for `en`, `it` and `ja`.
 6. Every fixed bug has an `AK-BUG-NNN` regression test (TEST §7).
 7. CHANGELOG updated in the `[Unreleased]` section.
 8. If a specified behavior changes, SPECIFICATION.md is updated **in the same PR**.

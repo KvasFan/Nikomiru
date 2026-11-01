@@ -4,6 +4,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-02
+
+The interface in Japanese.
+
+### Added
+
+- Japanese interface: Settings → General → Language, or by itself with a Japanese system locale (SET-004, D-32).
+
+### Fixed
+
+- A short message at the top of the window wraps only when it has to, not at the width of the one before (AK-BUG-001).
+
 ## [2.1.0] - 2026-11-02
 
 Video cards, and what 2.0.0 left out of manga.

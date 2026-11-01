@@ -49,7 +49,7 @@
   - `quit {}`;
   - planned: `hover_grapheme {…}`, `click {selector}` (through the AccessKit tree).
 - Events: `file-loaded`, `first-frame` (the first position after the load), `cue-shown {index, time_pos}`, `popup-rendered {level, query, headwords}` (after the buffer swap of the first frame that draws the popup), `dictionary-imported`, `screenshot-saved {path}`, `card-created {note_id}` (a card made or overwritten in Anki), `error {code}` (`code` is the Fluent id of the error, ERR-001); planned: `library-ready` (M5). `wait` drops the events before the one it waits for and fails on an `error`.
-- Screenshots for review and for the repository page come from the L6 test `screenshots_of_the_interface`: with `NIKOMIRU_SCREENSHOTS=<folder>` it drives the app with the project's media and test dictionaries and saves the off-screen desktop with `spectacle` (KWin started with `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS`).
+- Screenshots for review and for the repository page come from the L6 test `screenshots_of_the_interface`, in the locale of `NIKOMIRU_SCREENSHOTS_LANG` if set: with `NIKOMIRU_SCREENSHOTS=<folder>` it drives the app with the project's media and test dictionaries and saves the off-screen desktop with `spectacle` (KWin started with `KWIN_SCREENSHOT_NO_PERMISSION_CHECKS`).
 - The harness runs its commands on the UI thread through the same entry points as the user's input (the key and drop handlers, the view's commands, the close path), not through internal shortcuts that skip the logic under test.
 
 ---
@@ -219,7 +219,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ARC-002 | LoadToken: events from a previous load | They are discarded and do not change the state (fake event source) | L1 |
 | T-ARC-003 | No synchronous reads from the UI thread | `PlayerHandle` exposes no synchronous getters (compile-time check with a `trybuild`-like test in `xtask`); lint: no call to `get_property` outside `nikomiru-player` | L4 |
 | T-ARC-004 | `time-pos` throttling | With 240 updates/s, the UI receives ≤ 30/s; the last value always arrives | L1 |
-| T-ERR-001 | Translated errors | Every variant of the public errors has a Fluent key in `it` and `en` (test that enumerates the variants) | L1 |
+| T-ERR-001 | Translated errors | Every variant of the public errors has a Fluent key in every language (test that enumerates the variants) | L1 |
 | T-ERR-002 | No `unwrap`/`expect` on external input | Clippy `unwrap_used`, `expect_used` = error in library crates; T-FUZZ-* without panics | L4 |
 | T-EXT-001 | Discovery of ffmpeg and encoders | Order: setting → `NIKOMIRU_FFMPEG` → `PATH` (fake scripts in temporary directories); a fake `-encoders` without `aac` → AAC format disabled with a warning, fallback to Opus | L4 |
 | T-EXT-002 | Arguments as a vector and `file:` prefix | argv snapshot; no invocation goes through `sh -c` (see also T-SEC-005) | L3 |
@@ -473,13 +473,14 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SET-001 | Config | An unknown key is preserved and reported; an invalid value → default plus a warning; saving keeps the comments, order and layout of a file edited by hand; writing is atomic (SIGKILL during the writes → a whole file) | L1/L4 |
 | T-SET-002 | Immediate application | Change of theme, language, interface scale or subtitle size without restart; `config.toml` keeps its comments (harness, `the_settings_apply_without_a_restart`) | L6 |
 | T-SET-003 | Contrast, system theme | For every text/background pair of the light and dark theme tokens, with several accents, over a black and a white video, ratio ≥ 4.5:1 (computed in a unit test from the palette). The system theme: the portal's `color-scheme` read (`ReadOne`, or `Read` of an older portal) and followed through `SettingChanged`, against a private `dbus-daemon`; no portal, no preference | L1/L4 |
-| T-SET-004 | Language | `LANG=it_IT.UTF-8` → Italian; `LANG=de_DE.UTF-8` → fallback to English; the choice in the settings wins | L1 |
+| T-SET-004 | Language | `LANG=it_IT.UTF-8` → Italian; `LANG=ja_JP.UTF-8` → Japanese; `LANG=de_DE.UTF-8` → fallback to English; the choice in the settings wins | L1 |
 | T-SET-005 | Interface scale | 75% and 200%: the UI scale changes, the subtitle size does not (harness) | L6 |
 | T-SET-006 | Per-section reset | Only the keys of that section go back to the default values; keys, logins and audio sources stay. kittest: Reset then Save sends the defaults of the tab's keys | L1/L3 |
 | T-SET-008 | Settings tabs | kittest: each tab's page shows the tabs and leaves for the one clicked; the search page's "Services and keys…" leads to the Subtitle services tab. L6: the tab opened from the harness, shown last, closed | L3/L6 |
 | T-SET-007 | Proxy | The online requests go through the proxy of `[network] proxy` (the fake online server as the proxy, the service on a port where nothing listens); an invalid proxy is refused; AnkiConnect never uses a proxy (T-ANK-001) | L4 |
-| T-I18N-001 | Keys | Every Fluent key exists in `it` and `en` with the same `{ $var }` arguments (L1); every key is used and every key the code asks for exists, keys built from a prefix aside (`cargo xtask check-i18n`, in `ci`) | L1/L4 |
+| T-I18N-001 | Keys | Every Fluent key exists in `en`, `it` and `ja` with the same `{ $var }` arguments (L1); every key is used and every key the code asks for exists, keys built from a prefix aside (`cargo xtask check-i18n`, in `ci`) | L1/L4 |
 | T-I18N-002 | No strings in code | `cargo xtask check-i18n`: no text literal shown by a widget in the views of `nikomiru-ui` (explicit exception list: examples to type, names of standards) | L4 |
+| T-I18N-003 | Japanese | Only names, codes and sizes read the same as in English; Japanese has one plural form, with the same arguments | L1 |
 | T-A11Y-001 | Focus and accessibility | The player's controls as a screen reader finds them: an AT-SPI bus and registry started in the L6 desktop (at-spi2-core, GSettings in memory), the tree walked with the project's D-Bus client; every button, slider, combo box, check box and radio button has a name, and the bar's are all there | L6 |
 | T-A11Y-002 | Every page named | Through AT-SPI as T-A11Y-001: the popup, the eleven tabs of the settings, the library and its statistics; every control named, and each page with a control it must show | L6 |
 | T-E2E-A11Y-001 | Keyboard only | Library → episode → lookup (Enter, ← →) → mining (Ctrl+Enter) → settings (Ctrl+,, Tab and the arrows theirs) → back (Esc three times), with keys only: the harness gives egui the keys no shortcut took on a page, as the window does | L6 |

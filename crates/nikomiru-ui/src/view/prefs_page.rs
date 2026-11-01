@@ -201,6 +201,7 @@ fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
                     ("system", tr("settings-language-system")),
                     ("en", "English".into()),
                     ("it", "Italiano".into()),
+                    ("ja", "日本語".into()),
                 ],
             )
         });
