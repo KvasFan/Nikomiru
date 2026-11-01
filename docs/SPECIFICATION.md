@@ -14,7 +14,7 @@
 - Tests that verify a requirement use the same prefix (`T-PLY-012`, see [TEST.md](TEST.md)).
 - "Fushi:" followed by a path names the Fushi file to consult during porting. Paths start from the root of the Fushi repository.
 - The **milestone** of each requirement (M0…M9, or "post-1.0") is defined in [ROADMAP.md](ROADMAP.md).
-- **Language (D-9)**: documents, code comments, commit messages and developer-tool messages are written in **English**. The user interface is localized through Fluent (SET-004), with Italian and English at 1.0.
+- **Language (D-9)**: documents, code comments, commit messages and developer-tool messages are written in **English**. The user interface is localized through Fluent (SET-004), with Italian and English at 1.0 and Japanese from 2.2.0 (D-32).
 
 ---
 
@@ -731,7 +731,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-001 | Settings page with sections: General, Player, Subtitles, Dictionaries, Lookup, Word audio, Anki, Shortcuts, Advanced (mpv options, ffmpeg paths, logs), About (version, licenses, `THIRD_PARTY_LICENSES`). `config.toml`: a key this version does not know is kept and written back; a value of the wrong kind takes its default and is named in a notice at startup (a file that is not TOML keeps the defaults in use and is never written over); saving changes only the values that changed, so a file edited by hand keeps its comments, order and layout; the write is atomic, with permissions 0600. |
 | SET-002 | Changes apply immediately, without restarting, except where noted (e.g. `hwdec` takes effect from the next file, the ffmpeg program from the next start). |
 | SET-003 | Light / dark / system theme (the system theme follows the desktop's `color-scheme`, read from the XDG settings portal and followed through its `SettingChanged` signal; dark when the desktop has no preference), with a configurable accent color. Design tokens in a single Rust palette (`view/palette.rs`), applied to egui's visuals: the pages and the dictionary popups follow the theme; what is drawn on the video (the bar, the subtitles, their list, the toasts) stays dark. The accent as text is made lighter or darker until it reads at 4.5:1. |
-| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings, at once for the interface and the messages of the workers. |
+| SET-004 | i18n with Fluent (`assets/i18n/<locale>/*.ftl`), in English, Italian and Japanese (D-32): the interface takes every string from the Fluent bundle. No user-visible string literal in the code. UI language: system (`LANG`) with fallback to English; it can be changed from the settings, at once for the interface and the messages of the workers. |
 | SET-005 | UI scale 75–200% (egui's zoom factor, on top of the display's scale), independent of the subtitle size. |
 | SET-006 | Reset to default settings per section: the tab's keys go back to their defaults in the page, and are saved with the page. What the user has rather than how Nikomiru behaves stays: the keys and logins of the services, the AnkiConnect key, the word audio sources, the keys `config.toml` has that this version does not know. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
@@ -902,7 +902,7 @@ A scan of a folder keeps what the library knows (LIB-004): a file is found again
 
 ```toml
 [general]
-ui_language = "system"      # "it", "en", …
+ui_language = "system"      # "en", "it", "ja"
 theme = "system"            # "light" | "dark" | "system" (SET-003)
 accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
 ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
@@ -1047,6 +1047,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-26 | One release for M11–M15 | **Asked by the maintainer** (2026-11-01, "procedi come meglio credi"): their work was merged one after the other before any was tagged, so 1.5.0 ships them all, with the books of M16, in place of the 1.1.0…1.4.0 of D-19 |
 | D-30 | Design of manga | **Decided by the maintainer's agent** (2026-11-01, D-28, after reading Manga109-s's terms: results may be used commercially and published with the dataset named; the dataset itself and its pictures may not be passed on): a CBZ is a book of pages; `tract` runs the model in pure Rust, with no native library; the model is fetched on request, so neither the repository nor the packages hold weights; the user selects the balloon, because finding balloons would need a second model. CBR is out, and double pages and folders of pictures followed in 2.1.0 |
 | D-31 | After M16 | **Decided by the maintainer's agent** (2026-11-01, "seguito da tutto il resto" and "procedi", to change at will): 2.1.0 takes what is small and needs nobody's account first: ANK-043, then what 2.0.0 left out of manga. AniDB needs a registered client, the keyring and the SRS a license choice, and the ports wait for the maintainer (D-16) |
+| D-32 | Japanese interface | **Decided by the maintainer's agent** (2026-11-02, "seguito da tutto il resto" and "procedi subito con la successiva", to change at will): 2.2.0 is the Japanese interface, the backlog item that needs no account and no license choice. The translation is the agent's, not yet read by a native speaker; the user guide stays in English and Italian. The keys of MET-005 follow, since they touch secrets already saved |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

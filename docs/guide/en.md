@@ -139,7 +139,7 @@ Add a server in Settings → Media servers: for Jellyfin the address, user and p
 
 | Tab | What it holds |
 |---|---|
-| General | Language, theme (light, dark or as the desktop), accent color, interface scale, seek step, next episode |
+| General | Language (English, Italian or Japanese), theme (light, dark or as the desktop), accent color, interface scale, seek step, next episode |
 | Player | mpv's options as controls, `mpv.conf` presets, import and export |
 | Subtitles | Size, preferred languages, blur or hide until hovered, the secondary subtitle, readings over the kanji, mined words underlined |
 | Lookup | Results in a popup, the popup's size, hover |

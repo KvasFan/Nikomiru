@@ -94,7 +94,7 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct General {
-    /// `"system"`, `"it"`, `"en"`, …
+    /// `"system"`, `"en"`, `"it"`, `"ja"`
     pub ui_language: String,
     /// `"light"`, `"dark"` or `"system"` (SET-003).
     pub theme: String,

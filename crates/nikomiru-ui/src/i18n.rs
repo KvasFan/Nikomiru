@@ -13,9 +13,10 @@ use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
 /// Supported interface languages and their Fluent sources.
-pub const SOURCES: [(&str, &str); 2] = [
+pub const SOURCES: [(&str, &str); 3] = [
     ("en", include_str!("../../../assets/i18n/en/main.ftl")),
     ("it", include_str!("../../../assets/i18n/it/main.ftl")),
+    ("ja", include_str!("../../../assets/i18n/ja/main.ftl")),
 ];
 
 /// Translates message ids into the interface language.
@@ -62,7 +63,7 @@ fn bundle(language: &'static str) -> FluentBundle<FluentResource> {
     b
 }
 
-/// The language of the setting `"it"`, `"en"`, or for `"system"` the
+/// The language of the setting `"it"`, `"ja"`, `"en"`, or for `"system"` the
 /// locale of the first of `LC_ALL`, `LC_MESSAGES`, `LANG` that is set.
 fn language_of(setting: &str, var: impl Fn(&str) -> Option<String>) -> String {
     if setting != "system" {
@@ -85,7 +86,7 @@ fn supported(locale: &str) -> Option<&'static str> {
 }
 
 impl Translator {
-    /// A translator for a supported language (`"en"`, `"it"`); others give English.
+    /// A translator for a supported language (`"en"`, `"it"`, `"ja"`); others give English.
     pub fn new(language: &str) -> Self {
         let language = supported(language).unwrap_or("en");
         Self {
@@ -216,6 +217,36 @@ mod tests {
         }
     }
 
+    // T-I18N-003
+    #[test]
+    fn japanese_is_a_translation() {
+        // what stays the same as English: names, codes and sizes
+        let source = SOURCES[2].1;
+        let same: Vec<&str> = source
+            .lines()
+            .filter_map(|line| line.split_once(" = "))
+            .filter(|(id, value)| {
+                value.is_ascii() && SOURCES[0].1.contains(&format!("\n{id} = {value}\n"))
+            })
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(
+            same,
+            [
+                "app-title",
+                "anki-image-q0",
+                "anki-image-q1",
+                "anki-image-q2",
+                "settings-anki",
+                "error-anki",
+                "dict-size-mb",
+                "dict-size-kb",
+                "servers-address-hint"
+            ]
+        );
+        assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");
+    }
+
     // SUB-005: every encoding the detection can report has a readable name
     #[test]
     fn every_encoding_has_a_readable_name() {
@@ -238,6 +269,10 @@ mod tests {
         assert_eq!(
             Translator::from_setting("system", env("it_IT.UTF-8")).language(),
             "it"
+        );
+        assert_eq!(
+            Translator::from_setting("system", env("ja_JP.UTF-8")).language(),
+            "ja"
         );
         assert_eq!(
             Translator::from_setting("system", env("de_DE.UTF-8")).language(),
@@ -290,6 +325,24 @@ mod tests {
                 ]
             )
             .ends_with("2 ricerche · 1 carta")
+        );
+        // Japanese has no plural: the same arguments, one form
+        let t = Translator::from_setting("ja", |_| None);
+        assert_eq!(
+            t.tr(
+                "stats-session",
+                &[
+                    ("time", "5 分".into()),
+                    ("chars", "16".into()),
+                    ("lookups", "1".into()),
+                    ("cards", "2".into())
+                ]
+            ),
+            "5 分 · 16 文字 · 検索 1 回 · カード 2 枚"
+        );
+        assert_eq!(
+            t.tr("servers-added-count", &[("count", "1".into())]),
+            "サーバーを 1 件追加しました。"
         );
         assert!(matches!(value("07"), FluentValue::String(_)));
         assert!(matches!(value("2026-10-25"), FluentValue::String(_)));

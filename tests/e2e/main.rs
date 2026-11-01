@@ -574,7 +574,8 @@ fn the_anki_settings_test_create_lapis_and_save() {
 
 /// Screenshots of the interface with the project's own media and test
 /// dictionaries, for review and for the repository page (ROADMAP M4), into
-/// the folder named by `NIKOMIRU_SCREENSHOTS`; without it, nothing.
+/// the folder named by `NIKOMIRU_SCREENSHOTS`; without it, nothing. In the
+/// locale named by `NIKOMIRU_SCREENSHOTS_LANG`, such as `ja_JP.UTF-8`.
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon, spectacle and `cargo xtask fixtures`"]
 fn screenshots_of_the_interface() {
@@ -598,6 +599,9 @@ fn screenshots_of_the_interface() {
         );
     }
     let mut desk = Desktop::start();
+    if let Ok(locale) = std::env::var("NIKOMIRU_SCREENSHOTS_LANG") {
+        desk.set_env("LANG", &locale);
+    }
     desk.import_dictionaries(&["mini-ja", "mini-freq", "mini-pitch"]);
     desk.write_config(&format!(
         "[player]\nmpv_options = {{ ao = \"null\", deband = \"yes\", scale = \"ewa_lanczossharp\" }}\n\

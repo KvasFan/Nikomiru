@@ -93,6 +93,6 @@ mod tests {
             "{problems:?}"
         );
         let missing = Fake("error-does-not-exist", Vec::new());
-        assert_eq!(message_problems(dir, &[&missing]).len(), 2, "en and it");
+        assert_eq!(message_problems(dir, &[&missing]).len(), 3, "en, it and ja");
     }
 }
