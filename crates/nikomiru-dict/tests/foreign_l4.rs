@@ -67,3 +67,36 @@ fn a_failed_import_leaves_nothing() {
         Err(ImportError::Empty)
     ));
 }
+
+// T-DIC-LIVE-001: a real dictionary, from `NIKOMIRU_REAL_DICT` and, to look up
+// in it, `NIKOMIRU_REAL_WORD`
+#[test]
+#[ignore = "L7: needs a real dictionary"]
+fn l7_a_real_dictionary_is_imported_and_looked_up() {
+    let Ok(path) = std::env::var("NIKOMIRU_REAL_DICT") else {
+        eprintln!("skipped: no NIKOMIRU_REAL_DICT");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = std::path::Path::new(&path);
+    eprintln!("{:#?}", import::read_index(path).unwrap());
+    let imported = import::import(path, dir.path(), &Cancel::new(), |_| {}).unwrap();
+    eprintln!("{:?}", imported.info.counts);
+    let store = RedbStore::open(&imported.dir.join(DB_FILE)).unwrap();
+    let lookup = Lookup::new(
+        vec![Dictionary {
+            id: imported.id.clone(),
+            name: "Real".into(),
+            store: Arc::new(store),
+        }],
+        "ja",
+    );
+    let word = std::env::var("NIKOMIRU_REAL_WORD").unwrap_or_else(|_| "食べました".into());
+    let entries = lookup.lookup(&word, Options::default()).unwrap();
+    for entry in entries.iter().take(4) {
+        let text = entry.glossaries[0].term.glossary().unwrap();
+        let text: String = text.chars().take(160).collect();
+        eprintln!("{} [{}]: {text}", entry.expression, entry.reading);
+    }
+    assert!(!entries.is_empty(), "nothing for {word}");
+}

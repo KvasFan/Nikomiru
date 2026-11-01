@@ -240,6 +240,37 @@ mod tests {
         path
     }
 
+    // T-BOK-LIVE-001: a real book, from `NIKOMIRU_REAL_EPUB`
+    #[test]
+    #[ignore = "L7: needs a real EPUB"]
+    fn l7_a_real_epub_is_read() {
+        let Ok(path) = std::env::var("NIKOMIRU_REAL_EPUB") else {
+            eprintln!("skipped: no NIKOMIRU_REAL_EPUB");
+            return;
+        };
+        let book = read(Path::new(&path)).unwrap();
+        eprintln!(
+            "{} — {}: {} chapters, {} characters",
+            book.title,
+            book.author,
+            book.chapters.len(),
+            book.chars()
+        );
+        for chapter in book.chapters.iter().take(6) {
+            let first = chapter
+                .paragraphs
+                .first()
+                .map(|p| p.text.chars().take(50).collect::<String>());
+            let ruby: usize = chapter.paragraphs.iter().map(|p| p.ruby.len()).sum();
+            eprintln!(
+                "  {:?}: {} paragraphs, {ruby} readings, {first:?}",
+                chapter.title,
+                chapter.paragraphs.len()
+            );
+        }
+        assert!(book.chars() > 1000);
+    }
+
     // T-BOK-001: the spine's order, paths relative to the package
     #[test]
     fn a_book_is_read_in_its_order() {

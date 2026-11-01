@@ -436,3 +436,124 @@ fn a_hook_reads_lines_until_the_hooker_goes() {
     // nothing more for now: not an error
     assert_eq!(hook.read().unwrap(), None);
 }
+
+/// A real Jellyfin, from `NIKOMIRU_JELLYFIN_URL`, `_USER` and `_PASSWORD`, with
+/// a library that has series.
+fn real_jellyfin() -> Option<Jellyfin> {
+    let var = |name: &str| std::env::var(format!("NIKOMIRU_JELLYFIN_{name}")).ok();
+    let (address, user, password) = (var("URL")?, var("USER")?, var("PASSWORD")?);
+    let base = checked_server_url(&address, false).unwrap();
+    Some(Jellyfin::login(Http::new("").unwrap(), base, &user, &password, "live-check").unwrap())
+}
+
+// T-SRV-LIVE-001: login, library, episode, its file, reports, on a real server
+#[test]
+#[ignore = "L7: needs a real Jellyfin, see real_jellyfin"]
+fn l7_a_real_jellyfin_is_read_and_played() {
+    let Some(mut server) = real_jellyfin() else {
+        eprintln!("skipped: no NIKOMIRU_JELLYFIN_URL");
+        return;
+    };
+    let libraries = server.libraries().unwrap();
+    assert!(!libraries.is_empty(), "no library");
+    let library = &libraries[0];
+    let top = server
+        .children(&library.id, 0, ParentKind::Library)
+        .unwrap();
+    eprintln!("{library:?}: {top:#?}");
+    let series = top.items.first().expect("a series");
+    assert_eq!(series.kind, ItemKind::Series);
+    let seasons = server.children(&series.id, 0, ParentKind::Item).unwrap();
+    eprintln!("{seasons:#?}");
+    let season = seasons.items.first().expect("a season");
+    assert_eq!(season.kind, ItemKind::Season);
+    let episodes = server.children(&season.id, 0, ParentKind::Item).unwrap();
+    assert!(episodes.items.len() >= 2, "{episodes:#?}");
+    let first = &episodes.items[0];
+    assert_eq!(first.kind, ItemKind::Episode);
+    assert_eq!(first.episode, Some(1), "{first:#?}");
+    assert!(first.duration_ms > 0, "{first:#?}");
+    let found = server.search(&library.id, &series.title, 0).unwrap();
+    assert!(found.items.iter().any(|i| i.id == series.id), "{found:#?}");
+    let item = server.item(&first.id).unwrap();
+    assert_eq!(
+        item.parent.as_deref(),
+        Some(season.id.as_str()),
+        "{item:#?}"
+    );
+    let playable = server.playable(&first.id).unwrap();
+    eprintln!("{:?}", playable.subtitles);
+    assert!(!playable.source.is_empty());
+    assert_eq!(playable.subtitles.len(), 1, "the file beside the video");
+    let text = server.subtitle(&playable.subtitles[0]).unwrap();
+    assert!(!text.is_empty());
+    // the file, through the relay, as mpv reads it
+    let relay = Relay::start(playable.stream.clone(), "").unwrap();
+    let (address, path) = split(&relay);
+    let answer = exchange(
+        &address,
+        &format!("GET {path} HTTP/1.1\r\nHost: x\r\nRange: bytes=0-3\r\n\r\n"),
+    );
+    let head = String::from_utf8_lossy(&answer);
+    assert!(head.starts_with("HTTP/1.1 206"), "{head}");
+    assert_eq!(body(&answer), [0x1a, 0x45, 0xdf, 0xa3], "a Matroska file");
+    // what it hears comes back: Jellyfin keeps no position in a video under
+    // 5 minutes, so the longest one
+    let source = playable.source;
+    let long = episodes.items.iter().max_by_key(|e| e.duration_ms).unwrap();
+    assert!(long.duration_ms > 300_000, "an episode of over 5 minutes");
+    let source_of_long = server.playable(&long.id).unwrap().source;
+    let at = long.duration_ms / 5;
+    for (state, ms) in [
+        (PlayState::Started, 0),
+        (PlayState::Playing, at),
+        (PlayState::Paused, at),
+        (PlayState::Stopped, at),
+    ] {
+        server
+            .report(&long.id, &source_of_long, state, ms, long.duration_ms)
+            .unwrap();
+    }
+    let after = server.item(&long.id).unwrap();
+    assert_eq!(after.position_ms, at, "{after:#?}");
+    assert!(after.last_played_s.is_some(), "{after:#?}");
+    assert!(!source.is_empty());
+    server.mark_played(&first.id).unwrap();
+    assert!(server.item(&first.id).unwrap().played);
+    let cover = server
+        .children(&library.id, 0, ParentKind::Library)
+        .unwrap();
+    if let Some(key) = cover.items.first().and_then(|i| i.cover.clone()) {
+        assert!(!server.cover(&key).unwrap().is_empty());
+    }
+}
+
+// T-BAK-LIVE-001: a real WebDAV folder, from `NIKOMIRU_WEBDAV_URL`, `_USER` and
+// `_PASSWORD`
+#[test]
+#[ignore = "L7: needs a real WebDAV server"]
+fn l7_a_real_webdav_keeps_each_devices_file() {
+    use nikomiru_online::webdav::WebDav;
+    let var = |name: &str| std::env::var(format!("NIKOMIRU_WEBDAV_{name}")).ok();
+    let (Some(url), Some(user), Some(password)) = (var("URL"), var("USER"), var("PASSWORD")) else {
+        eprintln!("skipped: no NIKOMIRU_WEBDAV_URL");
+        return;
+    };
+    let dav = WebDav::new(&url, &user, &password, false, "").unwrap();
+    dav.prepare().unwrap();
+    // twice: the folders being there already is not an error
+    dav.prepare().unwrap();
+    let bytes: Vec<u8> = (0..=255u8).cycle().take(100_000).collect();
+    dav.write("device-one", bytes.clone()).unwrap();
+    dav.write("device-two", vec![1, 2, 3]).unwrap();
+    dav.write("device-two", vec![4, 5]).unwrap();
+    let devices = dav.devices().unwrap();
+    assert!(
+        devices.iter().any(|d| d == "device-one") && devices.iter().any(|d| d == "device-two"),
+        "{devices:?}"
+    );
+    assert_eq!(dav.read("device-one").unwrap(), bytes);
+    assert_eq!(dav.read("device-two").unwrap(), [4, 5]);
+    let wrong = WebDav::new(&url, &user, "wrong", false, "").unwrap();
+    assert!(wrong.devices().is_err());
+}

@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- External subtitles of a real Jellyfin are offered: it names SubRip `subrip`, which gave a file no one read as a subtitle.
+
 ### Added
 
 - Books (M16, BOK-001…BOK-008): a Books page reads EPUB files, with furigana, lookups by click, cards of the sentence, and each book's place kept.

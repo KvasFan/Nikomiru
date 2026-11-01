@@ -284,3 +284,106 @@ fn a_book_is_read_and_mined_and_keeps_its_place() {
     assert!(sessions.iter().all(|(_, s)| s.media.starts_with("book/")));
     assert!(sessions.iter().any(|(_, s)| s.chars > 0), "{sessions:?}");
 }
+
+// T-SRV-LIVE-002: the app plays an episode of a real Jellyfin, from
+// `NIKOMIRU_JELLYFIN_URL`, `_USER` and `_PASSWORD`
+#[test]
+#[ignore = "L7: needs a real Jellyfin"]
+fn l7_the_app_plays_from_a_real_jellyfin() {
+    use nikomiru_online::http::Http;
+    use nikomiru_online::servers::jellyfin::Jellyfin;
+    use nikomiru_online::servers::{MediaServer, ParentKind, checked_server_url};
+    let var = |name: &str| std::env::var(format!("NIKOMIRU_JELLYFIN_{name}")).ok();
+    let (Some(url), Some(user), Some(password)) = (var("URL"), var("USER"), var("PASSWORD")) else {
+        eprintln!("skipped: no NIKOMIRU_JELLYFIN_URL");
+        return;
+    };
+    let base = checked_server_url(&url, false).unwrap();
+    let mut server =
+        Jellyfin::login(Http::new("").unwrap(), base, &user, &password, "device").unwrap();
+    let library = server.libraries().unwrap().remove(0);
+    let series = server
+        .children(&library.id, 0, ParentKind::Library)
+        .unwrap();
+    let seasons = server
+        .children(&series.items[0].id, 0, ParentKind::Item)
+        .unwrap();
+    let episodes = server
+        .children(&seasons.items[0].id, 0, ParentKind::Item)
+        .unwrap();
+    let episode = &episodes.items[0];
+    let (token, user_id) = (server.token().to_string(), server.user_id().to_string());
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[network]\ndevice_id = \"device\"\n\n[player]\nmpv_options = {{ ao = \"null\" }}\n\n\
+         [[servers]]\nid = \"home\"\nkind = \"jellyfin\"\nname = \"Home\"\nurl = \"{url}\"\n\
+         token = \"{token}\"\nuser_id = \"{user_id}\"\n"
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open(&format!("srv:home:{}", episode.id));
+    h.wait("first-frame");
+    let state = h.state_until("the video", |s| s["loaded"] == true);
+    assert_eq!(state["title"], episode.title.as_str());
+    let codec = h.cmd(json!({ "cmd": "mpv_property", "name": "video-codec" }));
+    eprintln!("playing {codec}");
+    h.state_until("the server's subtitle", |s| {
+        s["subtitles"]["menu"].to_string().contains("server-0")
+    });
+    h.state_until("the duration", |s| {
+        s["duration"].as_f64().unwrap_or(0.0) > 1.0
+    });
+    assert!(!desk.log().contains(&token), "the token in the log");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-BAK-LIVE-002: the app syncs with a real WebDAV folder, from
+// `NIKOMIRU_WEBDAV_URL`, `_USER` and `_PASSWORD`
+#[test]
+#[ignore = "L7: needs a real WebDAV server"]
+fn l7_the_app_syncs_with_a_real_webdav() {
+    use nikomiru_library::sync::{DeviceState, FORMAT, VideoState};
+    use nikomiru_online::webdav::WebDav;
+    let var = |name: &str| std::env::var(format!("NIKOMIRU_WEBDAV_{name}")).ok();
+    let (Some(url), Some(user), Some(password)) = (var("URL"), var("USER"), var("PASSWORD")) else {
+        eprintln!("skipped: no NIKOMIRU_WEBDAV_URL");
+        return;
+    };
+    let dav = WebDav::new(&url, &user, &password, false, "").unwrap();
+    dav.prepare().unwrap();
+    let mut other = DeviceState {
+        format: FORMAT,
+        ..DeviceState::default()
+    };
+    other.videos.insert(
+        "video/av_basic".into(),
+        VideoState {
+            position_ms: 3000,
+            last_played_at: Some(i64::MAX / 2),
+            ..VideoState::default()
+        },
+    );
+    dav.write("live-other", other.encode().unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.write_config(&format!(
+        "[network]\ndevice_id = \"live-mine\"\n\n[player]\nmpv_options = {{ ao = \"null\" }}\n\n\
+         [sync]\nurl = \"{url}\"\nuser = \"{user}\"\npassword = \"{password}\"\nautomatic = true\n"
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    until(Duration::from_secs(20), "this device's file", || {
+        dav.devices()
+            .ok()?
+            .iter()
+            .any(|d| d == "live-mine")
+            .then_some(())
+    });
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("first-frame");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(40)).success());
+    let mine = DeviceState::decode(&dav.read("live-mine").unwrap()).unwrap();
+    assert_eq!(mine.videos["video/av_basic"].position_ms, 3000, "{mine:?}");
+    assert!(!desk.log().contains(&password), "the password in the log");
+}
