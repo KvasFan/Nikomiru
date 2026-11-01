@@ -570,6 +570,18 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ABK-004 | Cards | The sound of the line, no picture | L6 |
 | T-SUB-020 | LRC | See T-ABK-002 | L1 |
 
+### 6.13f Manga (M16)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-MNG-001 | Files | Pages in natural order, junk left out, what is not a CBZ, a page past the limit | L1/L6 |
+| T-MNG-002 | Reading | Pages turn, the place is kept, the statistics count no characters | L3/L6 |
+| T-MNG-003 | Reading the text | A drag becomes shares of the page, kept on it; the crop; grey, square, in range; tokens to text | L1/L3/L6 |
+| T-MNG-004 | The model | Offered, not fetched until asked; a file whole or not at all; the wrong file refused; not fetched twice | L1/L3 |
+| T-MNG-005 | The text | Clicked like a book's | L3/L6 |
+| T-MNG-006 | Cards | The sentence and the part of the page | L6 |
+| T-MNG-LIVE-001 | The real model | Fetched from Hugging Face by the app's code, then run on pictures named by the environment | L7 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

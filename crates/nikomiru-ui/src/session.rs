@@ -189,6 +189,8 @@ pub struct Services {
     pub sync: Box<dyn crate::sync::SyncService>,
     /// The text of games (SPECIFICATION §6.15).
     pub hooker: Box<dyn crate::hooker::HookerService>,
+    /// The text of manga pages (MNG-003).
+    pub ocr: Box<dyn crate::ocr::OcrService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -394,6 +396,10 @@ pub struct Session {
     pub books_page: crate::books::BooksPage,
     /// Books to read, taken by the UI layer.
     book_reads: Vec<PathBuf>,
+    /// The part of a page to read (MNG-003).
+    ocr_job: Option<crate::ocr::OcrJob>,
+    /// The reading model is to be fetched (MNG-004).
+    ocr_fetch: bool,
     /// The hooker worker is to start, or to stop.
     hooker_run: Option<bool>,
     /// The name of the picture of the screen to take (PLY-015).
@@ -666,6 +672,8 @@ impl Session {
             hooker_page: crate::hooker::HookerPage::default(),
             books_page: crate::books::BooksPage::default(),
             book_reads: Vec::new(),
+            ocr_job: None,
+            ocr_fetch: false,
             hooker_run: None,
             capture: None,
             sync_jobs: Vec::new(),
@@ -3122,6 +3130,22 @@ impl Session {
             }
             _ => None,
         };
+        // MNG-006: the part of the page the text came from
+        let picture = self
+            .books_page
+            .open
+            .as_ref()
+            .filter(|open| {
+                open.book.manga
+                    && matches!(
+                        self.popups.stack().first().map(|p| &p.origin),
+                        Some(Origin::Book { .. })
+                    )
+            })
+            .and_then(|open| {
+                let (page, crop) = self.books_page.ocr.crop.as_ref()?;
+                (*page == open.chapter).then(|| crop.clone())
+            });
         if let Some((sentence, start, title)) = text_only {
             let p = self.popups.stack().get(level)?;
             let e = p.reply.as_ref()?.content.entries.get(entry)?;
@@ -3142,6 +3166,7 @@ impl Session {
                 title,
                 action,
                 frame: FrameChoice::None,
+                picture,
                 audio: false,
             };
             return Some((p.generation, request));
@@ -3191,6 +3216,7 @@ impl Session {
             } else {
                 FrameChoice::Click
             },
+            picture: None,
             audio: true,
         };
         Some((p.generation, request))
@@ -4658,6 +4684,7 @@ impl Session {
     /// The Books page opened.
     pub fn books_open(&mut self) {
         self.books_page.status = None;
+        self.books_page.ocr.installed = self.services.ocr.installed();
         self.books_reload();
     }
 
@@ -4769,6 +4796,103 @@ impl Session {
             open.chapter = chapter;
             open.paragraph = 0;
             open.jump = true;
+            self.books_page.status = None;
+        }
+    }
+
+    /// A part of the page was selected: it is read (MNG-003).
+    pub fn manga_read(&mut self, area: [f32; 4]) {
+        let ocr = &self.books_page.ocr;
+        if !ocr.installed || ocr.reading {
+            return;
+        }
+        let job = self.books_page.open.as_ref().and_then(|open| {
+            let page = open.book.chapters.get(open.chapter)?;
+            let key = page.paragraphs.first()?.image.as_ref()?;
+            Some(crate::ocr::OcrJob {
+                uid: open.uid.clone(),
+                page: open.chapter,
+                picture: open.book.images.get(key)?.clone(),
+                area,
+            })
+        });
+        if job.is_some() {
+            self.books_page.ocr.reading = true;
+            self.books_page.status = None;
+            self.ocr_job = job;
+        }
+    }
+
+    /// The part to read, taken by the UI layer.
+    pub fn take_ocr_job(&mut self) -> Option<crate::ocr::OcrJob> {
+        self.ocr_job.take()
+    }
+
+    /// The reader answered: the text goes under the page, where it is
+    /// clicked like a book's (MNG-005).
+    pub fn manga_recognized(&mut self, reading: crate::ocr::Reading) {
+        self.books_page.ocr.reading = false;
+        let (uid, page, read) = reading;
+        let open = self.books_page.open.as_mut().filter(|o| o.uid == uid);
+        let item = open.and_then(|o| o.book.chapters.get_mut(page)?.paragraphs.first_mut());
+        let Some(item) = item else {
+            return;
+        };
+        match read {
+            Ok(read) if read.text.is_empty() => {
+                let nothing = self.tr("manga-nothing", &[]);
+                self.books_page.status = Some((nothing, false));
+            }
+            Ok(read) => {
+                item.text = read.text;
+                self.books_page.ocr.crop = Some((page, read.crop));
+                // a popup open on the old text would mark bytes of the new
+                self.close_all_popups();
+                self.books_page.highlight = None;
+            }
+            Err(e) => self.books_page.status = Some((e, false)),
+        }
+    }
+
+    /// The user asked for the reading model (MNG-004).
+    pub fn ocr_fetch(&mut self) {
+        let ocr = &mut self.books_page.ocr;
+        if !ocr.installed && ocr.fetched.is_none() {
+            ocr.fetched = Some(0);
+            self.books_page.status = None;
+            self.ocr_fetch = true;
+        }
+    }
+
+    /// Whether to fetch it, asked by the UI layer.
+    pub fn take_ocr_fetch(&mut self) -> bool {
+        std::mem::take(&mut self.ocr_fetch)
+    }
+
+    /// The proxy the model is fetched through.
+    pub fn proxy(&self) -> String {
+        self.services.config.network.proxy.clone()
+    }
+
+    /// The reader.
+    pub fn ocr(&self) -> &dyn crate::ocr::OcrService {
+        self.services.ocr.as_ref()
+    }
+
+    /// A report on fetching the model.
+    pub fn ocr_event(&mut self, event: crate::ocr::OcrEvent) {
+        use crate::ocr::OcrEvent;
+        let ocr = &mut self.books_page.ocr;
+        match event {
+            OcrEvent::Progress(bytes) => ocr.fetched = Some(bytes),
+            OcrEvent::Installed => {
+                ocr.fetched = None;
+                ocr.installed = true;
+            }
+            OcrEvent::Failed(e) => {
+                ocr.fetched = None;
+                self.books_page.status = Some((e, false));
+            }
         }
     }
 
@@ -4804,9 +4928,11 @@ impl Session {
         self.close_all_popups();
         self.book_save();
         let moment = self.moment();
+        self.books_page.ocr.crop = None;
         if let (Some(open), Some(w)) = (self.books_page.open.take(), &self.writer) {
             let (start_mono, start_chars) = open.started;
             let duration_ms = (moment.mono_ms - start_mono).max(0);
+            // a manga's position counts pages, not characters
             let reached = open.book.chars_before(open.chapter, open.paragraph);
             let (date, hour) =
                 nikomiru_library::stats::local_day_hour(moment.unix_ms, moment.offset_s);
@@ -4817,7 +4943,11 @@ impl Session {
                 date,
                 hour,
                 duration_ms,
-                chars: reached.saturating_sub(start_chars),
+                chars: if open.book.manga {
+                    0
+                } else {
+                    reached.saturating_sub(start_chars)
+                },
                 lookups: 0,
                 cards: 0,
             };

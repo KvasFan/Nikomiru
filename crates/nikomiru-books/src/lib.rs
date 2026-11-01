@@ -3,11 +3,13 @@
 //! EPUB books read into clean text (BOK-001…BOK-003): the chapters of the
 //! spine, each a list of paragraphs, their furigana apart from the text, as
 //! the lookup needs it. A book is untrusted: its archive is read within
-//! limits, and its scripts, styles and links are simply not read.
+//! limits, and its scripts, styles and links are simply not read. A CBZ
+//! comes out as a book of pages (MNG-001).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod cbz;
 mod epub;
 mod markup;
 #[cfg(feature = "test-support")]
@@ -16,8 +18,16 @@ pub mod vertical;
 
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::path::Path;
 
-pub use epub::read;
+/// Reads the book at `path`: a CBZ by its extension, else an EPUB.
+pub fn read(path: &Path) -> Result<Book, BookError> {
+    let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+    match extension.as_deref() {
+        Some("cbz" | "zip") => cbz::read(path),
+        _ => epub::read(path),
+    }
+}
 
 /// Furigana: the bytes of the paragraph's text it goes over, and its text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +70,9 @@ pub struct Book {
     /// It reads from right to left: vertical, unless the user says otherwise
     /// (BOK-009).
     pub right_to_left: bool,
+    /// It is made of pages: each chapter is one picture, and a position
+    /// counts pages (MNG-001).
+    pub manga: bool,
     /// Its chapters, in reading order.
     pub chapters: Vec<Chapter>,
     /// The bytes of its pictures, by their place in the archive.
@@ -70,6 +83,9 @@ impl Book {
     /// Characters before chapter `chapter`, paragraph `paragraph`: the
     /// position kept for it, which does not change with the font.
     pub fn chars_before(&self, chapter: usize, paragraph: usize) -> u64 {
+        if self.manga {
+            return chapter.min(self.chapters.len()) as u64;
+        }
         let count = |p: &Paragraph| p.text.chars().count() as u64;
         let earlier: u64 = self
             .chapters
@@ -107,6 +123,12 @@ pub enum BookError {
     /// It has no text: a book of pictures.
     #[error("the EPUB has no text")]
     NoText,
+    /// It is not a CBZ, or it is damaged.
+    #[error("not a CBZ: {0}")]
+    NotCbz(String),
+    /// An archive with no pictures.
+    #[error("the CBZ has no pages")]
+    NoPages,
 }
 
 impl nikomiru_core::Localized for BookError {
@@ -116,13 +138,17 @@ impl nikomiru_core::Localized for BookError {
             Self::NotEpub(_) => "error-book-format",
             Self::TooLarge => "error-book-too-large",
             Self::NoText => "error-book-no-text",
+            Self::NotCbz(_) => "error-book-cbz",
+            Self::NoPages => "error-book-no-pages",
         }
     }
 
     fn message_args(&self) -> Vec<(&'static str, String)> {
         match self {
-            Self::Io(reason) | Self::NotEpub(reason) => vec![("reason", reason.clone())],
-            Self::TooLarge | Self::NoText => Vec::new(),
+            Self::Io(reason) | Self::NotEpub(reason) | Self::NotCbz(reason) => {
+                vec![("reason", reason.clone())]
+            }
+            Self::TooLarge | Self::NoText | Self::NoPages => Vec::new(),
         }
     }
 }
@@ -139,6 +165,8 @@ mod tests {
             BookError::NotEpub("r".into()),
             BookError::TooLarge,
             BookError::NoText,
+            BookError::NotCbz("r".into()),
+            BookError::NoPages,
         ];
         let refs: Vec<&dyn nikomiru_core::Localized> = errors
             .iter()

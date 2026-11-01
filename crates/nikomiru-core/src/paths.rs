@@ -127,6 +127,11 @@ impl Paths {
         self.data_dir.join("library.redb")
     }
 
+    /// Folder of the reading model, fetched on request (MNG-004).
+    pub fn ocr_model_dir(&self) -> PathBuf {
+        self.data_dir.join("models/manga-ocr")
+    }
+
     /// Folder of the imported dictionaries.
     pub fn dicts_dir(&self) -> PathBuf {
         self.data_dir.join("dicts")

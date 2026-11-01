@@ -45,10 +45,11 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 
 | Fushi feature | Decision | Reason |
 |---|---|---|
-| EPUB reader, manga + OCR, PDF, audiobooks (Sasayaki), online resources | **planned after 1.0** (D-12) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
+| EPUB reader, manga + OCR, audiobooks, online resources | **done or in progress** in M16 (D-12) | |
+| PDF, Sasayaki, CBR | **later** (D-12, D-30) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
 | Text and voice hooks for galgames (Windows) | excluded | Windows only; depends on LunaHook and MinHook |
 | Torrent, Mihon/Aniyomi extensions, LNReader, download center | excluded | Out of scope; Kotlin/APK runtime |
-| AI/LLM, ASR (subtitle generation), TTS, ONNX models | excluded | Some models have CC BY-NC licenses; huge size |
+| AI/LLM, ASR (subtitle generation), TTS, ONNX models | excluded, except the manga reading model, fetched on request (MNG-004, D-30) | Some models have CC BY-NC licenses; huge size |
 | Google Lens OCR, AACS Blu-ray decryption | excluded | Legal and terms-of-service risks |
 | Cloud sync, Interconnect, iroh P2P, headless server, CLI | post-1.0 (WebDAV backup/sync only) | Complexity; not needed for the MVP |
 | Built-in SRS (FSRS) | post-1.0 | `fsrs` is BSD-3-Clause: it would need an exception (§3) |
@@ -251,7 +252,8 @@ nikomiru/
 ├── crates/
 │   ├── nikomiru-core/       # shared types, config, paths, errors, clock
 │   ├── nikomiru-text/       # normalization, kana, preprocessors, sentences, furigana, character count, file names
-│   ├── nikomiru-books/      # EPUB read into clean text
+│   ├── nikomiru-books/      # EPUB and CBZ read into clean text and pages
+│   ├── nikomiru-ocr/        # Japanese text read off a picture, on this computer
 │   ├── nikomiru-dict/       # Yomitan import, other formats, redb storage, deinflection, lookup, word audio
 │   ├── nikomiru-subs/       # SRT/VTT/ASS parsers, cue index, offset, encodings
 │   ├── nikomiru-media/      # ffmpeg/ffprobe runner: subtitle extraction, clips, frames
@@ -270,7 +272,7 @@ nikomiru/
 **ARC-010 — Dependency rules** (verified by T-ARC-010 with `cargo metadata`):
 
 - `nikomiru-core` depends on no workspace crate.
-- `nikomiru-text`, `nikomiru-books`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
+- `nikomiru-text`, `nikomiru-books`, `nikomiru-ocr`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
 - Only `nikomiru-player` depends on `libmpv2` (and `libmpv2-sys`). Only `nikomiru-ui` and `nikomiru-app` depend on the UI toolkit. No crate depends on a retired toolkit (Dioxus, D-10; Qt through cxx-qt, D-13).
 - **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI and the render context), in `nikomiru-app::linux` (environment, `setlocale`, signals, iconv, the Wayland connection for drag and drop) and in `nikomiru-app::window` (the OpenGL context through glutin, the GL state around mpv's render). There is no C++. Every `unsafe` block MUST have a `// SAFETY:` comment on the line above it. `nikomiru-app` declares `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on those modules; every other crate except `nikomiru-player` declares `#![forbid(unsafe_code)]`.
 
@@ -806,7 +808,7 @@ The dictionary and the cards for games, on a page of their own, opened from the 
 
 ### 6.16 Books (BOK) — milestone M16 (D-12, D-25)
 
-Reading with the same dictionary and cards. Manga and audiobooks come later in M16.
+Reading with the same dictionary and cards. Audiobooks and manga have their own sections (§6.17, §6.18).
 
 | ID | Requirement |
 |---|---|
@@ -831,6 +833,19 @@ An audiobook is sound with timed text, and goes through the player, its subtitle
 | ABK-002 | **Timed text**: the user's, beside the file by the rules of SUB-006: SRT, WebVTT, ASS or **LRC** (`[mm:ss.xx]` with several stamps on a line, `[offset:ms]`, word stamps dropped, each line lasting until the next, the last 5 s). Nikomiru makes none: speech recognition stays out (§1.3). |
 | ABK-003 | **Reading along**: the subtitle list (SUB-015) opens with the file and follows it, and a click looks up as on a subtitle (POP-001 pauses). No thumbnails. |
 | ABK-004 | **Cards**: the word, the line and the sound of the line (ANK-032), with no picture. |
+
+### 6.18 Manga (MNG) — milestone M16 (D-30)
+
+A manga is a book of pages: it shares the Books page, its list, its place and its cards. Its text comes from a selection the user draws.
+
+| ID | Requirement |
+|---|---|
+| MNG-001 | **Files**: CBZ, added like a book. Pages are the archive's pictures (`jpg jpeg png webp gif bmp`) in the natural order of their names; hidden files and everything else are left out. The archive is untrusted: at most 10,000 pages, 32 MiB a page and 2 GiB in all, counted on what is read. CBR is out: reading RAR needs a non-free library. |
+| MNG-002 | **Reading**: one page at a time, whole, turned with the left and right arrows (left is forward, as in the book), Page Up/Down, Space, the wheel and two buttons. The place is kept and the session goes in the statistics with no characters. Only the page shown stays in memory. |
+| MNG-003 | **Reading the text**: a drag across a balloon reads that part of the page with a neural model, on this computer: nothing is sent anywhere. Grey, scaled to 224×224, and the most likely token at each step, at most 100. It reads one balloon or line, not a page; Nikomiru finds no balloons by itself. |
+| MNG-004 | **The model**: `kha-white/manga-ocr-base` (Apache-2.0, trained on Manga109-s) as an int8 ONNX export, 111 MiB, in the data folder under `models/manga-ocr`. It does not ship with Nikomiru. The page offers it, saying its size, where it comes from and how it was trained, and it is fetched from Hugging Face only when the user asks, at pinned revisions; each file takes its name only after its SHA-256 is checked. Nothing else about reading manga uses the network. |
+| MNG-005 | **The text**: it shows above the page and is clicked like a book's (BOK-006), and stays with that page until the book closes. |
+| MNG-006 | **Cards**: the word, the text read, and the part of the page it was read from, in the format of the other cards (ANK-034). |
 
 ## 7. Non-functional requirements (NFR)
 
@@ -1030,6 +1045,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-27 | Writing in books | **Asked by the maintainer** (2026-11-01): vertical writing drawn cell by cell, on square cells, since egui has none; pages of whole columns, not a scroll; a book's own direction by default |
 | D-28 | Next releases | **Asked by the maintainer** (2026-11-01): 1.6.0 improves the books, 1.7.0 adds audiobooks, 2.0.0 adds manga once the OCR's terms are read |
 | D-26 | One release for M11–M15 | **Asked by the maintainer** (2026-11-01, "procedi come meglio credi"): their work was merged one after the other before any was tagged, so 1.5.0 ships them all, with the books of M16, in place of the 1.1.0…1.4.0 of D-19 |
+| D-30 | Design of manga | **Decided by the maintainer's agent** (2026-11-01, D-28, after reading Manga109-s's terms: results may be used commercially and published with the dataset named; the dataset itself and its pictures may not be passed on): a CBZ is a book of pages; `tract` runs the model in pure Rust, with no native library; the model is fetched on request, so neither the repository nor the packages hold weights; the user selects the balloon, because finding balloons would need a second model. Double pages, folders of pictures and CBR are for later |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

@@ -1,0 +1,20 @@
+[package]
+name = "nikomiru-ocr"
+description = "Japanese text read off a picture of it, on this computer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+image.workspace = true
+nikomiru-core.workspace = true
+thiserror.workspace = true
+tract-onnx.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

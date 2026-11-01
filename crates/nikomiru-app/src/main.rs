@@ -504,6 +504,7 @@ fn run(
         servers: Box::new(servers),
         sync: Box::new(sync),
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
+        ocr: Box::new(nikomiru_app::ocr::OcrWorker::new(paths.ocr_model_dir())),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014
