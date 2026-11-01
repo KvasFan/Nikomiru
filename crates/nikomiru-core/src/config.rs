@@ -80,6 +80,8 @@ pub struct Config {
     pub sync: SyncConfig,
     /// `[hooker]`: the text of games (HOK-001).
     pub hooker: HookerConfig,
+    /// `[books]` (BOK-009).
+    pub books: BooksConfig,
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
@@ -372,6 +374,17 @@ pub struct NetworkConfig {
     /// the first one is added.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub device_id: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+/// `[books]`: how books are read.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BooksConfig {
+    /// Vertical writing, or horizontal; absent: as each book says (BOK-009).
+    pub vertical: Option<bool>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -748,6 +761,7 @@ impl Default for Config {
             shortcuts: BTreeMap::new(),
             sync: SyncConfig::default(),
             hooker: HookerConfig::default(),
+            books: BooksConfig::default(),
             servers: Vec::new(),
             other: toml::Table::new(),
         }
@@ -1031,6 +1045,7 @@ impl Config {
         out.extend(self.online.other.keys().map(|k| format!("online.{k}")));
         out.extend(self.sync.other.keys().map(|k| format!("sync.{k}")));
         out.extend(self.hooker.other.keys().map(|k| format!("hooker.{k}")));
+        out.extend(self.books.other.keys().map(|k| format!("books.{k}")));
         out.extend(
             self.word_audio
                 .other

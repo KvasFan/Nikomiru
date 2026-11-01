@@ -12,6 +12,7 @@ mod epub;
 mod markup;
 #[cfg(feature = "test-support")]
 pub mod sample;
+pub mod vertical;
 
 use std::ops::Range;
 
@@ -53,6 +54,9 @@ pub struct Book {
     pub title: String,
     /// Its author.
     pub author: String,
+    /// It reads from right to left: vertical, unless the user says otherwise
+    /// (BOK-009).
+    pub right_to_left: bool,
     /// Its chapters, in reading order.
     pub chapters: Vec<Chapter>,
 }

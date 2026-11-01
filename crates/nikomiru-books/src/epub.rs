@@ -195,7 +195,11 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
         .file_stem()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let right_to_left = tags(&opf, "spine")
+        .iter()
+        .any(|t| attribute(t, "page-progression-direction") == Some("rtl"));
     Ok(Book {
+        right_to_left,
         title: element(&opf, "title")
             .filter(|t| !t.is_empty())
             .unwrap_or(stem),
@@ -281,6 +285,7 @@ mod tests {
         assert_eq!(book.chapters.len(), 2);
         assert_eq!(book.chapters[0].title.as_deref(), Some("序"));
         assert_eq!(book.chapters[1].paragraphs[0].text, "第二");
+        assert!(!book.right_to_left);
     }
 
     // T-BOK-001
@@ -296,6 +301,24 @@ mod tests {
             Some("a/x y.xhtml")
         );
         assert_eq!(resolve("b.opf", "../d.xhtml"), None);
+    }
+
+    // T-BOK-009
+    #[test]
+    fn a_book_says_it_reads_from_the_right() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        let opf = OPF.replace("<spine ", r#"<spine page-progression-direction="rtl" "#);
+        epub(
+            &path,
+            &[
+                ("META-INF/container.xml", CONTAINER),
+                ("OEBPS/content.opf", &opf),
+                ("OEBPS/text/one a.xhtml", "<p>本文</p>"),
+                ("two.xhtml", "<p>本文</p>"),
+            ],
+        );
+        assert!(read(&path).unwrap().right_to_left);
     }
 
     // T-BOK-001: what is not a book says so

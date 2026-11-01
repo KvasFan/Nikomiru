@@ -454,6 +454,8 @@ pub fn state() -> Result<Value, String> {
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
+            "vertical": s.book_vertical(),
+            "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
             "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
         });
         state["hooker"] = json!({

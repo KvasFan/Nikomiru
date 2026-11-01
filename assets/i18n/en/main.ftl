@@ -705,5 +705,6 @@ books-none = No book yet. Add an EPUB: its file stays where it is.
 books-filter = EPUB books
 books-remove = Remove { $title }
 books-back = ← Books
+books-vertical = Vertical
 books-next = Next chapter
 books-previous = Previous chapter

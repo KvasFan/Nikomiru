@@ -10,6 +10,7 @@ use egui::{
     ScrollArea, Sense, Ui, vec2,
 };
 use nikomiru_books::Paragraph;
+use nikomiru_books::vertical::{Cell, Columns, Stance, lay_out};
 
 use super::popups::Translate;
 use super::{Dialog, View, palette, theme};
@@ -22,11 +23,29 @@ use crate::ui::Command;
 const TEXT_SIZE: f32 = 22.0;
 /// The widest column of text, in points.
 const COLUMN: f32 = 860.0;
+/// Behind the word looked up.
+pub(super) const MARK: Color32 = Color32::from_rgba_premultiplied(40, 70, 120, 150);
+
+/// A character's cell in vertical writing, as a share of the text's size.
+const CELL: f32 = 1.12;
+/// A column's width, furigana included, as a share of the text's size.
+const COLUMN_WIDTH: f32 = 1.9;
+
+/// What the page keeps between frames.
+#[derive(Debug, Default)]
+pub(crate) struct State {
+    /// The chapter laid out: its book, its number and the rows, and its cells.
+    columns: Option<((String, usize, usize), Columns)>,
+    /// The first column of the page shown.
+    column: usize,
+}
 
 /// What the page shows.
 pub(crate) struct Scene<'a> {
     /// The books and the one open.
     pub page: &'a BooksPage,
+    /// The book is drawn vertically (BOK-009).
+    pub vertical: bool,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -35,9 +54,10 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
     let scene = Scene {
         page: &s.books_page,
+        vertical: s.book_vertical(),
         tr: &tr,
     };
-    let (close, add) = draw(ctx, &scene, out);
+    let (close, add) = draw(ctx, &scene, &mut view.books, out);
     if add {
         view.dialog = Some(Dialog::Book);
     }
@@ -50,11 +70,38 @@ fn tr(s: &Scene<'_>, id: &str) -> String {
     (s.tr)(id, &[])
 }
 
+/// The rectangles of a range of bytes of `text` in `galley`, one a row.
+pub(super) fn range_rects(
+    galley: &egui::Galley,
+    text: &str,
+    range: std::ops::Range<usize>,
+) -> Vec<egui::Rect> {
+    let start = text[..range.start.min(text.len())].chars().count();
+    let length = text.get(range).map_or(0, |part| part.chars().count());
+    let mut rows: Vec<egui::Rect> = Vec::new();
+    for at in start..start + length {
+        let left = galley.pos_from_cursor(egui::text::CCursor::new(at));
+        let right = galley.pos_from_cursor(egui::text::CCursor::new(at + 1));
+        let width = if (left.top() - right.top()).abs() < 1.0 {
+            right.left() - left.left()
+        } else {
+            left.height()
+        };
+        let cell = egui::Rect::from_min_size(left.left_top(), vec2(width, left.height()));
+        match rows.last_mut() {
+            Some(row) if (row.top() - cell.top()).abs() < 1.0 => *row = row.union(cell),
+            _ => rows.push(cell),
+        }
+    }
+    rows
+}
+
 /// A paragraph: its offset in bytes, if clicked, and the rect it took.
 fn paragraph(
     ui: &mut Ui,
     item: &Paragraph,
     name: &str,
+    marked: Option<std::ops::Range<usize>>,
 ) -> (Option<(usize, egui::Rect)>, egui::Rect) {
     let size = if item.heading {
         TEXT_SIZE * 1.3
@@ -83,6 +130,12 @@ fn paragraph(
     let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    if let Some(range) = marked {
+        for row in range_rects(&galley, &item.text, range) {
+            ui.painter()
+                .rect_filled(row.translate(rect.min.to_vec2()), 3.0, MARK);
+        }
+    }
     ui.painter().galley(rect.min, galley.clone(), color);
     for ruby in &item.ruby {
         let chars = item.text[..ruby.range.start].chars().count();
@@ -122,7 +175,212 @@ fn paragraph(
     (clicked, rect)
 }
 
-fn reader(ui: &mut Ui, s: &Scene<'_>, open: &OpenBook, out: &mut Vec<Command>) -> bool {
+/// Where a cell goes on the page: its centre.
+fn cell_centre(area: egui::Rect, first: usize, cell: &Cell) -> egui::Pos2 {
+    let x = area.right() - ((cell.column - first) as f32 + 0.5) * TEXT_SIZE * COLUMN_WIDTH;
+    let y = area.top() + (cell.row as f32 + 0.5) * TEXT_SIZE * CELL;
+    egui::pos2(x, y)
+}
+
+fn draw_cell(ui: &Ui, area: egui::Rect, first: usize, cell: &Cell) {
+    let color = palette::current().text;
+    let font = FontId::proportional(TEXT_SIZE);
+    let centre = cell_centre(area, first, cell);
+    let text = cell.ch.to_string();
+    match cell.stance {
+        Stance::Upright => {
+            ui.painter()
+                .text(centre, Align2::CENTER_CENTER, text, font, color);
+        }
+        Stance::Corner => {
+            let at = centre + vec2(TEXT_SIZE * 0.3, -TEXT_SIZE * 0.3);
+            ui.painter()
+                .text(at, Align2::CENTER_CENTER, text, font, color);
+        }
+        Stance::Turned => {
+            let galley = ui.fonts_mut(|f| f.layout_no_wrap(text, font, color));
+            let size = galley.size();
+            // a quarter turn around the cell's centre
+            let at = centre + vec2(size.y / 2.0, -size.x / 2.0);
+            ui.painter().add(
+                egui::epaint::TextShape::new(at, galley, color)
+                    .with_angle(std::f32::consts::FRAC_PI_2),
+            );
+        }
+    }
+}
+
+/// The readings of the paragraphs on the page, beside their bases.
+fn draw_readings(
+    ui: &Ui,
+    area: egui::Rect,
+    first: usize,
+    cells: &[&Cell],
+    paragraphs: &[Paragraph],
+) {
+    let shown = cells.iter().map(|c| c.paragraph);
+    let (Some(low), Some(high)) = (shown.clone().min(), shown.max()) else {
+        return;
+    };
+    for (index, item) in paragraphs.iter().enumerate().take(high + 1).skip(low) {
+        for ruby in &item.ruby {
+            let base: Vec<&&Cell> = cells
+                .iter()
+                .filter(|c| c.paragraph == index && ruby.range.contains(&c.offset))
+                .collect();
+            let (Some(top), Some(bottom)) = (base.first(), base.last()) else {
+                continue;
+            };
+            let (top, bottom) = (
+                cell_centre(area, first, top),
+                cell_centre(area, first, bottom),
+            );
+            // a base that breaks across columns: over its start
+            let height = if (top.x - bottom.x).abs() < 1.0 {
+                bottom.y - top.y + TEXT_SIZE
+            } else {
+                TEXT_SIZE
+            };
+            let count = ruby.text.chars().count().max(1) as f32;
+            let step = (height / count).min(TEXT_SIZE * 0.6);
+            let start = top.y - TEXT_SIZE / 2.0 + (height - step * count) / 2.0;
+            for (i, c) in ruby.text.chars().enumerate() {
+                let at = egui::pos2(top.x + TEXT_SIZE * 0.72, start + (i as f32 + 0.5) * step);
+                ui.painter().text(
+                    at,
+                    Align2::CENTER_CENTER,
+                    c,
+                    FontId::proportional(TEXT_SIZE * 0.5),
+                    palette::current().details,
+                );
+            }
+        }
+    }
+}
+
+/// A chapter in columns from the right, a page at a time (BOK-009).
+fn vertical_reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let Some(chapter) = open.book.chapters.get(open.chapter) else {
+        return;
+    };
+    let room = ui.available_rect_before_wrap();
+    let rows = ((room.height() / (TEXT_SIZE * CELL)) as usize).max(2);
+    let per_page = ((room.width() / (TEXT_SIZE * COLUMN_WIDTH)) as usize).max(1);
+    let key = (open.uid.clone(), open.chapter, rows);
+    if state.columns.as_ref().map(|(k, _)| k) != Some(&key) {
+        state.columns = Some((key, lay_out(&chapter.paragraphs, rows)));
+        state.column = usize::MAX;
+    }
+    let Some((_, columns)) = &state.columns else {
+        return;
+    };
+    if open.jump || state.column == usize::MAX {
+        state.column = columns.column_of(open.paragraph) / per_page * per_page;
+        out.push(Command::BookAt(open.paragraph));
+    }
+    let width = per_page as f32 * TEXT_SIZE * COLUMN_WIDTH;
+    let area = egui::Rect::from_min_size(
+        egui::pos2(room.center().x - width / 2.0, room.top()),
+        vec2(width, room.height()),
+    );
+    let text: String = columns
+        .cells
+        .iter()
+        .filter(|c| (state.column..state.column + per_page).contains(&c.column))
+        .map(|c| c.ch)
+        .collect();
+    let (_, response) = ui.allocate_exact_size(room.size(), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &text));
+    let cells: Vec<&Cell> = columns
+        .cells
+        .iter()
+        .filter(|c| (state.column..state.column + per_page).contains(&c.column))
+        .collect();
+    if let Some((paragraph, range)) = &s.page.highlight {
+        for cell in cells
+            .iter()
+            .filter(|c| c.paragraph == *paragraph && range.contains(&c.offset))
+        {
+            let box_size = vec2(TEXT_SIZE * 1.1, TEXT_SIZE * CELL);
+            let rect =
+                egui::Rect::from_center_size(cell_centre(area, state.column, cell), box_size);
+            ui.painter().rect_filled(rect, 2.0, MARK);
+        }
+    }
+    for cell in &cells {
+        draw_cell(ui, area, state.column, cell);
+    }
+    draw_readings(ui, area, state.column, &cells, &chapter.paragraphs);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if response.clicked()
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        let near = cells.iter().min_by_key(|c| {
+            let d = cell_centre(area, state.column, c) - at;
+            (d.length_sq() * 16.0) as u64
+        });
+        if let Some(cell) = near {
+            let centre = cell_centre(area, state.column, cell);
+            out.push(Command::BookClicked {
+                paragraph: cell.paragraph,
+                offset: cell.offset,
+                anchor: popup::Rect {
+                    x: f64::from(centre.x - TEXT_SIZE / 2.0),
+                    y: f64::from(centre.y - TEXT_SIZE / 2.0),
+                    w: f64::from(TEXT_SIZE),
+                    h: f64::from(TEXT_SIZE),
+                },
+            });
+        }
+    }
+    // the page turns to the left, as the book does
+    let (forward, back) = ui.input(|i| {
+        let wheel = i.events.iter().find_map(|e| match e {
+            egui::Event::MouseWheel { delta, .. } => Some(delta.y),
+            _ => None,
+        });
+        let wheel = wheel.unwrap_or(0.0);
+        (
+            i.key_pressed(egui::Key::ArrowLeft)
+                || i.key_pressed(egui::Key::PageDown)
+                || i.key_pressed(egui::Key::Space)
+                || wheel < 0.0,
+            i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::PageUp) || wheel > 0.0,
+        )
+    });
+    let total = columns.columns;
+    if forward {
+        if state.column + per_page < total {
+            state.column += per_page;
+            out.push(Command::BookAt(columns.paragraph_at(state.column)));
+        } else if open.chapter + 1 < open.book.chapters.len() {
+            out.push(Command::BookChapter(open.chapter + 1));
+        }
+    } else if back {
+        if state.column > 0 {
+            state.column = state.column.saturating_sub(per_page);
+            out.push(Command::BookAt(columns.paragraph_at(state.column)));
+        } else if open.chapter > 0 {
+            out.push(Command::BookChapter(open.chapter - 1));
+        }
+    }
+}
+
+fn reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) -> bool {
     let mut close = false;
     ui.horizontal(|ui| {
         if ui.button(tr(s, "books-back")).clicked() {
@@ -145,8 +403,18 @@ fn reader(ui: &mut Ui, s: &Scene<'_>, open: &OpenBook, out: &mut Vec<Command>) -
             {
                 out.push(Command::BookChapter(open.chapter - 1));
             }
+            if ui
+                .selectable_label(s.vertical, tr(s, "books-vertical"))
+                .clicked()
+            {
+                out.push(Command::BookWriting(!s.vertical));
+            }
         });
     });
+    if s.vertical {
+        vertical_reader(ui, s, open, state, out);
+        return close;
+    }
     let Some(chapter) = open.book.chapters.get(open.chapter) else {
         return close;
     };
@@ -166,7 +434,13 @@ fn reader(ui: &mut Ui, s: &Scene<'_>, open: &OpenBook, out: &mut Vec<Command>) -
                 let mut reached = None;
                 for (index, item) in chapter.paragraphs.iter().enumerate() {
                     let name = format!("{index}: {}", item.text);
-                    let (clicked, rect) = paragraph(ui, item, &name);
+                    let marked = s
+                        .page
+                        .highlight
+                        .as_ref()
+                        .filter(|(at, _)| *at == index)
+                        .map(|(_, range)| range.clone());
+                    let (clicked, rect) = paragraph(ui, item, &name, marked);
                     if open.jump && index == open.paragraph {
                         ui.scroll_to_rect(rect, Some(Align::Min));
                     }
@@ -264,7 +538,12 @@ fn list(ui: &mut Ui, s: &Scene<'_>, add: &mut bool, close: &mut bool, out: &mut 
 }
 
 /// Draws the page; whether it closes, and whether a file is to be chosen.
-pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) -> (bool, bool) {
+pub(crate) fn draw(
+    ctx: &egui::Context,
+    s: &Scene<'_>,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) -> (bool, bool) {
     let screen = ctx.content_rect();
     let (mut close, mut add) = (false, false);
     // under the popups, which are in the foreground (BOK-006)
@@ -284,7 +563,7 @@ pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) -
                     ui.spacing_mut().item_spacing.y = 10.0;
                     match &s.page.open {
                         Some(open) => {
-                            if reader(ui, s, open, out) {
+                            if reader(ui, s, open, state, out) {
                                 out.push(Command::BookClose);
                             }
                         }
@@ -306,11 +585,17 @@ mod tests {
 
     struct Test {
         page: BooksPage,
+        vertical: bool,
+        state: State,
         out: Vec<Command>,
         add: bool,
     }
 
     fn harness<'a>(page: BooksPage) -> Harness<'a, Test> {
+        vertical_harness(page, false)
+    }
+
+    fn vertical_harness<'a>(page: BooksPage, vertical: bool) -> Harness<'a, Test> {
         Harness::builder()
             .with_size(vec2(1000.0, 700.0))
             .allow_missing_glyphs()
@@ -319,12 +604,15 @@ mod tests {
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
                     let scene = Scene {
                         page: &t.page,
+                        vertical: t.vertical,
                         tr: &tr,
                     };
-                    t.add |= draw(ui.ctx(), &scene, &mut t.out).1;
+                    t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
                 },
                 Test {
                     page,
+                    vertical,
+                    state: State::default(),
                     out: Vec::new(),
                     add: false,
                 },
@@ -348,6 +636,7 @@ mod tests {
             book: Book {
                 title: "本".into(),
                 author: String::new(),
+                right_to_left: false,
                 chapters: vec![chapter("読む本です"), chapter("次")],
             },
             chapter: 0,
@@ -380,6 +669,58 @@ mod tests {
         let (paragraph, offset) = clicked.expect("a click");
         assert_eq!(paragraph, 0);
         assert_eq!(offset % 3, 0, "on a character");
+    }
+
+    // T-BOK-009: the first column is on the right, and a click finds its
+    // character
+    #[test]
+    fn vertical_text_is_clicked_where_it_is() {
+        let mut h = vertical_harness(
+            BooksPage {
+                open: Some(open()),
+                ..BooksPage::default()
+            },
+            true,
+        );
+        h.run();
+        let rect = h.get_by_label("読む本です").rect();
+        // the second character of the rightmost column
+        let width = rect.width();
+        let columns = (width / (TEXT_SIZE * COLUMN_WIDTH)).floor();
+        let right = rect.center().x + columns * TEXT_SIZE * COLUMN_WIDTH / 2.0;
+        let at = Pos2::new(
+            right - TEXT_SIZE * COLUMN_WIDTH / 2.0,
+            rect.min.y + TEXT_SIZE * CELL * 1.5,
+        );
+        h.hover_at(at);
+        h.drag_at(at);
+        h.drop_at(at);
+        h.run();
+        let clicked = h.state().out.iter().find_map(|c| match c {
+            Command::BookClicked {
+                paragraph, offset, ..
+            } => Some((*paragraph, *offset)),
+            _ => None,
+        });
+        assert_eq!(clicked, Some((0, 3)), "む, the second character");
+    }
+
+    // T-BOK-009
+    #[test]
+    fn writing_is_a_choice() {
+        let mut h = harness(BooksPage {
+            open: Some(open()),
+            ..BooksPage::default()
+        });
+        h.run();
+        h.get_by_label("books-vertical").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookWriting(true)))
+        );
     }
 
     // T-BOK-005

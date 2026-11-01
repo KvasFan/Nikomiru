@@ -54,7 +54,12 @@ fn tr(s: &Scene<'_>, id: &str) -> String {
 }
 
 /// One line, each character a target; the byte offset of the click.
-fn line(ui: &mut Ui, text: &str, name: &str) -> Option<(usize, egui::Rect)> {
+fn line(
+    ui: &mut Ui,
+    text: &str,
+    name: &str,
+    marked: Option<std::ops::Range<usize>>,
+) -> Option<(usize, egui::Rect)> {
     let format = TextFormat {
         font_id: egui::FontId::proportional(LINE_SIZE),
         color: palette::current().text,
@@ -68,6 +73,15 @@ fn line(ui: &mut Ui, text: &str, name: &str) -> Option<(usize, egui::Rect)> {
     let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    if let Some(range) = marked {
+        for row in super::books_page::range_rects(&galley, text, range) {
+            ui.painter().rect_filled(
+                row.translate(rect.min.to_vec2()),
+                3.0,
+                super::books_page::MARK,
+            );
+        }
+    }
     ui.painter()
         .galley(rect.min, galley.clone(), palette::current().text);
     if response.hovered() {
@@ -184,7 +198,13 @@ pub(crate) fn draw(
                         .show(ui, |ui| {
                             for (index, text) in s.page.lines.iter().enumerate() {
                                 let name = format!("{index}: {text}");
-                                if let Some((offset, rect)) = line(ui, text, &name) {
+                                let marked = s
+                                    .page
+                                    .highlight
+                                    .as_ref()
+                                    .filter(|(at, _)| *at == index)
+                                    .map(|(_, range)| range.clone());
+                                if let Some((offset, rect)) = line(ui, text, &name, marked) {
                                     out.push(Command::HookerClicked {
                                         line: index,
                                         offset,

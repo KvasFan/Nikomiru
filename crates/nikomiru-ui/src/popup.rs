@@ -285,6 +285,14 @@ impl Popups {
         moved
     }
 
+    /// The root popup's lookup on a page of text: its origin and the
+    /// characters it matched (HOK-004, BOK-006).
+    pub fn page_highlight(&self) -> Option<(&Origin, usize)> {
+        let root = self.stack.first()?;
+        let reply = root.reply.as_ref()?;
+        (reply.best_length > 0).then_some((&root.origin, reply.best_length))
+    }
+
     /// The cue the root popup was opened from.
     pub fn root_cue(&self) -> Option<usize> {
         match self.stack.first()?.origin {

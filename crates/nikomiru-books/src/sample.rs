@@ -22,7 +22,7 @@ pub fn write(path: &Path) -> zip::result::ZipResult<()> {
         ),
         (
             "a.xhtml",
-            "<html><body><h1>第一章</h1><p>今日は<ruby>林檎<rt>りんご</rt></ruby>を食べました。とても美味しい。</p></body></html>",
+            "<html><body><h1>第一章</h1><p>今日は<ruby>林檎<rt>りんご</rt></ruby>を食べました。とても美味しい。</p><p>「ラーメンが好き」と彼は言った。ABC 123、それから……</p></body></html>",
         ),
         (
             "b.xhtml",
