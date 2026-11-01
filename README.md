@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 1.0.0 is the first release with packages, for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 1.5.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -80,12 +80,12 @@ Version 1.0.0 is the first release with packages, for Linux. The status of each 
 | Library, word audio (also from a local `android.db`) | Works with project-made files; a real library of hundreds of episodes is still to be checked by hand (M5) |
 | Statistics, the full settings (themes, languages, shortcuts), cards made by hand, the keyboard alone | Works (M6) |
 | Series identified online (AniList, Jikan); Jimaku by AniList id | Works against simulated services and the real AniList (M7) |
-| Media servers: Jellyfin and Plex, in a tab of their own, played with subtitles, lookups and cards | Next version; works against simulated servers, real ones still to check (M11) |
-| Backup to a file, sync of progress, statistics and cards through WebDAV | Next version; works against a simulated server, a real Nextcloud still to check (M12) |
-| Advanced ASS, screenshots with subtitles | Next version; real typeset fansubs still to compare with libass (M13) |
-| Texthooker for visual novels, with lookups and cards of text only | Next version; works with a simulated hooker (M14) |
-| StarDict, DSL and MDict dictionaries, their definitions as plain text | Next version; works on files made by the tests, real dictionaries still to check (M15) |
-| Books: EPUB with furigana, lookups and cards of text only, horizontal text | Next version; real books still to check (M16) |
+| Media servers: Jellyfin and Plex, in a tab of their own, played with subtitles, lookups and cards | Works with a real Jellyfin; Plex only against a simulated server (M11) |
+| Backup to a file, sync of progress, statistics and cards through WebDAV | Works with a real Nextcloud (M12) |
+| Advanced ASS, screenshots with subtitles | Works; real typeset fansubs still to compare with libass (M13) |
+| Texthooker for visual novels, with lookups and cards of text only | Works with a simulated hooker (M14) |
+| StarDict, DSL and MDict dictionaries, their definitions as plain text | StarDict works with a real dictionary; DSL and MDict only on files made by the tests (M15) |
+| Books: EPUB with furigana, lookups and cards of text only, horizontal text | Works with a real EPUB; a book with furigana still to check (M16) |
 | Words in the subtitles: the words already in Anki underlined, readings over the kanji, ← → word by word | Works with the project's test dictionaries; to check with JMdict (M9) |
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |
@@ -147,7 +147,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10); what is left is the checks by hand of each milestone. Next, in this order (D-19): Jellyfin and Plex (1.1.0), backup and WebDAV sync (1.2.0), advanced ASS and screenshots with subtitles (1.3.0), clipboard lookup and a texthooker (1.4.0), MDict, StarDict and DSL dictionaries (1.5.0), then books, manga and audiobooks (2.0.0, D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. Next: the rest of M16, manga and audiobooks (D-12). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 
