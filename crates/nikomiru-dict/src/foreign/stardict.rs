@@ -40,7 +40,9 @@ pub(super) fn read_index(path: &Path) -> Result<Index, ImportError> {
         .get("date")
         .cloned()
         .unwrap_or_else(|| revision_of(path));
-    Ok(index(title, revision, meta.get("description").cloned()))
+    // real ones hold HTML here
+    let description = meta.get("description").map(|d| html_to_text(d));
+    Ok(index(title, revision, description))
 }
 
 /// `base` with one of `endings`, the first that exists.

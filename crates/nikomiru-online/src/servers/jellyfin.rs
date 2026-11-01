@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{
     Item, ItemKind, Library, MediaServer, PAGE, Page, ParentKind, PlayState, Playable,
-    ServerSubtitle, Stream, join, parse_time, success,
+    ServerSubtitle, Stream, join, parse_time, subtitle_extension, success,
 };
 use crate::error::OnlineError;
 use crate::http::Http;
@@ -332,14 +332,7 @@ impl MediaServer for Jellyfin {
 }
 
 fn subtitle_of(stream: &Value, video: &str, source: &str) -> Option<ServerSubtitle> {
-    let format: String = stream["Codec"]
-        .as_str()?
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .collect();
-    if format.is_empty() {
-        return None;
-    }
+    let format = subtitle_extension(stream["Codec"].as_str()?)?;
     let index = stream["Index"].as_u64()?;
     Some(ServerSubtitle {
         id: format!("{video}/{source}/{index}"),

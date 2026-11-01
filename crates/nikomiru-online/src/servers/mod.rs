@@ -277,6 +277,23 @@ pub fn http_for(url: &Url, proxy: &str) -> Result<Http, OnlineError> {
     Http::new(if is_private(url) { "" } else { proxy })
 }
 
+/// A server's name of a subtitle format, as a file's extension: Jellyfin says
+/// `subrip`, and only known extensions are read as subtitles (SUB-006).
+pub(crate) fn subtitle_extension(codec: &str) -> Option<String> {
+    let clean: String = codec
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    match clean.as_str() {
+        "subrip" | "srt" => Some("srt".into()),
+        "webvtt" | "vtt" => Some("vtt".into()),
+        "ass" => Some("ass".into()),
+        "ssa" => Some("ssa".into()),
+        _ => None,
+    }
+}
+
 /// The address of a path under `base`, each segment percent-encoded: ids come
 /// from the server.
 pub(crate) fn join(base: &Url, segments: &[&str]) -> Result<Url, OnlineError> {
@@ -468,6 +485,18 @@ mod tests {
         assert_eq!(parse_time("2026-10-31T09:00:00Z"), Some(1_793_437_200));
         for bad in ["", "yesterday", "2026-13-01T00:00:00Z", "2026-10-31"] {
             assert_eq!(parse_time(bad), None, "{bad}");
+        }
+    }
+
+    // T-SRV-010: found on a real Jellyfin
+    #[test]
+    fn subtitle_formats_become_extensions() {
+        assert_eq!(subtitle_extension("subrip").as_deref(), Some("srt"));
+        assert_eq!(subtitle_extension("SRT").as_deref(), Some("srt"));
+        assert_eq!(subtitle_extension("WebVTT").as_deref(), Some("vtt"));
+        assert_eq!(subtitle_extension("ass").as_deref(), Some("ass"));
+        for image in ["pgssub", "dvdsub", "../x", ""] {
+            assert_eq!(subtitle_extension(image), None, "{image}");
         }
     }
 

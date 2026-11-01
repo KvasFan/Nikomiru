@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use super::{
     Item, ItemKind, Library, MediaServer, PAGE, Page, ParentKind, PlayState, Playable,
-    ServerSubtitle, Stream, join, key_url, success,
+    ServerSubtitle, Stream, join, key_url, subtitle_extension, success,
 };
 use crate::error::OnlineError;
 use crate::http::Http;
@@ -389,14 +389,7 @@ fn subtitle_of(stream: &Value) -> Option<ServerSubtitle> {
     }
     // only external ones have a `key`: embedded ones come with the file
     let id = stream["key"].as_str()?.to_string();
-    let format: String = stream["codec"]
-        .as_str()?
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .collect();
-    if format.is_empty() || matches!(format.as_str(), "pgs" | "dvdsub" | "vobsub") {
-        return None;
-    }
+    let format = subtitle_extension(stream["codec"].as_str()?)?;
     Some(ServerSubtitle {
         id,
         language: stream["languageCode"].as_str().map(str::to_string),

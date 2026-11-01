@@ -491,7 +491,8 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 **Status as of 2026-10-31**
 
 - Done on simulated servers: the Jellyfin and Plex clients, the relay, the settings tab, a tab for each server, playback, subtitles, progress, scene links (T-SRV-001…T-SRV-013 except what is listed below).
-- Open: the live checks (T-SRV-LIVE-*), on a real Jellyfin and the maintainer's Plex.
+- Checked on 2026-11-01 against a real Jellyfin 12.4 in a container (T-SRV-LIVE-001, -002): the API, and the app playing through the relay. It found one bug: Jellyfin names SubRip `subrip`, which made a file no one read as a subtitle.
+- Open: a real Plex, which needs the maintainer's account.
 
 **Notes**: the HTTP client in use (`reqwest`, blocking); no new dependency. Test servers simulated as for AniList and Jimaku; the live checks need a real Jellyfin and the maintainer's Plex, since the development machine has no container runtime.
 
@@ -519,14 +520,14 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 **Status as of 2026-10-31**
 
 - Done against a simulated WebDAV server: the backup and its restore at the next start, the device files, the merge, the tombstones, Settings → Backup, the sync at start and close (T-BAK-001…T-BAK-010).
-- Open: the live check on a real Nextcloud (T-BAK-LIVE-*).
+- Checked on 2026-11-01 against a real Nextcloud 35 in a container (T-BAK-LIVE-001, -002): the folder, and the app syncing with another device's file. Two real computers are still to try.
 
 **Notes**: WebDAV is HTTP over the client in use, and the archives use `zip`: no new dependency expected. The live check needs a real Nextcloud (a container, once Podman has its network). Cloud sync, iroh P2P and the like stay out (SPECIFICATION §1.3).
 
 **Exit criteria**
 
 - [x] BAK-001…BAK-010 accepted (D-21); T-BAK-001…T-BAK-010 green, against a simulated WebDAV server.
-- [ ] Two computers synced through a real Nextcloud.
+- [x] A device synced through a real Nextcloud (T-BAK-LIVE-002), with a second device's file put there by the test.
 - [ ] **Release 1.2.0**.
 
 ---
@@ -580,7 +581,8 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 **Status as of 2026-10-31**
 
 - Done on files made by the tests: the three formats, read into the same store, from a file to a lookup (T-DIC-004).
-- Open: real dictionaries. The MDict reader and the MDict files of its tests come from the same reading of the format, so only a real `.mdx` can prove it. `.mdd` media are not read, and definitions are plain text.
+- Checked on 2026-11-01: FreeDict's Japanese-English StarDict (173 747 entries) imported and looked up (T-DIC-LIVE-001).
+- Open: a real DSL and a real MDict. The MDict reader and the MDict files of its tests come from the same reading of the format, so only a real `.mdx` can prove it. `.mdd` media are not read, and definitions are plain text.
 
 **Exit criteria**
 
@@ -599,7 +601,8 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 **Status as of 2026-10-31**
 
 - Books done with a small EPUB made by the tests: reading, furigana, lookups, cards of text only, the place kept, a session in the statistics (T-BOK-001…T-BOK-008).
-- Open for books: real EPUBs; vertical writing; pictures; the ttu sync, whose format needs checking against the real reader; book progress in the WebDAV sync.
+- Checked on 2026-11-01: a real EPUB of Project Gutenberg (T-BOK-LIVE-001); it has no furigana.
+- Open for books: a real EPUB with furigana; vertical writing; pictures; the ttu sync, whose format needs checking against the real reader; book progress in the WebDAV sync.
 - Not started: manga (the OCR's engine and its license are decided with the requirements) and audiobooks (an audiobook with its text, played in sync).
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.

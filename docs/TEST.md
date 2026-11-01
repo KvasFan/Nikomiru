@@ -285,7 +285,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-DIC-002 | Tag bank and `sequence` | The `v5k` tag has category and notes; `sequence` preserved | L4 |
 | T-DIC-003 | `mini-freq-occ` | String values read; inverted ordering (higher = better) | L4 |
 | T-DIC-004 | Other formats | StarDict, DSL and MDict made by the tests, of each variant, read to their terms; a DSL from its file to a lookup of a conjugated form; RIPEMD-128 and Adler-32 against published vectors; broken, cut and damaged files refused; HTML reduced to text | L1/L4 |
-| T-DIC-LIVE-* | Real dictionaries | One real dictionary of each format, imported by hand | L7 |
+| T-DIC-LIVE-* | Real dictionaries | With `NIKOMIRU_REAL_DICT`: one real dictionary of each format, imported and looked up | L7 |
 | T-DIC-010 | Cancellation | Cancelling halfway → no dictionary registered, no leftover files. A cancel inside one large bank (60k entries, while it is read, parsed or written) or in the final step stops the import in < 1 s; the parser, the writes and the final step stop at their next check | L1, L4 |
 | T-DIC-011 | Malicious ZIPs (§4.3) | Each one is rejected with its specific error; no file written outside `dicts/<id>.importing`. `wrapped-dir`, `unicode-path` and `zip64` are accepted. The zips of `import.json` (§5.3): wrapper folders, macOS files, directory entries, Unicode Path fields, ZIP64 sentinels, broken deflate streams, lying sizes, a damaged dictionary file | L4 |
 | T-DIC-012 | Limits | A glossary > 10 MiB makes the import fail cleanly | L4 |
@@ -514,7 +514,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SRV-011 | Progress | The later position wins, both ways; the reports' moments; a failed report dropped and playback unaffected; played at 90% | L2/L6 |
 | T-SRV-012 | Cards | The link reopens the scene; with the server gone, its message and nothing else | L6 |
 | T-SRV-013 | Errors | Each failure's message; truncated, oversized and wrong JSON never panic (L2, `crates/nikomiru-online/tests/servers_fuzz.rs`); the server failing during playback keeps the position | L2/L5 |
-| T-SRV-LIVE-* | Real servers | Smoke tests with an address and token from environment variables: Jellyfin and Plex | L7 |
+| T-SRV-LIVE-* | Real servers | With `NIKOMIRU_JELLYFIN_URL`, `_USER`, `_PASSWORD`: the API, then the app playing an episode; the library needs a series whose first episode has a subtitle file beside it, and an episode over 5 minutes, since Jellyfin keeps no position in a shorter one. Plex: by hand | L7 |
 
 ### 6.13b Backup and sync (M12)
 
@@ -530,7 +530,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BAK-008 | Deletions | A deleted session does not return; a tombstone goes after 180 days | L2 |
 | T-BAK-009 | When | By hand; at start and close only if ticked; playback never waits; a failure changes nothing | L2/L6 |
 | T-BAK-010 | Errors | Each failure's message; truncated and random answers never panic | L2 |
-| T-BAK-LIVE-* | Real server | Two computers, or two profiles, through a real Nextcloud | L7 |
+| T-BAK-LIVE-* | Real server | With `NIKOMIRU_WEBDAV_URL`, `_USER`, `_PASSWORD`: the folder, then the app syncing with another device's file | L7 |
 
 ### 6.13c Texthooker (M14)
 
@@ -555,7 +555,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BOK-006 | Lookup | A click gives the paragraph and the byte of the character; the popup opens over the page | L3/L6 |
 | T-BOK-007 | Cards | The sentence, and no media | L6 |
 | T-BOK-008 | Statistics | Closing adds a session | L6 |
-| T-BOK-LIVE-* | Real books | Real EPUBs, by hand | L7 |
+| T-BOK-LIVE-* | Real books | With `NIKOMIRU_REAL_EPUB`: a real EPUB read | L7 |
 
 ### 6.14 Reliability and fuzzing
 

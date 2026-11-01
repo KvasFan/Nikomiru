@@ -312,7 +312,7 @@ fn jellyfin_item(item: &FakeItem) -> Value {
         "MediaSources": [{
             "Id": format!("source-{}", item.id),
             "MediaStreams": [
-                { "Type": "Subtitle", "Index": 2, "Codec": "srt", "Language": "jpn",
+                { "Type": "Subtitle", "Index": 2, "Codec": "subrip", "Language": "jpn",
                   "DisplayTitle": "Japanese", "IsExternal": true, "IsTextSubtitleStream": true },
                 { "Type": "Subtitle", "Index": 3, "Codec": "PGSSUB", "IsExternal": true,
                   "IsTextSubtitleStream": false },
