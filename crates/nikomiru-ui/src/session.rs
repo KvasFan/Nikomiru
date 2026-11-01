@@ -546,6 +546,17 @@ impl Drop for Session {
     }
 }
 
+/// The extensions of files that are only sound (ABK-001).
+const AUDIO_EXTENSIONS: [&str; 9] = [
+    "m4b", "m4a", "mp3", "aac", "flac", "ogg", "opus", "wav", "wma",
+];
+
+fn is_audio(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| AUDIO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 /// What a server says of a video, in its record (SRV-007, SRV-011).
 fn apply_server_item(record: &mut VideoRecord, item: &nikomiru_online::servers::Item) {
     record.last_position_ms = nikomiru_online::servers::later_position(
@@ -919,7 +930,7 @@ impl Session {
         // a stream has no thumbnails: ffmpeg would download it again; a
         // server's file has, its relay reading only what ffmpeg seeks to
         self.thumbnails
-            .open((path.is_file() || server.is_some()).then(|| path.clone()));
+            .open(((path.is_file() && !is_audio(&path)) || server.is_some()).then(|| path.clone()));
         let now = self.services.clock.monotonic();
         self.current = Some(Current {
             uid,
@@ -2942,6 +2953,11 @@ impl Session {
         }
     }
 
+    /// Whether the file open is only sound (ABK-001).
+    pub fn audio_only(&self) -> bool {
+        self.current.as_ref().is_some_and(|c| is_audio(&c.path))
+    }
+
     /// The online service.
     pub fn online(&self) -> &dyn crate::online::OnlineService {
         self.services.online.as_ref()
@@ -3169,7 +3185,12 @@ impl Session {
                     .unwrap_or_default(),
             },
             action,
-            frame: FrameChoice::Click,
+            // ABK-004: sound has no frame
+            frame: if is_audio(&current.path) {
+                FrameChoice::None
+            } else {
+                FrameChoice::Click
+            },
             audio: true,
         };
         Some((p.generation, request))

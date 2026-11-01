@@ -490,6 +490,7 @@ While a page or a dialog covers the video (the library, the settings, the dialog
 | SUB-017 | **Secondary** subtitle (e.g. a translation), chosen among the text sources in the subtitle menu: a second layer at 85 % of the size, at the top of the video or above the main subtitle at the bottom (`[subtitles] secondary_position`), never clicked (no lookups), with its own obscuring mode (`secondary_obscure`, revealed with the main one on hover); it follows the main offset. Its load neither cancels nor is cancelled by the main one's. Milestone M4b (D-14) | |
 | SUB-018 | **Automatic alignment with the audio** ("Align with the audio" in the subtitle menu, and by itself after downloaded subtitles load, MET-007): the first 20 minutes of the active audio track decoded by ffmpeg to 8 kHz mono PCM, its RMS level every 100 ms; the bins in the loud part of the track's own range (≥ 35 %) and the cues become activity series, and the offset is the shift within ±15 s with the best Pearson correlation. It is applied as the subtitle offset (SUB-011) only when the correlation is ≥ 0.15 and at least 0.05 above the best one more than 1 s away; otherwise the menu says it is not sure and nothing changes. A new load cancels it. Milestone M4b (D-14) | `subtitle_auto_align.dart`, `audio_energy_probe.dart` |
 | SUB-019 | **Advanced ASS** (M13, D-22), with `[subtitles] respect_ass_styles` on, in Nikomiru's own renderer, every character still clickable where it is drawn: `\fad`, `\fade`; `\move`; `\frx \fry \frz \fr` around `\org` (or the anchor), the first two in libass's perspective; `\fscx \fscy` around the anchor; `\alpha \1a`; `\clip \iclip`, rectangles, a vector clip coming to the rectangle around its points; `\t` of `\fs \fscx \fscy \frx \fry \frz \c \alpha`, with its times and acceleration; karaoke `\k \K \kf \ko` with `\2c` or the style's secondary colour (`\ko` as `\k`). A cue has one set of these, however many blocks its text has; only karaoke changes within a line. Out of scope: `\blur \be \bord \shad \p` drawings. A turned or scaled cue draws no shadow box, and its click areas are the rectangles around its characters. | |
+| SUB-020 | **LRC** files are read like the other subtitles (ABK-002). | |
 
 ### 6.5 Dictionaries: import and management (DIC)
 
@@ -820,6 +821,17 @@ Reading with the same dictionary and cards. Manga and audiobooks come later in M
 | BOK-009 | **Vertical writing** (M16, D-27): columns from the right in pages of whole columns, marks of a line's end hung below it, `、。` in the corner of their cell, long vowel marks, brackets and Latin turned a quarter, furigana to the right of their bases. ← and the wheel down go on, → goes back, past a chapter's end to the next. A book whose spine says `page-progression-direction="rtl"` opens vertical; "Vertical" on the page chooses for every book (`[books] vertical`). |
 | BOK-010 | **Pictures**: pictures of `<img>`, and of `<image>` in an SVG, show as paragraphs in horizontal text and on a page of their own in vertical writing, decoded within the limits of covers: at most 32 MiB each and 512 MiB in a book. One that cannot be had is left out. A book of pictures alone is still refused: that is the manga of M16. |
 
+### 6.17 Audiobooks (ABK) — milestone M16 (D-29)
+
+An audiobook is sound with timed text, and goes through the player, its subtitles and its cards.
+
+| ID | Requirement |
+|---|---|
+| ABK-001 | **Files**: `m4b m4a mp3 aac flac ogg opus wav wma`, opened with "Open an audiobook…" on the Books page, or like any file. Progress, chapters and statistics work as for a video. |
+| ABK-002 | **Timed text**: the user's, beside the file by the rules of SUB-006: SRT, WebVTT, ASS or **LRC** (`[mm:ss.xx]` with several stamps on a line, `[offset:ms]`, word stamps dropped, each line lasting until the next, the last 5 s). Nikomiru makes none: speech recognition stays out (§1.3). |
+| ABK-003 | **Reading along**: the subtitle list (SUB-015) opens with the file and follows it, and a click looks up as on a subtitle (POP-001 pauses). No thumbnails. |
+| ABK-004 | **Cards**: the word, the line and the sound of the line (ANK-032), with no picture. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -1018,6 +1030,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-27 | Writing in books | **Asked by the maintainer** (2026-11-01): vertical writing drawn cell by cell, on square cells, since egui has none; pages of whole columns, not a scroll; a book's own direction by default |
 | D-28 | Next releases | **Asked by the maintainer** (2026-11-01): 1.6.0 improves the books, 1.7.0 adds audiobooks, 2.0.0 adds manga once the OCR's terms are read |
 | D-26 | One release for M11–M15 | **Asked by the maintainer** (2026-11-01, "procedi come meglio credi"): their work was merged one after the other before any was tagged, so 1.5.0 ships them all, with the books of M16, in place of the 1.1.0…1.4.0 of D-19 |
+| D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks
 

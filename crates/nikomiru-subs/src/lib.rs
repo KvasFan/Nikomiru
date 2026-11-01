@@ -14,6 +14,7 @@ pub mod ass;
 pub mod cue;
 pub mod effects;
 pub mod encoding;
+pub mod lrc;
 mod markup;
 pub mod select;
 pub mod srt;
@@ -31,5 +32,6 @@ pub fn parse(format: Format, text: &str) -> Track {
         Format::Srt => srt::parse(text),
         Format::Vtt => vtt::parse(text),
         Format::Ass => ass::parse(text),
+        Format::Lrc => lrc::parse(text),
     }
 }

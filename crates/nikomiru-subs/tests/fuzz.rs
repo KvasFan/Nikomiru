@@ -74,6 +74,13 @@ proptest! {
         check(Format::Srt, &text);
     }
 
+    // T-FUZZ-001
+    #[test]
+    fn lrc_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..512), text in structured()) {
+        check(Format::Lrc, &String::from_utf8_lossy(&bytes));
+        check(Format::Lrc, &format!("[00:01.00]{text}"));
+    }
+
     // T-FUZZ-002
     #[test]
     fn vtt_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..512), text in structured()) {

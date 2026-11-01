@@ -64,6 +64,8 @@ pub enum Dialog {
     StatsExport,
     /// A book to add (BOK-004).
     Book,
+    /// An audiobook to play (ABK-001).
+    Audiobook,
     /// Where to write a backup (BAK-001).
     BackupSave,
     /// A backup to restore (BAK-003).
@@ -91,7 +93,10 @@ pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
-const SUBTITLE_PATTERNS: [&str; 4] = ["*.srt", "*.ass", "*.ssa", "*.vtt"];
+const SUBTITLE_PATTERNS: [&str; 5] = ["*.srt", "*.ass", "*.ssa", "*.vtt", "*.lrc"];
+const AUDIO_PATTERNS: [&str; 9] = [
+    "*.m4b", "*.m4a", "*.mp3", "*.aac", "*.flac", "*.ogg", "*.opus", "*.wav", "*.wma",
+];
 
 impl FileDialog {
     pub(crate) fn new(dialog: Dialog, s: &Session) -> Self {
@@ -136,6 +141,10 @@ impl FileDialog {
             Dialog::StatsExport => (
                 tr("stats-export"),
                 vec![(tr("stats-csv-filter"), vec!["*.csv"]), all],
+            ),
+            Dialog::Audiobook => (
+                tr("books-audiobook"),
+                vec![(tr("books-audio-filter"), AUDIO_PATTERNS.to_vec()), all],
             ),
             Dialog::Book => (
                 tr("books-add"),
@@ -485,6 +494,8 @@ impl View {
             self.opened = s.opened();
             self.close_library_page();
             self.hooker_closing = self.hooker_page_open;
+            // ABK-003: an audiobook is its text
+            self.sub_list_open |= s.audio_only();
             self.books_closing = self.books_page_open;
         }
         let ctx = ui.ctx().clone();
