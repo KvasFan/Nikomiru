@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-01
+
+Audiobooks.
+
+### Added
+
+- Audiobooks (M16, ABK-001…ABK-004): sound files open from the Books page or like any file, with their text from a subtitle file or LRC beside them. The subtitle list opens to read along, words are looked up by click, and a card has the line and its sound.
+- LRC files are read like the other subtitles (SUB-020).
+
 ## [1.6.0] - 2026-11-01
 
 Vertical writing and pictures in books, and frames of videos the GPU decodes.

@@ -795,6 +795,7 @@ impl Ui {
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                     Dialog::StatsExport => self.session.stats_export(path),
                     Dialog::Book => self.session.book_add(path),
+                    Dialog::Audiobook => self.session.open(&path),
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                 }
@@ -955,7 +956,7 @@ impl Ui {
                 }
                 self.session.dict_choose(path.to_path_buf());
             }
-            Some("srt" | "ass" | "ssa" | "vtt") if self.session.view.loaded => {
+            Some("srt" | "ass" | "ssa" | "vtt" | "lrc") if self.session.view.loaded => {
                 self.session.open_subtitle_file(path);
             }
             _ => self.session.open(path),

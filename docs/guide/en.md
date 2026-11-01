@@ -119,6 +119,10 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 
 "Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. "Vertical" switches to vertical writing, with ← and → or the wheel to turn the page; a book that reads from the right opens that way.
 
+### Audiobooks
+
+"Open an audiobook…" on the Books page plays a sound file. Put its text beside it with the same name, as `.lrc`, `.srt`, `.vtt` or `.ass`: Nikomiru does not make it. The subtitle list opens to read along; click a word to look it up, and a card has the line and its sound.
+
 ### Jellyfin and Plex
 
 Add a server in Settings → Media servers: for Jellyfin the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays.

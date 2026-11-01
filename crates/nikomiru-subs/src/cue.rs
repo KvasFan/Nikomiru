@@ -17,6 +17,8 @@ pub enum Format {
     Vtt,
     /// Advanced SubStation Alpha (and SSA).
     Ass,
+    /// LRC: the timed text of audiobooks (ABK-002).
+    Lrc,
 }
 
 impl Format {
@@ -25,6 +27,7 @@ impl Format {
         match ext.to_ascii_lowercase().as_str() {
             "srt" => Some(Format::Srt),
             "vtt" => Some(Format::Vtt),
+            "lrc" => Some(Format::Lrc),
             "ass" | "ssa" => Some(Format::Ass),
             _ => None,
         }

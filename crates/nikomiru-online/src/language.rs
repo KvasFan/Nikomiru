@@ -7,7 +7,7 @@
 use nikomiru_text::filename::parse_name;
 
 /// Subtitle extensions.
-const SUBTITLE_EXTENSIONS: [&str; 4] = ["srt", "ass", "ssa", "vtt"];
+const SUBTITLE_EXTENSIONS: [&str; 5] = ["srt", "ass", "ssa", "vtt", "lrc"];
 
 /// A language token (`ja`, `jpn`, `chs`, `zh-cn`, `ja[cc]`) as an ISO 639-1 code.
 pub fn language_of_token(token: &str) -> Option<&'static str> {

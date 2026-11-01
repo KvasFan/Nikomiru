@@ -560,6 +560,16 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BOK-010 | Pictures | Paragraphs of their own, relative paths, one missing left out, pictures alone refused, a page in vertical writing | L1 |
 | T-BOK-LIVE-* | Real books | With `NIKOMIRU_REAL_EPUB`: a real EPUB read | L7 |
 
+### 6.13e Audiobooks (M16)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-ABK-001 | Files | An `.m4a` opens and plays | L6 |
+| T-ABK-002 | LRC | Lines, several stamps, offsets, word stamps, huge numbers; L6: found beside the file | L1/L2/L6 |
+| T-ABK-003 | Reading along | The list opens with the file, and a click opens the popup | L6 |
+| T-ABK-004 | Cards | The sound of the line, no picture | L6 |
+| T-SUB-020 | LRC | See T-ABK-002 | L1 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

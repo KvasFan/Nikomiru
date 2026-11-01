@@ -41,6 +41,8 @@ pub(crate) struct State {
     columns: Option<((String, usize, usize, usize), Columns)>,
     /// The first column of the page shown.
     column: usize,
+    /// An audiobook is to be chosen (ABK-001).
+    audiobook: bool,
     /// The pictures drawn so far, by their key (BOK-010).
     textures: HashMap<String, Option<egui::TextureHandle>>,
 }
@@ -74,6 +76,9 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let (close, add) = draw(ctx, &scene, &mut view.books, out);
     if add {
         view.dialog = Some(Dialog::Book);
+    }
+    if std::mem::take(&mut view.books.audiobook) {
+        view.dialog = Some(Dialog::Audiobook);
     }
     if close {
         view.close_books_page(out);
@@ -539,7 +544,14 @@ fn reader(
     close
 }
 
-fn list(ui: &mut Ui, s: &Scene<'_>, add: &mut bool, close: &mut bool, out: &mut Vec<Command>) {
+fn list(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    state: &mut State,
+    add: &mut bool,
+    close: &mut bool,
+    out: &mut Vec<Command>,
+) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(tr(s, "books-title"))
@@ -552,6 +564,9 @@ fn list(ui: &mut Ui, s: &Scene<'_>, add: &mut bool, close: &mut bool, out: &mut 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if ui.button(tr(s, "library-close")).clicked() {
                 *close = true;
+            }
+            if ui.button(tr(s, "books-audiobook")).clicked() {
+                state.audiobook = true;
             }
             if ui
                 .add_enabled(!s.page.busy, Button::new(tr(s, "books-add")))
@@ -631,7 +646,7 @@ pub(crate) fn draw(
                                 out.push(Command::BookClose);
                             }
                         }
-                        None => list(ui, s, &mut add, &mut close, out),
+                        None => list(ui, s, state, &mut add, &mut close, out),
                     }
                 });
         });

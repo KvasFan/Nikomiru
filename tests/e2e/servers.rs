@@ -417,3 +417,67 @@ fn a_book_reads_vertically() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-ABK-001…T-ABK-004: a file that is only sound and its text beside it: read
+// along, looked up, and a card with the sound of the line and no picture
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, ffmpeg and `cargo xtask fixtures`"]
+fn an_audiobook_is_read_along_and_mined() {
+    use nikomiru_anki::fake::FakeAnki;
+    let anki = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&anki.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[anki]\nurl = \"{}\"\n",
+        anki.url()
+    ));
+    let audio = desk.path("story.m4a");
+    let made = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-y", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .args(["-vn", "-sn", "-map", "0:a:0", "-c:a", "aac"])
+        .arg(&audio)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    std::fs::write(
+        desk.path("story.ja.lrc"),
+        "[ti:Story]\n[00:00.20]食べました\n[00:04.00]日本語\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open(&audio.to_string_lossy());
+    let state = h.state_until("its text", |s| {
+        s["loaded"] == true && s["subtitles"]["cues"] == 2 && s["sub_list_open"] == true
+    });
+    assert_eq!(state["library_page"]["open"], false, "{state}");
+    h.wait("cue-shown");
+    h.cmd(json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(json!({ "cmd": "key", "code": "Enter", "mods": ["Ctrl"] }));
+    let created = h.cmd(json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 30000 }));
+    let note_id = created["note_id"].as_u64().unwrap();
+    {
+        let collection = anki.collection();
+        let note = collection.notes.iter().find(|n| n.id == note_id).unwrap();
+        let field = |name: &str| {
+            note.fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map_or("", |(_, v)| v.as_str())
+                .to_string()
+        };
+        assert!(
+            field("SentenceAudio").contains("[sound:"),
+            "{:?}",
+            note.fields
+        );
+        assert_eq!(field("Picture"), "", "sound has no frame");
+        assert_eq!(collection.media.len(), 1, "only the sound of the line");
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

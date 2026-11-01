@@ -471,6 +471,7 @@ While a page or a dialog covers the video (the library, the settings, the dialog
 
 | ID | Requirement | Fushi |
 |---|---|---|
+| SUB-020 | **LRC** files are read like the other subtitles (ABK-002). | |
 | SUB-001 | **SRT** parser: BOM, CRLF/LF, missing or out-of-order indices, `{...}` removed (BUG-105), `<i> <b> <u> <font color>` tags converted to markup, timestamps with `,` or `.` | `srt_parser.dart` |
 | SUB-002 | **WebVTT** parser: header, cue settings (`line`, `position`, `align`), `<c>`, `<v>`, `<ruby>`, `<rt>` tags, cues with an identifier, `NOTE` and `STYLE` blocks ignored | `vtt_parser.dart` |
 | SUB-003 | **ASS/SSA** parser (basic for 1.0): `[Script Info]` (PlayResX/Y, default 384×288), `[V4+ Styles]`, `[Events]` (Dialogue with Layer, Start, End, Style, Text), overrides `\N \n \h \an1-9 \pos \b \i \u \s \c \1c \fs \fn \r` (`\n` is a line break only with `WrapStyle: 2`, a space otherwise, as in libass; a missing PlayResX or PlayResY is derived from the other at 4:3, as in libass). Other overrides are ignored without error. Lines with `\p1` drawings are excluded from the clickable text | `ass_parser.dart`, `subtitle_markup.dart` |
@@ -820,6 +821,17 @@ Reading with the same dictionary and cards. Manga and audiobooks come later in M
 | BOK-009 | **Vertical writing** (M16, D-27): columns from the right in pages of whole columns, marks of a line's end hung below it, `、。` in the corner of their cell, long vowel marks, brackets and Latin turned a quarter, furigana to the right of their bases. ← and the wheel down go on, → goes back, past a chapter's end to the next. A book whose spine says `page-progression-direction="rtl"` opens vertical; "Vertical" on the page chooses for every book (`[books] vertical`). |
 | BOK-010 | **Pictures**: pictures of `<img>`, and of `<image>` in an SVG, show as paragraphs in horizontal text and on a page of their own in vertical writing, decoded within the limits of covers: at most 32 MiB each and 512 MiB in a book. One that cannot be had is left out. A book of pictures alone is still refused: that is the manga of M16. |
 
+### 6.17 Audiobooks (ABK) — milestone M16 (D-29)
+
+An audiobook is sound with timed text, and goes through the player, its subtitles and its cards.
+
+| ID | Requirement |
+|---|---|
+| ABK-001 | **Files**: `m4b m4a mp3 aac flac ogg opus wav wma`, opened with "Open an audiobook…" on the Books page, or like any file. Progress, chapters and statistics work as for a video. |
+| ABK-002 | **Timed text**: the user's, beside the file by the rules of SUB-006: SRT, WebVTT, ASS or **LRC** (`[mm:ss.xx]` with several stamps on a line, `[offset:ms]`, word stamps dropped, each line lasting until the next, the last 5 s). Nikomiru makes none: speech recognition stays out (§1.3). |
+| ABK-003 | **Reading along**: the subtitle list (SUB-015) opens with the file and follows it, and a click looks up as on a subtitle (POP-001 pauses). No thumbnails. |
+| ABK-004 | **Cards**: the word, the line and the sound of the line (ANK-032), with no picture. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -1017,6 +1029,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-25 | Design of the books of M16 | **Asked by the maintainer** (2026-10-31, "avanti m16"), to change at will: horizontal text first, vertical writing later; chapters one at a time, scrolled, not paged; a book's place in characters, as ttu counts them, which leaves the ttu sync possible, but that sync is not made: its file names are not documented, and they need checking against the real reader; book progress is not in the WebDAV sync yet; manga and audiobooks wait for their own requirements |
 | D-27 | Writing in books | **Asked by the maintainer** (2026-11-01): vertical writing drawn cell by cell, on square cells, since egui has none; pages of whole columns, not a scroll; a book's own direction by default |
 | D-28 | Next releases | **Asked by the maintainer** (2026-11-01): 1.6.0 improves the books, 1.7.0 adds audiobooks, 2.0.0 adds manga once the OCR's terms are read |
+| D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 | D-26 | One release for M11–M15 | **Asked by the maintainer** (2026-11-01, "procedi come meglio credi"): their work was merged one after the other before any was tagged, so 1.5.0 ships them all, with the books of M16, in place of the 1.1.0…1.4.0 of D-19 |
 
 ### 10.2 Risks
