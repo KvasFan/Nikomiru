@@ -81,7 +81,7 @@ To hear a word, Nikomiru needs a source of pronunciations: none comes with it. W
 3. In a popup, **+** on an entry (or Ctrl+Enter) makes the card. It includes:
    - the word and its meanings;
    - the sentence with the word in bold;
-   - the frame of the video (or, in Settings → Anki → Image format, the whole line as an animated picture) and the audio of the line;
+   - the frame of the video (or, in Settings → Anki → Image format, the whole line as an animated picture or a WebM video with sound) and the audio of the line;
    - a link that reopens the scene.
 4. **✓** means Anki already has the word: its menu opens the card in Anki, or adds another anyway.
 5. **Shift+click on +** (or Ctrl+Shift+Enter) makes the card by hand. You can:
@@ -121,7 +121,7 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 
 ### Manga
 
-Add a CBZ on the Books page. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.
+Add a CBZ or a folder of pictures on the Books page. "Two pages" shows them side by side, the first on the right. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.
 
 To read a balloon, drag across it. The first time, the page offers a reading model of 111 MB: it comes from Hugging Face once, only if you ask, and then runs on your computer, so pages go nowhere. The text appears above the page: click a word to look it up, and a card has the text and the part of the page. The model reads one balloon or line at a time, and takes a few seconds.
 

@@ -4768,6 +4768,19 @@ impl Session {
         }
     }
 
+    /// Two pages side by side, or one (MNG-002).
+    pub fn manga_double(&mut self, double: bool) {
+        self.services.config.books.double_pages = double;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// Whether a manga shows two pages.
+    pub fn book_double(&self) -> bool {
+        self.services.config.books.double_pages
+    }
+
     /// Whether a book is drawn vertically: as chosen, else as it says.
     pub fn book_vertical(&self) -> bool {
         let open = self.books_page.open.as_ref();
@@ -4801,14 +4814,14 @@ impl Session {
     }
 
     /// A part of the page was selected: it is read (MNG-003).
-    pub fn manga_read(&mut self, area: [f32; 4]) {
+    pub fn manga_read(&mut self, page: usize, area: [f32; 4]) {
         let ocr = &self.books_page.ocr;
         if !ocr.installed || ocr.reading {
             return;
         }
         let job = self.books_page.open.as_ref().and_then(|open| {
-            let page = open.book.chapters.get(open.chapter)?;
-            let key = page.paragraphs.first()?.image.as_ref()?;
+            let shown = open.book.chapters.get(page)?;
+            let key = shown.paragraphs.first()?.image.as_ref()?;
             Some(crate::ocr::OcrJob {
                 uid: open.uid.clone(),
                 page: open.chapter,

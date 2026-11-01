@@ -20,8 +20,12 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::Path;
 
-/// Reads the book at `path`: a CBZ by its extension, else an EPUB.
+/// Reads the book at `path`: a folder of pictures, a CBZ by its extension,
+/// else an EPUB.
 pub fn read(path: &Path) -> Result<Book, BookError> {
+    if path.is_dir() {
+        return cbz::read_folder(path);
+    }
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     match extension.as_deref() {
         Some("cbz" | "zip") => cbz::read(path),

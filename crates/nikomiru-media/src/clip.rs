@@ -31,6 +31,9 @@ pub const MAX_ANIMATED_MS: i64 = 10_000;
 /// How long encoding an animated picture may take.
 pub const ANIMATED_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The longest video of a sentence (ANK-043): the longest clip (ANK-041).
+pub const MAX_VIDEO_MS: i64 = 30_000;
+
 /// The sentence audio to cut.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioClip {
@@ -63,6 +66,7 @@ pub fn image_extension(format: ImageFormat) -> &'static str {
         ImageFormat::Jpeg => "jpg",
         ImageFormat::Webp | ImageFormat::WebpAnimated => "webp",
         ImageFormat::AvifAnimated => "avif",
+        ImageFormat::WebmVideo => "webm",
     }
 }
 
@@ -224,6 +228,90 @@ pub fn animated_args(
     }
     args.push(file_arg(output));
     args
+}
+
+/// The ffmpeg arguments for the sentence `start_ms..end_ms` of `video` as a
+/// WebM with its sound (ANK-043): at most [`MAX_VIDEO_MS`], at the level's
+/// long side, no subtitles. `sound` is the file and the ff-index of the audio
+/// track, the video's or an external one; `None`, a silent video.
+pub fn video_args(
+    video: &Path,
+    sound: Option<(&Path, i64)>,
+    (start_ms, end_ms): (i64, i64),
+    output: &Path,
+    level: u8,
+) -> Vec<OsString> {
+    let level = usize::from(level.min(3));
+    let start = start_ms.max(0);
+    let duration = (end_ms - start).clamp(1, MAX_VIDEO_MS);
+    let mut args = os(&["-nostdin", "-hide_banner", "-loglevel", "error", "-y"]);
+    let mut input = |file: &Path| {
+        args.extend(os(&[
+            "-ss",
+            &seconds(start),
+            "-t",
+            &seconds(duration),
+            "-i",
+        ]));
+        args.push(file_arg(file));
+    };
+    input(video);
+    let map = sound.map(|(file, stream)| {
+        let index = usize::from(file != video);
+        if index == 1 {
+            input(file);
+        }
+        format!("{index}:{stream}")
+    });
+    args.extend(os(&["-map", "0:v:0"]));
+    match &map {
+        Some(map) => args.extend(os(&[
+            "-map", map, "-c:a", "libopus", "-ac", "2", "-b:a", "96k",
+        ])),
+        None => args.extend(os(&["-an"])),
+    }
+    let crf = ["40", "36", "32", "28"][level];
+    args.extend(os(&[
+        "-sn",
+        "-dn",
+        "-map_chapters",
+        "-1",
+        "-vf",
+        &format!("fps=24,{}", scale(ANIMATED_SIDE[level])),
+        "-c:v",
+        "libvpx-vp9",
+        "-deadline",
+        "realtime",
+        "-cpu-used",
+        "6",
+        "-row-mt",
+        "1",
+        "-b:v",
+        "0",
+        "-crf",
+        crf,
+        "-pix_fmt",
+        "yuv420p",
+        "-f",
+        "webm",
+    ]));
+    args.push(file_arg(output));
+    args
+}
+
+/// The job of [`video_args`], with `output` removed if it fails.
+pub fn video_job(
+    ffmpeg: &Path,
+    video: &Path,
+    sound: Option<(&Path, i64)>,
+    clip: (i64, i64),
+    output: &Path,
+    level: u8,
+) -> Job {
+    let mut job = Job::new(ffmpeg, video_args(video, sound, clip, output, level));
+    job.timeout = ANIMATED_TIMEOUT;
+    job.outputs = vec![output.to_path_buf()];
+    job
 }
 
 /// The job of [`animated_args`], with `output` removed if it fails.

@@ -439,7 +439,7 @@ pub struct SceneFields {
     pub cue_sentence: String,
     /// `{sentence-audio}`: `[sound:…]`.
     pub sentence_audio: String,
-    /// `{card-image}`: `<img src="…">`.
+    /// `{card-image}`: see [`card_image`].
     pub card_image: String,
     /// `{audio}`: word audio (M5).
     pub audio: String,
@@ -471,6 +471,20 @@ pub fn sentence(text: &str, offset: Option<usize>, word: &str) -> String {
             crate::html::lines(&text[end..])
         ),
         None => crate::html::lines(text),
+    }
+}
+
+/// `{card-image}`: `<img src="…">`, or `<video src="…">` for a clip (ANK-043).
+pub fn card_image(file: &str) -> String {
+    let name = crate::html::escape(file);
+    if file.ends_with(".webm") {
+        // the note's sentence audio plays by itself: this one when asked.
+        // Sized like the note type's pictures, whose styles are for `img`
+        format!(
+            r#"<video src="{name}" controls loop playsinline style="max-width:100%;max-height:400px;border-radius:5px"></video>"#
+        )
+    } else {
+        format!(r#"<img src="{name}">"#)
     }
 }
 
@@ -635,6 +649,20 @@ pub fn fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-ANK-043: a picture is an image, a clip a video that Anki keeps: its
+    // media check reads the `src` of `video`
+    #[test]
+    fn a_card_image_or_video() {
+        assert_eq!(card_image("a.jpg"), r#"<img src="a.jpg">"#);
+        let video = card_image("a.webm");
+        assert!(
+            video.starts_with(r#"<video src="a.webm" controls"#),
+            "{video}"
+        );
+        assert!(!video.contains("autoplay"), "{video}");
+        assert!(card_image("\"a.webm").contains("&quot;a.webm"));
+    }
 
     // T-ANK-023: the label names a dictionary on its first sense only, and
     // leaves out a part of speech the sense before had

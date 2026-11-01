@@ -2481,6 +2481,49 @@ fn a_card_takes_its_sentence_as_an_animated_picture() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-ANK-043: a card whose picture is its sentence, as a video with sound
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_has_a_video_of_its_sentence() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    nikomiru_anki::lapis::create(&nikomiru_anki::Client::new(&fake.url(), "").unwrap()).unwrap();
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n\
+         [anki]\nurl = \"{}\"\nimage_format = \"webm\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    let created = h.wait("card-created");
+    let note_id = created["note_id"].as_u64().unwrap();
+    let anki = fake.collection();
+    let note = anki.notes.iter().find(|n| n.id == note_id).unwrap();
+    let picture = note
+        .fields
+        .iter()
+        .find(|(n, _)| n == "Picture")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let name = picture
+        .strip_prefix("<video src=\"")
+        .and_then(|p| p.split('"').next())
+        .unwrap_or_else(|| panic!("{picture}"));
+    assert!(name.ends_with(".webm"), "{name}");
+    assert_eq!(anki.media[name][..4], [0x1a, 0x45, 0xdf, 0xa3]);
+    drop(anki);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-E2E-A11Y-001: from the library to a card and back with the keyboard alone
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

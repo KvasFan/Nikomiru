@@ -11,7 +11,8 @@ use std::path::Path;
 
 use nikomiru_media::tools::{AudioFormat, Origin, Search, ToolsError, probe};
 
-const ALL_ENCODERS: &str = "aac libopus libmp3lame mjpeg libwebp libwebp_anim libaom-av1";
+const ALL_ENCODERS: &str =
+    "aac libopus libmp3lame mjpeg libwebp libwebp_anim libaom-av1 libvpx-vp9";
 
 /// A fake `ffmpeg` (and `ffprobe`) in `dir` that reports `version` and `encoders`.
 fn fake(dir: &Path, version: &str, encoders: &str, with_ffprobe: bool) {
@@ -101,7 +102,7 @@ fn without_aac_the_audio_falls_back_to_opus() {
     let missing: Vec<_> = t.missing_encoders().into_iter().map(|m| m.format).collect();
     assert_eq!(
         missing,
-        ["aac-m4a", "webp", "webp-animated", "avif-animated"]
+        ["aac-m4a", "webp", "webp-animated", "avif-animated", "webm"]
     );
 }
 
