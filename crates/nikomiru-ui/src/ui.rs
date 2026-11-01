@@ -449,6 +449,8 @@ pub(crate) enum Command {
     BookRemove(String),
     /// Goes to a chapter.
     BookChapter(usize),
+    /// Vertical or horizontal writing.
+    BookWriting(bool),
     /// The view reached a paragraph.
     BookAt(usize),
     BookClose,
@@ -1204,6 +1206,7 @@ impl Ui {
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookRemove(uid) => s.book_remove(&uid),
             Command::BookChapter(chapter) => s.book_chapter(chapter),
+            Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
             Command::BookClicked {

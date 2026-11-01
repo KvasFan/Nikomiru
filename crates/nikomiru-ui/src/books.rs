@@ -34,6 +34,8 @@ pub struct BooksPage {
     pub list: Vec<(String, BookRecord)>,
     /// The book open.
     pub open: Option<OpenBook>,
+    /// The word looked up: its paragraph and bytes (BOK-006).
+    pub highlight: Option<(usize, std::ops::Range<usize>)>,
     /// A book is being read.
     pub busy: bool,
     /// The page's message, and whether it is good news.

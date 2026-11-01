@@ -111,7 +111,9 @@ fn call<T: Send + 'static>(f: impl FnOnce(&mut Ui) -> T + Send + 'static) -> Res
     waker.wake(Inbound::Harness(Box::new(move |ui| {
         let _ = tx.send(f(ui));
     })));
-    rx.recv_timeout(Duration::from_secs(10))
+    // long enough for a machine with far more work than cores: the UI thread
+    // waits for mpv's video thread while it draws (`mpv_render_context_render`)
+    rx.recv_timeout(Duration::from_secs(30))
         .map_err(|_| "the UI did not answer".to_string())
 }
 
@@ -454,6 +456,8 @@ pub fn state() -> Result<Value, String> {
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
+            "vertical": s.book_vertical(),
+            "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
             "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
         });
         state["hooker"] = json!({

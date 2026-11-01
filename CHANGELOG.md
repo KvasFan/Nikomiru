@@ -4,6 +4,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-01
+
+Vertical writing and pictures in books, and frames of videos the GPU decodes.
+
+### Added
+
+- Vertical writing in books (BOK-009): columns from the right, pages, furigana beside the text. A book that says it reads from the right opens that way, and "Vertical" chooses for all.
+- Pictures in books (BOK-010).
+- The word looked up is marked in books and in the texthooker.
+- How far a book was read goes through the WebDAV sync.
+- A "List" button in the bar opens the subtitle list, and ⚙ on the Library page opens the settings.
+
+### Fixed
+
+- `S` and the picture of a card work on videos the GPU decodes: mpv 0.41 cannot read those frames back, so `S` saved nothing and cards had no picture. ffmpeg now takes the same moment from the file.
+
 ## [1.5.0] - 2026-11-01
 
 Media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, and the books of M16). They ship together (D-26).

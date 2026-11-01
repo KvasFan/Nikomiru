@@ -12,7 +12,9 @@ mod epub;
 mod markup;
 #[cfg(feature = "test-support")]
 pub mod sample;
+pub mod vertical;
 
+use std::collections::BTreeMap;
 use std::ops::Range;
 
 pub use epub::read;
@@ -35,6 +37,8 @@ pub struct Paragraph {
     pub ruby: Vec<Ruby>,
     /// It is a heading.
     pub heading: bool,
+    /// It is a picture instead: its key in [`Book::images`] (BOK-010).
+    pub image: Option<String>,
 }
 
 /// A file of the spine with text in it.
@@ -53,8 +57,13 @@ pub struct Book {
     pub title: String,
     /// Its author.
     pub author: String,
+    /// It reads from right to left: vertical, unless the user says otherwise
+    /// (BOK-009).
+    pub right_to_left: bool,
     /// Its chapters, in reading order.
     pub chapters: Vec<Chapter>,
+    /// The bytes of its pictures, by their place in the archive.
+    pub images: BTreeMap<String, Vec<u8>>,
 }
 
 impl Book {

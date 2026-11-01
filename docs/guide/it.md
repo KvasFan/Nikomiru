@@ -117,7 +117,7 @@ Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le ri
 
 ### Libri
 
-"Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. Il testo è orizzontale e le immagini non vengono mostrate.
+"Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. "Verticale" passa alla scrittura verticale, con ← e → o la rotella per girare pagina; un libro che si legge da destra si apre così.
 
 ### Jellyfin e Plex
 

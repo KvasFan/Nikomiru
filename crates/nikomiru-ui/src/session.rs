@@ -4709,6 +4709,27 @@ impl Session {
         self.books_reload();
     }
 
+    /// Vertical or horizontal writing (BOK-009).
+    pub fn book_writing(&mut self, vertical: bool) {
+        self.services.config.books.vertical = Some(vertical);
+        if let Some(open) = &mut self.books_page.open {
+            open.jump = true;
+        }
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// Whether a book is drawn vertically: as chosen, else as it says.
+    pub fn book_vertical(&self) -> bool {
+        let open = self.books_page.open.as_ref();
+        self.services
+            .config
+            .books
+            .vertical
+            .unwrap_or(open.is_some_and(|o| o.book.right_to_left))
+    }
+
     /// The view reached the paragraph at the top of the page.
     pub fn book_at(&mut self, paragraph: usize) {
         if let Some(open) = &mut self.books_page.open {
@@ -4937,7 +4958,41 @@ impl Session {
         self.sync_highlight();
     }
 
+    /// The word looked up on the Books and Texthooker pages (BOK-006, HOK-004).
+    fn sync_page_highlight(&mut self) {
+        let span = |text: &str, start: usize, chars: usize| {
+            let end = text
+                .get(start..)?
+                .char_indices()
+                .nth(chars)
+                .map_or(text.len(), |(i, _)| start + i);
+            Some(start..end)
+        };
+        let (mut book, mut line) = (None, None);
+        match self.popups.page_highlight() {
+            Some((Origin::Book { paragraph, start }, chars)) => {
+                let text = self.books_page.open.as_ref().and_then(|open| {
+                    let chapter = open.book.chapters.get(open.chapter)?;
+                    Some(chapter.paragraphs.get(*paragraph)?.text.as_str())
+                });
+                book = text
+                    .and_then(|t| span(t, *start, chars))
+                    .map(|r| (*paragraph, r));
+            }
+            Some((Origin::Hooked { line: index, start }, chars)) => {
+                let text = self.hooker_page.lines.get(*index);
+                line = text
+                    .and_then(|t| span(t, *start, chars))
+                    .map(|r| (*index, r));
+            }
+            _ => {}
+        }
+        self.books_page.highlight = book;
+        self.hooker_page.highlight = line;
+    }
+
     fn sync_highlight(&mut self) {
+        self.sync_page_highlight();
         self.subs.highlight = self.popups.highlight().and_then(|(cue, start, chars)| {
             let text = &self.subs.cue(cue)?.plain_text;
             let end = text
@@ -5025,10 +5080,16 @@ impl Session {
         name: String,
         done: Box<dyn FnOnce(Result<PathBuf, String>) + Send>,
     ) {
+        let from_file = self.current.as_ref().map(|c| crate::screenshot::FromFile {
+            ffmpeg: self.services.config.paths.ffmpeg.clone(),
+            video: c.path.clone(),
+            at_ms: (self.view.time_pos * 1000.0) as i64,
+        });
         crate::screenshot::start(
             self.services.player.clone(),
             self.services.screenshots_dir.clone(),
             name,
+            from_file,
             done,
         );
     }

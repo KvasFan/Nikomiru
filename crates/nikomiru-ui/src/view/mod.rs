@@ -201,6 +201,7 @@ pub(crate) struct View {
     pub backup_page_open: bool,
     pub hooker_page_open: bool,
     pub books_page_open: bool,
+    pub books: books_page::State,
     /// Esc, or a file opened: the Texthooker page closes at the next frame.
     hooker_closing: bool,
     /// Esc, or a file opened: the book, then the Books page, close.

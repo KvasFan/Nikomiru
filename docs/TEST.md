@@ -376,6 +376,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-PLY-009 | Reuse | Two consecutive `load` calls use the same `Mpv` instance (instance counter) | L5 |
 | T-PLY-010 | Speed | After a speed change, `af` does not contain `scaletempo` | L5 |
 | T-PLY-019 | Chapters shown | The current one is the last started; marks at their share of the duration; L6: the fixture's chapters reach the bar | L1/L6 |
+| T-PLY-011b | A frame the GPU decoded | With VA-API on H.264, when `av_hd60_h264.mkv` is there: `S` saves a PNG and a card has its picture | L6 |
 | T-PLY-015 | Screenshot with subtitles | `Shift+S`: a PNG other than `S`'s of the same frame, the right way up, with the bar left out | L1/L6 |
 | T-PLY-011 | Screenshot | `S` → PNG/JPEG file in `$XDG_PICTURES_DIR/Nikomiru` with the video dimensions, without subtitles; a taken name gets ` (2)`…, and 16 screenshots at once get 16 names | L1/L5 |
 | T-PLY-012 | Errors | Nonexistent file, `corrupt_*.mkv` → typed error; the player stays usable for the next file | L5 |
@@ -555,6 +556,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BOK-006 | Lookup | A click gives the paragraph and the byte of the character; the popup opens over the page | L3/L6 |
 | T-BOK-007 | Cards | The sentence, and no media | L6 |
 | T-BOK-008 | Statistics | Closing adds a session | L6 |
+| T-BOK-009 | Vertical writing | Columns, hanging marks, stances; a click finds its character; a book's direction; the word marked | L1/L3/L6 |
+| T-BOK-010 | Pictures | Paragraphs of their own, relative paths, one missing left out, pictures alone refused, a page in vertical writing | L1 |
 | T-BOK-LIVE-* | Real books | With `NIKOMIRU_REAL_EPUB`: a real EPUB read | L7 |
 
 ### 6.14 Reliability and fuzzing

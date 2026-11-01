@@ -470,6 +470,14 @@ pub(crate) fn show(
                                 });
                                 named(&menu.response, true, &tr("chapters"));
                             }
+                            // SUB-015: the list, one click away
+                            let list = ui
+                                .selectable_label(view.sub_list_open, tr("subtitle-list-short"))
+                                .on_hover_text(tr("subtitle-list"));
+                            named(&list, true, &tr("subtitle-list"));
+                            if list.clicked() {
+                                view.sub_list_open = !view.sub_list_open;
+                            }
                             let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
                                 subtitle_menu(ui, s, view, out);
                             });

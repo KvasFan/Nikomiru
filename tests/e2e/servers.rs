@@ -387,3 +387,33 @@ fn l7_the_app_syncs_with_a_real_webdav() {
     assert_eq!(mine.videos["video/av_basic"].position_ms, 3000, "{mine:?}");
     assert!(!desk.log().contains(&password), "the password in the log");
 }
+
+// T-BOK-009: a book in vertical writing, and the word looked up on it (T-BOK-006)
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_book_reads_vertically() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config("[books]\nvertical = true\n");
+    let path = desk.path("book.epub");
+    nikomiru_books::sample::write(&path).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the book", |s| {
+        s["books"]["open"] == "見本の本" && s["books"]["vertical"] == true
+    });
+    // 今日は林檎を食べました: 食 is byte 18 of its paragraph
+    h.cmd(json!({ "cmd": "books", "action": "click", "paragraph": 1, "offset": 18 }));
+    h.wait("popup-rendered");
+    let state = h.state_until("the word marked", |s| s["books"]["highlight"].is_array());
+    assert_eq!(state["books"]["highlight"][0], 1);
+    assert_eq!(state["books"]["highlight"][1], 18);
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS") {
+        std::thread::sleep(Duration::from_millis(400));
+        desk.capture(&std::path::Path::new(&dir).join("book-vertical.png"));
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

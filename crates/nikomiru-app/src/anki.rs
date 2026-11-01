@@ -500,19 +500,36 @@ impl Worker {
             FrameChoice::None => Ok(None),
             FrameChoice::Click => {
                 let mut frame = frame.ok_or_else(|| "the player was not asked".to_string())?;
-                let png = frame.written(FRAME_TIMEOUT)?;
-                self.encode(tools, png, format, stem).map(Some)
+                match frame.written(FRAME_TIMEOUT) {
+                    Ok(png) => self.encode(tools, png, format, stem).map(Some),
+                    // mpv 0.41 cannot read back a frame the GPU decoded: the
+                    // same moment, from the file (ANK-034)
+                    Err(e) => {
+                        tracing::info!("the player's frame: {e}; ffmpeg instead");
+                        self.frame_at(tools, r, r.position_ms, format, stem)
+                    }
+                }
             }
-            FrameChoice::At(ms) => {
-                let png = self.parts.cache_dir.join(format!("{stem}-frame.png"));
-                let job = clip::frame_job(&tools.ffmpeg, &r.video, ms, &png);
-                let made = run(&job, &Cancel::new())
-                    .map_err(|e| e.to_string())
-                    .and_then(|_| self.encode(tools, &png, format, stem));
-                let _ = std::fs::remove_file(&png);
-                made.map(Some)
-            }
+            FrameChoice::At(ms) => self.frame_at(tools, r, ms, format, stem),
         }
+    }
+
+    /// The frame at `ms` of the video, taken with ffmpeg, as the card's picture.
+    fn frame_at(
+        &self,
+        tools: &Tools,
+        r: &MineRequest,
+        ms: i64,
+        format: ImageFormat,
+        stem: &str,
+    ) -> Result<Option<Media>, String> {
+        let png = self.parts.cache_dir.join(format!("{stem}-frame.png"));
+        let job = clip::frame_job(&tools.ffmpeg, &r.video, ms, &png);
+        let made = run(&job, &Cancel::new())
+            .map_err(|e| e.to_string())
+            .and_then(|_| self.encode(tools, &png, format, stem));
+        let _ = std::fs::remove_file(&png);
+        made.map(Some)
     }
 
     /// The PNG `png` as the card's picture, in `format` and the size of the

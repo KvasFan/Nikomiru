@@ -199,7 +199,7 @@ fn field(s: &Setup, name: &str) -> String {
 // T-ANK-034
 #[test]
 #[ignore = "L4: needs `cargo xtask fixtures`"]
-fn the_frame_of_the_click_is_the_picture_and_a_failed_one_leaves_none() {
+fn the_frame_of_the_click_is_the_picture_and_ffmpeg_stands_in_for_a_failed_one() {
     let s = setup(|_| {});
     mine(&s, request("av_basic.mkv", Some(1), CardAction::Add)).unwrap();
     let picture = field(&s, "Picture");
@@ -207,7 +207,7 @@ fn the_frame_of_the_click_is_the_picture_and_a_failed_one_leaves_none() {
         picture.starts_with(r#"<img src="nikomiru_"#) && picture.ends_with(r#".jpg">"#),
         "{picture}"
     );
-    // without a frame the card is still made, without a picture
+    // the player could not give the frame: the same moment, from the file
     s.fake.collection().notes.clear();
     mine_with(
         &s,
@@ -215,7 +215,12 @@ fn the_frame_of_the_click_is_the_picture_and_a_failed_one_leaves_none() {
         Some(no_frame(&s)),
     )
     .unwrap();
-    assert_eq!(field(&s, "Picture"), "");
+    assert!(
+        field(&s, "Picture").starts_with(r#"<img src="nikomiru_"#),
+        "{}",
+        field(&s, "Picture")
+    );
+    // never asked of it: the card is still made, without a picture
     s.fake.collection().notes.clear();
     mine_with(&s, request("av_basic.mkv", Some(1), CardAction::Add), None).unwrap();
     assert_eq!(field(&s, "Picture"), "");

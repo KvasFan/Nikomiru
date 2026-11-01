@@ -44,6 +44,8 @@ impl HookerService for NoHooker {
 pub struct HookerPage {
     /// The lines, the last one newest.
     pub lines: Vec<String>,
+    /// The word looked up: its line and bytes (HOK-004).
+    pub highlight: Option<(usize, std::ops::Range<usize>)>,
     /// A hooker is connected.
     pub connected: bool,
     /// The page's message.
