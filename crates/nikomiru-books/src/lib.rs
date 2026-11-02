@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod align;
 mod cbz;
 mod epub;
 mod markup;

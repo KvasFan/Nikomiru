@@ -982,6 +982,7 @@ impl Session {
                     });
                 }
                 self.update_secondary();
+                self.book_follow();
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
                 }
@@ -4967,6 +4968,114 @@ impl Session {
         }
     }
 
+    /// "Read along" (ABK-005): the lines of the audiobook playing found in
+    /// the book open, which then follows them; or it stops.
+    pub fn book_along(&mut self, on: bool) {
+        if !on {
+            self.books_page.along = None;
+            return;
+        }
+        let Some(open) = &self.books_page.open else {
+            return;
+        };
+        let lines: Vec<&str> = self
+            .subs
+            .timeline()
+            .cues()
+            .iter()
+            .map(|c| c.plain_text.as_str())
+            .collect();
+        if !self.view.loaded || lines.is_empty() {
+            let text = self.tr("books-along-none", &[]);
+            self.books_page.status = Some((text, false));
+            return;
+        }
+        let places = nikomiru_books::align::align(&open.book, &lines);
+        let found = places.iter().flatten().count();
+        if found == 0 {
+            let text = self.tr("books-along-not-found", &[]);
+            self.books_page.status = Some((text, false));
+            return;
+        }
+        let text = self.tr(
+            "books-along-found",
+            &[
+                ("found", found.to_string()),
+                ("count", lines.len().to_string()),
+            ],
+        );
+        self.books_page.status = Some((text, true));
+        self.books_page.along = Some(crate::books::ReadAlong {
+            book: open.uid.clone(),
+            places,
+            heard: None,
+        });
+        self.book_follow();
+    }
+
+    /// An audiobook, or any file with timed text, is playing: the book can
+    /// read along (ABK-005).
+    pub fn book_can_read_along(&self) -> bool {
+        self.view.loaded && !self.subs.timeline().cues().is_empty()
+    }
+
+    /// The book goes to the paragraph of the line heard (ABK-005).
+    fn book_follow(&mut self) {
+        let Some(along) = &self.books_page.along else {
+            return;
+        };
+        let heard = self
+            .subs
+            .active()
+            .iter()
+            .find_map(|i| along.places.get(*i).copied().flatten());
+        let Some(heard) = heard.filter(|h| along.heard != Some(*h)) else {
+            return;
+        };
+        let book = along.book.clone();
+        if self.books_page.open.as_ref().is_none_or(|o| o.uid != book) {
+            return;
+        }
+        if self
+            .books_page
+            .open
+            .as_ref()
+            .is_some_and(|o| o.chapter != heard.0)
+        {
+            self.book_save();
+        }
+        if let Some(along) = &mut self.books_page.along {
+            along.heard = Some(heard);
+        }
+        if let Some(open) = &mut self.books_page.open {
+            open.chapter = heard.0;
+            open.paragraph = heard.1;
+            open.jump = true;
+        }
+    }
+
+    /// "Listen from here" (ABK-005): the audiobook plays from the first line
+    /// at or after the paragraph at the top of the page.
+    pub fn book_listen(&mut self) {
+        let (Some(along), Some(open)) = (&self.books_page.along, &self.books_page.open) else {
+            return;
+        };
+        let here = (open.chapter, open.paragraph);
+        let line = along
+            .places
+            .iter()
+            .position(|p| p.is_some_and(|p| p >= here));
+        let Some(cue) = line.and_then(|i| self.subs.timeline().cues().get(i)) else {
+            return;
+        };
+        let start = cue.start_ms + self.subs.timeline().delay_ms;
+        let _ = self
+            .services
+            .player
+            .seek_absolute(start.max(0) as f64 / 1000.0);
+        let _ = self.services.player.set_pause(false);
+    }
+
     /// Goes to a chapter.
     pub fn book_chapter(&mut self, chapter: usize) {
         self.close_all_popups();
@@ -5108,6 +5217,7 @@ impl Session {
     pub fn book_close(&mut self) {
         self.close_all_popups();
         self.book_save();
+        self.books_page.along = None;
         let moment = self.moment();
         self.books_page.ocr.crop = None;
         if let (Some(open), Some(w)) = (self.books_page.open.take(), &self.writer) {

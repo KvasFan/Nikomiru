@@ -42,6 +42,19 @@ pub struct BooksPage {
     pub status: Option<(String, bool)>,
     /// Where reading a manga stands (MNG-003).
     pub ocr: crate::ocr::OcrState,
+    /// The book follows the audiobook playing (ABK-005).
+    pub along: Option<ReadAlong>,
+}
+
+/// A book read along with the audiobook playing (ABK-005).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadAlong {
+    /// The book's uid.
+    pub book: String,
+    /// Where each line of the audiobook is in it, by the line's index.
+    pub places: Vec<Option<(usize, usize)>>,
+    /// The paragraph of the line heard last: chapter and paragraph.
+    pub heard: Option<(usize, usize)>,
 }
 
 /// What reading a file came to.

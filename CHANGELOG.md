@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-02
+
+An audiobook and its book, together.
+
+### Added
+
+- Books → Read along: with an audiobook playing, its EPUB follows what you hear, the paragraph marked, across chapters; Listen from here plays from the paragraph at the top of the page (ABK-005, D-39). The lines are found in the book by their text, so the audiobook's own timed text will do.
+
 ## [2.8.0] - 2026-11-02
 
 Every card of the review in sight.

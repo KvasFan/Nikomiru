@@ -46,7 +46,7 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 | Fushi feature | Decision | Reason |
 |---|---|---|
 | EPUB reader, manga + OCR, audiobooks, online resources | **done**: books, manga and audiobooks in M16 (D-12), web pages in 2.6.0 (§6.20, D-36) | |
-| PDF, Sasayaki, CBR | **later** (D-12, D-30) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
+| PDF, CBR | **later** (D-12, D-30); Sasayaki's reading along is ABK-005 (2.9.0, D-39) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
 | Text and voice hooks for galgames (Windows) | excluded | Windows only; depends on LunaHook and MinHook |
 | Torrent, Mihon/Aniyomi extensions, LNReader, download center | excluded | Out of scope; Kotlin/APK runtime |
 | AI/LLM, ASR (subtitle generation), TTS, ONNX models | excluded, except the manga reading model, fetched on request (MNG-004, D-30) | Some models have CC BY-NC licenses; huge size |
@@ -833,6 +833,7 @@ An audiobook is sound with timed text, and goes through the player, its subtitle
 | ABK-002 | **Timed text**: the user's, beside the file by the rules of SUB-006: SRT, WebVTT, ASS or **LRC** (`[mm:ss.xx]` with several stamps on a line, `[offset:ms]`, word stamps dropped, each line lasting until the next, the last 5 s). Nikomiru makes none: speech recognition stays out (§1.3). |
 | ABK-003 | **Reading along**: the subtitle list (SUB-015) opens with the file and follows it, and a click looks up as on a subtitle (POP-001 pauses). No thumbnails. |
 | ABK-004 | **Cards**: the word, the line and the sound of the line (ANK-032), with no picture. |
+| ABK-005 | **Its book** (2.9.0, D-39): with an audiobook playing and its EPUB open on the Books page, "Read along" finds each line of the timed text in the book, in order (only letters and digits compared; a line looked for near the one before, else further on if it is 8 characters or more), and says how many it found. The page then goes to the paragraph of the line heard, across chapters, and marks it; "Listen from here" plays from the first line at or after the paragraph at the top of the page. A lookup pauses the sound as on a subtitle (POP-001). Closing the book, or "Read along" again, stops it. |
 
 ### 6.18 Manga (MNG) — milestone M16 (D-30)
 
@@ -1083,6 +1084,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-36 | Online resources | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): the "online resources" of D-12, never defined, are web pages read like books, the reading learners do outside books and video (NHK News Web Easy, web novels, Aozora Bunko). One page at a time, typed by the user, fetched with nothing it links to, so nothing is crawled and no third party is asked; no browser is embedded. Fushi's own sources of that kind were not checked against this |
 | D-37 | The review's answers | **Decided by the maintainer's agent** (2026-11-02, "riprendi", to change at will): 2.7.0 notes every answer and draws the review's statistics from them; the log is what fitting FSRS's parameters to the user would need later, which 2.7.0 does not do |
 | D-38 | The review's cards listed | **Decided by the maintainer's agent** (2026-11-02, "procedi come credi meglio", to change at will): 2.8.0 lists every card of the review with a search, Delete and Start over, since until then a card was seen only when it came back. Editing a card's text and suspending a card are left out |
+| D-39 | An audiobook and its book | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): 2.9.0 links the timed text of an audiobook to its EPUB, the "linking the text to an EPUB" D-29 left for later, the way Sasayaki does with ttu: the lines found in the book by their text, not by a file of matches, so any timed text the user has will do; the book follows the sound, and plays from a paragraph. The place found is a paragraph, not the exact characters, and the link is not kept between sessions |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

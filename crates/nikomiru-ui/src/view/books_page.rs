@@ -75,6 +75,8 @@ pub(crate) struct Scene<'a> {
     pub vertical: bool,
     /// A manga shows two pages (MNG-002).
     pub double: bool,
+    /// Something with timed text plays: the book can read along (ABK-005).
+    pub can_read_along: bool,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -85,6 +87,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         page: &s.books_page,
         vertical: s.book_vertical(),
         double: s.book_double(),
+        can_read_along: s.book_can_read_along(),
         tr: &tr,
     };
     let (close, add) = draw(ctx, &scene, &mut view.books, out);
@@ -173,6 +176,7 @@ fn paragraph(
     item: &Paragraph,
     name: &str,
     marked: Option<std::ops::Range<usize>>,
+    heard: bool,
 ) -> (Option<(usize, egui::Rect)>, egui::Rect) {
     let size = if item.heading {
         TEXT_SIZE * 1.3
@@ -201,6 +205,14 @@ fn paragraph(
     let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    // the paragraph being heard (ABK-005)
+    if heard {
+        ui.painter().rect_filled(
+            rect.expand(4.0),
+            4.0,
+            palette::current().accent.gamma_multiply(0.15),
+        );
+    }
     if let Some(range) = marked {
         for row in range_rects(&galley, &item.text, range) {
             ui.painter()
@@ -417,7 +429,7 @@ fn manga_reader(
     reading_line(ui, s, out);
     if !item.text.is_empty() {
         let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
-        let (clicked, _) = paragraph(ui, item, &item.text, marked);
+        let (clicked, _) = paragraph(ui, item, &item.text, marked, false);
         if let Some((offset, rect)) = clicked {
             out.push(Command::BookClicked {
                 paragraph: 0,
@@ -574,6 +586,18 @@ fn vertical_reader(
         .iter()
         .filter(|c| (state.column..state.column + per_page).contains(&c.column))
         .collect();
+    // the paragraph being heard (ABK-005)
+    if let Some((chapter, heard)) = s.page.along.as_ref().and_then(|a| a.heard)
+        && chapter == open.chapter
+    {
+        for cell in cells.iter().filter(|c| c.paragraph == heard) {
+            let box_size = vec2(TEXT_SIZE * 1.1, TEXT_SIZE * CELL);
+            let rect =
+                egui::Rect::from_center_size(cell_centre(area, state.column, cell), box_size);
+            ui.painter()
+                .rect_filled(rect, 0.0, palette::current().accent.gamma_multiply(0.15));
+        }
+    }
     if let Some((paragraph, range)) = &s.page.highlight {
         for cell in cells
             .iter()
@@ -698,6 +722,22 @@ fn reader(
             {
                 out.push(Command::BookWriting(!s.vertical));
             }
+            // ABK-005
+            if !manga {
+                let along = s.page.along.is_some();
+                if along && ui.button(tr(s, "books-listen")).clicked() {
+                    out.push(Command::BookListen);
+                }
+                let toggle = ui
+                    .add_enabled(
+                        along || s.can_read_along,
+                        egui::Button::selectable(along, tr(s, "books-along")),
+                    )
+                    .on_disabled_hover_text(tr(s, "books-along-hint"));
+                if toggle.clicked() {
+                    out.push(Command::BookAlong(!along));
+                }
+            }
         });
     });
     if manga {
@@ -742,7 +782,9 @@ fn reader(
                         .as_ref()
                         .filter(|(at, _)| *at == index)
                         .map(|(_, range)| range.clone());
-                    let (clicked, rect) = paragraph(ui, item, &name, marked);
+                    let heard =
+                        s.page.along.as_ref().and_then(|a| a.heard) == Some((open.chapter, index));
+                    let (clicked, rect) = paragraph(ui, item, &name, marked, heard);
                     if open.jump && index == open.paragraph {
                         ui.scroll_to_rect(rect, Some(Align::Min));
                     }
@@ -920,6 +962,8 @@ mod tests {
         state: State,
         out: Vec<Command>,
         add: bool,
+        /// Something with timed text plays (ABK-005).
+        can_read_along: bool,
     }
 
     fn harness<'a>(page: BooksPage) -> Harness<'a, Test> {
@@ -937,6 +981,7 @@ mod tests {
                         page: &t.page,
                         vertical: t.vertical,
                         double: t.double,
+                        can_read_along: t.can_read_along,
                         tr: &tr,
                     };
                     t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
@@ -948,6 +993,7 @@ mod tests {
                     state: State::default(),
                     out: Vec::new(),
                     add: false,
+                    can_read_along: false,
                 },
             )
     }
@@ -1075,6 +1121,41 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::BookChapter(1)))
         );
+    }
+
+    // T-ABK-005: Read along only with something playing, then Listen from
+    // here; the paragraph heard marked
+    #[test]
+    fn read_along_is_asked_and_listens() {
+        let mut h = harness(BooksPage {
+            open: Some(open()),
+            ..BooksPage::default()
+        });
+        h.run();
+        h.get_by_label("books-along").click();
+        h.run();
+        assert!(h.state().out.is_empty(), "nothing plays");
+        assert!(h.query_by_label("books-listen").is_none());
+        h.state_mut().can_read_along = true;
+        h.run();
+        h.get_by_label("books-along").click();
+        h.run();
+        assert!(matches!(h.state().out[..], [Command::BookAlong(true)]));
+        h.state_mut().out.clear();
+        h.state_mut().page.along = Some(crate::books::ReadAlong {
+            book: "uid".into(),
+            places: vec![Some((0, 0))],
+            heard: Some((0, 0)),
+        });
+        h.run();
+        h.get_by_label("books-listen").click();
+        h.run();
+        h.get_by_label("books-along").click();
+        h.run();
+        assert!(matches!(
+            h.state().out[..],
+            [Command::BookListen, Command::BookAlong(false)]
+        ));
     }
 
     fn manga() -> OpenBook {
