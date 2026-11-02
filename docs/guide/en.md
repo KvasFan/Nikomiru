@@ -89,6 +89,18 @@ To hear a word, Nikomiru needs a source of pronunciations: none comes with it. W
    - move the clip and listen to it;
    - choose the picture, or leave the audio out.
 
+### Without Anki: Nikomiru's review
+
+In Settings → Anki, **Cards go to → Nikomiru's review** keeps the cards in Nikomiru: Anki is not needed. The **+** of a popup then makes them there, with the sentence, its audio, the frame and the meanings.
+
+They come back on the **Review** tab of the Library page, on a schedule worked out with FSRS:
+
+1. The front shows the word and its sentence. Think of the meaning, then **Show the answer** (Space or Enter): the reading appears and the sentence plays.
+2. Answer with **Again**, **Hard**, **Good** or **Easy** (keys 1–4). Each button says when the card comes back.
+3. **Undo** (Ctrl+Z) takes the last answer back. **Delete**, clicked twice, removes the card.
+
+The share of cards to remember when they come back (90 % by default) and the new cards a day (20) are set in the same tab. The review is in backups, but not yet in the WebDAV sync.
+
 ## 6. Online subtitles
 
 Nothing goes online unless you ask for it.

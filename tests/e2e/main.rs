@@ -2562,6 +2562,94 @@ fn a_card_has_a_video_of_its_sentence() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-E2E-REV-001: a card made in Nikomiru's review, then reviewed there
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_card_made_for_the_review_comes_back_in_its_tab() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[anki]\ndestination = \"nikomiru\"\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    h.wait("cue-shown");
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+    h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
+    h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
+    let created = match h
+        .try_cmd(serde_json::json!({ "cmd": "wait", "event": "card-created", "timeout_ms": 20000 }))
+    {
+        Ok(v) => v,
+        Err(e) => panic!("{e}\nstate: {}\nlog:\n{}", h.state(), desk.log()),
+    };
+    let id = created["note_id"].as_u64().unwrap();
+    let files: Vec<std::path::PathBuf> = std::fs::read_dir(desk.data_file("review"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert_eq!(files.len(), 2, "its sentence and picture: {files:?}");
+
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "review" }));
+    let review = |s: &serde_json::Value| s["library_page"]["review"].clone();
+    let s = h.state_until("the review read", |s| {
+        review(s)["cards"][0]["id"] == id && review(s)["busy"] == false
+    });
+    let r = review(&s);
+    assert_eq!(r["cards"][0]["expression"], "食べる");
+    assert_eq!(r["cards"][0]["sentence"], "食べました");
+    assert!(r["cards"][0]["glossaries"].as_u64().unwrap() > 0);
+    assert_eq!(r["counts"]["new"], 1);
+    assert_eq!(
+        (r["picture"].clone(), r["audio"].clone()),
+        (true.into(), true.into())
+    );
+    // for review by eye, with NIKOMIRU_SCREENSHOTS as in screenshots_of_the_interface
+    let shots = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from);
+    let shot = |name: &str| {
+        if let Some(dir) = &shots {
+            std::thread::sleep(Duration::from_millis(300));
+            desk.capture(&dir.join(name));
+        }
+    };
+    shot("review-front.png");
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "reveal" }));
+    h.state_until("revealed", |s| review(s)["revealed"] == true);
+    shot("review-back.png");
+    // Good on a new card: back in ten minutes, the only card left
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "answer", "id": 3 }));
+    h.state_until("learning", |s| {
+        review(s)["cards"][0]["phase"] == "Learning" && review(s)["busy"] == false
+    });
+    // Good again: it graduates, nothing is left today
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "answer", "id": 3 }));
+    let s = h.state_until("done", |s| {
+        review(s)["cards"].as_array().is_some_and(Vec::is_empty) && review(s)["busy"] == false
+    });
+    assert_eq!(review(&s)["counts"]["total"], 1);
+    // Undo shows it again, as it was
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "undo" }));
+    h.state_until("undone", |s| {
+        review(s)["cards"][0]["id"] == id && review(s)["cards"][0]["reps"] == 1
+    });
+    // Delete, twice: the card and its files go
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "delete-card" }));
+    h.state_until("asked", |s| review(s)["confirm_delete"] == true);
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "delete-card" }));
+    h.state_until("deleted", |s| {
+        review(s)["counts"]["total"] == 0 && review(s)["busy"] == false
+    });
+    for file in &files {
+        assert!(!file.exists(), "{}", file.display());
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-E2E-A11Y-001: from the library to a card and back with the keyboard alone
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]

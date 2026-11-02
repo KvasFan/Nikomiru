@@ -323,8 +323,28 @@ pub fn state() -> Result<Value, String> {
         let library_page = {
             let page = &s.library_page;
             let home = page.home.as_ref();
+            let review = &page.review;
+            let review = json!({
+                "busy": review.busy,
+                "revealed": review.revealed,
+                "error": review.error,
+                "undo": review.undo.is_some(),
+                "confirm_delete": review.confirm_delete.is_some(),
+                "cards": review.review.as_ref().map(|r| r.queue.cards.iter().map(|(id, c)| json!({
+                    "id": id, "expression": c.expression, "reading": c.reading,
+                    "sentence": c.sentence, "glossaries": c.glossaries.len(),
+                    "phase": format!("{:?}", c.memory.phase), "reps": c.memory.reps,
+                })).collect::<Vec<_>>()),
+                "counts": review.review.as_ref().map(|r| json!({
+                    "new": r.queue.new, "learning": r.queue.learning,
+                    "review": r.queue.review, "total": r.queue.total,
+                })),
+                "picture": review.review.as_ref().is_some_and(|r| r.picture.is_some()),
+                "audio": review.review.as_ref().is_some_and(|r| r.audio.is_some()),
+            });
             json!({
                 "open": ui.view.library_page_open,
+                "review": review,
                 "busy": page.busy,
                 "status": page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
                 "continue": home.map(|h| h.continue_watching.iter().map(|(u, _)| u.clone()).collect::<Vec<_>>()),
@@ -733,7 +753,8 @@ pub fn hooker(action: &str, line: Option<usize>) -> Result<(), String> {
 
 /// The Library page (LIB-002…LIB-012): `open`, `close`, `import` (`path`,
 /// `grouping` `by-series` or `by-folder`), `series` (`id`, none to go
-/// back), `play` (`path`), `rename` (`id`, `title`), `delete` (`id`).
+/// back), `play` (`path`), `rename` (`id`, `title`), `delete` (`id`);
+/// the Review tab's `review`, `reveal`, `answer`, `undo`, `delete-card`.
 pub fn library(
     action: &str,
     path: Option<String>,
@@ -764,6 +785,31 @@ pub fn library(
                 ui.view.library.show_statistics(action == "statistics");
                 return Ok(());
             }
+            // REV-004: the Review tab, as its title; `reveal`, `answer` (`id`
+            // the grade, 1–4), `undo` and `delete` as its buttons
+            "review" => {
+                ui.view.library.show_review(true);
+                Command::Review(crate::review::ReviewJob::Load)
+            }
+            "reveal" => Command::ReviewReveal,
+            "answer" => {
+                let grade = match id()? {
+                    1 => nikomiru_library::review::Grade::Again,
+                    2 => nikomiru_library::review::Grade::Hard,
+                    3 => nikomiru_library::review::Grade::Good,
+                    _ => nikomiru_library::review::Grade::Easy,
+                };
+                let card = ui
+                    .session
+                    .library_page
+                    .review
+                    .current()
+                    .map(|(id, _)| *id)
+                    .ok_or("no card shown")?;
+                Command::Review(crate::review::ReviewJob::Answer(card, grade))
+            }
+            "undo" => Command::ReviewUndo,
+            "delete-card" => Command::ReviewDelete,
             "import" => {
                 let grouping = match grouping.as_deref() {
                     Some("by-folder") => Grouping::ByFolder,

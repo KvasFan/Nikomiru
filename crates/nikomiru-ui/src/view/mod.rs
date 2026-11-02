@@ -26,6 +26,7 @@ pub(crate) mod palette;
 mod player_page;
 mod popups;
 mod prefs_page;
+mod review_view;
 mod servers_page;
 mod services_page;
 pub(crate) mod settings;

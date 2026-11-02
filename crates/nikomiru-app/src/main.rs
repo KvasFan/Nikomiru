@@ -441,6 +441,7 @@ fn run(
         max_results: Arc::clone(&max_results),
         cache_dir: mining_dir.clone(),
         library: library.clone(),
+        review_dir: paths.review_dir(),
         clock: Arc::new(SystemClock::new()),
     });
     let online = nikomiru_app::online::Online::start(nikomiru_app::online::Parts {
@@ -480,6 +481,7 @@ fn run(
                 cache_dir: paths.cache_dir.clone(),
                 translator: translator.clone(),
                 clock: Arc::new(SystemClock::new()),
+                review_dir: paths.review_dir(),
             },
         )),
         None => Box::new(nikomiru_ui::catalog::NoLibrary(

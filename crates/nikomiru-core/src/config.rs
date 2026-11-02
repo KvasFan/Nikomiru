@@ -82,6 +82,8 @@ pub struct Config {
     pub hooker: HookerConfig,
     /// `[books]` (BOK-009).
     pub books: BooksConfig,
+    /// `[review]`: Nikomiru's own review of cards (REV-003).
+    pub review: ReviewConfig,
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
@@ -307,6 +309,9 @@ impl Default for PopupConfig {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AnkiConfig {
+    /// Where cards go: `"anki"`, or `"nikomiru"`, Nikomiru's own review
+    /// (REV-001).
+    pub destination: String,
     /// AnkiConnect's address (ANK-001).
     pub url: String,
     /// AnkiConnect's API key; empty: none. Never logged (PRV-002).
@@ -342,6 +347,11 @@ pub struct AnkiConfig {
 }
 
 impl AnkiConfig {
+    /// Cards go to Nikomiru's own review, not to Anki (REV-001).
+    pub fn to_review(&self) -> bool {
+        self.destination == "nikomiru"
+    }
+
     /// The audio pads' upper limit (ANK-032).
     pub const MAX_PAD_MS: u32 = 1000;
 
@@ -351,6 +361,9 @@ impl AnkiConfig {
         self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
         self.audio_quality_level = self.audio_quality_level.min(2);
         self.image_quality_level = self.image_quality_level.min(3);
+        if !matches!(self.destination.as_str(), "anki" | "nikomiru") {
+            self.destination = defaults.destination.clone();
+        }
         if !matches!(self.duplicate_scope.as_str(), "deck" | "collection") {
             self.duplicate_scope = defaults.duplicate_scope;
         }
@@ -394,6 +407,46 @@ pub struct BooksConfig {
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// `[review]`: the schedule of Nikomiru's own review (REV-003).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReviewConfig {
+    /// The share of cards to remember when they come back, 0.70–0.97.
+    pub retention: f64,
+    /// New cards a day, 0–9999.
+    pub new_per_day: u32,
+    /// The longest interval, 1–36500 days.
+    pub max_interval_days: u32,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for ReviewConfig {
+    fn default() -> Self {
+        Self {
+            retention: 0.9,
+            new_per_day: 20,
+            max_interval_days: 36_500,
+            other: toml::Table::new(),
+        }
+    }
+}
+
+impl ReviewConfig {
+    /// The retentions allowed.
+    pub const RETENTION: std::ops::RangeInclusive<f64> = 0.7..=0.97;
+
+    fn bounded(mut self) -> Self {
+        if !Self::RETENTION.contains(&self.retention) {
+            self.retention = Self::default().retention;
+        }
+        self.new_per_day = self.new_per_day.min(9999);
+        self.max_interval_days = self.max_interval_days.clamp(1, 36_500);
+        self
+    }
 }
 
 /// `[hooker]`: where the text of games comes from (HOK-001, HOK-003).
@@ -692,6 +745,7 @@ impl std::fmt::Debug for AnkiConfig {
 impl Default for AnkiConfig {
     fn default() -> Self {
         Self {
+            destination: "anki".into(),
             url: "http://127.0.0.1:8765".into(),
             api_key: String::new(),
             deck: "Lapis".into(),
@@ -769,6 +823,7 @@ impl Default for Config {
             sync: SyncConfig::default(),
             hooker: HookerConfig::default(),
             books: BooksConfig::default(),
+            review: ReviewConfig::default(),
             servers: Vec::new(),
             other: toml::Table::new(),
         }
@@ -843,6 +898,7 @@ impl Config {
         (c.popup.max_width, c.popup.max_height) =
             PopupConfig::bounded(c.popup.max_width, c.popup.max_height);
         c.anki = c.anki.bounded();
+        c.review = c.review.bounded();
         c
     }
 
@@ -1529,6 +1585,29 @@ opensubtitles_password = "pw-s3cret"
             Some([0xa0, 0xb1, 0xc2])
         );
         assert!(Config::parse("[general\n").is_err());
+    }
+
+    // T-REV-003
+    #[test]
+    fn the_review_settings_have_bounds() {
+        let c = Config::default();
+        assert_eq!(c.anki.destination, "anki");
+        assert!(!c.anki.to_review());
+        assert_eq!((c.review.retention, c.review.new_per_day), (0.9, 20));
+        let (c, invalid) = Config::parse(
+            "[anki]\ndestination = \"nikomiru\"\n\
+             [review]\nretention = 0.5\nnew_per_day = 100000\nmax_interval_days = 0\n",
+        )
+        .unwrap();
+        assert!(invalid.is_empty());
+        assert!(c.anki.to_review());
+        assert_eq!(c.review.retention, 0.9);
+        assert_eq!(
+            (c.review.new_per_day, c.review.max_interval_days),
+            (9999, 1)
+        );
+        let (c, _) = Config::parse("[anki]\ndestination = \"paper\"\n").unwrap();
+        assert_eq!(c.anki.destination, "anki");
     }
 
     // T-SET-001: what the user wrote stays

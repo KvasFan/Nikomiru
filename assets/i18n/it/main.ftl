@@ -734,3 +734,45 @@ manga-fetching = Scaricamento del modello: { $percent } %
 manga-hint = Trascina su un fumetto per leggerlo.
 manga-reading = Lettura…
 manga-nothing = Lì non è stato trovato testo.
+
+# Review (REV-001…REV-006)
+review-title = Ripasso
+review-title-due = Ripasso ({ $count })
+review-deck = ripasso di Nikomiru
+review-in-library = Questa carta è nel ripasso di Nikomiru: Libreria → Ripasso.
+error-review-no-library = Le carte del ripasso hanno bisogno della libreria, che non si è potuta aprire.
+review-count-new = Nuove: { $count }
+review-count-learning = In apprendimento: { $count }
+review-count-due = Da ripassare: { $count }
+review-reload = Aggiorna
+review-undo = Annulla
+review-done = Niente da ripassare per ora.
+review-next = La prossima carta torna tra { $when }.
+review-total = { $count ->
+    [one] Una carta nel ripasso.
+   *[other] { $count } carte nel ripasso.
+}
+review-empty-hint = Per fare le carte qui invece che in Anki, scegli "ripasso di Nikomiru" in Impostazioni → Anki → Le carte vanno in: il pulsante della carta in un popup le aggiunge.
+review-show = Mostra la risposta
+review-show-keys = Spazio o Invio; poi 1–4 per rispondere
+review-sentence-audio = ▶ Frase
+review-word-audio = ♪ Parola
+review-scene = Apri la scena
+review-delete = Elimina
+review-delete-confirm = Eliminare? Clicca di nuovo
+review-again = Di nuovo
+review-hard = Difficile
+review-good = Bene
+review-easy = Facile
+review-minutes = { $n } min
+review-hours = { $n } h
+review-days = { $n } g
+review-months = { $n } mesi
+review-years = { $n } anni
+anki-destination = Le carte vanno in
+anki-destination-anki = Anki
+anki-destination-nikomiru = ripasso di Nikomiru
+anki-destination-hint = Il ripasso di Nikomiru tiene le carte nella libreria e le ripropone con FSRS nella scheda Ripasso della pagina Libreria: Anki non serve.
+review-settings = Ripasso in Nikomiru
+review-retention = Quota di carte ricordate quando tornano
+review-new-per-day = Carte nuove al giorno

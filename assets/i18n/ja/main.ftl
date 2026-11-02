@@ -724,3 +724,45 @@ manga-fetching = モデルをダウンロード中: { $percent }%
 manga-hint = フキダシの上をドラッグすると読み取ります。
 manga-reading = 読み取り中…
 manga-nothing = そこに文字は見つかりませんでした。
+
+# Review (REV-001…REV-006)
+review-title = 復習
+review-title-due = 復習（{ $count }）
+review-deck = Nikomiru の復習
+review-in-library = このカードは Nikomiru の復習にあります：ライブラリ → 復習。
+error-review-no-library = 復習のカードにはライブラリが必要ですが、開けませんでした。
+review-count-new = 新規：{ $count }
+review-count-learning = 学習中：{ $count }
+review-count-due = 復習：{ $count }
+review-reload = 再読み込み
+review-undo = 元に戻す
+review-done = 今は復習するカードがありません。
+review-next = 次のカードは{ $when }後に戻ります。
+review-total = { $count ->
+    [one] 復習のカードは { $count } 枚です。
+   *[other] 復習のカードは { $count } 枚です。
+}
+review-empty-hint = Anki ではなくここでカードを作るには、設定 → Anki → カードの保存先 で「Nikomiru の復習」を選びます。その後、ポップアップのカードボタンで追加されます。
+review-show = 答えを見る
+review-show-keys = Space または Enter、その後 1–4 で回答
+review-sentence-audio = ▶ 文
+review-word-audio = ♪ 単語
+review-scene = 場面を開く
+review-delete = 削除
+review-delete-confirm = 削除しますか？もう一度クリック
+review-again = もう一度
+review-hard = 難しい
+review-good = 正解
+review-easy = 簡単
+review-minutes = { $n }分
+review-hours = { $n }時間
+review-days = { $n }日
+review-months = { $n }か月
+review-years = { $n }年
+anki-destination = カードの保存先
+anki-destination-anki = Anki
+anki-destination-nikomiru = Nikomiru の復習
+anki-destination-hint = Nikomiru の復習はカードをライブラリに保存し、ライブラリページの「復習」タブで FSRS により出題します。Anki は不要です。
+review-settings = Nikomiru での復習
+review-retention = カードが戻ってきたときに覚えている割合
+review-new-per-day = 1日の新規カード数

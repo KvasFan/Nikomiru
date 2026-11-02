@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use nikomiru_library::home::SeriesSummary;
 use nikomiru_library::import::ImportReport;
+use nikomiru_library::review::Settings;
 use nikomiru_library::series_info::SeriesInfoRecord;
 use nikomiru_library::stats::{DayTotal, Segment};
 use nikomiru_library::{FolderRecord, Grouping, VideoRecord};
@@ -164,6 +165,13 @@ pub trait LibraryService: Send {
     fn stats(&self, done: Done<Stats>);
     /// The sessions as CSV, written to `path` (STA-005).
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>);
+    /// Does `job` in the review, then reads it again (REV-004).
+    fn review(
+        &self,
+        job: crate::review::ReviewJob,
+        settings: Settings,
+        done: Done<crate::review::Review>,
+    );
 }
 
 /// No library (it could not be opened): every job fails with the reason.
@@ -198,10 +206,14 @@ impl LibraryService for NoLibrary {
     fn export_csv(&self, _: PathBuf, done: Done<PathBuf>) {
         done(Err(self.0.clone()));
     }
+
+    fn review(&self, _: crate::review::ReviewJob, _: Settings, done: Done<crate::review::Review>) {
+        done(Err(self.0.clone()));
+    }
 }
 
 /// A job for the library worker, taken from the session by the UI layer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LibraryJob {
     /// Read the home page.
     Home,
@@ -217,6 +229,8 @@ pub enum LibraryJob {
     Stats,
     /// Write the sessions as CSV.
     ExportCsv(PathBuf),
+    /// A job of the review (REV-004).
+    Review(crate::review::ReviewJob, Settings),
 }
 
 /// What the library worker answers, back on the UI thread.
@@ -236,6 +250,8 @@ pub enum LibraryReply {
     Stats(Result<Stats, String>),
     /// The CSV written, or not.
     Exported(Result<PathBuf, String>),
+    /// The review after a job.
+    Review(Result<crate::review::Review, String>),
 }
 
 /// Episodes by uid, in order.
@@ -262,6 +278,8 @@ pub struct LibraryPage {
     pub series_info: Option<SeriesInfoRecord>,
     /// The series being identified online.
     pub identify: Option<Identify>,
+    /// The Review tab (REV-004).
+    pub review: crate::review::ReviewPage,
 }
 
 #[cfg(test)]

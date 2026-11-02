@@ -29,6 +29,8 @@ const LIBRARY: &str = "library.redb";
 const DICTS: &str = "dicts";
 const SUBTITLES: &str = "subtitles";
 const PRESETS: &str = "mpv";
+/// The media of the review's cards (REV-001).
+pub const REVIEW: &str = "review";
 const PENDING: &str = "restore-pending";
 const BEFORE: &str = "before-restore";
 /// Marks an unpacked backup as whole.
@@ -178,6 +180,7 @@ pub fn create(contents: &Contents<'_>, out: &Path) -> Result<Manifest, BackupErr
         std::io::copy(&mut File::open(&snapshot).map_err(io)?, &mut zip).map_err(io)?;
         add_folder(&mut zip, &contents.data_dir.join(SUBTITLES), SUBTITLES)?;
         add_folder(&mut zip, contents.presets_dir, PRESETS)?;
+        add_folder(&mut zip, &contents.data_dir.join(REVIEW), REVIEW)?;
         if contents.dictionaries {
             add_folder(&mut zip, &contents.data_dir.join(DICTS), DICTS)?;
         }
@@ -236,7 +239,7 @@ pub fn unpack(archive: &Path, data_dir: &Path) -> Result<PathBuf, BackupError> {
             };
             let root = name.components().next().map(|c| c.as_os_str().to_owned());
             let known = root.as_deref().is_some_and(|r| {
-                [MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS]
+                [MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW]
                     .iter()
                     .any(|k| r == std::ffi::OsStr::new(k))
             });
@@ -305,6 +308,11 @@ pub fn finish(data_dir: &Path, config_file: &Path, presets_dir: &Path) -> std::i
     )?;
     replace(&pending.join(PRESETS), presets_dir, &before.join(PRESETS))?;
     replace(
+        &pending.join(REVIEW),
+        &data_dir.join(REVIEW),
+        &before.join(REVIEW),
+    )?;
+    replace(
         &pending.join(DICTS),
         &data_dir.join(DICTS),
         &before.join(DICTS),
@@ -334,6 +342,8 @@ mod tests {
         std::fs::create_dir_all(&presets).unwrap();
         std::fs::write(data.join("subtitles/abc/x.ja.srt"), "sub").unwrap();
         std::fs::write(data.join("dicts/one/dict.redb"), "dict").unwrap();
+        std::fs::create_dir_all(data.join(REVIEW)).unwrap();
+        std::fs::write(data.join("review/nikomiru_00.m4a"), "audio").unwrap();
         std::fs::write(presets.join("a.conf"), "preset").unwrap();
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         let record = VideoRecord {
@@ -389,6 +399,8 @@ mod tests {
             LIBRARY,
             "subtitles/abc/x.ja.srt",
             "mpv/a.conf",
+            // T-REV-001 the review's media
+            "review/nikomiru_00.m4a",
         ] {
             assert!(list.iter().any(|n| n == name), "{name}: {list:?}");
         }
@@ -433,6 +445,7 @@ mod tests {
         );
         // the dictionaries are not in it, and stay
         assert!(data.join("dicts/one/dict.redb").exists());
+        assert!(data.join("review/nikomiru_00.m4a").exists());
         assert!(!data.join("restore-pending").exists());
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         assert_eq!(

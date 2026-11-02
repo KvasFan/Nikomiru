@@ -585,6 +585,17 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-MNG-006 | Cards | The sentence and the part of the page | L6 |
 | T-MNG-LIVE-001 | The real model | Fetched from Hugging Face by the app's code, then run on pictures named by the environment | L7 |
 
+### 6.13g Review in Nikomiru (2.4.0)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-REV-001 | Cards in the review | With `destination = "nikomiru"`: a card from `av_basic.mkv` with its word's place, meanings as text, sentence audio and a still picture for an animated format, in the review folder; the check finds it; an overwrite keeps its id and drops the clip no longer used; "Open in Anki" refuses; AnkiConnect never asked (L4). A glossary's HTML as lines of text (L1). The review's media in a backup and back after a restore (L1) | L1/L4 |
+| T-REV-002 | Storage | Kept, overwritten with the schedule kept, deleted; ids apart from Anki's; no migration | L1 |
+| T-REV-003 | Schedule | The first answers against FSRS-5's numbers; at 90 % the interval is the stability; a card answered Good comes back further each time; the buttons of a review in order; retention and the longest interval kept; the day turns at 04:00 local time; the settings' bounds | L1 |
+| T-REV-004 | The Review tab | The queue: learning first, new cards counted by day, learning ahead, the next card's time, undo. The intervals written short. The word cut out of its sentence. The tab: the word, then the answer and the four grades, keys 1–4, the buttons (L3) | L1/L3 |
+| T-REV-005 | Delete | The card and its record in `mined_cards` go, the files another card uses stay (L1) | L1 |
+| T-E2E-REV-001 | A card reviewed | A card made from a popup with `destination = "nikomiru"`, shown on the Review tab, answered Good twice, undone, deleted twice with its files | L6 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

@@ -48,6 +48,7 @@ enum Job {
     Play(String, String, Done<bool>),
     List(String, String, Done<Vec<WordAudioItem>>),
     PlayUrl(String, Done<()>),
+    PlayFile(PathBuf, Done<()>),
     Configure(Box<(WordAudioConfig, String)>),
 }
 
@@ -320,6 +321,7 @@ impl WordAudioWorker {
                         Job::Play(term, reading, done) => done(worker.play(&term, &reading)),
                         Job::List(term, reading, done) => done(worker.list(&term, &reading)),
                         Job::PlayUrl(url, done) => done(worker.play_url(&url)),
+                        Job::PlayFile(path, done) => done(worker.play_file(&path)),
                         Job::Configure(settings) => {
                             let (config, proxy) = *settings;
                             // a database changed on disk or in the settings: opened again
@@ -358,7 +360,7 @@ impl WordAudioWorker {
         match refused {
             Some(Job::Play(_, _, done)) => done(Err(no)),
             Some(Job::List(_, _, done)) => done(Err(no)),
-            Some(Job::PlayUrl(_, done)) => done(Err(no)),
+            Some(Job::PlayUrl(_, done)) | Some(Job::PlayFile(_, done)) => done(Err(no)),
             Some(Job::Configure(_)) | None => {}
         }
     }
@@ -375,6 +377,10 @@ impl WordAudioService for WordAudioWorker {
 
     fn play_url(&self, url: String, done: Done<()>) {
         self.send(Job::PlayUrl(url, done));
+    }
+
+    fn play_file(&self, path: PathBuf, done: Done<()>) {
+        self.send(Job::PlayFile(path, done));
     }
 
     fn configure(&self, config: WordAudioConfig, proxy: String) {

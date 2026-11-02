@@ -18,6 +18,7 @@ pub mod home;
 pub mod import;
 pub mod policy;
 pub mod progress;
+pub mod review;
 pub mod scan;
 pub mod series_info;
 pub mod server_items;

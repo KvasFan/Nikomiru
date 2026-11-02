@@ -1128,6 +1128,11 @@ impl Session {
                 return;
             }
         };
+        self.open_source(link);
+    }
+
+    /// Opens the video of a scene, paused at its start (ANK-052).
+    fn open_source(&mut self, link: nikomiru_anki::link::SourceLink) {
         let record = self
             .services
             .library
@@ -1230,6 +1235,11 @@ impl Session {
         self.lapis_request = Some(config.clone());
         self.anki_jobs
             .push(crate::mining::AnkiJob::CreateLapis(config));
+    }
+
+    /// `[review]`, written with the Anki settings that follow (REV-003).
+    pub fn config_mut_review(&mut self, config: nikomiru_core::config::ReviewConfig) {
+        self.services.config.review = config;
     }
 
     /// Saves the Anki settings: they apply at once, to the session and the
@@ -1709,6 +1719,8 @@ impl Session {
         }
         self.library_jobs.push(LibraryJob::Home);
         self.library_jobs.push(LibraryJob::Stats);
+        // the number due, on the Review tab
+        self.review(crate::review::ReviewJob::Load);
         if let Some((id, _)) = self.library_page.series {
             self.library_jobs.push(LibraryJob::Episodes(id));
         }
@@ -1969,6 +1981,15 @@ impl Session {
                 let text = self.tr("stats-exported", &[("path", path.display().to_string())]);
                 self.library_page.status = Some((text, true));
             }
+            LibraryReply::Review(result) => {
+                let review = &mut page.review;
+                review.busy = false;
+                review.revealed = false;
+                match result {
+                    Ok(r) => review.review = Some(r),
+                    Err(e) => review.error = Some(e),
+                }
+            }
             // a cover that cannot be made: the card keeps its placeholder
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
@@ -1981,6 +2002,99 @@ impl Session {
                 page.status = Some((e, false));
             }
         }
+    }
+
+    /// A job of the Review tab (REV-004, REV-005); `Load` when it opens.
+    pub fn review(&mut self, job: crate::review::ReviewJob) {
+        use crate::review::ReviewJob;
+        let page = &mut self.library_page.review;
+        match &job {
+            ReviewJob::Answer(id, _) => {
+                page.undo = page
+                    .current()
+                    .filter(|(shown, _)| shown == id)
+                    .map(|(id, card)| (*id, card.memory));
+            }
+            ReviewJob::Delete(id) if page.undo.is_some_and(|(u, _)| u == *id) => page.undo = None,
+            _ => {}
+        }
+        page.busy = true;
+        page.error = None;
+        page.confirm_delete = None;
+        let settings = crate::review::settings(&self.services.config.review);
+        self.library_jobs
+            .push(crate::catalog::LibraryJob::Review(job, settings));
+    }
+
+    /// Undo: the card answered last gets back its memory, and is shown again.
+    pub fn review_undo(&mut self) {
+        if let Some((id, memory)) = self.library_page.review.undo.take() {
+            self.review(crate::review::ReviewJob::Undo(id, memory));
+        }
+    }
+
+    /// Delete, pressed twice on the same card (REV-005).
+    pub fn review_delete(&mut self) {
+        let page = &mut self.library_page.review;
+        let Some(id) = page.current().map(|(id, _)| *id) else {
+            return;
+        };
+        if page.confirm_delete == Some(id) {
+            self.review(crate::review::ReviewJob::Delete(id));
+        } else {
+            page.confirm_delete = Some(id);
+        }
+    }
+
+    /// Shows the answer of the card, and plays its sentence (REV-004).
+    pub fn review_reveal(&mut self) {
+        let page = &mut self.library_page.review;
+        if page.revealed || page.current().is_none() {
+            return;
+        }
+        page.revealed = true;
+        self.review_audio();
+    }
+
+    /// Plays the sentence of the card shown.
+    pub fn review_audio(&mut self) {
+        if let Some(path) = self
+            .library_page
+            .review
+            .review
+            .as_ref()
+            .and_then(|r| r.audio.clone())
+        {
+            self.word_audio_jobs
+                .push(crate::word_audio::WordAudioJob::PlayFile(path));
+        }
+    }
+
+    /// Plays the word of the card shown (AUD-004).
+    pub fn review_word(&mut self) {
+        if let Some((_, card)) = self.library_page.review.current() {
+            let (term, reading) = (card.expression.clone(), card.reading.clone());
+            self.play_word(&term, &reading);
+        }
+    }
+
+    /// Opens the scene of the card shown (ANK-052); whether it has one.
+    pub fn review_scene(&mut self) -> bool {
+        let Some((_, card)) = self.library_page.review.current() else {
+            return false;
+        };
+        if card.video_uid.is_empty() {
+            return false;
+        }
+        let link = nikomiru_anki::link::SourceLink {
+            uid: card.video_uid.clone(),
+            episode: 0,
+            start_ms: card.start_ms,
+            end_ms: card.end_ms,
+            source_id: nikomiru_anki::link::new_source_id(),
+        };
+        self.open_source(link);
+        true
     }
 
     /// The library jobs to start, taken by the UI layer.
@@ -3735,6 +3849,12 @@ impl Session {
         let at = self.moment();
         let (date, _) = nikomiru_library::stats::local_day_hour(at.unix_ms, at.offset_s);
         nikomiru_library::stats::day_number(&date).unwrap_or(0)
+    }
+
+    /// Now, Unix ms, and the local offset in seconds: for the review.
+    pub fn review_now(&self) -> (i64, i32) {
+        let at = self.moment();
+        (at.unix_ms, at.offset_s)
     }
 
     /// When now is, for the statistics.

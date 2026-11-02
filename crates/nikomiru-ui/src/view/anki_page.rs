@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use egui::{Button, ComboBox, DragValue, RichText, Role, TextEdit, Ui, WidgetInfo, vec2};
-use nikomiru_core::config::AnkiConfig;
+use nikomiru_core::config::{AnkiConfig, ReviewConfig};
 
 use super::popups::Translate;
 use super::settings::{self, Leave, SettingsTab};
@@ -47,6 +47,8 @@ pub(crate) const PLACEHOLDERS: [&str; 20] = [
 pub(crate) struct State {
     /// The settings being edited.
     draft: Option<AnkiConfig>,
+    /// `[review]` being edited (REV-003).
+    review: Option<ReviewConfig>,
     /// The tags as typed.
     tags: String,
     /// The API key is shown.
@@ -61,6 +63,8 @@ pub(crate) struct Scene<'a> {
     pub page: &'a AnkiPage,
     /// The settings as saved.
     pub saved: &'a AnkiConfig,
+    /// `[review]` as saved.
+    pub saved_review: &'a ReviewConfig,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -70,6 +74,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     let scene = Scene {
         page: &s.anki_page,
         saved: s.anki_config(),
+        saved_review: &s.config().review,
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.anki, out);
@@ -119,6 +124,7 @@ fn update(s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         // the page opens on the saved settings; a Lapis deck made before
         // is in them already
         state.draft = Some(s.saved.clone());
+        state.review = Some(s.saved_review.clone());
         state.tags = s.saved.tags.join(" ");
         state.seen_lapis = page.lapis_created;
     }
@@ -170,6 +176,9 @@ pub(crate) fn draw(
                 && let Some(draft) = state.draft.as_mut()
             {
                 draft.tags = state.tags.split_whitespace().map(str::to_string).collect();
+                if let Some(review) = &state.review {
+                    out.push(Command::ReviewSave(review.clone()));
+                }
                 out.push(Command::AnkiSave(draft.clone()));
             }
             if page.busy {
@@ -186,6 +195,51 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         return;
     };
     ui.spacing_mut().item_spacing.y = 8.0;
+
+    // REV-001
+    ui.horizontal(|ui| {
+        let name = tr(s, "anki-destination");
+        ui.label(&name);
+        choice(
+            ui,
+            "anki-destination",
+            &name,
+            &mut draft.destination,
+            &[
+                ("anki".into(), tr(s, "anki-destination-anki")),
+                ("nikomiru".into(), tr(s, "anki-destination-nikomiru")),
+            ],
+        );
+    });
+    if draft.to_review() {
+        ui.add(
+            egui::Label::new(
+                RichText::new(tr(s, "anki-destination-hint")).color(palette::current().details),
+            )
+            .wrap(),
+        );
+        if let Some(review) = state.review.as_mut() {
+            section(ui, &tr(s, "review-settings"));
+            egui::Grid::new("review-settings")
+                .num_columns(2)
+                .spacing(vec2(12.0, 8.0))
+                .show(ui, |ui| {
+                    let label = ui.label(tr(s, "review-retention"));
+                    let range = ReviewConfig::RETENTION;
+                    ui.add(
+                        egui::Slider::new(&mut review.retention, range)
+                            .step_by(0.01)
+                            .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
+                    )
+                    .labelled_by(label.id);
+                    ui.end_row();
+                    let label = ui.label(tr(s, "review-new-per-day"));
+                    ui.add(DragValue::new(&mut review.new_per_day).range(0..=9999))
+                        .labelled_by(label.id);
+                    ui.end_row();
+                });
+        }
+    }
 
     section(ui, &tr(s, "anki-connection"));
     egui::Grid::new("anki-connection")
@@ -448,9 +502,11 @@ mod tests {
                 |ui, t: &mut Test| {
                     let _ = ui.interact(ui.max_rect(), Id::unique("video"), Sense::click());
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
+                    let review = ReviewConfig::default();
                     let scene = Scene {
                         page: &t.page,
                         saved: &t.saved,
+                        saved_review: &review,
                         tr: &tr,
                     };
                     let _ = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -503,7 +559,7 @@ mod tests {
         assert_eq!(draft.field_mapping["Lapis"].len(), 15);
         let out = click(&mut h, "anki-save");
         match &out[..] {
-            [Command::AnkiSave(saved)] => {
+            [Command::ReviewSave(_), Command::AnkiSave(saved)] => {
                 assert_eq!(saved.field_mapping["Lapis"]["Sentence"], "{sentence}");
                 assert_eq!(saved.url, "http://127.0.0.1:8765");
             }
@@ -544,7 +600,7 @@ mod tests {
         h.run();
         assert_eq!(h.state().state.tags, "");
         match &click(&mut h, "anki-save")[..] {
-            [Command::AnkiSave(saved)] => assert!(saved.tags.is_empty()),
+            [Command::ReviewSave(_), Command::AnkiSave(saved)] => assert!(saved.tags.is_empty()),
             other => panic!("{other:?}"),
         }
     }
