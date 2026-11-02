@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::books::{BOOKS, BookRecord};
 use crate::cards::{MINED_CARDS, MinedCard};
 use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
+use crate::review::{REVIEW_CARDS, ReviewCard};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
 
 /// The format of a device's file.
@@ -28,6 +29,11 @@ const TOMBSTONES: TableDefinition<&str, i64> = TableDefinition::new("sync_tombst
 /// The tombstone of a study session.
 pub fn session_key(id: u128) -> String {
     format!("session:{id:032x}")
+}
+
+/// The tombstone of a card of the review (REV-006).
+pub fn review_key(id: u64) -> String {
+    format!("review:{id:016x}")
 }
 
 /// The tombstone of a video.
@@ -75,7 +81,7 @@ pub struct BookState {
 }
 
 /// What a device knows.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct DeviceState {
     /// The format of the file.
     pub format: u32,
@@ -94,6 +100,21 @@ pub struct DeviceState {
     /// How far each book was read, by uid: older files have none.
     #[serde(default)]
     pub books: BTreeMap<String, BookState>,
+    /// The cards of the review, by id (REV-006): older files have none.
+    #[serde(default)]
+    pub review: BTreeMap<u64, ReviewCard>,
+}
+
+/// Which of two versions of a review card wins (REV-006): the one answered
+/// or made last, then the one answered more, then, so that every device
+/// picks the same, the larger encoding.
+fn review_order(card: &ReviewCard) -> (i64, u32, i64, Vec<u8>) {
+    (
+        card.memory.last_ms.max(card.created_at),
+        card.memory.reps,
+        card.created_at,
+        postcard::to_stdvec(card).unwrap_or_default(),
+    )
 }
 
 fn merge_video(into: &mut VideoState, from: &VideoState) {
@@ -190,12 +211,24 @@ impl DeviceState {
                 }
             }
         }
+        for (id, card) in &other.review {
+            match self.review.get_mut(id) {
+                Some(mine) if review_order(mine) < review_order(card) => *mine = card.clone(),
+                Some(_) => {}
+                None => {
+                    self.review.insert(*id, card.clone());
+                }
+            }
+        }
         for (key, at) in &other.deleted {
             let mine = self.deleted.entry(key.clone()).or_insert(*at);
             *mine = (*mine).max(*at);
         }
         self.sessions
             .retain(|id, _| !self.deleted.contains_key(&format!("session:{id}")));
+        let deleted = &self.deleted;
+        self.review
+            .retain(|id, _| !deleted.contains_key(&review_key(*id)));
     }
 
     /// The tombstones older than `now` allows go (BAK-008).
@@ -300,6 +333,9 @@ impl Library {
             collect::<_, MinedCard>(tx, MINED_CARDS, |id: u64, c| {
                 state.cards.insert(id, c);
             })?;
+            collect::<_, ReviewCard>(tx, REVIEW_CARDS, |id: u64, c| {
+                state.review.insert(id, c);
+            })?;
             collect::<_, BookRecord>(tx, BOOKS, |uid: &str, b| {
                 if b.last_read_at.is_some() {
                     state.books.insert(
@@ -394,6 +430,10 @@ impl Library {
             for (id, c) in &state.cards {
                 db_err!(cards.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
             }
+            let mut review = db_err!(tx.open_table(REVIEW_CARDS))?;
+            for (id, c) in &state.review {
+                db_err!(review.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
+            }
             let mut tombstones = db_err!(tx.open_table(TOMBSTONES))?;
             for (key, at) in &state.deleted {
                 if let Some(id) = key
@@ -401,6 +441,13 @@ impl Library {
                     .and_then(|id| u128::from_str_radix(id, 16).ok())
                 {
                     db_err!(sessions.remove(id))?;
+                }
+                if let Some(id) = key
+                    .strip_prefix("review:")
+                    .and_then(|id| u64::from_str_radix(id, 16).ok())
+                {
+                    db_err!(review.remove(id))?;
+                    db_err!(cards.remove(id))?;
                 }
                 db_err!(tombstones.insert(key.as_str(), *at))?;
             }
@@ -453,6 +500,31 @@ mod tests {
         })
     }
 
+    fn review_card() -> impl Strategy<Value = ReviewCard> {
+        (0..9i64, 0..9i64, 0..3u32, "[ab]{0,1}").prop_map(
+            |(created_at, last_ms, reps, sentence)| ReviewCard {
+                expression: "語".into(),
+                reading: String::new(),
+                sentence,
+                word: None,
+                glossaries: Vec::new(),
+                audio: None,
+                picture: None,
+                video_uid: String::new(),
+                title: String::new(),
+                start_ms: 0,
+                end_ms: 0,
+                created_at,
+                memory: crate::review::Memory {
+                    last_ms,
+                    reps,
+                    stability: f64::from(reps),
+                    ..crate::review::Memory::default()
+                },
+            },
+        )
+    }
+
     fn book() -> impl Strategy<Value = BookState> {
         (0..50u64, 0..3u32, 0..3u32, proptest::option::of(0..9i64)).prop_map(
             |(read_chars, chapter, paragraph, last_read_at)| BookState {
@@ -482,47 +554,53 @@ mod tests {
             prop::collection::btree_map(0..3u64, card(), 0..3),
             prop::collection::btree_map(names.clone(), 0..50i64, 0..2),
             prop::collection::btree_map(names, book(), 0..3),
+            prop::collection::btree_map(0..3u64, review_card(), 0..3),
+            prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
         )
             .prop_map(
-                |(videos, coverage, credit, sessions, cards, deleted, books)| DeviceState {
-                    books: books.into_iter().map(|(k, b)| (k.to_string(), b)).collect(),
-                    format: FORMAT,
-                    videos: videos
-                        .into_iter()
-                        .map(|(k, v)| (k.to_string(), v))
-                        .collect(),
-                    coverage: coverage
-                        .into_iter()
-                        .map(|(k, ranges)| {
-                            let mut c = Coverage::default();
-                            for (start, length) in ranges {
-                                c.add(start, start + length);
-                            }
-                            (k.to_string(), c)
-                        })
-                        .collect(),
-                    credit: credit
-                        .into_iter()
-                        .map(|(k, (key, counted))| {
-                            (
-                                k.to_string(),
-                                CueCredit {
-                                    key,
-                                    counted,
-                                    ..CueCredit::default()
-                                },
-                            )
-                        })
-                        .collect(),
-                    sessions: sessions
-                        .into_iter()
-                        .map(|(k, s)| (k.to_string(), s))
-                        .collect(),
-                    cards,
-                    deleted: deleted
-                        .into_iter()
-                        .map(|(k, at)| (format!("session:{k}"), at))
-                        .collect(),
+                |(videos, coverage, credit, sessions, cards, deleted, books, review, buried)| {
+                    DeviceState {
+                        review,
+                        books: books.into_iter().map(|(k, b)| (k.to_string(), b)).collect(),
+                        format: FORMAT,
+                        videos: videos
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                        coverage: coverage
+                            .into_iter()
+                            .map(|(k, ranges)| {
+                                let mut c = Coverage::default();
+                                for (start, length) in ranges {
+                                    c.add(start, start + length);
+                                }
+                                (k.to_string(), c)
+                            })
+                            .collect(),
+                        credit: credit
+                            .into_iter()
+                            .map(|(k, (key, counted))| {
+                                (
+                                    k.to_string(),
+                                    CueCredit {
+                                        key,
+                                        counted,
+                                        ..CueCredit::default()
+                                    },
+                                )
+                            })
+                            .collect(),
+                        sessions: sessions
+                            .into_iter()
+                            .map(|(k, s)| (k.to_string(), s))
+                            .collect(),
+                        cards,
+                        deleted: deleted
+                            .into_iter()
+                            .map(|(k, at)| (format!("session:{k}"), at))
+                            .chain(buried.into_iter().map(|(id, at)| (review_key(id), at)))
+                            .collect(),
+                    }
                 },
             )
     }
@@ -558,6 +636,50 @@ mod tests {
         fn any_bytes_are_refused_without_a_panic(bytes in prop::collection::vec(any::<u8>(), 0..256)) {
             let _ = DeviceState::decode(&bytes);
         }
+    }
+
+    // T-REV-006: a card goes to another device with its schedule, the one
+    // answered last wins, and a deletion follows it
+    #[test]
+    fn review_cards_travel_and_a_deletion_follows() {
+        use crate::review::{Grade, Settings};
+        let dir = tempfile::tempdir().unwrap();
+        let a = Library::open(&dir.path().join("a.redb")).unwrap();
+        let b = Library::open(&dir.path().join("b.redb")).unwrap();
+        let card = ReviewCard {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            sentence: "食べました".into(),
+            word: None,
+            glossaries: vec![("JMdict".into(), "to eat".into())],
+            audio: Some("nikomiru_0123456789abcdef.m4a".into()),
+            picture: None,
+            video_uid: "video/av_basic".into(),
+            title: "av_basic".into(),
+            start_ms: 0,
+            end_ms: 1_000,
+            created_at: 1_000,
+            memory: crate::review::Memory::default(),
+        };
+        let id = a.add_review_card(&card).unwrap();
+        let sync = |from: &Library, to: &Library| {
+            let mut state = to.export_state(5_000).unwrap();
+            state.merge(&from.export_state(5_000).unwrap());
+            to.apply_state(&state).unwrap();
+        };
+        sync(&a, &b);
+        assert_eq!(b.review_card(id).unwrap(), Some(card.clone()));
+        // answered on b, later: a takes b's memory
+        b.answer_review_card(id, Grade::Good, 2_000, 0, &Settings::default())
+            .unwrap();
+        sync(&b, &a);
+        assert_eq!(a.review_card(id).unwrap().unwrap().memory.reps, 1);
+        // deleted on a: gone from b, and does not come back
+        a.delete_review_card(id).unwrap();
+        sync(&a, &b);
+        assert_eq!(b.review_card(id).unwrap(), None);
+        sync(&b, &a);
+        assert_eq!(a.review_card(id).unwrap(), None);
     }
 
     fn video_at(position_ms: u64, at: i64) -> VideoState {

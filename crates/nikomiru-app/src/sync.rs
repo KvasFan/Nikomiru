@@ -16,11 +16,15 @@ use nikomiru_library::Library;
 use nikomiru_library::backup::{self, Contents, Manifest};
 use nikomiru_library::sync::{DecodeError, DeviceState};
 use nikomiru_online::OnlineError;
-use nikomiru_online::webdav::WebDav;
+use nikomiru_online::webdav::{WebDav, is_media};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::sync::{Options, SyncService, Synced};
 
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
+
+/// The age from which a file of the review that no card uses is removed: a
+/// card being made writes its files first (REV-006).
+const ORPHAN_AGE: Duration = Duration::from_secs(600);
 
 /// The longest Nikomiru waits for the last sync when it closes (BAK-009).
 const CLOSE_LIMIT: Duration = Duration::from_secs(30);
@@ -253,6 +257,10 @@ impl Worker {
             }
         }
         library.apply_state(&merged).map_err(library_error)?;
+        // the media first: this device's file names only cards whose files
+        // are on the server
+        self.sync_media(&dav, library)
+            .map_err(|e| self.message(&e))?;
         let mine = library.export_state(now).map_err(library_error)?;
         let bytes = mine
             .encode()
@@ -263,6 +271,63 @@ impl Worker {
             devices: read,
             skipped,
         })
+    }
+
+    /// The media of the review (REV-006): what the cards here use and the
+    /// server lacks goes up; what they use and only the server has comes
+    /// down, kept only if its content gives its name; what no card uses any
+    /// more goes, once older than any card being made.
+    fn sync_media(&self, dav: &WebDav, library: &Library) -> Result<(), OnlineError> {
+        let dir = self.parts.data_dir.join(backup::REVIEW);
+        let needed = library
+            .review_files()
+            .map_err(|e| OnlineError::Io(e.to_string()))?;
+        if needed.is_empty() && !dir.exists() {
+            return Ok(());
+        }
+        let remote = dav.media()?;
+        for name in needed.iter().filter(|n| is_media(n)) {
+            let path = dir.join(name);
+            let here = path.is_file();
+            let there = remote.iter().any(|r| r == name);
+            if here && !there {
+                let bytes = std::fs::read(&path).map_err(|e| OnlineError::Io(e.to_string()))?;
+                dav.write_media(name, bytes)?;
+            } else if !here && there {
+                match dav.read_media(name) {
+                    Ok(bytes) => {
+                        let ext = name.rsplit('.').next().unwrap_or_default();
+                        if nikomiru_anki::media::name(&bytes, ext) != *name {
+                            tracing::warn!("sync: {name} does not hold what its name says");
+                            continue;
+                        }
+                        let part = dir.join(format!("{name}.part"));
+                        let written = std::fs::create_dir_all(&dir)
+                            .and_then(|()| std::fs::write(&part, &bytes))
+                            .and_then(|()| std::fs::rename(&part, &path));
+                        if let Err(e) = written {
+                            let _ = std::fs::remove_file(&part);
+                            tracing::warn!("sync: {name}: {e}");
+                        }
+                    }
+                    // a file that will come at the next sync
+                    Err(e) => tracing::warn!("sync: {name}: {e}"),
+                }
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let old = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > ORPHAN_AGE));
+                if is_media(&name) && !needed.contains(&name) && old {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        Ok(())
     }
 
     fn backup(&self, path: PathBuf, config: &Config, options: Options) -> Result<Manifest, String> {

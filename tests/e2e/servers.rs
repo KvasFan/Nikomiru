@@ -148,9 +148,10 @@ fn a_device_syncs_at_start_and_close() {
             ..VideoState::default()
         },
     );
-    fake.data()
-        .dav_files
-        .insert("other.sync".into(), other.encode().unwrap());
+    fake.data().dav_files.insert(
+        "nikomiru/devices/other.sync".into(),
+        other.encode().unwrap(),
+    );
     let mut desk = Desktop::start();
     desk.write_config(&format!(
         "[network]\ndevice_id = \"mine\"\n\n[player]\nmpv_options = {{ ao = \"null\" }}\n\n\
@@ -162,14 +163,14 @@ fn a_device_syncs_at_start_and_close() {
     until(Duration::from_secs(10), "this device's file", || {
         fake.data()
             .dav_files
-            .contains_key("mine.sync")
+            .contains_key("nikomiru/devices/mine.sync")
             .then_some(())
     });
     h.open(&video);
     h.wait("first-frame");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(40)).success());
-    let bytes = fake.data().dav_files["mine.sync"].clone();
+    let bytes = fake.data().dav_files["nikomiru/devices/mine.sync"].clone();
     let mine = DeviceState::decode(&bytes).unwrap();
     assert_eq!(mine.videos["video/av_basic"].position_ms, 3000, "{mine:?}");
 }
