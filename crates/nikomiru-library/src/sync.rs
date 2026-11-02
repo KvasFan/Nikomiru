@@ -14,6 +14,7 @@ use crate::books::{BOOKS, BookRecord};
 use crate::cards::{MINED_CARDS, MinedCard};
 use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
 use crate::review::{REVIEW_CARDS, ReviewCard};
+use crate::review_log::{Answer, REVIEW_LOG};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
 
 /// The format of a device's file.
@@ -103,6 +104,10 @@ pub struct DeviceState {
     /// The cards of the review, by id (REV-006): older files have none.
     #[serde(default)]
     pub review: BTreeMap<u64, ReviewCard>,
+    /// The answers of the review, by their key in hexadecimal (REV-007):
+    /// older files have none.
+    #[serde(default)]
+    pub review_log: BTreeMap<String, Answer>,
 }
 
 /// Which of two versions of a review card wins (REV-006): the one answered
@@ -217,6 +222,22 @@ impl DeviceState {
                 Some(_) => {}
                 None => {
                     self.review.insert(*id, card.clone());
+                }
+            }
+        }
+        for (key, answer) in &other.review_log {
+            match self.review_log.get_mut(key) {
+                // the same answer, normally; else one of them, the same on
+                // every device
+                Some(mine)
+                    if postcard::to_stdvec(mine).unwrap_or_default()
+                        < postcard::to_stdvec(answer).unwrap_or_default() =>
+                {
+                    *mine = *answer;
+                }
+                Some(_) => {}
+                None => {
+                    self.review_log.insert(key.clone(), *answer);
                 }
             }
         }
@@ -336,6 +357,9 @@ impl Library {
             collect::<_, ReviewCard>(tx, REVIEW_CARDS, |id: u64, c| {
                 state.review.insert(id, c);
             })?;
+            collect::<_, Answer>(tx, REVIEW_LOG, |key: u128, a| {
+                state.review_log.insert(format!("{key:032x}"), a);
+            })?;
             collect::<_, BookRecord>(tx, BOOKS, |uid: &str, b| {
                 if b.last_read_at.is_some() {
                     state.books.insert(
@@ -433,6 +457,12 @@ impl Library {
             let mut review = db_err!(tx.open_table(REVIEW_CARDS))?;
             for (id, c) in &state.review {
                 db_err!(review.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
+            }
+            let mut log = db_err!(tx.open_table(REVIEW_LOG))?;
+            for (key, a) in &state.review_log {
+                if let Ok(key) = u128::from_str_radix(key, 16) {
+                    db_err!(log.insert(key, postcard::to_stdvec(a)?.as_slice()))?;
+                }
             }
             let mut tombstones = db_err!(tx.open_table(TOMBSTONES))?;
             for (key, at) in &state.deleted {
@@ -556,11 +586,36 @@ mod tests {
             prop::collection::btree_map(names, book(), 0..3),
             prop::collection::btree_map(0..3u64, review_card(), 0..3),
             prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
+            prop::collection::btree_map(0..3u64, 0..4u8, 0..3),
         )
             .prop_map(
-                |(videos, coverage, credit, sessions, cards, deleted, books, review, buried)| {
+                |(
+                    videos,
+                    coverage,
+                    credit,
+                    sessions,
+                    cards,
+                    deleted,
+                    books,
+                    review,
+                    buried,
+                    log,
+                )| {
                     DeviceState {
                         review,
+                        review_log: log
+                            .into_iter()
+                            .map(|(k, g)| {
+                                let answer = Answer {
+                                    card: k,
+                                    grade: crate::review::Grade::ALL[usize::from(g)],
+                                    phase: crate::review::Phase::Review,
+                                    elapsed_days: 1.0,
+                                    stability: f64::from(g),
+                                };
+                                (format!("{k:032x}"), answer)
+                            })
+                            .collect(),
                         books: books.into_iter().map(|(k, b)| (k.to_string(), b)).collect(),
                         format: FORMAT,
                         videos: videos
@@ -674,6 +729,8 @@ mod tests {
             .unwrap();
         sync(&b, &a);
         assert_eq!(a.review_card(id).unwrap().unwrap().memory.reps, 1);
+        // T-REV-007 its answer too
+        assert_eq!(a.review_log().unwrap().len(), 1);
         // deleted on a: gone from b, and does not come back
         a.delete_review_card(id).unwrap();
         sync(&a, &b);

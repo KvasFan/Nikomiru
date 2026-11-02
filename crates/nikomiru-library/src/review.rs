@@ -337,6 +337,10 @@ pub struct Queue {
 }
 
 impl Library {
+    pub(crate) fn review_queue_rows(&self) -> Result<Vec<(u64, ReviewCard)>, LibraryError> {
+        self.review_rows()
+    }
+
     fn review_rows(&self) -> Result<Vec<(u64, ReviewCard)>, LibraryError> {
         self.read(|tx| match tx.open_table(REVIEW_CARDS) {
             Ok(t) => {
@@ -468,8 +472,26 @@ impl Library {
             };
             match card {
                 Some(mut card) => {
-                    card.memory = answer(&card.memory, grade, now_ms, offset_s, settings);
+                    let before = card.memory;
+                    card.memory = answer(&before, grade, now_ms, offset_s, settings);
                     db_err!(t.insert(id, postcard::to_stdvec(&card)?.as_slice()))?;
+                    // REV-007
+                    let elapsed_days = if before.last_ms == 0 {
+                        0.0
+                    } else {
+                        (now_ms - before.last_ms) as f64 / DAY as f64
+                    };
+                    crate::review_log::note(
+                        &tx,
+                        crate::review_log::key(now_ms, id),
+                        &crate::review_log::Answer {
+                            card: id,
+                            grade,
+                            phase: before.phase,
+                            elapsed_days,
+                            stability: card.memory.stability,
+                        },
+                    )?;
                     Some(card.memory)
                 }
                 None => None,
@@ -489,6 +511,13 @@ impl Library {
                 None => None,
             };
             if let Some(mut card) = card {
+                // the answer taken back leaves the log (REV-007)
+                if card.memory.last_ms != memory.last_ms {
+                    crate::review_log::forget(
+                        &tx,
+                        crate::review_log::key(card.memory.last_ms, id),
+                    )?;
+                }
                 card.memory = *memory;
                 db_err!(t.insert(id, postcard::to_stdvec(&card)?.as_slice()))?;
             }

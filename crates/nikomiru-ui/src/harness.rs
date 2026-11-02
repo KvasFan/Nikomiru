@@ -372,6 +372,11 @@ pub fn state() -> Result<Value, String> {
                         "name": name, "ms": s.duration_ms, "chars": s.chars,
                         "lookups": s.lookups, "cards": s.cards,
                     })).collect::<Vec<_>>(),
+                    "review": st.review.as_ref().map(|r| json!({
+                        "today": [r.today.0, r.today.1], "new": r.new,
+                        "learning": r.learning, "young": r.young, "mature": r.mature,
+                        "ahead": r.ahead,
+                    })),
                 })),
             })
         };
@@ -785,6 +790,9 @@ pub fn library(
             }
             "statistics" | "library" => {
                 ui.view.library.show_statistics(action == "statistics");
+                if action == "statistics" {
+                    ui.run(Command::StatsLoad);
+                }
                 return Ok(());
             }
             // REV-004: the Review tab, as its title; `reveal`, `answer` (`id`

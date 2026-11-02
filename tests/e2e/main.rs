@@ -2631,6 +2631,20 @@ fn a_card_made_for_the_review_comes_back_in_its_tab() {
         review(s)["cards"].as_array().is_some_and(Vec::is_empty) && review(s)["busy"] == false
     });
     assert_eq!(review(&s)["counts"]["total"], 1);
+    // T-REV-008 the statistics read again, with the two answers
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "statistics" }));
+    let s = h.state_until("the statistics", |s| {
+        s["library_page"]["stats"]["review"]["today"][0] == 2
+    });
+    let stats = &s["library_page"]["stats"]["review"];
+    assert_eq!(
+        (stats["new"].clone(), stats["young"].clone()),
+        (0.into(), 1.into())
+    );
+    shot("review-stats.png");
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "review" }));
+    h.state_until("the review again", |s| review(s)["busy"] == false);
     // Undo shows it again, as it was
     h.cmd(serde_json::json!({ "cmd": "library", "action": "undo" }));
     h.state_until("undone", |s| {

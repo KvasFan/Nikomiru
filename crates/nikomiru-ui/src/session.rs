@@ -1726,6 +1726,11 @@ impl Session {
         }
     }
 
+    /// The statistics read again (STA-005, REV-008).
+    pub fn stats_load(&mut self) {
+        self.library_jobs.push(crate::catalog::LibraryJob::Stats);
+    }
+
     /// "Identify online" on a series (MET-001, MET-002): its title asked of
     /// the metadata source of the settings.
     pub fn library_identify(&mut self, series: u64) {

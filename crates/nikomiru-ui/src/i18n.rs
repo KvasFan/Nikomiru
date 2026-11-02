@@ -243,7 +243,9 @@ mod tests {
                 "dict-size-kb",
                 "servers-address-hint",
                 "review-total",
-                "anki-destination-anki"
+                "anki-destination-anki",
+                "stats-review-day",
+                "stats-review-due"
             ]
         );
         assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");

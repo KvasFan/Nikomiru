@@ -262,6 +262,10 @@ pub(crate) fn draw(
                     if review && !chosen {
                         out.push(Command::Review(crate::review::ReviewJob::Load));
                     }
+                    // read again: the review may have answered since (REV-008)
+                    if statistics && !chosen {
+                        out.push(Command::StatsLoad);
+                    }
                 }
             }
             for server in s.servers {
@@ -1193,6 +1197,12 @@ mod tests {
             ..LibraryPage::default()
         });
         h.run();
+        // T-REV-008 the statistics read again when shown
+        // (a spinner on the tab while it reads: a step, not a run)
+        h.get_by_label("stats-title").click();
+        h.step();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(matches!(&out[..], [Command::StatsLoad]), "{out:?}");
         let out = click(&mut h, "review-title-due");
         assert!(
             matches!(&out[..], [Command::Review(ReviewJob::Load)]),

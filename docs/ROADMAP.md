@@ -30,7 +30,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 1.0.0 ──► M11 Jellyfin, Plex (1.1.0) ──► M12 Backup, WebDAV (1.2.0)
       ──► M13 Advanced ASS, screenshots (1.3.0) ──► M14 Clipboard, texthooker (1.4.0)
       ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
-      ──► M17 Review in Nikomiru (2.4.0, 2.5.0) ──► M18 Web pages (2.6.0)
+      ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0) ──► M18 Web pages (2.6.0)
       ──► the rest of the backlog
       (Ports, from spike S6, run alongside: D-16)
 ```
@@ -56,7 +56,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M14 | Clipboard lookup and texthooker (D-19) | M | **1.5.0** (D-26) | released (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | **1.5.0** (D-26) | released (DSL and MDict to check) |
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | released; real books, manga and audiobooks still to check by hand |
-| M17 | Review in Nikomiru (D-34, D-35) | M | **2.4.0**, 2.5.0 | released |
+| M17 | Review in Nikomiru (D-34, D-35, D-37) | M | **2.4.0**, 2.5.0, 2.7.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 
 ---
@@ -627,17 +627,19 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: cards that stay in Nikomiru and come back on a schedule, for a learner without Anki (D-34).
 
-**Requirements**: REV-001…REV-006.
+**Requirements**: REV-001…REV-008.
 
 **Status as of 2026-11-02**
 
 - Done: cards made in the review instead of Anki, FSRS-5 written here, the Review tab, undo and delete (T-REV-001…T-REV-005, T-E2E-REV-001).
 - Done on 2026-11-02, for 2.5.0: the review's cards and their media in the WebDAV sync (T-REV-006, D-35). Not yet tried on a real Nextcloud.
+- Done on 2026-11-02, for 2.7.0: the answers noted, and the review's statistics (T-REV-007, T-REV-008, D-37).
 
 **Exit criteria**
 
-- [x] T-REV-001…T-REV-006 and T-E2E-REV-001 green.
+- [x] T-REV-001…T-REV-008 and T-E2E-REV-001 green.
 - [x] **Release 2.5.0** (2026-11-02): the review in the sync.
+- [x] **Release 2.7.0** (2026-11-02): its statistics.
 - [x] **Release 2.4.0** (2026-11-02).
 
 ---

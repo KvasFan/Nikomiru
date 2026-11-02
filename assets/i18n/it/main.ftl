@@ -779,3 +779,20 @@ review-new-per-day = Carte nuove al giorno
 books-web = Pagina web
 books-web-open = Apri
 error-book-not-page = Questa pagina non si può leggere: il suo testo è in una codifica che Nikomiru non conosce.
+stats-review = Ripasso
+stats-review-today = Oggi: { $count } risposte, { $kept } ricordate
+stats-review-retention = Ricordate in ripasso, ultimi 30 giorni: { $percent } %
+stats-review-retention-none = Ricordate in ripasso, ultimi 30 giorni: ancora nessuna risposta
+stats-review-cards = { $new } nuove · { $learning } in apprendimento · { $young } giovani · { $mature } mature
+stats-review-days = Risposte al giorno, ultimi 30 giorni
+stats-review-day = { $ago ->
+    [0] Oggi
+    [1] Ieri
+   *[other] { $ago } giorni fa
+}: { $count } risposte
+stats-review-ahead = Carte in scadenza, prossimi 7 giorni
+stats-review-due = { $in ->
+    [0] Oggi
+    [1] Domani
+   *[other] Tra { $in } giorni
+}: { $count } carte

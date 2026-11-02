@@ -415,6 +415,8 @@ pub(crate) enum Command {
     HideFirstSteps,
     /// "Export CSV…": the save dialog opens (STA-005).
     StatsExport,
+    /// The Statistics tab shown: read again (STA-005, REV-008).
+    StatsLoad,
     /// A job of the Review tab (REV-004).
     Review(crate::review::ReviewJob),
     /// "Show answer".
@@ -1227,6 +1229,7 @@ impl Ui {
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
             Command::HideFirstSteps => self.session.hide_first_steps(),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
+            Command::StatsLoad => s.stats_load(),
             Command::Review(job) => s.review(job),
             Command::ReviewReveal => s.review_reveal(),
             Command::ReviewAudio => s.review_audio(),
