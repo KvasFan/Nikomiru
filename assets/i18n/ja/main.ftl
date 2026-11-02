@@ -786,3 +786,18 @@ stats-review-due = { $in ->
     [1] 明日
    *[other] { $in }日後
 }：{ $count } 枚
+review-study = 学習
+review-cards = カード（{ $count }）
+review-search = 検索
+review-no-match = 該当するカードはありません。
+review-shown = { $count } 枚のうち最初の { $shown } 枚：ほかは検索で探してください。
+review-phase-new = 新規
+review-phase-learning = 学習中
+review-phase-review = 復習中
+review-phase-relearning = 再学習中
+review-due-now = 今が期限
+review-answers = { $reps ->
+   *[other] 回答 { $reps } 回
+}、忘れた回数 { $lapses } 回
+review-reset = やり直す
+review-reset-confirm = やり直しますか？もう一度クリック

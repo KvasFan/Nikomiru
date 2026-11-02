@@ -340,6 +340,7 @@ pub fn state() -> Result<Value, String> {
                     "review": r.queue.review, "total": r.queue.total,
                 })),
                 "picture": review.review.as_ref().is_some_and(|r| r.picture.is_some()),
+                "list": review.review.as_ref().map_or(0, |r| r.list.len()),
                 "audio": review.review.as_ref().is_some_and(|r| r.audio.is_some()),
             });
             json!({
@@ -819,6 +820,21 @@ pub fn library(
                 Command::Review(crate::review::ReviewJob::Answer(card, grade))
             }
             "undo" => Command::ReviewUndo,
+            // REV-009: the list of the cards, and Start over on the card shown
+            "cards" | "study" => {
+                ui.view.library.show_review_cards(action == "cards");
+                return Ok(());
+            }
+            "reset-card" => {
+                let card = ui
+                    .session
+                    .library_page
+                    .review
+                    .current()
+                    .map(|(id, _)| *id)
+                    .ok_or("no card shown")?;
+                Command::Review(crate::review::ReviewJob::Reset(card))
+            }
             "delete-card" => Command::ReviewDelete,
             "import" => {
                 let grouping = match grouping.as_deref() {

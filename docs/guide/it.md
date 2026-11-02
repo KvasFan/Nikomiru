@@ -99,6 +99,8 @@ Tornano nella scheda **Ripasso** della pagina Libreria, secondo un calendario ca
 2. Rispondi con **Di nuovo**, **Difficile**, **Bene** o **Facile** (tasti 1–4). Ogni pulsante dice quando la carta tornerà.
 3. **Annulla** (Ctrl+Z) ritira l'ultima risposta. **Elimina**, cliccato due volte, toglie la carta.
 
+**Carte**, in cima alla scheda, elenca tutte le carte con una ricerca: quando torna ognuna, le sue risposte, e **Ricomincia** per impararne una da capo.
+
 La scheda Statistiche mostra come va il ripasso: le risposte di oggi, la quota ricordata negli ultimi 30 giorni, le carte giovani e mature, e le carte in scadenza nella prossima settimana.
 
 La quota di carte da ricordare quando tornano (90 % di base) e le carte nuove al giorno (20) si impostano nella stessa scheda. Il ripasso è nei backup e nella sincronizzazione WebDAV, con audio e immagini.

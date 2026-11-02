@@ -77,6 +77,12 @@ impl State {
         self.review = false;
     }
 
+    /// Shows the list of the review's cards, or its study (REV-009).
+    #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
+    pub(crate) fn show_review_cards(&mut self, on: bool) {
+        self.review_state.browse = on;
+    }
+
     /// Shows the Review tab, or the library.
     #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
     pub(crate) fn show_review(&mut self, on: bool) {
@@ -1180,6 +1186,28 @@ mod tests {
                 },
                 picture: None,
                 audio: Some("/r/a.m4a".into()),
+                list: vec![
+                    crate::review::CardRow {
+                        id: 7,
+                        expression: "食べる".into(),
+                        reading: "たべる".into(),
+                        sentence: "パンを食べる".into(),
+                        memory: Memory::default(),
+                    },
+                    crate::review::CardRow {
+                        id: 8,
+                        expression: "飲む".into(),
+                        reading: "のむ".into(),
+                        sentence: "水を飲む".into(),
+                        memory: Memory {
+                            phase: nikomiru_library::review::Phase::Review,
+                            due_ms: 1_760_000_000_000 + 3 * 86_400_000,
+                            reps: 4,
+                            lapses: 1,
+                            ..Memory::default()
+                        },
+                    },
+                ],
             }),
             revealed,
             ..crate::review::ReviewPage::default()
@@ -1253,6 +1281,51 @@ mod tests {
             &click(&mut h, "review-delete")[..],
             [Command::ReviewDelete]
         ));
+    }
+
+    // T-REV-009: the list of the cards, searched; Start over and Delete each
+    // asked twice
+    #[test]
+    fn the_cards_are_listed_searched_and_started_over() {
+        use crate::review::ReviewJob;
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            review: review_page(false),
+            ..LibraryPage::default()
+        });
+        h.run();
+        click(&mut h, "review-title-due");
+        click(&mut h, "review-cards");
+        assert!(h.state().state.review_state.browse);
+        assert!(h.query_by_label("水を飲む").is_some());
+        assert!(
+            h.query_by_label("review-phase-review · review-days · review-answers")
+                .is_some()
+        );
+        // a new card cannot start over
+        click(&mut h, "review-reset 食べる");
+        assert!(
+            h.query_by_label("review-reset-confirm 食べる").is_none(),
+            "a click on it does nothing"
+        );
+        assert!(click(&mut h, "review-reset 飲む").is_empty(), "asked once");
+        let out = click(&mut h, "review-reset-confirm 飲む");
+        assert!(
+            matches!(&out[..], [Command::Review(ReviewJob::Reset(8))]),
+            "{out:?}"
+        );
+        assert!(click(&mut h, "review-delete 食べる").is_empty());
+        let out = click(&mut h, "review-delete-confirm 食べる");
+        assert!(
+            matches!(&out[..], [Command::Review(ReviewJob::Delete(7))]),
+            "{out:?}"
+        );
+        h.state_mut().state.review_state.search = "飲".into();
+        h.run();
+        assert!(h.query_by_label("水を飲む").is_some());
+        assert!(h.query_by_label("パンを食べる").is_none());
+        click(&mut h, "review-study");
+        assert!(!h.state().state.review_state.browse);
     }
 
     // T-SET-008: the settings, from the library too

@@ -2650,6 +2650,15 @@ fn a_card_made_for_the_review_comes_back_in_its_tab() {
     h.state_until("undone", |s| {
         review(s)["cards"][0]["id"] == id && review(s)["cards"][0]["reps"] == 1
     });
+    // T-REV-009 the list of the cards, and Start over
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "cards" }));
+    assert_eq!(review(&h.state())["list"], 1);
+    shot("review-cards.png");
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "study" }));
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "reset-card" }));
+    h.state_until("new again", |s| {
+        review(s)["cards"][0]["phase"] == "New" && review(s)["cards"][0]["reps"] == 0
+    });
     // Delete, twice: the card and its files go
     h.cmd(serde_json::json!({ "cmd": "library", "action": "delete-card" }));
     h.state_until("asked", |s| review(s)["confirm_delete"] == true);

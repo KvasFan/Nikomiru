@@ -22,6 +22,35 @@ pub enum ReviewJob {
     Undo(u64, Memory),
     /// Delete a card and the files no other card keeps.
     Delete(u64),
+    /// A card starts over as new (REV-009).
+    Reset(u64),
+}
+
+/// A card in the list of the Cards view (REV-009).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardRow {
+    /// Its id.
+    pub id: u64,
+    /// Headword.
+    pub expression: String,
+    /// Its reading.
+    pub reading: String,
+    /// Its sentence.
+    pub sentence: String,
+    /// Its memory.
+    pub memory: Memory,
+}
+
+impl CardRow {
+    /// Whether it holds `query` in its word, reading or sentence; an empty
+    /// query holds everything.
+    pub fn matches(&self, query: &str) -> bool {
+        let query = query.trim();
+        query.is_empty()
+            || self.expression.contains(query)
+            || self.reading.contains(query)
+            || self.sentence.contains(query)
+    }
 }
 
 /// The review, read by the library worker.
@@ -33,6 +62,8 @@ pub struct Review {
     pub picture: Option<Cover>,
     /// The sentence audio of the first card.
     pub audio: Option<PathBuf>,
+    /// Every card, the newest first (REV-009).
+    pub list: Vec<CardRow>,
 }
 
 /// What the session keeps of the Review tab.
@@ -123,6 +154,22 @@ mod tests {
         assert_eq!(span(0, 75 * 1440 * M), ("review-months", "2.5".into()));
         assert_eq!(span(0, 400 * 1440 * M), ("review-years", "1.1".into()));
         assert_eq!(span(5 * M, 0), ("review-minutes", "1".into()), "overdue");
+    }
+
+    // T-REV-009
+    #[test]
+    fn a_search_finds_word_reading_or_sentence() {
+        let row = CardRow {
+            id: 1,
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            sentence: "パンを食べました".into(),
+            memory: Memory::default(),
+        };
+        for query in ["", "  ", "食べ", "たべ", "パン"] {
+            assert!(row.matches(query), "{query}");
+        }
+        assert!(!row.matches("飲む"));
     }
 
     // T-REV-004
