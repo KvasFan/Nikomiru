@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-02
+
+Web pages, read like books.
+
+### Added
+
+- Books → Web page: an address typed there opens as a book of one chapter, with lookups, cards, its place and the statistics; HTML files of this computer open too, in any Japanese encoding (WEB-001…WEB-003, D-36). Only that page is fetched, when asked: no pictures, nothing it links to.
+
 ## [2.5.0] - 2026-11-02
 
 The review on every computer.

@@ -4,7 +4,8 @@
 //! spine, each a list of paragraphs, their furigana apart from the text, as
 //! the lookup needs it. A book is untrusted: its archive is read within
 //! limits, and its scripts, styles and links are simply not read. A CBZ
-//! comes out as a book of pages (MNG-001).
+//! comes out as a book of pages (MNG-001), a web page as a book of one
+//! chapter (WEB-002).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -15,6 +16,7 @@ mod markup;
 #[cfg(feature = "test-support")]
 pub mod sample;
 pub mod vertical;
+pub mod web;
 
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -29,6 +31,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     match extension.as_deref() {
         Some("cbz" | "zip") => cbz::read(path),
+        Some("html" | "htm" | "xhtml") => web::read(path),
         _ => epub::read(path),
     }
 }
@@ -133,6 +136,10 @@ pub enum BookError {
     /// An archive with no pictures.
     #[error("the CBZ has no pages")]
     NoPages,
+    /// A page that is not UTF-8: it comes through the app, which decodes it
+    /// (WEB-001).
+    #[error("the page is not UTF-8")]
+    NotPage,
 }
 
 impl nikomiru_core::Localized for BookError {
@@ -144,6 +151,7 @@ impl nikomiru_core::Localized for BookError {
             Self::NoText => "error-book-no-text",
             Self::NotCbz(_) => "error-book-cbz",
             Self::NoPages => "error-book-no-pages",
+            Self::NotPage => "error-book-not-page",
         }
     }
 
@@ -152,7 +160,7 @@ impl nikomiru_core::Localized for BookError {
             Self::Io(reason) | Self::NotEpub(reason) | Self::NotCbz(reason) => {
                 vec![("reason", reason.clone())]
             }
-            Self::TooLarge | Self::NoText | Self::NoPages => Vec::new(),
+            Self::TooLarge | Self::NoText | Self::NoPages | Self::NotPage => Vec::new(),
         }
     }
 }
@@ -171,6 +179,7 @@ mod tests {
             BookError::NoText,
             BookError::NotCbz("r".into()),
             BookError::NoPages,
+            BookError::NotPage,
         ];
         let refs: Vec<&dyn nikomiru_core::Localized> = errors
             .iter()

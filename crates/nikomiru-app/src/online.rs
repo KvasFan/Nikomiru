@@ -25,7 +25,9 @@ use nikomiru_online::{
     Candidate, OnlineError, Provider, ProviderId, SearchRequest, SubtitleFile, store,
 };
 use nikomiru_ui::i18n::Translator;
-use nikomiru_ui::online::{Downloaded, OnlineQuery, OnlineResults, OnlineService};
+
+use crate::linux::Iconv;
+use nikomiru_ui::online::{Downloaded, OnlineQuery, OnlineResults, OnlineService, PageSource};
 
 /// What the worker needs.
 pub struct Parts {
@@ -37,6 +39,8 @@ pub struct Parts {
     pub language: String,
     /// Where downloaded subtitles are kept.
     pub subtitles_dir: PathBuf,
+    /// Where the web pages read as books are kept (WEB-001).
+    pub web_dir: PathBuf,
     /// The interface strings, for the messages.
     pub translator: Translator,
 }
@@ -51,6 +55,42 @@ impl std::fmt::Debug for Parts {
 
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
+/// The largest web page or HTML file read (WEB-001).
+const PAGE_LIMIT: usize = 8 << 20;
+
+/// At most `limit + 1` bytes of `path`.
+fn read_limited(path: &std::path::Path, limit: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// The encoding a page declares, in iconv's name: in its `Content-Type`,
+/// else in a `<meta>` of its first 4 KiB (WEB-001).
+fn charset(content_type: Option<&str>, bytes: &[u8]) -> Option<String> {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
+    let declared = content_type
+        .and_then(|t| t.split("charset=").nth(1))
+        .or_else(|| head.split("charset=").nth(1))?;
+    let name: String = declared
+        .trim_start_matches(['"', '\''])
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        .collect();
+    let name = match name.as_str() {
+        "shift_jis" | "shift-jis" | "sjis" | "x-sjis" | "windows-31j" | "cp932" => "CP932",
+        "euc-jp" | "x-euc-jp" => "EUC-JP",
+        "utf-8" | "utf8" => "UTF-8",
+        "iso-2022-jp" => "ISO-2022-JP",
+        "" => return None,
+        other => return Some(other.to_ascii_uppercase()),
+    };
+    Some(name.to_string())
+}
+
 enum Job {
     Search(OnlineQuery, Done<OnlineResults>),
     Download(OnlineQuery, Box<Candidate>, Done<Downloaded>),
@@ -58,6 +98,7 @@ enum Job {
     Configure(Box<(OnlineConfig, NetworkConfig)>),
     Identify(String, Done<(Source, Identified)>),
     Cover(String, Done<Vec<u8>>),
+    Page(PageSource, Done<PathBuf>),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -107,6 +148,7 @@ impl Online {
                         Job::Automatic(q, done) => done(worker.automatic(&q)),
                         Job::Identify(title, done) => done(worker.identify(&title)),
                         Job::Cover(url, done) => done(worker.cover(&url)),
+                        Job::Page(source, done) => done(worker.page(&source)),
                         Job::Configure(settings) => {
                             let (online, network) = *settings;
                             worker.parts.online = online;
@@ -142,6 +184,7 @@ impl Online {
             Some(Job::Automatic(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Identify(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Cover(_, done)) => done(Err(self.unavailable.clone())),
+            Some(Job::Page(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Configure(_)) | None => {}
         }
     }
@@ -170,6 +213,10 @@ impl OnlineService for Online {
 
     fn cover(&self, url: String, done: Done<Vec<u8>>) {
         self.send(Job::Cover(url, done));
+    }
+
+    fn page(&self, source: PageSource, done: Done<PathBuf>) {
+        self.send(Job::Page(source, done));
     }
 }
 
@@ -272,6 +319,52 @@ impl Worker {
     }
 
     /// A cover image (MET-001): HTTPS only, at most a few MiB.
+    /// WEB-001: the page at an address, or an HTML file, decoded to UTF-8
+    /// and saved with its address for the Books page; a page saved before is
+    /// read as it is.
+    fn page(&self, source: &PageSource) -> Result<PathBuf, String> {
+        let tr = &self.parts.translator;
+        let (bytes, content_type, address) = match source {
+            PageSource::Address(address) => {
+                let http = self.http.as_ref().ok_or_else(String::new)?;
+                let url =
+                    nikomiru_online::http::checked_url(address).map_err(|e| self.message(&e))?;
+                let answer = http
+                    .file(&url, &[])
+                    .and_then(|r| r.ok("web"))
+                    .map_err(|e| self.message(&e))?;
+                (answer.body, answer.content_type, url.to_string())
+            }
+            PageSource::File(path) => {
+                let bytes = read_limited(path, PAGE_LIMIT).map_err(|e| {
+                    tr.tr(
+                        "error-book-io",
+                        &[("reason", format!("{}: {e}", path.display()))],
+                    )
+                })?;
+                if bytes.starts_with(nikomiru_books::web::MARK.as_bytes()) {
+                    return Ok(path.clone());
+                }
+                (bytes, None, path.to_string_lossy().into_owned())
+            }
+        };
+        if bytes.len() > PAGE_LIMIT {
+            return Err(tr.tr("error-book-too-large", &[]));
+        }
+        let declared = charset(content_type.as_deref(), &bytes);
+        let decoded = nikomiru_subs::encoding::decode(&bytes, declared.as_deref(), &Iconv)
+            .or_else(|| nikomiru_subs::encoding::decode(&bytes, None, &Iconv))
+            .ok_or_else(|| tr.tr("error-book-not-page", &[]))?;
+        let text = nikomiru_books::web::saved(&address, &decoded.text);
+        // named by what it holds: the same page saved twice is one file
+        let name = nikomiru_anki::media::name(text.as_bytes(), "html");
+        let path = self.parts.web_dir.join(name);
+        std::fs::create_dir_all(&self.parts.web_dir)
+            .and_then(|()| std::fs::write(&path, text))
+            .map_err(|e| tr.tr("error-book-io", &[("reason", e.to_string())]))?;
+        Ok(path)
+    }
+
     fn cover(&self, url: &str) -> Result<Vec<u8>, String> {
         let http = self.http.as_ref().ok_or_else(String::new)?;
         let url = nikomiru_online::http::checked_url(url).map_err(|e| self.message(&e))?;

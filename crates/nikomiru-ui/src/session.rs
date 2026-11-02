@@ -4815,11 +4815,47 @@ impl Session {
         self.books_reload();
     }
 
-    /// A book file was chosen.
+    /// A book file was chosen; an HTML file goes through the `online`
+    /// worker, which decodes it (WEB-001).
     pub fn book_add(&mut self, path: PathBuf) {
         self.books_page.busy = true;
         self.books_page.status = None;
-        self.book_reads.push(path);
+        let html = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .is_some_and(|e| matches!(e.as_str(), "html" | "htm" | "xhtml"));
+        if html {
+            self.online_jobs.push(crate::online::OnlineJob::Page(
+                crate::online::PageSource::File(path),
+            ));
+        } else {
+            self.book_reads.push(path);
+        }
+    }
+
+    /// "Open" with a web page's address (WEB-001): asked of the network only
+    /// now (PRV-001).
+    pub fn book_page(&mut self, address: &str) {
+        let address = address.trim();
+        if address.is_empty() {
+            return;
+        }
+        self.books_page.busy = true;
+        self.books_page.status = None;
+        self.online_jobs.push(crate::online::OnlineJob::Page(
+            crate::online::PageSource::Address(address.to_string()),
+        ));
+    }
+
+    /// A page saved: read as a book (WEB-002).
+    pub fn page_saved(&mut self, result: Result<PathBuf, String>) {
+        match result {
+            Ok(path) => self.book_reads.push(path),
+            Err(e) => {
+                self.books_page.busy = false;
+                self.books_page.status = Some((e, false));
+            }
+        }
     }
 
     /// A book of the list was chosen: its file is read again.

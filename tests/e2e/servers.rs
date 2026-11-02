@@ -286,6 +286,53 @@ fn a_book_is_read_and_mined_and_keeps_its_place() {
     assert!(sessions.iter().any(|(_, s)| s.chars > 0), "{sessions:?}");
 }
 
+// T-E2E-WEB-001: a web page typed on the Books page opens as a book, a word
+// of it is looked up, and it stays in the list with its site
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_web_page_is_read_as_a_book() {
+    let online = nikomiru_online::fake::FakeOnline::start().unwrap();
+    online.data().pages.insert(
+        "news.html".into(),
+        "<html><head><title>ニュース</title></head><body><nav>メニュー</nav>\
+         <main><h1>見出し</h1><p>明日も食べました</p></main></body></html>"
+            .as_bytes()
+            .to_vec(),
+    );
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.cmd(json!({ "cmd": "books", "action": "page", "path": online.page_url("news.html") }));
+    let s = h.state_until("the page", |s| s["books"]["open"] == "ニュース");
+    assert_eq!(s["books"]["page_text"], "見出し");
+    // 明日も食べました: the click is on 食, three characters in
+    h.cmd(json!({ "cmd": "books", "action": "click", "paragraph": 1, "offset": 9 }));
+    h.wait("popup-rendered");
+    h.key("Escape");
+    let shots = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from);
+    if let Some(dir) = &shots {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join("web-page.png"));
+    }
+    h.cmd(json!({ "cmd": "books", "action": "close" }));
+    h.state_until("in the list", |s| {
+        s["books"]["open"].is_null() && s["books"]["list"][0]["title"] == "ニュース"
+    });
+    if let Some(dir) = &shots {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join("web-list.png"));
+    }
+    assert_eq!(
+        std::fs::read_dir(desk.data_file("web")).unwrap().count(),
+        1,
+        "the page kept"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-MNG-001, T-MNG-002, T-MNG-003, T-MNG-005, T-MNG-006: a CBZ opens, a part
 // of a page is read (by the harness's stand-in for the model), a word of it
 // is looked up, its card has the part of the page, and the place is kept

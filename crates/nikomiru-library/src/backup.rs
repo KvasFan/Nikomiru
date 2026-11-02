@@ -31,6 +31,8 @@ const SUBTITLES: &str = "subtitles";
 const PRESETS: &str = "mpv";
 /// The media of the review's cards (REV-001).
 pub const REVIEW: &str = "review";
+/// The web pages read as books (WEB-003).
+pub const WEB: &str = "web";
 const PENDING: &str = "restore-pending";
 const BEFORE: &str = "before-restore";
 /// Marks an unpacked backup as whole.
@@ -181,6 +183,7 @@ pub fn create(contents: &Contents<'_>, out: &Path) -> Result<Manifest, BackupErr
         add_folder(&mut zip, &contents.data_dir.join(SUBTITLES), SUBTITLES)?;
         add_folder(&mut zip, contents.presets_dir, PRESETS)?;
         add_folder(&mut zip, &contents.data_dir.join(REVIEW), REVIEW)?;
+        add_folder(&mut zip, &contents.data_dir.join(WEB), WEB)?;
         if contents.dictionaries {
             add_folder(&mut zip, &contents.data_dir.join(DICTS), DICTS)?;
         }
@@ -239,9 +242,11 @@ pub fn unpack(archive: &Path, data_dir: &Path) -> Result<PathBuf, BackupError> {
             };
             let root = name.components().next().map(|c| c.as_os_str().to_owned());
             let known = root.as_deref().is_some_and(|r| {
-                [MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW]
-                    .iter()
-                    .any(|k| r == std::ffi::OsStr::new(k))
+                [
+                    MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW, WEB,
+                ]
+                .iter()
+                .any(|k| r == std::ffi::OsStr::new(k))
             });
             if !known || entry.is_symlink() {
                 return Err(BackupError::Unsafe);
@@ -312,6 +317,7 @@ pub fn finish(data_dir: &Path, config_file: &Path, presets_dir: &Path) -> std::i
         &data_dir.join(REVIEW),
         &before.join(REVIEW),
     )?;
+    replace(&pending.join(WEB), &data_dir.join(WEB), &before.join(WEB))?;
     replace(
         &pending.join(DICTS),
         &data_dir.join(DICTS),
@@ -344,6 +350,8 @@ mod tests {
         std::fs::write(data.join("dicts/one/dict.redb"), "dict").unwrap();
         std::fs::create_dir_all(data.join(REVIEW)).unwrap();
         std::fs::write(data.join("review/nikomiru_00.m4a"), "audio").unwrap();
+        std::fs::create_dir_all(data.join(WEB)).unwrap();
+        std::fs::write(data.join("web/nikomiru_00.html"), "page").unwrap();
         std::fs::write(presets.join("a.conf"), "preset").unwrap();
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         let record = VideoRecord {
@@ -401,6 +409,8 @@ mod tests {
             "mpv/a.conf",
             // T-REV-001 the review's media
             "review/nikomiru_00.m4a",
+            // T-WEB-003 the pages saved
+            "web/nikomiru_00.html",
         ] {
             assert!(list.iter().any(|n| n == name), "{name}: {list:?}");
         }
@@ -446,6 +456,7 @@ mod tests {
         // the dictionaries are not in it, and stay
         assert!(data.join("dicts/one/dict.redb").exists());
         assert!(data.join("review/nikomiru_00.m4a").exists());
+        assert!(data.join("web/nikomiru_00.html").exists());
         assert!(!data.join("restore-pending").exists());
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         assert_eq!(
