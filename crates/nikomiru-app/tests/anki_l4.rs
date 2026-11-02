@@ -38,6 +38,8 @@ struct Setup {
     library: Arc<Library>,
     /// The folder of the media.
     mining: PathBuf,
+    /// The folder of the review's media.
+    review: PathBuf,
 }
 
 fn setup(config: impl FnOnce(&mut AnkiConfig)) -> Setup {
@@ -73,6 +75,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
     };
     config(&mut anki);
     let mining = dir.path().join("cache/mining");
+    let review = dir.path().join("review");
     let service = Anki::start(Parts {
         config: anki,
         ffmpeg: String::new(),
@@ -81,6 +84,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
         max_results: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(10)),
         cache_dir: mining.clone(),
         library: Some(Arc::clone(&library)),
+        review_dir: review.clone(),
         clock: clock.clone(),
     });
     Setup {
@@ -90,6 +94,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
         clock,
         library,
         mining,
+        review,
     }
 }
 
@@ -570,6 +575,59 @@ fn an_anki_on_another_computer_is_never_checked() {
     assert!(s.fake.requests().is_empty());
     // the click goes through
     mine(&s, request("av_basic.mkv", Some(1), CardAction::Add)).unwrap();
+}
+
+// T-REV-001: cards made in Nikomiru's review, Anki never asked
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn cards_can_go_to_the_review_instead_of_anki() {
+    let s = setup(|c| {
+        c.destination = "nikomiru".into();
+        // an animated picture is shown as a still one
+        c.image_format = "webp-animated".into();
+    });
+    assert_eq!(check(&s, &[("食べる", "たべる")]), Some(vec![false]));
+    let mined = mine(&s, request("av_basic.mkv", Some(1), CardAction::Add)).unwrap();
+    assert_eq!(mined.deck, "Nikomiru's review");
+    assert!(!mined.overwritten);
+    let card = s.library.review_card(mined.note_id).unwrap().unwrap();
+    assert_eq!(
+        (card.expression.as_str(), card.reading.as_str()),
+        ("食べる", "たべる")
+    );
+    assert_eq!(card.word, Some((0, "食べました".len() as u32)));
+    assert_eq!((card.start_ms, card.end_ms), (1_880, 2_700));
+    assert!(!card.glossaries.is_empty(), "the meanings as text");
+    assert!(card.glossaries.iter().all(|(_, t)| !t.contains('<')));
+    let audio = card.audio.clone().unwrap();
+    let picture = card.picture.clone().unwrap();
+    assert!(audio.ends_with(".m4a"), "{audio}");
+    assert!(picture.ends_with(".webp"), "{picture}");
+    assert!(s.review.join(&audio).exists() && s.review.join(&picture).exists());
+    assert_eq!(check(&s, &[("食べる", "たべる")]), Some(vec![true]));
+    assert!(
+        s.library.mined_expressions().unwrap().contains("食べる"),
+        "underlined in the subtitles (LKP-061)"
+    );
+    // an overwrite keeps the card's place, and drops what it no longer uses
+    let mut again = request(
+        "av_basic.mkv",
+        Some(1),
+        CardAction::Overwrite(mined.note_id),
+    );
+    again.clip = Some((1_880, 2_400));
+    let overwritten = mine(&s, again).unwrap();
+    assert!(overwritten.overwritten);
+    assert_eq!(overwritten.note_id, mined.note_id);
+    let card = s.library.review_card(mined.note_id).unwrap().unwrap();
+    assert_eq!(card.end_ms, 2_400);
+    let new_audio = card.audio.unwrap();
+    assert_ne!(new_audio, audio);
+    assert!(!s.review.join(&audio).exists(), "the old clip went");
+    assert!(s.review.join(&new_audio).exists());
+    assert!(s.review.join(&picture).exists(), "the same picture stays");
+    assert!(browse(&s, BrowseTarget::Note(mined.note_id)).is_err());
+    assert!(s.fake.requests().is_empty(), "Anki was never asked");
 }
 
 // ADR 0007 §20: what an attempt cut short left is removed at the next start

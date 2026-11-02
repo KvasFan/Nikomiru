@@ -734,3 +734,45 @@ manga-fetching = Downloading the model: { $percent } %
 manga-hint = Drag across a balloon to read it.
 manga-reading = Reading…
 manga-nothing = No text was found there.
+
+# Review (REV-001…REV-006)
+review-title = Review
+review-title-due = Review ({ $count })
+review-deck = Nikomiru's review
+review-in-library = This card is in Nikomiru's review: Library → Review.
+error-review-no-library = Cards for the review need the library, which could not be opened.
+review-count-new = New: { $count }
+review-count-learning = Learning: { $count }
+review-count-due = To review: { $count }
+review-reload = Reload
+review-undo = Undo
+review-done = Nothing to review now.
+review-next = The next card comes back in { $when }.
+review-total = { $count ->
+    [one] One card in the review.
+   *[other] { $count } cards in the review.
+}
+review-empty-hint = To make cards here instead of in Anki, choose "Nikomiru's review" in Settings → Anki → Cards go to: the card button of a popup then adds them.
+review-show = Show the answer
+review-show-keys = Space or Enter; then 1–4 to answer
+review-sentence-audio = ▶ Sentence
+review-word-audio = ♪ Word
+review-scene = Open the scene
+review-delete = Delete
+review-delete-confirm = Delete? Click again
+review-again = Again
+review-hard = Hard
+review-good = Good
+review-easy = Easy
+review-minutes = { $n } min
+review-hours = { $n } h
+review-days = { $n } d
+review-months = { $n } mo
+review-years = { $n } y
+anki-destination = Cards go to
+anki-destination-anki = Anki
+anki-destination-nikomiru = Nikomiru's review
+anki-destination-hint = Nikomiru's review keeps the cards in the library and brings them back with FSRS on the Library page's Review tab: Anki is not needed.
+review-settings = Review in Nikomiru
+review-retention = Share of cards remembered when they come back
+review-new-per-day = New cards a day

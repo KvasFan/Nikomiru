@@ -89,6 +89,18 @@ Per sentire una parola, Nikomiru ha bisogno di una fonte di pronunce: non ne inc
    - spostare la clip e ascoltarla;
    - scegliere l'immagine, oppure togliere l'audio.
 
+### Senza Anki: il ripasso di Nikomiru
+
+In Impostazioni → Anki, **Le carte vanno in → ripasso di Nikomiru** tiene le carte in Nikomiru: Anki non serve. Il **+** di un popup le crea lì, con la frase, il suo audio, il fotogramma e i significati.
+
+Tornano nella scheda **Ripasso** della pagina Libreria, secondo un calendario calcolato con FSRS:
+
+1. Il fronte mostra la parola e la sua frase. Pensa al significato, poi **Mostra la risposta** (Spazio o Invio): compare la lettura e parte la frase.
+2. Rispondi con **Di nuovo**, **Difficile**, **Bene** o **Facile** (tasti 1–4). Ogni pulsante dice quando la carta tornerà.
+3. **Annulla** (Ctrl+Z) ritira l'ultima risposta. **Elimina**, cliccato due volte, toglie la carta.
+
+La quota di carte da ricordare quando tornano (90 % di base) e le carte nuove al giorno (20) si impostano nella stessa scheda. Il ripasso è nei backup, ma non ancora nella sincronizzazione WebDAV.
+
 ## 6. Sottotitoli online
 
 Nulla va online se non lo chiedi.

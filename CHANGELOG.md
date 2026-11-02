@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-02
+
+Cards that stay in Nikomiru, for those without Anki.
+
+### Added
+
+- Nikomiru's own review: Settings → Anki → Cards go to → Nikomiru's review keeps the cards in the library, and the Library page's Review tab brings them back on a schedule worked out with FSRS-5, written here (REV-001…REV-005, D-34). Anki is not needed; it stays the default.
+
 ## [2.3.0] - 2026-11-02
 
 Keys and passwords in the system keyring, for those who want them there.

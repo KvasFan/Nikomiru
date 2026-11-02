@@ -52,7 +52,7 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 | AI/LLM, ASR (subtitle generation), TTS, ONNX models | excluded, except the manga reading model, fetched on request (MNG-004, D-30) | Some models have CC BY-NC licenses; huge size |
 | Google Lens OCR, AACS Blu-ray decryption | excluded | Legal and terms-of-service risks |
 | Cloud sync, Interconnect, iroh P2P, headless server, CLI | post-1.0 (WebDAV backup/sync only) | Complexity; not needed for the MVP |
-| Built-in SRS (FSRS) | post-1.0 | `fsrs` is BSD-3-Clause: it would need an exception (§3) |
+| Built-in SRS (FSRS) | **done** in 2.4.0 (D-34) | Our own GPL implementation of FSRS-5 from the published algorithm, so the `fsrs` crate (BSD-3-Clause) and its exception are not needed (§6.19) |
 | Leaderboard, in-app feedback, usage telemetry | excluded | Privacy; no service to run |
 | Android | in scope (D-16) | Builds asked by the maintainer; libmpv from mpv-android, AnkiDroid's own API instead of AnkiConnect, touch instead of hover (§5.2.4) |
 | iOS | excluded | Not asked; libmpv and the App Store's rules |
@@ -847,6 +847,18 @@ A manga is a book of pages: it shares the Books page, its list, its place and it
 | MNG-005 | **The text**: it shows above the page and is clicked like a book's (BOK-006), and stays with that page until the book closes. |
 | MNG-006 | **Cards**: the word, the text read, and the part of the page it was read from, in the format of the other cards (ANK-034). |
 
+### 6.19 Review in Nikomiru (REV) — 2.4.0 (D-34)
+
+Cards can stay in Nikomiru and come back on a schedule, for a learner without Anki. Anki stays the default.
+
+| ID | Requirement |
+|---|---|
+| REV-001 | **Where cards go**: `[anki] destination`, `"anki"` (default) or `"nikomiru"`, in Settings → Anki. With `"nikomiru"` the card button of a popup makes the card in Nikomiru's review and AnkiConnect is never asked: the check of ANK-030 looks for the same headword and reading in the review; "Open in Anki" says where the card is; the overwrite of ANK-037 replaces the card's content and keeps its schedule. A card holds the headword, its reading, the sentence with the word's place (ANK-024), each dictionary's meanings as text (the `{glossary}` of ANK-023 with its tags dropped, styles left out and its list items as lines), the sentence audio of ANK-032/ANK-033, a still picture (ANK-034; an animated or video format gives the still frame in WebP or JPEG), the video's uid and the clip, the title and the date. Its media go to `$XDG_DATA_HOME/nikomiru/review/` under the names of ANK-036, and are in backups (BAK-001), not in the WebDAV sync. It is recorded in `mined_cards` too (LIB-013, LKP-061). |
+| REV-002 | **Storage**: the table `review_cards` of `library.redb`, by an id with bit 62 set, so it never meets an Anki note id in `mined_cards` (a new table: the schema version does not change). |
+| REV-003 | **Schedule**: FSRS-5, written from the published algorithm (open-spaced-repetition's "The Algorithm") with its 19 default parameters: retrievability `(1 + 19/81·t/S)^-0.5`, the interval at which it falls to the retention, the initial stability and difficulty, difficulty with linear damping and the pull to an easy card's, stability after recall and after a lapse (never above the one before), and the short-term stability of an answer the same day. Grades Again, Hard, Good, Easy. A new card: Again in 1 minute, Hard in 6, Good in 10, Easy straight to days. A learning card: Again in 1 minute, Hard in 6, Good and Easy to days. A review card: Again relearns in 10 minutes and counts a lapse; Hard, Good and Easy each at least a day further than the one before, Hard at least a day. Days end at 04:00 local time; a card due in days is due at the start of its day. `[review] retention` 0.70–0.97 (default 0.90), `new_per_day` (default 20, counted by the cards first answered that day), `max_interval_days` (default 36,500); out of range, the default or the bound. Retention and new cards a day are in Settings → Anki. |
+| REV-004 | **The Review tab** of the Library page, shown when cards go to the review or it holds any: the number due in its title; the new, learning and due counts; the cards in order: learning cards due, then reviews due (the longest due first), then new cards (the oldest first) up to the day's limit; with nothing else, a learning card due within 20 minutes. The front shows the word and its sentence with the word marked; "Show the answer" (Space, Enter) adds the reading, plays the sentence audio, and shows the four grades with when each brings the card back (keys 1–4), the sentence again (R), the word's audio (AUD-004), the scene (ANK-052), Delete, the meanings and the picture. Undo (Ctrl+Z) puts back the last answer and shows that card again. Nothing done, it says when the next card comes back. |
+| REV-005 | **Delete**: pressed twice on the same card, it removes the card, its record in `mined_cards` and the media no other card uses. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -887,6 +899,7 @@ A manga is a book of pages: it shares the Books page, its list, its place and it
 | `cue_credit` | `&str` uid | bitset of the indices of cues already counted + hash of the subtitle file |
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
 | `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
+| `review_cards` | `u64` id, bit 62 set | expression, reading, sentence and the word's place, meanings as text, audio and picture files, video uid, title, start, end, date, FSRS memory (REV-002; a new table: the schema version does not change) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
 | `books` | `&str` uid | path, title, author, characters, characters read, chapter, paragraph, last read (BOK-004, BOK-005; a new table: the schema version does not change) |
 | `subtitle_cache` | key from SUB-007 | path of the extracted file, format, encoding |
@@ -1050,6 +1063,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-31 | After M16 | **Decided by the maintainer's agent** (2026-11-01, "seguito da tutto il resto" and "procedi", to change at will): 2.1.0 takes what is small and needs nobody's account first: ANK-043, then what 2.0.0 left out of manga. AniDB needs a registered client, the keyring and the SRS a license choice, and the ports wait for the maintainer (D-16) |
 | D-32 | Japanese interface | **Decided by the maintainer's agent** (2026-11-02, "seguito da tutto il resto" and "procedi subito con la successiva", to change at will): 2.2.0 is the Japanese interface, the backlog item that needs no account and no license choice. The translation is the agent's, not yet read by a native speaker; the user guide stays in English and Italian. The keys of MET-005 follow, since they touch secrets already saved |
 | D-33 | The keyring | **Decided by the maintainer's agent** (2026-11-02, same grounds as D-32, to change at will): 2.3.0 keeps keys in the keyring on request, not by default: `config.toml` with permissions 0600 stays the default, since a keyring may be missing, locked or asking for a password at each start. `secret-service`, whose dependencies need no new license. Checked on a real GNOME Keyring in the tests; KWallet not tried |
+| D-34 | Built-in review | **Decided by the maintainer's agent** (2026-11-02, "procedi implementando altri features", to change at will): 2.4.0 adds the SRS of the backlog as our own GPL implementation of FSRS-5, so no license exception; cards go to Anki or to Nikomiru, not both, so a card is never reviewed twice; Anki stays the default. The review's cards are in backups but not in the WebDAV sync, whose files carry no media. AniDB, the "online resources" of D-12 and the ports still wait for the maintainer |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

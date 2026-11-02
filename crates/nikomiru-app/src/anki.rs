@@ -25,6 +25,7 @@ use nikomiru_core::config::AnkiConfig;
 use nikomiru_core::{Cancel, Clock, Localized};
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::Options;
+use nikomiru_library::review::{Memory, ReviewCard};
 use nikomiru_library::{DictionaryManager, Library, MinedCard};
 use nikomiru_media::clip::{self, AudioClip};
 use nikomiru_media::process::run;
@@ -61,8 +62,11 @@ pub struct Parts {
     /// Where the media are made (`$XDG_CACHE_HOME/nikomiru/mining`), the
     /// frames of the clicks among them.
     pub cache_dir: PathBuf,
-    /// The library, for `mined_cards`.
+    /// The library, for `mined_cards` and the review's cards (REV-001).
     pub library: Option<Arc<Library>>,
+    /// Where the review's cards keep their media
+    /// (`$XDG_DATA_HOME/nikomiru/review`, REV-001).
+    pub review_dir: PathBuf,
     /// Time, for the pause of the checks and the records.
     pub clock: Arc<dyn Clock>,
 }
@@ -360,6 +364,13 @@ impl Worker {
 
     /// The duplicate check of a popup (ANK-030).
     fn check(&mut self, request: &CheckRequest) -> Option<Vec<bool>> {
+        if self.parts.config.to_review() {
+            let library = self.parts.library.as_ref()?;
+            return library
+                .review_has(&request.entries)
+                .inspect_err(|e| tracing::warn!("review: {e}"))
+                .ok();
+        }
         let loopback = self.client.as_ref().is_ok_and(Client::is_loopback);
         if !loopback {
             return None;
@@ -479,6 +490,7 @@ impl Worker {
         r: &MineRequest,
         frame: Option<PendingFrame>,
         stem: &str,
+        still: bool,
     ) -> Result<Option<Media>, String> {
         if r.frame == FrameChoice::None && r.picture.is_none() {
             return Ok(None);
@@ -497,6 +509,7 @@ impl Worker {
             return media.map(Some);
         }
         if format.is_animated()
+            && !still
             && let Some(clip) = r.clip
         {
             // the click's frame is not needed: dropping it removes its file
@@ -588,6 +601,9 @@ impl Worker {
 
     /// Makes, or overwrites, a card (ANK-031…ANK-039).
     fn mine(&mut self, r: &MineRequest, frame: Option<PendingFrame>) -> Result<Mined, MineFailure> {
+        if self.parts.config.to_review() {
+            return self.mine_for_review(r, frame);
+        }
         let dict = self.dictionary_fields(r)?;
         if let Err(e) = std::fs::create_dir_all(&self.parts.cache_dir) {
             return Err(self.fail_with("error-mining-media", &[("reason", e.to_string())]));
@@ -604,7 +620,7 @@ impl Worker {
                 let (tools, stem) = (&tools, &stem);
                 s.spawn(move || sentence_audio(tools, config, cache_dir, r, clip, stem))
             });
-            let image = self.image(&tools, r, frame, &stem);
+            let image = self.image(&tools, r, frame, &stem, false);
             let audio = audio.map(|a| a.join().unwrap_or_else(|_| Err("audio thread".into())));
             (audio, image)
         });
@@ -764,6 +780,139 @@ impl Worker {
         })
     }
 
+    fn media_failure(&self, e: &dyn std::fmt::Display) -> MineFailure {
+        self.fail_with("error-mining-media", &[("reason", e.to_string())])
+    }
+
+    /// Makes, or overwrites, a card of Nikomiru's own review (REV-001): the
+    /// same sentence audio, a still picture, the meanings as text; its media
+    /// in the review folder, named by their content.
+    fn mine_for_review(
+        &mut self,
+        r: &MineRequest,
+        frame: Option<PendingFrame>,
+    ) -> Result<Mined, MineFailure> {
+        let library = self
+            .parts
+            .library
+            .clone()
+            .ok_or_else(|| self.fail_with("error-review-no-library", &[]))?;
+        let dict = self.dictionary_fields(r)?;
+        std::fs::create_dir_all(&self.parts.cache_dir).map_err(|e| self.media_failure(&e))?;
+        std::fs::create_dir_all(&self.parts.review_dir).map_err(|e| self.media_failure(&e))?;
+        let tools = self
+            .tools()
+            .cloned()
+            .ok_or_else(|| self.fail_with("error-mining-media", &[("reason", "ffmpeg".into())]))?;
+        let stem = link::new_source_id();
+        let (config, cache_dir) = (&self.parts.config, &self.parts.cache_dir);
+        let (audio, image) = std::thread::scope(|s| {
+            let audio = r.clip.filter(|_| r.audio).map(|clip| {
+                let (tools, stem) = (&tools, &stem);
+                s.spawn(move || sentence_audio(tools, config, cache_dir, r, clip, stem))
+            });
+            // egui shows still pictures only
+            let image = self.image(&tools, r, frame, &stem, true);
+            let audio = audio.map(|a| a.join().unwrap_or_else(|_| Err("audio thread".into())));
+            (audio, image)
+        });
+        let audio = match audio {
+            Some(Ok(audio)) => Some(audio),
+            Some(Err(reason)) => {
+                tracing::warn!("sentence audio: {reason}");
+                return Err(self.fail_with("error-mining-no-audio", &[]));
+            }
+            None => None,
+        };
+        let image = image.unwrap_or_else(|reason| {
+            tracing::warn!("card image: {reason}");
+            None
+        });
+        let mut written = Vec::new();
+        for (name, bytes) in audio.iter().chain(&image) {
+            let path = self.parts.review_dir.join(name);
+            if !path.exists() {
+                std::fs::write(&path, bytes).map_err(|e| self.media_failure(&e))?;
+                written.push(path);
+            }
+        }
+        let (start_ms, end_ms) = r.clip.unwrap_or((r.position_ms, r.position_ms));
+        let clamp = |ms: i64| u32::try_from(ms.max(0)).unwrap_or(u32::MAX);
+        let word = (!r.matched.is_empty())
+            .then(|| {
+                r.offset
+                    .filter(|&o| {
+                        r.sentence
+                            .get(o..)
+                            .is_some_and(|t| t.starts_with(&r.matched))
+                    })
+                    .or_else(|| r.sentence.find(&r.matched))
+            })
+            .flatten()
+            .and_then(|o| {
+                Some((
+                    u32::try_from(o).ok()?,
+                    u32::try_from(o + r.matched.len()).ok()?,
+                ))
+            });
+        let created_at = self
+            .parts
+            .clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64);
+        let card = ReviewCard {
+            expression: r.expression.clone(),
+            reading: r.reading.clone(),
+            sentence: r.sentence.clone(),
+            word,
+            glossaries: dict
+                .glossaries
+                .iter()
+                .map(|(_, name, html)| (name.clone(), nikomiru_anki::html::text(html)))
+                .filter(|(_, text)| !text.is_empty())
+                .collect(),
+            audio: audio.map(|a| a.0),
+            picture: image.map(|i| i.0),
+            video_uid: r.uid.clone().unwrap_or_default(),
+            title: r.title.clone(),
+            start_ms: clamp(start_ms),
+            end_ms: clamp(end_ms),
+            created_at,
+            memory: Memory::default(),
+        };
+        let saved = match r.action {
+            CardAction::Overwrite(id) => library
+                .replace_review_card(id, &card)
+                .map(|before| before.map(|before| (id, Some(before)))),
+            CardAction::Add | CardAction::AddAnyway => {
+                library.add_review_card(&card).map(|id| Some((id, None)))
+            }
+        };
+        let (id, replaced) = match saved {
+            Ok(Some(done)) => done,
+            Ok(None) => return Err(self.fail_with("error-mining-note-gone", &[])),
+            Err(e) => {
+                for path in written {
+                    let _ = std::fs::remove_file(path);
+                }
+                return Err(MineFailure {
+                    message: self.message(&e),
+                    duplicate: false,
+                });
+            }
+        };
+        if let Some(before) = replaced {
+            forget_files(&library, &self.parts.review_dir, &before);
+        }
+        self.record(id, r, &link::new_source_id(), (start_ms, end_ms));
+        Ok(Mined {
+            note_id: id,
+            deck: self.parts.translator.tr("review-deck", &[]),
+            overwritten: matches!(r.action, CardAction::Overwrite(_)),
+        })
+    }
+
     fn fields_failure(&self, e: &compose::FieldsError) -> MineFailure {
         match e {
             compose::FieldsError::EmptyFirstField => self.fail(&AnkiError::EmptyNote),
@@ -903,6 +1052,9 @@ impl Worker {
 
     /// "Open in Anki" (ANK-038).
     fn browse(&mut self, target: &BrowseTarget) -> Result<(), String> {
+        if self.parts.config.to_review() {
+            return Err(self.parts.translator.tr("review-in-library", &[]));
+        }
         let query = match target {
             BrowseTarget::Note(id) => format!("nid:{id}"),
             BrowseTarget::Word {
@@ -989,6 +1141,26 @@ fn rollback(client: &Client, stored: &[(String, String, bool)]) {
     for (_, actual, new) in stored {
         if *new && let Err(e) = client.delete_media(actual) {
             tracing::warn!("deleting {actual}: {e}");
+        }
+    }
+}
+
+/// Removes the files of `card` that no card of the review keeps any more
+/// (REV-005).
+pub fn forget_files(library: &Library, review_dir: &Path, card: &ReviewCard) {
+    let kept = match library.review_files() {
+        Ok(kept) => kept,
+        Err(e) => {
+            tracing::warn!("review: {e}");
+            return;
+        }
+    };
+    for name in card.files() {
+        if !kept.contains(name)
+            && let Err(e) = std::fs::remove_file(review_dir.join(name))
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!("review: {name}: {e}");
         }
     }
 }

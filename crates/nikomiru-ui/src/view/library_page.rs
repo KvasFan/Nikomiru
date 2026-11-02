@@ -52,6 +52,10 @@ pub(crate) struct State {
     statistics: bool,
     /// What it keeps.
     stats: super::stats_view::State,
+    /// The Review tab is shown (REV-004).
+    review: bool,
+    /// What it keeps.
+    review_state: super::review_view::State,
     /// The view (home, or a series) whose first card or episode got the
     /// keyboard when it appeared (NFR-A11Y-01).
     focused_view: Option<Option<u64>>,
@@ -70,6 +74,14 @@ impl State {
     #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
     pub(crate) fn show_statistics(&mut self, on: bool) {
         self.statistics = on;
+        self.review = false;
+    }
+
+    /// Shows the Review tab, or the library.
+    #[cfg_attr(not(feature = "test-harness"), allow(dead_code))]
+    pub(crate) fn show_review(&mut self, on: bool) {
+        self.review = on;
+        self.statistics = false;
     }
 
     /// Forgets what was typed and ticked; the covers stay, they cost a
@@ -105,6 +117,12 @@ pub(crate) struct Scene<'a> {
     pub server_page: &'a crate::servers::ServersPage,
     /// The tab of the settings shown last (SET-008).
     pub settings_tab: super::settings::SettingsTab,
+    /// Now, for the review's buttons.
+    pub now: super::review_view::Now,
+    /// `[review]` of the settings (REV-003).
+    pub review_settings: nikomiru_library::review::Settings,
+    /// Cards go to the review (REV-001): its tab is shown even without any.
+    pub to_review: bool,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -118,6 +136,12 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         servers: s.server_list(),
         server_page: &s.servers_page,
         settings_tab: view.settings_tab,
+        now: {
+            let (ms, offset_s) = s.review_now();
+            super::review_view::Now { ms, offset_s }
+        },
+        review_settings: crate::review::settings(&s.config().review),
+        to_review: s.config().anki.to_review(),
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
@@ -201,18 +225,43 @@ pub(crate) fn draw(
         ui.visuals_mut().override_text_color = Some(palette::current().text);
         ui.spacing_mut().item_spacing.y = 10.0;
         ui.horizontal(|ui| {
-            // the library, or its statistics (STA-005)
-            for (statistics, id) in [(false, "library-title"), (true, "stats-title")] {
-                let text = RichText::new(tr(s, id)).size(24.0).family(theme::bold());
-                if ui
-                    .selectable_label(
-                        state.server.is_none() && state.statistics == statistics,
-                        text,
-                    )
-                    .clicked()
-                {
+            // the library, its statistics (STA-005) or the review (REV-004)
+            let due = s
+                .page
+                .review
+                .review
+                .as_ref()
+                .map_or(0, |r| r.queue.cards.len());
+            let review_title = if due > 0 {
+                (s.tr)("review-title-due", &[("count", due.to_string())])
+            } else {
+                tr(s, "review-title")
+            };
+            // the tab of the review once it is used
+            let with_review = s.to_review
+                || s.page
+                    .review
+                    .review
+                    .as_ref()
+                    .is_some_and(|r| r.queue.total > 0);
+            let tabs = [
+                (false, false, tr(s, "library-title")),
+                (true, false, tr(s, "stats-title")),
+                (false, true, review_title),
+            ];
+            let shown = if with_review { 3 } else { 2 };
+            for (statistics, review, title) in tabs.into_iter().take(shown) {
+                let text = RichText::new(title).size(24.0).family(theme::bold());
+                let chosen = state.server.is_none()
+                    && state.statistics == statistics
+                    && state.review == review;
+                if ui.selectable_label(chosen, text).clicked() {
                     state.statistics = statistics;
+                    state.review = review;
                     state.server = None;
+                    if review && !chosen {
+                        out.push(Command::Review(crate::review::ReviewJob::Load));
+                    }
                 }
             }
             for server in s.servers {
@@ -221,6 +270,7 @@ pub(crate) fn draw(
                 if ui.selectable_label(chosen, text).clicked() && !chosen {
                     state.server = Some(server.id.clone());
                     state.statistics = false;
+                    state.review = false;
                     state.server_search.clear();
                     out.push(Command::ServerShow(server.id.clone()));
                 }
@@ -245,7 +295,7 @@ pub(crate) fn draw(
                 if ui.button(tr(s, "books-title")).clicked() {
                     state.open_books = true;
                 }
-                if state.server.is_some() {
+                if state.server.is_some() || state.review {
                 } else if state.statistics {
                     if ui.button(tr(s, "stats-export")).clicked() {
                         out.push(Command::StatsExport);
@@ -276,6 +326,15 @@ pub(crate) fn draw(
             .auto_shrink([false, false])
             .show(&mut ui, |ui| match &s.page.series {
                 _ if state.server.is_some() => server_tab(ui, s, state, out),
+                _ if state.review => super::review_view::draw(
+                    ui,
+                    &s.page.review,
+                    &s.now,
+                    &s.review_settings,
+                    s.tr,
+                    &mut state.review_state,
+                    out,
+                ),
                 _ if state.statistics => super::stats_view::draw(
                     ui,
                     s.page.stats.as_ref(),
@@ -1009,6 +1068,12 @@ mod tests {
                         servers: &t.servers,
                         server_page: &t.server_page,
                         settings_tab: crate::view::settings::SettingsTab::Anki,
+                        now: crate::view::review_view::Now {
+                            ms: 1_760_000_000_000,
+                            offset_s: 0,
+                        },
+                        review_settings: nikomiru_library::review::Settings::default(),
+                        to_review: false,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -1084,6 +1149,102 @@ mod tests {
         }
     }
 
+    fn review_page(revealed: bool) -> crate::review::ReviewPage {
+        use nikomiru_library::review::{Memory, Queue, ReviewCard};
+        let card = ReviewCard {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            sentence: "パンを食べる".into(),
+            word: Some((9, 18)),
+            glossaries: vec![("JMdict".into(), "• to eat".into())],
+            audio: None,
+            picture: None,
+            video_uid: "video/av_basic".into(),
+            title: "av_basic".into(),
+            start_ms: 0,
+            end_ms: 1000,
+            created_at: 1,
+            memory: Memory::default(),
+        };
+        crate::review::ReviewPage {
+            review: Some(crate::review::Review {
+                queue: Queue {
+                    cards: vec![(7, card)],
+                    new: 1,
+                    total: 1,
+                    ..Queue::default()
+                },
+                picture: None,
+                audio: Some("/r/a.m4a".into()),
+            }),
+            revealed,
+            ..crate::review::ReviewPage::default()
+        }
+    }
+
+    // T-REV-004: the tab shows the word, then its answer and the four grades
+    #[test]
+    fn the_review_tab_asks_then_grades() {
+        use crate::review::ReviewJob;
+        use nikomiru_library::review::Grade;
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            review: review_page(false),
+            ..LibraryPage::default()
+        });
+        h.run();
+        let out = click(&mut h, "review-title-due");
+        assert!(
+            matches!(&out[..], [Command::Review(ReviewJob::Load)]),
+            "{out:?}"
+        );
+        assert!(h.query_by_label("食べる").is_some());
+        assert!(h.query_by_label("review-again").is_none(), "no answer yet");
+        assert!(matches!(
+            &click(&mut h, "review-show")[..],
+            [Command::ReviewReveal]
+        ));
+        h.state_mut().page.review = review_page(true);
+        h.run();
+        assert!(
+            h.query_by_label("たべる").is_some(),
+            "the reading over the word"
+        );
+        assert!(h.query_by_label("• to eat").is_some());
+        // a new card: Again in a minute, Good in ten
+        assert!(h.query_by_label("review-again\nreview-minutes").is_some());
+        let out = click(&mut h, "review-good\nreview-minutes");
+        assert!(
+            matches!(
+                &out[..],
+                [Command::Review(ReviewJob::Answer(7, Grade::Good))]
+            ),
+            "{out:?}"
+        );
+        h.key_press(egui::Key::Num4);
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            matches!(
+                &out[..],
+                [Command::Review(ReviewJob::Answer(7, Grade::Easy))]
+            ),
+            "{out:?}"
+        );
+        assert!(matches!(
+            &click(&mut h, "review-sentence-audio")[..],
+            [Command::ReviewAudio]
+        ));
+        assert!(matches!(
+            &click(&mut h, "review-scene")[..],
+            [Command::ReviewScene]
+        ));
+        assert!(matches!(
+            &click(&mut h, "review-delete")[..],
+            [Command::ReviewDelete]
+        ));
+    }
+
     // T-SET-008: the settings, from the library too
     #[test]
     fn the_settings_open_from_the_library() {
@@ -1117,7 +1278,10 @@ mod tests {
         }];
         h.run();
         let out = click(&mut h, "Home");
-        assert!(matches!(out.as_slice(), [Command::ServerShow(id)] if id == "a"));
+        assert!(
+            matches!(out.as_slice(), [Command::ServerShow(id)] if id == "a"),
+            "{out:?}"
+        );
         h.state_mut().server_page.libraries = vec![Library {
             id: "lib".into(),
             title: "Anime".into(),

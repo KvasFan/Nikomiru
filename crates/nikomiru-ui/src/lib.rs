@@ -25,6 +25,7 @@ pub mod online;
 pub mod player_settings;
 pub mod popup;
 pub mod popup_view;
+pub mod review;
 pub mod screensaver;
 pub mod screenshot;
 pub mod servers;

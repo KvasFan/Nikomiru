@@ -241,7 +241,9 @@ mod tests {
                 "error-anki",
                 "dict-size-mb",
                 "dict-size-kb",
-                "servers-address-hint"
+                "servers-address-hint",
+                "review-total",
+                "anki-destination-anki"
             ]
         );
         assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");

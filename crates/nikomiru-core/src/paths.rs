@@ -166,6 +166,11 @@ impl Paths {
         self.data_dir.join("subtitles")
     }
 
+    /// Folder of the media of the review's cards (REV-001).
+    pub fn review_dir(&self) -> PathBuf {
+        self.data_dir.join("review")
+    }
+
     /// Folder of the screenshots (PLY-011).
     pub fn screenshots_dir(&self) -> PathBuf {
         self.pictures_dir.join("Nikomiru")

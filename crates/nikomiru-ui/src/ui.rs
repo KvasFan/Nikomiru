@@ -382,6 +382,8 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// `[review]` saved with the Anki settings, just before them (REV-003).
+    ReviewSave(nikomiru_core::config::ReviewConfig),
     /// ♪ of an entry: its first audio (AUD-004).
     WordAudio {
         level: usize,
@@ -410,6 +412,20 @@ pub(crate) enum Command {
     HideFirstSteps,
     /// "Export CSV…": the save dialog opens (STA-005).
     StatsExport,
+    /// A job of the Review tab (REV-004).
+    Review(crate::review::ReviewJob),
+    /// "Show answer".
+    ReviewReveal,
+    /// The card's sentence played again.
+    ReviewAudio,
+    /// The card's word played.
+    ReviewWord,
+    /// The card's scene opened (ANK-052).
+    ReviewScene,
+    /// The last answer taken back.
+    ReviewUndo,
+    /// "Delete", pressed once or twice (REV-005).
+    ReviewDelete,
     /// A series opened on it, or closed.
     LibrarySeries(Option<u64>),
     /// "Identify online" on a series (MET-001).
@@ -1166,6 +1182,7 @@ impl Ui {
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
+            Command::ReviewSave(config) => s.config_mut_review(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
@@ -1200,6 +1217,17 @@ impl Ui {
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
             Command::HideFirstSteps => self.session.hide_first_steps(),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
+            Command::Review(job) => s.review(job),
+            Command::ReviewReveal => s.review_reveal(),
+            Command::ReviewAudio => s.review_audio(),
+            Command::ReviewWord => s.review_word(),
+            Command::ReviewScene => {
+                if s.review_scene() {
+                    self.view.close_library_page();
+                }
+            }
+            Command::ReviewUndo => s.review_undo(),
+            Command::ReviewDelete => s.review_delete(),
             Command::LibrarySeries(id) => s.library_series(id),
             Command::LibraryIdentify(id) => s.library_identify(id),
             Command::LibraryIdentifyChoose(index) => s.library_identify_choose(index),
@@ -1403,6 +1431,10 @@ impl Ui {
                     url,
                     Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r.map(|()| true)))),
                 ),
+                WordAudioJob::PlayFile(path) => audio.play_file(
+                    path,
+                    Box::new(move |r| waker.wake(Inbound::WordAudioPlayed(r.map(|()| true)))),
+                ),
                 WordAudioJob::Configure(settings) => {
                     let (config, proxy) = *settings;
                     audio.configure(config, proxy);
@@ -1436,6 +1468,11 @@ impl Ui {
                 LibraryJob::ExportCsv(path) => {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
                 }
+                LibraryJob::Review(job, settings) => catalog.review(
+                    job,
+                    settings,
+                    Box::new(move |r| reply(LibraryReply::Review(r))),
+                ),
             }
         }
         for path in self.session.take_book_reads() {

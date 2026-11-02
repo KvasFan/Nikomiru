@@ -12,12 +12,14 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use nikomiru_library::import::ImportReport;
+use nikomiru_library::review::Settings;
 use nikomiru_library::{Grouping, Library, VideoRecord};
 use nikomiru_media::process::Cancel;
 use nikomiru_ui::catalog::{
     Cover, Home, LibraryEdit, LibraryService, SESSIONS_SHOWN, SeriesDetail, Stats,
 };
 use nikomiru_ui::i18n::Translator;
+use nikomiru_ui::review::{Review, ReviewJob};
 
 /// How many videos "Continue watching" shows.
 const CONTINUE: usize = 12;
@@ -32,8 +34,10 @@ pub struct Parts {
     pub cache_dir: PathBuf,
     /// The interface strings, for the messages.
     pub translator: Translator,
-    /// The clock, for the times of the scans.
+    /// The clock, for the times of the scans and the review.
     pub clock: Arc<dyn nikomiru_core::Clock>,
+    /// The media of the review's cards (REV-001).
+    pub review_dir: PathBuf,
 }
 
 impl std::fmt::Debug for Parts {
@@ -54,6 +58,7 @@ enum Job {
     Cover(u64, Done<Cover>),
     Stats(Done<Stats>),
     ExportCsv(PathBuf, Done<PathBuf>),
+    Review(ReviewJob, Settings, Done<Review>),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -225,6 +230,55 @@ impl Worker {
         Ok(path.to_path_buf())
     }
 
+    /// REV-004, REV-005: `job`, then the review as it is.
+    fn review(&self, job: ReviewJob, settings: &Settings) -> Result<Review, String> {
+        let lib = &self.parts.library;
+        let e = |e| self.message(&e);
+        let now = self.now();
+        let offset = self.parts.clock.utc_offset(self.parts.clock.now());
+        let mut first = None;
+        match job {
+            ReviewJob::Load => {}
+            ReviewJob::Answer(id, grade) => {
+                lib.answer_review_card(id, grade, now, offset, settings)
+                    .map_err(e)?;
+            }
+            ReviewJob::Undo(id, memory) => {
+                lib.restore_review_memory(id, &memory).map_err(e)?;
+                first = Some(id);
+            }
+            ReviewJob::Delete(id) => {
+                if let Some(card) = lib.delete_review_card(id).map_err(e)? {
+                    crate::anki::forget_files(lib, &self.parts.review_dir, &card);
+                }
+            }
+        }
+        let mut queue = lib.review_queue(now, offset, settings).map_err(e)?;
+        // the card taken back is shown again at once
+        if let Some(i) = first.and_then(|id| queue.cards.iter().position(|(c, _)| *c == id)) {
+            let card = queue.cards.remove(i);
+            queue.cards.insert(0, card);
+        }
+        let shown = queue.cards.first().map(|(_, c)| c);
+        let picture = shown
+            .and_then(|c| c.picture.as_ref())
+            .and_then(|name| std::fs::read(self.parts.review_dir.join(name)).ok())
+            .and_then(|bytes| {
+                Cover::decode(&bytes)
+                    .inspect_err(|e| tracing::info!("review picture: {e}"))
+                    .ok()
+            });
+        let audio = shown
+            .and_then(|c| c.audio.as_ref())
+            .map(|name| self.parts.review_dir.join(name))
+            .filter(|path| path.is_file());
+        Ok(Review {
+            queue,
+            picture,
+            audio,
+        })
+    }
+
     /// The episodes of a series and what is known of it online.
     fn series(&self, id: u64) -> Result<SeriesDetail, String> {
         let lib = &self.parts.library;
@@ -318,6 +372,7 @@ impl Catalog {
                         Job::Cover(id, done) => done(worker.cover(id)),
                         Job::Stats(done) => done(worker.stats()),
                         Job::ExportCsv(path, done) => done(worker.export_csv(&path)),
+                        Job::Review(job, settings, done) => done(worker.review(job, &settings)),
                     }
                 }
             });
@@ -351,6 +406,7 @@ impl Catalog {
             Some(Job::Cover(_, done)) => done(Err(no)),
             Some(Job::Stats(done)) => done(Err(no)),
             Some(Job::ExportCsv(_, done)) => done(Err(no)),
+            Some(Job::Review(_, _, done)) => done(Err(no)),
             None => {}
         }
     }
@@ -383,5 +439,9 @@ impl LibraryService for Catalog {
 
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>) {
         self.send(Job::ExportCsv(path, done));
+    }
+
+    fn review(&self, job: ReviewJob, settings: Settings, done: Done<Review>) {
+        self.send(Job::Review(job, settings, done));
     }
 }

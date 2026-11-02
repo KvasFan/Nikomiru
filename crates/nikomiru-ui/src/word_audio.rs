@@ -34,6 +34,8 @@ pub trait WordAudioService: Send {
     fn list(&self, term: String, reading: String, done: Done<Vec<WordAudioItem>>);
     /// Plays one audio of the menu.
     fn play_url(&self, url: String, done: Done<()>);
+    /// Plays a file: the sentence audio of a review card (REV-004).
+    fn play_file(&self, path: std::path::PathBuf, done: Done<()>);
     /// The settings changed: the sources, the volume, the proxy.
     fn configure(&self, config: WordAudioConfig, proxy: String);
 }
@@ -52,6 +54,10 @@ impl WordAudioService for NoWordAudio {
     }
 
     fn play_url(&self, _: String, done: Done<()>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn play_file(&self, _: std::path::PathBuf, done: Done<()>) {
         done(Err(self.0.clone()));
     }
 
@@ -83,6 +89,8 @@ pub enum WordAudioJob {
     },
     /// Play an audio of the menu.
     PlayUrl(String),
+    /// Play a file (REV-004).
+    PlayFile(std::path::PathBuf),
     /// New settings.
     Configure(Box<(WordAudioConfig, String)>),
 }
