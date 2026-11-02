@@ -577,6 +577,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 
 | ID | Name | Description | Level |
 |---|---|---|---|
+| T-ABK-005 | Its book | Lines found in order across paragraphs and chapters whatever their punctuation and spaces, a line not in the book, a short line found again later (L1); Read along only with something playing, Listen from here, stopping (L3); an audiobook and its EPUB: the lines found, the page following to the second chapter, Listen from here playing the first line again (L6) | L1/L3/L6 |
 | T-MNG-001 | Files | Pages in natural order, junk left out, what is not a CBZ, a page past the limit; a folder, with sub-folders and a link that loops | L1/L6 |
 | T-MNG-002 | Reading | Pages turn, the place is kept, the statistics count no characters; two pages from the right, a selection on the left one, the cover and a spread alone | L3/L6 |
 | T-MNG-003 | Reading the text | A drag becomes shares of the page, kept on it; the crop; grey, square, in range; tokens to text | L1/L3/L6 |

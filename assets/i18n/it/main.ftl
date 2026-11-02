@@ -812,3 +812,9 @@ review-answers = { $reps ->
 }, { $lapses } dimenticate
 review-reset = Ricomincia
 review-reset-confirm = Ricominciare? Clicca di nuovo
+books-along = Leggi ascoltando
+books-along-hint = Avvia un audiolibro con il suo testo sincronizzato, poi torna al suo libro: la pagina segue ciò che ascolti.
+books-along-none = Non sta suonando niente con testo sincronizzato: apri prima l'audiolibro.
+books-along-not-found = Nessuna riga dell'audiolibro si trova in questo libro.
+books-along-found = { $found } righe dell'audiolibro su { $count } trovate nel libro.
+books-listen = Ascolta da qui

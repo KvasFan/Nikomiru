@@ -801,3 +801,9 @@ review-answers = { $reps ->
 }、忘れた回数 { $lapses } 回
 review-reset = やり直す
 review-reset-confirm = やり直しますか？もう一度クリック
+books-along = 聞きながら読む
+books-along-hint = 字幕付きのオーディオブックを再生してから、その本に戻ってください。ページが聞こえている箇所を追います。
+books-along-none = 字幕付きのものが再生されていません。先にオーディオブックを開いてください。
+books-along-not-found = オーディオブックの行がこの本に見つかりません。
+books-along-found = オーディオブックの { $count } 行のうち { $found } 行が本に見つかりました。
+books-listen = ここから聞く

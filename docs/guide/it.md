@@ -149,6 +149,8 @@ Per leggere un fumetto, trascina sopra di esso. La prima volta la pagina propone
 
 "Apri un audiolibro…" nella pagina dei libri riproduce un file audio. Mettigli accanto il testo con lo stesso nome, come `.lrc`, `.srt`, `.vtt` o `.ass`: Nikomiru non lo genera. La lista dei sottotitoli si apre per seguire la lettura; clicca una parola per cercarla, e una carta ha la riga e il suo audio.
 
+Con l'audiolibro in riproduzione, apri il suo libro nella pagina dei libri e premi **Leggi ascoltando**: la pagina segue ciò che senti, con il paragrafo evidenziato, e **Ascolta da qui** riproduce dal paragrafo in cima alla pagina.
+
 ### Jellyfin e Plex
 
 Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione.

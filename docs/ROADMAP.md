@@ -599,7 +599,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: the direction of D-12: reading with the same dictionary and cards.
 
-**Requirements**: BOK-001…BOK-010 for books (D-25, D-27); ABK-001…ABK-004, SUB-020 for audiobooks (D-29); MNG-001…MNG-006 for manga (D-30).
+**Requirements**: BOK-001…BOK-010 for books (D-25, D-27); ABK-001…ABK-005, SUB-020 for audiobooks (D-29, D-39); MNG-001…MNG-006 for manga (D-30).
 
 **Status as of 2026-10-31**
 
@@ -612,6 +612,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - Done on 2026-11-01, for 2.1.0: folders of pictures, two pages side by side (T-MNG-001, T-MNG-002), and from the backlog the video of the sentence with sound (ANK-043).
 - Done on 2026-11-02, for 2.2.0: from the backlog the Japanese interface (T-I18N-003, D-32), not yet read by a native speaker.
 - Done on 2026-11-02, for 2.3.0: from the backlog the keys in the keyring, on request (T-MET-005, D-33), not yet tried on KWallet.
+- Done on 2026-11-02, for 2.9.0: an audiobook read along in its EPUB (T-ABK-005, D-39), tried on a book and timed text made by the tests.
 
 **Notes**: they reuse the text, dictionary and Anki crates, which know nothing about video.
 

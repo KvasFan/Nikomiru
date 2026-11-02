@@ -812,3 +812,9 @@ review-answers = { $reps ->
 }, { $lapses } forgotten
 review-reset = Start over
 review-reset-confirm = Start over? Click again
+books-along = Read along
+books-along-hint = Play an audiobook with its timed text, then come back to its book: the page follows what you hear.
+books-along-none = Nothing with timed text is playing: open the audiobook first.
+books-along-not-found = No line of the audiobook was found in this book.
+books-along-found = { $found } of { $count } lines of the audiobook found in the book.
+books-listen = Listen from here

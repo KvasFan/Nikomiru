@@ -489,6 +489,11 @@ pub fn state() -> Result<Value, String> {
                 Some(o.book.chapters.get(o.chapter)?.paragraphs.first()?.text.clone())
             }),
             "ocr_installed": s.books_page.ocr.installed,
+            "paragraph": s.books_page.open.as_ref().map(|o| o.paragraph),
+            "along": s.books_page.along.as_ref().map(|a| json!({
+                "found": a.places.iter().flatten().count(),
+                "heard": a.heard.map(|(c, p)| json!([c, p])),
+            })),
         });
         state["hooker"] = json!({
             "lines": s.hooker_page.lines,
@@ -712,6 +717,9 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
+            // ABK-005: Read along, and Listen from here
+            "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
+            "listen" => out.push(Command::BookListen),
             // WEB-001: `path` is the address typed
             "page" => out.push(Command::BookPage(path.clone().unwrap_or_default())),
             "read" => out.push(Command::MangaRead {
@@ -724,6 +732,13 @@ pub fn books(
                     .open
                     .as_ref()
                     .map_or(0, |o| o.chapter + 1),
+            )),
+            "previous" => out.push(Command::BookChapter(
+                ui.session
+                    .books_page
+                    .open
+                    .as_ref()
+                    .map_or(0, |o| o.chapter.saturating_sub(1)),
             )),
             "click" => out.push(Command::BookClicked {
                 paragraph: paragraph.unwrap_or(0),

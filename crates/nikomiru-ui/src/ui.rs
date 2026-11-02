@@ -478,6 +478,10 @@ pub(crate) enum Command {
     BookRemove(String),
     /// Goes to a chapter.
     BookChapter(usize),
+    /// The book follows the audiobook playing, or stops (ABK-005).
+    BookAlong(bool),
+    /// The audiobook plays from the paragraph at the top of the page.
+    BookListen,
     /// Vertical or horizontal writing.
     BookWriting(bool),
     /// The view reached a paragraph.
@@ -1272,6 +1276,8 @@ impl Ui {
             Command::BookPage(address) => s.book_page(&address),
             Command::BookRemove(uid) => s.book_remove(&uid),
             Command::BookChapter(chapter) => s.book_chapter(chapter),
+            Command::BookAlong(on) => s.book_along(on),
+            Command::BookListen => s.book_listen(),
             Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),

@@ -538,6 +538,70 @@ fn a_book_reads_vertically() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-ABK-005: an audiobook read along in its book: the page follows the line
+// heard, across chapters, and plays again from a paragraph
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon, ffmpeg and `cargo xtask fixtures`"]
+fn a_book_follows_its_audiobook() {
+    let mut desk = Desktop::start();
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
+    let audio = desk.path("story.m4a");
+    let made = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-y", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .args(["-vn", "-sn", "-map", "0:a:0", "-c:a", "aac"])
+        .arg(&audio)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    // the lines of the sample book, written differently
+    std::fs::write(
+        desk.path("story.ja.lrc"),
+        "[00:00.20]今日は林檎を食べました、とても美味しい\n[00:03.00]明日も　食べました\n",
+    )
+    .unwrap();
+    let book = desk.path("book.epub");
+    nikomiru_books::sample::write(&book).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open(&audio.to_string_lossy());
+    h.state_until("its text", |s| {
+        s["loaded"] == true && s["subtitles"]["cues"] == 2
+    });
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": book.to_string_lossy() }));
+    h.state_until("the book", |s| s["books"]["open"] == "見本の本");
+    h.cmd(json!({ "cmd": "books", "action": "along" }));
+    let s = h.state_until("its lines found", |s| s["books"]["along"]["found"] == 2);
+    assert!(
+        s["books"]["status"]
+            .as_str()
+            .is_some_and(|t| t.contains('2')),
+        "{s}"
+    );
+    // the second line takes the page to the second chapter
+    // (its paragraph is the one heard; the page cannot scroll a chapter so
+    // short, so the paragraph at its top stays the first)
+    h.state_until("the second chapter", |s| {
+        s["books"]["chapter"] == 1 && s["books"]["along"]["heard"] == json!([1, 1])
+    });
+    if let Some(dir) = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from) {
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join("book-along.png"));
+    }
+    // from the first chapter's paragraph, the first line plays again
+    h.cmd(json!({ "cmd": "books", "action": "previous" }));
+    h.state_until("the first chapter", |s| s["books"]["chapter"] == 0);
+    h.cmd(json!({ "cmd": "books", "action": "listen" }));
+    h.state_until("the first line again", |s| {
+        s["books"]["along"]["heard"] == json!([0, 1]) && s["paused"] == false
+    });
+    h.cmd(json!({ "cmd": "books", "action": "along" }));
+    h.state_until("stopped", |s| s["books"]["along"].is_null());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-ABK-001…T-ABK-004: a file that is only sound and its text beside it: read
 // along, looked up, and a card with the sound of the line and no picture
 #[test]
