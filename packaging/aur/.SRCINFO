@@ -1,6 +1,6 @@
 pkgbase = nikomiru
 	pkgdesc = Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards
-	pkgver = 2.3.0
+	pkgver = 2.4.0
 	pkgrel = 1
 	url = https://github.com/KvasFan/nikomiru
 	arch = x86_64
@@ -21,7 +21,7 @@ pkgbase = nikomiru
 	optdepends = xdg-desktop-portal: file dialogs, links, the desktop theme and the screensaver
 	optdepends = at-spi2-core: screen readers
 	options = !lto
-	source = nikomiru-2.3.0.tar.gz::https://github.com/KvasFan/nikomiru/archive/refs/tags/v2.3.0.tar.gz
-	sha256sums = 201a51e4ee5a94205de715e51d8ec7721d67e7bc641323ce635a56705725bf2e
+	source = nikomiru-2.4.0.tar.gz::https://github.com/KvasFan/nikomiru/archive/refs/tags/v2.4.0.tar.gz
+	sha256sums = 57ceeb4941de9a3ad2626c2f5dd627341f42bc86a0f34be6a90c35cb61b987ea
 
 pkgname = nikomiru
