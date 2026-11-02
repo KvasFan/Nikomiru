@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! WebDAV for the sync (BAK-004, BAK-006): the folder `nikomiru/devices` under
-//! the address the user gave, and one file per device. What a server lists is
-//! untrusted: only names of device files are believed.
+//! the address the user gave, and one file per device; `nikomiru/review`, the
+//! media of the review's cards (REV-006). What a server lists is untrusted:
+//! only names of device files and of media Nikomiru names are believed.
 
 use reqwest::Url;
 
@@ -35,8 +36,22 @@ fn is_device(name: &str) -> bool {
     (1..=64).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-/// The devices named in a `PROPFIND` answer: the end of each `href`.
-fn devices_in(xml: &str) -> Vec<String> {
+/// A media file's name as Nikomiru makes it (ANK-036):
+/// `nikomiru_<16 hex digits>.<extension>`.
+pub fn is_media(name: &str) -> bool {
+    let Some((stem, ext)) = name.split_once('.') else {
+        return false;
+    };
+    let hex = stem.strip_prefix("nikomiru_").unwrap_or_default();
+    hex.len() == 16
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && ["m4a", "ogg", "mp3", "jpg", "webp"].contains(&ext)
+}
+
+/// The ends of the `href`s of a `PROPFIND` answer.
+fn names_in(xml: &str) -> Vec<String> {
     let mut out = Vec::new();
     for part in xml.split('<').filter(|p| {
         p.split('>')
@@ -47,15 +62,21 @@ fn devices_in(xml: &str) -> Vec<String> {
             continue;
         };
         let name = href.trim().rsplit('/').next().unwrap_or_default();
-        if let Some(device) = name.strip_suffix(EXTENSION)
-            && is_device(device)
-            && !out.iter().any(|d| d == device)
-        {
-            out.push(device.to_string());
+        if !name.is_empty() && !out.iter().any(|d| d == name) {
+            out.push(name.to_string());
         }
     }
     out.sort();
     out
+}
+
+/// The devices named in a `PROPFIND` answer.
+fn devices_in(xml: &str) -> Vec<String> {
+    names_in(xml)
+        .into_iter()
+        .filter_map(|n| n.strip_suffix(EXTENSION).map(str::to_string))
+        .filter(|d| is_device(d))
+        .collect()
 }
 
 fn checked(response: Response) -> Result<Response, OnlineError> {
@@ -110,7 +131,11 @@ impl WebDav {
     /// Makes the folders, if they are not there: a check that they can be
     /// written, too.
     pub fn prepare(&self) -> Result<(), OnlineError> {
-        for levels in [&["nikomiru"][..], &["nikomiru", "devices"][..]] {
+        for levels in [
+            &["nikomiru"][..],
+            &["nikomiru", "devices"][..],
+            &["nikomiru", "review"][..],
+        ] {
             let response = self.dav("MKCOL", &self.folder(levels)?, None, None)?;
             // 405: it is there
             if response.status != 405 {
@@ -144,6 +169,33 @@ impl WebDav {
     pub fn write(&self, device: &str, bytes: Vec<u8>) -> Result<(), OnlineError> {
         checked(self.dav("PUT", &self.file(device)?, None, Some(bytes))?).map(|_| ())
     }
+
+    /// The media of the review on the server (REV-006).
+    pub fn media(&self) -> Result<Vec<String>, OnlineError> {
+        let url = self.folder(&["nikomiru", "review"])?;
+        let response = checked(self.dav("PROPFIND", &url, Some("1"), None)?)?;
+        Ok(names_in(&String::from_utf8_lossy(&response.body))
+            .into_iter()
+            .filter(|n| is_media(n))
+            .collect())
+    }
+
+    fn media_file(&self, name: &str) -> Result<Url, OnlineError> {
+        if !is_media(name) {
+            return Err(OnlineError::BadUrl(name.to_string()));
+        }
+        join(&self.base, &["nikomiru", "review", name])
+    }
+
+    /// A media file of the review; its content is the caller's to check.
+    pub fn read_media(&self, name: &str) -> Result<Vec<u8>, OnlineError> {
+        Ok(checked(self.dav("GET", &self.media_file(name)?, None, None)?)?.body)
+    }
+
+    /// Puts a media file of the review on the server.
+    pub fn write_media(&self, name: &str, bytes: Vec<u8>) -> Result<(), OnlineError> {
+        checked(self.dav("PUT", &self.media_file(name)?, None, Some(bytes))?).map(|_| ())
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +215,15 @@ mod tests {
             </d:multistatus>"#;
         assert_eq!(devices_in(xml), ["abc-1", "def", "evil"]);
         assert!(devices_in("").is_empty());
+        // T-REV-006 only media named as Nikomiru names them
+        let xml = r#"<d:href>/dav/nikomiru/review/</d:href>
+            <d:href>/dav/nikomiru/review/nikomiru_0123456789abcdef.m4a</d:href>
+            <d:href>/dav/nikomiru/review/nikomiru_0123456789ABCDEF.jpg</d:href>
+            <d:href>/dav/nikomiru/review/nikomiru_0123456789abcdef.exe</d:href>
+            <d:href>/dav/nikomiru/review/nikomiru_0123.jpg</d:href>
+            <d:href>/dav/nikomiru/review/x.sync</d:href>"#;
+        let media: Vec<String> = names_in(xml).into_iter().filter(|n| is_media(n)).collect();
+        assert_eq!(media, ["nikomiru_0123456789abcdef.m4a"]);
         assert!(devices_in("<<<>>>href>").is_empty());
     }
 

@@ -421,6 +421,10 @@ impl Library {
             };
             let mut mined = db_err!(tx.open_table(crate::cards::MINED_CARDS))?;
             db_err!(mined.remove(id))?;
+            // it does not come back from another device (REV-006)
+            if removed.is_some() {
+                crate::sync::bury(&tx, &crate::sync::review_key(id))?;
+            }
             removed
         };
         db_err!(tx.commit())?;

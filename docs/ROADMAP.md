@@ -56,7 +56,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M14 | Clipboard lookup and texthooker (D-19) | M | **1.5.0** (D-26) | released (live check open) |
 | M15 | MDict, StarDict and DSL dictionaries (D-19) | L | **1.5.0** (D-26) | released (DSL and MDict to check) |
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | released; real books, manga and audiobooks still to check by hand |
-| M17 | Review in Nikomiru (D-34) | M | **2.4.0** | released |
+| M17 | Review in Nikomiru (D-34, D-35) | M | **2.4.0**, 2.5.0 | released |
 
 ---
 
@@ -626,16 +626,17 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 **Goal**: cards that stay in Nikomiru and come back on a schedule, for a learner without Anki (D-34).
 
-**Requirements**: REV-001…REV-005.
+**Requirements**: REV-001…REV-006.
 
 **Status as of 2026-11-02**
 
 - Done: cards made in the review instead of Anki, FSRS-5 written here, the Review tab, undo and delete (T-REV-001…T-REV-005, T-E2E-REV-001).
-- Open: the review's cards in the WebDAV sync, which would need their media on the server.
+- Done on 2026-11-02, for 2.5.0: the review's cards and their media in the WebDAV sync (T-REV-006, D-35). Not yet tried on a real Nextcloud.
 
 **Exit criteria**
 
-- [x] T-REV-001…T-REV-005 and T-E2E-REV-001 green.
+- [x] T-REV-001…T-REV-006 and T-E2E-REV-001 green.
+- [x] **Release 2.5.0** (2026-11-02): the review in the sync.
 - [x] **Release 2.4.0** (2026-11-02).
 
 ---

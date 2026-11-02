@@ -99,7 +99,7 @@ Tornano nella scheda **Ripasso** della pagina Libreria, secondo un calendario ca
 2. Rispondi con **Di nuovo**, **Difficile**, **Bene** o **Facile** (tasti 1–4). Ogni pulsante dice quando la carta tornerà.
 3. **Annulla** (Ctrl+Z) ritira l'ultima risposta. **Elimina**, cliccato due volte, toglie la carta.
 
-La quota di carte da ricordare quando tornano (90 % di base) e le carte nuove al giorno (20) si impostano nella stessa scheda. Il ripasso è nei backup, ma non ancora nella sincronizzazione WebDAV.
+La quota di carte da ricordare quando tornano (90 % di base) e le carte nuove al giorno (20) si impostano nella stessa scheda. Il ripasso è nei backup e nella sincronizzazione WebDAV, con audio e immagini.
 
 ## 6. Sottotitoli online
 
@@ -164,7 +164,7 @@ Ogni scheda ha **Salva** e **Ripristina**. Puoi modificare anche `~/.config/niko
 
 Impostazioni → Backup scrive impostazioni, libreria, statistiche e sottotitoli scaricati in un solo file, con i dizionari se li spunti. Chiavi e password restano fuori, a meno che non spunti anche quelle. Per ripristinare scegli un backup e riapri Nikomiru: ciò che c'era resta in `before-restore`.
 
-Con una cartella WebDAV (Nextcloud e simili, con una password per app), "Sincronizza ora" mantiene uguali avanzamento, statistiche e carte sui tuoi computer. Impostazioni, serie e dizionari restano su ogni computer, e i file sul server non sono cifrati. Un video è lo stesso su due computer quando il suo file ha lo stesso nome.
+Con una cartella WebDAV (Nextcloud e simili, con una password per app), "Sincronizza ora" mantiene uguali avanzamento, statistiche e carte, anche quelle del ripasso, sui tuoi computer. Impostazioni, serie e dizionari restano su ogni computer, e i file sul server non sono cifrati. Un video è lo stesso su due computer quando il suo file ha lo stesso nome.
 
 ## 9. Tastiera
 

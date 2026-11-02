@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 2.4.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 2.5.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -90,7 +90,7 @@ Version 2.4.0 is for Linux. The status of each area follows the [ROADMAP](docs/R
 | Manga: CBZ, a balloon read on this computer by a model fetched on request, lookups, cards with the part of the page | Works; the real model was tried on computer-set text, real pages still to check (M16) |
 | Words in the subtitles: the words already in Anki underlined, readings over the kanji, ← → word by word | Works with the project's test dictionaries; to check with JMdict (M9) |
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
-| Review in Nikomiru: cards kept without Anki, brought back with FSRS on the Library page | Works (M17) |
+| Review in Nikomiru: cards kept without Anki, brought back with FSRS on the Library page, synced with their media | Works; the sync of the review against the simulated WebDAV only (M17) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |
 
 ## Quick start
@@ -150,7 +150,7 @@ The screenshots on this page come from the GUI harness: `NIKOMIRU_SCREENSHOTS=<f
 
 ## Roadmap
 
-0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. 1.6.0 brought vertical writing and pictures to books, 1.7.0 audiobooks, 2.0.0 manga (D-12, D-28), 2.1.0 video cards, 2.2.0 the interface in Japanese, 2.3.0 keys in the system keyring, 2.4.0 a review of its own (M17). Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
+0.1.0 brought mining to Anki (M4) and online subtitles with the mpv presets (M4b), 0.2.0 the library and word audio (M5), 0.3.0 statistics, the full settings, cards made by hand and the keyboard alone (M6), 0.4.0 series identified online (M7), 1.0.0 stabilization and packages (M8), with the words in the subtitles (M9) and the moving pictures (M10), 1.5.0 media servers, backup and sync, advanced ASS, a texthooker, more dictionary formats and books (M11–M15, the books of M16); what is left is the checks by hand of each milestone. 1.6.0 brought vertical writing and pictures to books, 1.7.0 audiobooks, 2.0.0 manga (D-12, D-28), 2.1.0 video cards, 2.2.0 the interface in Japanese, 2.3.0 keys in the system keyring, 2.4.0 a review of its own (M17), 2.5.0 the review in the sync. Builds for Windows, macOS and Android are planned (D-16), after a study of what each takes. The details are in the [ROADMAP](docs/ROADMAP.md).
 
 ## Downloads
 

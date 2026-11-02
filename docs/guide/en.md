@@ -99,7 +99,7 @@ They come back on the **Review** tab of the Library page, on a schedule worked o
 2. Answer with **Again**, **Hard**, **Good** or **Easy** (keys 1–4). Each button says when the card comes back.
 3. **Undo** (Ctrl+Z) takes the last answer back. **Delete**, clicked twice, removes the card.
 
-The share of cards to remember when they come back (90 % by default) and the new cards a day (20) are set in the same tab. The review is in backups, but not yet in the WebDAV sync.
+The share of cards to remember when they come back (90 % by default) and the new cards a day (20) are set in the same tab. The review is in backups and in the WebDAV sync, with its sound and pictures.
 
 ## 6. Online subtitles
 
@@ -164,7 +164,7 @@ Each tab has **Save** and **Reset**. `~/.config/nikomiru/config.toml` can also b
 
 Settings → Backup writes your settings, library, statistics and downloaded subtitles to one file, with the dictionaries if you tick them. Keys and passwords stay out unless you tick them too. To restore, choose a backup and reopen Nikomiru: what was there stays in `before-restore`.
 
-With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" keeps progress, statistics and cards the same on your computers. Settings, series and dictionaries stay on each computer, and the files on the server are not encrypted. A video is the same on two computers when its file has the same name.
+With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" keeps progress, statistics and cards, the review's too, the same on your computers. Settings, series and dictionaries stay on each computer, and the files on the server are not encrypted. A video is the same on two computers when its file has the same name.
 
 ## 9. Keyboard
 

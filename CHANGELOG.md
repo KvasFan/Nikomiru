@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-02
+
+The review on every computer.
+
+### Added
+
+- The review's cards, with their schedule, sound and pictures, in the WebDAV sync (REV-006, D-35). A file that does not hold what its name says is refused; a card deleted on one computer goes from the others.
+
 ## [2.4.0] - 2026-11-02
 
 Cards that stay in Nikomiru, for those without Anki.

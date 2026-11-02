@@ -56,7 +56,7 @@ pub struct Data {
     pub pin_polls: usize,
     /// When set, the file answers a redirect to this address.
     pub redirect_to: Option<String>,
-    /// The files of the fake WebDAV, by name.
+    /// The files of the fake WebDAV, by their path under `/dav/`.
     pub dav_files: std::collections::BTreeMap<String, Vec<u8>>,
     /// The password of the fake WebDAV, Basic-encoded for `dav`:`pass`.
     pub dav_full: bool,
@@ -259,7 +259,7 @@ fn webdav(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared
     if request.header("authorization") != Some(DAV_LOGIN) {
         return respond(stream, 401, "", b"");
     }
-    let name = path.rsplit('/').next().unwrap_or_default().to_string();
+    let path = path.to_string();
     let mut data = lock(&shared.data);
     match request.method.as_str() {
         "MKCOL" => respond(
@@ -268,23 +268,26 @@ fn webdav(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared
             "",
             b"",
         ),
+        // the files directly in the folder asked
         "PROPFIND" => {
             let files: String = data
                 .dav_files
                 .keys()
-                .map(|n| {
-                    format!("<d:response><d:href>/dav/nikomiru/devices/{n}</d:href></d:response>")
+                .filter(|k| {
+                    k.strip_prefix(path.as_str())
+                        .is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
                 })
+                .map(|k| format!("<d:response><d:href>/dav/{k}</d:href></d:response>"))
                 .collect();
             let body = format!("<d:multistatus xmlns:d=\"DAV:\">{files}</d:multistatus>");
             respond(stream, 207, "", body.as_bytes());
         }
         "PUT" if data.dav_full => respond(stream, 507, "", b""),
         "PUT" => {
-            data.dav_files.insert(name, request.body_bytes.clone());
+            data.dav_files.insert(path, request.body_bytes.clone());
             respond(stream, 201, "", b"");
         }
-        "GET" => match data.dav_files.get(&name) {
+        "GET" => match data.dav_files.get(&path) {
             Some(bytes) => respond(stream, 200, "", bytes),
             None => respond(stream, 404, "", b""),
         },

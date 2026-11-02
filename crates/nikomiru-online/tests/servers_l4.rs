@@ -407,6 +407,14 @@ fn a_webdav_folder_keeps_each_devices_file() {
     dav.write("two", b"two".to_vec()).unwrap();
     assert_eq!(dav.devices().unwrap(), ["one", "two"]);
     assert_eq!(dav.read("one").unwrap(), [1, 0, 255]);
+    // T-REV-006 the review's media, apart from the devices
+    let name = "nikomiru_0123456789abcdef.jpg";
+    assert!(dav.media().unwrap().is_empty());
+    dav.write_media(name, vec![7]).unwrap();
+    assert_eq!(dav.media().unwrap(), [name]);
+    assert_eq!(dav.read_media(name).unwrap(), [7]);
+    assert_eq!(dav.devices().unwrap(), ["one", "two"]);
+    assert!(dav.write_media("../one.sync", vec![]).is_err());
     let refused = WebDav::new(&fake.webdav_url(), "dav", "wrong", false, "").unwrap();
     assert!(matches!(
         refused.devices(),
