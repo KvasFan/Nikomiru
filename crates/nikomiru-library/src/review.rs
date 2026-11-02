@@ -501,6 +501,40 @@ impl Library {
         Ok(memory)
     }
 
+    /// Every card, the newest first (REV-009).
+    pub fn review_cards(&self) -> Result<Vec<(u64, ReviewCard)>, LibraryError> {
+        let mut rows = self.review_rows()?;
+        rows.sort_by_key(|(id, c)| std::cmp::Reverse((c.created_at, *id)));
+        Ok(rows)
+    }
+
+    /// Card `id` starts over as a new card (REV-009); its answers stay in
+    /// the log. Its memory is dated `now_ms`, so that the sync takes the
+    /// reset over what other devices knew of it (REV-006).
+    pub fn reset_review_card(&self, id: u64, now_ms: i64) -> Result<bool, LibraryError> {
+        let tx = self.write()?;
+        let found = {
+            let mut t = db_err!(tx.open_table(REVIEW_CARDS))?;
+            let card: Option<ReviewCard> = match db_err!(t.get(id))? {
+                Some(v) => Some(postcard::from_bytes(v.value())?),
+                None => None,
+            };
+            match card {
+                Some(mut card) => {
+                    card.memory = Memory {
+                        last_ms: now_ms,
+                        ..Memory::default()
+                    };
+                    db_err!(t.insert(id, postcard::to_stdvec(&card)?.as_slice()))?;
+                    true
+                }
+                None => false,
+            }
+        };
+        db_err!(tx.commit())?;
+        Ok(found)
+    }
+
     /// Puts back the memory a card had before an answer (REV-004's undo).
     pub fn restore_review_memory(&self, id: u64, memory: &Memory) -> Result<(), LibraryError> {
         let tx = self.write()?;
@@ -788,6 +822,34 @@ mod tests {
             "b keeps the same files"
         );
         assert_eq!(lib.schema(), crate::db::SCHEMA_VERSION, "no migration");
+    }
+
+    // T-REV-009: the cards listed newest first; one starts over as new, and
+    // the sync takes the reset
+    #[test]
+    fn a_card_starts_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::open(&dir.path().join("library.redb")).unwrap();
+        let old = lib.add_review_card(&card("古い", NOW)).unwrap();
+        let new = lib.add_review_card(&card("新しい", NOW + 5)).unwrap();
+        let listed: Vec<u64> = lib
+            .review_cards()
+            .unwrap()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(listed, [new, old]);
+        lib.answer_review_card(old, Grade::Easy, NOW, 0, &SETTINGS)
+            .unwrap();
+        assert!(lib.reset_review_card(old, NOW + 60_000).unwrap());
+        let memory = lib.review_card(old).unwrap().unwrap().memory;
+        assert_eq!(
+            (memory.phase, memory.reps, memory.first_ms),
+            (Phase::New, 0, 0)
+        );
+        assert_eq!(lib.review_queue(NOW + 60_000, 0, &SETTINGS).unwrap().new, 2);
+        assert_eq!(lib.review_log().unwrap().len(), 1, "its answer stays");
+        assert!(!lib.reset_review_card(12345, NOW).unwrap());
     }
 
     // T-REV-004

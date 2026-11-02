@@ -2,14 +2,14 @@
 
 //! The Review tab of the Library page (REV-004, REV-005): the card's word
 //! and sentence, then its answer, and the four grades with when each brings
-//! the card back.
+//! the card back; or the list of every card (REV-009).
 
 use egui::{Align, Button, Key, Layout, Modifiers, RichText, TextureHandle, Ui, vec2};
-use nikomiru_library::review::{Grade, Settings, answer};
+use nikomiru_library::review::{Grade, Phase, Settings, answer};
 
 use super::popups::Translate;
 use super::{palette, theme};
-use crate::review::{ReviewJob, ReviewPage, sentence_parts, span};
+use crate::review::{CardRow, ReviewJob, ReviewPage, sentence_parts, span};
 use crate::ui::Command;
 
 /// What the tab keeps between frames.
@@ -17,6 +17,13 @@ use crate::ui::Command;
 pub(crate) struct State {
     /// The picture of the card shown, by its id and date.
     picture: Option<((u64, i64), TextureHandle)>,
+    /// The list of the cards is shown instead (REV-009).
+    pub(crate) browse: bool,
+    /// What its search holds.
+    pub(crate) search: String,
+    /// A card whose Delete or Start over was pressed once: the second press
+    /// does it.
+    confirm: Option<(u64, bool)>,
 }
 
 impl std::fmt::Debug for State {
@@ -36,6 +43,131 @@ pub(crate) struct Now {
 }
 
 const COLUMN: f32 = 760.0;
+
+/// The rows the list shows at most: a search finds the others.
+const SHOWN: usize = 500;
+
+fn phase_label(phase: Phase) -> &'static str {
+    match phase {
+        Phase::New => "review-phase-new",
+        Phase::Learning => "review-phase-learning",
+        Phase::Review => "review-phase-review",
+        Phase::Relearning => "review-phase-relearning",
+    }
+}
+
+/// The list of the cards, with a search, Start over and Delete (REV-009).
+fn browse(
+    ui: &mut Ui,
+    list: &[CardRow],
+    busy: bool,
+    now: &Now,
+    tr: &Translate<'_>,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let t = |id: &str| tr(id, &[]);
+    ui.horizontal(|ui| {
+        let label = ui.label(t("review-search"));
+        ui.add(egui::TextEdit::singleline(&mut state.search).desired_width(320.0))
+            .labelled_by(label.id);
+        if busy {
+            ui.spinner();
+        }
+    });
+    let found: Vec<&CardRow> = list.iter().filter(|r| r.matches(&state.search)).collect();
+    if found.is_empty() {
+        ui.label(RichText::new(t("review-no-match")).color(palette::current().details));
+        return;
+    }
+    if found.len() > SHOWN {
+        ui.label(
+            RichText::new(tr(
+                "review-shown",
+                &[
+                    ("shown", SHOWN.to_string()),
+                    ("count", found.len().to_string()),
+                ],
+            ))
+            .color(palette::current().details),
+        );
+    }
+    egui::Grid::new("review-cards")
+        .num_columns(5)
+        .striped(true)
+        .spacing(vec2(16.0, 6.0))
+        .show(ui, |ui| {
+            for row in found.into_iter().take(SHOWN) {
+                ui.label(RichText::new(&row.expression).family(theme::bold()));
+                ui.label(RichText::new(&row.reading).color(palette::current().details));
+                // a column of its own width: a truncated label takes none
+                ui.allocate_ui(vec2(280.0, 20.0), |ui| {
+                    ui.set_min_width(280.0);
+                    ui.add(egui::Label::new(&row.sentence).truncate());
+                });
+                let m = &row.memory;
+                let when = if m.phase == Phase::New {
+                    t(phase_label(m.phase))
+                } else {
+                    let (unit, n) = span(now.ms, m.due_ms);
+                    let due = if m.due_ms <= now.ms {
+                        t("review-due-now")
+                    } else {
+                        tr(unit, &[("n", n)])
+                    };
+                    format!(
+                        "{} · {} · {}",
+                        t(phase_label(m.phase)),
+                        due,
+                        tr(
+                            "review-answers",
+                            &[
+                                ("reps", m.reps.to_string()),
+                                ("lapses", m.lapses.to_string())
+                            ],
+                        )
+                    )
+                };
+                ui.label(RichText::new(when).color(palette::current().details));
+                ui.horizontal(|ui| {
+                    for delete in [false, true] {
+                        let asked = state.confirm == Some((row.id, delete));
+                        let id = match (delete, asked) {
+                            (false, false) => "review-reset",
+                            (false, true) => "review-reset-confirm",
+                            (true, false) => "review-delete",
+                            (true, true) => "review-delete-confirm",
+                        };
+                        let text = if asked {
+                            RichText::new(t(id)).color(palette::current().bad)
+                        } else {
+                            RichText::new(t(id))
+                        };
+                        // the new card cannot start over
+                        let can = !busy && (delete || m.phase != Phase::New);
+                        let button = ui.add_enabled(can, Button::new(text).small());
+                        let name = format!("{} {}", t(id), row.expression);
+                        button.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, can, &name)
+                        });
+                        if button.clicked() {
+                            if asked {
+                                state.confirm = None;
+                                out.push(Command::Review(if delete {
+                                    ReviewJob::Delete(row.id)
+                                } else {
+                                    ReviewJob::Reset(row.id)
+                                }));
+                            } else {
+                                state.confirm = Some((row.id, delete));
+                            }
+                        }
+                    }
+                });
+                ui.end_row();
+            }
+        });
+}
 
 fn grade_label(g: Grade) -> &'static str {
     match g {
@@ -66,6 +198,26 @@ pub(crate) fn draw(
     };
     let q = &review.queue;
     let typing = ui.ctx().text_edit_focused();
+    // study, or the list of the cards (REV-009)
+    ui.horizontal(|ui| {
+        if ui
+            .selectable_label(!state.browse, t("review-study"))
+            .clicked()
+        {
+            state.browse = false;
+        }
+        let cards = tr("review-cards", &[("count", review.list.len().to_string())]);
+        if ui.selectable_label(state.browse, cards).clicked() {
+            state.browse = true;
+        }
+    });
+    if state.browse {
+        if let Some(error) = &page.error {
+            ui.label(RichText::new(error).color(palette::current().bad));
+        }
+        browse(ui, &review.list, page.busy, now, tr, state, out);
+        return;
+    }
     ui.horizontal(|ui| {
         let counts = [
             (q.new, "review-count-new", palette::current().accent),

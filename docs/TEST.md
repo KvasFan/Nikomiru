@@ -597,7 +597,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-REV-006 | Sync | The merge of review cards stays idempotent, commutative and associative; a card goes to another library with its schedule, the one answered last wins, a deletion follows and stays (L1). Only media names of Nikomiru's form are believed (L1); the media folder apart from the devices' (L4). Two devices and the fake WebDAV: the files go up and come down, a file whose content lies is refused, a deletion takes the files from both (L4) | L1/L4 |
 | T-REV-007 | The answers | An answer noted with its time, card, grade and phase; an undo takes it out (L1); answers travel with the sync (L1) | L1 |
 | T-REV-008 | Statistics | Today's answers, the days of the chart (one 40 days ago left out), the share remembered in review (a new card's answer left out), new, learning, young and mature cards, the cards due ahead with the overdue ones today (L1); the part drawn on the tab (L3) | L1/L3 |
-| T-E2E-REV-001 | A card reviewed | A card made from a popup with `destination = "nikomiru"`, shown on the Review tab, answered Good twice, undone, deleted twice with its files | L6 |
+| T-REV-009 | The cards | Listed newest first; Start over makes a card new, keeps its answers and counts it among the new ones again; a card that is not there (L1). The search on word, reading and sentence (L1). The list, its rows, a new card that cannot start over, Start over and Delete each asked twice, the search, back to the study (L3) | L1/L3 |
+| T-E2E-REV-001 | A card reviewed | A card made from a popup with `destination = "nikomiru"`, shown on the Review tab, answered Good twice, the statistics read again, undone, listed, started over, deleted twice with its files | L6 |
 
 ### 6.13h Web pages (2.6.0)
 

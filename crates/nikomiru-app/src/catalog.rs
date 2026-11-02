@@ -19,7 +19,7 @@ use nikomiru_ui::catalog::{
     Cover, Home, LibraryEdit, LibraryService, SESSIONS_SHOWN, SeriesDetail, Stats,
 };
 use nikomiru_ui::i18n::Translator;
-use nikomiru_ui::review::{Review, ReviewJob};
+use nikomiru_ui::review::{CardRow, Review, ReviewJob};
 
 /// How many videos "Continue watching" shows.
 const CONTINUE: usize = 12;
@@ -257,7 +257,22 @@ impl Worker {
                     crate::anki::forget_files(lib, &self.parts.review_dir, &card);
                 }
             }
+            ReviewJob::Reset(id) => {
+                lib.reset_review_card(id, now).map_err(e)?;
+            }
         }
+        let list = lib
+            .review_cards()
+            .map_err(e)?
+            .into_iter()
+            .map(|(id, c)| CardRow {
+                id,
+                expression: c.expression,
+                reading: c.reading,
+                sentence: c.sentence,
+                memory: c.memory,
+            })
+            .collect();
         let mut queue = lib.review_queue(now, offset, settings).map_err(e)?;
         // the card taken back is shown again at once
         if let Some(i) = first.and_then(|id| queue.cards.iter().position(|(c, _)| *c == id)) {
@@ -281,6 +296,7 @@ impl Worker {
             queue,
             picture,
             audio,
+            list,
         })
     }
 

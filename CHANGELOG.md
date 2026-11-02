@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-02
+
+Every card of the review in sight.
+
+### Added
+
+- Review → Cards: the list of every card, with a search on word, reading and sentence, when each comes back and its answers; Start over makes a card new again, and Delete removes it, each clicked twice (REV-009, D-38).
+
 ## [2.7.0] - 2026-11-02
 
 How the review goes.

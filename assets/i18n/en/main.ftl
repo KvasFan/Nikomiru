@@ -796,3 +796,19 @@ stats-review-due = { $in ->
     [1] Tomorrow
    *[other] In { $in } days
 }: { $count } cards
+review-study = Study
+review-cards = Cards ({ $count })
+review-search = Search
+review-no-match = No card holds that.
+review-shown = The first { $shown } of { $count } cards: search to find the others.
+review-phase-new = New
+review-phase-learning = Learning
+review-phase-review = In review
+review-phase-relearning = Relearning
+review-due-now = due now
+review-answers = { $reps ->
+    [one] 1 answer
+   *[other] { $reps } answers
+}, { $lapses } forgotten
+review-reset = Start over
+review-reset-confirm = Start over? Click again

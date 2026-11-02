@@ -99,6 +99,8 @@ They come back on the **Review** tab of the Library page, on a schedule worked o
 2. Answer with **Again**, **Hard**, **Good** or **Easy** (keys 1–4). Each button says when the card comes back.
 3. **Undo** (Ctrl+Z) takes the last answer back. **Delete**, clicked twice, removes the card.
 
+**Cards**, at the top of the tab, lists every card with a search: when each comes back, its answers, and **Start over** to learn one again from the beginning.
+
 The Statistics tab shows how the review goes: today's answers, the share remembered in the last 30 days, young and mature cards, and the cards due in the next week.
 
 The share of cards to remember when they come back (90 % by default) and the new cards a day (20) are set in the same tab. The review is in backups and in the WebDAV sync, with its sound and pictures.
