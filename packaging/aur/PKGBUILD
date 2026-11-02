@@ -5,7 +5,7 @@
 # with the Rust toolchain of `rust-toolchain.toml` (through rustup).
 
 pkgname=nikomiru
-pkgver=2.4.0
+pkgver=2.5.0
 pkgrel=1
 pkgdesc='Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards'
 arch=('x86_64')
@@ -32,7 +32,7 @@ optdepends=(
 makedepends=('rustup' 'cargo-about')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('57ceeb4941de9a3ad2626c2f5dd627341f42bc86a0f34be6a90c35cb61b987ea')
+sha256sums=('e71c91a10ff108dbfe3e5c03c23966e2e45bf72fec01ecdcbc53591dd87d2900')
 
 prepare() {
   cd "$pkgname-$pkgver"
