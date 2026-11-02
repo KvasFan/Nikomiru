@@ -48,6 +48,8 @@ pub(crate) struct State {
     audiobook: bool,
     /// A folder of pages is to be chosen (MNG-001).
     folder: bool,
+    /// The address of a web page, as typed (WEB-001).
+    address: String,
     /// The book those pictures are of, and the pictures drawn so far, by
     /// their key (BOK-010).
     book: String,
@@ -818,6 +820,21 @@ fn list(
         };
         ui.add(egui::Label::new(RichText::new(text).color(shade)).wrap());
     }
+    // WEB-001: a web page, read as a book
+    ui.horizontal(|ui| {
+        let label = ui.label(tr(s, "books-web"));
+        let field = ui
+            .add(egui::TextEdit::singleline(&mut state.address).desired_width(420.0))
+            .labelled_by(label.id);
+        let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let open = ui.add_enabled(
+            !s.page.busy && !state.address.trim().is_empty(),
+            Button::new(tr(s, "books-web-open")),
+        );
+        if (open.clicked() || enter) && !state.address.trim().is_empty() {
+            out.push(Command::BookPage(state.address.trim().to_string()));
+        }
+    });
     if s.page.list.is_empty() {
         ui.label(RichText::new(tr(s, "books-none")).color(palette::current().details));
     }

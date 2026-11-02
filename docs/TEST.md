@@ -597,6 +597,15 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-REV-006 | Sync | The merge of review cards stays idempotent, commutative and associative; a card goes to another library with its schedule, the one answered last wins, a deletion follows and stays (L1). Only media names of Nikomiru's form are believed (L1); the media folder apart from the devices' (L4). Two devices and the fake WebDAV: the files go up and come down, a file whose content lies is refused, a deletion takes the files from both (L4) | L1/L4 |
 | T-E2E-REV-001 | A card reviewed | A card made from a popup with `destination = "nikomiru"`, shown on the Review tab, answered Good twice, undone, deleted twice with its files | L6 |
 
+### 6.13h Web pages (2.6.0)
+
+| ID | Name | Description | Level |
+|---|---|---|---|
+| T-WEB-001 | Fetching | A page at an address and an HTML file, in Shift_JIS, saved in UTF-8 with their address and read as a book; the same page saved once; a saved page read as it is; plain HTTP refused off this computer, a missing page an error (L4). The address in the first line, which it cannot close (L1) | L1/L4 |
+| T-WEB-002 | Reading | The main text, menus, headers, footers, figures and pictures left out, ruby kept, the title and the site; without main or article, the body; a page of no text refused (L1) | L1 |
+| T-WEB-003 | Kept | The pages saved in a backup and back after a restore (L1) | L1 |
+| T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
+
 ### 6.14 Reliability and fuzzing
 
 | ID | Check | Expected | L |

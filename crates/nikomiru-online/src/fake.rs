@@ -65,6 +65,8 @@ pub struct Data {
     pub series: Vec<FakeSeries>,
     /// The bytes of every cover, at `/covers/<anilist id>.jpg`.
     pub cover: Vec<u8>,
+    /// Web pages, by name, at `/pages/<name>` (WEB-001).
+    pub pages: BTreeMap<String, Vec<u8>>,
 }
 
 /// A series of the fake AniList and Jikan.
@@ -189,6 +191,11 @@ impl FakeOnline {
     /// The Jimaku base URL, for `[online] jimaku_url`.
     pub fn jimaku_url(&self) -> String {
         format!("http://127.0.0.1:{}/jimaku/api", self.port)
+    }
+
+    /// The address of the web page `name` (WEB-001).
+    pub fn page_url(&self, name: &str) -> String {
+        format!("http://127.0.0.1:{}/pages/{name}", self.port)
     }
 
     /// The AniList URL, for `[online] anilist_url`.
@@ -513,6 +520,10 @@ fn answer(shared: &Shared, r: &Request, port: u16) -> (u16, Vec<u8>) {
             (200, json_body(&json!({"data": data})))
         }
         ("GET", ["covers", _]) => (200, d.cover.clone()),
+        ("GET", ["pages", name]) => match d.pages.get(*name) {
+            Some(bytes) => (200, bytes.clone()),
+            None => (404, Vec::new()),
+        },
         // OpenSubtitles: the temporary files need no key
         ("GET", ["os", "files", id]) => {
             let id: u64 = id.parse().unwrap_or(0);

@@ -706,6 +706,8 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
+            // WEB-001: `path` is the address typed
+            "page" => out.push(Command::BookPage(path.clone().unwrap_or_default())),
             "read" => out.push(Command::MangaRead {
                 page: ui.session.books_page.open.as_ref().map_or(0, |o| o.chapter),
                 area: [0.25, 0.25, 0.5, 0.5],

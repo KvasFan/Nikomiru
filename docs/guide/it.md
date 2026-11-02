@@ -131,6 +131,10 @@ Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le ri
 
 "Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. "Verticale" passa alla scrittura verticale, con ← e → o la rotella per girare pagina; un libro che si legge da destra si apre così.
 
+### Pagine web
+
+Nella pagina Libri, scrivi l'indirizzo di una pagina accanto a **Pagina web** e premi **Apri**: un articolo di NHK News Web Easy, un capitolo di un romanzo online, un'opera di Aozora Bunko. Nikomiru scarica solo quella pagina, niente di ciò a cui rimanda e nessuna immagine, e ne legge il testo come quello di un libro, senza menu e piè di pagina, con i furigana. Resta nell'elenco, con il sito come autore, e si riapre senza rete. Anche un file HTML salvato sul tuo computer si apre con "Aggiungi un libro o un manga…", in qualsiasi codifica giapponese.
+
 ### Manga
 
 Aggiungi un CBZ o una cartella di immagini nella pagina dei libri. "Due pagine" le mostra affiancate, la prima a destra. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.

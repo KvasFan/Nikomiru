@@ -131,6 +131,10 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 
 "Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. "Vertical" switches to vertical writing, with ← and → or the wheel to turn the page; a book that reads from the right opens that way.
 
+### Web pages
+
+On the Books page, type a page's address next to **Web page** and press **Open**: an article of NHK News Web Easy, a chapter of a web novel, a work of Aozora Bunko. Nikomiru fetches that page only, nothing it links to and no pictures, and reads its text like a book's, menus and footers left out, furigana kept. It stays in the list, with its site as the author, and reopens without the network. An HTML file saved on your computer opens with "Add a book or manga…" too, in any Japanese encoding.
+
 ### Manga
 
 Add a CBZ or a folder of pictures on the Books page. "Two pages" shows them side by side, the first on the right. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.

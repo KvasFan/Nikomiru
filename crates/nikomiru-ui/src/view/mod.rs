@@ -152,7 +152,13 @@ impl FileDialog {
             Dialog::MangaFolder => (tr("books-folder"), Vec::new()),
             Dialog::Book => (
                 tr("books-add"),
-                vec![(tr("books-filter"), vec!["*.epub", "*.cbz"]), all],
+                vec![
+                    (
+                        tr("books-filter"),
+                        vec!["*.epub", "*.cbz", "*.html", "*.htm"],
+                    ),
+                    all,
+                ],
             ),
             Dialog::BackupSave => (
                 tr("backup-make"),

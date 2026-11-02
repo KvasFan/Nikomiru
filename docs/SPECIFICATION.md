@@ -45,7 +45,7 @@ Nikomiru is a **Rust rewrite of a subset of Fushi**. Fushi is a GPL-3.0 Flutter/
 
 | Fushi feature | Decision | Reason |
 |---|---|---|
-| EPUB reader, manga + OCR, audiobooks, online resources | **done or in progress** in M16 (D-12) | |
+| EPUB reader, manga + OCR, audiobooks, online resources | **done**: books, manga and audiobooks in M16 (D-12), web pages in 2.6.0 (§6.20, D-36) | |
 | PDF, Sasayaki, CBR | **later** (D-12, D-30) | Each one is as large as the whole MVP; until 1.0 the focus is video. The text, dictionary and Anki crates stay independent of video so they can be reused |
 | Text and voice hooks for galgames (Windows) | excluded | Windows only; depends on LunaHook and MinHook |
 | Torrent, Mihon/Aniyomi extensions, LNReader, download center | excluded | Out of scope; Kotlin/APK runtime |
@@ -860,6 +860,16 @@ Cards can stay in Nikomiru and come back on a schedule, for a learner without An
 | REV-005 | **Delete**: pressed twice on the same card, it removes the card, its record in `mined_cards` and the media no other card uses. |
 | REV-006 | **Sync** (2.5.0): the review's cards are in each device's file (BAK-006) with their schedule; of two versions of a card, the one answered or made last wins, then the one answered more (BAK-007); a deleted card leaves a tombstone (BAK-008). Their media go to `nikomiru/review/` on the server, before the device's file is written: what the cards here use and the server lacks goes up; what they use and only the server has comes down, kept only if its content gives its name (ANK-036), so a server cannot slip in a file; only names of that form are believed. A file no card uses any more is removed here once ten minutes old. |
 
+### 6.20 Web pages (WEB) — 2.6.0 (D-36)
+
+The "online resources" of D-12: a web page read like a book, with the same lookups and cards.
+
+| ID | Requirement |
+|---|---|
+| WEB-001 | **Fetching**: an address typed on the Books page, and nothing else, goes to the network, when "Open" is pressed (PRV-001): HTTPS, or HTTP on this computer, through `[network] proxy`, at most 8 MiB, that page alone: no picture, style, script or link of it is fetched. Its encoding is the one its `Content-Type` or a `<meta>` of its first 4 KiB declares, else the one SUB-005 finds. It is saved in UTF-8 in `$XDG_DATA_HOME/nikomiru/web/`, named by its content (ANK-036), with its address on its first line; an HTML file of this computer chosen with "Add a book…" is saved the same way, and a page saved before is read as it is. |
+| WEB-002 | **Reading**: the page's `<main>`, else its `<article>`, else its body, without `nav`, `header`, `footer`, `aside`, `form`, `noscript`, `button`, `select`, `template`, `iframe` and `figure`, read as a chapter is (BOK-002), pictures left out. Its title is its `<title>`, else its first heading, else its site; its author is its site. It is then a book of one chapter: lookups, cards, its place, the statistics and vertical writing as for an EPUB (BOK-004…BOK-009). |
+| WEB-003 | **Kept**: the pages saved are in backups (BAK-001), and reopen from the list without the network. |
+
 ## 7. Non-functional requirements (NFR)
 
 **Reference hardware** (REF): x86_64, 4 cores / 8 threads (2020 or later), integrated Intel or AMD GPU with VA-API, 16 GB of RAM, NVMe SSD, 1920×1080 display at 60 Hz, Wayland session (GNOME or KDE).
@@ -1066,6 +1076,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-33 | The keyring | **Decided by the maintainer's agent** (2026-11-02, same grounds as D-32, to change at will): 2.3.0 keeps keys in the keyring on request, not by default: `config.toml` with permissions 0600 stays the default, since a keyring may be missing, locked or asking for a password at each start. `secret-service`, whose dependencies need no new license. Checked on a real GNOME Keyring in the tests; KWallet not tried |
 | D-34 | Built-in review | **Decided by the maintainer's agent** (2026-11-02, "procedi implementando altri features", to change at will): 2.4.0 adds the SRS of the backlog as our own GPL implementation of FSRS-5, so no license exception; cards go to Anki or to Nikomiru, not both, so a card is never reviewed twice; Anki stays the default. The review's cards are in backups but not in the WebDAV sync, whose files carry no media. AniDB, the "online resources" of D-12 and the ports still wait for the maintainer |
 | D-35 | The review in the sync | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): 2.5.0 syncs the review's cards and their media, the item 2.4.0 left open. The media go in a folder of their own beside the devices' files, named by their content, so two devices never write different bytes to one name and no lock is needed |
+| D-36 | Online resources | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): the "online resources" of D-12, never defined, are web pages read like books, the reading learners do outside books and video (NHK News Web Easy, web novels, Aozora Bunko). One page at a time, typed by the user, fetched with nothing it links to, so nothing is crawled and no third party is asked; no browser is embedded. Fushi's own sources of that kind were not checked against this |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

@@ -449,6 +449,7 @@ fn run(
         network: config.network.clone(),
         language: config.general.study_language.clone(),
         subtitles_dir: paths.subtitles_dir(),
+        web_dir: paths.data_dir.join(nikomiru_library::backup::WEB),
         translator: translator.clone(),
     });
     // SPECIFICATION §6.13

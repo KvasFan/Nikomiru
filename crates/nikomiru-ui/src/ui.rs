@@ -220,6 +220,8 @@ pub enum Inbound {
         /// The image's bytes, or why not.
         result: Result<Vec<u8>, String>,
     },
+    /// A web page saved for the Books page, or why not (WEB-001).
+    PageSaved(Result<std::path::PathBuf, String>),
     /// Saves the position and quits (a termination signal).
     Quit,
     /// A call of the GUI test harness, run on the UI thread.
@@ -261,6 +263,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::SystemTheme(_) => "SystemTheme",
             Inbound::Identified { .. } => "Identified",
             Inbound::IdentityCover { .. } => "IdentityCover",
+            Inbound::PageSaved(_) => "PageSaved",
             Inbound::ServerReady { .. } => "ServerReady",
             Inbound::Servers(_) => "Servers",
             Inbound::Sync(_) => "Sync",
@@ -466,6 +469,8 @@ pub(crate) enum Command {
     WordAudioSetup,
     /// The Books page opened.
     BooksOpen,
+    /// "Open" with a web page's address on the Books page (WEB-001).
+    BookPage(String),
     /// A book of the list.
     BookChoose(String),
     BookRemove(String),
@@ -864,6 +869,11 @@ impl Ui {
                 self.pump();
                 true
             }
+            Inbound::PageSaved(result) => {
+                self.session.page_saved(result);
+                self.pump();
+                true
+            }
             Inbound::ServerReady { uid, result } => {
                 self.session.server_ready(&uid, *result);
                 true
@@ -1256,6 +1266,7 @@ impl Ui {
             }
             Command::BooksOpen => s.books_open(),
             Command::BookChoose(uid) => s.book_choose(&uid),
+            Command::BookPage(address) => s.book_page(&address),
             Command::BookRemove(uid) => s.book_remove(&uid),
             Command::BookChapter(chapter) => s.book_chapter(chapter),
             Command::BookWriting(vertical) => s.book_writing(vertical),
@@ -1677,6 +1688,10 @@ impl Ui {
                 crate::online::OnlineJob::Cover { series, url } => online.cover(
                     url,
                     Box::new(move |result| waker.wake(Inbound::IdentityCover { series, result })),
+                ),
+                crate::online::OnlineJob::Page(source) => online.page(
+                    source,
+                    Box::new(move |result| waker.wake(Inbound::PageSaved(result))),
                 ),
             }
         }

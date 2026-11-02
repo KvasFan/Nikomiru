@@ -84,6 +84,18 @@ pub trait OnlineService: Send {
     fn identify(&self, title: String, done: Done<(Source, Identified)>);
     /// A series' cover image, from the source's address.
     fn cover(&self, url: String, done: Done<Vec<u8>>);
+    /// A web page, or an HTML file, saved in UTF-8 for the Books page
+    /// (WEB-001): the file to read.
+    fn page(&self, source: PageSource, done: Done<PathBuf>);
+}
+
+/// Where a page comes from (WEB-001).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageSource {
+    /// An address typed on the Books page.
+    Address(String),
+    /// An HTML file chosen on it.
+    File(PathBuf),
 }
 
 /// No `online` worker: every request is refused with this message.
@@ -110,6 +122,10 @@ impl OnlineService for NoOnline {
     }
 
     fn cover(&self, _: String, done: Done<Vec<u8>>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn page(&self, _: PageSource, done: Done<PathBuf>) {
         done(Err(self.0.clone()));
     }
 }
@@ -157,6 +173,8 @@ pub enum OnlineJob {
         /// The cover's address.
         url: String,
     },
+    /// A page for the Books page (WEB-001).
+    Page(PageSource),
 }
 
 /// The Online subtitles page in the session (MET-009).
