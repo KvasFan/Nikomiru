@@ -102,8 +102,8 @@ modules:
       # nikomiru source: the release; `cargo xtask flatpak` puts the working tree here
       - type: git
         url: https://github.com/KvasFan/nikomiru.git
-        tag: v2.5.0
-        commit: fc05ea4d4020bf1389c0b058cb34115d98514b93
+        tag: v2.6.0
+        commit: 5807012255004a0de37f03cd7a43135c580e24cf
       # end of nikomiru source
       - cargo-sources.json
       - type: file
