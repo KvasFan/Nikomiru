@@ -62,6 +62,92 @@ fn section(ui: &mut Ui, text: &str) {
     );
 }
 
+/// Bars of `values`, the largest the full height, with a hover text each.
+fn bars(ui: &mut Ui, values: &[u32], height: f32, hover: impl Fn(usize) -> String) {
+    let most = values.iter().copied().max().unwrap_or(0).max(1);
+    let width = ui.available_width().min(1000.0);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    ui.painter().rect_filled(rect, 4.0, palette::current().row);
+    let step = rect.width() / values.len().max(1) as f32;
+    for (i, n) in values.iter().enumerate() {
+        let x = rect.left() + i as f32 * step;
+        let h = (rect.height() - 8.0) * *n as f32 / most as f32;
+        if *n > 0 {
+            let bar = Rect::from_min_max(
+                egui::pos2(x + step * 0.15, rect.bottom() - 4.0 - h),
+                egui::pos2(x + step * 0.85, rect.bottom() - 4.0),
+            );
+            ui.painter()
+                .rect_filled(bar, 1.0, palette::current().accent);
+        }
+    }
+    if let Some(i) = response
+        .hover_pos()
+        .map(|p| ((p.x - rect.left()) / step) as usize)
+        .filter(|i| *i < values.len())
+    {
+        response.on_hover_text(hover(i));
+    }
+}
+
+/// The review's part of the tab (REV-008).
+fn review_section(ui: &mut Ui, r: &nikomiru_library::review_log::ReviewStats, tr: &Translate<'_>) {
+    use nikomiru_library::review_log::DAYS;
+    section(ui, &tr("stats-review", &[]));
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 24.0;
+        ui.label(
+            RichText::new(tr(
+                "stats-review-today",
+                &[
+                    ("count", r.today.0.to_string()),
+                    ("kept", r.today.1.to_string()),
+                ],
+            ))
+            .family(theme::bold()),
+        );
+        let retention = r.retention.map_or_else(
+            || tr("stats-review-retention-none", &[]),
+            |share| {
+                tr(
+                    "stats-review-retention",
+                    &[("percent", format!("{:.0}", share * 100.0))],
+                )
+            },
+        );
+        ui.label(retention);
+        ui.label(
+            RichText::new(tr(
+                "stats-review-cards",
+                &[
+                    ("new", r.new.to_string()),
+                    ("learning", r.learning.to_string()),
+                    ("young", r.young.to_string()),
+                    ("mature", r.mature.to_string()),
+                ],
+            ))
+            .color(palette::current().details),
+        );
+    });
+    ui.label(RichText::new(tr("stats-review-days", &[])).color(palette::current().details));
+    bars(ui, &r.days, 80.0, |i| {
+        tr(
+            "stats-review-day",
+            &[
+                ("ago", (DAYS as usize - 1 - i).to_string()),
+                ("count", r.days[i].to_string()),
+            ],
+        )
+    });
+    ui.label(RichText::new(tr("stats-review-ahead", &[])).color(palette::current().details));
+    bars(ui, &r.ahead, 60.0, |i| {
+        tr(
+            "stats-review-due",
+            &[("in", i.to_string()), ("count", r.ahead[i].to_string())],
+        )
+    });
+}
+
 /// Draws the tab.
 pub(crate) fn draw(
     ui: &mut Ui,
@@ -199,6 +285,10 @@ pub(crate) fn draw(
         ));
     }
 
+    if let Some(review) = &stats.review {
+        review_section(ui, review, tr);
+    }
+
     // by series
     if !stats.series.is_empty() {
         section(ui, &tr("stats-series", &[]));
@@ -310,6 +400,16 @@ mod tests {
                 },
                 "Show - 01".into(),
             )],
+            review: Some(nikomiru_library::review_log::ReviewStats {
+                today: (12, 10),
+                days: vec![1; 30],
+                retention: Some(0.874),
+                new: 3,
+                learning: 1,
+                young: 20,
+                mature: 5,
+                ahead: vec![4, 2, 0, 0, 1, 0, 0],
+            }),
         };
         let mut h = Harness::builder()
             .with_size(vec2(1280.0, 1200.0))
@@ -339,6 +439,10 @@ mod tests {
         h.get_by_label("stats-today stats-minutes 25 400");
         h.get_by_label("stats-week stats-minutes 35 500");
         h.get_by_label("stats-all stats-minutes 35 500");
+        // T-REV-008 the review's part
+        h.get_by_label("stats-review-today 12 10");
+        h.get_by_label("stats-review-retention 87");
+        h.get_by_label("stats-review-cards 3 1 20 5");
         h.get_by_label("stats-range 30").click();
         h.run();
         assert_eq!(h.state().state.range, 1);

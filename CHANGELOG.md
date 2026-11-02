@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-02
+
+How the review goes.
+
+### Added
+
+- The review's statistics on the Statistics tab: today's answers, the share remembered in review over the last 30 days, new, learning, young and mature cards, the answers of each day and the cards due in the next week (REV-008). Every answer is noted for them, in backups and in the WebDAV sync, and Undo takes it out again (REV-007, D-37).
+
 ## [2.6.0] - 2026-11-02
 
 Web pages, read like books.

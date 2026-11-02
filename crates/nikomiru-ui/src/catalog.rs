@@ -46,6 +46,8 @@ pub struct Stats {
     pub series: Vec<(String, i64, u64)>,
     /// The latest sessions, with the name of their video.
     pub sessions: Vec<(u128, Segment, String)>,
+    /// The review's statistics, once it holds a card or an answer (REV-008).
+    pub review: Option<nikomiru_library::review_log::ReviewStats>,
 }
 
 /// The sessions the page lists.

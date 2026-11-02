@@ -779,3 +779,20 @@ review-new-per-day = New cards a day
 books-web = Web page
 books-web-open = Open
 error-book-not-page = This page cannot be read: its text is in an encoding Nikomiru does not know.
+stats-review = Review
+stats-review-today = Today: { $count } answers, { $kept } remembered
+stats-review-retention = Remembered in review, last 30 days: { $percent } %
+stats-review-retention-none = Remembered in review, last 30 days: no answer yet
+stats-review-cards = { $new } new · { $learning } learning · { $young } young · { $mature } mature
+stats-review-days = Answers a day, the last 30 days
+stats-review-day = { $ago ->
+    [0] Today
+    [1] Yesterday
+   *[other] { $ago } days ago
+}: { $count } answers
+stats-review-ahead = Cards due, the next 7 days
+stats-review-due = { $in ->
+    [0] Today
+    [1] Tomorrow
+   *[other] In { $in } days
+}: { $count } cards

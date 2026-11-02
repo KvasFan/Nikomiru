@@ -204,10 +204,15 @@ impl Worker {
                 (id, s, name)
             })
             .collect();
+        let offset = self.parts.clock.utc_offset(self.parts.clock.now());
+        let review = lib.review_stats(self.now(), offset).map_err(e)?;
+        let used = review.new + review.learning + review.young + review.mature > 0
+            || review.days.iter().any(|n| *n > 0);
         Ok(Stats {
             days: lib.day_totals().map_err(e)?,
             series: lib.series_totals().map_err(e)?,
             sessions,
+            review: used.then_some(review),
         })
     }
 

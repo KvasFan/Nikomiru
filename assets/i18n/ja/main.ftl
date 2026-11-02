@@ -769,3 +769,20 @@ review-new-per-day = 1日の新規カード数
 books-web = ウェブページ
 books-web-open = 開く
 error-book-not-page = このページは読めません：Nikomiru が知らない文字コードで書かれています。
+stats-review = 復習
+stats-review-today = 今日：回答 { $count } 件、覚えていた { $kept } 件
+stats-review-retention = 復習で覚えていた割合（過去30日）：{ $percent } %
+stats-review-retention-none = 復習で覚えていた割合（過去30日）：まだ回答がありません
+stats-review-cards = 新規 { $new } · 学習中 { $learning } · 若い { $young } · 成熟 { $mature }
+stats-review-days = 1日の回答数（過去30日）
+stats-review-day = { $ago ->
+    [0] 今日
+    [1] 昨日
+   *[other] { $ago }日前
+}：回答 { $count } 件
+stats-review-ahead = 期限のカード（今後7日）
+stats-review-due = { $in ->
+    [0] 今日
+    [1] 明日
+   *[other] { $in }日後
+}：{ $count } 枚
