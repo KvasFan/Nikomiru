@@ -274,14 +274,14 @@
   },
   {
     "archive-type": "tar-gzip",
-    "dest": "cargo/vendor/async-executor-1.14.0",
-    "sha256": "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a",
+    "dest": "cargo/vendor/async-executor-1.14.1",
+    "sha256": "f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37",
     "type": "archive",
-    "url": "https://static.crates.io/crates/async-executor/async-executor-1.14.0.crate"
+    "url": "https://static.crates.io/crates/async-executor/async-executor-1.14.1.crate"
   },
   {
-    "contents": "{\"files\":{},\"package\":\"c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a\"}",
-    "dest": "cargo/vendor/async-executor-1.14.0",
+    "contents": "{\"files\":{},\"package\":\"f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37\"}",
+    "dest": "cargo/vendor/async-executor-1.14.1",
     "dest-filename": ".cargo-checksum.json",
     "type": "inline"
   },

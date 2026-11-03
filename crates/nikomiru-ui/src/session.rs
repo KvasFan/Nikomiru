@@ -1987,15 +1987,7 @@ impl Session {
                 let text = self.tr("stats-exported", &[("path", path.display().to_string())]);
                 self.library_page.status = Some((text, true));
             }
-            LibraryReply::Review(result) => {
-                let review = &mut page.review;
-                review.busy = false;
-                review.revealed = false;
-                match result {
-                    Ok(r) => review.review = Some(r),
-                    Err(e) => review.error = Some(e),
-                }
-            }
+            LibraryReply::Review(result) => page.review.answered(result),
             // a cover that cannot be made: the card keeps its placeholder
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
@@ -2024,9 +2016,7 @@ impl Session {
             ReviewJob::Delete(id) if page.undo.is_some_and(|(u, _)| u == *id) => page.undo = None,
             _ => {}
         }
-        page.busy = true;
-        page.error = None;
-        page.confirm_delete = None;
+        page.asked(&job);
         let settings = crate::review::settings(&self.services.config.review);
         self.library_jobs
             .push(crate::catalog::LibraryJob::Review(job, settings));
