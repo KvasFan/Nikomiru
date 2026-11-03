@@ -25,7 +25,6 @@ required-features = ["test-harness"]
 test-harness = ["nikomiru-ui/test-harness"]
 
 [dependencies]
-secret-service.workspace = true
 nikomiru-anki.workspace = true
 nikomiru-books.workspace = true
 nikomiru-core.workspace = true
@@ -45,8 +44,6 @@ glutin.workspace = true
 glutin-winit.workspace = true
 winit.workspace = true
 raw-window-handle.workspace = true
-wayland-client.workspace = true
-wayland-backend.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -55,7 +52,23 @@ uuid = { workspace = true, features = ["v4"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
+
+# the desktop layers of Linux (§5.2.4): Wayland and X11, EGL and GLX, D-Bus
+[target.'cfg(target_os = "linux")'.dependencies]
+egui-winit = { workspace = true, features = ["wayland", "x11"] }
+egui_glow = { workspace = true, features = ["wayland", "x11"] }
+glutin = { workspace = true, features = ["egl", "glx", "wayland", "x11"] }
+glutin-winit = { workspace = true, features = ["egl", "glx", "wayland", "x11"] }
+winit = { workspace = true, features = ["wayland", "wayland-dlopen", "x11"] }
+wayland-client.workspace = true
+wayland-backend.workspace = true
+secret-service.workspace = true
 libc.workspace = true
+
+# Windows (spike S6): OpenGL through WGL
+[target.'cfg(windows)'.dependencies]
+glutin = { workspace = true, features = ["wgl"] }
+glutin-winit = { workspace = true, features = ["wgl"] }
 
 [dev-dependencies]
 tempfile.workspace = true

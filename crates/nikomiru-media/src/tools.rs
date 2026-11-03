@@ -9,7 +9,6 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{self, Read};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -292,19 +291,27 @@ impl Tools {
 /// A setting or variable value: an executable, or the folder that holds it.
 fn executable_in(value: &Path, name: &str) -> PathBuf {
     if value.is_dir() {
-        value.join(name)
+        value.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
     } else {
         value.to_path_buf()
     }
 }
 
+#[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// Windows has no executable bit: a file found by its `.exe` name will do.
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn in_path(path_var: Option<&OsString>, name: &str) -> Option<PathBuf> {
     std::env::split_paths(path_var?)
-        .map(|dir| dir.join(name))
+        .map(|dir| dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
         .find(|p| is_executable(p))
 }
 

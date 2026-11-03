@@ -540,8 +540,25 @@ pub fn url_to_path(url: &str) -> PathBuf {
         out.push(bytes[i]);
         i += 1;
     }
+    bytes_to_path(out)
+}
+
+#[cfg(unix)]
+fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
     use std::os::unix::ffi::OsStringExt;
-    PathBuf::from(std::ffi::OsString::from_vec(out))
+    PathBuf::from(std::ffi::OsString::from_vec(bytes))
+}
+
+/// Windows paths are Unicode, and a file URL's starts `/C:/`: the drive
+/// keeps no slash before it.
+#[cfg(not(unix))]
+fn bytes_to_path(bytes: Vec<u8>) -> PathBuf {
+    let text = String::from_utf8_lossy(&bytes);
+    let drive = text
+        .as_bytes()
+        .get(..3)
+        .is_some_and(|b| b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':');
+    PathBuf::from(if drive { &text[1..] } else { &text[..] })
 }
 
 impl Drop for Session {

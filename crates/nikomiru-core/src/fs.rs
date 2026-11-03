@@ -3,13 +3,16 @@
 //! File-system helpers.
 
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 /// Writes `bytes` to `path` atomically: a temporary file in the same directory,
 /// `fsync`, `rename`, then `fsync` of the directory. A crash leaves either the old
 /// file or the new one, never a partial file (NFR-REL-01). The new file gets the
-/// permissions `mode` (e.g. `0o600` for `config.toml`).
+/// permissions `mode` (e.g. `0o600` for `config.toml`) on Unix; on Windows it
+/// takes those of its folder, and the folder is not synced, since Windows
+/// cannot open a folder as a file.
 pub fn write_atomic(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
     let dir = path
         .parent()
@@ -22,17 +25,20 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()>
         .unwrap_or_default();
     let tmp = dir.join(format!(".{name}.tmp-{}", std::process::id()));
     let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(mode)
-            .open(&tmp)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.mode(mode);
+        #[cfg(not(unix))]
+        let _ = mode;
+        let mut f = options.open(&tmp)?;
         f.write_all(bytes)?;
         f.sync_all()?;
         drop(f);
         std::fs::rename(&tmp, path)?;
-        std::fs::File::open(dir)?.sync_all()
+        #[cfg(unix)]
+        std::fs::File::open(dir)?.sync_all()?;
+        Ok(())
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
