@@ -91,7 +91,7 @@ pub(crate) fn draw(
     }
     let tr = |id: &str| tr(s, id);
     page(ctx, SettingsTab::Audio, &tr, s.status, |buttons, ui| {
-        if buttons.button(tr("audio-save")).clicked()
+        if buttons.add(palette::suggested(tr("audio-save"))).clicked()
             && let Some(draft) = &state.draft
         {
             let mut config = draft.clone();

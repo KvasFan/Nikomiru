@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-03
+
+A new look.
+
+### Changed
+
+- The interface takes after GNOME's Adwaita, in the dark and in the light theme: graphite surfaces, flat buttons, rounded corners, soft shadows, and each page's main action (Save, Apply, Show the answer, Open) filled with the accent (SET-009, D-40).
+- The default accent is GNOME's blue. A settings file that still has the blue of before takes the new one; an accent you chose stays.
+
 ## [2.9.0] - 2026-11-02
 
 An audiobook and its book, together.

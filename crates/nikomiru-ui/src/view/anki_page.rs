@@ -171,7 +171,7 @@ pub(crate) fn draw(
         &tr,
         page.status.as_ref(),
         |buttons, ui| {
-            let save = buttons.add_enabled(!page.busy, Button::new(tr("anki-save")));
+            let save = buttons.add_enabled(!page.busy, palette::suggested(tr("anki-save")));
             if save.clicked()
                 && let Some(draft) = state.draft.as_mut()
             {

@@ -75,7 +75,9 @@ pub(crate) fn draw(
         &tr_id,
         s.page.status.as_ref(),
         |buttons, ui| {
-            if buttons.button(tr(s, "online-save")).clicked()
+            if buttons
+                .add(palette::suggested(tr(s, "online-save")))
+                .clicked()
                 && let Some(draft) = &state.draft
             {
                 out.push(Command::SyncSave(Box::new(draft.clone())));

@@ -736,6 +736,7 @@ Imported tag banks (DIC-002) · string frequencies and `frequencyMode` (DIC-003)
 | SET-006 | Reset to default settings per section: the tab's keys go back to their defaults in the page, and are saved with the page. What the user has rather than how Nikomiru behaves stays: the keys and logins of the services, the AnkiConnect key, the word audio sources, the keys `config.toml` has that this version does not know. |
 | SET-007 | Configurable HTTP(S) proxy (`[network] proxy`); used for all network requests except AnkiConnect on loopback. The environment's proxy variables are never used ([ADR 0008](adr/0008-online-subtitles.md)). |
 | SET-008 | The settings are one page with a tab per section, the tabs down its left side, opened by ⚙ in the bar or on the Library page on the tab shown last (📚 opens the Dictionaries tab, the Anki button the Anki tab); Esc or Close closes it. From 0.1.0: Player (PLY-016, PLY-018), Subtitle services (MET-011) and Anki (ANK-006…ANK-013; also from the Anki button in the bar); from 0.2.0 also Word audio (AUD-001, AUD-005, AUD-006). SET-001 adds the other sections as tabs. |
+| SET-009 | **The look of Adwaita** (2.10.0, D-40): the pages, the dialogs and the popups take after GNOME's Adwaita, in both themes, without copying it: graphite surfaces in the dark theme, stepping up from the page to the card and the dialog, near-white ones in the light; flat buttons on a translucent fill that brightens under the pointer, rounded corners, soft shadows, a faint outline on text fields and the accent around the one in use. The default accent is GNOME's blue `#3584e4`; a `config.toml` that still has the default of before 2.10.0 (`#6aa0ff`) takes the new one, any other accent stays. A page's main action (Save, Apply, Show the answer, Open) is filled with the accent, darkened until its white text reads at 4.5:1, or in black on an accent too light for white. What is drawn on the video keeps its own dark style (SET-003). |
 
 ### 6.12 Online subtitles and metadata (MET) — milestones M4b (subtitles, D-14) and M7 (metadata)
 
@@ -934,7 +935,7 @@ A scan of a folder keeps what the library knows (LIB-004): a file is found again
 ui_language = "system"      # "en", "it", "ja"
 keyring = false             # keys and passwords in the system keyring (MET-005)
 theme = "system"            # "light" | "dark" | "system" (SET-003)
-accent = "#6aa0ff"          # the accent color, #rrggbb (SET-003)
+accent = "#3584e4"          # the accent color, #rrggbb (SET-003, SET-009)
 ui_scale = 100              # the interface scale in percent, 75–200 (SET-005)
 study_language = "ja"
 first_steps = true          # the library's first steps, until done or hidden (LIB-013)
@@ -1085,6 +1086,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-37 | The review's answers | **Decided by the maintainer's agent** (2026-11-02, "riprendi", to change at will): 2.7.0 notes every answer and draws the review's statistics from them; the log is what fitting FSRS's parameters to the user would need later, which 2.7.0 does not do |
 | D-38 | The review's cards listed | **Decided by the maintainer's agent** (2026-11-02, "procedi come credi meglio", to change at will): 2.8.0 lists every card of the review with a search, Delete and Start over, since until then a card was seen only when it came back. Editing a card's text and suspending a card are left out |
 | D-39 | An audiobook and its book | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): 2.9.0 links the timed text of an audiobook to its EPUB, the "linking the text to an EPUB" D-29 left for later, the way Sasayaki does with ttu: the lines found in the book by their text, not by a file of matches, so any timed text the user has will do; the book follows the sound, and plays from a paragraph. The place found is a paragraph, not the exact characters, and the link is not kept between sessions |
+| D-40 | The look of Adwaita | **Asked by the maintainer** (2026-11-03, "cambia stile grafico per renderlo piu bello stile Adwaita scuro (non copiare per forza)"): 2.10.0 restyles egui's widgets and the palette's tokens after Adwaita (SET-009) rather than drawing the interface with GTK or libadwaita, which would mean a second toolkit beside egui; the light theme follows the same style. The dark style of what is drawn on the video does not change |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

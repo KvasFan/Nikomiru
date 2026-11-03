@@ -105,7 +105,9 @@ pub(crate) fn draw(
         &tr,
         s.page.status.as_ref(),
         |buttons, ui| {
-            if buttons.button(tr("player-apply")).clicked()
+            if buttons
+                .add(palette::suggested(tr("player-apply")))
+                .clicked()
                 && let Some(draft) = &state.draft
             {
                 out.push(Command::PlayerApply(Box::new((draft.clone(), None))));

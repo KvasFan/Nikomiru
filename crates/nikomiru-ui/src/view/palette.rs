@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The colors of the interface (SET-003): one set of tokens for the dark
-//! theme, one for the light, with the accent chosen in the settings. The
+//! theme, one for the light, with the accent chosen in the settings. Their
+//! look follows GNOME's Adwaita (SET-009): graphite surfaces stepping up from
+//! the page to the card and the dialog, flat buttons on a translucent fill,
+//! rounded corners, GNOME's blue as the accent. The
 //! pages and the dictionary popups take them; what is drawn on the video
 //! (the bar, the subtitles, their list, the toasts) stays dark, whatever the
 //! theme, as video players do.
@@ -109,89 +112,89 @@ const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Color32 {
     Color32::from_rgba_unmultiplied_const(r, g, b, a)
 }
 
-/// The default accent.
-pub(crate) const ACCENT: Color32 = rgb(0x6a, 0xa0, 0xff);
+/// The default accent: GNOME's blue.
+pub(crate) const ACCENT: Color32 = rgb(0x35, 0x84, 0xe4);
 
 const DARK_POPUP: PopupColors = PopupColors {
-    panel: rgba(0x1b, 0x1d, 0x22, 0xf2),
-    panel_border: rgba(0xff, 0xff, 0xff, 0x40),
-    text: rgb(0xe8, 0xe8, 0xe8),
+    panel: rgba(0x2e, 0x2e, 0x32, 0xf8),
+    panel_border: rgba(0xff, 0xff, 0xff, 0x24),
+    text: rgb(0xf2, 0xf2, 0xf3),
     headword: Color32::WHITE,
-    weak: rgb(0x9a, 0xa0, 0xaa),
-    link: rgb(0x8a, 0xb4, 0xff),
-    marker: rgb(0xaa, 0xb2, 0xbf),
-    reading: rgb(0xc5, 0xcf, 0xf5),
+    weak: rgb(0xa8, 0xa8, 0xae),
+    link: rgb(0x78, 0xae, 0xed),
+    marker: rgb(0xb0, 0xb0, 0xb6),
+    reading: rgb(0x99, 0xc1, 0xf1),
     cursor: ACCENT,
-    section: rgb(0x26, 0x2a, 0x31),
-    section_text: rgb(0xc9, 0xd1, 0xdd),
-    trace: rgb(0x24, 0x46, 0x5a),
-    frequency: rgb(0x2f, 0x3a, 0x2a),
-    onyomi: rgb(0x3a, 0x2a, 0x44),
-    kunyomi: rgb(0x2a, 0x3a, 0x44),
-    chip: rgb(0x3a, 0x3d, 0x44),
-    tag_popular: rgb(0x5a, 0x3b, 0x1f),
-    tag_part_of_speech: rgb(0x2a, 0x3f, 0x5f),
-    tag_frequent: rgb(0x3d, 0x5a, 0x2a),
-    tag_archaism: rgb(0x4a, 0x3a, 0x5a),
-    pitch: rgb(0xf0, 0xb3, 0x5a),
-    cell_border: rgb(0x55, 0x5b, 0x66),
-    header_cell: rgb(0x2c, 0x30, 0x38),
-    border: rgba(0x90, 0x9a, 0xa8, 0x80),
-    grip: rgba(0xff, 0xff, 0xff, 0x55),
-    selection: rgba(0x4a, 0x90, 0xe2, 0x66),
+    section: rgb(0x38, 0x38, 0x3d),
+    section_text: rgb(0xde, 0xdd, 0xda),
+    trace: rgb(0x1f, 0x3d, 0x5c),
+    frequency: rgb(0x23, 0x3f, 0x2c),
+    onyomi: rgb(0x40, 0x2c, 0x4a),
+    kunyomi: rgb(0x22, 0x3a, 0x4a),
+    chip: rgb(0x45, 0x45, 0x4a),
+    tag_popular: rgb(0x5c, 0x3a, 0x14),
+    tag_part_of_speech: rgb(0x1f, 0x3d, 0x5c),
+    tag_frequent: rgb(0x23, 0x4a, 0x2c),
+    tag_archaism: rgb(0x4a, 0x30, 0x5a),
+    pitch: rgb(0xff, 0xbe, 0x6f),
+    cell_border: rgb(0x55, 0x55, 0x5b),
+    header_cell: rgb(0x3a, 0x3a, 0x40),
+    border: rgba(0xff, 0xff, 0xff, 0x30),
+    grip: rgba(0xff, 0xff, 0xff, 0x50),
+    selection: rgba(0x35, 0x84, 0xe4, 0x70),
 };
 
 const LIGHT_POPUP: PopupColors = PopupColors {
-    panel: rgba(0xf9, 0xfa, 0xfb, 0xf5),
-    panel_border: rgba(0, 0, 0, 0x30),
-    text: rgb(0x1d, 0x1f, 0x24),
-    headword: rgb(0x11, 0x13, 0x18),
-    weak: rgb(0x55, 0x5c, 0x6a),
-    link: rgb(0x1d, 0x5b, 0xbf),
-    marker: rgb(0x55, 0x5c, 0x6a),
-    reading: rgb(0x33, 0x42, 0x8a),
+    panel: rgba(0xff, 0xff, 0xff, 0xfa),
+    panel_border: rgba(0, 0, 6, 0x24),
+    text: rgb(0x24, 0x24, 0x28),
+    headword: rgb(0x14, 0x14, 0x18),
+    weak: rgb(0x5e, 0x5c, 0x64),
+    link: rgb(0x1a, 0x5f, 0xb4),
+    marker: rgb(0x5e, 0x5c, 0x64),
+    reading: rgb(0x1c, 0x47, 0x8a),
     cursor: ACCENT,
-    section: rgb(0xe7, 0xea, 0xef),
-    section_text: rgb(0x34, 0x3b, 0x47),
-    trace: rgb(0xcf, 0xe3, 0xee),
-    frequency: rgb(0xdc, 0xea, 0xd2),
-    onyomi: rgb(0xec, 0xe0, 0xf4),
-    kunyomi: rgb(0xd9, 0xe8, 0xf2),
-    chip: rgb(0xe2, 0xe5, 0xeb),
-    tag_popular: rgb(0xf6, 0xe0, 0xc8),
-    tag_part_of_speech: rgb(0xd6, 0xe2, 0xf4),
-    tag_frequent: rgb(0xdc, 0xeb, 0xd2),
-    tag_archaism: rgb(0xe7, 0xdc, 0xf2),
-    pitch: rgb(0xb0, 0x5a, 0x00),
-    cell_border: rgb(0xb2, 0xb8, 0xc2),
-    header_cell: rgb(0xe8, 0xeb, 0xf0),
-    border: rgba(0x6f, 0x79, 0x88, 0x80),
-    grip: rgba(0, 0, 0, 0x40),
-    selection: rgba(0x4a, 0x90, 0xe2, 0x55),
+    section: rgb(0xeb, 0xeb, 0xed),
+    section_text: rgb(0x3d, 0x38, 0x46),
+    trace: rgb(0xd5, 0xe6, 0xfa),
+    frequency: rgb(0xd8, 0xf0, 0xdd),
+    onyomi: rgb(0xef, 0xe0, 0xf6),
+    kunyomi: rgb(0xd9, 0xea, 0xf5),
+    chip: rgb(0xe6, 0xe6, 0xe9),
+    tag_popular: rgb(0xfb, 0xe3, 0xc8),
+    tag_part_of_speech: rgb(0xd5, 0xe6, 0xfa),
+    tag_frequent: rgb(0xd8, 0xf0, 0xdd),
+    tag_archaism: rgb(0xec, 0xdf, 0xf5),
+    pitch: rgb(0xb3, 0x52, 0x00),
+    cell_border: rgb(0xc0, 0xbf, 0xc6),
+    header_cell: rgb(0xee, 0xee, 0xf0),
+    border: rgba(0, 0, 6, 0x30),
+    grip: rgba(0, 0, 6, 0x40),
+    selection: rgba(0x35, 0x84, 0xe4, 0x50),
 };
 
 impl Palette {
     /// The dark theme with the default accent.
     pub(crate) const DARK: Palette = Palette {
         dark: true,
-        backdrop: rgba(0, 0, 0, 0xa6),
-        page: rgb(0x10, 0x12, 0x16),
-        card: rgba(0x20, 0x22, 0x27, 0xf0),
-        card_border: rgba(0xff, 0xff, 0xff, 0x40),
-        dialog: rgb(0x2a, 0x2d, 0x34),
-        row: rgba(0xff, 0xff, 0xff, 0x0c),
-        row_hover: rgba(0xff, 0xff, 0xff, 0x1c),
-        row_off: rgba(0, 0, 0, 0x10),
-        placeholder: rgb(0x26, 0x2d, 0x3d),
-        track: rgba(0xff, 0xff, 0xff, 0x30),
+        backdrop: rgba(0, 0, 0, 0xb0),
+        page: rgb(0x22, 0x22, 0x26),
+        card: rgba(0x2e, 0x2e, 0x32, 0xf6),
+        card_border: rgba(0xff, 0xff, 0xff, 0x1a),
+        dialog: rgb(0x36, 0x36, 0x3a),
+        row: rgba(0xff, 0xff, 0xff, 0x10),
+        row_hover: rgba(0xff, 0xff, 0xff, 0x20),
+        row_off: rgba(0, 0, 0, 0x18),
+        placeholder: rgb(0x3a, 0x3a, 0x3f),
+        track: rgba(0xff, 0xff, 0xff, 0x26),
         text: Color32::WHITE,
-        details: rgb(0x9a, 0xa0, 0xaa),
-        off: rgb(0x8a, 0x8f, 0x99),
-        good: rgb(0x7c, 0xd3, 0x8a),
-        bad: rgb(0xf0, 0xb3, 0x5a),
+        details: rgb(0xa8, 0xa8, 0xae),
+        off: rgb(0x96, 0x96, 0x9c),
+        good: rgb(0x8f, 0xf0, 0xa4),
+        bad: rgb(0xff, 0xa3, 0x48),
         accent: ACCENT,
-        accent_text: ACCENT,
-        selection: rgb(0x3a, 0x52, 0x80),
+        accent_text: rgb(0x78, 0xae, 0xed),
+        selection: rgb(0x1c, 0x47, 0x7a),
         popup: DARK_POPUP,
     };
 
@@ -199,23 +202,23 @@ impl Palette {
     pub(crate) const LIGHT: Palette = Palette {
         dark: false,
         backdrop: rgba(0, 0, 0, 0x80),
-        page: rgb(0xee, 0xf0, 0xf3),
-        card: rgba(0xf6, 0xf7, 0xf9, 0xf8),
-        card_border: rgba(0, 0, 0, 0x30),
-        dialog: rgb(0xfb, 0xfc, 0xfd),
-        row: rgba(0, 0, 0, 0x0a),
-        row_hover: rgba(0, 0, 0, 0x18),
-        row_off: rgba(0, 0, 0, 0x03),
-        placeholder: rgb(0xd9, 0xde, 0xe6),
-        track: rgba(0, 0, 0, 0x26),
-        text: rgb(0x1d, 0x1f, 0x24),
-        details: rgb(0x52, 0x59, 0x66),
-        off: rgb(0x5c, 0x63, 0x70),
-        good: rgb(0x1d, 0x6e, 0x30),
-        bad: rgb(0x96, 0x4b, 0x00),
+        page: rgb(0xfa, 0xfa, 0xfb),
+        card: rgba(0xff, 0xff, 0xff, 0xfa),
+        card_border: rgba(0, 0, 6, 0x1e),
+        dialog: rgb(0xff, 0xff, 0xff),
+        row: rgba(0, 0, 6, 0x0c),
+        row_hover: rgba(0, 0, 6, 0x18),
+        row_off: rgba(0, 0, 6, 0x04),
+        placeholder: rgb(0xde, 0xdd, 0xe2),
+        track: rgba(0, 0, 6, 0x22),
+        text: rgb(0x24, 0x24, 0x28),
+        details: rgb(0x5e, 0x5c, 0x64),
+        off: rgb(0x68, 0x66, 0x6e),
+        good: rgb(0x1b, 0x6c, 0x3a),
+        bad: rgb(0x9c, 0x46, 0x00),
         accent: ACCENT,
-        accent_text: rgb(0x1d, 0x5b, 0xbf),
-        selection: rgb(0xd2, 0xe2, 0xff),
+        accent_text: rgb(0x1a, 0x5f, 0xb4),
+        selection: rgb(0xd5, 0xe6, 0xfa),
         popup: LIGHT_POPUP,
     };
 
@@ -317,13 +320,111 @@ pub(crate) fn apply(ctx: &egui::Context, dark: bool, accent: Color32) {
         egui::Theme::Light
     };
     ctx.set_theme(theme);
-    ctx.style_mut_of(theme, |style| {
-        let v = &mut style.visuals;
-        v.selection.bg_fill = palette.selection;
-        v.selection.stroke.color = palette.text;
-        v.hyperlink_color = palette.accent_text;
-        v.text_cursor.stroke.color = palette.accent_text;
-    });
+    ctx.style_mut_of(theme, |style| adwaita(style, &palette));
+}
+
+/// egui's widgets in the manner of Adwaita (SET-009): flat buttons on a
+/// translucent fill that brightens under the pointer, no borders but a
+/// faint one on text fields, rounded corners, soft shadows.
+fn adwaita(style: &mut egui::Style, p: &Palette) {
+    use egui::{CornerRadius, Shadow, Stroke};
+    let (ink, alpha) = if p.dark { (0xff, 1.0) } else { (6, 0.8) };
+    let fill = |a: u8| {
+        let a = (f32::from(a) * alpha).round() as u8;
+        if p.dark {
+            rgba(ink, ink, ink, a)
+        } else {
+            rgba(0, 0, ink, a)
+        }
+    };
+    let v = &mut style.visuals;
+    v.panel_fill = p.page;
+    v.window_fill = p.dialog;
+    v.window_stroke = Stroke::new(1.0, p.card_border);
+    v.window_corner_radius = CornerRadius::same(12);
+    v.menu_corner_radius = CornerRadius::same(10);
+    v.window_shadow = Shadow {
+        offset: [0, 4],
+        blur: 18,
+        spread: 0,
+        color: rgba(0, 0, 0, if p.dark { 0x70 } else { 0x30 }),
+    };
+    v.popup_shadow = Shadow {
+        offset: [0, 2],
+        blur: 10,
+        spread: 0,
+        color: rgba(0, 0, 0, if p.dark { 0x60 } else { 0x28 }),
+    };
+    // text fields and the inside of sliders: a step up from the page
+    v.extreme_bg_color = over(fill(0x14), p.page);
+    v.text_edit_bg_color = Some(over(fill(0x14), p.page));
+    v.faint_bg_color = over(fill(0x08), p.page);
+    v.code_bg_color = over(fill(0x14), p.page);
+    v.selection.bg_fill = p.selection;
+    v.selection.stroke = Stroke::new(1.0, p.text);
+    v.hyperlink_color = p.accent_text;
+    v.text_cursor.stroke = Stroke::new(2.0, p.accent_text);
+    v.warn_fg_color = p.bad;
+    v.error_fg_color = p.bad;
+    v.window_highlight_topmost = false;
+    let radius = CornerRadius::same(6);
+    let w = &mut v.widgets;
+    w.noninteractive.bg_fill = p.page;
+    w.noninteractive.weak_bg_fill = p.page;
+    w.noninteractive.bg_stroke = Stroke::new(1.0, fill(0x18));
+    w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
+    w.noninteractive.corner_radius = radius;
+    for (state, a) in [
+        (&mut w.inactive, 0x1a),
+        (&mut w.hovered, 0x26),
+        (&mut w.active, 0x40),
+        (&mut w.open, 0x26),
+    ] {
+        state.weak_bg_fill = fill(a);
+        state.bg_fill = fill(a);
+        state.bg_stroke = Stroke::NONE;
+        state.fg_stroke = Stroke::new(1.0, p.text);
+        state.corner_radius = radius;
+        state.expansion = 0.0;
+    }
+    // a text field's outline, and the focus in the accent
+    w.inactive.bg_stroke = Stroke::new(1.0, fill(0x10));
+    w.hovered.bg_stroke = Stroke::new(1.0, fill(0x30));
+    w.active.bg_stroke = Stroke::new(2.0, p.accent);
+    // checkboxes and sliders: the accent when on
+    w.active.bg_fill = p.accent;
+    let s = &mut style.spacing;
+    s.button_padding = egui::vec2(10.0, 5.0);
+    s.item_spacing = egui::vec2(8.0, 6.0);
+    s.menu_margin = egui::Margin::same(8);
+    s.window_margin = egui::Margin::same(12);
+}
+
+/// The fill and the text of a page's main action, from `accent` (SET-009):
+/// white on the accent, the accent darkened until white reads on it at
+/// 4.5:1, or black on a light accent that black reads on.
+pub(crate) fn suggested_colors(accent: Color32) -> (Color32, Color32) {
+    let accent = Color32::from_rgb(accent.r(), accent.g(), accent.b());
+    if contrast(Color32::WHITE, accent) >= 4.5 {
+        return (accent, Color32::WHITE);
+    }
+    if contrast(Color32::BLACK, accent) >= 7.0 {
+        return (accent, Color32::BLACK);
+    }
+    let mut t = 1.0;
+    let mut fill = accent;
+    while contrast(Color32::WHITE, fill) < 4.5 && t > 0.0 {
+        t -= 0.05;
+        fill = mix(accent, Color32::BLACK, t);
+    }
+    (fill, Color32::WHITE)
+}
+
+/// A page's main action, filled with the accent: Adwaita's suggested action
+/// (SET-009).
+pub(crate) fn suggested(text: impl Into<String>) -> egui::Button<'static> {
+    let (fill, ink) = suggested_colors(current().accent);
+    egui::Button::new(egui::RichText::new(text.into()).color(ink)).fill(fill)
 }
 
 /// The style of what is drawn on the video: dark, whatever the theme.
@@ -413,6 +514,24 @@ mod tests {
                 }
             }
         }
+    }
+
+    // T-SET-009: the main action reads on its accent, whatever the accent
+    #[test]
+    fn the_main_action_reads_on_its_fill() {
+        for accent in [
+            ACCENT,
+            rgb(0xff, 0xff, 0x00),
+            rgb(0x00, 0x00, 0x80),
+            rgb(0xe0, 0x40, 0x40),
+            rgb(0x80, 0x80, 0x80),
+            rgb(0x8f, 0xf0, 0xa4),
+        ] {
+            let (fill, ink) = suggested_colors(accent);
+            assert!(contrast(fill, ink) >= 4.5, "{accent:?}: {fill:?} {ink:?}");
+        }
+        // GNOME's blue is darkened a little for white text
+        assert_ne!(suggested_colors(ACCENT).0, ACCENT);
     }
 
     #[test]
