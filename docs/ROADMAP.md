@@ -46,7 +46,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | released |
-| Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | S6: Windows builds, [ADR 0009](adr/0009-ports.md) proposed |
+| Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | S6: Windows builds and plays under wine, [ADR 0009](adr/0009-ports.md) accepted |
 | M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
@@ -388,12 +388,12 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 **Status as of 2026-11-03**
 
-- Windows: the library crates build for it, and the app with stand-ins for the desktop layers; `nikomiru.exe` links against libmpv for Windows. Not yet started under wine or on Windows. What is left is in [ADR 0009](adr/0009-ports.md).
+- Windows: the library crates build for it, and the app with stand-ins for the desktop layers; `nikomiru.exe` links against libmpv for Windows, and under wine opens its window and plays a video. Not yet on a real Windows, nor with subtitles (ffmpeg). What is left is in [ADR 0009](adr/0009-ports.md).
 - Android and macOS: not tried; ADR 0009 sets their order.
 
 **Exit criteria**
 
-- [ ] ADR 0009 accepted by the maintainer.
+- [x] ADR 0009 accepted by the maintainer (2026-11-03).
 - [ ] Each port it keeps: built, started, a video played with clickable subtitles and a card made, on the real platform.
 
 ---

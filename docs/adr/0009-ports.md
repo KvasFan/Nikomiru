@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed |
+| Status | Accepted (2026-11-03) |
 | Date | 2026-11-03 |
 | Requirements | §5.2.4, NFR-PORT-01 |
 | Milestone | Ports, spike S6 (decision D-16) |
@@ -28,9 +28,10 @@ Windows was tried first, since it can be built from this Linux machine: the `x86
    - the `linux` module is declared as `platform`, from `linux/mod.rs` on Linux and `windows/mod.rs` on Windows;
    - `inhibit`, `keyring`, `portal` and `instance` take files of `windows/` with the same API, which do nothing and say so in the log; `dbus` and `appearance` exist only on Linux;
    - the window has two paths: on Linux the display first, then a window for its configuration (EGL, else GLX), as before; on Windows the window first, then a WGL display for it.
-4. **The result.** `nikomiru.exe` builds and links (debug, 325 MB with its symbols; `libmpv-2.dll` beside it, 122 MB with ffmpeg inside). Starting it under wine with a video was not done: running the downloaded libmpv was left to the maintainer. The Linux build is unchanged: on the spike's branch every step of `cargo xtask ci --full` is green, and 68 of its 69 GUI tests; the other is the timing of T-PERF-06, p95 100.3 ms against 100 ms while the machine was busy, which run alone measures as on `main` (median 50 ms on both).
+4. **The result.** `nikomiru.exe` builds and links (debug, 325 MB with its symbols; `libmpv-2.dll` beside it, 122 MB with ffmpeg inside). Under wine 11.21, on an off-screen KWin with Xwayland, it opens its window through WGL and plays a video with libmpv: picture, sound through WASAPI, the tracks read; settings, library and logs in the Windows folders. The subtitles need ffmpeg (EXT-001), now also looked for beside the program; that run, and a real Windows, are still to do.
+5. **Folders.** `Paths` read only `HOME` and XDG, which wine does not pass and Windows does not use: on Windows they now come from `%APPDATA%` (settings) and `%LOCALAPPDATA%` (data, cache and logs, each in a folder of its own), with the pictures in the profile. The Linux build is unchanged: on the spike's branch every step of `cargo xtask ci --full` is green, and 68 of its 69 GUI tests; the other is the timing of T-PERF-06, p95 100.3 ms against 100 ms while the machine was busy, which run alone measures as on `main` (median 50 ms on both).
 
-## Decision (proposed)
+## Decision
 
 ### Order
 
@@ -51,8 +52,8 @@ Windows was tried first, since it can be built from this Linux machine: the `x86
 | Subtitle encodings | glibc `iconv` | a decoder for Shift_JIS, EUC-JP, UTF-16 (e.g. `encoding_rs`, its license to check against §3.2) | M |
 | Local time | `localtime_r` | `GetTimeZoneInformationForYear`, or `jiff`'s time zones | S |
 | Drag and drop | Wayland data device | winit's own `DroppedFile` | S |
-| Folders | XDG | `%APPDATA%`, `%LOCALAPPDATA%`, the known Pictures folder (`Paths` reads only `HOME` and XDG today) | S |
-| ffmpeg | the system's | shipped beside the program | S |
+| Folders | XDG | done in the spike: `%APPDATA%`, `%LOCALAPPDATA%`, the profile's Pictures | — |
+| ffmpeg | the system's | shipped beside the program; the search looks there since the spike | S |
 | Packages | AUR, Flatpak | an installer or a ZIP, with libmpv and ffmpeg; their LGPL/GPL source obligations | M |
 
 S is a day or less, M a few days. With the checks on a real Windows, about two weeks of work.
