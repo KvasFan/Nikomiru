@@ -28,6 +28,8 @@ pub enum Origin {
     Environment,
     /// `PATH`.
     Path,
+    /// The program's own folder, where a Windows package puts them (ADR 0009).
+    Beside,
 }
 
 /// Errors of the discovery.
@@ -104,6 +106,8 @@ pub struct Search {
     pub env: Option<OsString>,
     /// `PATH`.
     pub path: Option<OsString>,
+    /// The program's folder, searched last.
+    pub beside: Option<PathBuf>,
 }
 
 impl Search {
@@ -113,6 +117,9 @@ impl Search {
             setting: setting.to_string(),
             env: std::env::var_os("NIKOMIRU_FFMPEG"),
             path: std::env::var_os("PATH"),
+            beside: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
         }
     }
 }
@@ -338,18 +345,30 @@ pub fn find(search: &Search) -> Result<(Origin, PathBuf, PathBuf), ToolsError> {
             );
             continue;
         }
-        let ffprobe = ffmpeg.with_file_name("ffprobe");
+        let ffprobe = ffmpeg.with_file_name(format!("ffprobe{}", std::env::consts::EXE_SUFFIX));
         if !is_executable(&ffprobe) {
             return Err(ToolsError::NoFfprobe { ffmpeg });
         }
         return Ok((origin, ffmpeg, ffprobe));
     }
-    let ffmpeg = in_path(search.path.as_ref(), "ffmpeg").ok_or(ToolsError::NotFound)?;
-    let ffprobe =
-        in_path(search.path.as_ref(), "ffprobe").ok_or_else(|| ToolsError::NoFfprobe {
+    let beside = search
+        .beside
+        .as_ref()
+        .map(|dir| std::env::join_paths([dir]));
+    let beside = beside.and_then(Result::ok);
+    for (origin, dirs) in [
+        (Origin::Path, search.path.as_ref()),
+        (Origin::Beside, beside.as_ref()),
+    ] {
+        let Some(ffmpeg) = in_path(dirs, "ffmpeg") else {
+            continue;
+        };
+        let ffprobe = in_path(dirs, "ffprobe").ok_or_else(|| ToolsError::NoFfprobe {
             ffmpeg: ffmpeg.clone(),
         })?;
-    Ok((Origin::Path, ffmpeg, ffprobe))
+        return Ok((origin, ffmpeg, ffprobe));
+    }
+    Err(ToolsError::NotFound)
 }
 
 /// Runs `program args`, returning its standard output; killed after

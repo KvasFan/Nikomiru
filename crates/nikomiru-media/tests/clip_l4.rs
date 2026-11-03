@@ -89,6 +89,7 @@ fn ffmpeg() -> PathBuf {
         setting: String::new(),
         env: None,
         path: std::env::var_os("PATH"),
+        beside: None,
     })
     .unwrap()
     .ffmpeg

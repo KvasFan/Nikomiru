@@ -367,7 +367,7 @@ The maintainer asked for builds for macOS, Windows and Android (D-16). Linux sta
 
 ### 5.5 External processes
 
-- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `NIKOMIRU_FFMPEG` variable, `PATH`. At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
+- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `NIKOMIRU_FFMPEG` variable, `PATH`, then the program's own folder, where a Windows package puts them (ADR 0009). At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
 - **EXT-002**: arguments are always passed as a vector, never through a shell. Input paths are prefixed with `file:` to neutralize names that start with `-` or contain `:`.
 - **EXT-003**: every process has a timeout (default 60 s; for subtitle extraction it scales with the duration) and can be cancelled. On cancellation the process is killed and partial files are removed.
 
