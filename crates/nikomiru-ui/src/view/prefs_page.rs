@@ -104,7 +104,10 @@ pub(crate) fn draw(
             return;
         };
         if let Some(section) = s.tab.section() {
-            if buttons.button(tr("settings-save")).clicked() {
+            if buttons
+                .add(palette::suggested(tr("settings-save")))
+                .clicked()
+            {
                 out.push(Command::SettingsSave(section, Box::new(draft.clone())));
             }
             let reset = buttons
@@ -226,7 +229,7 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
         row(ui, &tr("settings-accent"), |ui| {
-            let mut rgb = g.accent_rgb().unwrap_or([0x6a, 0xa0, 0xff]);
+            let mut rgb = g.accent_rgb().unwrap_or([0x35, 0x84, 0xe4]);
             let response = ui.color_edit_button_srgb(&mut rgb);
             if response.changed() {
                 g.accent = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);

@@ -1651,7 +1651,7 @@ impl Session {
         };
         Look {
             dark,
-            accent: g.accent_rgb().unwrap_or([0x6a, 0xa0, 0xff]),
+            accent: g.accent_rgb().unwrap_or([0x35, 0x84, 0xe4]),
             scale: g.ui_scale,
         }
     }

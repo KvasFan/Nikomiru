@@ -871,7 +871,7 @@ fn list(
         let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let open = ui.add_enabled(
             !s.page.busy && !state.address.trim().is_empty(),
-            Button::new(tr(s, "books-web-open")),
+            palette::suggested(tr(s, "books-web-open")),
         );
         if (open.clicked() || enter) && !state.address.trim().is_empty() {
             out.push(Command::BookPage(state.address.trim().to_string()));

@@ -674,6 +674,8 @@ Every item requires a change to SPECIFICATION.md before work starts.
 |---|---|
 | AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |
 
+Done outside the backlog on 2026-11-03, for 2.10.0: the look of Adwaita asked by the maintainer (SET-009, T-SET-009, D-40).
+
 ---
 
 ## Definition of done (applies to every PR)

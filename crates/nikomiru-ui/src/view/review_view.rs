@@ -333,7 +333,7 @@ pub(crate) fn draw(
             if !page.revealed {
                 ui.vertical_centered(|ui| {
                     let show = ui
-                        .add(Button::new(t("review-show")).min_size(vec2(200.0, 36.0)))
+                        .add(palette::suggested(t("review-show")).min_size(vec2(200.0, 36.0)))
                         .on_hover_text(t("review-show-keys"));
                     if show.clicked() {
                         out.push(Command::ReviewReveal);

@@ -120,8 +120,11 @@ pub struct General {
 impl General {
     /// The interface scales offered, in percent (SET-005).
     pub const SCALES: RangeInclusive<u16> = 75..=200;
-    /// The default accent.
-    pub const ACCENT: &str = "#6aa0ff";
+    /// The default accent: GNOME's blue (SET-009).
+    pub const ACCENT: &str = "#3584e4";
+    /// The default accent before 2.10.0: a file that still has it never
+    /// chose it, and takes the new one.
+    pub const OLD_ACCENT: &str = "#6aa0ff";
 
     /// The accent as red, green and blue; `None` if it is not `#rrggbb`.
     pub fn accent_rgb(&self) -> Option<[u8; 3]> {
@@ -887,7 +890,9 @@ impl Config {
             .general
             .ui_scale
             .clamp(*General::SCALES.start(), *General::SCALES.end());
-        if c.general.accent_rgb().is_none() {
+        if c.general.accent_rgb().is_none()
+            || c.general.accent.eq_ignore_ascii_case(General::OLD_ACCENT)
+        {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
@@ -1585,6 +1590,10 @@ opensubtitles_password = "pw-s3cret"
             Some([0xa0, 0xb1, 0xc2])
         );
         assert!(Config::parse("[general\n").is_err());
+        // T-SET-009 the default of before follows the new one; a choice stays
+        let accent = |text: &str| Config::parse(text).unwrap().0.general.accent;
+        assert_eq!(accent("[general]\naccent = \"#6AA0FF\""), General::ACCENT);
+        assert_eq!(accent("[general]\naccent = \"#e01b24\""), "#e01b24");
     }
 
     // T-REV-003

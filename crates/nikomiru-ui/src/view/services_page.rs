@@ -87,7 +87,7 @@ pub(crate) fn draw(
     }
     let tr = |id: &str| tr(s, id);
     page(ctx, SettingsTab::Services, &tr, s.status, |buttons, ui| {
-        if buttons.button(tr("online-save")).clicked() {
+        if buttons.add(palette::suggested(tr("online-save"))).clicked() {
             save(state, out);
         }
         body(ui, s, state);
