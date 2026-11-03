@@ -81,12 +81,47 @@ pub struct ReviewPage {
     pub confirm_delete: Option<u64>,
     /// The last error.
     pub error: Option<String>,
+    /// The jobs asked and not yet answered: the worker answers them in order.
+    pub(crate) running: usize,
 }
 
 impl ReviewPage {
     /// The card shown.
     pub fn current(&self) -> Option<&(u64, nikomiru_library::review::ReviewCard)> {
         self.review.as_ref()?.queue.cards.first()
+    }
+
+    /// A job was asked of the library worker. A job other than a read
+    /// changes the cards: the next one shows its front at once.
+    pub fn asked(&mut self, job: &ReviewJob) {
+        self.running += 1;
+        self.busy = true;
+        self.error = None;
+        self.confirm_delete = None;
+        if *job != ReviewJob::Load {
+            self.revealed = false;
+        }
+    }
+
+    /// The library worker answered a job. The page is busy until the last
+    /// job asked is answered; a read that shows the same card again keeps
+    /// its answer in sight (AK-BUG-002).
+    pub fn answered(&mut self, result: Result<Review, String>) {
+        self.running = self.running.saturating_sub(1);
+        self.busy = self.running > 0;
+        match result {
+            Ok(r) => {
+                let shown = self.current().map(|(id, _)| *id);
+                if r.queue.cards.first().map(|(id, _)| *id) != shown {
+                    self.revealed = false;
+                }
+                self.review = Some(r);
+            }
+            Err(e) => {
+                self.revealed = false;
+                self.error = Some(e);
+            }
+        }
     }
 }
 
@@ -141,6 +176,7 @@ pub fn sentence_parts(sentence: &str, word: Option<(u32, u32)>) -> (&str, &str, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nikomiru_library::review::Grade;
 
     // T-REV-004
     #[test]
@@ -170,6 +206,55 @@ mod tests {
             assert!(row.matches(query), "{query}");
         }
         assert!(!row.matches("飲む"));
+    }
+
+    // AK-BUG-002
+    #[test]
+    fn ak_bug_002_a_second_read_keeps_the_answer_shown() {
+        let card = nikomiru_library::review::ReviewCard {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            sentence: String::new(),
+            word: None,
+            glossaries: Vec::new(),
+            audio: None,
+            picture: None,
+            video_uid: String::new(),
+            title: String::new(),
+            start_ms: 0,
+            end_ms: 0,
+            created_at: 0,
+            memory: Memory::default(),
+        };
+        let review = |ids: &[u64]| {
+            Ok(Review {
+                queue: Queue {
+                    cards: ids.iter().map(|&id| (id, card.clone())).collect(),
+                    ..Queue::default()
+                },
+                ..Review::default()
+            })
+        };
+        let mut page = ReviewPage::default();
+        // the Library page reads the review, and so does its Review tab
+        page.asked(&ReviewJob::Load);
+        page.asked(&ReviewJob::Load);
+        page.answered(review(&[7]));
+        assert!(page.busy, "the second read is still running");
+        page.revealed = true;
+        page.answered(review(&[7]));
+        assert!(!page.busy);
+        assert!(page.revealed, "the same card read again keeps its answer");
+        // another card comes from its front
+        page.asked(&ReviewJob::Load);
+        page.answered(review(&[8]));
+        assert!(!page.revealed);
+        // so does the next card after an answer, even the same one again
+        page.revealed = true;
+        page.asked(&ReviewJob::Answer(8, Grade::Again));
+        assert!(!page.revealed, "hidden as soon as it is answered");
+        page.answered(review(&[8]));
+        assert!(!page.revealed);
     }
 
     // T-REV-004

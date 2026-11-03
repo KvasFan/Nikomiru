@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 
+- Review: the answer of a card no longer hides itself again when the tab finishes reading just after Show the answer (AK-BUG-002).
 - A use-after-free that async-executor 1.14.0, used for the desktop portals and the keyring, could hit when it shut down: 1.14.1 fixes it, and 1.14.0 was withdrawn from crates.io.
 
 ## [2.10.0] - 2026-11-03
