@@ -10,10 +10,14 @@ use std::path::{Path, PathBuf};
 /// Name of Nikomiru's subdirectory in every XDG directory.
 pub const APP_DIR: &str = "nikomiru";
 
+/// Name of Nikomiru's folder in the profile's `AppData` (ADR 0009).
+pub const WINDOWS_APP_DIR: &str = "Nikomiru";
+
 /// Errors while resolving the paths.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PathsError {
-    /// `HOME` is unset or not absolute, and some XDG variable needs it.
+    /// `HOME` is unset or not absolute, and some XDG variable needs it; on
+    /// Windows, `USERPROFILE`, and `APPDATA` or `LOCALAPPDATA` with it.
     #[error("HOME is not set to an absolute path")]
     NoHome,
 }
@@ -79,7 +83,38 @@ fn pictures_from_user_dirs(text: &str, home: &Path) -> Option<PathBuf> {
 impl Paths {
     /// Paths from the process environment.
     pub fn from_env() -> Result<Self, PathsError> {
+        #[cfg(windows)]
+        return Self::resolve_windows(|k| std::env::var_os(k));
+        #[cfg(not(windows))]
         Self::resolve(|k| std::env::var_os(k), |p| std::fs::read_to_string(p).ok())
+    }
+
+    /// The paths on Windows (ADR 0009): the settings in the roaming profile
+    /// (`%APPDATA%`), which follows the user; the data, cache and logs in the
+    /// local one (`%LOCALAPPDATA%`), each in a folder of its own so that a
+    /// backup of the data holds no cache; the pictures in the profile's
+    /// `Pictures`. No runtime folder: no single-instance socket.
+    pub fn resolve_windows(var: impl Fn(&str) -> Option<OsString>) -> Result<Self, PathsError> {
+        let profile = absolute(var("USERPROFILE"));
+        let in_profile = |name: &str, fallback: &str| {
+            absolute(var(name))
+                .or_else(|| profile.as_ref().map(|p| p.join(fallback)))
+                .ok_or(PathsError::NoHome)
+        };
+        let roaming = in_profile("APPDATA", "AppData/Roaming")?.join(WINDOWS_APP_DIR);
+        let local = in_profile("LOCALAPPDATA", "AppData/Local")?.join(WINDOWS_APP_DIR);
+        let pictures_dir = match &profile {
+            Some(p) => p.join("Pictures"),
+            None => local.join("Pictures"),
+        };
+        Ok(Self {
+            config_dir: roaming,
+            data_dir: local.join("data"),
+            cache_dir: local.join("cache"),
+            state_dir: local.join("state"),
+            runtime_dir: None,
+            pictures_dir,
+        })
     }
 
     /// Paths from an arbitrary environment and file reader (for tests).
@@ -192,6 +227,38 @@ mod tests {
             .map(|(k, v)| (PathBuf::from(k), (*v).to_string()))
             .collect();
         Paths::resolve(|k| vars.get(k).cloned(), |p| files.get(p).cloned())
+    }
+
+    // ADR 0009: which variable makes which folder; the values are Unix paths
+    // so that the test runs here, where `C:\\` is not absolute
+    #[test]
+    fn windows_folders_come_from_the_profile() {
+        let vars = |pairs: &[(&str, &str)]| {
+            let map: HashMap<String, OsString> = pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect();
+            Paths::resolve_windows(move |k| map.get(k).cloned())
+        };
+        let p = vars(&[
+            ("USERPROFILE", "/u"),
+            ("APPDATA", "/u/roam"),
+            ("LOCALAPPDATA", "/u/local"),
+        ])
+        .unwrap();
+        assert_eq!(p.config_dir, PathBuf::from("/u/roam/Nikomiru"));
+        assert_eq!(p.data_dir, PathBuf::from("/u/local/Nikomiru/data"));
+        assert_eq!(p.cache_dir, PathBuf::from("/u/local/Nikomiru/cache"));
+        assert_eq!(p.state_dir, PathBuf::from("/u/local/Nikomiru/state"));
+        assert_eq!(p.pictures_dir, PathBuf::from("/u/Pictures"));
+        assert_eq!(p.runtime_dir, None);
+        // the profile alone gives AppData's usual folders
+        let p = vars(&[("USERPROFILE", "/u")]).unwrap();
+        assert_eq!(p.config_dir, PathBuf::from("/u/AppData/Roaming/Nikomiru"));
+        assert_eq!(p.data_dir, PathBuf::from("/u/AppData/Local/Nikomiru/data"));
+        // nothing, or a relative profile: no folders
+        assert_eq!(vars(&[]), Err(PathsError::NoHome));
+        assert_eq!(vars(&[("USERPROFILE", "u")]), Err(PathsError::NoHome));
     }
 
     #[test]
