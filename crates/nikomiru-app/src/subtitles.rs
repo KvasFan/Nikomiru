@@ -20,7 +20,7 @@ use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::session::SubtitleSource;
 use nikomiru_ui::subtitles::{AlignRequest, Loaded, Request, Source};
 
-use crate::linux::Iconv;
+use crate::platform::Iconv;
 
 /// The largest subtitle file read: the same bound as a downloaded one.
 const MAX_SUBTITLE_FILE: u64 = 64 << 20;

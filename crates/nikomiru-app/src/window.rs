@@ -24,7 +24,7 @@ use nikomiru_player::{Player, PlayerError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle};
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{ActivationToken, Window};
+use winit::window::{Window, WindowAttributes};
 
 /// The window with its OpenGL surface and context. Fields drop in order: the
 /// surface and the context before the window they draw into.
@@ -46,6 +46,96 @@ impl std::fmt::Debug for GlWindow {
     }
 }
 
+/// The display, its configuration and the window, on Linux: the display
+/// first (EGL, else GLX), then the window made for its configuration.
+#[cfg(target_os = "linux")]
+fn display_and_window(
+    event_loop: &ActiveEventLoop,
+    mut attributes: WindowAttributes,
+    token: Option<String>,
+) -> Result<(glutin::display::Display, glutin::config::Config, Window), String> {
+    use winit::platform::startup_notify::WindowAttributesExtStartupNotify;
+    use winit::window::ActivationToken;
+    // the Wayland app id and the X11 class: the `.desktop` file's name
+    // (APP-002), which a Flatpak names after its id (D-5)
+    let app_id = std::env::var("FLATPAK_ID")
+        .ok()
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| "nikomiru".to_string());
+    attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
+        attributes, &app_id, "nikomiru",
+    );
+    attributes =
+        winit::platform::x11::WindowAttributesExtX11::with_name(attributes, &app_id, "nikomiru");
+    if let Some(token) = token {
+        attributes = attributes.with_activation_token(ActivationToken::from_raw(token));
+    }
+    let raw_display = event_loop
+        .display_handle()
+        .map_err(|e| format!("display handle: {e}"))?
+        .as_raw();
+    // EGL first, GLX if there is no EGL (X11 only)
+    let preference =
+        DisplayApiPreference::EglThenGlx(Box::new(winit::platform::x11::register_xlib_error_hook));
+    // SAFETY: the handle is the event loop's display, which outlives this window
+    // and its context (they are dropped when the loop exits).
+    let display = unsafe { glutin::display::Display::new(raw_display, preference) }
+        .map_err(|e| format!("OpenGL display: {e}"))?;
+    let config = config_of(&display, None)?;
+    let window = glutin_winit::finalize_window(event_loop, attributes, &config)
+        .map_err(|e| format!("window: {e}"))?;
+    Ok((display, config, window))
+}
+
+/// The same on Windows (spike S6): WGL needs the window before the display.
+#[cfg(windows)]
+fn display_and_window(
+    event_loop: &ActiveEventLoop,
+    attributes: WindowAttributes,
+    _token: Option<String>,
+) -> Result<(glutin::display::Display, glutin::config::Config, Window), String> {
+    let window = event_loop
+        .create_window(attributes)
+        .map_err(|e| format!("window: {e}"))?;
+    let raw_window = window
+        .window_handle()
+        .map_err(|e| format!("window handle: {e}"))?
+        .as_raw();
+    let raw_display = event_loop
+        .display_handle()
+        .map_err(|e| format!("display handle: {e}"))?
+        .as_raw();
+    // SAFETY: the handles are the event loop's and this window's, which
+    // outlive the display (dropped with the window).
+    let display = unsafe {
+        glutin::display::Display::new(raw_display, DisplayApiPreference::Wgl(Some(raw_window)))
+    }
+    .map_err(|e| format!("OpenGL display: {e}"))?;
+    let config = config_of(&display, Some(raw_window))?;
+    Ok((display, config, window))
+}
+
+/// The configuration with the fewest samples: egui and mpv need no
+/// multisampling.
+fn config_of(
+    display: &glutin::display::Display,
+    window: Option<raw_window_handle::RawWindowHandle>,
+) -> Result<glutin::config::Config, String> {
+    let mut template = ConfigTemplateBuilder::new()
+        .with_depth_size(0)
+        .with_stencil_size(0)
+        .with_transparency(false);
+    if let Some(window) = window {
+        template = template.compatible_with_native_window(window);
+    }
+    // SAFETY: a template for this display, built above.
+    let configs = unsafe { display.find_configs(template.build()) }
+        .map_err(|e| format!("OpenGL configuration: {e}"))?;
+    configs
+        .min_by_key(GlConfig::num_samples)
+        .ok_or_else(|| "no OpenGL configuration for this display".to_string())
+}
+
 impl GlWindow {
     /// Creates the window, hidden until its first frame, and makes its context
     /// current on this thread. `token` comes from the launcher (startup
@@ -55,55 +145,18 @@ impl GlWindow {
         title: &str,
         token: Option<String>,
     ) -> Result<Self, String> {
-        use winit::platform::startup_notify::WindowAttributesExtStartupNotify;
-        let mut attributes = Window::default_attributes()
+        let attributes = Window::default_attributes()
             .with_title(title)
             .with_inner_size(LogicalSize::new(1280.0, 720.0))
             .with_visible(false);
-        // the Wayland app id and the X11 class: the `.desktop` file's name
-        // (APP-002), which a Flatpak names after its id (D-5)
-        let app_id = std::env::var("FLATPAK_ID")
-            .ok()
-            .filter(|id| !id.is_empty())
-            .unwrap_or_else(|| "nikomiru".to_string());
-        attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
-            attributes, &app_id, "nikomiru",
-        );
-        attributes = winit::platform::x11::WindowAttributesExtX11::with_name(
-            attributes, &app_id, "nikomiru",
-        );
-        if let Some(token) = token {
-            attributes = attributes.with_activation_token(ActivationToken::from_raw(token));
-        }
-        let raw_display = event_loop
-            .display_handle()
-            .map_err(|e| format!("display handle: {e}"))?
-            .as_raw();
-        // EGL first, GLX if there is no EGL (X11 only)
-        let preference = DisplayApiPreference::EglThenGlx(Box::new(
-            winit::platform::x11::register_xlib_error_hook,
-        ));
-        // SAFETY: the handle is the event loop's display, which outlives this window
-        // and its context (they are dropped when the loop exits).
-        let display = unsafe { glutin::display::Display::new(raw_display, preference) }
-            .map_err(|e| format!("OpenGL display: {e}"))?;
-        let template = ConfigTemplateBuilder::new()
-            .with_depth_size(0)
-            .with_stencil_size(0)
-            .with_transparency(false)
-            .build();
-        // SAFETY: a template for this display, built above.
-        let configs = unsafe { display.find_configs(template) }
-            .map_err(|e| format!("OpenGL configuration: {e}"))?;
-        // egui and mpv need no multisampling
-        let config = configs
-            .min_by_key(GlConfig::num_samples)
-            .ok_or_else(|| "no OpenGL configuration for this display".to_string())?;
-        let window = glutin_winit::finalize_window(event_loop, attributes, &config)
-            .map_err(|e| format!("window: {e}"))?;
-        let api = match display {
+        let (display, config, window) = display_and_window(event_loop, attributes, token)?;
+        let api = match &display {
+            #[cfg(target_os = "linux")]
             glutin::display::Display::Egl(_) => "EGL",
+            #[cfg(target_os = "linux")]
             glutin::display::Display::Glx(_) => "GLX",
+            #[cfg(windows)]
+            glutin::display::Display::Wgl(_) => "WGL",
         };
         tracing::info!("OpenGL through {api}");
         let raw_window = window

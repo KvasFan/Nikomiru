@@ -46,7 +46,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M5 | Library and word audio | L | 0.2.0 | released (manual checks open) |
 | M6 | Statistics, settings, i18n, advanced mining | M | 0.3.0 | released |
 | M7 | Online metadata | M | 0.4.0 | released |
-| Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | not started |
+| Ports | macOS, Windows and Android (D-16), from spike S6 | L | after S6 | S6: Windows builds, [ADR 0009](adr/0009-ports.md) proposed |
 | M8 | Stabilization and packages | M | **1.0.0** | released (manual checks open) |
 | M9 | Words in the subtitles (D-17) | M | **1.0.0** with M8 | released (maintainer's check open) |
 | M10 | Moving pictures (D-18) | M | **1.0.0** with M8 | released (maintainer's check open) |
@@ -385,6 +385,11 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 - Android: egui and mpv's render API on GLES through winit's Android backend, with mpv-android's libmpv; AnkiDroid's API for cards; touch for lookups; the size of the work.
 - macOS: what a Mac or a macOS build machine must do (the Apple SDK cannot be used elsewhere), CGL or Metal.
 - Output: ADR 0009 with the order of the ports and what each costs.
+
+**Status as of 2026-11-03**
+
+- Windows: the library crates build for it, and the app with stand-ins for the desktop layers; `nikomiru.exe` links against libmpv for Windows. Not yet started under wine or on Windows. What is left is in [ADR 0009](adr/0009-ports.md).
+- Android and macOS: not tried; ADR 0009 sets their order.
 
 **Exit criteria**
 

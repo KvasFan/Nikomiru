@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use nikomiru_app::linux::Iconv;
+use nikomiru_app::platform::Iconv;
 use nikomiru_subs::encoding::decode;
 use nikomiru_subs::{Format, parse};
 

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use nikomiru_app::inhibit::PortalInhibitor;
 use nikomiru_app::shell::{ProxyWaker, Shell, UserEvent};
-use nikomiru_app::{cli, instance, linux, logging};
+use nikomiru_app::{cli, instance, logging, platform};
 use nikomiru_core::{Config, ConfigError, Paths, SystemClock};
 use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_player::{Player, PlayerEvent, VideoOutput};
@@ -44,7 +44,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let token = linux::take_activation_token();
+    let token = platform::take_activation_token();
 
     let debug = options.debug || std::env::var("NIKOMIRU_LOG").is_ok_and(|v| v == "debug");
     let paths = Paths::from_env();
@@ -97,7 +97,7 @@ fn main() -> ExitCode {
 /// The first termination signal closes the window like the user would, so the
 /// position is saved (LIB-006); a second one exits at once.
 fn watch_termination_signals(waker: Arc<dyn Waker>) {
-    let mut signals = match linux::catch_termination_signals() {
+    let mut signals = match platform::catch_termination_signals() {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("termination signals: {e}");
@@ -316,7 +316,7 @@ fn run(
         Ok(event_loop) => event_loop,
         Err(e) => return fatal(&format!("window system: {e}")),
     };
-    linux::force_c_numeric_locale();
+    platform::force_c_numeric_locale();
     let proxy = event_loop.create_proxy();
     let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(proxy.clone()));
 
@@ -405,7 +405,7 @@ fn run(
         // the decoders of the last file are gone: what they freed goes back
         // to the system (T-REL-003)
         if e.value == PlayerEvent::FileLoaded {
-            linux::release_free_memory();
+            platform::release_free_memory();
         }
         sink.wake(Inbound::Player(e))
     }) {
@@ -418,6 +418,7 @@ fn run(
     };
     let inhibitor = PortalInhibitor::start(translator.tr("inhibit-reason", &[]));
     // SET-003: the system theme follows the desktop's
+    #[cfg(target_os = "linux")]
     {
         let waker = Arc::clone(&waker);
         nikomiru_app::appearance::follow(nikomiru_app::dbus::Connection::session, move |dark| {
@@ -507,7 +508,7 @@ fn run(
         translator: translator.clone(),
         lookup_limit: Arc::clone(&max_results),
         logs_dir: paths.logs_dir(),
-        clock: Box::new(linux::LocalClock::default()),
+        clock: Box::new(platform::LocalClock::default()),
         notices,
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
