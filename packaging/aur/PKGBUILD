@@ -5,7 +5,7 @@
 # with the Rust toolchain of `rust-toolchain.toml` (through rustup).
 
 pkgname=nikomiru
-pkgver=2.9.0
+pkgver=2.10.1
 pkgrel=1
 pkgdesc='Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards'
 arch=('x86_64')
@@ -32,17 +32,19 @@ optdepends=(
 makedepends=('rustup' 'cargo-about')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('27a466d870ee88eb977f1763bdfc090044e682b787a8007b1c0595ef874a6373')
+# GitHub names the folder in the tarball after the repository, capitalized
+_dir="Nikomiru-$pkgver"
+sha256sums=('ef0edc8b9443df230b2994da9b0008bb56c8c65aa4bd5a6416202af494f261f2')
 
 prepare() {
-  cd "$pkgname-$pkgver"
+  cd "$_dir"
   # the toolchain of rust-toolchain.toml, and every crate, before the build
   rustup toolchain install --profile minimal "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
-  cd "$pkgname-$pkgver"
+  cd "$_dir"
   export CARGO_TARGET_DIR=target
   # no path of the build machine in the program
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build --remap-path-prefix=$HOME=/home"
@@ -54,7 +56,7 @@ build() {
 }
 
 check() {
-  cd "$pkgname-$pkgver"
+  cd "$_dir"
   # the logic, without the GUI and the generated fixtures
   cargo test --frozen --release --lib \
     -p nikomiru-core -p nikomiru-text -p nikomiru-subs -p nikomiru-dict \
@@ -62,7 +64,7 @@ check() {
 }
 
 package() {
-  cd "$pkgname-$pkgver"
+  cd "$_dir"
   install -Dm755 target/release/nikomiru -t "$pkgdir/usr/bin"
   install -Dm644 assets/nikomiru.desktop -t "$pkgdir/usr/share/applications"
   # releases before 0.5 had no Icon line
