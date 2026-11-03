@@ -67,7 +67,7 @@
 
 ## What works today
 
-Version 2.10.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 2.10.1 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
