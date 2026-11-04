@@ -19,6 +19,7 @@ mod licenses;
 mod synth;
 mod trace;
 mod util;
+mod windows;
 
 use std::process::ExitCode;
 
@@ -53,6 +54,10 @@ cargo xtask <command>
                        checks dropped frames and CPU
   test --anki-e2e      L7: the real Anki at NIKOMIRU_ANKI_URL (a throwaway profile
                        with AnkiConnect): Create Lapis deck and a card from the app
+  windows --libmpv <mpv-dev-x86_64-….7z> --ffmpeg <ffmpeg-…-win64-gpl….zip>
+                       Nikomiru for Windows as a ZIP in target/windows (ADR 0009):
+                       the release built from Linux, libmpv and ffmpeg beside it,
+                       the licenses and SOURCES.txt
   install [--prefix DIR]
                        release build in DIR/bin (default ~/.local) and the desktop
                        entry in DIR/share/applications, registered for nikomiru://
@@ -90,6 +95,7 @@ fn run() -> Result<()> {
         "trace" => trace::run(&root),
         "about" => licenses::about(&root).map(|_| ()),
         "install" => install::run(&root, rest),
+        "windows" => windows::run(&root, rest),
         "test" if rest.iter().any(|a| a == "--anki-e2e") => anki_e2e(&root),
         "help" | "-h" | "--help" => {
             eprint!("{HELP}");

@@ -55,9 +55,9 @@ Windows was tried first, since it can be built from this Linux machine: the `x86
 | Folders | XDG | `%APPDATA%\Nikomiru` for the settings, `%LOCALAPPDATA%\Nikomiru\{data,cache,state}`, the profile's Pictures | tested under wine |
 | Resolved paths | `canonicalize` | `canonicalize` gives `\\?\C:\…`, which neither compares nor reads well: `nikomiru_core::fs::canonical` makes it ordinary | tested under wine |
 | ffmpeg | the system's | shipped beside the program, searched there after `PATH` | done |
-| Packages | AUR, Flatpak | a ZIP with libmpv and ffmpeg, and their LGPL/GPL source obligations | to do |
+| Packages | AUR, Flatpak | `cargo xtask windows --libmpv <archive> --ffmpeg <archive>`: a ZIP with the release program, `libmpv-2.dll`, `ffmpeg.exe` and `ffprobe.exe` beside it, the licenses, and `SOURCES.txt` with each archive's name, SHA-256 and where its sources are | built (193 MB, of which ffmpeg 330 MB unpacked: BtbN's shared builds would make it smaller); not tried on Windows |
 
-Every unit test of every crate passes for Windows under wine 11.21, but those that use Unix permissions or symbolic links. What is left: the package, and the checks on a real Windows (the dialogs, the theme, the screen kept on, a video with clickable subtitles and a card).
+Every unit test of every crate passes for Windows under wine 11.21, but those that use Unix permissions or symbolic links; `cargo xtask ci` checks with clippy that every crate still builds for Windows (T-PORT-003). What is left: the checks on a real Windows (the dialogs, the theme, the screen kept on, a video with clickable subtitles and a card), and the maintainer's choice of how the sources of libmpv and ffmpeg are offered with a published ZIP (links to their projects' releases, as `SOURCES.txt` gives them, or a copy of the sources beside each release).
 
 ## Consequences
 
