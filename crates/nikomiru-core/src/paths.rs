@@ -93,16 +93,17 @@ impl Paths {
     /// (`%APPDATA%`), which follows the user; the data, cache and logs in the
     /// local one (`%LOCALAPPDATA%`), each in a folder of its own so that a
     /// backup of the data holds no cache; the pictures in the profile's
-    /// `Pictures`. No runtime folder: no single-instance socket.
+    /// `Pictures`. The runtime folder is the local one: the single instance
+    /// names its pipe after it.
     pub fn resolve_windows(var: impl Fn(&str) -> Option<OsString>) -> Result<Self, PathsError> {
         let profile = absolute(var("USERPROFILE"));
         let in_profile = |name: &str, fallback: &str| {
             absolute(var(name))
-                .or_else(|| profile.as_ref().map(|p| p.join(fallback)))
+                .or_else(|| profile.as_ref().map(|p| p.join("AppData").join(fallback)))
                 .ok_or(PathsError::NoHome)
         };
-        let roaming = in_profile("APPDATA", "AppData/Roaming")?.join(WINDOWS_APP_DIR);
-        let local = in_profile("LOCALAPPDATA", "AppData/Local")?.join(WINDOWS_APP_DIR);
+        let roaming = in_profile("APPDATA", "Roaming")?.join(WINDOWS_APP_DIR);
+        let local = in_profile("LOCALAPPDATA", "Local")?.join(WINDOWS_APP_DIR);
         let pictures_dir = match &profile {
             Some(p) => p.join("Pictures"),
             None => local.join("Pictures"),
@@ -112,7 +113,7 @@ impl Paths {
             data_dir: local.join("data"),
             cache_dir: local.join("cache"),
             state_dir: local.join("state"),
-            runtime_dir: None,
+            runtime_dir: Some(local),
             pictures_dir,
         })
     }
@@ -229,38 +230,47 @@ mod tests {
         Paths::resolve(|k| vars.get(k).cloned(), |p| files.get(p).cloned())
     }
 
-    // ADR 0009: which variable makes which folder; the values are Unix paths
-    // so that the test runs here, where `C:\\` is not absolute
+    // ADR 0009: which variable makes which folder, under a root that is
+    // absolute on this system
     #[test]
     fn windows_folders_come_from_the_profile() {
-        let vars = |pairs: &[(&str, &str)]| {
+        let root = if cfg!(windows) { r"C:\u" } else { "/u" };
+        let at = |rest: &str| {
+            rest.split('/')
+                .fold(PathBuf::from(root), |path, name| path.join(name))
+        };
+        let vars = |pairs: &[(&str, PathBuf)]| {
             let map: HashMap<String, OsString> = pairs
                 .iter()
-                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .map(|(k, v)| ((*k).into(), v.clone().into()))
                 .collect();
             Paths::resolve_windows(move |k| map.get(k).cloned())
         };
         let p = vars(&[
-            ("USERPROFILE", "/u"),
-            ("APPDATA", "/u/roam"),
-            ("LOCALAPPDATA", "/u/local"),
+            ("USERPROFILE", at("")),
+            ("APPDATA", at("roam")),
+            ("LOCALAPPDATA", at("local")),
         ])
         .unwrap();
-        assert_eq!(p.config_dir, PathBuf::from("/u/roam/Nikomiru"));
-        assert_eq!(p.data_dir, PathBuf::from("/u/local/Nikomiru/data"));
-        assert_eq!(p.cache_dir, PathBuf::from("/u/local/Nikomiru/cache"));
-        assert_eq!(p.state_dir, PathBuf::from("/u/local/Nikomiru/state"));
-        assert_eq!(p.pictures_dir, PathBuf::from("/u/Pictures"));
-        assert_eq!(p.runtime_dir, None);
+        assert_eq!(p.config_dir, at("roam/Nikomiru"));
+        assert_eq!(p.data_dir, at("local/Nikomiru/data"));
+        assert_eq!(p.cache_dir, at("local/Nikomiru/cache"));
+        assert_eq!(p.state_dir, at("local/Nikomiru/state"));
+        assert_eq!(p.pictures_dir, at("Pictures"));
+        assert_eq!(p.runtime_dir, Some(at("local/Nikomiru")));
         // the profile alone gives AppData's usual folders
-        let p = vars(&[("USERPROFILE", "/u")]).unwrap();
-        assert_eq!(p.config_dir, PathBuf::from("/u/AppData/Roaming/Nikomiru"));
-        assert_eq!(p.data_dir, PathBuf::from("/u/AppData/Local/Nikomiru/data"));
+        let p = vars(&[("USERPROFILE", at(""))]).unwrap();
+        assert_eq!(p.config_dir, at("AppData/Roaming/Nikomiru"));
+        assert_eq!(p.data_dir, at("AppData/Local/Nikomiru/data"));
         // nothing, or a relative profile: no folders
         assert_eq!(vars(&[]), Err(PathsError::NoHome));
-        assert_eq!(vars(&[("USERPROFILE", "u")]), Err(PathsError::NoHome));
+        assert_eq!(
+            vars(&[("USERPROFILE", PathBuf::from("u"))]),
+            Err(PathsError::NoHome)
+        );
     }
 
+    #[cfg(unix)]
     #[test]
     fn defaults_come_from_home() {
         let p = resolve(&[("HOME", "/home/u")], &[]).unwrap();
@@ -288,6 +298,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn xdg_variables_win_and_relative_ones_are_ignored() {
         let p = resolve(
@@ -308,6 +319,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn pictures_folder_from_user_dirs() {
         let p = resolve(
@@ -326,6 +338,7 @@ mod tests {
         assert_eq!(p.pictures_dir, PathBuf::from("/pics"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn missing_home_is_an_error_only_when_needed() {
         assert_eq!(resolve(&[], &[]), Err(PathsError::NoHome));

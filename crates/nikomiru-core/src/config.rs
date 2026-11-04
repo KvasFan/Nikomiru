@@ -1311,6 +1311,7 @@ pub fn check_writable(dir: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
@@ -1539,8 +1540,12 @@ opensubtitles_password = "pw-s3cret"
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nikomiru/config.toml");
         Config::default().save(&path).unwrap();
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        // on Windows the profile's folder keeps it private
+        #[cfg(unix)]
+        {
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         assert_eq!(Config::load(&path).unwrap().0, Config::default());
     }
 
@@ -1793,10 +1798,11 @@ enabled = false
         assert_eq!(again.word_audio, c.word_audio);
     }
 
-    // the settings folder is checked at start
+    // the settings folder is checked at start; a read-only folder is made
+    // with Unix permissions
+    #[cfg(unix)]
     #[test]
     fn a_folder_that_cannot_be_written_is_told() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         assert!(check_writable(dir.path()).is_ok());
         assert!(check_writable(&dir.path().join("not yet")).is_ok());

@@ -396,7 +396,6 @@ mod tests {
     // T-BAK-001, T-BAK-002
     #[test]
     fn a_backup_holds_what_it_says() {
-        use std::os::unix::fs::PermissionsExt;
         let f = fixture();
         let out = backup(&f, false);
         let list = names(&out);
@@ -419,8 +418,12 @@ mod tests {
                 .iter()
                 .any(|n| n.starts_with("dicts/"))
         );
-        let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         let manifest = inspect(&out).unwrap();
         assert_eq!((manifest.created_at, manifest.schema), (5, SCHEMA_VERSION));
         assert!(!f.dir.path().join("b.library").exists());

@@ -388,7 +388,7 @@ The maintainer asked for these builds on 2026-10-25. Linux stays the reference.
 
 **Status as of 2026-11-03**
 
-- Windows: the library crates build for it, and the app with stand-ins for the desktop layers; `nikomiru.exe` links against libmpv for Windows, and under wine opens its window and plays a video. Not yet on a real Windows, nor with subtitles (ffmpeg). What is left is in [ADR 0009](adr/0009-ports.md).
+- Windows: `nikomiru.exe` builds from Linux against libmpv for Windows, and under wine opens its window and plays a video. Done on 2026-11-04: the Windows layers (dialogs and links, screen kept on, theme, keyring, single instance, encodings, local time, folders), and every crate's unit tests pass for Windows under wine. Left: a package, and the checks on a real Windows ([ADR 0009](adr/0009-ports.md)).
 - Android and macOS: not tried; ADR 0009 sets their order.
 
 **Exit criteria**

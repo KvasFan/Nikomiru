@@ -359,7 +359,12 @@ mod tests {
             .unwrap();
         assert_eq!(report.added, 0);
         let rec = lib.video(&uid).unwrap().unwrap();
-        assert!(rec.path.ends_with("moved/Show - 01.mkv"), "{}", rec.path);
+        assert!(
+            std::path::Path::new(&rec.path)
+                .ends_with(std::path::Path::new("moved").join("Show - 01.mkv")),
+            "{}",
+            rec.path
+        );
         assert_eq!(rec.last_position_ms, 30_000);
     }
 }

@@ -1,22 +1,50 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The screensaver kept off during playback (PLY-013), on Windows: not yet;
-//! `SetThreadExecutionState` would do it (spike S6).
+//! The screen kept on during playback (PLY-013), on Windows (ADR 0009):
+//! `SetThreadExecutionState`, which holds for the thread that calls it, so
+//! one thread of its own makes every call.
+
+use std::sync::mpsc;
 
 use nikomiru_ui::session::IdleInhibitor;
+use windows_sys::Win32::System::Power::{
+    ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, SetThreadExecutionState,
+};
 
-/// Says once that it does nothing.
+/// The playback's wish, carried to the thread that holds it.
 #[derive(Debug)]
-pub struct PortalInhibitor;
+pub struct PortalInhibitor {
+    wishes: mpsc::Sender<bool>,
+}
 
 impl PortalInhibitor {
-    /// `reason` is for the desktop, which is not asked.
+    /// `reason` is for desktops that show one; Windows does not.
     pub fn start(_reason: String) -> Self {
-        tracing::info!("the screensaver is not held off on Windows yet");
-        Self
+        let (wishes, rx) = mpsc::channel::<bool>();
+        let spawned = std::thread::Builder::new()
+            .name("inhibit".into())
+            .spawn(move || {
+                for on in rx {
+                    let flags = if on {
+                        ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
+                    } else {
+                        ES_CONTINUOUS
+                    };
+                    // SAFETY: plain flags, for this thread only.
+                    if unsafe { SetThreadExecutionState(flags) } == 0 {
+                        tracing::warn!("SetThreadExecutionState refused");
+                    }
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("inhibit thread: {e}");
+        }
+        Self { wishes }
     }
 }
 
 impl IdleInhibitor for PortalInhibitor {
-    fn set(&self, _inhibit: bool) {}
+    fn set(&self, inhibit: bool) {
+        let _ = self.wishes.send(inhibit);
+    }
 }

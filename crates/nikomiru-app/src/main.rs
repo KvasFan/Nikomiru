@@ -425,6 +425,11 @@ fn run(
             waker.wake(Inbound::SystemTheme(dark));
         });
     }
+    #[cfg(windows)]
+    {
+        let waker = Arc::clone(&waker);
+        platform::follow_theme(move |dark| waker.wake(Inbound::SystemTheme(Some(dark))));
+    }
     let subtitle_source = nikomiru_app::subtitles::Loader::start(
         translator.clone(),
         config.paths.ffmpeg.clone(),

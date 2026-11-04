@@ -29,7 +29,7 @@ pub fn identity(path: &Path) -> PathBuf {
             } else {
                 dir
             };
-            std::fs::canonicalize(dir).map_or_else(|_| path.to_path_buf(), |d| d.join(name))
+            nikomiru_core::fs::canonical(dir).map_or_else(|_| path.to_path_buf(), |d| d.join(name))
         }
         _ => path.to_path_buf(),
     }
@@ -41,7 +41,7 @@ pub fn identity(path: &Path) -> PathBuf {
 pub fn video_files(root: &Path) -> Vec<Scanned> {
     let mut out = Vec::new();
     // the folders below are reached without links: theirs are resolved here
-    let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let root = nikomiru_core::fs::canonical(root).unwrap_or_else(|_| root.to_path_buf());
     let mut folders = vec![root];
     while let Some(folder) = folders.pop() {
         let Ok(entries) = std::fs::read_dir(&folder) else {
@@ -115,16 +115,20 @@ mod tests {
             std::fs::create_dir_all(f.parent().unwrap()).unwrap();
             std::fs::write(&f, b"x").unwrap();
         }
-        // a link to a parent folder does not loop
+        // a link to a parent folder does not loop (links need privileges on
+        // Windows)
+        #[cfg(unix)]
         std::os::unix::fs::symlink(dir.path(), dir.path().join("Show/loop")).unwrap();
         let found: Vec<String> = video_files(dir.path())
             .iter()
             .map(|s| {
-                s.path
-                    .strip_prefix(dir.path())
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
+                // by its names, `/` between them on every system
+                let relative = s.path.strip_prefix(dir.path()).unwrap();
+                relative
+                    .iter()
+                    .map(|name| name.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/")
             })
             .collect();
         assert_eq!(
@@ -139,6 +143,7 @@ mod tests {
     }
 
     // T-LIB-002: a link keeps its name, a linked folder is resolved
+    #[cfg(unix)]
     #[test]
     fn a_file_is_known_by_its_folder_resolved_and_its_name() {
         let dir = tempfile::tempdir().unwrap();
@@ -147,7 +152,7 @@ mod tests {
         std::fs::write(real.join("video.mkv"), b"x").unwrap();
         std::os::unix::fs::symlink(real.join("video.mkv"), real.join("Show - 01.mkv")).unwrap();
         std::os::unix::fs::symlink(&real, dir.path().join("alias")).unwrap();
-        let canonical = std::fs::canonicalize(&real).unwrap();
+        let canonical = nikomiru_core::fs::canonical(&real).unwrap();
         assert_eq!(
             identity(&dir.path().join("alias/Show - 01.mkv")),
             canonical.join("Show - 01.mkv")

@@ -249,6 +249,7 @@ mod tests {
         std::fs::write(root.join("sub/p3.png"), b"three").unwrap();
         std::fs::write(root.join("notes.txt"), b"no").unwrap();
         std::fs::write(root.join(".p0.jpg"), b"no").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink(&root, root.join("loop")).unwrap();
         let book = crate::read(&root).unwrap();
         let pages: Vec<_> = book

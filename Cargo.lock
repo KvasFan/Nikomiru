@@ -2577,6 +2577,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols-plasma",
  "wayland-protocols-wlr",
+ "windows-sys 0.61.2",
  "winit",
  "zip",
 ]

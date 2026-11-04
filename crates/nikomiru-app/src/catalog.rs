@@ -141,7 +141,7 @@ impl Worker {
                 .translator
                 .tr("library-no-folder", &[("path", root.display().to_string())]));
         }
-        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let root = nikomiru_core::fs::canonical(root).unwrap_or_else(|_| root.to_path_buf());
         let root = root.as_path();
         let files = nikomiru_library::scan::video_files(root);
         tracing::info!("{}: {} videos", root.display(), files.len());

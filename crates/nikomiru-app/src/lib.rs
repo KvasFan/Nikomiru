@@ -24,10 +24,13 @@ pub mod dictionaries;
 pub mod harness;
 pub mod hooker;
 #[cfg_attr(windows, path = "windows/inhibit.rs")]
+#[cfg_attr(windows, allow(unsafe_code))]
 pub mod inhibit;
 #[cfg_attr(windows, path = "windows/instance.rs")]
+#[cfg_attr(windows, allow(unsafe_code))]
 pub mod instance;
 #[cfg_attr(windows, path = "windows/keyring.rs")]
+#[cfg_attr(windows, allow(unsafe_code))]
 pub mod keyring;
 pub mod logging;
 pub mod ocr;
@@ -37,6 +40,7 @@ pub mod online;
 #[cfg_attr(windows, path = "windows/mod.rs")]
 pub mod platform;
 #[cfg_attr(windows, path = "windows/portal.rs")]
+#[cfg_attr(windows, allow(unsafe_code))]
 pub mod portal;
 pub mod servers;
 pub mod shell;
