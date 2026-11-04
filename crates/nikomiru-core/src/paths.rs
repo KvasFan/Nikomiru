@@ -218,6 +218,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    #[cfg(unix)]
     fn resolve(vars: &[(&str, &str)], files: &[(&str, &str)]) -> Result<Paths, PathsError> {
         let vars: HashMap<String, OsString> = vars
             .iter()

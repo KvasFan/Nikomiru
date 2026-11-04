@@ -56,6 +56,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             "warnings",
         ]))
     })?;
+    step("Windows build (ADR 0009)", windows_check)?;
     step("architecture and headers", || arch::check_all(root))?;
     step("interface strings", || crate::i18n::check(root))?;
     step("licenses (cargo deny)", || licenses::check(root, true))?;
@@ -120,6 +121,48 @@ fn release_build() -> Result<()> {
         if binary.windows(needle.len()).any(|w| w == needle.as_bytes()) {
             bail!("the release binary contains the harness string {needle:?}");
         }
+    }
+    Ok(())
+}
+
+/// The Windows target of ADR 0009.
+const WINDOWS: &str = "x86_64-pc-windows-gnu";
+
+// T-PORT-003
+/// The code and its unit tests still build for Windows, with clippy: nothing
+/// Unix-only creeps back into the shared code. Checked, not linked, so
+/// libmpv for Windows is not needed. Skipped without the target
+/// (`rustup target add x86_64-pc-windows-gnu`).
+fn windows_check() -> Result<()> {
+    let sysroot = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .current_dir(util::root())
+        .output()?;
+    let sysroot = String::from_utf8_lossy(&sysroot.stdout).trim().to_string();
+    if !std::path::Path::new(&sysroot)
+        .join("lib/rustlib")
+        .join(WINDOWS)
+        .is_dir()
+    {
+        eprintln!("  skipped: the {WINDOWS} target is not installed");
+        return Ok(());
+    }
+    for profile in [None, Some("test")] {
+        let mut cmd = cargo();
+        cmd.args([
+            "clippy",
+            "--workspace",
+            "--exclude",
+            "xtask",
+            "--lib",
+            "--locked",
+        ])
+        .args(["--target", WINDOWS, "--target-dir", "target/win"]);
+        match profile {
+            Some(p) => cmd.args(["--profile", p]),
+            None => cmd.arg("--bins"),
+        };
+        util::run(cmd.args(["--", "-D", "warnings"]))?;
     }
     Ok(())
 }
