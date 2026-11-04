@@ -26,7 +26,7 @@ use nikomiru_online::{
 };
 use nikomiru_ui::i18n::Translator;
 
-use crate::linux::Iconv;
+use crate::platform::Iconv;
 use nikomiru_ui::online::{Downloaded, OnlineQuery, OnlineResults, OnlineService, PageSource};
 
 /// What the worker needs.

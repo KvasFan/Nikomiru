@@ -114,8 +114,15 @@ fn target(arg: &str, cwd: &Path) -> String {
 mod tests {
     use super::*;
 
+    const CWD: &str = "/home/u/videos";
+
     fn run(args: &[&str]) -> Result<Command, String> {
-        parse(args.iter().map(OsString::from), Path::new("/home/u/videos"))
+        parse(args.iter().map(OsString::from), Path::new(CWD))
+    }
+
+    /// `name` in the working folder, with the system's separator.
+    fn at(name: &str) -> String {
+        Path::new(CWD).join(name).to_string_lossy().into_owned()
     }
 
     #[test]
@@ -130,7 +137,7 @@ mod tests {
             ]),
             Ok(Command::Run(Options {
                 targets: vec![
-                    "/home/u/videos/ep1.mkv".into(),
+                    at("ep1.mkv"),
                     "/a/b.mp4".into(),
                     "file:///c/d.mkv".into(),
                     "nikomiru://open?uid=x".into(),
@@ -154,7 +161,7 @@ mod tests {
                 "/d/k.zip"
             ]),
             Ok(Command::ImportDictionaries(vec![
-                "/home/u/videos/jmdict.zip".into(),
+                at("jmdict.zip").into(),
                 "/d/k.zip".into()
             ]))
         );
@@ -164,12 +171,14 @@ mod tests {
         assert_eq!(
             run(&["--", "-strange.mkv"]),
             Ok(Command::Run(Options {
-                targets: vec!["/home/u/videos/-strange.mkv".into()],
+                targets: vec![at("-strange.mkv")],
                 ..Options::default()
             }))
         );
     }
 
+    // the bytes of a Unix name; Windows names are UTF-16
+    #[cfg(unix)]
     #[test]
     fn non_utf8_paths_are_refused() {
         use std::os::unix::ffi::OsStringExt;

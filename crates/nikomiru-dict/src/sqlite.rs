@@ -14,7 +14,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::File;
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -259,13 +258,34 @@ enum Walk {
     Stop,
 }
 
+/// Fills `buf` from `file` at `offset`, without a shared cursor on Unix;
+/// Windows moves the file's cursor, which no reader here relies on.
+#[cfg(unix)]
+fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+    std::os::unix::fs::FileExt::read_exact_at(file, buf, offset)
+}
+
+#[cfg(windows)]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> std::io::Result<()> {
+    use std::os::windows::fs::FileExt;
+    while !buf.is_empty() {
+        match file.seek_read(buf, offset)? {
+            0 => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+            n => {
+                buf = &mut buf[n..];
+                offset += n as u64;
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Database {
     /// Opens `path` read-only.
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
         let mut header = [0u8; 100];
-        file.read_exact_at(&mut header, 0)
-            .map_err(|_| SqliteError::NotSqlite)?;
+        read_exact_at(&file, &mut header, 0).map_err(|_| SqliteError::NotSqlite)?;
         if &header[..16] != b"SQLite format 3\0" {
             return Err(SqliteError::NotSqlite);
         }
@@ -301,8 +321,11 @@ impl Database {
             return Ok(Arc::clone(p));
         }
         let mut data = vec![0u8; self.page_size];
-        self.file
-            .read_exact_at(&mut data, u64::from(n - 1) * self.page_size as u64)?;
+        read_exact_at(
+            &self.file,
+            &mut data,
+            u64::from(n - 1) * self.page_size as u64,
+        )?;
         let data = Arc::new(data);
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         if cache.len() >= CACHE_PAGES {

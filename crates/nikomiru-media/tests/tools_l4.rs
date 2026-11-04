@@ -43,6 +43,7 @@ fn search(setting: &Path, env: Option<&Path>, path: &[&Path]) -> Search {
         setting: setting.to_string_lossy().into_owned(),
         env: env.map(OsString::from),
         path: Some(std::env::join_paths(path).unwrap()),
+        beside: None,
     }
 }
 
@@ -86,6 +87,20 @@ fn the_setting_wins_then_the_variable_then_path() {
         probe(&search(Path::new(""), None, &[&empty])),
         Err(ToolsError::NotFound)
     ));
+
+    // the program's folder comes last, after PATH (ADR 0009)
+    let with_beside = |path: &[&Path]| Search {
+        beside: Some(env.clone()),
+        ..search(Path::new(""), None, path)
+    };
+    let t = probe(&with_beside(&[&empty])).unwrap();
+    assert_eq!(
+        (t.origin, t.version.as_str()),
+        (Origin::Beside, "9.0.2-env")
+    );
+    assert_eq!(t.ffprobe, env.join("ffprobe"));
+    let t = probe(&with_beside(&[&bin])).unwrap();
+    assert_eq!(t.origin, Origin::Path);
 }
 
 // T-EXT-001
@@ -129,6 +144,7 @@ fn the_real_ffmpeg_is_found_in_path() {
         setting: String::new(),
         env: None,
         path: std::env::var_os("PATH"),
+        beside: None,
     })
     .unwrap();
     assert!(

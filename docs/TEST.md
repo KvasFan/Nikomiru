@@ -230,6 +230,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-MAINT-002 | Coverage | `cargo xtask coverage` (`cargo llvm-cov` with the L4 tests, the tests and fakes not counted, the profiles of killed children dropped) ≥ 80% of lines for `nikomiru-text`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki`; on 2026-10-26: 96.2%, 96.8%, 92.3%, 95.5% | CI |
 | T-PORT-001 | Wayland and X11 | The L6 suite runs on Wayland (the off-screen KWin); the smoke test (a video, its first frame, a word looked up) also on X11 alone, through the same KWin's Xwayland | L6 |
 | T-PORT-002 | Offline build | After `cargo fetch`, `cargo build --offline --workspace` succeeds (a step of `cargo xtask ci --full`; the PKGBUILD builds with `--frozen`) | CI |
+| T-PORT-003 | Windows build | Every crate, its binary and its unit tests pass clippy for `x86_64-pc-windows-gnu` (a step of `cargo xtask ci`, skipped without the target); by hand, the unit tests built for Windows pass under wine (ADR 0009) | CI |
 
 ### 6.2 Text (`nikomiru-text`)
 

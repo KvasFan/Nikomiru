@@ -23,7 +23,7 @@ use winit::keyboard::ModifiersState;
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::WindowId;
 
-use crate::linux::dnd::Drops;
+use crate::platform::dnd::Drops;
 use crate::window::GlWindow;
 
 /// What the other threads and the window system send to the event loop.

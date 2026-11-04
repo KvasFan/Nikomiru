@@ -9,7 +9,6 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{self, Read};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -29,6 +28,8 @@ pub enum Origin {
     Environment,
     /// `PATH`.
     Path,
+    /// The program's own folder, where a Windows package puts them (ADR 0009).
+    Beside,
 }
 
 /// Errors of the discovery.
@@ -105,6 +106,8 @@ pub struct Search {
     pub env: Option<OsString>,
     /// `PATH`.
     pub path: Option<OsString>,
+    /// The program's folder, searched last.
+    pub beside: Option<PathBuf>,
 }
 
 impl Search {
@@ -114,6 +117,9 @@ impl Search {
             setting: setting.to_string(),
             env: std::env::var_os("NIKOMIRU_FFMPEG"),
             path: std::env::var_os("PATH"),
+            beside: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
         }
     }
 }
@@ -292,19 +298,27 @@ impl Tools {
 /// A setting or variable value: an executable, or the folder that holds it.
 fn executable_in(value: &Path, name: &str) -> PathBuf {
     if value.is_dir() {
-        value.join(name)
+        value.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
     } else {
         value.to_path_buf()
     }
 }
 
+#[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// Windows has no executable bit: a file found by its `.exe` name will do.
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn in_path(path_var: Option<&OsString>, name: &str) -> Option<PathBuf> {
     std::env::split_paths(path_var?)
-        .map(|dir| dir.join(name))
+        .map(|dir| dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
         .find(|p| is_executable(p))
 }
 
@@ -331,18 +345,30 @@ pub fn find(search: &Search) -> Result<(Origin, PathBuf, PathBuf), ToolsError> {
             );
             continue;
         }
-        let ffprobe = ffmpeg.with_file_name("ffprobe");
+        let ffprobe = ffmpeg.with_file_name(format!("ffprobe{}", std::env::consts::EXE_SUFFIX));
         if !is_executable(&ffprobe) {
             return Err(ToolsError::NoFfprobe { ffmpeg });
         }
         return Ok((origin, ffmpeg, ffprobe));
     }
-    let ffmpeg = in_path(search.path.as_ref(), "ffmpeg").ok_or(ToolsError::NotFound)?;
-    let ffprobe =
-        in_path(search.path.as_ref(), "ffprobe").ok_or_else(|| ToolsError::NoFfprobe {
+    let beside = search
+        .beside
+        .as_ref()
+        .map(|dir| std::env::join_paths([dir]));
+    let beside = beside.and_then(Result::ok);
+    for (origin, dirs) in [
+        (Origin::Path, search.path.as_ref()),
+        (Origin::Beside, beside.as_ref()),
+    ] {
+        let Some(ffmpeg) = in_path(dirs, "ffmpeg") else {
+            continue;
+        };
+        let ffprobe = in_path(dirs, "ffprobe").ok_or_else(|| ToolsError::NoFfprobe {
             ffmpeg: ffmpeg.clone(),
         })?;
-    Ok((Origin::Path, ffmpeg, ffprobe))
+        return Ok((origin, ffmpeg, ffprobe));
+    }
+    Err(ToolsError::NotFound)
 }
 
 /// Runs `program args`, returning its standard output; killed after

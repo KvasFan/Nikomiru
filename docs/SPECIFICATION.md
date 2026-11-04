@@ -274,7 +274,7 @@ nikomiru/
 - `nikomiru-core` depends on no workspace crate.
 - `nikomiru-text`, `nikomiru-books`, `nikomiru-ocr`, `nikomiru-subs`, `nikomiru-dict`, `nikomiru-anki` and `nikomiru-library` **MUST NOT** depend on the UI toolkit (`egui` and its crates, `winit`, `glutin`, `glow`, `accesskit`) or on `libmpv2`. They stay pure logic, testable without a display.
 - Only `nikomiru-player` depends on `libmpv2` (and `libmpv2-sys`). Only `nikomiru-ui` and `nikomiru-app` depend on the UI toolkit. No crate depends on a retired toolkit (Dioxus, D-10; Qt through cxx-qt, D-13).
-- **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI and the render context), in `nikomiru-app::linux` (environment, `setlocale`, signals, iconv, the Wayland connection for drag and drop) and in `nikomiru-app::window` (the OpenGL context through glutin, the GL state around mpv's render). There is no C++. Every `unsafe` block MUST have a `// SAFETY:` comment on the line above it. `nikomiru-app` declares `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on those modules; every other crate except `nikomiru-player` declares `#![forbid(unsafe_code)]`.
+- **ARC-011**: `unsafe` is allowed only in `nikomiru-player` (mpv FFI and the render context), in `nikomiru-app`'s platform layer: `src/linux` (environment, `setlocale`, signals, iconv, the Wayland connection for drag and drop) and `src/windows` (the Win32 calls of ADR 0009), and in `nikomiru-app::window` (the OpenGL context through glutin, the GL state around mpv's render). There is no C++. Every `unsafe` block MUST have a `// SAFETY:` comment on the line above it. `nikomiru-app` declares `#![deny(unsafe_code)]`, with `#[allow(unsafe_code)]` only on those modules; every other crate except `nikomiru-player` declares `#![forbid(unsafe_code)]`.
 
 ### 5.2 Video and UI in the same window (egui)
 
@@ -367,7 +367,7 @@ The maintainer asked for builds for macOS, Windows and Android (D-16). Linux sta
 
 ### 5.5 External processes
 
-- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `NIKOMIRU_FFMPEG` variable, `PATH`. At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
+- **EXT-001**: ffmpeg and ffprobe are searched in this order: the `paths.ffmpeg` setting, the `NIKOMIRU_FFMPEG` variable, `PATH`, then the program's own folder, where a Windows package puts them (ADR 0009). At startup the version and the presence of the required encoders are checked (`ffmpeg -hide_banner -encoders`). If one is missing, the related feature is disabled with a clear message.
 - **EXT-002**: arguments are always passed as a vector, never through a shell. Input paths are prefixed with `file:` to neutralize names that start with `-` or contain `:`.
 - **EXT-003**: every process has a timeout (default 60 s; for subtitle extraction it scales with the duration) and can be cancelled. On cancellation the process is killed and partial files are removed.
 
@@ -1087,6 +1087,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-38 | The review's cards listed | **Decided by the maintainer's agent** (2026-11-02, "procedi come credi meglio", to change at will): 2.8.0 lists every card of the review with a search, Delete and Start over, since until then a card was seen only when it came back. Editing a card's text and suspending a card are left out |
 | D-39 | An audiobook and its book | **Decided by the maintainer's agent** (2026-11-02, "procedi", to change at will): 2.9.0 links the timed text of an audiobook to its EPUB, the "linking the text to an EPUB" D-29 left for later, the way Sasayaki does with ttu: the lines found in the book by their text, not by a file of matches, so any timed text the user has will do; the book follows the sound, and plays from a paragraph. The place found is a paragraph, not the exact characters, and the link is not kept between sessions |
 | D-40 | The look of Adwaita | **Asked by the maintainer** (2026-11-03, "cambia stile grafico per renderlo piu bello stile Adwaita scuro (non copiare per forza)"): 2.10.0 restyles egui's widgets and the palette's tokens after Adwaita (SET-009) rather than drawing the interface with GTK or libadwaita, which would mean a second toolkit beside egui; the light theme follows the same style. The dark style of what is drawn on the video does not change |
+| D-41 | The ports' order | **Asked by the maintainer** (2026-11-03, "accetto prosegui"): ADR 0009 accepted. Windows first, from a cross build on Linux; then Android; then macOS, which needs Apple hardware. The platform layer is the `platform` module, a file per system |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

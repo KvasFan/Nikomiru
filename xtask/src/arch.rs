@@ -26,11 +26,14 @@ const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
 
 /// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
 /// crate) that may contain it (ARC-011): the player for the mpv FFI and its
-/// render context; the app for system calls (`src/linux`) and the OpenGL context
-/// of the window (`src/window.rs`).
+/// render context; the app for system calls (`src/linux`, `src/windows`, ADR
+/// 0009) and the OpenGL context of the window (`src/window.rs`).
 const UNSAFE_ALLOWED: [(&str, &[&str]); 2] = [
     ("nikomiru-player", &["src/"]),
-    ("nikomiru-app", &["src/linux", "src/window.rs"]),
+    (
+        "nikomiru-app",
+        &["src/linux", "src/windows", "src/window.rs"],
+    ),
 ];
 
 /// Pure-logic crates: they do not depend, not even indirectly, on the UI toolkit

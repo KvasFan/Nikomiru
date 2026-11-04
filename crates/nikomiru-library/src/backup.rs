@@ -162,14 +162,13 @@ pub fn create(contents: &Contents<'_>, out: &Path) -> Result<Manifest, BackupErr
     let written = (|| {
         contents.library.copy_to(&snapshot)?;
         let file = {
-            use std::os::unix::fs::OpenOptionsExt;
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&part)
-                .map_err(io)?
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            // keys and passwords inside: only the user reads it (on Windows,
+            // the folder's permissions, the user's own)
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            options.open(&part).map_err(io)?
         };
         let mut zip = zip::ZipWriter::new(file);
         let options = SimpleFileOptions::default().large_file(true);
@@ -397,7 +396,6 @@ mod tests {
     // T-BAK-001, T-BAK-002
     #[test]
     fn a_backup_holds_what_it_says() {
-        use std::os::unix::fs::PermissionsExt;
         let f = fixture();
         let out = backup(&f, false);
         let list = names(&out);
@@ -420,8 +418,12 @@ mod tests {
                 .iter()
                 .any(|n| n.starts_with("dicts/"))
         );
-        let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
         let manifest = inspect(&out).unwrap();
         assert_eq!((manifest.created_at, manifest.schema), (5, SCHEMA_VERSION));
         assert!(!f.dir.path().join("b.library").exists());

@@ -25,7 +25,6 @@ required-features = ["test-harness"]
 test-harness = ["nikomiru-ui/test-harness"]
 
 [dependencies]
-secret-service.workspace = true
 nikomiru-anki.workspace = true
 nikomiru-books.workspace = true
 nikomiru-core.workspace = true
@@ -45,8 +44,6 @@ glutin.workspace = true
 glutin-winit.workspace = true
 winit.workspace = true
 raw-window-handle.workspace = true
-wayland-client.workspace = true
-wayland-backend.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -55,7 +52,42 @@ uuid = { workspace = true, features = ["v4"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
+
+# the desktop layers of Linux (§5.2.4): Wayland and X11, EGL and GLX, D-Bus
+[target.'cfg(target_os = "linux")'.dependencies]
+egui-winit = { workspace = true, features = ["wayland", "x11"] }
+egui_glow = { workspace = true, features = ["wayland", "x11"] }
+glutin = { workspace = true, features = ["egl", "glx", "wayland", "x11"] }
+glutin-winit = { workspace = true, features = ["egl", "glx", "wayland", "x11"] }
+winit = { workspace = true, features = ["wayland", "wayland-dlopen", "x11"] }
+wayland-client.workspace = true
+wayland-backend.workspace = true
+secret-service.workspace = true
 libc.workspace = true
+
+# Windows (spike S6): OpenGL through WGL
+[target.'cfg(windows)'.dependencies]
+glutin = { workspace = true, features = ["wgl"] }
+glutin-winit = { workspace = true, features = ["wgl"] }
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_Security",
+  "Win32_Security_Credentials",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_IO",
+  "Win32_System_Pipes",
+  "Win32_System_Power",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_System_Time",
+  "Win32_UI_Controls_Dialogs",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true
@@ -67,5 +99,8 @@ nikomiru-books = { workspace = true, features = ["test-support"] }
 image.workspace = true
 # the L6 tests write a large dictionary for an import to interrupt
 zip.workspace = true
+
+# the L6 tests drive a Wayland desktop
+[target.'cfg(target_os = "linux")'.dev-dependencies]
 wayland-protocols-wlr.workspace = true
 wayland-protocols-plasma.workspace = true

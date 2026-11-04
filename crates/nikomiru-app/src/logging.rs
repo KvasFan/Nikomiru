@@ -4,7 +4,6 @@
 //! (SPECIFICATION §5.5). libmpv's messages arrive with the `mpv` target
 //! (§5.2.2 #11). PRV-002: no subtitle text and no API keys are logged; paths are.
 
-use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
 use tracing::Level;
@@ -31,11 +30,11 @@ pub fn filter(debug: bool) -> Targets {
 /// flushes the file when dropped, so it must live until the end of `main`.
 pub fn init(dir: Option<&Path>, debug: bool) -> Option<WorkerGuard> {
     let appender = dir.and_then(|dir| {
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(dir)
-            .ok()?;
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.create(dir).ok()?;
         RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
             .filename_prefix("nikomiru")

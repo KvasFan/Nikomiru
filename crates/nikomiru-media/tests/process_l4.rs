@@ -86,6 +86,7 @@ fn embedded_tracks_in_one_pass_then_from_the_cache() {
         setting: String::new(),
         env: None,
         path: std::env::var_os("PATH"),
+        beside: None,
     })
     .unwrap()
     .ffmpeg;
