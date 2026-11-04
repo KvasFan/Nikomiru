@@ -236,9 +236,9 @@ impl Server {
                 let mut current = first;
                 loop {
                     use std::os::windows::io::AsRawHandle;
-                    // SAFETY: `current` is a pipe instance this thread owns.
-                    let connected =
-                        unsafe { ConnectNamedPipe(current.as_raw_handle(), std::ptr::null_mut()) };
+                    let pipe = current.as_raw_handle();
+                    // SAFETY: `pipe` is an instance this thread owns; no overlapped I/O.
+                    let connected = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) };
                     if connected == 0 && last_error() != ERROR_PIPE_CONNECTED {
                         tracing::warn!("single-instance pipe: {}", std::io::Error::last_os_error());
                         return;
