@@ -33,6 +33,15 @@ card-open-in-anki = Apri in Anki
 card-add-anyway = Aggiungi comunque
 toast-card-added = Carta aggiunta a { $deck }.
 toast-card-overwritten = Carta sovrascritta in { $deck }.
+toast-card-kept = { $count ->
+    [one] Carta tenuta per dopo: la manda Impostazioni → Anki.
+   *[other] Carta tenuta per dopo ({ $count } tenute): le manda Impostazioni → Anki.
+}
+toast-later-sent = { $sent ->
+    [one] 1 carta mandata ad Anki.
+   *[other] { $sent } carte mandate ad Anki.
+}
+toast-later-some-failed = Mandate ad Anki: { $sent }. Ancora tenute: { $failed } ({ $reason }).
 link-missing = Il video di questa carta non si trova:
 link-locate = Individua il file…
 anki-open = Impostazioni di Anki
@@ -322,6 +331,8 @@ error-link-invalid = Questo non è un link di Nikomiru a una scena.
 error-anki-unavailable = Non si possono creare carte: il worker di Anki non è partito.
 error-mining-dictionaries-changed = I dizionari sono cambiati da quando si è aperto il popup: cerca di nuovo la parola.
 error-mining-media = Non si possono creare i media della carta ({ $reason }).
+error-later-keep = Non si può tenere la carta per dopo ({ $reason }).
+error-later-damaged = Non si può leggere la carta tenuta per dopo ({ $reason }).
 error-mining-no-audio = Nessuna carta: non si è potuto tagliare l'audio della frase (al video serve una traccia audio).
 error-mining-mapping = Nessun campo del tipo di nota ha un modello: controlla la corrispondenza dei campi nelle impostazioni di Anki.
 error-mining-note-gone = L'ultima carta non è più in Anki.
@@ -794,6 +805,13 @@ review-years = { $n } anni
 anki-destination = Le carte vanno in
 anki-destination-anki = Anki
 anki-destination-nikomiru = ripasso di Nikomiru
+anki-destination-later = Anki, più tardi
+anki-destination-later-hint = Le carte si fanno subito, con audio e immagine, e restano su questo computer: Anki può essere chiuso. Mandale qui sotto quando è aperto.
+anki-later = Carte per dopo ({ $count })
+anki-later-none = Nessuna carta tenuta.
+anki-later-remove = Togli
+anki-later-damaged = Una carta che non si può leggere: toglila.
+anki-later-send = Manda ad Anki
 anki-destination-hint = Il ripasso di Nikomiru tiene le carte nella libreria e le ripropone con FSRS nella scheda Ripasso della pagina Libreria: Anki non serve.
 review-settings = Ripasso in Nikomiru
 review-retention = Quota di carte ricordate quando tornano

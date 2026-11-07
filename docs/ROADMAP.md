@@ -683,6 +683,8 @@ Done outside the backlog on 2026-11-03, for 2.10.0: the look of Adwaita asked by
 
 Done outside the backlog on 2026-11-05, for 2.11.0: what Nikomiru lacked from Fushi's video settings, asked by the maintainer (D-42): the furigana's size (LKP-052), the subtitles' look (SUB-021), revealing on hover as a choice (SUB-022), the list's size (SUB-023), the time left (PLY-020) and the picture's fit (PLY-021), with T-LKP-052, T-SUB-021…023 and T-PLY-020…021.
 
+Done outside the backlog on 2026-11-08, for 2.12.0: Fushi's cards for later (ANK-044, T-ANK-044, D-43).
+
 ---
 
 ## Definition of done (applies to every PR)

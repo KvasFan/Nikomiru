@@ -33,8 +33,10 @@ use nikomiru_media::tools::{AudioFormat, ImageFormat, Search, Tools, probe};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
     AnkiLists, AnkiService, BrowseTarget, CardAction, CheckRequest, FrameChoice, LapisMade,
-    MineFailure, MineRequest, Mined, PendingFrame,
+    LaterCard, LaterSent, MineFailure, MineRequest, Mined, PendingFrame,
 };
+
+use crate::later::{self, Prepared, Record};
 
 /// The pause of the duplicate checks after a transport error (ANK-030).
 pub const CHECK_PAUSE: Duration = Duration::from_secs(30);
@@ -67,6 +69,9 @@ pub struct Parts {
     /// Where the review's cards keep their media
     /// (`$XDG_DATA_HOME/nikomiru/review`, REV-001).
     pub review_dir: PathBuf,
+    /// Where the cards kept for later wait (`$XDG_DATA_HOME/nikomiru/later`,
+    /// ANK-044).
+    pub later_dir: PathBuf,
     /// Time, for the pause of the checks and the records.
     pub clock: Arc<dyn Clock>,
 }
@@ -84,6 +89,8 @@ type MineDone = Box<dyn FnOnce(Result<Mined, MineFailure>) + Send>;
 type Browsed = Box<dyn FnOnce(Result<(), String>) + Send>;
 type Listed = Box<dyn FnOnce(Result<AnkiLists, String>) + Send>;
 type LapisDone = Box<dyn FnOnce(Result<LapisMade, String>) + Send>;
+type LaterListed = Box<dyn FnOnce(Vec<LaterCard>) + Send>;
+type LaterDone = Box<dyn FnOnce(LaterSent) + Send>;
 /// Renders the field values for a list of note fields.
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
@@ -94,6 +101,9 @@ enum Job {
     Refresh(Box<AnkiConfig>, Listed),
     CreateLapis(Box<AnkiConfig>, LapisDone),
     Configure(Box<AnkiConfig>),
+    Later(LaterListed),
+    SendLater(LaterDone),
+    ForgetLater(String, LaterListed),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -147,6 +157,9 @@ impl Anki {
                         Job::Refresh(config, done) => done(worker.refresh(&config)),
                         Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
                         Job::Configure(config) => worker.configure(*config),
+                        Job::Later(done) => done(worker.later()),
+                        Job::SendLater(done) => done(worker.send_later()),
+                        Job::ForgetLater(id, done) => done(worker.forget_later(&id)),
                     }
                 }
             });
@@ -183,6 +196,11 @@ impl Anki {
             Job::Refresh(_, done) => done(Err(self.unavailable.clone())),
             Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
             Job::Configure(_) => {}
+            Job::Later(done) | Job::ForgetLater(_, done) => done(Vec::new()),
+            Job::SendLater(done) => done(LaterSent {
+                first_problem: Some(self.unavailable.clone()),
+                ..LaterSent::default()
+            }),
         }
     }
 }
@@ -220,6 +238,24 @@ impl AnkiService for Anki {
 
     fn configure(&self, config: AnkiConfig) {
         let _ = self.send(Job::Configure(Box::new(config)));
+    }
+
+    fn later(&self, done: LaterListed) {
+        if let Some(job) = self.send(Job::Later(done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn send_later(&self, done: LaterDone) {
+        if let Some(job) = self.send(Job::SendLater(done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn forget_later(&self, id: String, done: LaterListed) {
+        if let Some(job) = self.send(Job::ForgetLater(id, done)) {
+            self.refuse(job);
+        }
     }
 }
 
@@ -604,6 +640,22 @@ impl Worker {
         if self.parts.config.to_review() {
             return self.mine_for_review(r, frame);
         }
+        let prepared = self.prepare(r, frame)?;
+        // ANK-044: a new card waits; an overwrite needs Anki now
+        if self.parts.config.later() && !matches!(r.action, CardAction::Overwrite(_)) {
+            return self.keep(&prepared, r.action == CardAction::AddAnyway);
+        }
+        self.deliver(&prepared, r.action)
+    }
+
+    /// A card made from its request, nothing sent yet: the dictionaries'
+    /// fields, the sentence audio and the picture in parallel (ANK-035), the
+    /// link.
+    fn prepare(
+        &mut self,
+        r: &MineRequest,
+        frame: Option<PendingFrame>,
+    ) -> Result<Prepared, MineFailure> {
         let dict = self.dictionary_fields(r)?;
         if let Err(e) = std::fs::create_dir_all(&self.parts.cache_dir) {
             return Err(self.fail_with("error-mining-media", &[("reason", e.to_string())]));
@@ -636,8 +688,6 @@ impl Worker {
             tracing::warn!("card image: {reason}");
             None
         });
-        let fields = self.note_fields().map_err(|e| self.fail(&e))?;
-        let mapping = self.mapping(&fields);
         let (start_ms, end_ms) = r.clip.unwrap_or((r.position_ms, r.position_ms));
         let source_id = link::new_source_id();
         let link = r.uid.as_ref().map(|uid| SourceLink {
@@ -648,11 +698,13 @@ impl Worker {
             source_id: source_id.clone(),
         });
         let sentence = compose::sentence(&r.sentence, r.offset, &r.matched);
-        let scene = |audio: Option<&str>, image: Option<&str>| SceneFields {
+        // the media's placeholders are filled when they are sent: Anki may
+        // rename them (ANK-036)
+        let scene = SceneFields {
             sentence: sentence.clone(),
-            cue_sentence: sentence.clone(),
-            sentence_audio: audio.map(|a| format!("[sound:{a}]")).unwrap_or_default(),
-            card_image: image.map(compose::card_image).unwrap_or_default(),
+            cue_sentence: sentence,
+            sentence_audio: String::new(),
+            card_image: String::new(),
             audio: String::new(),
             document_title: nikomiru_anki::html::escape(&r.title),
             // without the library there is no link: the title, as in Fushi
@@ -666,18 +718,44 @@ impl Worker {
                 String::new()
             },
         };
-        let keep_empty = matches!(r.action, CardAction::Overwrite(_));
+        Ok(Prepared {
+            values: compose::values(&dict, &scene),
+            media: dict.media,
+            audio,
+            image,
+            record: Record::of(r, &source_id, (start_ms, end_ms)),
+        })
+    }
+
+    /// Keeps a card for later (ANK-044).
+    fn keep(&self, prepared: &Prepared, anyway: bool) -> Result<Mined, MineFailure> {
+        let now = self.parts.clock.now();
+        later::keep(&self.parts.later_dir, prepared, anyway, now)
+            .map_err(|e| self.fail_with("error-later-keep", &[("reason", e.to_string())]))?;
+        Ok(Mined {
+            note_id: 0,
+            deck: self.parts.config.deck.clone(),
+            overwritten: false,
+            kept: Some(later::list(&self.parts.later_dir).len()),
+        })
+    }
+
+    /// Sends a card to Anki: its fields filled with the media's names as
+    /// Anki stored them, the media uploaded, then `addNote` or the overwrite
+    /// of the last card (ANK-026, ANK-036, ANK-037).
+    fn deliver(&mut self, p: &Prepared, action: CardAction) -> Result<Mined, MineFailure> {
+        let fields = self.note_fields().map_err(|e| self.fail(&e))?;
+        let mapping = self.mapping(&fields);
+        let keep_empty = matches!(action, CardAction::Overwrite(_));
         // a Lapis-like note reads some fields through `text:` in its scripts
         let lapis_like = lapis::is_lapis(&self.parts.config.note_type, &fields);
         let render = |audio: Option<&str>, image: Option<&str>, fields: &[String]| {
-            let scene = scene(audio, image);
-            compose::fields(
-                fields,
-                &mapping,
-                &|name| compose::value(name, &dict, &scene),
-                keep_empty,
-            )
-            .map(|values| {
+            let value = |name: &str| match name {
+                "sentence-audio" => audio.map(|a| format!("[sound:{a}]")).unwrap_or_default(),
+                "card-image" => image.map(compose::card_image).unwrap_or_default(),
+                other => p.values.get(other).cloned().unwrap_or_default(),
+            };
+            compose::fields(fields, &mapping, &value, keep_empty).map(|values| {
                 if lapis_like {
                     compose::lapis_safe(values)
                 } else {
@@ -687,16 +765,16 @@ impl Worker {
         };
         // the fields must hold before anything goes to Anki (ANK-026)
         render(
-            audio.as_ref().map(|a| a.0.as_str()),
-            image.as_ref().map(|i| i.0.as_str()),
+            p.audio.as_ref().map(|a| a.0.as_str()),
+            p.image.as_ref().map(|i| i.0.as_str()),
             &fields,
         )
         .map_err(|e| self.fields_failure(&e))?;
 
         // the media: which are new, then the upload (ANK-036)
-        let mut media: Vec<Media> = dict.media.clone();
-        media.extend(audio.clone());
-        media.extend(image.clone());
+        let mut media: Vec<Media> = p.media.clone();
+        media.extend(p.audio.clone());
+        media.extend(p.image.clone());
         let client = self.client().map_err(|e| self.fail(&e))?;
         let names: Vec<String> = media.iter().map(|(n, _)| n.clone()).collect();
         let existed = self
@@ -718,10 +796,10 @@ impl Worker {
                 .find(|(n, _, _)| n == name)
                 .map_or_else(|| name.to_string(), |(_, a, _)| a.clone())
         };
-        let audio_name = audio.as_ref().map(|a| actual(&a.0));
-        let image_name = image.as_ref().map(|i| actual(&i.0));
+        let audio_name = p.audio.as_ref().map(|a| actual(&a.0));
+        let image_name = p.image.as_ref().map(|i| actual(&i.0));
         // ANK-027
-        let series = r.uid.as_deref().and_then(|uid| {
+        let series = p.record.uid.as_deref().and_then(|uid| {
             self.parts
                 .library
                 .as_ref()?
@@ -731,7 +809,7 @@ impl Worker {
                 .flatten()
         });
         let tags = compose::tags(&self.parts.config.tags, series.as_deref());
-        let outcome = match r.action {
+        let outcome = match action {
             CardAction::Add | CardAction::AddAnyway => {
                 match render(audio_name.as_deref(), image_name.as_deref(), &fields) {
                     Ok(values) => {
@@ -743,7 +821,7 @@ impl Worker {
                             scope: self.scope(),
                         };
                         let added =
-                            self.heard(client.add_note(&note, r.action == CardAction::AddAnyway));
+                            self.heard(client.add_note(&note, action == CardAction::AddAnyway));
                         // the client knows when the note may exist (ANK-003)
                         added.map(|id| (id, false)).map_err(|e| match e {
                             AnkiError::CommitUnknown { .. } => NoteError::Unknown(self.fail(&e)),
@@ -772,12 +850,74 @@ impl Worker {
             // the note may exist, or have changed: its media stay (ANK-003)
             Err(NoteError::Unknown(failure)) => return Err(failure),
         };
-        self.record(note_id, r, &source_id, (start_ms, end_ms));
+        self.record(note_id, &p.record);
         Ok(Mined {
             note_id,
             deck: self.parts.config.deck.clone(),
             overwritten,
+            kept: None,
         })
+    }
+
+    /// The cards kept for later (ANK-044).
+    fn later(&self) -> Vec<LaterCard> {
+        later::list(&self.parts.later_dir)
+    }
+
+    /// Removes a card kept for later (ANK-044).
+    fn forget_later(&self, id: &str) -> Vec<LaterCard> {
+        if let Err(e) = later::forget(&self.parts.later_dir, id) {
+            tracing::warn!("cards for later: {e}");
+        }
+        self.later()
+    }
+
+    /// Sends the cards kept for later in the order they were made (ANK-044):
+    /// a card sent leaves the folder, one refused stays with the reason; when
+    /// Anki cannot be reached, the rest are not tried.
+    fn send_later(&mut self) -> LaterSent {
+        let dir = self.parts.later_dir.clone();
+        let mut sent = LaterSent::default();
+        for card in later::list(&dir) {
+            if card.damaged {
+                continue;
+            }
+            let outcome = later::load(&dir, &card.id)
+                .map_err(|reason| self.fail_with("error-later-damaged", &[("reason", reason)]))
+                .and_then(|(prepared, anyway)| {
+                    let action = if anyway {
+                        CardAction::AddAnyway
+                    } else {
+                        CardAction::Add
+                    };
+                    self.deliver(&prepared, action)
+                });
+            match outcome {
+                Ok(_) => {
+                    sent.sent += 1;
+                    if let Err(e) = later::forget(&dir, &card.id) {
+                        tracing::warn!("cards for later: {e}");
+                    }
+                }
+                Err(failure) => {
+                    sent.failed += 1;
+                    if let Err(e) = later::note_problem(&dir, &card.id, &failure.message) {
+                        tracing::warn!("cards for later: {e}");
+                    }
+                    sent.first_problem.get_or_insert(failure.message);
+                    // Anki is not there: the next cards would wait for it too
+                    if self
+                        .paused_until
+                        .get()
+                        .is_some_and(|until| until > self.parts.clock.monotonic())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        sent.cards = self.later();
+        sent
     }
 
     fn media_failure(&self, e: &dyn std::fmt::Display) -> MineFailure {
@@ -905,11 +1045,13 @@ impl Worker {
         if let Some(before) = replaced {
             forget_files(&library, &self.parts.review_dir, &before);
         }
-        self.record(id, r, &link::new_source_id(), (start_ms, end_ms));
+        let record = Record::of(r, &link::new_source_id(), (start_ms, end_ms));
+        self.record(id, &record);
         Ok(Mined {
             note_id: id,
             deck: self.parts.translator.tr("review-deck", &[]),
             overwritten: matches!(r.action, CardAction::Overwrite(_)),
+            kept: None,
         })
     }
 
@@ -985,7 +1127,7 @@ impl Worker {
     }
 
     /// The `mined_cards` record (ANK-039).
-    fn record(&self, note_id: u64, r: &MineRequest, source_id: &str, (start, end): (i64, i64)) {
+    fn record(&self, note_id: u64, r: &Record) {
         let Some(library) = &self.parts.library else {
             return;
         };
@@ -1000,9 +1142,9 @@ impl Worker {
             reading: r.reading.clone(),
             sentence: r.sentence.clone(),
             video_uid: r.uid.clone().unwrap_or_default(),
-            start_ms: u32::try_from(start.max(0)).unwrap_or(u32::MAX),
-            end_ms: u32::try_from(end.max(0)).unwrap_or(u32::MAX),
-            source_id: source_id.to_string(),
+            start_ms: u32::try_from(r.start_ms.max(0)).unwrap_or(u32::MAX),
+            end_ms: u32::try_from(r.end_ms.max(0)).unwrap_or(u32::MAX),
+            source_id: r.source_id.clone(),
             created_at,
         };
         if let Err(e) = library.put_mined_card(note_id, &card) {

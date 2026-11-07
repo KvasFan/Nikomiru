@@ -33,6 +33,15 @@ card-open-in-anki = Open in Anki
 card-add-anyway = Add anyway
 toast-card-added = Card added to { $deck }.
 toast-card-overwritten = Card overwritten in { $deck }.
+toast-card-kept = { $count ->
+    [one] Card kept for later: Settings → Anki sends it.
+   *[other] Card kept for later ({ $count } kept): Settings → Anki sends them.
+}
+toast-later-sent = { $sent ->
+    [one] 1 card sent to Anki.
+   *[other] { $sent } cards sent to Anki.
+}
+toast-later-some-failed = Sent to Anki: { $sent }. Still kept: { $failed } ({ $reason }).
 link-missing = The video of this card cannot be found:
 link-locate = Locate the file…
 anki-open = Anki settings
@@ -322,6 +331,8 @@ error-link-invalid = This is not a Nikomiru link to a scene.
 error-anki-unavailable = Cards cannot be made: the Anki worker did not start.
 error-mining-dictionaries-changed = The dictionaries changed since the popup opened: look the word up again.
 error-mining-media = The card's media cannot be made ({ $reason }).
+error-later-keep = The card cannot be kept for later ({ $reason }).
+error-later-damaged = The card kept for later cannot be read ({ $reason }).
 error-mining-no-audio = No card: the sentence audio could not be cut (the video needs an audio track).
 error-mining-mapping = No field of the note type has a template: check the field mapping in the Anki settings.
 error-mining-note-gone = The last card is no longer in Anki.
@@ -794,6 +805,13 @@ review-years = { $n } y
 anki-destination = Cards go to
 anki-destination-anki = Anki
 anki-destination-nikomiru = Nikomiru's review
+anki-destination-later = Anki, later
+anki-destination-later-hint = Cards are made at once, with their audio and picture, and kept on this computer: Anki need not be open. Send them below when it is.
+anki-later = Cards for later ({ $count })
+anki-later-none = No card is kept.
+anki-later-remove = Remove
+anki-later-damaged = A card that cannot be read: remove it.
+anki-later-send = Send to Anki
 anki-destination-hint = Nikomiru's review keeps the cards in the library and brings them back with FSRS on the Library page's Review tab: Anki is not needed.
 review-settings = Review in Nikomiru
 review-retention = Share of cards remembered when they come back

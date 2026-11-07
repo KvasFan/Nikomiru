@@ -19,8 +19,8 @@ use nikomiru_core::{Cancel, ManualClock};
 use nikomiru_library::{DictionaryManager, Library};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::mining::{
-    AnkiService, BrowseTarget, CardAction, CheckRequest, FrameChoice, MineFailure, MineRequest,
-    Mined, PendingFrame,
+    AnkiService, BrowseTarget, CardAction, CheckRequest, FrameChoice, LaterCard, LaterSent,
+    MineFailure, MineRequest, Mined, PendingFrame,
 };
 use serde_json::json;
 
@@ -85,6 +85,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
         cache_dir: mining.clone(),
         library: Some(Arc::clone(&library)),
         review_dir: review.clone(),
+        later_dir: dir.path().join("later"),
         clock: clock.clone(),
     });
     Setup {
@@ -188,6 +189,25 @@ fn browse(s: &Setup, target: BrowseTarget) -> Result<(), String> {
     let (tx, rx) = mpsc::channel();
     s.anki
         .browse(target, Box::new(move |r| tx.send(r).unwrap()));
+    rx.recv_timeout(Duration::from_secs(30)).unwrap()
+}
+
+fn send_later(s: &Setup) -> LaterSent {
+    let (tx, rx) = mpsc::channel();
+    s.anki.send_later(Box::new(move |r| tx.send(r).unwrap()));
+    rx.recv_timeout(Duration::from_secs(60)).unwrap()
+}
+
+fn later(s: &Setup) -> Vec<LaterCard> {
+    let (tx, rx) = mpsc::channel();
+    s.anki.later(Box::new(move |r| tx.send(r).unwrap()));
+    rx.recv_timeout(Duration::from_secs(30)).unwrap()
+}
+
+fn forget_later(s: &Setup, id: &str) -> Vec<LaterCard> {
+    let (tx, rx) = mpsc::channel();
+    s.anki
+        .forget_later(id.to_string(), Box::new(move |r| tx.send(r).unwrap()));
     rx.recv_timeout(Duration::from_secs(30)).unwrap()
 }
 
@@ -628,6 +648,62 @@ fn cards_can_go_to_the_review_instead_of_anki() {
     assert!(s.review.join(&picture).exists(), "the same picture stays");
     assert!(browse(&s, BrowseTarget::Note(mined.note_id)).is_err());
     assert!(s.fake.requests().is_empty(), "Anki was never asked");
+}
+
+// T-ANK-044: cards kept for later, sent in order; a duplicate stays with
+// its reason and the next one is still sent
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn cards_kept_for_later_go_to_anki_when_sent() {
+    let s = setup(|c| c.destination = "anki-later".into());
+    let first = mine(&s, request("av_basic.mkv", Some(1), CardAction::Add)).unwrap();
+    assert_eq!((first.kept, first.note_id), (Some(1), 0));
+    let second = mine(&s, request("av_basic.mkv", Some(2), CardAction::Add)).unwrap();
+    assert_eq!(second.kept, Some(2));
+    assert!(s.fake.requests().is_empty(), "{:?}", s.fake.actions());
+    assert!(s.fake.collection().notes.is_empty());
+    let kept = later(&s);
+    assert_eq!(kept.len(), 2);
+    assert!(kept.iter().all(|c| c.expression == "食べる" && !c.damaged));
+
+    // the first goes; the second is the same word: a duplicate, kept
+    let sent = send_later(&s);
+    assert_eq!((sent.sent, sent.failed), (1, 1), "{sent:?}");
+    assert_eq!(sent.cards.len(), 1);
+    assert_eq!(sent.cards[0].id, kept[1].id);
+    assert!(sent.cards[0].problem.is_some());
+    assert_eq!(sent.first_problem, sent.cards[0].problem);
+    let note_id = s.fake.collection().notes[0].id;
+    assert_eq!(field(&s, "Sentence"), "<b>食べました</b>");
+    assert!(field(&s, "SentenceAudio").starts_with("[sound:nikomiru_"));
+    assert!(field(&s, "Picture").starts_with(r#"<img src="nikomiru_"#));
+    assert!(field(&s, "Glossary").contains("to eat"));
+    assert_eq!(s.fake.collection().media.len(), 2);
+    assert!(s.library.mined_card(note_id).unwrap().is_some(), "ANK-039");
+
+    // Add anyway is kept as such: it goes after the duplicate
+    let anyway = mine(&s, request("av_basic.mkv", Some(1), CardAction::AddAnyway)).unwrap();
+    assert_eq!(anyway.kept, Some(2));
+    let sent = send_later(&s);
+    assert_eq!((sent.sent, sent.failed), (1, 1), "{sent:?}");
+    assert_eq!(s.fake.collection().notes.len(), 2);
+    // the duplicate removed: nothing is left
+    assert!(forget_later(&s, &kept[1].id).is_empty());
+    let left: Vec<PathBuf> = std::fs::read_dir(s._dir.path().join("later"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+
+    // overwriting the last card still asks Anki at once
+    let overwritten = mine(
+        &s,
+        request("av_basic.mkv", Some(1), CardAction::Overwrite(note_id)),
+    )
+    .unwrap();
+    assert!(overwritten.overwritten && overwritten.kept.is_none());
+    assert!(later(&s).is_empty());
 }
 
 // ADR 0007 §20: what an attempt cut short left is removed at the next start
