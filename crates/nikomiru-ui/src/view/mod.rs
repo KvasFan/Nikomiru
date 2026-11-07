@@ -548,7 +548,8 @@ impl View {
         overlay::show(&ctx, s, &mut self.overlay, bar_height, &mut out);
         // PLY-015: a frame of the video and its subtitles, and nothing else
         if s.capture_pending() {
-            let area = overlay::video_rect(screen, s.view.video_size);
+            let fit = overlay::Fit::of(&s.config().player.fit);
+            let area = overlay::video_rect(screen, s.view.video_size, fit).intersect(screen);
             let ppp = ctx.pixels_per_point();
             self.capture = Some((area.min * ppp, area.size() * ppp));
             return out;

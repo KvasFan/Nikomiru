@@ -52,6 +52,8 @@ pub enum Ignored {
     NoEffect(&'static str),
     /// `[section]`: user-defined profiles are not supported.
     Section,
+    /// A setting of Nikomiru sets it: the picture's fit (PLY-021).
+    Setting(&'static str),
 }
 
 /// What happens to one line of `mpv.conf` text.
@@ -117,6 +119,9 @@ pub fn classify(key: &str) -> Option<Ignored> {
         ("vo-", "no effect with the libmpv render API"),
         ("sub-", "Nikomiru draws text subtitles itself"),
     ];
+    if matches!(key, "panscan" | "keepaspect") {
+        return Some(Ignored::Setting("the picture's fit (PLY-021)"));
+    }
     if let Some((_, r)) = BLOCKED_EXACT.iter().find(|(k, _)| *k == key) {
         return Some(Ignored::Blocked(r));
     }
@@ -245,6 +250,7 @@ pub fn load_options(cfg: &PlayerConfig) -> (Vec<MpvOption>, Vec<Line>) {
     if profile != "default" && BUILTIN_PROFILES.contains(&profile) {
         out.push(MpvOption::new("profile", profile));
     }
+    out.extend(fit_options(&cfg.fit));
     for (k, v) in &cfg.mpv_options {
         if classify(k).is_some() {
             continue;
@@ -265,6 +271,20 @@ pub fn load_options(cfg: &PlayerConfig) -> (Vec<MpvOption>, Vec<Line>) {
         _ => None,
     }));
     (out, raw)
+}
+
+/// The mpv options of the picture's fit (PLY-021): `cover` cuts the edges
+/// away, `stretch` drops the proportions, anything else is `contain`.
+pub fn fit_options(fit: &str) -> [MpvOption; 2] {
+    let (panscan, keepaspect) = match fit {
+        "cover" => ("1.0", "yes"),
+        "stretch" => ("0.0", "no"),
+        _ => ("0.0", "yes"),
+    };
+    [
+        MpvOption::new("panscan", panscan),
+        MpvOption::new("keepaspect", keepaspect),
+    ]
 }
 
 /// Whether NVIDIA's proprietary driver is loaded (SPECIFICATION §5.2.2).
@@ -361,6 +381,50 @@ profile=high-quality
         );
     }
 
+    // T-PLY-021
+    #[test]
+    fn the_fit_sets_panscan_and_keepaspect_and_nothing_else_does() {
+        let pairs = |fit: &str| {
+            fit_options(fit)
+                .iter()
+                .map(|o| (o.key.clone(), o.value.clone()))
+                .collect::<Vec<_>>()
+        };
+        let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(
+            pairs("contain"),
+            [pair("panscan", "0.0"), pair("keepaspect", "yes")]
+        );
+        assert_eq!(
+            pairs("cover"),
+            [pair("panscan", "1.0"), pair("keepaspect", "yes")]
+        );
+        assert_eq!(
+            pairs("stretch"),
+            [pair("panscan", "0.0"), pair("keepaspect", "no")]
+        );
+        let cfg = PlayerConfig {
+            fit: "cover".into(),
+            mpv_options: [("panscan".to_string(), "0.5".to_string())].into(),
+            raw_mpv_options: "keepaspect=no\npanscan=0.2\n".into(),
+            ..PlayerConfig::default()
+        };
+        let (opts, report) = load_options(&cfg);
+        let set: Vec<_> = opts
+            .iter()
+            .filter(|o| o.key == "panscan" || o.key == "keepaspect")
+            .map(|o| (o.key.clone(), o.value.clone()))
+            .collect();
+        assert_eq!(set, pairs("cover"));
+        assert!(report.iter().all(|l| matches!(
+            l,
+            Line::Ignore {
+                reason: Ignored::Setting(_),
+                ..
+            }
+        )));
+    }
+
     #[test]
     fn every_fixed_option_is_rejected() {
         for (k, _) in FIXED {
@@ -392,6 +456,8 @@ profile=high-quality
                 "tone-mapping",
                 "audio-channels",
                 "profile",
+                "panscan",
+                "keepaspect",
                 "interpolation",
                 "video-sync",
                 "tscale",

@@ -9,11 +9,11 @@ use std::path::{Path, PathBuf};
 
 use egui::{ComboBox, Grid, Response, RichText, Slider, TextEdit, Ui, vec2};
 use nikomiru_core::Config;
-use nikomiru_core::config::General;
+use nikomiru_core::config::{General, SubtitlesConfig, parse_rgba, rgba_text};
 
 use super::popups::Translate;
 use super::settings::{self, Leave, SettingsTab};
-use super::{View, palette, shortcuts_page, theme};
+use super::{View, overlay, palette, shortcuts_page, theme};
 use crate::session::Session;
 use crate::ui::Command;
 
@@ -31,6 +31,28 @@ pub(crate) struct State {
     languages: String,
     /// The Shortcuts tab.
     pub shortcuts: shortcuts_page::State,
+    /// The sample cue of the Subtitles tab's preview (SUB-021), and how the
+    /// overlay keeps it.
+    sample: Option<crate::subtitles::Subtitles>,
+    preview: overlay::State,
+}
+
+/// The preview's cue: ruby, so the furigana's size shows (LKP-052).
+const SAMPLE: &str = "WEBVTT\n\n00:00:00.000 --> 99:00:00.000\n\
+    <ruby>日本語<rt>にほんご</rt></ruby>の<ruby>字幕<rt>じまく</rt></ruby>を<ruby>見<rt>み</rt></ruby>る\n";
+
+fn sample() -> crate::subtitles::Subtitles {
+    use crate::subtitles::{Loaded, Source, Subtitles};
+    let mut subs = Subtitles::default();
+    subs.set_track(
+        Source::File("preview.vtt".into()),
+        Loaded {
+            track: nikomiru_subs::parse(nikomiru_subs::Format::Vtt, SAMPLE),
+            encoding: None,
+        },
+    );
+    subs.update(1000);
+    subs
 }
 
 /// What the tabs show.
@@ -122,7 +144,11 @@ pub(crate) fn draw(
         ui.spacing_mut().item_spacing.y = 8.0;
         match s.tab {
             SettingsTab::General => general(ui, s, draft),
-            SettingsTab::Subtitles => subtitles(ui, s, draft, &mut state.languages),
+            SettingsTab::Subtitles => {
+                subtitles(ui, s, draft, &mut state.languages);
+                let subs = state.sample.get_or_insert_with(sample);
+                look(ui, s, draft, subs, &mut state.preview);
+            }
             SettingsTab::Lookup => lookup(ui, s, draft),
             SettingsTab::Shortcuts => {
                 let shortcuts = &mut state.shortcuts;
@@ -249,6 +275,15 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
         row(ui, &tr("settings-seek"), |ui| {
             ui.add(Slider::new(&mut draft.player.seek_seconds, 1..=30).suffix(" s"))
         });
+        // PLY-021
+        row(ui, &tr("settings-fit"), |ui| {
+            let names = [
+                ("contain", tr("settings-fit-contain")),
+                ("cover", tr("settings-fit-cover")),
+                ("stretch", tr("settings-fit-stretch")),
+            ];
+            choice(ui, "settings-fit", &mut draft.player.fit, &names)
+        });
     });
     ui.checkbox(&mut draft.player.auto_next, tr("settings-auto-next"));
 }
@@ -303,12 +338,113 @@ fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut Str
             )
         });
     });
+    // SUB-022
+    ui.checkbox(&mut subs.reveal_on_hover, tr("settings-sub-reveal"));
     hint(ui, &tr("settings-sub-hint"));
     ui.checkbox(&mut subs.respect_ass_styles, tr("settings-sub-ass"));
     // the words of the subtitles (LKP-051, LKP-061)
     ui.checkbox(&mut subs.furigana, tr("settings-sub-furigana"));
     ui.checkbox(&mut subs.mark_mined, tr("settings-sub-mark-mined"));
     hint(ui, &tr("settings-sub-words-hint"));
+}
+
+/// A colour with its opacity, written as `#rrggbbaa`.
+fn rgba_button(ui: &mut Ui, value: &mut String, default: &str) -> Response {
+    let mut c = parse_rgba(value)
+        .or_else(|| parse_rgba(default))
+        .unwrap_or_default();
+    let response = ui.color_edit_button_srgba_unmultiplied(&mut c);
+    if response.changed() {
+        *value = rgba_text(c);
+    }
+    response
+}
+
+/// The subtitles' look, with its preview (SUB-021, LKP-052), and the list's
+/// size (SUB-023).
+fn look(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    draft: &mut Config,
+    sample: &crate::subtitles::Subtitles,
+    preview: &mut overlay::State,
+) {
+    let tr = |id: &str| (s.tr)(id, &[]);
+    let d = SubtitlesConfig::default();
+    let subs = &mut draft.subtitles;
+    section(ui, &tr("settings-sub-look"));
+    form(ui, "settings-sub-look", |ui| {
+        row(ui, &tr("settings-sub-furigana-size"), |ui| {
+            ui.add(
+                Slider::new(&mut subs.furigana_size, SubtitlesConfig::FURIGANA_SIZES).suffix(" %"),
+            )
+        });
+        row(ui, &tr("settings-sub-text-color"), |ui| {
+            let mut rgb = nikomiru_core::config::parse_rgb(&subs.text_color).unwrap_or([0xff; 3]);
+            let response = ui.color_edit_button_srgb(&mut rgb);
+            if response.changed() {
+                subs.text_color = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+            }
+            response
+        });
+        row(ui, &tr("settings-sub-bold"), |ui| {
+            ui.checkbox(&mut subs.bold, "")
+        });
+        row(ui, &tr("settings-sub-outline"), |ui| {
+            ui.horizontal(|ui| {
+                rgba_button(ui, &mut subs.outline_color, &d.outline_color);
+                ui.add(
+                    Slider::new(&mut subs.outline_width, SubtitlesConfig::OUTLINE_WIDTHS)
+                        .step_by(0.5)
+                        .suffix(" px"),
+                )
+            })
+            .inner
+        });
+        row(ui, &tr("settings-sub-shadow"), |ui| {
+            rgba_button(ui, &mut subs.shadow_color, &d.shadow_color)
+        });
+        row(ui, &tr("settings-sub-box"), |ui| {
+            rgba_button(ui, &mut subs.box_color, &d.box_color)
+        });
+        row(ui, &tr("settings-sub-position"), |ui| {
+            choice(
+                ui,
+                "settings-sub-position",
+                &mut subs.position,
+                &[
+                    ("bottom", tr("settings-sub-edge-bottom")),
+                    ("top", tr("settings-sub-edge-top")),
+                ],
+            )
+        });
+        row(ui, &tr("settings-sub-margin"), |ui| {
+            ui.add(
+                Slider::new(&mut subs.margin, SubtitlesConfig::MARGINS)
+                    .step_by(5.0)
+                    .suffix(" px"),
+            )
+        });
+    });
+    hint(ui, &tr("settings-sub-look-hint"));
+    overlay::preview(ui, overlay::Appearance::of(subs), sample, preview);
+    section(ui, &tr("settings-sub-list"));
+    form(ui, "settings-sub-list", |ui| {
+        row(ui, &tr("settings-sub-list-text"), |ui| {
+            ui.add(
+                Slider::new(&mut subs.list_text_size, SubtitlesConfig::LIST_TEXT_SIZES)
+                    .step_by(1.0)
+                    .suffix(" pt"),
+            )
+        });
+        row(ui, &tr("settings-sub-list-width"), |ui| {
+            ui.add(
+                Slider::new(&mut subs.list_width, SubtitlesConfig::LIST_WIDTHS)
+                    .step_by(10.0)
+                    .suffix(" pt"),
+            )
+        });
+    });
 }
 
 fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {

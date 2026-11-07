@@ -1692,10 +1692,15 @@ impl Session {
         self.services.config.copy_section(section, draft);
         let c = &self.services.config;
         match section {
-            Section::General => self
-                .services
-                .translator
-                .set_setting(&c.general.ui_language, |k| std::env::var(k).ok()),
+            Section::General => {
+                self.services
+                    .translator
+                    .set_setting(&c.general.ui_language, |k| std::env::var(k).ok());
+                // PLY-021: the picture's fit at once
+                for option in nikomiru_player::options::fit_options(&c.player.fit) {
+                    self.apply_option_now(&option.key, &option.value);
+                }
+            }
             Section::Subtitles => {
                 self.subs.mode = Obscure::from_config(&c.subtitles.obscure);
                 self.secondary.mode = Obscure::from_config(&c.subtitles.secondary_obscure);
@@ -2508,6 +2513,7 @@ impl Session {
             Ignored::Blocked(_) => "player-ignored-blocked",
             Ignored::NoEffect(_) => "player-ignored-no-effect",
             Ignored::Section => "player-ignored-section",
+            Ignored::Setting(_) => "player-ignored-fit",
         };
         self.tr(id, &[])
     }
@@ -4683,6 +4689,7 @@ impl Session {
             self.view.loaded && !self.view.paused,
             self.popups.is_open(),
             self.subs.hovered,
+            self.services.config.subtitles.reveal_on_hover,
         )
     }
 
@@ -5918,6 +5925,16 @@ impl Session {
         }
     }
 
+    /// A click on the time in the control bar: the time left, or the time
+    /// played (PLY-020), remembered.
+    pub fn toggle_time_remaining(&mut self) {
+        let player = &mut self.services.config.player;
+        player.time_remaining = !player.time_remaining;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// The obscuring that applies now (SUB-014).
     pub fn obscure_now(&self) -> Obscure {
         crate::subtitles::obscured(
@@ -5925,14 +5942,8 @@ impl Session {
             self.view.loaded && !self.view.paused,
             self.popups.is_open(),
             self.subs.hovered,
+            self.services.config.subtitles.reveal_on_hover,
         )
-    }
-
-    /// The configured subtitle font size (1080p reference) and whether ASS
-    /// styles are respected.
-    pub fn subtitle_style(&self) -> (f64, bool) {
-        let c = &self.services.config.subtitles;
-        (c.font_size, c.respect_ass_styles)
     }
 }
 

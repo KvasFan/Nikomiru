@@ -202,6 +202,20 @@ pub fn pointer(x: f32, y: f32) -> Result<(), String> {
     })
 }
 
+/// Turns the mouse wheel by `y` points where the pointer is: positive
+/// scrolls the page down.
+pub fn wheel(y: f32) -> Result<(), String> {
+    call(move |ui| {
+        ui.inject(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -y),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers: egui::Modifiers::NONE,
+        });
+    })
+}
+
 /// Clicks grapheme `grapheme` of cue `cue` (layer `main`, the only one before
 /// M7) through the overlay's click command. The anchor is empty, so the popup
 /// takes the fallback place.

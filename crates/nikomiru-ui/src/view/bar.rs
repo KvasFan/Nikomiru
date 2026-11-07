@@ -255,6 +255,18 @@ fn chapter_name(s: &Session, chapters: &[Chapter], index: usize) -> String {
 
 /// The places of the chapters on the rail, from 0 to 1: the first one, at
 /// the start of the video, shows nothing.
+/// The time in the control bar: played, or left with a minus (PLY-020),
+/// then the duration.
+fn time_text(position: f64, duration: f64, left: bool) -> String {
+    let ms = |seconds: f64| (seconds * 1000.0) as i64;
+    let now = if left {
+        format!("-{}", clock(ms((duration - position).max(0.0))))
+    } else {
+        clock(ms(position))
+    };
+    format!("{now} / {}", clock(ms(duration)))
+}
+
 fn chapter_marks(chapters: &[Chapter], duration: f64) -> Vec<f32> {
     chapters
         .iter()
@@ -425,14 +437,21 @@ pub(crate) fn show(
                         if icon(ui, v.loaded, glyph, &name) {
                             out.push(Command::Action(Action::PlayPause));
                         }
-                        ui.label(
-                            RichText::new(format!(
-                                "{} / {}",
-                                clock((v.time_pos * 1000.0) as i64),
-                                clock((v.duration * 1000.0) as i64)
-                            ))
-                            .monospace(),
-                        );
+                        // PLY-020: a click shows the time left, or the time played
+                        let left = s.config().player.time_remaining;
+                        let time = ui
+                            .add(
+                                egui::Label::new(
+                                    RichText::new(time_text(v.time_pos, v.duration, left))
+                                        .monospace(),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(tr("time-switch"));
+                        if time.clicked() {
+                            out.push(Command::TimeClicked);
+                        }
                         if let Some(index) = chapter_at(&v.chapters, v.time_pos) {
                             ui.add(
                                 egui::Label::new(chapter_name(s, &v.chapters, index)).truncate(),
@@ -578,5 +597,19 @@ mod chapter_tests {
             title: None,
         });
         assert_eq!(chapter_marks(&c, 240.0), [0.25, 0.5]);
+    }
+}
+
+#[cfg(test)]
+mod time_tests {
+    use super::*;
+
+    // T-PLY-020
+    #[test]
+    fn the_time_shows_played_or_left() {
+        assert_eq!(time_text(65.0, 1440.0, false), "1:05 / 24:00");
+        assert_eq!(time_text(65.0, 1440.0, true), "-22:55 / 24:00");
+        // never below nothing left, as mpv may pass the duration
+        assert_eq!(time_text(1441.0, 1440.0, true), "-0:00 / 24:00");
     }
 }

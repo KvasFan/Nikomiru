@@ -31,15 +31,33 @@ const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
 const BACKGROUND: Color32 = Color32::from_rgba_unmultiplied_const(0x14, 0x14, 0x18, 0xe6);
 const CURRENT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x3a);
 const TIME: Color32 = Color32::from_rgb(0x9a, 0xb8, 0xff);
-/// The time column, and where the text starts in a row.
-const TIME_WIDTH: f32 = 52.0;
-const TEXT_X: f32 = TIME_WIDTH + 10.0;
 /// Inside a row: 4 around the cells, 6 more right of the text.
 const PAD: f32 = 4.0;
 const RIGHT: f32 = 6.0;
 const ROW_SPACING: f32 = 2.0;
-const TEXT_SIZE: f32 = 16.0;
-const TIME_SIZE: f32 = 14.0;
+
+/// The sizes of a row, after the text's (SUB-023): at 16 pt, the times at
+/// 14 pt in a column 52 pt wide.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Sizes {
+    text: f32,
+    time: f32,
+    time_width: f32,
+    /// Where the text starts in a row.
+    text_x: f32,
+}
+
+impl Sizes {
+    fn of(text: f32) -> Self {
+        let k = text / 16.0;
+        Sizes {
+            text,
+            time: 14.0 * k,
+            time_width: 52.0 * k,
+            text_x: 52.0 * k + 10.0,
+        }
+    }
+}
 
 /// The rows on show: their cues and where each one starts.
 #[derive(Debug, Default)]
@@ -50,6 +68,8 @@ struct Rows {
     generation: u64,
     /// The width the heights were measured at.
     width: f32,
+    /// The text size they were measured at.
+    size: f32,
     /// The cues shown, in order.
     cues: Vec<usize>,
     /// The top of each row in the list, and the list's height last.
@@ -96,19 +116,22 @@ pub(crate) struct Scene<'a> {
     pub close: String,
     /// The bytes of a text's words already made into cards (LKP-061).
     pub mined: &'a dyn Fn(&str) -> Vec<Range<usize>>,
+    /// `[subtitles] list_text_size` and `list_width` (SUB-023).
+    pub text_size: f32,
+    pub width: f32,
 }
 
-fn text_job(text: &str, width: f32) -> LayoutJob {
+fn text_job(text: &str, width: f32, size: f32) -> LayoutJob {
     LayoutJob::simple(
         text.to_string(),
-        FontId::proportional(TEXT_SIZE),
+        FontId::proportional(size),
         Color32::WHITE,
         width,
     )
 }
 
-fn time_job(ms: i64) -> LayoutJob {
-    LayoutJob::simple_singleline(clock(ms), FontId::monospace(TIME_SIZE), TIME)
+fn time_job(ms: i64, size: f32) -> LayoutJob {
+    LayoutJob::simple_singleline(clock(ms), FontId::monospace(size), TIME)
 }
 
 impl Rows {
@@ -128,20 +151,22 @@ impl Rows {
             };
             self.picked = Some((scene.version, query.to_string()));
             self.generation += 1;
-        } else if self.width == width {
+        } else if self.width == width && self.size == scene.text_size {
             return;
         }
         self.width = width;
-        let text_width = (width - TEXT_X - RIGHT).max(TEXT_SIZE);
+        self.size = scene.text_size;
+        let sizes = Sizes::of(scene.text_size);
+        let text_width = (width - sizes.text_x - RIGHT).max(sizes.text);
         let cues = timeline.cues();
         self.tops = ctx.fonts_mut(|fonts| {
-            let time = fonts.layout_job(time_job(0)).size().y;
+            let time = fonts.layout_job(time_job(0, sizes.time)).size().y;
             let mut top = 0.0;
             let mut tops = Vec::with_capacity(self.cues.len() + 1);
             for &i in &self.cues {
                 tops.push(top);
                 let text = fonts
-                    .layout_job(text_job(&cues[i].plain_text, text_width))
+                    .layout_job(text_job(&cues[i].plain_text, text_width, sizes.text))
                     .size()
                     .y;
                 top += text.max(time) + 2.0 * PAD + ROW_SPACING;
@@ -233,6 +258,8 @@ pub(crate) fn show(
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         mined: &mined,
+        text_size: s.config().subtitles.list_text_size,
+        width: s.config().subtitles.list_width,
     };
     draw(ctx, &scene, state, search_focus, bar_height, out)
 }
@@ -246,7 +273,7 @@ pub(crate) fn draw(
     out: &mut Vec<Command>,
 ) -> bool {
     let screen = ctx.content_rect();
-    let width = 420.0_f32.min(0.4 * screen.width());
+    let width = scene.width.min(0.6 * screen.width());
     let height = (screen.height() - bar_height).max(0.0);
     let mut open = true;
     Area::new(Id::unique("subtitle-list"))
@@ -329,7 +356,8 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
             let origin = ui.max_rect().min;
             let current = timeline.list_row(&rows.cues, scene.pos_ms);
 
-            let text_width = (width - TEXT_X - RIGHT).max(TEXT_SIZE);
+            let sizes = Sizes::of(scene.text_size);
+            let text_width = (width - sizes.text_x - RIGHT).max(sizes.text);
             let painter = ui.painter().clone();
             #[cfg(test)]
             state.drawn.clear();
@@ -348,9 +376,11 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 let id = Id::unique(("subtitle-list-row", cue));
 
                 let start = timeline.start_pos(cue);
-                let time: Arc<Galley> = painter.layout_job(time_job(start));
-                let time_rect =
-                    Rect::from_min_size(rect.min + vec2(PAD, PAD), vec2(TIME_WIDTH, time.size().y));
+                let time: Arc<Galley> = painter.layout_job(time_job(start, sizes.time));
+                let time_rect = Rect::from_min_size(
+                    rect.min + vec2(PAD, PAD),
+                    vec2(sizes.time_width, time.size().y),
+                );
                 painter.galley(time_rect.min, Arc::clone(&time), TIME);
                 let label = time.text().to_string();
                 let clicked = ui
@@ -362,8 +392,8 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 }
 
                 let plain = &timeline.cues()[cue].plain_text;
-                let text: Arc<Galley> = painter.layout_job(text_job(plain, text_width));
-                let at = rect.min + vec2(TEXT_X, PAD);
+                let text: Arc<Galley> = painter.layout_job(text_job(plain, text_width, sizes.text));
+                let at = rect.min + vec2(sizes.text_x, PAD);
                 let text_rect = Rect::from_min_size(at, text.size());
                 painter.galley(at, Arc::clone(&text), Color32::WHITE);
                 let underlines: Vec<Rect> = (scene.mined)(plain)
@@ -435,6 +465,8 @@ mod tests {
         focus: bool,
         closed: bool,
         out: Vec<Command>,
+        /// `list_text_size` and `list_width` (SUB-023).
+        sizes: (f32, f32),
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
@@ -485,6 +517,8 @@ mod tests {
                                 .map(|(i, m)| i..i + m.len())
                                 .collect()
                         },
+                        text_size: t.sizes.0,
+                        width: t.sizes.1,
                     };
                     if !draw(
                         ui.ctx(),
@@ -504,6 +538,7 @@ mod tests {
                     focus,
                     closed: false,
                     out: Vec::new(),
+                    sizes: (16.0, 420.0),
                 },
             )
     }
@@ -552,6 +587,29 @@ mod tests {
         h.state_mut().pos_ms = 2000;
         h.run();
         assert_eq!(drawn(&h), [(1, false), (2, false)]);
+    }
+
+    // T-SUB-023: bigger text, taller rows and a wider time column; a wider
+    // list, but never past 60 % of the window
+    #[test]
+    fn the_list_takes_its_text_size_and_width() {
+        let t = timeline(&[(1000, "一つ目"), (3000, "二つ目")]);
+        let mut h = harness(t, 0, false);
+        h.run();
+        let first = |h: &Harness<'_, Test>| h.state().state.drawn[0].clone();
+        let small = first(&h);
+        h.state_mut().sizes = (24.0, 900.0);
+        h.run();
+        h.run();
+        let big = first(&h);
+        assert!(big.row.height() > small.row.height() * 1.3, "{big:?}");
+        assert!(big.time.width() > small.time.width() * 1.4);
+        assert!(big.text.min.x < small.text.min.x, "the list is wider");
+        let window = h.ctx.content_rect();
+        assert!(
+            (big.row.width() - (0.6 * window.width() - 20.0)).abs() < 2.0,
+            "{big:?}"
+        );
     }
 
     #[test]

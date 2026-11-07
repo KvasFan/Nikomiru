@@ -118,9 +118,15 @@ pub fn blur_sigma(font_size: f64) -> f64 {
 
 /// What the main subtitle looks like now: the mode applies only during
 /// playback, with no popup open and without the mouse over it (SUB-014,
-/// BUG-2198, BUG-2235).
-pub fn obscured(mode: Obscure, playing: bool, popup_open: bool, hovered: bool) -> Obscure {
-    if !playing || popup_open || hovered {
+/// BUG-2198, BUG-2235), unless the mouse is not to reveal it (SUB-022).
+pub fn obscured(
+    mode: Obscure,
+    playing: bool,
+    popup_open: bool,
+    hovered: bool,
+    reveal_on_hover: bool,
+) -> Obscure {
+    if !playing || popup_open || (hovered && reveal_on_hover) {
         Obscure::None
     } else {
         mode
@@ -332,25 +338,41 @@ mod tests {
     fn blur_strength_and_when_it_applies() {
         assert_eq!(blur_sigma(20.0), 12.0);
         assert_eq!(blur_sigma(40.0), 18.0);
-        assert_eq!(obscured(Obscure::Blur, true, false, false), Obscure::Blur);
         assert_eq!(
-            obscured(Obscure::Blur, false, false, false),
+            obscured(Obscure::Blur, true, false, false, true),
+            Obscure::Blur
+        );
+        assert_eq!(
+            obscured(Obscure::Blur, false, false, false, true),
             Obscure::None,
             "paused"
         );
         assert_eq!(
-            obscured(Obscure::Blur, true, true, false),
+            obscured(Obscure::Blur, true, true, false, true),
             Obscure::None,
             "popup open"
         );
         assert_eq!(
-            obscured(Obscure::Hidden, true, false, true),
+            obscured(Obscure::Hidden, true, false, true, true),
             Obscure::None,
             "hovered"
         );
         assert_eq!(
-            obscured(Obscure::Hidden, true, false, false),
+            obscured(Obscure::Hidden, true, false, false, true),
             Obscure::Hidden
+        );
+        // T-SUB-022: the mouse reveals nothing; a pause and a popup still do
+        assert_eq!(
+            obscured(Obscure::Blur, true, false, true, false),
+            Obscure::Blur
+        );
+        assert_eq!(
+            obscured(Obscure::Hidden, false, false, true, false),
+            Obscure::None
+        );
+        assert_eq!(
+            obscured(Obscure::Hidden, true, true, true, false),
+            Obscure::None
         );
     }
 
