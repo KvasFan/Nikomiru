@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-11-08
+
+One line at a time.
+
+### Added
+
+- Pause at the end of each line (Shift+P, or the subtitle menu): playback stops on the last frame of each line, and Space plays the next one (SUB-026, D-46).
+
 ## [2.14.0] - 2026-11-08
 
 Fansubs in their own fonts.

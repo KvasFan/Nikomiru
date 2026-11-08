@@ -460,6 +460,7 @@ Default player bindings, from Fushi `shortcut_defaults.dart`:
 | Subtitle list / search | L / Ctrl+F | M2 |
 | Blur subtitle / hide subtitle | B / H | M2 |
 | Subtitles off / on (the track stays chosen) | V | M2 |
+| Pause at the end of each line on / off (SUB-026) | Shift+P | 2.15.0 |
 | Subtitle offset −100 / +100 ms | Z / X | M2 |
 | Align the start of the previous / next cue to the position | Ctrl+Shift+← / Ctrl+Shift+→ | M2 |
 | Previous / next chapter | PageUp / PageDown | M1 |
@@ -501,6 +502,7 @@ While a page or a dialog covers the video (the library, the settings, the dialog
 | SUB-023 | **The subtitle list's text size and width** (`[subtitles] list_text_size`, 12–28 pt, default 16, the times in proportion; `list_width`, 280–900 pt, default 420, never more than 60 % of the window), in Settings → Subtitles | `video_subtitle_list_font_scale_index`, `video_subtitle_list_width` |
 | SUB-024 | **The subtitles' font** (2.13.0, D-44), in Settings → Subtitles → Look: `[subtitles] font`, a family installed on the system (found through fontconfig, §3.4), empty for the interface's sans-serif (the default). The list offers the families that have Japanese characters, by name. A character the family lacks, or every character of a family no longer installed, is drawn with the interface's fonts, so no text is lost. It applies to the main and the secondary subtitle, their ruby and the tab's preview, regular and bold (the family's bold face when it has one). With `respect_ass_styles`, a cue's ASS font (its style's `Fontname`, `\fn`, `<font face>`) is used when it is installed, the font chosen when not. Fonts attached to a video file are not read. | |
 | SUB-025 | **Fonts attached to the video** (2.14.0, D-45): when an ASS track of a video file loads, the file's attachments that are fonts (a MIME type of TrueType, OpenType or a font collection, or a name ending in `.ttf`, `.otf`, `.ttc` or `.otc`), listed by ffprobe, are written by ffmpeg (`-dump_attachment`) to `$XDG_CACHE_HOME/nikomiru/subtitles/fonts/<key>/`, beside the tracks SUB-007 extracts and keyed like them by the file's path, size and mtime, at most 100 of them and 50 MB each, under names of Nikomiru's own. They join the system's fonts until Nikomiru closes, so a style's `Fontname`, a `\fn` or a `<font face>` naming one draws with it when ASS styles are respected (SUB-024), and a cue drawn before they came is drawn again with them. A font ffmpeg cannot write, or that cannot be read as a font, is left out; without ffprobe the track loads without them. | `subtitle_embedded_fonts.dart` |
+| SUB-026 | **Pause at the end of each line** (2.15.0, D-46), as asbplayer's auto-pause, for listening one line at a time: `[subtitles] auto_pause` (default no), Shift+P and the subtitle menu, remembered. Playback stops on the last frame of each line of the main subtitle, its offset counted (SUB-011), through mpv's `end` as the replay of SUB-013; Space goes on to the next line. A line that ends while another is shown still stops it; the gaps between lines play through. Seeking backwards stops at the end of the line reached. A replay from the popup keeps its own end; opening another file, or turning it off, removes the stop. It works with the subtitles off (V) too, for listening without them. | |
 
 ### 6.5 Dictionaries: import and management (DIC)
 
@@ -971,6 +973,7 @@ obscure = "none"            # "none" | "blur" | "hidden"
 secondary_obscure = "none"  # the same for the secondary subtitle (SUB-017)
 secondary_position = "top"  # "top" | "bottom" (above the main subtitle)
 furigana = false            # readings over the kanji, from the dictionaries (LKP-051)
+auto_pause = false          # pause at the end of each line (SUB-026)
 mark_mined = true           # underline the words already made into cards (LKP-061)
 
 [lookup]
@@ -1104,6 +1107,7 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | D-43 | Cards for later | **Decided by the maintainer's agent** (2026-11-08, "procedi con implementazione feature e commit sul git senza fermarti", to change at will): 2.12.0 takes Fushi's "mine after watching" (ANK-044), which Fushi offers for online videos, for every card Nikomiru makes, so a word can be kept without Anki open and without stopping to look at the card. It is a third destination, beside Anki and the review, rather than a switch of its own. The cards are sent when the user asks, not when the video closes as in Fushi, so a closed Anki never turns a card into a failure nobody sees |
 | D-44 | The subtitles' font | **Decided by the maintainer's agent** (2026-11-08, "procedi ... senza fermarti", to change at will): 2.13.0 adds the subtitles' font that D-42 left out, from the system's fonts (no font is bundled, §3.4), and the fonts of ASS styles when they are respected. Fonts attached to MKV files are for later |
 | D-45 | Fonts attached to the video | **Decided by the maintainer's agent** (2026-11-08, "procedi ... senza fermarti", to change at will): 2.14.0 reads the fonts that fansubs attach to MKV files, the part D-44 left for later, since an ASS script's styles name them; written once to the cache, never installed on the system |
+| D-46 | Pause at the end of each line | **Decided by the maintainer's agent** (2026-11-08, "procedi ... senza fermarti", to change at will): 2.15.0 adds asbplayer's auto-pause, which Fushi does not have, because listening one line at a time is the use of the subtitles D-12 puts first; with mpv's `end`, so the stop is on the frame and not a frame late |
 | D-29 | Design of audiobooks | **Asked by the maintainer** (2026-11-01, D-28): through the player rather than a page of their own, so their text is a subtitle; linking the text to an EPUB, and audiobooks on the Books page's list, are for later |
 
 ### 10.2 Risks

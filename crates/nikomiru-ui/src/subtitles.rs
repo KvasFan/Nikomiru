@@ -118,6 +118,29 @@ pub fn blur_sigma(font_size: f64) -> f64 {
     (0.45 * font_size).max(12.0)
 }
 
+/// A line ending sooner than this after the position is the one playback
+/// just stopped at (SUB-026).
+const PASSED_MS: i64 = 100;
+
+/// Where playback stops for the pause at the end of each line (SUB-026),
+/// given the lines' ends (offset counted) and the stop set now: while
+/// playing, the stop set stays until it is passed or an earlier end comes,
+/// so a line about to end is never skipped; once paused at it, the next
+/// line's end.
+pub fn auto_pause_end(
+    ends: impl Iterator<Item = i64>,
+    pos: i64,
+    paused: bool,
+    current: Option<i64>,
+) -> Option<i64> {
+    let next = ends.filter(|&end| end > pos + PASSED_MS).min();
+    let ahead = if paused { PASSED_MS } else { 0 };
+    match current {
+        Some(end) if end > pos + ahead && next.is_none_or(|n| n >= end) => Some(end),
+        _ => next,
+    }
+}
+
 /// What the main subtitle looks like now: the mode applies only during
 /// playback, with no popup open and without the mouse over it (SUB-014,
 /// BUG-2198, BUG-2235), unless the mouse is not to reveal it (SUB-022).
@@ -336,6 +359,39 @@ mod tests {
     use super::*;
 
     // T-SUB-014
+    // T-SUB-026
+    #[test]
+    fn the_pause_is_at_the_end_of_the_next_line() {
+        // lines ending at 2 s, 4 s and 4.5 s (one inside another)
+        let ends = || [4_000, 2_000, 4_500].into_iter();
+        assert_eq!(auto_pause_end(ends(), 0, false, None), Some(2_000));
+        // playing up to it: it stays, even in its last moments
+        assert_eq!(
+            auto_pause_end(ends(), 1_990, false, Some(2_000)),
+            Some(2_000)
+        );
+        // stopped on its last frame: the next line's
+        assert_eq!(
+            auto_pause_end(ends(), 1_960, true, Some(2_000)),
+            Some(4_000)
+        );
+        // paused by hand in the middle: it stays
+        assert_eq!(
+            auto_pause_end(ends(), 1_000, true, Some(2_000)),
+            Some(2_000)
+        );
+        // back to an earlier line: its end
+        assert_eq!(auto_pause_end(ends(), 100, false, Some(4_000)), Some(2_000));
+        // past it by a seek: the next one
+        assert_eq!(
+            auto_pause_end(ends(), 3_000, false, Some(2_000)),
+            Some(4_000)
+        );
+        // after the last line: none
+        assert_eq!(auto_pause_end(ends(), 5_000, false, Some(4_500)), None);
+        assert_eq!(auto_pause_end(std::iter::empty(), 0, false, None), None);
+    }
+
     #[test]
     fn blur_strength_and_when_it_applies() {
         assert_eq!(blur_sigma(20.0), 12.0);

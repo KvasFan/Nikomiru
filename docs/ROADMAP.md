@@ -689,6 +689,8 @@ Done outside the backlog on 2026-11-08, for 2.13.0: the subtitles' font (SUB-024
 
 Done outside the backlog on 2026-11-08, for 2.14.0: the fonts attached to the video (SUB-025, T-SUB-025, D-45).
 
+Done outside the backlog on 2026-11-08, for 2.15.0: the pause at the end of each line (SUB-026, T-SUB-026, D-46).
+
 ---
 
 ## Definition of done (applies to every PR)
