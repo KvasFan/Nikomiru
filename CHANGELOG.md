@@ -4,6 +4,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-11-08
+
+Subtitles where you want them.
+
+### Added
+
+- Subtitle menu → Move the subtitles: drag the main subtitle up or down; dropped, it keeps that edge and distance, as in Settings → Subtitles → Look (SUB-027, D-47).
+
+### Fixed
+
+- The pause at the end of each line: the next line plays with its sound again, and so does the video after a replay from the popup has stopped (AK-BUG-003).
+
 ## [2.15.0] - 2026-11-08
 
 One line at a time.

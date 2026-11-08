@@ -578,6 +578,16 @@ pub(crate) enum Command {
     ),
     /// "Align with the audio" (SUB-018).
     AlignSubtitles,
+    /// "Move the subtitles" on or off (SUB-027).
+    MoveSubtitles,
+    /// The main subtitle dropped at an edge and a distance from it, in
+    /// pixels of a video 1080 px high (SUB-027).
+    SubtitlesPlaced {
+        /// At the top.
+        top: bool,
+        /// From the edge.
+        margin: f64,
+    },
     /// The secondary subtitle: a source key or `"off"` (SUB-017).
     SelectSecondary(String),
     /// The secondary subtitle's obscuring mode.
@@ -1225,6 +1235,8 @@ impl Ui {
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
+            Command::MoveSubtitles => s.toggle_moving_subtitles(),
+            Command::SubtitlesPlaced { top, margin } => s.subtitles_placed(top, margin),
             Command::SelectSecondary(key) => s.select_secondary(&key),
             Command::SecondaryObscure(mode) => s.set_secondary_obscure(mode),
             Command::PlayerOpen => s.player_open(),

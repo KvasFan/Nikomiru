@@ -204,13 +204,38 @@ fn playback_pauses_at_the_end_of_each_line() {
     );
     let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
     h.wait("first-frame");
-    // the lines end at 2.5 s, 5.5 s and 8.5 s
+    // the lines end at 2.5 s, 5.5 s and 8.5 s; until they are loaded there
+    // is no stop, and under load they can come after the first one
+    h.key("Space");
+    h.state_until("the pause", |s| s["paused"] == true);
+    let s = h.state_until("the lines", |s| s["auto_pause_end"].is_number());
+    let mut s = s;
+    for _ in 0..3 {
+        if s["auto_pause_end"] == 2_500 && time_pos(&s) < 1.0 {
+            break;
+        }
+        h.key("ArrowLeft");
+        std::thread::sleep(Duration::from_millis(300));
+        s = h.state();
+    }
+    assert_eq!(s["auto_pause_end"], 2_500, "{s}");
+    h.key("Space");
+    h.state_until("playing", |s| s["paused"] == false);
     let s = h.state_until("the first stop", |s| {
         s["paused"] == true && time_pos(s) > 2.0
     });
     assert!((time_pos(&s) - 2.5).abs() < 0.15, "{s}");
     h.state_until("the next line's end", |s| s["auto_pause_end"] == 5_500);
     h.key("Space");
+    // the sound goes on too: mpv's audio stopped at `end` with the picture
+    let audio = |h: &mut crate::support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": "audio-pts" }))
+            .as_str()
+            .and_then(|v| v.parse::<f64>().ok())
+    };
+    support::until(Duration::from_secs(5), "the sound after the stop", || {
+        audio(&mut h).filter(|&t| t > 2.6)
+    });
     let s = h.state_until("the second stop", |s| {
         s["paused"] == true && time_pos(s) > 5.0
     });
@@ -836,6 +861,13 @@ fn screenshots_of_the_interface() {
     h.state_until("the list closed", |s| s["sub_list_open"] == false);
     std::thread::sleep(Duration::from_millis(500));
     desk.capture(&dir.join("subtitles-look.png"));
+    // moving them with the mouse (SUB-027)
+    h.cmd(serde_json::json!({ "cmd": "move_subtitles" }));
+    h.state_until("moving", |s| s["moving_subtitles"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("subtitles-move.png"));
+    h.key("Escape");
+    h.state_until("moved", |s| s["moving_subtitles"] == false);
     h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
     h.state_until("continue watching", |s| {
         s["library_page"]["continue"]
