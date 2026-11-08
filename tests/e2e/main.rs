@@ -149,6 +149,50 @@ fn the_chapters_of_a_file_reach_the_bar() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-PLY-021: the fit reaches mpv before the file and when saved, over the
+// raw options
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_picture_fit_reaches_mpv() {
+    let mut desk = Desktop::start();
+    desk.write_config(
+        "[player]\nfit = \"cover\"\nraw_mpv_options = \"panscan=0.3\"\n\
+         mpv_options = { ao = \"null\" }\n",
+    );
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    let until = |h: &mut crate::support::Harness, name: &str, want: f64| {
+        let started = std::time::Instant::now();
+        loop {
+            let got = h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": name }));
+            let value = got.as_str().map(|v| match v {
+                "yes" => 1.0,
+                "no" => 0.0,
+                v => v.parse().unwrap_or(f64::NAN),
+            });
+            if value.is_some_and(|v| (v - want).abs() < 1e-6) {
+                return;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "{name} = {got}, not {want}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    until(&mut h, "panscan", 1.0);
+    until(&mut h, "keepaspect", 1.0);
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "general",
+        "save": "[player]\nfit = \"stretch\"\n",
+    }));
+    until(&mut h, "panscan", 0.0);
+    until(&mut h, "keepaspect", 0.0);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011: a frame the GPU decoded has to be read back from it
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures --perf`"]
@@ -724,6 +768,13 @@ fn screenshots_of_the_interface() {
         h.state_until("the tab", |s| s["settings_tab"] == tab);
         std::thread::sleep(Duration::from_millis(300));
         desk.capture(&dir.join(format!("settings-{tab}.png")));
+        // the look of the subtitles and its preview, further down (SUB-021)
+        if tab == "subtitles" {
+            h.cmd(serde_json::json!({ "cmd": "pointer", "x": 700.0, "y": 400.0 }));
+            h.cmd(serde_json::json!({ "cmd": "wheel", "y": 2000.0 }));
+            std::thread::sleep(Duration::from_millis(500));
+            desk.capture(&dir.join("settings-subtitles-look.png"));
+        }
     }
     h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
     h.cmd(serde_json::json!({ "cmd": "online", "action": "open" }));
@@ -743,6 +794,18 @@ fn screenshots_of_the_interface() {
     h.state_until("the list", |s| s["sub_list_open"] == true);
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("subtitle-list.png"));
+    // a look of one's own: yellow on a box, at the top (SUB-021)
+    h.cmd(serde_json::json!({
+        "cmd": "settings",
+        "tab": "subtitles",
+        "save": "[subtitles]\ntext_color = \"#ffe08a\"\nbox_color = \"#000000a0\"\n\
+                 outline_width = 0\nposition = \"top\"\nfurigana = true\nfurigana_size = 60\n",
+    }));
+    h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.key("KeyL");
+    h.state_until("the list closed", |s| s["sub_list_open"] == false);
+    std::thread::sleep(Duration::from_millis(500));
+    desk.capture(&dir.join("subtitles-look.png"));
     h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
     h.state_until("continue watching", |s| {
         s["library_page"]["continue"]

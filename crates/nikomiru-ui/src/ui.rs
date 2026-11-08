@@ -310,6 +310,8 @@ pub(crate) enum Command {
     MouseMoved,
     /// A click on the video, outside every other element.
     VideoClicked,
+    /// A click on the time in the control bar (PLY-020).
+    TimeClicked,
     SelectSubtitles(String),
     ForceEncoding(String),
     GraphemeClicked {
@@ -1138,6 +1140,7 @@ impl Ui {
             Command::SetVolume(volume) => s.set_volume(volume),
             Command::SelectAudio(id) => s.select_audio(id),
             Command::MouseMoved => s.mouse_moved(),
+            Command::TimeClicked => s.toggle_time_remaining(),
             Command::VideoClicked => {
                 if s.popups.is_open() {
                     s.close_all_popups();

@@ -144,6 +144,8 @@ fn run(command: &Value) -> Result<Value, String> {
             command["y"].as_f64().ok_or("missing \"y\"")? as f32,
         )
         .map(|()| Value::Null),
+        Some("wheel") => harness::wheel(command["y"].as_f64().ok_or("missing \"y\"")? as f32)
+            .map(|()| Value::Null),
         Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
             .map(|()| Value::Null),
         Some("settings") => {

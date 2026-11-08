@@ -2,9 +2,11 @@
 
 //! The subtitle overlay (SUB-009, SUB-010, SUB-014, POP-001…003): cues over the
 //! video, clickable and hoverable per grapheme; readings over their kanji
-//! and the words already made into cards underlined (LKP-051, LKP-061).
+//! and the words already made into cards underlined (LKP-051, LKP-061); in
+//! the look the user chose (SUB-021, LKP-052), which the settings preview
+//! with the same code.
 //!
-//! Sizes follow the visible video: 36 px at 1080 by default, ASS sizes in
+//! Sizes follow the video as drawn (PLY-021): 36 px at 1080 by default, ASS sizes in
 //! PlayResY units when ASS styles are respected. Each line of a cue is one
 //! galley and the rect of each grapheme comes from its glyphs, so a click
 //! gives the byte offset of exactly that grapheme. egui has no text effects:
@@ -22,6 +24,7 @@ use egui::{
     Align, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Galley, Id, LayerId, Painter,
     Pos2, Rect, Role, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
+use nikomiru_core::config::{SubtitlesConfig, parse_rgba};
 use nikomiru_subs::cue::VttLine;
 use nikomiru_subs::effects::{Frame, blend};
 use nikomiru_subs::{AssStyle, Rgb, RunStyle, TextAlign};
@@ -37,10 +40,9 @@ use crate::words::Marks;
 const HIGHLIGHT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
 /// The underline of the words already made into cards (LKP-061).
 const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
-/// The outline without an ASS style.
-const OUTLINE: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 0, 0x99);
-/// The soft shadow under each row of text: `#cc000000` spread over the row,
-/// which leaves about a third of it where the glyphs are.
+/// The soft shadow under each row of text of a cue with an ASS style:
+/// `#cc000000` spread over the row, which leaves about a third of it where
+/// the glyphs are.
 const SHADOW: Color32 = Color32::from_black_alpha(0x50);
 /// The eight directions of the outline copies.
 const AROUND: [(f32, f32); 8] = [
@@ -58,6 +60,81 @@ const BLUR_COPIES: usize = 24;
 /// The size of the secondary subtitle against the main one (SUB-017).
 const SECONDARY_SCALE: f32 = 0.85;
 
+/// The look the user chose for the subtitles (SUB-021, LKP-052), for the
+/// cues that are not drawn with an ASS style.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Appearance {
+    /// Pixels for a video 1080 px high.
+    pub font_size: f64,
+    /// The readings' size, as a share of their text's.
+    pub furigana: f32,
+    pub text: Color32,
+    pub bold: bool,
+    pub outline: Color32,
+    /// In pixels of a video 1080 px high.
+    pub outline_width: f32,
+    pub shadow: Color32,
+    /// Behind each cue; transparent for none.
+    pub fill: Color32,
+    /// From the edge, in pixels of a video 1080 px high.
+    pub margin: f32,
+    /// The main subtitle stacks from the top.
+    pub top: bool,
+}
+
+fn rgba(text: &str, default: &str) -> Color32 {
+    let [r, g, b, a] = parse_rgba(text)
+        .or_else(|| parse_rgba(default))
+        .unwrap_or([0, 0, 0, 0]);
+    Color32::from_rgba_unmultiplied(r, g, b, a)
+}
+
+impl Appearance {
+    pub(crate) fn of(c: &SubtitlesConfig) -> Self {
+        let d = SubtitlesConfig::default();
+        Self {
+            font_size: c.font_size,
+            furigana: f32::from(c.furigana_size) / 100.0,
+            text: rgba(&c.text_color, &d.text_color),
+            bold: c.bold,
+            outline: rgba(&c.outline_color, &d.outline_color),
+            outline_width: c.outline_width as f32,
+            shadow: rgba(&c.shadow_color, &d.shadow_color),
+            fill: rgba(&c.box_color, &d.box_color),
+            margin: c.margin as f32,
+            top: c.position == "top",
+        }
+    }
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self::of(&SubtitlesConfig::default())
+    }
+}
+
+/// How the picture fills the window (PLY-021).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum Fit {
+    /// All of it, with bars.
+    #[default]
+    Contain,
+    /// The window filled, the edges cut.
+    Cover,
+    /// The window filled, out of proportion.
+    Stretch,
+}
+
+impl Fit {
+    pub(crate) fn of(name: &str) -> Self {
+        match name {
+            "cover" => Fit::Cover,
+            "stretch" => Fit::Stretch,
+            _ => Fit::Contain,
+        }
+    }
+}
+
 /// What the overlay draws, read from the session every frame.
 #[derive(Debug)]
 pub(crate) struct Scene<'a> {
@@ -65,8 +142,10 @@ pub(crate) struct Scene<'a> {
     pub subs: &'a Subtitles,
     /// The display size of the video, 0 while unknown.
     pub video_size: (i64, i64),
-    /// `[subtitles] font_size`: pixels for a video 1080 px high.
-    pub font_size: f64,
+    /// The look chosen in the settings (SUB-021).
+    pub look: Appearance,
+    /// How the picture fills the window (PLY-021).
+    pub fit: Fit,
     /// `[subtitles] respect_ass_styles`.
     pub respect_ass: bool,
     /// The obscuring that applies now (the session lifts it on hover and
@@ -93,12 +172,13 @@ pub(crate) struct Secondary<'a> {
 
 impl<'a> Scene<'a> {
     fn of(s: &'a Session) -> Self {
-        let (font_size, respect_ass) = s.subtitle_style();
+        let c = s.config();
         Self {
             subs: &s.subs,
             video_size: s.view.video_size,
-            font_size,
-            respect_ass,
+            look: Appearance::of(&c.subtitles),
+            fit: Fit::of(&c.player.fit),
+            respect_ass: c.subtitles.respect_ass_styles,
             obscure: s.obscure_now(),
             secondary: s.secondary.source.is_some().then(|| Secondary {
                 subs: &s.secondary,
@@ -150,6 +230,8 @@ pub(crate) struct Drawn {
     pub painted: bool,
     /// A cue of the secondary subtitle.
     pub secondary: bool,
+    /// Its look: text, outline and its width, shadow, box (SUB-021).
+    pub look: (Color32, Color32, f32, Color32, Color32),
 }
 
 pub(crate) fn show(
@@ -172,14 +254,90 @@ pub(crate) fn draw(
     out: &mut Vec<Command>,
 ) {
     let window = ctx.content_rect();
-    let video = video_rect(window, scene.video_size);
+    // the video's layer, above its click area: the list, the bar and the
+    // popups are in higher layers and take the pointer first
+    let target = Target {
+        layer: LayerId::background(),
+        id: Id::unique("subtitle-overlay"),
+        window,
+        video: video_rect(window, scene.video_size, scene.fit),
+    };
+    draw_in(ctx, &target, scene, state, bar_height, out);
+}
+
+/// Where cues are drawn: the window, or the settings' preview.
+struct Target {
+    layer: LayerId,
+    id: Id,
+    /// What may be drawn on.
+    window: Rect,
+    /// The picture, as drawn: it may stick out of the window.
+    video: Rect,
+}
+
+/// A sample cue in the look being chosen, as the overlay draws it, on a
+/// strip `width` wide of a picture as high as the window (SUB-021, LKP-052).
+pub(crate) fn preview(ui: &mut Ui, look: Appearance, sample: &Subtitles, state: &mut State) {
+    let height = ui.ctx().content_rect().height().max(480.0);
+    let unit = height / 1080.0;
+    let font = (look.font_size as f32 * unit).max(8.0);
+    let room = ((look.margin + 40.0) * unit + 3.5 * font).clamp(120.0, 420.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), room), Sense::hover());
+    // dark on one side and light on the other: the outline and the box
+    // show against both
+    let painter = ui.painter_at(rect);
+    let (left, right) = rect.split_left_right_at_fraction(0.5);
+    painter.rect_filled(left, 0.0, Color32::from_rgb(0x24, 0x28, 0x30));
+    painter.rect_filled(right, 0.0, Color32::from_rgb(0xc9, 0xcc, 0xd2));
+    let top = if look.top {
+        rect.min.y
+    } else {
+        rect.max.y - height
+    };
+    let video = Rect::from_min_size(pos2(rect.min.x, top), vec2(rect.width(), height));
+    let scene = Scene {
+        subs: sample,
+        video_size: (0, 0),
+        look,
+        fit: Fit::Stretch,
+        respect_ass: false,
+        obscure: Obscure::None,
+        secondary: None,
+        keyboard: None,
+        marks: HashMap::new(),
+    };
+    let target = Target {
+        layer: ui.layer_id(),
+        id: Id::unique("subtitle-preview"),
+        window: rect,
+        video,
+    };
+    draw_in(ui.ctx(), &target, &scene, state, 0.0, &mut Vec::new());
+}
+
+fn draw_in(
+    ctx: &egui::Context,
+    target: &Target,
+    scene: &Scene<'_>,
+    state: &mut State,
+    bar_height: f32,
+    out: &mut Vec<Command>,
+) {
+    let Target {
+        layer,
+        id,
+        window,
+        video,
+    } = *target;
+    let look = &scene.look;
     let units = units(
         video.height(),
-        scene.font_size,
+        look.font_size,
         scene.subs.play_res().map(|(_, y)| y),
     );
     state.font_px = units.font * ctx.pixels_per_point();
-    let wrap = video.width().max(4.0 * units.font);
+    let visible = video.intersect(window);
+    let wrap = visible.width().max(4.0 * units.font);
     let secondary_units = Units {
         font: units.font * SECONDARY_SCALE,
         ..units
@@ -189,7 +347,7 @@ pub(crate) fn draw(
         let mut all: Vec<Laid> = Vec::new();
         if let Some(sec) = scene.secondary.as_ref().filter(|_| !scene.subs.disabled) {
             for shown in sec.subs.shown(false) {
-                let mut laid = lay_out(fonts, &shown, &secondary_units, false, wrap, None);
+                let mut laid = lay_out(fonts, &shown, &secondary_units, look, false, wrap, None);
                 laid.place = if sec.bottom {
                     Place::Bottom
                 } else {
@@ -202,24 +360,25 @@ pub(crate) fn draw(
         }
         all.extend(scene.subs.shown(scene.respect_ass).map(|shown| {
             let marks = scene.marks.get(&shown.index);
-            lay_out(fonts, &shown, &units, scene.respect_ass, wrap, marks)
+            let mut laid = lay_out(fonts, &shown, &units, look, scene.respect_ass, wrap, marks);
+            // SUB-021: at the top, unless the cue chose its place
+            if look.top && shown.anchor.is_none() && laid.place == Place::Bottom {
+                laid.place = Place::Top;
+            }
+            laid
         }));
         all
     });
     // drawn bottom, middle, top, then the free ones; by layer and file order
     // inside each group (the order of `shown`)
     cues.sort_by_key(|c| rank(c.place));
-    let origins = arrange(&cues, video, window, bar_height, units.unit);
+    let edges = Edges::of(look, &units);
+    let origins = arrange(&cues, video, window, bar_height, units.unit, edges);
 
-    // the video's layer, above its click area: the list, the bar and the
-    // popups are in higher layers and take the pointer first
-    let id = Id::unique("subtitle-overlay");
     let ui = Ui::new(
         ctx.clone(),
         id,
-        UiBuilder::new()
-            .layer_id(LayerId::background())
-            .max_rect(window),
+        UiBuilder::new().layer_id(layer).max_rect(window),
     );
     let painter = ui.painter();
     let ppp = ctx.pixels_per_point();
@@ -324,6 +483,13 @@ pub(crate) fn draw(
             mined: cue.mined.len(),
             painted,
             secondary: cue.secondary,
+            look: (
+                cue.fill,
+                cue.outline,
+                cue.outline_width,
+                cue.shadow,
+                cue.boxed,
+            ),
         });
     }
     // also when the cue under the pointer goes away, or V turns them all off
@@ -338,16 +504,22 @@ pub(crate) fn draw(
 // ---------------------------------------------------------------------------
 // Placement (SUB-009, SUB-010): pure maths, in logical points.
 
-/// The visible video inside `window`: letterboxed and centred, 16:9 while
-/// its size is unknown.
-pub(crate) fn video_rect(window: Rect, (width, height): (i64, i64)) -> Rect {
+/// The video as drawn in `window`, centred, 16:9 while its size is
+/// unknown: letterboxed, or past the window's edges, or stretched to it
+/// (PLY-021).
+pub(crate) fn video_rect(window: Rect, (width, height): (i64, i64), fit: Fit) -> Rect {
     let (w, h) = if width > 0 && height > 0 {
         (width as f32, height as f32)
     } else {
         (16.0, 9.0)
     };
-    let fit = (window.width() / w).min(window.height() / h);
-    Rect::from_center_size(window.center(), vec2(w * fit, h * fit))
+    let (x, y) = (window.width() / w, window.height() / h);
+    let scale = match fit {
+        Fit::Contain => x.min(y),
+        Fit::Cover => x.max(y),
+        Fit::Stretch => return window,
+    };
+    Rect::from_center_size(window.center(), vec2(w * scale, h * scale))
 }
 
 /// The scale of the subtitles over a visible video `video_height` high.
@@ -469,10 +641,38 @@ pub(crate) fn stack_x(video: Rect, align: HAlign, width: f32, unit: f32) -> f32 
     }
 }
 
-/// The bottom edge of the bottom stack: 75 units above the bottom of the
+/// How far the stacks are from the video's edges, in points (SUB-021): the
+/// main subtitle's edge at the chosen margin, the other at its default.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Edges {
+    pub bottom: f32,
+    pub top: f32,
+}
+
+impl Edges {
+    fn of(look: &Appearance, units: &Units) -> Self {
+        let (bottom, top) = if look.top {
+            (75.0, look.margin)
+        } else {
+            (look.margin, 40.0)
+        };
+        Edges {
+            bottom: bottom * units.unit,
+            top: top * units.unit,
+        }
+    }
+}
+
+/// The bottom edge of the bottom stack: `margin` above the bottom of the
 /// video, and always 12 units above the control bar.
-pub(crate) fn bottom_edge(video: Rect, window: Rect, bar_height: f32, unit: f32) -> f32 {
-    (video.max.y - 75.0 * unit).min(window.max.y - bar_height - 12.0 * unit)
+pub(crate) fn bottom_edge(
+    video: Rect,
+    window: Rect,
+    bar_height: f32,
+    unit: f32,
+    margin: f32,
+) -> f32 {
+    (video.max.y - margin).min(window.max.y - bar_height - 12.0 * unit)
 }
 
 /// The top-left corner of a free cue `size` big.
@@ -508,8 +708,18 @@ pub(crate) fn free_origin(
 
 /// The top-left corner of every cue, in drawing order: the bottom stack
 /// grows upwards with the first cue on top, 4 units apart; the middle one is
-/// centred; the top one starts 40 units down. Free cues sit at their point.
-fn arrange(cues: &[Laid<'_>], video: Rect, window: Rect, bar_height: f32, unit: f32) -> Vec<Pos2> {
+/// centred; the top one starts at its edge. The stacks stay in the part of
+/// the video in the window; free cues sit at their point of the video.
+fn arrange(
+    cues: &[Laid<'_>],
+    video: Rect,
+    window: Rect,
+    bar_height: f32,
+    unit: f32,
+    edges: Edges,
+) -> Vec<Pos2> {
+    let free = video;
+    let video = video.intersect(window);
     let mut origins = vec![Pos2::ZERO; cues.len()];
     let stack = |group: Place, top: &dyn Fn(f32) -> f32, gap: f32, origins: &mut Vec<Pos2>| {
         let members: Vec<usize> = (0..cues.len())
@@ -524,7 +734,7 @@ fn arrange(cues: &[Laid<'_>], video: Rect, window: Rect, bar_height: f32, unit: 
             y += cue.size.y + gap;
         }
     };
-    let bottom = bottom_edge(video, window, bar_height, unit);
+    let bottom = bottom_edge(video, window, bar_height, unit, edges.bottom);
     stack(Place::Bottom, &|h| bottom - h, 4.0 * unit, &mut origins);
     stack(
         Place::Middle,
@@ -532,15 +742,10 @@ fn arrange(cues: &[Laid<'_>], video: Rect, window: Rect, bar_height: f32, unit: 
         0.0,
         &mut origins,
     );
-    stack(
-        Place::Top,
-        &|_| video.min.y + 40.0 * unit,
-        0.0,
-        &mut origins,
-    );
+    stack(Place::Top, &|_| video.min.y + edges.top, 0.0, &mut origins);
     for (cue, origin) in cues.iter().zip(origins.iter_mut()) {
         if matches!(cue.place, Place::Point { .. } | Place::Line { .. }) {
-            *origin = free_origin(video, cue.place, cue.align, cue.size, cue.line_height);
+            *origin = free_origin(free, cue.place, cue.align, cue.size, cue.line_height);
         }
     }
     origins
@@ -560,9 +765,10 @@ fn rank(place: Place) -> u8 {
 // Style (SUB-010)
 
 /// How a grapheme looks: its inline style first, then the cue's ASS style
-/// (only there when ASS styles are respected). An explicit `\b0` beats a
-/// bold style; inline colours and sizes count only when ASS styles are
-/// respected. Underline and strike-out come from the inline style only.
+/// (only there when ASS styles are respected), then the look chosen
+/// (`bold`, SUB-021). An explicit `\b0` beats a bold style; inline colours
+/// and sizes count only when ASS styles are respected. Underline and
+/// strike-out come from the inline style only.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Look {
     pub bold: bool,
@@ -574,11 +780,16 @@ pub(crate) struct Look {
     pub size: Option<f32>,
 }
 
-pub(crate) fn look(run: Option<&RunStyle>, style: Option<&AssStyle>, respect: bool) -> Look {
+pub(crate) fn look(
+    run: Option<&RunStyle>,
+    style: Option<&AssStyle>,
+    respect: bool,
+    bold: bool,
+) -> Look {
     let inline = |f: fn(&RunStyle) -> Option<bool>| run.and_then(f);
     let positive = |s: &f32| *s > 0.0;
     Look {
-        bold: inline(|r| r.bold).unwrap_or(style.is_some_and(|s| s.bold)),
+        bold: inline(|r| r.bold).unwrap_or(style.map_or(bold, |s| s.bold)),
         italic: inline(|r| r.italic).unwrap_or(style.is_some_and(|s| s.italic)),
         underline: inline(|r| r.underline) == Some(true),
         strike: inline(|r| r.strike) == Some(true),
@@ -620,6 +831,11 @@ struct Laid<'a> {
     /// The colour of text that sets none, and of the outline.
     fill: Color32,
     outline: Color32,
+    /// The outline's width in points, before rounding to pixels.
+    outline_width: f32,
+    shadow: Color32,
+    /// The box behind the cue; transparent for none (SUB-021).
+    boxed: Color32,
     /// The galleys of the lines and of the readings, at their origins.
     texts: Vec<(Pos2, Arc<Galley>)>,
     /// The ink of every row of text, for the shadow.
@@ -757,14 +973,30 @@ fn lay_out<'a>(
     fonts: &mut FontsView<'_>,
     shown: &Shown<'a>,
     units: &Units,
+    chosen: &Appearance,
     respect: bool,
     wrap: f32,
     marks: Option<&Marks>,
 ) -> Laid<'a> {
     let frame = shown.frame.as_ref().map(|(f, _)| f);
     let align = h_align(shown);
-    let fill = shown.style.map_or(Color32::WHITE, |s| color(s.primary));
-    let outline = shown.style.map_or(OUTLINE, |s| color(s.outline_color));
+    // a cue drawn with its ASS style keeps the file's look (SUB-021)
+    let (fill, outline, outline_width, shadow, boxed) = match shown.style {
+        Some(s) => (
+            color(s.primary),
+            color(s.outline_color),
+            units.font / 24.0,
+            SHADOW,
+            Color32::TRANSPARENT,
+        ),
+        None => (
+            chosen.text,
+            chosen.outline,
+            chosen.outline_width * units.unit,
+            chosen.shadow,
+            chosen.fill,
+        ),
+    };
     let halign = match align {
         HAlign::Left => Align::LEFT,
         HAlign::Center => Align::Center,
@@ -795,7 +1027,7 @@ fn lay_out<'a>(
         let Some((job, graphemes, readings)) = lines.last_mut() else {
             continue;
         };
-        let look = look(g.style, shown.style, respect);
+        let look = look(g.style, shown.style, respect, chosen.bold);
         let px = look.size.map_or(units.font, |s| (s * units.ass).max(1.0));
         // SUB-019: `\\t` to another size
         let px = match frame.and_then(|f| f.size) {
@@ -847,10 +1079,10 @@ fn lay_out<'a>(
                 (text.as_str(), covered)
             });
         if let Some((reading, covered)) = g.ruby.or(auto) {
-            // WebVTT ruby: half size, the colour of its base
+            // WebVTT ruby: at the size chosen (LKP-052), the colour of its base
             let galley = fonts.layout_job(LayoutJob::single_section(
                 reading.to_string(),
-                TextFormat::simple(FontId::proportional(px / 2.0), ink),
+                TextFormat::simple(FontId::proportional(px * chosen.furigana), ink),
             ));
             readings.push(Reading {
                 first: graphemes.len(),
@@ -872,6 +1104,9 @@ fn lay_out<'a>(
         line_height: 0.0,
         fill,
         outline,
+        outline_width,
+        shadow,
+        boxed,
         texts: Vec::new(),
         rows: Vec::new(),
         graphemes: Vec::new(),
@@ -1061,6 +1296,12 @@ fn paint(
         fill: cue.fill,
     };
     let moved = |rect: Rect| warp.map_or(rect, |w| w.around(rect));
+    // SUB-021: the box behind the whole cue, its readings included
+    if cue.boxed.a() > 0 && warp.is_none() {
+        let pad = vec2(0.3, 0.1) * units.font;
+        let rect = Rect::from_min_size(offset.to_pos2(), cue.size).expand2(pad);
+        painter.rect_filled(rect, 0.15 * units.font, cue.boxed.gamma_multiply(opacity));
+    }
     for rect in &cue.highlight {
         painter.rect_filled(moved(rect.translate(offset)), 3.0, HIGHLIGHT);
     }
@@ -1068,12 +1309,13 @@ fn paint(
     let sigma = blur_sigma(f64::from(units.font)) as f32;
     let reach = (2.0 * sigma).round().min(64.0);
     // a turned cue has no box around its ink
-    for row in cue.rows.iter().filter(|_| warp.is_none()) {
+    let shadowed = warp.is_none() && cue.shadow.a() > 0;
+    for row in cue.rows.iter().filter(|_| shadowed) {
         painter.add(
             RectShape::filled(
                 row.translate(offset + vec2(0.0, 1.0)),
                 CornerRadius::same(4),
-                SHADOW.gamma_multiply(opacity),
+                cue.shadow.gamma_multiply(opacity),
             )
             .with_blur_width(reach / 2.0),
         );
@@ -1092,10 +1334,14 @@ fn paint(
         }
         return;
     }
-    // the outline: eight copies one pixel (more on big text) around
-    let width = (units.font * ppp / 24.0).round().max(1.0) / ppp;
-    for (dx, dy) in AROUND {
-        let shift = offset + vec2(dx, dy) * width;
+    // the outline: eight copies its width around, a whole number of pixels
+    let width = if cue.outline_width > 0.0 && cue.outline.a() > 0 {
+        (cue.outline_width * ppp).round().max(1.0) / ppp
+    } else {
+        0.0
+    };
+    for (dx, dy) in AROUND.iter().filter(|_| width > 0.0) {
+        let shift = offset + vec2(*dx, *dy) * width;
         for (at, galley) in &cue.texts {
             draw_text(painter, *at + shift, galley, Some(cue.outline), ink);
         }
@@ -1137,15 +1383,15 @@ mod tests {
     #[test]
     fn the_video_is_letterboxed_and_16_9_while_unknown() {
         // a 4:3 video in a 16:9 window: bars at the sides
-        let v = video_rect(window(), (640, 480));
+        let v = video_rect(window(), (640, 480), Fit::Contain);
         assert_eq!(v, Rect::from_min_max(pos2(160.0, 0.0), pos2(1120.0, 720.0)));
         // a 2.39:1 video: bars above and below
-        let v = video_rect(window(), (1920, 804));
+        let v = video_rect(window(), (1920, 804), Fit::Contain);
         assert!((v.width() - 1280.0).abs() < 0.01 && (v.center().y - 360.0).abs() < 0.01);
         assert!((v.height() - 536.0).abs() < 0.1, "{v:?}");
         // unknown: 16:9, the whole window
-        assert_eq!(video_rect(window(), (0, 0)), window());
-        assert_eq!(video_rect(window(), (1920, 0)), window());
+        assert_eq!(video_rect(window(), (0, 0), Fit::Contain), window());
+        assert_eq!(video_rect(window(), (1920, 0), Fit::Contain), window());
     }
 
     #[test]
@@ -1165,12 +1411,15 @@ mod tests {
         let unit = 720.0 / 1080.0;
         let video = window();
         // no bar: 75 units above the bottom of the video
-        assert!((bottom_edge(video, window(), 0.0, unit) - 670.0).abs() < 0.01);
+        assert!((bottom_edge(video, window(), 0.0, unit, 75.0 * unit) - 670.0).abs() < 0.01);
         // a bar 104 high: 12 units above it
-        assert!((bottom_edge(video, window(), 104.0, unit) - 608.0).abs() < 0.01);
+        assert!((bottom_edge(video, window(), 104.0, unit, 75.0 * unit) - 608.0).abs() < 0.01);
         // a letterboxed video: the margin is from the video, the bar from the window
-        let wide = video_rect(window(), (1920, 804));
-        assert!((bottom_edge(wide, window(), 0.0, unit) - (wide.max.y - 50.0)).abs() < 0.01);
+        let wide = video_rect(window(), (1920, 804), Fit::Contain);
+        assert!(
+            (bottom_edge(wide, window(), 0.0, unit, 75.0 * unit) - (wide.max.y - 50.0)).abs()
+                < 0.01
+        );
         assert_eq!(
             stack_x(video, HAlign::Center, 100.0, unit),
             590.0,
@@ -1282,17 +1531,17 @@ mod tests {
         let style = subs.shown(true).next().unwrap().style;
         assert!(style.is_some());
         // respected: \b0 beats the bold style, the inline size and colour win
-        let first = look(g[0].style, style, true);
+        let first = look(g[0].style, style, true, false);
         assert!(!first.bold && first.underline && !first.strike);
         assert_eq!(first.color, Some(Rgb(0, 0, 0xFF)));
         assert_eq!(first.size, Some(60.0));
         // after \r: the style's
-        let second = look(g[1].style, style, true);
+        let second = look(g[1].style, style, true, false);
         assert!(second.bold && !second.underline);
         assert_eq!(second.color, Some(Rgb(0xFF, 0xD7, 0)));
         assert_eq!(second.size, Some(48.0));
         // not respected: no style, no inline colour or size; \b0 and \u still count
-        let plain = look(g[0].style, None, false);
+        let plain = look(g[0].style, None, false, false);
         assert!(!plain.bold && plain.underline);
         assert_eq!((plain.color, plain.size), (None, None));
     }
@@ -1322,6 +1571,48 @@ mod tests {
         secondary: Option<(Subtitles, Obscure, bool)>,
         marks: HashMap<usize, Marks>,
     ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        let setup = Setup {
+            secondary,
+            marks,
+            ..Setup::default()
+        };
+        build_with(subs, obscure, setup)
+    }
+
+    /// What else a harness can be given: the look, the fit and the video's
+    /// size (SUB-021, PLY-021).
+    struct Setup {
+        secondary: Option<(Subtitles, Obscure, bool)>,
+        marks: HashMap<usize, Marks>,
+        look: Appearance,
+        fit: Fit,
+        video_size: (i64, i64),
+    }
+
+    impl Default for Setup {
+        fn default() -> Self {
+            Self {
+                secondary: None,
+                marks: HashMap::new(),
+                look: Appearance::default(),
+                fit: Fit::Contain,
+                video_size: (1920, 1080),
+            }
+        }
+    }
+
+    fn build_with(
+        subs: Subtitles,
+        obscure: Obscure,
+        setup: Setup,
+    ) -> Harness<'static, (Subtitles, State, Vec<Command>)> {
+        let Setup {
+            secondary,
+            marks,
+            look,
+            fit,
+            video_size,
+        } = setup;
         let marks: &'static HashMap<usize, Marks> = Box::leak(Box::new(marks));
         let secondary: &'static Option<(Subtitles, Obscure, bool)> = Box::leak(Box::new(secondary));
         Harness::builder()
@@ -1335,8 +1626,9 @@ mod tests {
                     }
                     let scene = Scene {
                         subs,
-                        video_size: (1920, 1080),
-                        font_size: 36.0,
+                        video_size,
+                        look,
+                        fit,
                         respect_ass: false,
                         obscure,
                         secondary: secondary.as_ref().map(|(s, o, bottom)| Secondary {
@@ -1369,7 +1661,8 @@ mod tests {
                     let scene = Scene {
                         subs,
                         video_size: (1920, 1080),
-                        font_size: 36.0,
+                        look: Appearance::default(),
+                        fit: Fit::Contain,
                         respect_ass: true,
                         obscure: Obscure::None,
                         secondary: None,
@@ -1762,6 +2055,149 @@ mod tests {
         h.run();
         assert_eq!(h.state().1.drawn[0].readings, 1);
         assert_eq!(h.state().1.drawn[0].mined, 1);
+    }
+
+    fn srt_cue(text: &str) -> Subtitles {
+        subtitles(
+            &format!("1\n00:00:01,000 --> 00:00:03,000\n{text}\n"),
+            Format::Srt,
+            1500,
+        )
+    }
+
+    fn drawn_with(subs: Subtitles, setup: Setup) -> Drawn {
+        let mut h = build_with(subs, Obscure::None, setup);
+        h.run();
+        h.state().1.drawn[0].clone()
+    }
+
+    // T-LKP-052: the readings at the size chosen, the file's ruby too
+    #[test]
+    fn the_furigana_take_the_size_chosen() {
+        let vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<ruby>猫<rt>ねこ</rt></ruby>が食べた\n";
+        let height = |share: f32| {
+            let look = Appearance {
+                furigana: share,
+                ..Appearance::default()
+            };
+            let setup = Setup {
+                look,
+                ..Setup::default()
+            };
+            drawn_with(subtitles(vtt, Format::Vtt, 1500), setup)
+                .rect
+                .height()
+        };
+        let (small, half, big) = (height(0.3), height(0.5), height(0.8));
+        // 24 points of text on a 720 point video: each tenth is about 3 more
+        assert!(
+            half - small > 4.0 && big - half > 6.0,
+            "{small} {half} {big}"
+        );
+    }
+
+    // T-SUB-021: the look chosen, for the cues with no ASS style
+    #[test]
+    fn the_cues_take_the_look_chosen() {
+        let look = Appearance {
+            text: Color32::from_rgb(0xff, 0xe0, 0x8a),
+            outline: Color32::RED,
+            outline_width: 3.0,
+            shadow: Color32::TRANSPARENT,
+            fill: Color32::from_black_alpha(0x80),
+            ..Appearance::default()
+        };
+        let setup = Setup {
+            look,
+            ..Setup::default()
+        };
+        let d = drawn_with(srt_cue("字幕"), setup);
+        let unit = 720.0 / 1080.0;
+        assert_eq!(d.look.0, look.text);
+        assert_eq!(d.look.1, Color32::RED);
+        assert!((d.look.2 - 3.0 * unit).abs() < 0.01);
+        assert_eq!((d.look.3, d.look.4), (look.shadow, look.fill));
+        // the defaults: white, a thin translucent outline, a soft shadow, no box
+        let d = drawn_with(srt_cue("字幕"), Setup::default());
+        assert_eq!(d.look.0, Color32::WHITE);
+        assert_eq!(d.look.1, Color32::from_rgba_unmultiplied(0, 0, 0, 0x99));
+        assert!((d.look.2 - 1.5 * unit).abs() < 0.01);
+        assert_eq!(d.look.3, Color32::from_rgba_unmultiplied(0, 0, 0, 0x50));
+        assert_eq!(d.look.4.a(), 0);
+        // a cue drawn with its ASS style keeps the file's look, and no box
+        let mut h = ass_harness("字幕");
+        h.run();
+        let ass = h.state().1.drawn[0].clone();
+        assert_eq!(ass.look.4.a(), 0);
+    }
+
+    // T-SUB-021: the edge and the distance from it
+    #[test]
+    fn the_main_subtitle_goes_to_the_edge_chosen() {
+        let unit = 720.0 / 1080.0;
+        let at = |top: bool, margin: f32| {
+            let look = Appearance {
+                top,
+                margin,
+                ..Appearance::default()
+            };
+            let setup = Setup {
+                look,
+                ..Setup::default()
+            };
+            drawn_with(srt_cue("字幕"), setup).rect
+        };
+        assert!((at(false, 75.0).max.y - (720.0 - 75.0 * unit)).abs() < 0.5);
+        assert!((at(false, 300.0).max.y - (720.0 - 300.0 * unit)).abs() < 0.5);
+        assert!((at(true, 75.0).min.y - 75.0 * unit).abs() < 0.5);
+        assert!((at(true, 0.0).min.y).abs() < 0.5);
+        // a cue that chose its place keeps it
+        let look = Appearance {
+            top: true,
+            ..Appearance::default()
+        };
+        let setup = Setup {
+            look,
+            ..Setup::default()
+        };
+        let placed = drawn_with(srt_cue("{\\an2}字幕"), setup);
+        assert!(placed.rect.max.y > 600.0, "{:?}", placed.rect);
+    }
+
+    // T-PLY-021: the video as drawn, and the subtitles inside the window
+    #[test]
+    fn the_subtitles_follow_the_fit() {
+        let w = window();
+        let cover = video_rect(w, (640, 480), Fit::Cover);
+        assert_eq!(cover.size(), vec2(1280.0, 960.0));
+        assert_eq!(cover.center(), w.center());
+        assert_eq!(video_rect(w, (640, 480), Fit::Stretch), w);
+        assert_eq!(
+            video_rect(w, (640, 480), Fit::Contain).size(),
+            vec2(960.0, 720.0)
+        );
+        // cut at the top and the bottom: the cue stays in the window, its
+        // size from the picture as drawn
+        let setup = Setup {
+            fit: Fit::Cover,
+            video_size: (640, 480),
+            ..Setup::default()
+        };
+        let d = drawn_with(srt_cue("字幕"), setup);
+        let unit = 960.0 / 1080.0;
+        assert!(
+            (d.rect.max.y - (720.0 - 75.0 * unit)).abs() < 0.5,
+            "{:?}",
+            d.rect
+        );
+        let contained = drawn_with(
+            srt_cue("字幕"),
+            Setup {
+                video_size: (640, 480),
+                ..Setup::default()
+            },
+        );
+        assert!(d.rect.height() > contained.rect.height() * 1.2);
     }
 
     trait Contains {

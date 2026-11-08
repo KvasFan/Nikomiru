@@ -134,19 +134,35 @@ impl General {
 
 /// `#rrggbb` as red, green and blue.
 pub fn parse_rgb(text: &str) -> Option<[u8; 3]> {
+    match parse_rgba(text)? {
+        [r, g, b, 0xff] if text.len() == 7 => Some([r, g, b]),
+        _ => None,
+    }
+}
+
+/// `#rrggbb` or `#rrggbbaa` as red, green, blue and opacity (opaque without
+/// `aa`).
+pub fn parse_rgba(text: &str) -> Option<[u8; 4]> {
     let hex = text.strip_prefix('#')?;
-    if hex.len() != 6 || !hex.is_ascii() {
+    if !matches!(hex.len(), 6 | 8) || !hex.is_ascii() {
         return None;
     }
     let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
-    Some([byte(0)?, byte(2)?, byte(4)?])
+    let alpha = if hex.len() == 8 { byte(6)? } else { 0xff };
+    Some([byte(0)?, byte(2)?, byte(4)?, alpha])
+}
+
+/// `#rrggbbaa`, the text of a colour with its opacity.
+pub fn rgba_text([r, g, b, a]: [u8; 4]) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
 }
 
 /// A tab of the settings page whose keys can go back to their defaults
 /// together (SET-006).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    /// Language, theme, accent, scale; the seek step and the next episode.
+    /// Language, theme, accent, scale; the seek step, the next episode and
+    /// the picture's fit.
     General,
     /// `[subtitles]`.
     Subtitles,
@@ -182,12 +198,18 @@ pub struct PlayerConfig {
     pub mpv_preset: String,
     /// mpv options set from the UI or loaded from a preset (PLY-016, PLY-018).
     pub mpv_options: BTreeMap<String, String>,
+    /// The control bar shows the time left rather than the time played
+    /// (PLY-020).
+    pub time_remaining: bool,
+    /// `"contain"`, `"cover"` or `"stretch"` (PLY-021).
+    pub fit: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
 }
 
-/// `[subtitles]` (SUB-008, SUB-010, SUB-014, LKP-051, LKP-061).
+/// `[subtitles]` (SUB-008, SUB-010, SUB-014, SUB-021…023, LKP-051, LKP-052,
+/// LKP-061).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitlesConfig {
@@ -209,9 +231,89 @@ pub struct SubtitlesConfig {
     pub furigana: bool,
     /// Underline the words already made into cards (LKP-061).
     pub mark_mined: bool,
+    /// The readings' size, in percent of the text (LKP-052).
+    pub furigana_size: u8,
+    /// The text's colour, `#rrggbb` (SUB-021).
+    pub text_color: String,
+    /// Bold text (SUB-021).
+    pub bold: bool,
+    /// The outline's colour, `#rrggbb[aa]` (SUB-021).
+    pub outline_color: String,
+    /// The outline's width in pixels of a video 1080 px high, 0 for none
+    /// (SUB-021).
+    pub outline_width: f64,
+    /// The soft shadow's colour, `#rrggbb[aa]` (SUB-021).
+    pub shadow_color: String,
+    /// The box behind each cue, `#rrggbb[aa]` (SUB-021).
+    pub box_color: String,
+    /// The distance from the edge, in pixels of a video 1080 px high
+    /// (SUB-021).
+    pub margin: f64,
+    /// `"bottom"` or `"top"`: the edge the main subtitle stacks from
+    /// (SUB-021).
+    pub position: String,
+    /// The pointer over an obscured subtitle reveals it (SUB-022).
+    pub reveal_on_hover: bool,
+    /// The subtitle list's text, in points (SUB-023).
+    pub list_text_size: f32,
+    /// The subtitle list's width, in points (SUB-023).
+    pub list_width: f32,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+impl SubtitlesConfig {
+    /// The readings' sizes offered, in percent (LKP-052).
+    pub const FURIGANA_SIZES: RangeInclusive<u8> = 30..=80;
+    /// The outline's widths offered (SUB-021).
+    pub const OUTLINE_WIDTHS: RangeInclusive<f64> = 0.0..=8.0;
+    /// The distances from the edge offered (SUB-021).
+    pub const MARGINS: RangeInclusive<f64> = 0.0..=400.0;
+    /// The list's text sizes offered (SUB-023).
+    pub const LIST_TEXT_SIZES: RangeInclusive<f32> = 12.0..=28.0;
+    /// The list's widths offered (SUB-023).
+    pub const LIST_WIDTHS: RangeInclusive<f32> = 280.0..=900.0;
+
+    /// The values out of range or not valid back to their defaults.
+    fn bounded(self) -> Self {
+        let d = Self::default();
+        let mut c = self;
+        if !(8.0..=200.0).contains(&c.font_size) {
+            c.font_size = d.font_size;
+        }
+        if !Self::FURIGANA_SIZES.contains(&c.furigana_size) {
+            c.furigana_size = d.furigana_size;
+        }
+        if !Self::OUTLINE_WIDTHS.contains(&c.outline_width) {
+            c.outline_width = d.outline_width;
+        }
+        if !Self::MARGINS.contains(&c.margin) {
+            c.margin = d.margin;
+        }
+        if !Self::LIST_TEXT_SIZES.contains(&c.list_text_size) {
+            c.list_text_size = d.list_text_size;
+        }
+        if !Self::LIST_WIDTHS.contains(&c.list_width) {
+            c.list_width = d.list_width;
+        }
+        if parse_rgb(&c.text_color).is_none() {
+            c.text_color = d.text_color;
+        }
+        for (value, default) in [
+            (&mut c.outline_color, d.outline_color),
+            (&mut c.shadow_color, d.shadow_color),
+            (&mut c.box_color, d.box_color),
+        ] {
+            if parse_rgba(value).is_none() {
+                *value = default;
+            }
+        }
+        if !["bottom", "top"].contains(&c.position.as_str()) {
+            c.position = d.position;
+        }
+        c
+    }
 }
 
 impl Default for SubtitlesConfig {
@@ -225,6 +327,18 @@ impl Default for SubtitlesConfig {
             secondary_position: "top".into(),
             furigana: false,
             mark_mined: true,
+            furigana_size: 50,
+            text_color: "#ffffff".into(),
+            bold: false,
+            outline_color: "#00000099".into(),
+            outline_width: 1.5,
+            shadow_color: "#00000050".into(),
+            box_color: "#00000000".into(),
+            margin: 75.0,
+            position: "bottom".into(),
+            reveal_on_hover: true,
+            list_text_size: 16.0,
+            list_width: 420.0,
             other: toml::Table::new(),
         }
     }
@@ -804,9 +918,16 @@ impl Default for PlayerConfig {
             raw_mpv_options: String::new(),
             mpv_preset: String::new(),
             mpv_options: BTreeMap::new(),
+            time_remaining: false,
+            fit: "contain".into(),
             other: toml::Table::new(),
         }
     }
+}
+
+impl PlayerConfig {
+    /// The picture's fits (PLY-021).
+    pub const FITS: [&str; 3] = ["contain", "cover", "stretch"];
 }
 
 impl Default for Config {
@@ -897,8 +1018,9 @@ impl Config {
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
-        if !(8.0..=200.0).contains(&c.subtitles.font_size) {
-            c.subtitles.font_size = 36.0;
+        c.subtitles = c.subtitles.bounded();
+        if !PlayerConfig::FITS.contains(&c.player.fit.as_str()) {
+            c.player.fit = PlayerConfig::default().fit;
         }
         (c.popup.max_width, c.popup.max_height) =
             PopupConfig::bounded(c.popup.max_width, c.popup.max_height);
@@ -977,6 +1099,7 @@ impl Config {
                 self.general = from.general.clone();
                 self.player.seek_seconds = from.player.seek_seconds;
                 self.player.auto_next = from.player.auto_next;
+                self.player.fit = from.player.fit.clone();
             }
             Section::Subtitles => self.subtitles = from.subtitles.clone(),
             Section::Lookup => {
@@ -1012,6 +1135,7 @@ impl Config {
                 };
                 self.player.seek_seconds = d.player.seek_seconds;
                 self.player.auto_next = d.player.auto_next;
+                self.player.fit = d.player.fit;
             }
             Section::Subtitles => {
                 let other = std::mem::take(&mut self.subtitles.other);
@@ -1495,6 +1619,70 @@ opensubtitles_password = "pw-s3cret"
         assert_eq!(c.unknown_keys(), ["lookup.later", "popup.later"]);
         let again = Config::from_toml(&toml::to_string_pretty(&c).unwrap()).unwrap();
         assert_eq!(again, c);
+    }
+
+    // T-SUB-021, T-SUB-023, T-LKP-052, T-PLY-021
+    #[test]
+    fn the_subtitles_look_and_the_fit_have_defaults_and_bounds() {
+        let c = Config::from_toml("").unwrap();
+        let s = &c.subtitles;
+        assert_eq!(
+            (s.furigana_size, s.text_color.as_str(), s.margin),
+            (50, "#ffffff", 75.0)
+        );
+        assert_eq!(
+            (s.outline_color.as_str(), s.shadow_color.as_str()),
+            ("#00000099", "#00000050")
+        );
+        assert_eq!((s.list_text_size, s.list_width), (16.0, 420.0));
+        assert!(s.reveal_on_hover && !s.bold && s.position == "bottom");
+        assert_eq!(c.player.fit, "contain");
+        let chosen = Config::from_toml(
+            "[subtitles]\nfurigana_size = 70\ntext_color = \"#ffe08a\"\n\
+             box_color = \"#00000080\"\nmargin = 120\nposition = \"top\"\n\
+             outline_width = 0\nlist_width = 600\n[player]\nfit = \"cover\"",
+        )
+        .unwrap();
+        let s = &chosen.subtitles;
+        assert_eq!(
+            (s.furigana_size, s.margin, s.outline_width),
+            (70, 120.0, 0.0)
+        );
+        assert_eq!(
+            (s.text_color.as_str(), s.box_color.as_str()),
+            ("#ffe08a", "#00000080")
+        );
+        assert_eq!((s.position.as_str(), s.list_width), ("top", 600.0));
+        assert_eq!(chosen.player.fit, "cover");
+        // out of range, not a colour, not an edge or a fit: the defaults
+        let wrong = Config::from_toml(
+            "[subtitles]\nfurigana_size = 95\ntext_color = \"#ffe08a80\"\n\
+             outline_color = \"black\"\nmargin = -3\nposition = \"left\"\n\
+             outline_width = nan\nlist_text_size = 40\n[player]\nfit = \"zoom\"",
+        )
+        .unwrap();
+        let s = &wrong.subtitles;
+        assert_eq!(
+            (s.furigana_size, s.margin, s.outline_width),
+            (50, 75.0, 1.5)
+        );
+        assert_eq!(
+            (s.text_color.as_str(), s.outline_color.as_str()),
+            ("#ffffff", "#00000099")
+        );
+        assert_eq!((s.position.as_str(), s.list_text_size), ("bottom", 16.0));
+        assert_eq!(wrong.player.fit, "contain");
+        assert_eq!(parse_rgba("#11223344"), Some([0x11, 0x22, 0x33, 0x44]));
+        assert_eq!(parse_rgba("#112233"), Some([0x11, 0x22, 0x33, 0xff]));
+        assert_eq!(parse_rgb("#11223344"), None);
+        assert_eq!(rgba_text([0, 0, 0, 0x99]), "#00000099");
+        // the fit goes with General, the look with Subtitles (SET-006)
+        let mut reset = chosen.clone();
+        reset.reset(Section::General);
+        assert_eq!(reset.player.fit, "contain");
+        assert_eq!(reset.subtitles, chosen.subtitles);
+        reset.reset(Section::Subtitles);
+        assert_eq!(reset.subtitles.margin, 75.0);
     }
 
     #[test]

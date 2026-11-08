@@ -4,6 +4,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-08
+
+Subtitles that look the way you want.
+
+### Added
+
+- Settings → Subtitles: the furigana's size, 30 to 80 % of the text (LKP-052).
+- Settings → Subtitles → Look: the text's color, bold, the outline's color and width, the shadow, a box behind the text, the main subtitle at the bottom or the top and its distance from the edge, with a preview of a cue as it will look (SUB-021, D-42).
+- Blurred or hidden subtitles can stay so under the pointer: a pause and an open popup still show them (SUB-022).
+- The subtitle list's text size and width (SUB-023).
+- A click on the time in the control bar shows the time left, and is remembered (PLY-020).
+- Settings → General → Picture: the whole picture with bars, the window filled with the edges cut, or the picture stretched to it; the subtitles follow (PLY-021). `panscan` and `keepaspect` in the mpv options are now left to it.
+
 ## [2.10.1] - 2026-11-03
 
 ### Fixed
