@@ -1402,6 +1402,7 @@ mod tests {
             Loaded {
                 track: nikomiru_subs::parse(format, text),
                 encoding: None,
+                fonts: Vec::new(),
             },
         );
         subs.update(at_ms);

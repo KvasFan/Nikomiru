@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-11-08
+
+Fansubs in their own fonts.
+
+### Added
+
+- The fonts attached to an MKV file are used by its ASS subtitles when ASS styles are respected, as fansubs expect (SUB-025, D-45).
+
 ## [2.13.0] - 2026-11-08
 
 The subtitles in the font you like.

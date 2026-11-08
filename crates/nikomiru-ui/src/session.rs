@@ -4573,6 +4573,8 @@ impl Session {
                 }
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
+                // SUB-025: before its cues are laid out
+                crate::view::theme::register_fonts(&loaded.fonts);
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
                 self.cues_changed();
@@ -4736,6 +4738,7 @@ impl Session {
         }
         match result {
             Ok(loaded) => {
+                crate::view::theme::register_fonts(&loaded.fonts);
                 self.secondary.set_track(source, loaded);
                 self.update_secondary();
             }
