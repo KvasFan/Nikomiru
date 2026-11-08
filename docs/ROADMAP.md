@@ -687,6 +687,8 @@ Done outside the backlog on 2026-11-08, for 2.12.0: Fushi's cards for later (ANK
 
 Done outside the backlog on 2026-11-08, for 2.13.0: the subtitles' font (SUB-024, T-SUB-024, D-44).
 
+Done outside the backlog on 2026-11-08, for 2.14.0: the fonts attached to the video (SUB-025, T-SUB-025, D-45).
+
 ---
 
 ## Definition of done (applies to every PR)

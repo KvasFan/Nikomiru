@@ -77,6 +77,8 @@ pub struct Loaded {
     pub track: Track,
     /// The encoding (files only).
     pub encoding: Option<String>,
+    /// The fonts attached to the video, for an ASS track (SUB-025).
+    pub fonts: Vec<std::path::PathBuf>,
 }
 
 /// Obscuring of the main subtitle (SUB-014).
@@ -380,6 +382,7 @@ mod tests {
         Loaded {
             track: nikomiru_subs::parse(format, text),
             encoding: Some("UTF-8".into()),
+            fonts: Vec::new(),
         }
     }
 

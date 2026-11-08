@@ -40,6 +40,23 @@ pub fn is_text_codec(codec: &str) -> bool {
     )
 }
 
+/// The cache key of a video: its path, size and mtime (SUB-007).
+pub fn video_key(video: &Path) -> std::io::Result<String> {
+    let meta = std::fs::metadata(video)?;
+    let mtime = meta
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let mut h = Sha256::new();
+    h.update(video.as_os_str().as_encoded_bytes());
+    h.update(meta.len().to_le_bytes());
+    h.update(mtime.to_le_bytes());
+    Ok(h.finalize()[..12]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
 /// Extracts and caches subtitle streams.
 #[derive(Debug, Clone)]
 pub struct Extractor {
@@ -57,19 +74,7 @@ pub fn timeout_for(duration: Duration) -> Duration {
 impl Extractor {
     /// Cache file of `stream` in `video`.
     pub fn cache_path(&self, video: &Path, stream: &Stream) -> std::io::Result<PathBuf> {
-        let meta = std::fs::metadata(video)?;
-        let mtime = meta
-            .modified()?
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let mut h = Sha256::new();
-        h.update(video.as_os_str().as_encoded_bytes());
-        h.update(meta.len().to_le_bytes());
-        h.update(mtime.to_le_bytes());
-        let key: String = h.finalize()[..12]
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let key = video_key(video)?;
         let (_, ext) = target(&stream.codec);
         Ok(self
             .cache_dir

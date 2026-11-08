@@ -49,6 +49,7 @@ fn sample() -> crate::subtitles::Subtitles {
         Loaded {
             track: nikomiru_subs::parse(nikomiru_subs::Format::Vtt, SAMPLE),
             encoding: None,
+            fonts: Vec::new(),
         },
     );
     subs.update(1000);

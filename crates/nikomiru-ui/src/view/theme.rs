@@ -29,13 +29,90 @@ pub(crate) fn bold() -> FontFamily {
 }
 
 /// The family of subtitle text in the system family `font` (SUB-024): the
-/// interface's when `font` is empty.
+/// interface's when `font` is empty. The name carries the count of the
+/// fonts registered (SUB-025), so egui asks for a family again once a video
+/// brings fonts of its own.
 pub(crate) fn subtitle_family(font: &str, bold_text: bool) -> FontFamily {
+    family_at(
+        GENERATION.load(std::sync::atomic::Ordering::SeqCst),
+        font,
+        bold_text,
+    )
+}
+
+fn family_at(generation: u64, font: &str, bold_text: bool) -> FontFamily {
     match (font.is_empty(), bold_text) {
         (true, false) => FontFamily::Proportional,
         (true, true) => bold(),
-        (false, false) => FontFamily::Name(format!("{SUBTITLE}{font}").into()),
-        (false, true) => FontFamily::Name(format!("{SUBTITLE_BOLD}{font}").into()),
+        (false, false) => FontFamily::Name(format!("{SUBTITLE}{generation}:{font}").into()),
+        (false, true) => FontFamily::Name(format!("{SUBTITLE_BOLD}{generation}:{font}").into()),
+    }
+}
+
+/// Grows with each registration that brought a family (SUB-025).
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The provider [`install`] gave egui, for the fonts of the videos.
+static PROVIDER: std::sync::OnceLock<Arc<SystemFonts>> = std::sync::OnceLock::new();
+
+/// The fonts registered so far: their files, and their families in lower case.
+#[derive(Default)]
+struct Registered {
+    files: std::collections::HashSet<std::path::PathBuf>,
+    families: std::collections::HashSet<String>,
+}
+
+static REGISTERED: Mutex<Option<Registered>> = Mutex::new(None);
+
+/// The largest font file read (SUB-025).
+const MAX_FONT_BYTES: u64 = 50 << 20;
+
+/// Adds the fonts attached to a video to the system's until Nikomiru closes
+/// (SUB-025); a file already added, too large or not a font is skipped.
+/// The families of the subtitles change name when one brings a family.
+pub(crate) fn register_fonts(paths: &[std::path::PathBuf]) {
+    let Some(provider) = PROVIDER.get() else {
+        return;
+    };
+    let mut registered = REGISTERED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let registered = registered.get_or_insert_with(Registered::default);
+    let mut added = false;
+    for path in paths {
+        if registered.files.contains(path) {
+            continue;
+        }
+        registered.files.insert(path.clone());
+        let bytes = match std::fs::metadata(path) {
+            Ok(meta) if meta.len() <= MAX_FONT_BYTES => std::fs::read(path),
+            Ok(_) => continue,
+            Err(e) => Err(e),
+        };
+        let bytes = match bytes {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!("font {}: {e}", path.display());
+                continue;
+            }
+        };
+        let names = provider.with_collection(|collection, _| {
+            let families = collection.register_fonts(fontique::Blob::new(Arc::new(bytes)), None);
+            families
+                .into_iter()
+                .filter_map(|(id, _)| collection.family_name(id).map(str::to_lowercase))
+                .collect::<Vec<_>>()
+        });
+        if names.is_empty() {
+            tracing::warn!("font {}: not a font", path.display());
+        }
+        for name in names {
+            tracing::debug!("font of the video: {name}");
+            added |= registered.families.insert(name);
+        }
+    }
+    if added {
+        GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -107,9 +184,16 @@ pub(crate) fn japanese_families() -> Option<&'static [String]> {
     families().map(|f| f.japanese.as_slice())
 }
 
-/// The system has the family `name`; not known yet counts as no (SUB-024).
+/// The system has the family `name`, or a video brought it (SUB-025); not
+/// known yet counts as no (SUB-024).
 pub(crate) fn installed(name: &str) -> bool {
-    families().is_some_and(|f| f.all.contains(&name.to_lowercase()))
+    let name = name.to_lowercase();
+    let brought = REGISTERED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .is_some_and(|r| r.families.contains(&name));
+    brought || families().is_some_and(|f| f.all.contains(&name))
 }
 
 /// The face of the system family `name` with `weight`, if installed.
@@ -135,7 +219,9 @@ fn named(
 
 /// Gives `ctx` the system fonts and the style.
 pub(crate) fn install(ctx: &egui::Context) {
-    ctx.add_font_provider(Arc::new(SystemFonts::new()));
+    let fonts = Arc::new(SystemFonts::new());
+    let _ = PROVIDER.set(Arc::clone(&fonts));
+    ctx.add_font_provider(fonts);
     // symbols and scripts the fonts above lack (▾, ↻, emoji…)
     ctx.add_font_provider(Arc::new(
         egui_system_font_provider::SystemFontProvider::new().with_locale(Some("ja")),
@@ -251,7 +337,9 @@ impl FontProvider for SystemFonts {
             FontFamily::Name(name) => name
                 .strip_prefix(SUBTITLE_BOLD)
                 .map(|n| (n, FontWeight::BOLD))
-                .or_else(|| name.strip_prefix(SUBTITLE).map(|n| (n, FontWeight::NORMAL))),
+                .or_else(|| name.strip_prefix(SUBTITLE).map(|n| (n, FontWeight::NORMAL)))
+                // the generation, then the family's own name
+                .and_then(|(n, weight)| Some((n.split_once(':')?.1, weight))),
             _ => None,
         };
         let (subtitle, family) = match subtitle {
@@ -361,5 +449,22 @@ mod tests {
             bold(),
             "empty: the interface's own"
         );
+    }
+
+    // T-SUB-025: a family brought by a video renames the subtitles' families
+    #[test]
+    fn a_font_registered_lays_the_cues_out_again() {
+        let before = family_at(4, "Some Font", false);
+        let after = family_at(5, "Some Font", false);
+        assert_ne!(before, after);
+        let fonts = SystemFonts::new();
+        assert_eq!(
+            names(&fonts.fonts_for_family(&after)),
+            names(&fonts.fonts_for_family(&FontFamily::Proportional)),
+            "the generation is not part of the family's name"
+        );
+        // without the provider of a window nothing is registered
+        register_fonts(&[std::path::PathBuf::from("/nonexistent.ttf")]);
+        assert!(!installed("nonexistent"));
     }
 }

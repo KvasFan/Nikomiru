@@ -281,6 +281,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-022 | Revealing on hover off | The pointer reveals nothing; a pause and an open popup still do | L1 |
 | T-SUB-023 | The list's size | kittest: bigger text makes taller rows and a wider time column; the width chosen, never more than 60 % of the window | L3 |
 | T-SUB-024 | The subtitles' font | `font` read and kept (L1); a named family gets its own face first and the interface's after it, nothing of its own when it is not installed (L1, the system's fonts); kittest: a cue drawn in the family chosen, an ASS style's font when respected | L1, L3 |
+| T-SUB-025 | Fonts attached to the video | ffprobe's JSON read, fonts told from other attachments, the ffmpeg arguments (L1); a video with a font attached (made by the test from a system font): the font written once and the same bytes, found in the cache the second time, not written for a video without one (L4); a font file registered joins the families and changes the subtitles' family names, so the cues are laid out again (L1) | L1, L4 |
 
 ### 6.4 Dictionaries: import and management
 
