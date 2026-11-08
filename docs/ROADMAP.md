@@ -685,6 +685,8 @@ Done outside the backlog on 2026-11-05, for 2.11.0: what Nikomiru lacked from Fu
 
 Done outside the backlog on 2026-11-08, for 2.12.0: Fushi's cards for later (ANK-044, T-ANK-044, D-43).
 
+Done outside the backlog on 2026-11-08, for 2.13.0: the subtitles' font (SUB-024, T-SUB-024, D-44).
+
 ---
 
 ## Definition of done (applies to every PR)
