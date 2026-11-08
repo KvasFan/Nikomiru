@@ -14,6 +14,8 @@
 //! escaped (ADR 0007 §11) and the part-of-speech labels start again with each
 //! dictionary in `{glossary}` too.
 
+use std::collections::BTreeMap;
+
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::frequency;
 use nikomiru_dict::lookup::Entry;
@@ -587,6 +589,52 @@ pub fn value(name: &str, dict: &DictionaryFields, scene: &SceneFields) -> String
     }
 }
 
+/// The placeholders of [`value`] with a fixed name (ANK-021); the
+/// `single-glossary-` ones are named after the dictionaries.
+pub const NAMES: [&str; 19] = [
+    "expression",
+    "reading",
+    "furigana-plain",
+    "glossary",
+    "glossary-first",
+    "frequencies",
+    "frequency-harmonic-rank",
+    "pitch-accent-positions",
+    "pitch-accent-categories",
+    "phonetic-transcriptions",
+    "tags",
+    "sentence",
+    "cue-sentence",
+    "sentence-audio",
+    "card-image",
+    "audio",
+    "document-title",
+    "source-link",
+    "clip-timestamp",
+];
+
+/// The value of every placeholder a card can have, for a card that is sent
+/// later (ANK-044): [`value`] of the fixed names and of the `single-glossary-`
+/// of each dictionary, by its title and by the name shown. A placeholder not
+/// in the map is empty, as [`value`] makes it.
+pub fn values(dict: &DictionaryFields, scene: &SceneFields) -> BTreeMap<String, String> {
+    let singles = dict
+        .glossaries
+        .iter()
+        .flat_map(|(title, shown, _)| [title, shown])
+        .map(|key| format!("single-glossary-{key}"));
+    NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .chain(singles)
+        .map(|name| {
+            let value = value(&name, dict, scene);
+            (name, value)
+        })
+        .filter(|(_, value)| !value.is_empty())
+        .collect()
+}
+
 /// A field template with its `{placeholders}` filled (ANK-020): from each
 /// `{` to the next `}` is a placeholder, as the regex `\{[^}]*\}` of Fushi
 /// finds them; an unknown one becomes empty, the rest stays as written; the
@@ -649,6 +697,42 @@ pub fn fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-ANK-044: a card kept for later fills its fields as one sent at once
+    #[test]
+    fn the_values_kept_fill_a_template_as_the_card_would() {
+        let dict = DictionaryFields {
+            expression: "見る".into(),
+            reading: "みる".into(),
+            glossary: "<ol>to see</ol>".into(),
+            glossaries: vec![(
+                "JMdict (English)".into(),
+                "JMdict".into(),
+                "<i>see</i>".into(),
+            )],
+            ..DictionaryFields::default()
+        };
+        let scene = SceneFields {
+            sentence: "<b>見る</b>".into(),
+            ..SceneFields::default()
+        };
+        let kept = values(&dict, &scene);
+        for template in [
+            "{expression}[{reading}] {glossary}",
+            "{single-glossary-JMdict} {single-glossary-JMdict (English)}",
+            "{sentence} {card-image} {unknown}",
+        ] {
+            assert_eq!(
+                render(template, &|n| kept.get(n).cloned().unwrap_or_default()),
+                render(template, &|n| value(n, &dict, &scene)),
+                "{template}"
+            );
+        }
+        assert!(
+            !kept.contains_key("card-image"),
+            "empty values are left out"
+        );
+    }
 
     // T-ANK-043: a picture is an image, a clip a video that Anki keeps: its
     // media check reads the `src` of `video`

@@ -143,6 +143,10 @@ pub enum Inbound {
     AnkiLists(Result<crate::mining::AnkiLists, String>),
     /// "Create Lapis deck" ended (ANK-011).
     LapisDone(Result<crate::mining::LapisMade, String>),
+    /// The cards kept for later (ANK-044).
+    Later(Vec<crate::mining::LaterCard>),
+    /// They were sent, or some of them.
+    LaterSent(crate::mining::LaterSent),
     /// `config.toml` was written, or not.
     ConfigSaved(Result<(), String>),
     /// What an online search found (MET-009).
@@ -251,6 +255,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::Browsed(_) => "Browsed",
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
+            Inbound::Later(_) => "Later",
+            Inbound::LaterSent(_) => "LaterSent",
             Inbound::ConfigSaved(_) => "ConfigSaved",
             Inbound::OnlineFound { .. } => "OnlineFound",
             Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
@@ -387,6 +393,10 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// "Send to Anki" of the cards kept for later (ANK-044).
+    LaterSend,
+    /// Remove the card kept for later with this id (ANK-044).
+    LaterForget(String),
     /// `[review]` saved with the Anki settings, just before them (REV-003).
     ReviewSave(nikomiru_core::config::ReviewConfig),
     /// ♪ of an entry: its first audio (AUD-004).
@@ -777,6 +787,14 @@ impl Ui {
             }
             Inbound::LapisDone(result) => {
                 self.session.lapis_done(result);
+                true
+            }
+            Inbound::Later(cards) => {
+                self.session.later_listed(cards);
+                true
+            }
+            Inbound::LaterSent(sent) => {
+                self.session.later_sent(sent);
                 true
             }
             Inbound::ConfigSaved(result) => {
@@ -1200,6 +1218,8 @@ impl Ui {
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),
+            Command::LaterSend => s.send_later(),
+            Command::LaterForget(id) => s.forget_later(id),
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::ReviewSave(config) => s.config_mut_review(config),
             Command::AnkiSave(config) => s.anki_save(config),
@@ -1407,6 +1427,18 @@ impl Ui {
                     .anki()
                     .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
                 crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
+                crate::mining::AnkiJob::Later => self
+                    .session
+                    .anki()
+                    .later(Box::new(move |cards| waker.wake(Inbound::Later(cards)))),
+                crate::mining::AnkiJob::SendLater => self
+                    .session
+                    .anki()
+                    .send_later(Box::new(move |sent| waker.wake(Inbound::LaterSent(sent)))),
+                crate::mining::AnkiJob::ForgetLater(id) => self
+                    .session
+                    .anki()
+                    .forget_later(id, Box::new(move |cards| waker.wake(Inbound::Later(cards)))),
             }
         }
         for (generation, automatic, request) in self.session.take_align_jobs() {

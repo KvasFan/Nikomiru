@@ -1239,6 +1239,7 @@ impl Session {
         self.anki_page.status = None;
         let config = self.services.config.anki.clone();
         self.anki_test(config);
+        self.list_later();
     }
 
     /// "Test the connection" with the settings being edited (ANK-006).
@@ -3773,6 +3774,26 @@ impl Session {
     ) {
         use crate::mining::{CardState, LastCard};
         match result {
+            Ok(crate::mining::Mined {
+                kept: Some(count), ..
+            }) => {
+                // ANK-044: made, not sent yet
+                let at = self.moment();
+                self.study.card(at);
+                self.words.add_mined(headword.0);
+                if let Some(card) = self
+                    .popups
+                    .stack_mut()
+                    .iter_mut()
+                    .find(|p| p.generation == generation)
+                    .and_then(|p| p.cards.get_mut(entry))
+                {
+                    *card = CardState::Kept;
+                }
+                self.apply_last_card();
+                let message = self.tr("toast-card-kept", &[("count", count.to_string())]);
+                self.toasts.push(message);
+            }
             Ok(mined) => {
                 let at = self.moment();
                 self.study.card(at);
@@ -3821,6 +3842,57 @@ impl Session {
                 self.toasts.push(failure.message);
             }
         }
+    }
+
+    /// The cards kept for later, listed again (ANK-044).
+    pub fn later_listed(&mut self, cards: Vec<crate::mining::LaterCard>) {
+        self.anki_page.later = cards;
+        self.anki_page.later_busy = false;
+    }
+
+    /// Lists the cards kept for later, for Settings → Anki (ANK-044).
+    pub fn list_later(&mut self) {
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::Later);
+    }
+
+    /// "Send to Anki" of the cards kept for later (ANK-044).
+    pub fn send_later(&mut self) {
+        if self.anki_page.later_busy {
+            return;
+        }
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::SendLater);
+    }
+
+    /// Removes a card kept for later (ANK-044).
+    pub fn forget_later(&mut self, id: String) {
+        if self.anki_page.later_busy {
+            return;
+        }
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::ForgetLater(id));
+    }
+
+    /// The cards kept for later were sent, or some of them (ANK-044).
+    pub fn later_sent(&mut self, sent: crate::mining::LaterSent) {
+        let (count, failed) = (sent.sent, sent.failed);
+        let message = match (&sent.first_problem, failed) {
+            (Some(problem), 1..) => self.tr(
+                "toast-later-some-failed",
+                &[
+                    ("sent", count.to_string()),
+                    ("failed", failed.to_string()),
+                    ("reason", problem.clone()),
+                ],
+            ),
+            _ => self.tr("toast-later-sent", &[("sent", count.to_string())]),
+        };
+        if count > 0 {
+            self.cards_made = true;
+        }
+        self.toasts.push(message);
+        self.later_listed(sent.cards);
     }
 
     /// Anki's browser opened, or not (ANK-038).

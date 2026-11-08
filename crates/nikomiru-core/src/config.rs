@@ -426,8 +426,9 @@ impl Default for PopupConfig {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AnkiConfig {
-    /// Where cards go: `"anki"`, or `"nikomiru"`, Nikomiru's own review
-    /// (REV-001).
+    /// Where cards go: `"anki"`; `"anki-later"`, kept on this computer and
+    /// sent to Anki when the user asks (ANK-044); or `"nikomiru"`, Nikomiru's
+    /// own review (REV-001).
     pub destination: String,
     /// AnkiConnect's address (ANK-001).
     pub url: String,
@@ -469,6 +470,11 @@ impl AnkiConfig {
         self.destination == "nikomiru"
     }
 
+    /// New cards are kept for later instead of sent to Anki (ANK-044).
+    pub fn later(&self) -> bool {
+        self.destination == "anki-later"
+    }
+
     /// The audio pads' upper limit (ANK-032).
     pub const MAX_PAD_MS: u32 = 1000;
 
@@ -478,7 +484,10 @@ impl AnkiConfig {
         self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
         self.audio_quality_level = self.audio_quality_level.min(2);
         self.image_quality_level = self.image_quality_level.min(3);
-        if !matches!(self.destination.as_str(), "anki" | "nikomiru") {
+        if !matches!(
+            self.destination.as_str(),
+            "anki" | "anki-later" | "nikomiru"
+        ) {
             self.destination = defaults.destination.clone();
         }
         if !matches!(self.duplicate_scope.as_str(), "deck" | "collection") {
@@ -1808,6 +1817,10 @@ opensubtitles_password = "pw-s3cret"
             (c.review.new_per_day, c.review.max_interval_days),
             (9999, 1)
         );
+        // T-ANK-044
+        assert!(!c.anki.later());
+        let (c, _) = Config::parse("[anki]\ndestination = \"anki-later\"\n").unwrap();
+        assert!(c.anki.later() && !c.anki.to_review());
         let (c, _) = Config::parse("[anki]\ndestination = \"paper\"\n").unwrap();
         assert_eq!(c.anki.destination, "anki");
     }

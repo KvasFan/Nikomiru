@@ -448,6 +448,7 @@ fn run(
         cache_dir: mining_dir.clone(),
         library: library.clone(),
         review_dir: paths.review_dir(),
+        later_dir: paths.later_dir(),
         clock: Arc::new(SystemClock::new()),
     });
     let online = nikomiru_app::online::Online::start(nikomiru_app::online::Parts {

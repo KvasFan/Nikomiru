@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-11-08
+
+Cards that wait for Anki.
+
+### Added
+
+- Settings → Anki → Cards go to → Anki, later: cards are made at once, with their audio and picture, and kept on this computer; Send to Anki sends them when Anki is open, and the ones it refuses stay with the reason (ANK-044, D-43).
+
 ## [2.11.0] - 2026-11-08
 
 Subtitles that look the way you want.

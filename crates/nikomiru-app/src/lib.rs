@@ -32,6 +32,7 @@ pub mod instance;
 #[cfg_attr(windows, path = "windows/keyring.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod keyring;
+pub mod later;
 pub mod logging;
 pub mod ocr;
 pub mod online;
