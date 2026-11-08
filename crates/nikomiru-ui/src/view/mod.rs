@@ -30,6 +30,7 @@ mod review_view;
 mod servers_page;
 mod services_page;
 pub(crate) mod settings;
+mod setup_page;
 mod shortcuts_page;
 mod stats_view;
 pub(crate) mod theme;
@@ -629,6 +630,9 @@ impl View {
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
+        }
+        if s.setup_page.open {
+            setup_page::show(&ctx, s, &mut out);
         }
         if let Some(card) = s.advanced_card() {
             mining_dialog::show(&ctx, s, card, &mut out);

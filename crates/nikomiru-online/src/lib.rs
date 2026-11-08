@@ -16,6 +16,8 @@ pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
 #[cfg(feature = "test-support")]
+pub mod fake_files;
+#[cfg(feature = "test-support")]
 pub mod fake_servers;
 pub mod hash;
 pub mod hooker;
@@ -27,6 +29,7 @@ pub mod opensubtitles;
 pub mod rank;
 pub mod search;
 pub mod servers;
+pub mod setup;
 pub mod store;
 pub mod webdav;
 

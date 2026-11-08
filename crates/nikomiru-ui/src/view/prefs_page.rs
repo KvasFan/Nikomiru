@@ -49,6 +49,7 @@ fn sample() -> crate::subtitles::Subtitles {
         Loaded {
             track: nikomiru_subs::parse(nikomiru_subs::Format::Vtt, SAMPLE),
             encoding: None,
+            fonts: Vec::new(),
         },
     );
     subs.update(1000);
@@ -143,7 +144,7 @@ pub(crate) fn draw(
         }
         ui.spacing_mut().item_spacing.y = 8.0;
         match s.tab {
-            SettingsTab::General => general(ui, s, draft),
+            SettingsTab::General => general(ui, s, draft, out),
             SettingsTab::Subtitles => {
                 subtitles(ui, s, draft, &mut state.languages);
                 let subs = state.sample.get_or_insert_with(sample);
@@ -216,9 +217,15 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
         .show(ui, rows);
 }
 
-fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
     general_form(ui, s, draft);
     let tr = |id: &str| (s.tr)(id, &[]);
+    // INS-001
+    section(ui, &tr("setup-title"));
+    if ui.button(tr("setup-open")).clicked() {
+        out.push(Command::SetupOpen);
+    }
+    hint(ui, &tr("setup-open-hint"));
     section(ui, &tr("settings-keys"));
     ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
     hint(ui, &tr("settings-keyring-hint"));
@@ -374,6 +381,22 @@ fn look(
     let subs = &mut draft.subtitles;
     section(ui, &tr("settings-sub-look"));
     form(ui, "settings-sub-look", |ui| {
+        // SUB-024: the installed families with Japanese characters
+        row(ui, &tr("settings-sub-font"), |ui| {
+            let families = super::theme::japanese_families();
+            if families.is_none() {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(200));
+            }
+            let mut options: Vec<(&str, String)> = vec![("", tr("settings-sub-font-default"))];
+            let current = subs.font.clone();
+            let listed = families.unwrap_or_default();
+            if !current.is_empty() && !listed.contains(&current) {
+                options.push((current.as_str(), current.clone()));
+            }
+            options.extend(listed.iter().map(|f| (f.as_str(), f.clone())));
+            choice(ui, "settings-sub-font", &mut subs.font, &options)
+        });
         row(ui, &tr("settings-sub-furigana-size"), |ui| {
             ui.add(
                 Slider::new(&mut subs.furigana_size, SubtitlesConfig::FURIGANA_SIZES).suffix(" %"),

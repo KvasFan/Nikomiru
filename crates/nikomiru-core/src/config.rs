@@ -109,6 +109,8 @@ pub struct General {
     /// The library shows its first steps until they are done or hidden
     /// (LIB-013).
     pub first_steps: bool,
+    /// The setup assistant opened once by itself (INS-001).
+    pub setup_offered: bool,
     /// Keys and passwords live in the system keyring, not in this file
     /// (MET-005).
     pub keyring: bool,
@@ -217,6 +219,9 @@ pub struct SubtitlesConfig {
     pub preferred_languages: Vec<String>,
     /// Font size in pixels for a video 1080 px high (SUB-010).
     pub font_size: f64,
+    /// The font family, installed on the system; empty: the interface's
+    /// (SUB-024).
+    pub font: String,
     /// Use the colours, fonts and positions of ASS files (SUB-010).
     pub respect_ass_styles: bool,
     /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
@@ -254,6 +259,8 @@ pub struct SubtitlesConfig {
     pub position: String,
     /// The pointer over an obscured subtitle reveals it (SUB-022).
     pub reveal_on_hover: bool,
+    /// Playback pauses at the end of each line (SUB-026).
+    pub auto_pause: bool,
     /// The subtitle list's text, in points (SUB-023).
     pub list_text_size: f32,
     /// The subtitle list's width, in points (SUB-023).
@@ -312,6 +319,11 @@ impl SubtitlesConfig {
         if !["bottom", "top"].contains(&c.position.as_str()) {
             c.position = d.position;
         }
+        // a name, not a path or a pattern of fontconfig
+        c.font = c.font.trim().to_string();
+        if c.font.chars().any(char::is_control) || c.font.len() > 200 {
+            c.font = d.font;
+        }
         c
     }
 }
@@ -321,6 +333,7 @@ impl Default for SubtitlesConfig {
         Self {
             preferred_languages: vec!["ja".into(), "jpn".into()],
             font_size: 36.0,
+            font: String::new(),
             respect_ass_styles: false,
             obscure: "none".into(),
             secondary_obscure: "none".into(),
@@ -337,6 +350,7 @@ impl Default for SubtitlesConfig {
             margin: 75.0,
             position: "bottom".into(),
             reveal_on_hover: true,
+            auto_pause: false,
             list_text_size: 16.0,
             list_width: 420.0,
             other: toml::Table::new(),
@@ -426,8 +440,9 @@ impl Default for PopupConfig {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AnkiConfig {
-    /// Where cards go: `"anki"`, or `"nikomiru"`, Nikomiru's own review
-    /// (REV-001).
+    /// Where cards go: `"anki"`; `"anki-later"`, kept on this computer and
+    /// sent to Anki when the user asks (ANK-044); or `"nikomiru"`, Nikomiru's
+    /// own review (REV-001).
     pub destination: String,
     /// AnkiConnect's address (ANK-001).
     pub url: String,
@@ -469,6 +484,11 @@ impl AnkiConfig {
         self.destination == "nikomiru"
     }
 
+    /// New cards are kept for later instead of sent to Anki (ANK-044).
+    pub fn later(&self) -> bool {
+        self.destination == "anki-later"
+    }
+
     /// The audio pads' upper limit (ANK-032).
     pub const MAX_PAD_MS: u32 = 1000;
 
@@ -478,7 +498,10 @@ impl AnkiConfig {
         self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
         self.audio_quality_level = self.audio_quality_level.min(2);
         self.image_quality_level = self.image_quality_level.min(3);
-        if !matches!(self.destination.as_str(), "anki" | "nikomiru") {
+        if !matches!(
+            self.destination.as_str(),
+            "anki" | "anki-later" | "nikomiru"
+        ) {
             self.destination = defaults.destination.clone();
         }
         if !matches!(self.duplicate_scope.as_str(), "deck" | "collection") {
@@ -901,6 +924,7 @@ impl Default for General {
             accent: Self::ACCENT.into(),
             ui_scale: 100,
             first_steps: true,
+            setup_offered: false,
             keyring: false,
             study_language: "ja".into(),
             other: toml::Table::new(),
@@ -1654,6 +1678,14 @@ opensubtitles_password = "pw-s3cret"
         );
         assert_eq!((s.position.as_str(), s.list_width), ("top", 600.0));
         assert_eq!(chosen.player.fit, "cover");
+        // T-SUB-024
+        assert_eq!(c.subtitles.font, "");
+        let font = |text: &str| Config::from_toml(text).unwrap().subtitles.font;
+        assert_eq!(
+            font("[subtitles]\nfont = \" Noto Serif CJK JP \""),
+            "Noto Serif CJK JP"
+        );
+        assert_eq!(font("[subtitles]\nfont = \"a\\nb\""), "");
         // out of range, not a colour, not an edge or a fit: the defaults
         let wrong = Config::from_toml(
             "[subtitles]\nfurigana_size = 95\ntext_color = \"#ffe08a80\"\n\
@@ -1808,6 +1840,10 @@ opensubtitles_password = "pw-s3cret"
             (c.review.new_per_day, c.review.max_interval_days),
             (9999, 1)
         );
+        // T-ANK-044
+        assert!(!c.anki.later());
+        let (c, _) = Config::parse("[anki]\ndestination = \"anki-later\"\n").unwrap();
+        assert!(c.anki.later() && !c.anki.to_review());
         let (c, _) = Config::parse("[anki]\ndestination = \"paper\"\n").unwrap();
         assert_eq!(c.anki.destination, "anki");
     }

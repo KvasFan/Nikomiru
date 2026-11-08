@@ -448,6 +448,7 @@ fn run(
         cache_dir: mining_dir.clone(),
         library: library.clone(),
         review_dir: paths.review_dir(),
+        later_dir: paths.later_dir(),
         clock: Arc::new(SystemClock::new()),
     });
     let online = nikomiru_app::online::Online::start(nikomiru_app::online::Parts {
@@ -506,6 +507,15 @@ fn run(
         });
     let no_dictionaries = translator.tr("error-dict-unavailable", &[]);
     let ffmpeg_setting = config.paths.ffmpeg.clone();
+    // INS-001…INS-006
+    let setup = nikomiru_app::setup::Setup::start(nikomiru_app::setup::Parts {
+        proxy: config.network.proxy.clone(),
+        cache_dir: paths.cache_dir.join("setup"),
+        audio_dir: paths.data_dir.join("audio"),
+        manifest_urls: nikomiru_app::setup::Parts::manifest_urls(),
+        translator: translator.clone(),
+        catalog: nikomiru_online::setup::catalog::catalog(),
+    });
     let services = Services {
         player: player.handle(),
         config,
@@ -532,6 +542,7 @@ fn run(
         sync: Box::new(sync),
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
         ocr: Box::new(nikomiru_app::ocr::OcrWorker::new(paths.ocr_model_dir())),
+        setup: Box::new(setup),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

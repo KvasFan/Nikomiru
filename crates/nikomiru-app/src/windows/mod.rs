@@ -27,6 +27,25 @@ pub(crate) fn from_wide(buffer: &[u16]) -> String {
     String::from_utf16_lossy(&buffer[..end])
 }
 
+/// The space free for this user on the volume of `path`, in bytes
+/// (INS-004); `None` when it cannot be read.
+pub fn free_space(path: &std::path::Path) -> Option<u64> {
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let name = wide(&path.to_string_lossy());
+    let mut free = 0u64;
+    // SAFETY: `name` is a NUL-terminated UTF-16 path we own; the call writes
+    // only `free`, and the other outputs may be null.
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            name.as_ptr(),
+            &mut free,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    (ok != 0).then_some(free)
+}
+
 /// No launcher token on Windows.
 pub fn take_activation_token() -> Option<String> {
     None

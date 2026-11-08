@@ -152,6 +152,10 @@ impl Worker {
         if loaded.track.cues.is_empty() {
             return Err(self.translator.tr("error-subtitle-empty", &[]));
         }
+        let mut loaded = loaded;
+        if loaded.track.format == Format::Ass {
+            loaded.fonts = self.fonts(&request.video, cancel);
+        }
         Ok(loaded)
     }
 
@@ -182,7 +186,32 @@ impl Worker {
         Ok(Loaded {
             track: parse(format_of(path), &decoded.text),
             encoding: Some(decoded.encoding),
+            fonts: Vec::new(),
         })
+    }
+
+    /// The fonts attached to the video, for an ASS track (SUB-025); none
+    /// when they cannot be read.
+    fn fonts(&mut self, video: &Path, cancel: &Cancel) -> Vec<PathBuf> {
+        if !video.is_file() {
+            return Vec::new();
+        }
+        let Ok(tools) = self
+            .tools
+            .get_or_insert_with(|| probe(&self.search))
+            .as_ref()
+        else {
+            return Vec::new();
+        };
+        nikomiru_media::attachments::fonts(
+            &tools.ffprobe,
+            &tools.ffmpeg,
+            video,
+            &self.cache_dir,
+            cancel,
+        )
+        .inspect_err(|e| tracing::warn!("fonts of {}: {e}", video.display()))
+        .unwrap_or_default()
     }
 
     /// The offset of the cues against the audio of the first 20 minutes.

@@ -60,7 +60,7 @@
 
 - **Every word is clickable.** Nikomiru draws the subtitles itself (SRT, ASS, WebVTT, embedded tracks), so any character can be looked up; mpv draws only the video.
 - **Your Yomitan dictionaries.** Import the same ZIP files as Yomitan: terms, kanji, frequencies and pitch accent, with conjugations undone as Yomitan does.
-- **One-click Anki cards.** A Lapis card with the word in the sentence, the frame, the audio of the line and a link that reopens the scene; Ctrl+Enter from the keyboard. No Anki? The cards can stay in Nikomiru and come back on its own review.
+- **One-click Anki cards.** A Lapis card with the word in the sentence, the frame, the audio of the line and a link that reopens the scene; Ctrl+Enter from the keyboard. Anki closed? Keep the cards for later and send them all when it is open. The setup assistant gets dictionaries, word audio and Anki ready on the first start. No Anki? The cards can stay in Nikomiru and come back on its own review.
 - **Subtitles that fit.** Files next to the video are found also by episode; the missing ones come from Jimaku or OpenSubtitles, by hand or by themselves; an offset is found from the audio; a second subtitle (a translation) can sit above the first.
 - **mpv as you like it.** Your `mpv.conf` loads with a preview of every line, presets switch in one click, and the options apply without reloading the file.
 - **Private by default.** Nothing goes online unless you ask; keys stay in a file only you can read, never in the logs.

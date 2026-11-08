@@ -31,6 +31,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M13 Advanced ASS, screenshots (1.3.0) ──► M14 Clipboard, texthooker (1.4.0)
       ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
       ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0, 2.8.0) ──► M18 Web pages (2.6.0)
+      ──► M19 Setup assistant (2.17.0)
       ──► the rest of the backlog
       (Ports, from spike S6, run alongside: D-16)
 ```
@@ -58,6 +59,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | released; real books, manga and audiobooks still to check by hand |
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
+| M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
 
 ---
 
@@ -671,6 +673,25 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 ---
 
+## M19 — Setup assistant → 2.17.0
+
+**Goal**: dictionaries, word audio and cards working from the first start, as Fushi's wizard and recommended pack give them (D-48).
+
+**Requirements**: INS-001…INS-006.
+
+**Status as of 2026-11-08**
+
+- Done: the assistant, the catalogue, the pack read by range with its labels, a library downloaded, resumed and checked, the cards as Fushi asks (T-INS-001…T-INS-006 against local hosts); Fushi's real pack read by range (L7).
+- Open: the real Japanese library downloaded whole by hand (6.3 GB); a pack of Nikomiru's own (D-48).
+
+**Exit criteria**
+
+- [x] T-INS-001…T-INS-006 green.
+- [ ] The real pack read and the Japanese library downloaded once by hand.
+- [ ] **Release 2.17.0**.
+
+---
+
 ## Backlog after M16 (in no binding order)
 
 Every item requires a change to SPECIFICATION.md before work starts.
@@ -682,6 +703,16 @@ Every item requires a change to SPECIFICATION.md before work starts.
 Done outside the backlog on 2026-11-03, for 2.10.0: the look of Adwaita asked by the maintainer (SET-009, T-SET-009, D-40).
 
 Done outside the backlog on 2026-11-05, for 2.11.0: what Nikomiru lacked from Fushi's video settings, asked by the maintainer (D-42): the furigana's size (LKP-052), the subtitles' look (SUB-021), revealing on hover as a choice (SUB-022), the list's size (SUB-023), the time left (PLY-020) and the picture's fit (PLY-021), with T-LKP-052, T-SUB-021…023 and T-PLY-020…021.
+
+Done outside the backlog on 2026-11-08, for 2.12.0: Fushi's cards for later (ANK-044, T-ANK-044, D-43).
+
+Done outside the backlog on 2026-11-08, for 2.13.0: the subtitles' font (SUB-024, T-SUB-024, D-44).
+
+Done outside the backlog on 2026-11-08, for 2.14.0: the fonts attached to the video (SUB-025, T-SUB-025, D-45).
+
+Done outside the backlog on 2026-11-08, for 2.15.0: the pause at the end of each line (SUB-026, T-SUB-026, D-46).
+
+Done outside the backlog on 2026-11-08, for 2.16.0: moving the subtitles with the mouse (SUB-027, T-SUB-027, D-47).
 
 ---
 

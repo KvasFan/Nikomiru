@@ -4,6 +4,7 @@
 //! filters and reduces player events into a [`ViewState`], saves the position
 //! (LIB-006) and turns shortcut actions into player commands.
 
+use crate::setup::ItemState;
 use std::path::{Path, PathBuf};
 
 use nikomiru_core::{Clock, Config};
@@ -191,6 +192,8 @@ pub struct Services {
     pub hooker: Box<dyn crate::hooker::HookerService>,
     /// The text of manga pages (MNG-003).
     pub ocr: Box<dyn crate::ocr::OcrService>,
+    /// The downloads of the setup assistant (INS-001…INS-006).
+    pub setup: Box<dyn crate::setup::SetupService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -279,6 +282,9 @@ enum SavingPage {
 const NEXT_COUNTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 /// The cues split into words ahead of the one playing (LKP-060).
 const AHEAD: usize = 3;
+
+/// How close to a stop of mpv's `end` a pause counts as made by it (SUB-026).
+const STOP_SLACK_MS: i64 = 150;
 
 /// The next episode about to start (LIB-009).
 #[derive(Debug, Clone)]
@@ -394,6 +400,9 @@ pub struct Session {
     server_jobs: Vec<crate::servers::ServerJob>,
     /// The Texthooker page.
     pub hooker_page: crate::hooker::HookerPage,
+    /// The setup assistant (INS-001).
+    pub setup_page: crate::setup::SetupPage,
+    setup_jobs: Vec<crate::setup::SetupJob>,
     /// The Books page.
     pub books_page: crate::books::BooksPage,
     /// Books to read, taken by the UI layer.
@@ -484,6 +493,11 @@ pub struct Session {
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
     replaying: bool,
+    /// Where mpv stops for the pause at the end of each line, in player
+    /// milliseconds (SUB-026).
+    auto_pause_end: Option<i64>,
+    /// The main subtitle is being moved with the mouse (SUB-027).
+    moving_subtitles: bool,
     /// Series identified whose cover is being downloaded (MET-001).
     pending_identity:
         std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
@@ -689,6 +703,8 @@ impl Session {
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
             hooker_page: crate::hooker::HookerPage::default(),
+            setup_page: crate::setup::SetupPage::default(),
+            setup_jobs: Vec::new(),
             books_page: crate::books::BooksPage::default(),
             book_reads: Vec::new(),
             ocr_job: None,
@@ -731,6 +747,8 @@ impl Session {
             hover: Hover::default(),
             popup_hovered: false,
             replaying: false,
+            auto_pause_end: None,
+            moving_subtitles: false,
             pending_identity: std::collections::HashMap::new(),
             advanced: None,
             advanced_word: None,
@@ -784,6 +802,8 @@ impl Session {
         }
         self.flush_position();
         self.end_replay();
+        // `end` would stop the next file too
+        self.clear_auto_pause();
         if self.start_at.is_none() {
             // an ordinary open: no link's cue to go to
             self.link_clip = None;
@@ -999,6 +1019,7 @@ impl Session {
                     });
                 }
                 self.update_secondary();
+                self.update_auto_pause();
                 self.book_follow();
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
@@ -1021,6 +1042,8 @@ impl Session {
                 self.study_sample(!p);
                 self.view.paused = p;
                 self.controls.set_playing(!p, now);
+                // stopped at a line's end: on to the next one
+                self.update_auto_pause();
             }
             PlayerEvent::Speed(s) => {
                 self.study_sample(!self.view.paused);
@@ -1091,8 +1114,93 @@ impl Session {
     /// took control, a popup closed or another file opened.
     fn end_replay(&mut self) {
         if std::mem::take(&mut self.replaying) {
+            let p = &self.services.player;
+            let _ = p.stop_at(None);
+            // stopped at its end, mpv's audio is at the end of the file: a
+            // seek where it is starts it again (AK-BUG-003)
+            if self.view.paused {
+                let _ = p.seek_absolute(self.view.time_pos);
+            }
+        }
+    }
+
+    /// The pause at the end of each line (SUB-026): mpv stops (`end`, as the
+    /// replay of SUB-013) at the end of the next line. While playing, the end
+    /// set stays until it is passed or an earlier one comes; once paused at
+    /// it, the next line's is set. A replay from the popup sets its own.
+    fn update_auto_pause(&mut self) {
+        if self.replaying {
+            self.auto_pause_end = None;
+            return;
+        }
+        if !(self.services.config.subtitles.auto_pause && self.view.loaded) {
+            self.clear_auto_pause();
+            return;
+        }
+        let pos = (self.view.time_pos * 1000.0).round() as i64;
+        let t = self.subs.timeline();
+        let next = crate::subtitles::auto_pause_end(
+            t.cues().iter().map(|c| c.end_ms + t.delay_ms),
+            pos,
+            self.view.paused,
+            self.auto_pause_end,
+        );
+        if next != self.auto_pause_end {
+            // stopped there: mpv's audio stopped with the picture
+            let stopped = self.view.paused
+                && self
+                    .auto_pause_end
+                    .is_some_and(|end| pos >= end - STOP_SLACK_MS);
+            self.auto_pause_end = next;
+            let p = &self.services.player;
+            let _ = p.stop_at(next.map(|end| end as f64 / 1000.0));
+            if stopped {
+                let _ = p.seek_absolute(self.view.time_pos);
+            }
+        }
+    }
+
+    /// "Move the subtitles" (SUB-027): on, a drag moves the main subtitle
+    /// and lookups wait; Esc or the menu ends it.
+    pub fn toggle_moving_subtitles(&mut self) {
+        self.moving_subtitles = !self.moving_subtitles;
+        if self.moving_subtitles {
+            self.close_all_popups();
+        }
+    }
+
+    /// The main subtitle is being moved (SUB-027): the hint the overlay
+    /// shows, or `None`.
+    pub fn moving_subtitles(&self) -> Option<String> {
+        self.moving_subtitles
+            .then(|| self.tr("subtitles-move-hint", &[]))
+    }
+
+    /// The main subtitle was dropped (SUB-027): its edge and distance are
+    /// saved as those of Settings → Subtitles → Look (SUB-021).
+    pub fn subtitles_placed(&mut self, top: bool, margin: f64) {
+        let subtitles = &mut self.services.config.subtitles;
+        subtitles.position = if top { "top" } else { "bottom" }.to_string();
+        subtitles.margin = margin.clamp(
+            *nikomiru_core::config::SubtitlesConfig::MARGINS.start(),
+            *nikomiru_core::config::SubtitlesConfig::MARGINS.end(),
+        );
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// No pause at the end of the lines any more (SUB-026).
+    fn clear_auto_pause(&mut self) {
+        if self.auto_pause_end.take().is_some() {
             let _ = self.services.player.stop_at(None);
         }
+    }
+
+    /// Where mpv stops for the pause at the end of each line (SUB-026), for
+    /// the tests.
+    pub fn auto_pause_end(&self) -> Option<i64> {
+        self.auto_pause_end
     }
 
     /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
@@ -1239,6 +1347,7 @@ impl Session {
         self.anki_page.status = None;
         let config = self.services.config.anki.clone();
         self.anki_test(config);
+        self.list_later();
     }
 
     /// "Test the connection" with the settings being edited (ANK-006).
@@ -3773,6 +3882,26 @@ impl Session {
     ) {
         use crate::mining::{CardState, LastCard};
         match result {
+            Ok(crate::mining::Mined {
+                kept: Some(count), ..
+            }) => {
+                // ANK-044: made, not sent yet
+                let at = self.moment();
+                self.study.card(at);
+                self.words.add_mined(headword.0);
+                if let Some(card) = self
+                    .popups
+                    .stack_mut()
+                    .iter_mut()
+                    .find(|p| p.generation == generation)
+                    .and_then(|p| p.cards.get_mut(entry))
+                {
+                    *card = CardState::Kept;
+                }
+                self.apply_last_card();
+                let message = self.tr("toast-card-kept", &[("count", count.to_string())]);
+                self.toasts.push(message);
+            }
             Ok(mined) => {
                 let at = self.moment();
                 self.study.card(at);
@@ -3821,6 +3950,57 @@ impl Session {
                 self.toasts.push(failure.message);
             }
         }
+    }
+
+    /// The cards kept for later, listed again (ANK-044).
+    pub fn later_listed(&mut self, cards: Vec<crate::mining::LaterCard>) {
+        self.anki_page.later = cards;
+        self.anki_page.later_busy = false;
+    }
+
+    /// Lists the cards kept for later, for Settings → Anki (ANK-044).
+    pub fn list_later(&mut self) {
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::Later);
+    }
+
+    /// "Send to Anki" of the cards kept for later (ANK-044).
+    pub fn send_later(&mut self) {
+        if self.anki_page.later_busy {
+            return;
+        }
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::SendLater);
+    }
+
+    /// Removes a card kept for later (ANK-044).
+    pub fn forget_later(&mut self, id: String) {
+        if self.anki_page.later_busy {
+            return;
+        }
+        self.anki_page.later_busy = true;
+        self.anki_jobs.push(crate::mining::AnkiJob::ForgetLater(id));
+    }
+
+    /// The cards kept for later were sent, or some of them (ANK-044).
+    pub fn later_sent(&mut self, sent: crate::mining::LaterSent) {
+        let (count, failed) = (sent.sent, sent.failed);
+        let message = match (&sent.first_problem, failed) {
+            (Some(problem), 1..) => self.tr(
+                "toast-later-some-failed",
+                &[
+                    ("sent", count.to_string()),
+                    ("failed", failed.to_string()),
+                    ("reason", problem.clone()),
+                ],
+            ),
+            _ => self.tr("toast-later-sent", &[("sent", count.to_string())]),
+        };
+        if count > 0 {
+            self.cards_made = true;
+        }
+        self.toasts.push(message);
+        self.later_listed(sent.cards);
     }
 
     /// Anki's browser opened, or not (ANK-038).
@@ -4200,6 +4380,21 @@ impl Session {
                 self.toasts.push(self.tr(key, &[]));
                 Ok(())
             }
+            Action::SubAutoPause => {
+                let subtitles = &mut self.services.config.subtitles;
+                subtitles.auto_pause = !subtitles.auto_pause;
+                let key = if subtitles.auto_pause {
+                    "toast-auto-pause-on"
+                } else {
+                    "toast-auto-pause-off"
+                };
+                if self.services.config_writable {
+                    self.config_save = Some(self.services.config.clone());
+                }
+                self.update_auto_pause();
+                self.toasts.push(self.tr(key, &[]));
+                Ok(())
+            }
             Action::SubToggle => {
                 self.subs.disabled = !self.subs.disabled;
                 let key = if self.subs.disabled {
@@ -4213,6 +4408,14 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
+            Action::Back if self.setup_page.open => {
+                self.setup_close();
+                return UiEffect::None;
+            }
+            Action::Back if self.moving_subtitles => {
+                self.toggle_moving_subtitles();
+                return UiEffect::None;
+            }
             Action::Back if self.advanced.is_some() => {
                 self.close_advanced();
                 return UiEffect::None;
@@ -4275,6 +4478,7 @@ impl Session {
     /// go to them).
     fn cues_changed(&mut self) {
         self.sub_list_version += 1;
+        self.update_auto_pause();
         if self.popups.is_open() {
             self.close_all_popups();
         }
@@ -4501,6 +4705,8 @@ impl Session {
                 }
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
+                // SUB-025: before its cues are laid out
+                crate::view::theme::register_fonts(&loaded.fonts);
                 self.subs.set_track(source, loaded);
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
                 self.cues_changed();
@@ -4664,6 +4870,7 @@ impl Session {
         }
         match result {
             Ok(loaded) => {
+                crate::view::theme::register_fonts(&loaded.fonts);
                 self.secondary.set_track(source, loaded);
                 self.update_secondary();
             }
@@ -5804,6 +6011,7 @@ impl Session {
     /// An import ended.
     pub fn dict_finished(&mut self, generation: u64, result: Result<String, String>) {
         let ok = result.is_ok();
+        let failure = result.as_ref().err().cloned();
         let effects =
             self.dict_page
                 .finished(self.services.dictionaries.as_ref(), generation, result);
@@ -5813,6 +6021,151 @@ impl Session {
             self.dictionaries_installed = true;
         }
         self.dict_effects(effects);
+        // INS-002: a dictionary of the assistant imported; the next one
+        if let Some((id, path, g)) = self.setup_page.importing.take() {
+            if g == generation {
+                let state = failure.map_or(ItemState::Done, ItemState::Failed);
+                self.setup_page.items.insert(id, state);
+                let _ = std::fs::remove_file(&path);
+            } else {
+                self.setup_page.importing = Some((id, path, g));
+            }
+        }
+        self.setup_next_import();
+    }
+
+    /// The setup assistant opened (INS-001): the first time by itself is
+    /// noted, the dictionaries and Anki are read again.
+    pub fn setup_open(&mut self) {
+        self.setup_page.open = true;
+        if !self.services.config.general.setup_offered {
+            self.services.config.general.setup_offered = true;
+            if self.services.config_writable {
+                self.config_save = Some(self.services.config.clone());
+            }
+        }
+        self.dict_refresh();
+        self.anki_open();
+    }
+
+    /// Opens the assistant at the first start without dictionaries
+    /// (INS-001).
+    pub fn offer_setup(&mut self) {
+        if !self.services.config.general.setup_offered && !self.dictionaries_installed {
+            self.setup_open();
+        }
+    }
+
+    /// The setup assistant closed; what is under way goes on.
+    pub fn setup_close(&mut self) {
+        self.setup_page.open = false;
+    }
+
+    /// An item ticked or not.
+    pub fn setup_tick(&mut self, id: &str, on: bool) {
+        if on {
+            self.setup_page.ticked.insert(id.to_string());
+        } else {
+            self.setup_page.ticked.remove(id);
+        }
+    }
+
+    /// The catalogue's dictionaries installed already (INS-002).
+    pub fn setup_installed(&self) -> std::collections::BTreeSet<String> {
+        self.setup_page
+            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()))
+    }
+
+    /// "Install" (INS-001): what is ticked and not there yet.
+    pub fn setup_install(&mut self) {
+        if self.setup_page.running {
+            return;
+        }
+        let plan = self.setup_page.plan(&self.setup_installed());
+        if plan.dictionaries.is_empty() && plan.audio.is_empty() {
+            return;
+        }
+        for id in plan.dictionaries.iter().chain(&plan.audio) {
+            self.setup_page.items.insert(id.clone(), ItemState::Waiting);
+        }
+        self.setup_page.running = true;
+        self.setup_jobs.push(crate::setup::SetupJob::Install(plan));
+    }
+
+    /// Stops the downloads; what is there stays for later (INS-006).
+    pub fn setup_stop(&mut self) {
+        self.setup_jobs.push(crate::setup::SetupJob::Stop);
+    }
+
+    /// The jobs of the setup worker, taken by the UI layer.
+    pub fn take_setup_jobs(&mut self) -> Vec<crate::setup::SetupJob> {
+        std::mem::take(&mut self.setup_jobs)
+    }
+
+    /// The setup worker.
+    pub fn setup_service(&self) -> &dyn crate::setup::SetupService {
+        self.services.setup.as_ref()
+    }
+
+    /// What the setup worker tells (INS-002…INS-004).
+    pub fn setup_event(&mut self, event: crate::setup::SetupEvent) {
+        use crate::setup::SetupEvent;
+        self.setup_page.event(&event);
+        match event {
+            SetupEvent::Dictionary { .. } => self.setup_next_import(),
+            SetupEvent::Audio { path, .. } => self.setup_audio(&path),
+            SetupEvent::Finished if !self.setup_page.busy() => {
+                self.toasts.push(self.tr("setup-finished", &[]));
+            }
+            _ => {}
+        }
+    }
+
+    /// A library downloaded joins the word audio sources, once (INS-004).
+    fn setup_audio(&mut self, path: &std::path::Path) {
+        let url = path.to_string_lossy().into_owned();
+        let mut config = self.services.config.word_audio.clone();
+        if config
+            .sources
+            .iter()
+            .any(|s| s.database() == Some(url.as_str()))
+        {
+            return;
+        }
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        config
+            .sources
+            .push(nikomiru_core::config::AudioSourceConfig {
+                name,
+                url,
+                enabled: true,
+                priority: Vec::new(),
+            });
+        self.word_audio_save(config);
+    }
+
+    /// The next dictionary of the assistant to import, when no import runs
+    /// (INS-002): as a file chosen by hand; one installed already is done.
+    fn setup_next_import(&mut self) {
+        use crate::dictionaries::Import;
+        if self.setup_page.importing.is_some() || !matches!(self.dict_page.import, Import::Idle) {
+            return;
+        }
+        while let Some((id, path)) = self.setup_page.imports.pop_front() {
+            self.dict_choose(path.clone());
+            if matches!(self.dict_page.import, Import::Confirm { .. }) {
+                self.dict_confirm(true);
+            }
+            if let Import::Running { generation, .. } = &self.dict_page.import {
+                self.setup_page.importing = Some((id, path, *generation));
+                return;
+            }
+            // the same revision installed, or a file that cannot be read
+            let _ = std::fs::remove_file(&path);
+            self.setup_page.items.insert(id, ItemState::Done);
+        }
     }
 
     /// Moves a dictionary up or down in its group (DIC-031).

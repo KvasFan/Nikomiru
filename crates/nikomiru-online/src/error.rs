@@ -86,6 +86,9 @@ pub enum OnlineError {
     /// Reading or writing a file.
     #[error("{0}")]
     Io(String),
+    /// Stopped by the user: paused or cancelled (INS-006).
+    #[error("stopped")]
+    Cancelled,
 }
 
 impl nikomiru_core::Localized for OnlineError {
@@ -105,6 +108,7 @@ impl nikomiru_core::Localized for OnlineError {
             OnlineError::Archive(_) => "error-online-archive",
             OnlineError::Unusable(_) => "error-online-unusable",
             OnlineError::Io(_) => "error-online-io",
+            OnlineError::Cancelled => "error-online-cancelled",
         }
     }
 
@@ -138,6 +142,7 @@ impl nikomiru_core::Localized for OnlineError {
             OnlineError::Archive(reason) | OnlineError::Io(reason) => {
                 vec![("reason", reason.clone())]
             }
+            OnlineError::Cancelled => Vec::new(),
             OnlineError::Unusable(name) => vec![("name", name.clone())],
         }
     }

@@ -189,6 +189,64 @@ pub(crate) fn draw(
     )
 }
 
+/// The cards kept for later (ANK-044): each with Remove, and Send to Anki.
+fn later(ui: &mut Ui, s: &Scene<'_>, chosen: bool, out: &mut Vec<Command>) {
+    let page = s.page;
+    let colors = palette::current();
+    if chosen {
+        ui.add(
+            egui::Label::new(
+                RichText::new(tr(s, "anki-destination-later-hint")).color(colors.details),
+            )
+            .wrap(),
+        );
+    }
+    let count = page.later.len().to_string();
+    section(ui, &(s.tr)("anki-later", &[("count", count)]));
+    if page.later.is_empty() {
+        ui.label(RichText::new(tr(s, "anki-later-none")).color(colors.details));
+    }
+    for card in &page.later {
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(!page.later_busy, Button::new(tr(s, "anki-later-remove")))
+                .clicked()
+            {
+                out.push(Command::LaterForget(card.id.clone()));
+            }
+            let text = if card.damaged {
+                tr(s, "anki-later-damaged")
+            } else if card.reading.is_empty() || card.reading == card.expression {
+                format!("{} · {}", card.expression, card.sentence)
+            } else {
+                format!(
+                    "{}【{}】 · {}",
+                    card.expression, card.reading, card.sentence
+                )
+            };
+            ui.add(egui::Label::new(text).truncate());
+        });
+        if let Some(problem) = &card.problem {
+            ui.label(RichText::new(problem).color(colors.bad).size(12.0));
+        }
+    }
+    ui.horizontal(|ui| {
+        let any = page.later.iter().any(|c| !c.damaged);
+        if ui
+            .add_enabled(
+                any && !page.later_busy,
+                Button::new(tr(s, "anki-later-send")),
+            )
+            .clicked()
+        {
+            out.push(Command::LaterSend);
+        }
+        if page.later_busy {
+            ui.spinner();
+        }
+    });
+}
+
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let page = s.page;
     let Some(draft) = state.draft.as_mut() else {
@@ -207,6 +265,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             &mut draft.destination,
             &[
                 ("anki".into(), tr(s, "anki-destination-anki")),
+                ("anki-later".into(), tr(s, "anki-destination-later")),
                 ("nikomiru".into(), tr(s, "anki-destination-nikomiru")),
             ],
         );
@@ -239,6 +298,11 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                     ui.end_row();
                 });
         }
+    }
+
+    // ANK-044
+    if draft.later() || !page.later.is_empty() {
+        later(ui, s, draft.later(), out);
     }
 
     section(ui, &tr(s, "anki-connection"));
@@ -538,6 +602,56 @@ mod tests {
                 .map(|f| (*f).to_string())
                 .collect(),
         }
+    }
+
+    // T-ANK-044: the cards kept, Remove and Send to Anki
+    #[test]
+    fn the_cards_kept_for_later_can_be_removed_and_sent() {
+        use crate::mining::LaterCard;
+        let page = AnkiPage {
+            later: vec![
+                LaterCard {
+                    id: "1".into(),
+                    expression: "食べる".into(),
+                    reading: "たべる".into(),
+                    sentence: "ご飯を食べた".into(),
+                    problem: Some("Anki has this card already".into()),
+                    damaged: false,
+                },
+                LaterCard {
+                    id: "2".into(),
+                    damaged: true,
+                    ..LaterCard::default()
+                },
+            ],
+            ..AnkiPage::default()
+        };
+        let mut h = harness(page);
+        h.run();
+        assert!(
+            h.query_by_label_contains("食べる【たべる】 · ご飯を食べた")
+                .is_some()
+        );
+        assert!(h.query_by_label("Anki has this card already").is_some());
+        assert!(h.query_by_label("anki-later-damaged").is_some());
+        let removes: Vec<_> = h.get_all_by_label("anki-later-remove").collect();
+        assert_eq!(removes.len(), 2);
+        removes[1].click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            matches!(out.as_slice(), [Command::LaterForget(id)] if id == "2"),
+            "{out:?}"
+        );
+        let out = click(&mut h, "anki-later-send");
+        assert!(matches!(out.as_slice(), [Command::LaterSend]), "{out:?}");
+        // only damaged ones: nothing to send; none: the section is gone
+        h.state_mut().page.later.remove(0);
+        h.run();
+        assert!(click(&mut h, "anki-later-send").is_empty());
+        h.state_mut().page.later.clear();
+        h.run();
+        assert!(h.query_by_label("anki-later-send").is_none());
     }
 
     // T-ANK-006, T-ANK-012

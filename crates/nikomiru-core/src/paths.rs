@@ -207,6 +207,11 @@ impl Paths {
         self.data_dir.join("review")
     }
 
+    /// Folder of the cards kept for later (ANK-044).
+    pub fn later_dir(&self) -> PathBuf {
+        self.data_dir.join("later")
+    }
+
     /// Folder of the screenshots (PLY-011).
     pub fn screenshots_dir(&self) -> PathBuf {
         self.pictures_dir.join("Nikomiru")

@@ -14,7 +14,7 @@
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
-//! `{"cmd":"align"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
+//! `{"cmd":"align"}`, `{"cmd":"move_subtitles"}`, `{"cmd":"setup","action":"open"|"close"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
 //! `{"cmd":"settings","tab":"general"|"player"|…|"close","save"?:"<toml>"}`,
 //! `{"cmd":"word_audio","action":"play"|"menu"|"url","level":0,"entry":0,"url":…}`,
 //! `{"cmd":"library","action":"open"|"import"|"series"|"play"|…,"path":…,"grouping":…,"id":…}`,
@@ -135,6 +135,8 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
+        Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),
+        Some("setup") => harness::setup(text(command, "action")?).map(|()| Value::Null),
         Some("mpv_property") => harness::mpv_property(text(command, "name")?)
             .map(|v| v.map_or(Value::Null, Value::String)),
         Some("mouse_moved") => harness::mouse_moved().map(|()| Value::Null),

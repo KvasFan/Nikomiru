@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "dictionaries": [
+    {
+      "id": "jitendex",
+      "name": "Jitendex",
+      "kind": "term",
+      "title_prefix": "Jitendex",
+      "size_bytes": 38831822,
+      "license": "CC BY-SA 4.0",
+      "source": "https://jitendex.org",
+      "url": "https://github.com/stephenmk/stephenmk.github.io/releases/latest/download/jitendex-yomitan.zip",
+      "ticked": true
+    },
+    {
+      "id": "kanjidic",
+      "name": "KANJIDIC",
+      "kind": "kanji",
+      "title_prefix": "KANJIDIC",
+      "size_bytes": 721032,
+      "license": "CC BY-SA 4.0",
+      "source": "https://www.edrdg.org/wiki/index.php/KANJIDIC_Project",
+      "url": "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/KANJIDIC_english.zip",
+      "ticked": true
+    },
+    {
+      "id": "kanjium",
+      "name": "Kanjium pitch accents",
+      "kind": "pitch",
+      "title_prefix": "Kanjium Pitch Accents",
+      "size_bytes": 1072708,
+      "license": "CC BY-SA 4.0",
+      "source": "https://github.com/mifunetoshiro/kanjium",
+      "url": "https://github.com/toasted-nutbread/yomichan-pitch-accent-dictionary/releases/download/1.0.0/kanjium_pitch_accents.zip",
+      "sha256": "f89db29fd2cdec90fe6965d4ef1d92bfb59e201fc7b2f7b39f49a6cda2e99871",
+      "ticked": true
+    },
+    {
+      "id": "jpdb",
+      "name": "JPDB v2.2 frequencies",
+      "kind": "frequency",
+      "title_prefix": "JPDBv2",
+      "size_bytes": 5996363,
+      "license": "",
+      "source": "https://jpdb.io",
+      "url": "https://github.com/Kuuuube/yomitan-dictionaries/raw/main/dictionaries/JPDB_v2.2_Frequency_Kana_2024-10-13.zip",
+      "sha256": "4fa06c784155ea0ea0953740b99d421296c775ee0d035cfe1ff65a40d7d3e685",
+      "ticked": true
+    },
+    {
+      "id": "jmnedict",
+      "name": "JMnedict",
+      "kind": "names",
+      "title_prefix": "JMnedict",
+      "size_bytes": 11431106,
+      "license": "CC BY-SA 4.0",
+      "source": "https://www.edrdg.org/enamdict/enamdict_doc.html",
+      "url": "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMnedict.zip",
+      "ticked": false
+    }
+  ],
+  "audio": [
+    {
+      "id": "fushi-ja",
+      "name": "android.db",
+      "kind": "japanese",
+      "size_bytes": 6267199488,
+      "ticked": true
+    },
+    {
+      "id": "fushi-en",
+      "name": "android_english.db",
+      "kind": "english",
+      "size_bytes": 1260847104,
+      "ticked": false
+    }
+  ]
+}

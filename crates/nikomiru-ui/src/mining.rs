@@ -26,6 +26,9 @@ pub enum CardState {
     Last(u64),
     /// A card is being made.
     Busy,
+    /// A card was kept for later (ANK-044): `✓`, with a menu that can make
+    /// another.
+    Kept,
 }
 
 impl CardState {
@@ -33,7 +36,7 @@ impl CardState {
     pub fn glyph(self) -> &'static str {
         match self {
             CardState::Unknown | CardState::CanAdd => "+",
-            CardState::Exists => "✓",
+            CardState::Exists | CardState::Kept => "✓",
             CardState::Last(_) => "✓↩",
             CardState::Busy => "…",
         }
@@ -47,12 +50,16 @@ impl CardState {
             CardState::Exists => "exists",
             CardState::Last(_) => "last",
             CardState::Busy => "busy",
+            CardState::Kept => "kept",
         }
     }
 
     /// Whether a click opens the menu instead of making a card.
     pub fn has_menu(self) -> bool {
-        matches!(self, CardState::Exists | CardState::Last(_))
+        matches!(
+            self,
+            CardState::Exists | CardState::Last(_) | CardState::Kept
+        )
     }
 }
 
@@ -77,6 +84,7 @@ impl MenuItem {
                 MenuItem::AddAnyway,
             ],
             CardState::Exists => &[MenuItem::OpenInAnki, MenuItem::AddAnyway],
+            CardState::Kept => &[MenuItem::AddAnyway],
             _ => &[],
         }
     }
@@ -274,6 +282,39 @@ pub struct Mined {
     pub deck: String,
     /// An existing note was overwritten.
     pub overwritten: bool,
+    /// The card was kept for later (ANK-044), with how many are kept now;
+    /// `note_id` is then 0.
+    pub kept: Option<usize>,
+}
+
+/// A card kept for later (ANK-044), as Settings → Anki lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LaterCard {
+    /// Its folder's name.
+    pub id: String,
+    /// Its headword; empty when the folder is damaged.
+    pub expression: String,
+    /// Its reading.
+    pub reading: String,
+    /// The sentence, as plain text.
+    pub sentence: String,
+    /// Why its last send failed.
+    pub problem: Option<String>,
+    /// Its folder cannot be read: it is never sent.
+    pub damaged: bool,
+}
+
+/// How a "Send to Anki" of the cards kept for later ended (ANK-044).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LaterSent {
+    /// The cards that went to Anki.
+    pub sent: usize,
+    /// The ones still kept, with the reason.
+    pub failed: usize,
+    /// The first reason, if any.
+    pub first_problem: Option<String>,
+    /// The cards kept now.
+    pub cards: Vec<LaterCard>,
 }
 
 /// A card that was not made.
@@ -410,6 +451,22 @@ pub trait AnkiService: Send {
 
     /// The settings changed: cards follow them from now on.
     fn configure(&self, config: AnkiConfig);
+
+    /// The cards kept for later (ANK-044), in the order they were made.
+    fn later(&self, done: Box<dyn FnOnce(Vec<LaterCard>) + Send>) {
+        done(Vec::new());
+    }
+
+    /// Sends the cards kept for later to Anki, in order (ANK-044).
+    fn send_later(&self, done: Box<dyn FnOnce(LaterSent) + Send>) {
+        done(LaterSent::default());
+    }
+
+    /// Removes a card kept for later; gives the cards kept then.
+    fn forget_later(&self, id: String, done: Box<dyn FnOnce(Vec<LaterCard>) + Send>) {
+        let _ = id;
+        done(Vec::new());
+    }
 }
 
 /// No Anki: checks know nothing, cards are not made.
@@ -477,6 +534,12 @@ pub enum AnkiJob {
     CreateLapis(AnkiConfig),
     /// New settings.
     Configure(AnkiConfig),
+    /// List the cards kept for later (ANK-044).
+    Later,
+    /// Send them to Anki.
+    SendLater,
+    /// Remove the one with this id.
+    ForgetLater(String),
 }
 
 /// The settings page's state in the session (ANK-006, ANK-011).
@@ -493,6 +556,10 @@ pub struct AnkiPage {
     pub lapis_created: u64,
     /// The deck and note type the last "Create Lapis deck" left.
     pub lapis: Option<(String, String)>,
+    /// The cards kept for later (ANK-044), once listed.
+    pub later: Vec<LaterCard>,
+    /// They are being sent, or listed.
+    pub later_busy: bool,
 }
 
 /// The last card made since Nikomiru started (ANK-030, ANK-037).
@@ -543,5 +610,9 @@ mod tests {
         );
         assert_eq!(MenuItem::of(CardState::Last(7))[0], MenuItem::Overwrite);
         assert_eq!(MenuItem::from_name("add-anyway"), Some(MenuItem::AddAnyway));
+        // T-ANK-044: a card kept for later can only be made again
+        assert_eq!(CardState::Kept.glyph(), "✓");
+        assert!(CardState::Kept.has_menu());
+        assert_eq!(MenuItem::of(CardState::Kept), [MenuItem::AddAnyway]);
     }
 }

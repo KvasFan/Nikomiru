@@ -4,6 +4,61 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-11-08
+
+Ready from the first start.
+
+### Added
+
+- The setup assistant, at the first start and from Settings → General or the library's first steps (INS-001…INS-006, D-48), as Fushi's welcome wizard:
+  - free dictionaries downloaded from where their makers publish them: Jitendex, KANJIDIC, Kanjium's pitch accents, JPDB frequencies, JMnedict;
+  - word audio from Fushi's recommended pack, taken by range: only the library chosen (Japanese, 6.3 GB; English, 1.3 GB) out of the 10.2 GB pack, checked, resumed after a stop or a restart, and added to the word audio sources;
+  - cards: Anki, with the Lapis note type found or made in one click and the steps to install AnkiConnect when Anki does not answer, or Nikomiru's review.
+
+## [2.16.0] - 2026-11-08
+
+Subtitles where you want them.
+
+### Added
+
+- Subtitle menu → Move the subtitles: drag the main subtitle up or down; dropped, it keeps that edge and distance, as in Settings → Subtitles → Look (SUB-027, D-47).
+
+### Fixed
+
+- The pause at the end of each line: the next line plays with its sound again, and so does the video after a replay from the popup has stopped (AK-BUG-003).
+
+## [2.15.0] - 2026-11-08
+
+One line at a time.
+
+### Added
+
+- Pause at the end of each line (Shift+P, or the subtitle menu): playback stops on the last frame of each line, and Space plays the next one (SUB-026, D-46).
+
+## [2.14.0] - 2026-11-08
+
+Fansubs in their own fonts.
+
+### Added
+
+- The fonts attached to an MKV file are used by its ASS subtitles when ASS styles are respected, as fansubs expect (SUB-025, D-45).
+
+## [2.13.0] - 2026-11-08
+
+The subtitles in the font you like.
+
+### Added
+
+- Settings → Subtitles → Look → Font: any installed font with Japanese characters for the subtitles; with ASS styles respected, the font of each style when it is installed (SUB-024, D-44).
+
+## [2.12.0] - 2026-11-08
+
+Cards that wait for Anki.
+
+### Added
+
+- Settings → Anki → Cards go to → Anki, later: cards are made at once, with their audio and picture, and kept on this computer; Send to Anki sends them when Anki is open, and the ones it refuses stay with the reason (ANK-044, D-43).
+
 ## [2.11.0] - 2026-11-08
 
 Subtitles that look the way you want.

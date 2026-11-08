@@ -143,6 +143,12 @@ pub enum Inbound {
     AnkiLists(Result<crate::mining::AnkiLists, String>),
     /// "Create Lapis deck" ended (ANK-011).
     LapisDone(Result<crate::mining::LapisMade, String>),
+    /// The cards kept for later (ANK-044).
+    Later(Vec<crate::mining::LaterCard>),
+    /// What the setup worker tells (INS-002…INS-004).
+    Setup(crate::setup::SetupEvent),
+    /// They were sent, or some of them.
+    LaterSent(crate::mining::LaterSent),
     /// `config.toml` was written, or not.
     ConfigSaved(Result<(), String>),
     /// What an online search found (MET-009).
@@ -251,6 +257,9 @@ impl std::fmt::Debug for Inbound {
             Inbound::Browsed(_) => "Browsed",
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
+            Inbound::Later(_) => "Later",
+            Inbound::Setup(_) => "Setup",
+            Inbound::LaterSent(_) => "LaterSent",
             Inbound::ConfigSaved(_) => "ConfigSaved",
             Inbound::OnlineFound { .. } => "OnlineFound",
             Inbound::OnlineDownloaded { .. } => "OnlineDownloaded",
@@ -387,6 +396,10 @@ pub(crate) enum Command {
     AnkiCreateLapis(nikomiru_core::config::AnkiConfig),
     /// Save these Anki settings.
     AnkiSave(nikomiru_core::config::AnkiConfig),
+    /// "Send to Anki" of the cards kept for later (ANK-044).
+    LaterSend,
+    /// Remove the card kept for later with this id (ANK-044).
+    LaterForget(String),
     /// `[review]` saved with the Anki settings, just before them (REV-003).
     ReviewSave(nikomiru_core::config::ReviewConfig),
     /// ♪ of an entry: its first audio (AUD-004).
@@ -568,6 +581,31 @@ pub(crate) enum Command {
     ),
     /// "Align with the audio" (SUB-018).
     AlignSubtitles,
+    /// "Move the subtitles" on or off (SUB-027).
+    MoveSubtitles,
+    /// The setup assistant opened (INS-001).
+    SetupOpen,
+    /// It closed.
+    SetupClose,
+    /// An item of it ticked or not.
+    SetupTick {
+        /// The item.
+        id: String,
+        /// Ticked.
+        on: bool,
+    },
+    /// "Install".
+    SetupInstall,
+    /// "Stop".
+    SetupStop,
+    /// The main subtitle dropped at an edge and a distance from it, in
+    /// pixels of a video 1080 px high (SUB-027).
+    SubtitlesPlaced {
+        /// At the top.
+        top: bool,
+        /// From the edge.
+        margin: f64,
+    },
     /// The secondary subtitle: a source key or `"off"` (SUB-017).
     SelectSecondary(String),
     /// The secondary subtitle's obscuring mode.
@@ -659,6 +697,13 @@ impl Ui {
         crate::harness::install(ui.waker.clone());
         ui.pump();
         ui
+    }
+
+    /// Opens the setup assistant at the first start without dictionaries
+    /// (INS-001).
+    pub fn offer_setup(&mut self) {
+        self.session.offer_setup();
+        self.pump();
     }
 
     /// The video can be drawn: a file waiting for it opens now
@@ -777,6 +822,18 @@ impl Ui {
             }
             Inbound::LapisDone(result) => {
                 self.session.lapis_done(result);
+                true
+            }
+            Inbound::Later(cards) => {
+                self.session.later_listed(cards);
+                true
+            }
+            Inbound::Setup(event) => {
+                self.session.setup_event(event);
+                true
+            }
+            Inbound::LaterSent(sent) => {
+                self.session.later_sent(sent);
                 true
             }
             Inbound::ConfigSaved(result) => {
@@ -1200,11 +1257,20 @@ impl Ui {
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),
+            Command::LaterSend => s.send_later(),
+            Command::LaterForget(id) => s.forget_later(id),
             Command::AnkiCreateLapis(config) => s.anki_create_lapis(config),
             Command::ReviewSave(config) => s.config_mut_review(config),
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
+            Command::MoveSubtitles => s.toggle_moving_subtitles(),
+            Command::SetupOpen => s.setup_open(),
+            Command::SetupClose => s.setup_close(),
+            Command::SetupTick { id, on } => s.setup_tick(&id, on),
+            Command::SetupInstall => s.setup_install(),
+            Command::SetupStop => s.setup_stop(),
+            Command::SubtitlesPlaced { top, margin } => s.subtitles_placed(top, margin),
             Command::SelectSecondary(key) => s.select_secondary(&key),
             Command::SecondaryObscure(mode) => s.set_secondary_obscure(mode),
             Command::PlayerOpen => s.player_open(),
@@ -1407,6 +1473,30 @@ impl Ui {
                     .anki()
                     .create_lapis(config, Box::new(move |r| waker.wake(Inbound::LapisDone(r)))),
                 crate::mining::AnkiJob::Configure(config) => self.session.anki().configure(config),
+                crate::mining::AnkiJob::Later => self
+                    .session
+                    .anki()
+                    .later(Box::new(move |cards| waker.wake(Inbound::Later(cards)))),
+                crate::mining::AnkiJob::SendLater => self
+                    .session
+                    .anki()
+                    .send_later(Box::new(move |sent| waker.wake(Inbound::LaterSent(sent)))),
+                crate::mining::AnkiJob::ForgetLater(id) => self
+                    .session
+                    .anki()
+                    .forget_later(id, Box::new(move |cards| waker.wake(Inbound::Later(cards)))),
+            }
+        }
+        for job in self.session.take_setup_jobs() {
+            match job {
+                crate::setup::SetupJob::Install(plan) => {
+                    let waker = self.waker.clone();
+                    self.session.setup_service().install(
+                        plan,
+                        Box::new(move |event| waker.wake(Inbound::Setup(event))),
+                    );
+                }
+                crate::setup::SetupJob::Stop => self.session.setup_service().stop(),
             }
         }
         for (generation, automatic, request) in self.session.take_align_jobs() {
