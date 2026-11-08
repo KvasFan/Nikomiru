@@ -280,6 +280,9 @@ const NEXT_COUNTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 /// The cues split into words ahead of the one playing (LKP-060).
 const AHEAD: usize = 3;
 
+/// How close to a stop of mpv's `end` a pause counts as made by it (SUB-026).
+const STOP_SLACK_MS: i64 = 150;
+
 /// The next episode about to start (LIB-009).
 #[derive(Debug, Clone)]
 struct NextUp {
@@ -1103,7 +1106,13 @@ impl Session {
     /// took control, a popup closed or another file opened.
     fn end_replay(&mut self) {
         if std::mem::take(&mut self.replaying) {
-            let _ = self.services.player.stop_at(None);
+            let p = &self.services.player;
+            let _ = p.stop_at(None);
+            // stopped at its end, mpv's audio is at the end of the file: a
+            // seek where it is starts it again (AK-BUG-003)
+            if self.view.paused {
+                let _ = p.seek_absolute(self.view.time_pos);
+            }
         }
     }
 
@@ -1129,11 +1138,17 @@ impl Session {
             self.auto_pause_end,
         );
         if next != self.auto_pause_end {
+            // stopped there: mpv's audio stopped with the picture
+            let stopped = self.view.paused
+                && self
+                    .auto_pause_end
+                    .is_some_and(|end| pos >= end - STOP_SLACK_MS);
             self.auto_pause_end = next;
-            let _ = self
-                .services
-                .player
-                .stop_at(next.map(|end| end as f64 / 1000.0));
+            let p = &self.services.player;
+            let _ = p.stop_at(next.map(|end| end as f64 / 1000.0));
+            if stopped {
+                let _ = p.seek_absolute(self.view.time_pos);
+            }
         }
     }
 

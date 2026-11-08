@@ -211,6 +211,15 @@ fn playback_pauses_at_the_end_of_each_line() {
     assert!((time_pos(&s) - 2.5).abs() < 0.15, "{s}");
     h.state_until("the next line's end", |s| s["auto_pause_end"] == 5_500);
     h.key("Space");
+    // the sound goes on too: mpv's audio stopped at `end` with the picture
+    let audio = |h: &mut crate::support::Harness| {
+        h.cmd(serde_json::json!({ "cmd": "mpv_property", "name": "audio-pts" }))
+            .as_str()
+            .and_then(|v| v.parse::<f64>().ok())
+    };
+    support::until(Duration::from_secs(5), "the sound after the stop", || {
+        audio(&mut h).filter(|&t| t > 2.6)
+    });
     let s = h.state_until("the second stop", |s| {
         s["paused"] == true && time_pos(s) > 5.0
     });
