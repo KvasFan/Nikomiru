@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.17.1] - 2026-11-09
+
+### Fixed
+
+- The setup assistant opens from Settings → General and from the library's first steps: it opened under those pages, so the button seemed to do nothing (AK-BUG-004).
+
 ## [2.17.0] - 2026-11-08
 
 Ready from the first start.

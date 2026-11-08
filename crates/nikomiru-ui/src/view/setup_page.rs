@@ -264,8 +264,9 @@ fn cards(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
 /// Draws the page.
 pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) {
     let screen = ctx.content_rect();
+    // above the library and the settings, where it is opened from (AK-BUG-004)
     Area::new(Id::unique("setup-page"))
-        .order(Order::Middle)
+        .order(Order::Foreground)
         .fade_in(false)
         .constrain(false)
         .fixed_pos(screen.min)
@@ -376,6 +377,59 @@ mod tests {
             click(&mut h, "setup-close").as_slice(),
             [Command::SetupClose]
         ));
+    }
+
+    // AK-BUG-004: opened from the library or the settings, which are drawn
+    // as full pages of their own, the assistant comes above them and takes
+    // the clicks
+    #[test]
+    fn ak_bug_004_the_setup_assistant_opens_above_its_page() {
+        struct Over {
+            setup: Test,
+            open: bool,
+        }
+        let mut h = Harness::builder()
+            .with_size(vec2(1100.0, 900.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, o: &mut Over| {
+                    let ctx = ui.ctx().clone();
+                    super::super::dict_page::full_screen(
+                        &ctx,
+                        "library-page",
+                        palette::current().page,
+                        |ui| {
+                            let _ = ui.button("library");
+                        },
+                    );
+                    if o.open {
+                        let t = &mut o.setup;
+                        let tr = |id: &str, _: &[(&str, String)]| id.to_string();
+                        let scene = Scene {
+                            page: &t.page,
+                            installed: t.installed.clone(),
+                            anki: &t.anki,
+                            anki_page: &t.anki_page,
+                            tr: &tr,
+                        };
+                        draw(&ctx, &scene, &mut t.out);
+                    }
+                },
+                Over {
+                    setup: test(),
+                    open: false,
+                },
+            );
+        h.run();
+        h.state_mut().open = true;
+        h.run();
+        h.get_by_label("setup-close").click();
+        h.run();
+        assert!(
+            matches!(h.state().setup.out.as_slice(), [Command::SetupClose]),
+            "{:?}",
+            h.state().setup.out
+        );
     }
 
     // T-INS-005: Lapis found and chosen in one click; made when missing;
