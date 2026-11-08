@@ -44,6 +44,7 @@ pub mod platform;
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod portal;
 pub mod servers;
+pub mod setup;
 pub mod shell;
 pub mod subtitles;
 pub mod sync;

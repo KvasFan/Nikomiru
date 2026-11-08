@@ -254,6 +254,46 @@ impl Http {
         Self::read(url, response, FILE_LIMIT)
     }
 
+    /// `len` bytes of `url` from byte `from`, by an HTTP range request on
+    /// the files client (INS-004): the answer must be 206 with exactly them.
+    pub fn range(&self, url: &Url, from: u64, len: u64) -> Result<Vec<u8>, OnlineError> {
+        let host = host_of(url);
+        let protocol = |reason: String| OnlineError::Protocol {
+            provider: host.clone(),
+            reason,
+        };
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let last = from + len - 1;
+        let response = self
+            .files
+            .get(url.clone())
+            .header(reqwest::header::RANGE, format!("bytes={from}-{last}"))
+            .send()
+            .map_err(|e| failure(url, &e))?;
+        let status = response.status().as_u16();
+        if status != 206 {
+            return Err(if (200..300).contains(&status) {
+                protocol("no ranges".into())
+            } else {
+                OnlineError::Http {
+                    provider: host.clone(),
+                    status,
+                }
+            });
+        }
+        let limit = usize::try_from(len).map_err(|_| protocol("range too large".into()))?;
+        let answer = Self::read(url, response, limit)?;
+        if answer.body.len() != limit {
+            return Err(protocol(format!(
+                "{} bytes instead of {limit}",
+                answer.body.len()
+            )));
+        }
+        Ok(answer.body)
+    }
+
     /// `GET url` of a large file, at most `limit` bytes, each piece handed to
     /// `piece` as it arrives (MNG-004). The answer must be 2xx.
     pub fn stream(

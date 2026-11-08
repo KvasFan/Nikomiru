@@ -367,6 +367,7 @@ error-online-too-large = ファイルが { $limit } MiB を超えています。
 error-online-archive = アーカイブを使用できません（{ $reason }）。
 error-online-unusable = { $name } は使用できません。SRT、ASS、SSA、WebVTT、ZIP ファイルのみ使用できます。
 error-online-io = 字幕を保存できません（{ $reason }）。
+error-online-cancelled = 中断しました。
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } を使用できません（{ $reason }）。Nikomiru のウィンドウが複数開く可能性があります。
@@ -849,3 +850,39 @@ books-along-none = 字幕付きのものが再生されていません。先に�
 books-along-not-found = オーディオブックの行がこの本に見つかりません。
 books-along-found = オーディオブックの { $count } 行のうち { $found } 行が本に見つかりました。
 books-listen = ここから聞く
+
+# Setup assistant (INS-001…INS-006)
+setup-title = セットアップアシスタント
+setup-close = 閉じる
+setup-open = 辞書・音声・カードを設定…
+setup-open-hint = 無料の辞書と単語の音声をダウンロードし、カードの作り方を設定します（初回起動時と同じ）。
+setup-first-steps = 辞書・単語の音声・カードをまとめて設定：
+setup-intro = インストールするものを選んでください。「インストール」を押すまで何もダウンロードしません。ダウンロードは Nikomiru を使っている間も続き、再起動後に再開します。
+setup-dictionaries = 辞書
+setup-dictionaries-hint = 作者が公開している場所からダウンロードし、手動で選んだファイルと同じようにインポートします。
+setup-license-unstated = 配布元の条件（明記なし）
+setup-audio = 単語の音声
+setup-audio-hint = Fushi の推奨パックから、チェックしたライブラリだけをダウンロードします（パックの辞書は含みません）。パックは Fushi の作者によるもので、録音のライセンスは明記されていません。
+setup-audio-japanese = 日本語の発音
+setup-audio-english = 英語の発音
+setup-install = インストール
+setup-stop = 停止
+setup-cards = カード
+setup-cards-anki = Anki
+setup-cards-review = Nikomiru の復習
+setup-anki-answers = Anki が応答しました（AnkiConnect { $version }）。
+setup-anki-lapis-in-use = カードは Lapis ノートタイプを使います。
+setup-anki-use-lapis = Lapis ノートタイプを使う
+setup-anki-away = Anki が応答しません。
+setup-anki-steps = apps.ankiweb.net から Anki をインストールし、Anki で「ツール → アドオン → アドオンを取得…」にコード 2055492159（AnkiConnect）を入力して Anki を再起動してください。カードを作る間は Anki を開いたままにしてください。
+setup-anki-retry = 再試行
+setup-anki-later = その間はカードを後で送るために保存
+setup-state-installed = インストール済み
+setup-state-waiting = 待機中
+setup-state-downloading = { $size } の { $percent } %
+setup-state-importing = インポート中
+setup-state-done = 完了
+setup-finished = セットアップアシスタントが完了しました。
+error-setup-space = 空き容量が足りません：{ $need } 必要、空き { $free }。
+error-setup-no-library = パックに { $name } がありません。
+error-setup-not-audio = ダウンロードしたファイルは単語音声のデータベースではありません（{ $reason }）。

@@ -246,7 +246,8 @@ mod tests {
                 "anki-destination-anki",
                 "stats-review-day",
                 "stats-review-due",
-                "review-answers"
+                "review-answers",
+                "setup-cards-anki"
             ]
         );
         assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");

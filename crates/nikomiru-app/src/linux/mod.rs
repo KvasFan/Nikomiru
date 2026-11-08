@@ -210,6 +210,23 @@ pub fn utc_offset(at: std::time::SystemTime) -> i32 {
     i32::try_from(tm.tm_gmtoff).unwrap_or(0)
 }
 
+/// The space free for this user on the file system of `path`, in bytes
+/// (INS-004); `None` when it cannot be read.
+pub fn free_space(path: &std::path::Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
+    // SAFETY: `name` is a NUL-terminated path we own, and `statvfs` writes
+    // only the `stat` given.
+    if unsafe { libc::statvfs(name.as_ptr(), stat.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    // SAFETY: `statvfs` succeeded, so it filled `stat`.
+    let stat = unsafe { stat.assume_init() };
+    #[allow(clippy::unnecessary_cast)]
+    Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+}
+
 /// The system clock, with the local time zone (STA-004).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LocalClock(nikomiru_core::SystemClock);

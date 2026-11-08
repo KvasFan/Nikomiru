@@ -373,6 +373,7 @@ error-online-too-large = The file is larger than { $limit } MiB.
 error-online-archive = The archive cannot be used ({ $reason }).
 error-online-unusable = { $name } cannot be used: only SRT, ASS, SSA, WebVTT and ZIP files.
 error-online-io = The subtitles cannot be saved ({ $reason }).
+error-online-cancelled = Stopped.
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } cannot be used ({ $reason }): more Nikomiru windows may open.
@@ -866,3 +867,39 @@ books-along-none = Nothing with timed text is playing: open the audiobook first.
 books-along-not-found = No line of the audiobook was found in this book.
 books-along-found = { $found } of { $count } lines of the audiobook found in the book.
 books-listen = Listen from here
+
+# Setup assistant (INS-001…INS-006)
+setup-title = Setup assistant
+setup-close = Close
+setup-open = Set up dictionaries, audio and cards…
+setup-open-hint = Downloads free dictionaries and word audio, and sets up how cards are made, as on the first start.
+setup-first-steps = Dictionaries, word audio and cards in one place:
+setup-intro = Choose what to install. Nothing is downloaded until you press Install; downloads go on while you use Nikomiru, and resume after a restart.
+setup-dictionaries = Dictionaries
+setup-dictionaries-hint = Downloaded from where their makers publish them, then imported as a file you chose would be.
+setup-license-unstated = terms of its source, not stated
+setup-audio = Word audio
+setup-audio-hint = From Fushi's recommended pack: only the library ticked is downloaded, not the pack's dictionaries. The pack is made by Fushi's author, and the licenses of its recordings are not stated.
+setup-audio-japanese = Japanese pronunciations
+setup-audio-english = English pronunciations
+setup-install = Install
+setup-stop = Stop
+setup-cards = Cards
+setup-cards-anki = Anki
+setup-cards-review = Nikomiru's review
+setup-anki-answers = Anki answers (AnkiConnect { $version }).
+setup-anki-lapis-in-use = Cards go to the Lapis note type.
+setup-anki-use-lapis = Use the Lapis note type
+setup-anki-away = Anki does not answer.
+setup-anki-steps = Install Anki from apps.ankiweb.net, then in Anki: Tools → Add-ons → Get Add-ons…, code 2055492159 (AnkiConnect), and restart Anki. Keep Anki open while you make cards.
+setup-anki-retry = Try again
+setup-anki-later = Keep cards for later meanwhile
+setup-state-installed = installed
+setup-state-waiting = waiting
+setup-state-downloading = { $percent } % of { $size }
+setup-state-importing = importing
+setup-state-done = done
+setup-finished = The setup assistant has finished.
+error-setup-space = Not enough free space: { $need } needed, { $free } free.
+error-setup-no-library = The pack has no { $name }.
+error-setup-not-audio = The file downloaded is not a word audio database ({ $reason }).

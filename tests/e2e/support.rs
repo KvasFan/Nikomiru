@@ -559,6 +559,8 @@ impl Desktop {
             .env("QT_FORCE_STDERR_LOGGING", "1")
             .env("DBUS_SESSION_BUS_ADDRESS", &self.bus_address)
             .env("NIKOMIRU_TEST_AO", "null")
+            // INS-001: the assistant only where a test asks for it
+            .env("NIKOMIRU_TEST_NO_SETUP", "1")
             .env("NIKOMIRU_TEST_OCR", "明日も食べました")
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null())

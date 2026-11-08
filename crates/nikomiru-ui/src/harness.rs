@@ -492,6 +492,8 @@ pub fn state() -> Result<Value, String> {
         });
         // SUB-027
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
+        // INS-001
+        state["setup_open"] = json!(s.setup_page.open);
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(_, b)| {
@@ -993,6 +995,16 @@ pub fn align() -> Result<(), String> {
 /// "Move the subtitles" on or off (SUB-027).
 pub fn move_subtitles() -> Result<(), String> {
     call(|ui| ui.run(Command::MoveSubtitles))
+}
+
+/// The setup assistant (INS-001): `open` or `close`.
+pub fn setup(action: &str) -> Result<(), String> {
+    let command = match action {
+        "open" => Command::SetupOpen,
+        "close" => Command::SetupClose,
+        other => return Err(format!("unknown setup action {other:?}")),
+    };
+    call(|ui| ui.run(command))
 }
 
 /// The Online subtitles page (MET-009): `open`, `close`, `search` (with the

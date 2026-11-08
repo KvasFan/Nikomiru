@@ -159,6 +159,12 @@ impl<'a> Shell<'a> {
         egui.egui_winit
             .init_accesskit(event_loop, &gl.window, self.proxy.clone());
         let mut ui = Ui::new(&egui.egui_ctx, services, self.waker.clone());
+        // INS-001: the assistant at the first start; the GUI tests ask for it
+        if std::env::var("NIKOMIRU_TEST_NO_SETUP").is_ok_and(|v| !v.is_empty()) {
+            tracing::debug!("setup assistant not offered (tests)");
+        } else {
+            ui.offer_setup();
+        }
         let proxy = Mutex::new(self.proxy.clone());
         let renderer = match gl.video_renderer(self.player, move || {
             if let Ok(proxy) = proxy.lock() {

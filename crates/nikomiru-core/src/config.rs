@@ -109,6 +109,8 @@ pub struct General {
     /// The library shows its first steps until they are done or hidden
     /// (LIB-013).
     pub first_steps: bool,
+    /// The setup assistant opened once by itself (INS-001).
+    pub setup_offered: bool,
     /// Keys and passwords live in the system keyring, not in this file
     /// (MET-005).
     pub keyring: bool,
@@ -922,6 +924,7 @@ impl Default for General {
             accent: Self::ACCENT.into(),
             ui_scale: 100,
             first_steps: true,
+            setup_offered: false,
             keyring: false,
             study_language: "ja".into(),
             other: toml::Table::new(),

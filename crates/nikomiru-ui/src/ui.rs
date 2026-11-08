@@ -145,6 +145,8 @@ pub enum Inbound {
     LapisDone(Result<crate::mining::LapisMade, String>),
     /// The cards kept for later (ANK-044).
     Later(Vec<crate::mining::LaterCard>),
+    /// What the setup worker tells (INS-002…INS-004).
+    Setup(crate::setup::SetupEvent),
     /// They were sent, or some of them.
     LaterSent(crate::mining::LaterSent),
     /// `config.toml` was written, or not.
@@ -256,6 +258,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
             Inbound::Later(_) => "Later",
+            Inbound::Setup(_) => "Setup",
             Inbound::LaterSent(_) => "LaterSent",
             Inbound::ConfigSaved(_) => "ConfigSaved",
             Inbound::OnlineFound { .. } => "OnlineFound",
@@ -580,6 +583,21 @@ pub(crate) enum Command {
     AlignSubtitles,
     /// "Move the subtitles" on or off (SUB-027).
     MoveSubtitles,
+    /// The setup assistant opened (INS-001).
+    SetupOpen,
+    /// It closed.
+    SetupClose,
+    /// An item of it ticked or not.
+    SetupTick {
+        /// The item.
+        id: String,
+        /// Ticked.
+        on: bool,
+    },
+    /// "Install".
+    SetupInstall,
+    /// "Stop".
+    SetupStop,
     /// The main subtitle dropped at an edge and a distance from it, in
     /// pixels of a video 1080 px high (SUB-027).
     SubtitlesPlaced {
@@ -679,6 +697,13 @@ impl Ui {
         crate::harness::install(ui.waker.clone());
         ui.pump();
         ui
+    }
+
+    /// Opens the setup assistant at the first start without dictionaries
+    /// (INS-001).
+    pub fn offer_setup(&mut self) {
+        self.session.offer_setup();
+        self.pump();
     }
 
     /// The video can be drawn: a file waiting for it opens now
@@ -801,6 +826,10 @@ impl Ui {
             }
             Inbound::Later(cards) => {
                 self.session.later_listed(cards);
+                true
+            }
+            Inbound::Setup(event) => {
+                self.session.setup_event(event);
                 true
             }
             Inbound::LaterSent(sent) => {
@@ -1236,6 +1265,11 @@ impl Ui {
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
             Command::MoveSubtitles => s.toggle_moving_subtitles(),
+            Command::SetupOpen => s.setup_open(),
+            Command::SetupClose => s.setup_close(),
+            Command::SetupTick { id, on } => s.setup_tick(&id, on),
+            Command::SetupInstall => s.setup_install(),
+            Command::SetupStop => s.setup_stop(),
             Command::SubtitlesPlaced { top, margin } => s.subtitles_placed(top, margin),
             Command::SelectSecondary(key) => s.select_secondary(&key),
             Command::SecondaryObscure(mode) => s.set_secondary_obscure(mode),
@@ -1451,6 +1485,18 @@ impl Ui {
                     .session
                     .anki()
                     .forget_later(id, Box::new(move |cards| waker.wake(Inbound::Later(cards)))),
+            }
+        }
+        for job in self.session.take_setup_jobs() {
+            match job {
+                crate::setup::SetupJob::Install(plan) => {
+                    let waker = self.waker.clone();
+                    self.session.setup_service().install(
+                        plan,
+                        Box::new(move |event| waker.wake(Inbound::Setup(event))),
+                    );
+                }
+                crate::setup::SetupJob::Stop => self.session.setup_service().stop(),
             }
         }
         for (generation, automatic, request) in self.session.take_align_jobs() {

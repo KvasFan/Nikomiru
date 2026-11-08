@@ -31,6 +31,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M13 Advanced ASS, screenshots (1.3.0) ──► M14 Clipboard, texthooker (1.4.0)
       ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
       ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0, 2.8.0) ──► M18 Web pages (2.6.0)
+      ──► M19 Setup assistant (2.17.0)
       ──► the rest of the backlog
       (Ports, from spike S6, run alongside: D-16)
 ```
@@ -58,6 +59,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M16 | Books, manga and audiobooks (D-12, D-19) | XL | 2.0.0 | released; real books, manga and audiobooks still to check by hand |
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
+| M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
 
 ---
 
@@ -668,6 +670,25 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - [x] T-WEB-001…T-WEB-003 and T-E2E-WEB-001 green.
 - [ ] Real pages checked by hand.
 - [x] **Release 2.6.0** (2026-11-02).
+
+---
+
+## M19 — Setup assistant → 2.17.0
+
+**Goal**: dictionaries, word audio and cards working from the first start, as Fushi's wizard and recommended pack give them (D-48).
+
+**Requirements**: INS-001…INS-006.
+
+**Status as of 2026-11-08**
+
+- Done: the assistant, the catalogue, the pack read by range with its labels, a library downloaded, resumed and checked, the cards as Fushi asks (T-INS-001…T-INS-006 against local hosts); Fushi's real pack read by range (L7).
+- Open: the real Japanese library downloaded whole by hand (6.3 GB); a pack of Nikomiru's own (D-48).
+
+**Exit criteria**
+
+- [x] T-INS-001…T-INS-006 green.
+- [ ] The real pack read and the Japanese library downloaded once by hand.
+- [ ] **Release 2.17.0**.
 
 ---
 

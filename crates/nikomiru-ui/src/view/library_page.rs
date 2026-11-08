@@ -591,6 +591,15 @@ fn first_steps(
                 ("first-steps-folder", "library-add-folder"),
                 ("first-steps-card", "first-steps-card-button"),
             ];
+            // INS-001: all of it at once
+            if !steps[0] || !steps[2] {
+                ui.horizontal(|ui| {
+                    ui.label(tr(s, "setup-first-steps"));
+                    if ui.add(palette::suggested(tr(s, "setup-open"))).clicked() {
+                        out.push(Command::SetupOpen);
+                    }
+                });
+            }
             for (n, ((text, button), done)) in rows.into_iter().zip(steps).enumerate() {
                 ui.horizontal(|ui| {
                     let mark = if done {

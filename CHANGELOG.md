@@ -4,6 +4,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-11-08
+
+Ready from the first start.
+
+### Added
+
+- The setup assistant, at the first start and from Settings → General or the library's first steps (INS-001…INS-006, D-48), as Fushi's welcome wizard:
+  - free dictionaries downloaded from where their makers publish them: Jitendex, KANJIDIC, Kanjium's pitch accents, JPDB frequencies, JMnedict;
+  - word audio from Fushi's recommended pack, taken by range: only the library chosen (Japanese, 6.3 GB; English, 1.3 GB) out of the 10.2 GB pack, checked, resumed after a stop or a restart, and added to the word audio sources;
+  - cards: Anki, with the Lapis note type found or made in one click and the steps to install AnkiConnect when Anki does not answer, or Nikomiru's review.
+
 ## [2.16.0] - 2026-11-08
 
 Subtitles where you want them.

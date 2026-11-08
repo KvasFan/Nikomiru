@@ -4,6 +4,7 @@
 //! filters and reduces player events into a [`ViewState`], saves the position
 //! (LIB-006) and turns shortcut actions into player commands.
 
+use crate::setup::ItemState;
 use std::path::{Path, PathBuf};
 
 use nikomiru_core::{Clock, Config};
@@ -191,6 +192,8 @@ pub struct Services {
     pub hooker: Box<dyn crate::hooker::HookerService>,
     /// The text of manga pages (MNG-003).
     pub ocr: Box<dyn crate::ocr::OcrService>,
+    /// The downloads of the setup assistant (INS-001…INS-006).
+    pub setup: Box<dyn crate::setup::SetupService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -397,6 +400,9 @@ pub struct Session {
     server_jobs: Vec<crate::servers::ServerJob>,
     /// The Texthooker page.
     pub hooker_page: crate::hooker::HookerPage,
+    /// The setup assistant (INS-001).
+    pub setup_page: crate::setup::SetupPage,
+    setup_jobs: Vec<crate::setup::SetupJob>,
     /// The Books page.
     pub books_page: crate::books::BooksPage,
     /// Books to read, taken by the UI layer.
@@ -697,6 +703,8 @@ impl Session {
             online_jobs: Vec::new(),
             server_jobs: Vec::new(),
             hooker_page: crate::hooker::HookerPage::default(),
+            setup_page: crate::setup::SetupPage::default(),
+            setup_jobs: Vec::new(),
             books_page: crate::books::BooksPage::default(),
             book_reads: Vec::new(),
             ocr_job: None,
@@ -4400,6 +4408,10 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
+            Action::Back if self.setup_page.open => {
+                self.setup_close();
+                return UiEffect::None;
+            }
             Action::Back if self.moving_subtitles => {
                 self.toggle_moving_subtitles();
                 return UiEffect::None;
@@ -5999,6 +6011,7 @@ impl Session {
     /// An import ended.
     pub fn dict_finished(&mut self, generation: u64, result: Result<String, String>) {
         let ok = result.is_ok();
+        let failure = result.as_ref().err().cloned();
         let effects =
             self.dict_page
                 .finished(self.services.dictionaries.as_ref(), generation, result);
@@ -6008,6 +6021,151 @@ impl Session {
             self.dictionaries_installed = true;
         }
         self.dict_effects(effects);
+        // INS-002: a dictionary of the assistant imported; the next one
+        if let Some((id, path, g)) = self.setup_page.importing.take() {
+            if g == generation {
+                let state = failure.map_or(ItemState::Done, ItemState::Failed);
+                self.setup_page.items.insert(id, state);
+                let _ = std::fs::remove_file(&path);
+            } else {
+                self.setup_page.importing = Some((id, path, g));
+            }
+        }
+        self.setup_next_import();
+    }
+
+    /// The setup assistant opened (INS-001): the first time by itself is
+    /// noted, the dictionaries and Anki are read again.
+    pub fn setup_open(&mut self) {
+        self.setup_page.open = true;
+        if !self.services.config.general.setup_offered {
+            self.services.config.general.setup_offered = true;
+            if self.services.config_writable {
+                self.config_save = Some(self.services.config.clone());
+            }
+        }
+        self.dict_refresh();
+        self.anki_open();
+    }
+
+    /// Opens the assistant at the first start without dictionaries
+    /// (INS-001).
+    pub fn offer_setup(&mut self) {
+        if !self.services.config.general.setup_offered && !self.dictionaries_installed {
+            self.setup_open();
+        }
+    }
+
+    /// The setup assistant closed; what is under way goes on.
+    pub fn setup_close(&mut self) {
+        self.setup_page.open = false;
+    }
+
+    /// An item ticked or not.
+    pub fn setup_tick(&mut self, id: &str, on: bool) {
+        if on {
+            self.setup_page.ticked.insert(id.to_string());
+        } else {
+            self.setup_page.ticked.remove(id);
+        }
+    }
+
+    /// The catalogue's dictionaries installed already (INS-002).
+    pub fn setup_installed(&self) -> std::collections::BTreeSet<String> {
+        self.setup_page
+            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()))
+    }
+
+    /// "Install" (INS-001): what is ticked and not there yet.
+    pub fn setup_install(&mut self) {
+        if self.setup_page.running {
+            return;
+        }
+        let plan = self.setup_page.plan(&self.setup_installed());
+        if plan.dictionaries.is_empty() && plan.audio.is_empty() {
+            return;
+        }
+        for id in plan.dictionaries.iter().chain(&plan.audio) {
+            self.setup_page.items.insert(id.clone(), ItemState::Waiting);
+        }
+        self.setup_page.running = true;
+        self.setup_jobs.push(crate::setup::SetupJob::Install(plan));
+    }
+
+    /// Stops the downloads; what is there stays for later (INS-006).
+    pub fn setup_stop(&mut self) {
+        self.setup_jobs.push(crate::setup::SetupJob::Stop);
+    }
+
+    /// The jobs of the setup worker, taken by the UI layer.
+    pub fn take_setup_jobs(&mut self) -> Vec<crate::setup::SetupJob> {
+        std::mem::take(&mut self.setup_jobs)
+    }
+
+    /// The setup worker.
+    pub fn setup_service(&self) -> &dyn crate::setup::SetupService {
+        self.services.setup.as_ref()
+    }
+
+    /// What the setup worker tells (INS-002…INS-004).
+    pub fn setup_event(&mut self, event: crate::setup::SetupEvent) {
+        use crate::setup::SetupEvent;
+        self.setup_page.event(&event);
+        match event {
+            SetupEvent::Dictionary { .. } => self.setup_next_import(),
+            SetupEvent::Audio { path, .. } => self.setup_audio(&path),
+            SetupEvent::Finished if !self.setup_page.busy() => {
+                self.toasts.push(self.tr("setup-finished", &[]));
+            }
+            _ => {}
+        }
+    }
+
+    /// A library downloaded joins the word audio sources, once (INS-004).
+    fn setup_audio(&mut self, path: &std::path::Path) {
+        let url = path.to_string_lossy().into_owned();
+        let mut config = self.services.config.word_audio.clone();
+        if config
+            .sources
+            .iter()
+            .any(|s| s.database() == Some(url.as_str()))
+        {
+            return;
+        }
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        config
+            .sources
+            .push(nikomiru_core::config::AudioSourceConfig {
+                name,
+                url,
+                enabled: true,
+                priority: Vec::new(),
+            });
+        self.word_audio_save(config);
+    }
+
+    /// The next dictionary of the assistant to import, when no import runs
+    /// (INS-002): as a file chosen by hand; one installed already is done.
+    fn setup_next_import(&mut self) {
+        use crate::dictionaries::Import;
+        if self.setup_page.importing.is_some() || !matches!(self.dict_page.import, Import::Idle) {
+            return;
+        }
+        while let Some((id, path)) = self.setup_page.imports.pop_front() {
+            self.dict_choose(path.clone());
+            if matches!(self.dict_page.import, Import::Confirm { .. }) {
+                self.dict_confirm(true);
+            }
+            if let Import::Running { generation, .. } = &self.dict_page.import {
+                self.setup_page.importing = Some((id, path, *generation));
+                return;
+            }
+            // the same revision installed, or a file that cannot be read
+            let _ = std::fs::remove_file(&path);
+            self.setup_page.items.insert(id, ItemState::Done);
+        }
     }
 
     /// Moves a dictionary up or down in its group (DIC-031).

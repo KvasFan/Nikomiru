@@ -621,6 +621,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-WEB-001 | Fetching | A page at an address and an HTML file, in Shift_JIS, saved in UTF-8 with their address and read as a book; the same page saved once; a saved page read as it is; plain HTTP refused off this computer, a missing page an error (L4). The address in the first line, which it cannot close (L1) | L1/L4 |
 | T-WEB-002 | Reading | The main text, menus, headers, footers, figures and pictures left out, ruby kept, the title and the site; without main or article, the body; a page of no text refused (L1) | L1 |
 | T-WEB-003 | Kept | The pages saved in a backup and back after a restore (L1) | L1 |
+| T-INS-001 | The assistant opens | At the first start without dictionaries, once, closed by Esc (L6, `the_setup_assistant_opens_at_the_first_start`); the items, an installed dictionary marked, Install and Close (kittest); its screenshot | L3, L6 |
+| T-INS-002 | Dictionaries | The catalogue (HTTPS, the defaults); the plan leaves out what is installed or done (L1); a file checked by its SHA-256, a wrong one refused and nothing kept (L4, local host); the worker downloads `mini-ja.zip` of the fixtures for the session to import (L4) | L1, L4 |
+| T-INS-003 | The pack read by range | A manifest, its parts kept only when they hold together, plain HTTP refused; a range split over the parts then the whole pack; a ZIP64 directory from the tail (L1); against a local host holding a pack made by the test in parts: only the library is asked, never part 0's dictionaries (L4); the labels of a `fushi.db` written by SQLite; which library is which, by the labels or by size (L1, L4); Fushi's real pack read by range (L7, by hand) | L1, L4, L7 |
+| T-INS-004 | A library downloaded | Resumed from a `.part`, asking only what is missing; a part that fails asked of the whole pack; a CRC-32 that does not match refused and nothing kept; a compressed entry refused before any request; a file that is not an audio database refused (L4) | L4 |
+| T-INS-005 | Cards | kittest: Lapis found and chosen in one click, made when missing; Anki away: try again or "Anki, later"; the review chosen | L3 |
+| T-INS-006 | Progress | The events move the rows, an import waiting keeps the assistant busy (L1); Stop keeps the `.part` (L4) | L1, L4 |
 | T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
 
 ### 6.14 Reliability and fuzzing

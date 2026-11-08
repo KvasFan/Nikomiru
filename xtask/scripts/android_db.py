@@ -10,7 +10,9 @@ that is text naming its own file, so a test can tell which file came back.
   chains), the indexes the real file has;
 - android-noindex.db: the same rows, no index, 4 KiB pages;
 - android-empty.db: the tables, no audio;
-- other.db: an SQLite file of another kind.
+- other.db: an SQLite file of another kind;
+- fushi.db: the `preferences` of Fushi's recommended pack, naming its two
+  audio libraries (INS-003), with Windows paths as in the real pack.
 """
 
 import os
@@ -85,6 +87,21 @@ def main():
         os.remove(other)
     db = sqlite3.connect(other)
     db.executescript("CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT); INSERT INTO notes (text) VALUES ('x');")
+    db.commit()
+    db.close()
+    fushi = os.path.join(out, "fushi.db")
+    if os.path.exists(fushi):
+        os.remove(fushi)
+    db = sqlite3.connect(fushi)
+    db.executescript(
+        "CREATE TABLE preferences (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);"
+    )
+    dbs = (
+        's:[{"path":"D:\\\\APP\\\\support\\\\local_audio_1782831652275.db","displayName":"android.db","enabled":true},'
+        '{"path":"D:\\\\APP\\\\support\\\\local_audio_1783304412795.db","displayName":"android_english.db","enabled":true}]'
+    )
+    for key, value in [("theme", "s:dark"), ("local_audio_dbs", dbs), ("zzz", "s:x")]:
+        db.execute("INSERT INTO preferences VALUES (?, ?, 0)", (key, value))
     db.commit()
     db.close()
 

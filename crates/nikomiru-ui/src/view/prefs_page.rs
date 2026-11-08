@@ -144,7 +144,7 @@ pub(crate) fn draw(
         }
         ui.spacing_mut().item_spacing.y = 8.0;
         match s.tab {
-            SettingsTab::General => general(ui, s, draft),
+            SettingsTab::General => general(ui, s, draft, out),
             SettingsTab::Subtitles => {
                 subtitles(ui, s, draft, &mut state.languages);
                 let subs = state.sample.get_or_insert_with(sample);
@@ -217,9 +217,15 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
         .show(ui, rows);
 }
 
-fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
     general_form(ui, s, draft);
     let tr = |id: &str| (s.tr)(id, &[]);
+    // INS-001
+    section(ui, &tr("setup-title"));
+    if ui.button(tr("setup-open")).clicked() {
+        out.push(Command::SetupOpen);
+    }
+    hint(ui, &tr("setup-open-hint"));
     section(ui, &tr("settings-keys"));
     ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
     hint(ui, &tr("settings-keyring-hint"));

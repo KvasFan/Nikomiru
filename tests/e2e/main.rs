@@ -248,6 +248,26 @@ fn playback_pauses_at_the_end_of_each_line() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-INS-001: the setup assistant at the first start without dictionaries,
+// once; Esc closes it
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_setup_assistant_opens_at_the_first_start() {
+    let mut desk = Desktop::start();
+    desk.set_env("NIKOMIRU_TEST_NO_SETUP", "");
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the assistant", |s| s["setup_open"] == true);
+    h.key("Escape");
+    h.state_until("closed", |s| s["setup_open"] == false);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(h.state()["setup_open"], false, "only the first time");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011: a frame the GPU decoded has to be read back from it
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures --perf`"]
@@ -861,6 +881,13 @@ fn screenshots_of_the_interface() {
     h.state_until("the list closed", |s| s["sub_list_open"] == false);
     std::thread::sleep(Duration::from_millis(500));
     desk.capture(&dir.join("subtitles-look.png"));
+    // the setup assistant (INS-001)
+    h.cmd(serde_json::json!({ "cmd": "setup", "action": "open" }));
+    h.state_until("the assistant", |s| s["setup_open"] == true);
+    std::thread::sleep(Duration::from_millis(500));
+    desk.capture(&dir.join("setup.png"));
+    h.cmd(serde_json::json!({ "cmd": "setup", "action": "close" }));
+    h.state_until("no assistant", |s| s["setup_open"] == false);
     // moving them with the mouse (SUB-027)
     h.cmd(serde_json::json!({ "cmd": "move_subtitles" }));
     h.state_until("moving", |s| s["moving_subtitles"] == true);

@@ -373,6 +373,7 @@ error-online-too-large = Il file è più grande di { $limit } MiB.
 error-online-archive = L'archivio non si può usare ({ $reason }).
 error-online-unusable = { $name } non si può usare: solo file SRT, ASS, SSA, WebVTT e ZIP.
 error-online-io = Non si possono salvare i sottotitoli ({ $reason }).
+error-online-cancelled = Interrotto.
 
 # Single instance (nikomiru-app InstanceError)
 error-instance-io = { $path } non si può usare ({ $reason }): potrebbero aprirsi più finestre di Nikomiru.
@@ -866,3 +867,39 @@ books-along-none = Non sta suonando niente con testo sincronizzato: apri prima l
 books-along-not-found = Nessuna riga dell'audiolibro si trova in questo libro.
 books-along-found = { $found } righe dell'audiolibro su { $count } trovate nel libro.
 books-listen = Ascolta da qui
+
+# Setup assistant (INS-001…INS-006)
+setup-title = Assistente di configurazione
+setup-close = Chiudi
+setup-open = Configura dizionari, audio e carte…
+setup-open-hint = Scarica dizionari liberi e l'audio delle parole, e imposta come si fanno le carte, come al primo avvio.
+setup-first-steps = Dizionari, audio delle parole e carte in un posto solo:
+setup-intro = Scegli cosa installare. Nulla viene scaricato prima di premere Installa; i download continuano mentre usi Nikomiru e riprendono dopo un riavvio.
+setup-dictionaries = Dizionari
+setup-dictionaries-hint = Scaricati da dove li pubblicano i loro autori, poi importati come un file scelto da te.
+setup-license-unstated = condizioni della fonte, non dichiarate
+setup-audio = Audio delle parole
+setup-audio-hint = Dal pacchetto consigliato di Fushi: si scarica solo la libreria spuntata, non i dizionari del pacchetto. Il pacchetto è fatto dall'autore di Fushi e le licenze delle registrazioni non sono dichiarate.
+setup-audio-japanese = Pronunce giapponesi
+setup-audio-english = Pronunce inglesi
+setup-install = Installa
+setup-stop = Ferma
+setup-cards = Carte
+setup-cards-anki = Anki
+setup-cards-review = ripasso di Nikomiru
+setup-anki-answers = Anki risponde (AnkiConnect { $version }).
+setup-anki-lapis-in-use = Le carte usano il tipo di nota Lapis.
+setup-anki-use-lapis = Usa il tipo di nota Lapis
+setup-anki-away = Anki non risponde.
+setup-anki-steps = Installa Anki da apps.ankiweb.net, poi in Anki: Strumenti → Componenti aggiuntivi → Ottieni componenti…, codice 2055492159 (AnkiConnect), e riavvia Anki. Tieni Anki aperto mentre fai le carte.
+setup-anki-retry = Riprova
+setup-anki-later = Intanto tieni le carte per dopo
+setup-state-installed = installato
+setup-state-waiting = in attesa
+setup-state-downloading = { $percent } % di { $size }
+setup-state-importing = importazione
+setup-state-done = fatto
+setup-finished = L'assistente di configurazione ha finito.
+error-setup-space = Spazio libero insufficiente: servono { $need }, liberi { $free }.
+error-setup-no-library = Il pacchetto non contiene { $name }.
+error-setup-not-audio = Il file scaricato non è un database di audio delle parole ({ $reason }).

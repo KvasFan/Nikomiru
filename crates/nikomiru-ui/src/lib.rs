@@ -30,6 +30,7 @@ pub mod screensaver;
 pub mod screenshot;
 pub mod servers;
 pub mod session;
+pub mod setup;
 pub mod shortcuts;
 pub mod study;
 pub mod subtitles;
