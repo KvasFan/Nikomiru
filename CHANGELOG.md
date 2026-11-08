@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-11-08
+
+The subtitles in the font you like.
+
+### Added
+
+- Settings → Subtitles → Look → Font: any installed font with Japanese characters for the subtitles; with ASS styles respected, the font of each style when it is installed (SUB-024, D-44).
+
 ## [2.12.0] - 2026-11-08
 
 Cards that wait for Anki.

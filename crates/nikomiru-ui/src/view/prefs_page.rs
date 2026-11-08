@@ -374,6 +374,22 @@ fn look(
     let subs = &mut draft.subtitles;
     section(ui, &tr("settings-sub-look"));
     form(ui, "settings-sub-look", |ui| {
+        // SUB-024: the installed families with Japanese characters
+        row(ui, &tr("settings-sub-font"), |ui| {
+            let families = super::theme::japanese_families();
+            if families.is_none() {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(200));
+            }
+            let mut options: Vec<(&str, String)> = vec![("", tr("settings-sub-font-default"))];
+            let current = subs.font.clone();
+            let listed = families.unwrap_or_default();
+            if !current.is_empty() && !listed.contains(&current) {
+                options.push((current.as_str(), current.clone()));
+            }
+            options.extend(listed.iter().map(|f| (f.as_str(), f.clone())));
+            choice(ui, "settings-sub-font", &mut subs.font, &options)
+        });
         row(ui, &tr("settings-sub-furigana-size"), |ui| {
             ui.add(
                 Slider::new(&mut subs.furigana_size, SubtitlesConfig::FURIGANA_SIZES).suffix(" %"),

@@ -21,8 +21,8 @@ use egui::epaint::text::FontsView;
 use egui::epaint::{RectShape, TextShape};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
-    Align, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Galley, Id, LayerId, Painter,
-    Pos2, Rect, Role, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    Align, Color32, CornerRadius, CursorIcon, FontId, Galley, Id, LayerId, Painter, Pos2, Rect,
+    Role, Sense, Stroke, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use nikomiru_core::config::{SubtitlesConfig, parse_rgba};
 use nikomiru_subs::cue::VttLine;
@@ -62,8 +62,10 @@ const SECONDARY_SCALE: f32 = 0.85;
 
 /// The look the user chose for the subtitles (SUB-021, LKP-052), for the
 /// cues that are not drawn with an ASS style.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Appearance {
+    /// The system family; empty: the interface's (SUB-024).
+    pub font: String,
     /// Pixels for a video 1080 px high.
     pub font_size: f64,
     /// The readings' size, as a share of their text's.
@@ -93,6 +95,7 @@ impl Appearance {
     pub(crate) fn of(c: &SubtitlesConfig) -> Self {
         let d = SubtitlesConfig::default();
         Self {
+            font: c.font.clone(),
             font_size: c.font_size,
             furigana: f32::from(c.furigana_size) / 100.0,
             text: rgba(&c.text_color, &d.text_color),
@@ -232,6 +235,8 @@ pub(crate) struct Drawn {
     pub secondary: bool,
     /// Its look: text, outline and its width, shadow, box (SUB-021).
     pub look: (Color32, Color32, f32, Color32, Color32),
+    /// The font families of its text and readings, in order (SUB-024).
+    pub families: Vec<egui::FontFamily>,
 }
 
 pub(crate) fn show(
@@ -490,6 +495,17 @@ fn draw_in(
                 cue.shadow,
                 cue.boxed,
             ),
+            families: {
+                let mut families: Vec<egui::FontFamily> = Vec::new();
+                for (_, galley) in &cue.texts {
+                    for section in &galley.job.sections {
+                        if !families.contains(&section.format.font_id.family) {
+                            families.push(section.format.font_id.family.clone());
+                        }
+                    }
+                }
+                families
+            },
         });
     }
     // also when the cue under the pointer goes away, or V turns them all off
@@ -769,7 +785,7 @@ fn rank(place: Place) -> u8 {
 /// (`bold`, SUB-021). An explicit `\b0` beats a bold style; inline colours
 /// and sizes count only when ASS styles are respected. Underline and
 /// strike-out come from the inline style only.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Look {
     pub bold: bool,
     pub italic: bool,
@@ -778,6 +794,8 @@ pub(crate) struct Look {
     pub color: Option<Rgb>,
     /// In the file's units (ASS: PlayResY pixels).
     pub size: Option<f32>,
+    /// The ASS font, when ASS styles are respected (SUB-024).
+    pub font: Option<String>,
 }
 
 pub(crate) fn look(
@@ -802,6 +820,11 @@ pub(crate) fn look(
             .filter(|_| respect)
             .filter(positive)
             .or(style.map(|s| s.size).filter(positive)),
+        font: run
+            .and_then(|r| r.font.clone())
+            .filter(|_| respect)
+            .or(style.map(|s| s.font.clone()))
+            .filter(|f| !f.is_empty()),
     }
 }
 
@@ -1034,11 +1057,13 @@ fn lay_out<'a>(
             Some((to, by)) => px + ((to * units.ass).max(1.0) - px) * by,
             None => px,
         };
-        let family = if look.bold {
-            theme::bold()
-        } else {
-            FontFamily::Proportional
-        };
+        // SUB-024: an ASS font when it is installed, else the one chosen
+        let font = look
+            .font
+            .as_deref()
+            .filter(|f| theme::installed(f))
+            .unwrap_or(&chosen.font);
+        let family = theme::subtitle_family(font, look.bold);
         // text that sets no colour takes the cue's, and its copies the outline's
         let mut ink = look.color.map_or(Color32::PLACEHOLDER, color);
         if let Some((to, by)) = frame.and_then(|f| f.color) {
@@ -1082,7 +1107,10 @@ fn lay_out<'a>(
             // WebVTT ruby: at the size chosen (LKP-052), the colour of its base
             let galley = fonts.layout_job(LayoutJob::single_section(
                 reading.to_string(),
-                TextFormat::simple(FontId::proportional(px * chosen.furigana), ink),
+                TextFormat::simple(
+                    FontId::new(px * chosen.furigana, theme::subtitle_family(font, false)),
+                    ink,
+                ),
             ));
             readings.push(Reading {
                 first: graphemes.len(),
@@ -1587,6 +1615,7 @@ mod tests {
         look: Appearance,
         fit: Fit,
         video_size: (i64, i64),
+        respect: bool,
     }
 
     impl Default for Setup {
@@ -1597,6 +1626,7 @@ mod tests {
                 look: Appearance::default(),
                 fit: Fit::Contain,
                 video_size: (1920, 1080),
+                respect: false,
             }
         }
     }
@@ -1612,6 +1642,7 @@ mod tests {
             look,
             fit,
             video_size,
+            respect,
         } = setup;
         let marks: &'static HashMap<usize, Marks> = Box::leak(Box::new(marks));
         let secondary: &'static Option<(Subtitles, Obscure, bool)> = Box::leak(Box::new(secondary));
@@ -1627,9 +1658,9 @@ mod tests {
                     let scene = Scene {
                         subs,
                         video_size,
-                        look,
+                        look: look.clone(),
                         fit,
-                        respect_ass: false,
+                        respect_ass: respect,
                         obscure,
                         secondary: secondary.as_ref().map(|(s, o, bottom)| Secondary {
                             subs: s,
@@ -2096,6 +2127,51 @@ mod tests {
         );
     }
 
+    // T-SUB-024: the family chosen for the text and its readings; an ASS
+    // font only when ASS styles are respected and it is installed
+    #[test]
+    fn the_cues_take_the_font_chosen() {
+        use egui::FontFamily;
+        let vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<ruby>猫<rt>ねこ</rt></ruby>が食べた\n";
+        let families = |font: &str, bold: bool| {
+            let setup = Setup {
+                look: Appearance {
+                    font: font.into(),
+                    bold,
+                    ..Appearance::default()
+                },
+                ..Setup::default()
+            };
+            drawn_with(subtitles(vtt, Format::Vtt, 1500), setup).families
+        };
+        assert_eq!(families("", false), [FontFamily::Proportional]);
+        assert_eq!(
+            families("Noto Serif CJK JP", false),
+            [theme::subtitle_family("Noto Serif CJK JP", false)]
+        );
+        let bold = families("Noto Serif CJK JP", true);
+        assert_eq!(bold.len(), 2, "{bold:?}");
+        assert!(
+            bold.contains(&theme::subtitle_family("Noto Serif CJK JP", true))
+                && bold.contains(&theme::subtitle_family("Noto Serif CJK JP", false)),
+            "bold text, regular readings: {bold:?}"
+        );
+        // an ASS style's font not installed: the one chosen
+        let ass = "[Script Info]\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,No Such Font 123,48,&H00FFFFFF,&H0,&H0,&H0,0,0,0,0,100,100,0,0,1,2,0,2,10,10,30,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,看板\n";
+        let setup = Setup {
+            look: Appearance {
+                font: "Noto Serif CJK JP".into(),
+                ..Appearance::default()
+            },
+            respect: true,
+            ..Setup::default()
+        };
+        assert_eq!(
+            drawn_with(subtitles(ass, Format::Ass, 1500), setup).families,
+            [theme::subtitle_family("Noto Serif CJK JP", false)]
+        );
+    }
+
     // T-SUB-021: the look chosen, for the cues with no ASS style
     #[test]
     fn the_cues_take_the_look_chosen() {
@@ -2108,7 +2184,7 @@ mod tests {
             ..Appearance::default()
         };
         let setup = Setup {
-            look,
+            look: look.clone(),
             ..Setup::default()
         };
         let d = drawn_with(srt_cue("字幕"), setup);

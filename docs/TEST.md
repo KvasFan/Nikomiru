@@ -280,6 +280,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-021 | The subtitles' look | Defaults, choices and wrong values in `config.toml` (L1); kittest: the colours, outline width, shadow and box chosen for a cue with no ASS style, the defaults, none of them for a cue drawn with its ASS style; the main subtitle at the bottom or the top at the distance chosen, a cue with `\an` where it says | L1, L3 |
 | T-SUB-022 | Revealing on hover off | The pointer reveals nothing; a pause and an open popup still do | L1 |
 | T-SUB-023 | The list's size | kittest: bigger text makes taller rows and a wider time column; the width chosen, never more than 60 % of the window | L3 |
+| T-SUB-024 | The subtitles' font | `font` read and kept (L1); a named family gets its own face first and the interface's after it, nothing of its own when it is not installed (L1, the system's fonts); kittest: a cue drawn in the family chosen, an ASS style's font when respected | L1, L3 |
 
 ### 6.4 Dictionaries: import and management
 

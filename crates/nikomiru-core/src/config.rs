@@ -217,6 +217,9 @@ pub struct SubtitlesConfig {
     pub preferred_languages: Vec<String>,
     /// Font size in pixels for a video 1080 px high (SUB-010).
     pub font_size: f64,
+    /// The font family, installed on the system; empty: the interface's
+    /// (SUB-024).
+    pub font: String,
     /// Use the colours, fonts and positions of ASS files (SUB-010).
     pub respect_ass_styles: bool,
     /// `"none"`, `"blur"` or `"hidden"` (SUB-014).
@@ -312,6 +315,11 @@ impl SubtitlesConfig {
         if !["bottom", "top"].contains(&c.position.as_str()) {
             c.position = d.position;
         }
+        // a name, not a path or a pattern of fontconfig
+        c.font = c.font.trim().to_string();
+        if c.font.chars().any(char::is_control) || c.font.len() > 200 {
+            c.font = d.font;
+        }
         c
     }
 }
@@ -321,6 +329,7 @@ impl Default for SubtitlesConfig {
         Self {
             preferred_languages: vec!["ja".into(), "jpn".into()],
             font_size: 36.0,
+            font: String::new(),
             respect_ass_styles: false,
             obscure: "none".into(),
             secondary_obscure: "none".into(),
@@ -1663,6 +1672,14 @@ opensubtitles_password = "pw-s3cret"
         );
         assert_eq!((s.position.as_str(), s.list_width), ("top", 600.0));
         assert_eq!(chosen.player.fit, "cover");
+        // T-SUB-024
+        assert_eq!(c.subtitles.font, "");
+        let font = |text: &str| Config::from_toml(text).unwrap().subtitles.font;
+        assert_eq!(
+            font("[subtitles]\nfont = \" Noto Serif CJK JP \""),
+            "Noto Serif CJK JP"
+        );
+        assert_eq!(font("[subtitles]\nfont = \"a\\nb\""), "");
         // out of range, not a colour, not an edge or a fit: the defaults
         let wrong = Config::from_toml(
             "[subtitles]\nfurigana_size = 95\ntext_color = \"#ffe08a80\"\n\
