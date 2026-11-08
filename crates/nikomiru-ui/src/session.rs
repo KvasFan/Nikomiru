@@ -484,6 +484,9 @@ pub struct Session {
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
     replaying: bool,
+    /// Where mpv stops for the pause at the end of each line, in player
+    /// milliseconds (SUB-026).
+    auto_pause_end: Option<i64>,
     /// Series identified whose cover is being downloaded (MET-001).
     pending_identity:
         std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
@@ -731,6 +734,7 @@ impl Session {
             hover: Hover::default(),
             popup_hovered: false,
             replaying: false,
+            auto_pause_end: None,
             pending_identity: std::collections::HashMap::new(),
             advanced: None,
             advanced_word: None,
@@ -784,6 +788,8 @@ impl Session {
         }
         self.flush_position();
         self.end_replay();
+        // `end` would stop the next file too
+        self.clear_auto_pause();
         if self.start_at.is_none() {
             // an ordinary open: no link's cue to go to
             self.link_clip = None;
@@ -999,6 +1005,7 @@ impl Session {
                     });
                 }
                 self.update_secondary();
+                self.update_auto_pause();
                 self.book_follow();
                 if let Some(ms) = self.saver.position((t * 1000.0) as u64, now) {
                     self.save_position(ms);
@@ -1021,6 +1028,8 @@ impl Session {
                 self.study_sample(!p);
                 self.view.paused = p;
                 self.controls.set_playing(!p, now);
+                // stopped at a line's end: on to the next one
+                self.update_auto_pause();
             }
             PlayerEvent::Speed(s) => {
                 self.study_sample(!self.view.paused);
@@ -1093,6 +1102,49 @@ impl Session {
         if std::mem::take(&mut self.replaying) {
             let _ = self.services.player.stop_at(None);
         }
+    }
+
+    /// The pause at the end of each line (SUB-026): mpv stops (`end`, as the
+    /// replay of SUB-013) at the end of the next line. While playing, the end
+    /// set stays until it is passed or an earlier one comes; once paused at
+    /// it, the next line's is set. A replay from the popup sets its own.
+    fn update_auto_pause(&mut self) {
+        if self.replaying {
+            self.auto_pause_end = None;
+            return;
+        }
+        if !(self.services.config.subtitles.auto_pause && self.view.loaded) {
+            self.clear_auto_pause();
+            return;
+        }
+        let pos = (self.view.time_pos * 1000.0).round() as i64;
+        let t = self.subs.timeline();
+        let next = crate::subtitles::auto_pause_end(
+            t.cues().iter().map(|c| c.end_ms + t.delay_ms),
+            pos,
+            self.view.paused,
+            self.auto_pause_end,
+        );
+        if next != self.auto_pause_end {
+            self.auto_pause_end = next;
+            let _ = self
+                .services
+                .player
+                .stop_at(next.map(|end| end as f64 / 1000.0));
+        }
+    }
+
+    /// No pause at the end of the lines any more (SUB-026).
+    fn clear_auto_pause(&mut self) {
+        if self.auto_pause_end.take().is_some() {
+            let _ = self.services.player.stop_at(None);
+        }
+    }
+
+    /// Where mpv stops for the pause at the end of each line (SUB-026), for
+    /// the tests.
+    pub fn auto_pause_end(&self) -> Option<i64> {
+        self.auto_pause_end
     }
 
     /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
@@ -4272,6 +4324,21 @@ impl Session {
                 self.toasts.push(self.tr(key, &[]));
                 Ok(())
             }
+            Action::SubAutoPause => {
+                let subtitles = &mut self.services.config.subtitles;
+                subtitles.auto_pause = !subtitles.auto_pause;
+                let key = if subtitles.auto_pause {
+                    "toast-auto-pause-on"
+                } else {
+                    "toast-auto-pause-off"
+                };
+                if self.services.config_writable {
+                    self.config_save = Some(self.services.config.clone());
+                }
+                self.update_auto_pause();
+                self.toasts.push(self.tr(key, &[]));
+                Ok(())
+            }
             Action::SubToggle => {
                 self.subs.disabled = !self.subs.disabled;
                 let key = if self.subs.disabled {
@@ -4347,6 +4414,7 @@ impl Session {
     /// go to them).
     fn cues_changed(&mut self) {
         self.sub_list_version += 1;
+        self.update_auto_pause();
         if self.popups.is_open() {
             self.close_all_popups();
         }

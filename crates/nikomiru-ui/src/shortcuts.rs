@@ -82,6 +82,8 @@ pub enum Action {
     SubHide,
     /// Subtitles off/on, keeping the chosen track (SUB-014).
     SubToggle,
+    /// Pause at the end of each line, on/off (SUB-026).
+    SubAutoPause,
     /// Subtitle offset −100 ms (SUB-011).
     SubDelayMinus,
     /// Subtitle offset +100 ms (SUB-011).
@@ -111,7 +113,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 40] = [
+    pub const ALL: [Action; 41] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -140,6 +142,7 @@ impl Action {
         Action::SubBlur,
         Action::SubHide,
         Action::SubToggle,
+        Action::SubAutoPause,
         Action::SubDelayMinus,
         Action::SubDelayPlus,
         Action::SubAlignPrev,
@@ -185,6 +188,7 @@ impl Action {
             Action::SubBlur => "sub_blur",
             Action::SubHide => "sub_hide",
             Action::SubToggle => "sub_toggle",
+            Action::SubAutoPause => "sub_auto_pause",
             Action::SubDelayMinus => "sub_delay_minus",
             Action::SubDelayPlus => "sub_delay_plus",
             Action::SubAlignPrev => "sub_align_prev",
@@ -282,6 +286,7 @@ impl Action {
             Action::SubBlur => &["KeyB"],
             Action::SubHide => &["KeyH"],
             Action::SubToggle => &["KeyV"],
+            Action::SubAutoPause => &["Shift+KeyP"],
             Action::SubDelayMinus => &["KeyZ"],
             Action::SubDelayPlus => &["KeyX"],
             Action::SubAlignPrev => &["Ctrl+Shift+ArrowLeft"],

@@ -401,6 +401,7 @@ pub fn state() -> Result<Value, String> {
             "time_pos": v.time_pos,
             "duration": v.duration,
             "paused": v.paused,
+            "auto_pause_end": s.auto_pause_end(),
             "volume": v.volume,
             "muted": v.muted,
             "speed": v.speed,

@@ -193,6 +193,36 @@ fn the_picture_fit_reaches_mpv() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SUB-026: playback stops on the last frame of each line; Space plays the
+// next; Shift+P turns it off
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn playback_pauses_at_the_end_of_each_line() {
+    let mut desk = Desktop::start();
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[subtitles]\nauto_pause = true\n",
+    );
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    // the lines end at 2.5 s, 5.5 s and 8.5 s
+    let s = h.state_until("the first stop", |s| {
+        s["paused"] == true && time_pos(s) > 2.0
+    });
+    assert!((time_pos(&s) - 2.5).abs() < 0.15, "{s}");
+    h.state_until("the next line's end", |s| s["auto_pause_end"] == 5_500);
+    h.key("Space");
+    let s = h.state_until("the second stop", |s| {
+        s["paused"] == true && time_pos(s) > 5.0
+    });
+    assert!((time_pos(&s) - 5.5).abs() < 0.15, "{s}");
+    h.cmd(serde_json::json!({ "cmd": "key", "code": "KeyP", "mods": ["Shift"] }));
+    h.state_until("no stop", |s| s["auto_pause_end"].is_null());
+    h.key("Space");
+    h.state_until("past the third line", |s| time_pos(s) > 8.8);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-PLY-011: a frame the GPU decoded has to be read back from it
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures --perf`"]
