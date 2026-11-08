@@ -204,7 +204,23 @@ fn playback_pauses_at_the_end_of_each_line() {
     );
     let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
     h.wait("first-frame");
-    // the lines end at 2.5 s, 5.5 s and 8.5 s
+    // the lines end at 2.5 s, 5.5 s and 8.5 s; until they are loaded there
+    // is no stop, and under load they can come after the first one
+    h.key("Space");
+    h.state_until("the pause", |s| s["paused"] == true);
+    let s = h.state_until("the lines", |s| s["auto_pause_end"].is_number());
+    let mut s = s;
+    for _ in 0..3 {
+        if s["auto_pause_end"] == 2_500 && time_pos(&s) < 1.0 {
+            break;
+        }
+        h.key("ArrowLeft");
+        std::thread::sleep(Duration::from_millis(300));
+        s = h.state();
+    }
+    assert_eq!(s["auto_pause_end"], 2_500, "{s}");
+    h.key("Space");
+    h.state_until("playing", |s| s["paused"] == false);
     let s = h.state_until("the first stop", |s| {
         s["paused"] == true && time_pos(s) > 2.0
     });
