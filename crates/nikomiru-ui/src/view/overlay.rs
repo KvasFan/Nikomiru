@@ -160,6 +160,8 @@ pub(crate) struct Scene<'a> {
     pub keyboard: Option<(usize, usize)>,
     /// The marks of the main cues shown, by index (LKP-051, LKP-061).
     pub marks: HashMap<usize, Marks>,
+    /// The main subtitle is being moved, with the hint to show (SUB-027).
+    pub moving: Option<String>,
 }
 
 /// The secondary subtitle as the overlay draws it (SUB-017).
@@ -194,6 +196,7 @@ impl<'a> Scene<'a> {
                 .shown(false)
                 .filter_map(|c| Some((c.index, s.word_marks(&c.cue.plain_text)?)))
                 .collect(),
+            moving: s.moving_subtitles(),
         }
     }
 }
@@ -210,6 +213,10 @@ pub(crate) struct State {
     /// The subtitles' size in the last frame, in physical pixels: the
     /// interface scale leaves it alone (SET-005).
     pub font_px: f32,
+    /// How far the main subtitle has been dragged (SUB-027).
+    drag: f32,
+    /// Where it was dropped, until the look says so (SUB-027).
+    placed: Option<(bool, f32)>,
     /// What the last frame drew.
     #[cfg(test)]
     pub drawn: Vec<Drawn>,
@@ -310,6 +317,7 @@ pub(crate) fn preview(ui: &mut Ui, look: Appearance, sample: &Subtitles, state: 
         secondary: None,
         keyboard: None,
         marks: HashMap::new(),
+        moving: None,
     };
     let target = Target {
         layer: ui.layer_id(),
@@ -387,6 +395,22 @@ fn draw_in(
     );
     let painter = ui.painter();
     let ppp = ctx.pixels_per_point();
+    let origins = move_main(
+        &ui,
+        id,
+        &cues,
+        origins,
+        scene,
+        state,
+        Stacks {
+            video,
+            window,
+            bar_height,
+            units: &units,
+            edges,
+        },
+        out,
+    );
     let (pointer, shift) = ctx.input(|i| (i.pointer.hover_pos(), i.modifiers.shift));
     let moved = pointer.is_some() && pointer != state.pointer;
     state.pointer = pointer;
@@ -442,7 +466,13 @@ fn draw_in(
                 paint(&painter, cue, offset, mode, cue_units, ppp, warp);
             }
         }
-        for hit in &cue.graphemes {
+        // SUB-027: no lookups while the subtitle is moved
+        let hits = if scene.moving.is_some() {
+            &[][..]
+        } else {
+            &cue.graphemes[..]
+        };
+        for hit in hits {
             let target = hit.rect.translate(offset);
             let response = ui.interact(
                 warp.map_or(target, |w| w.around(target)),
@@ -677,6 +707,124 @@ impl Edges {
             top: top * units.unit,
         }
     }
+}
+
+/// Where the stacks go, for [`move_main`].
+struct Stacks<'a> {
+    video: Rect,
+    window: Rect,
+    bar_height: f32,
+    units: &'a Units,
+    edges: Edges,
+}
+
+/// "Move the subtitles" (SUB-027): the main subtitle's stack, or a sample
+/// where it would be, is framed and dragged up and down with the cues
+/// stacked with it; dropped, it gives the edge of the half it is in and its
+/// distance from that edge, rounded to 5 pixels of a 1080 px video. Outside
+/// the mode the origins are left as they are.
+#[allow(clippy::too_many_arguments)]
+fn move_main(
+    ui: &Ui,
+    id: Id,
+    cues: &[Laid<'_>],
+    mut origins: Vec<Pos2>,
+    scene: &Scene<'_>,
+    state: &mut State,
+    frame: Stacks<'_>,
+    out: &mut Vec<Command>,
+) -> Vec<Pos2> {
+    let look = &scene.look;
+    if state.placed.is_some_and(|p| p == (look.top, look.margin)) || scene.moving.is_none() {
+        state.placed = None;
+        state.drag = 0.0;
+    }
+    let Some(hint) = &scene.moving else {
+        return origins;
+    };
+    let Stacks {
+        video,
+        window,
+        bar_height,
+        units,
+        edges,
+    } = frame;
+    let visible = video.intersect(window);
+    let unit = units.unit;
+    let group = if look.top { Place::Top } else { Place::Bottom };
+    let stack = cues
+        .iter()
+        .zip(&origins)
+        .filter(|(c, _)| c.place == group && !c.secondary)
+        .map(|(c, o)| Rect::from_min_size(*o, c.size))
+        .reduce(|a, b| a.union(b));
+    let colors = super::palette::current();
+    let painter = ui.painter();
+    let stack = stack.unwrap_or_else(|| {
+        // no line now: a sample in its place
+        let sample = painter.layout_no_wrap(
+            "字幕 Subtitles".to_string(),
+            FontId::new(units.font, theme::subtitle_family(&look.font, look.bold)),
+            look.text,
+        );
+        let size = sample.size();
+        let y = if look.top {
+            visible.min.y + edges.top
+        } else {
+            bottom_edge(visible, window, bar_height, unit, edges.bottom) - size.y
+        };
+        let rect = Rect::from_min_size(pos2(visible.center().x - size.x / 2.0, y), size);
+        painter.galley(rect.min + vec2(0.0, state.drag), sample, look.text);
+        rect
+    });
+    let response = ui.interact(stack.expand(6.0 * unit), id.with("move"), Sense::drag());
+    if response.dragged() {
+        state.drag += response.drag_delta().y;
+        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+    } else if response.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::Grab);
+    }
+    let moved = stack.translate(vec2(0.0, state.drag));
+    if response.drag_stopped() {
+        let top = moved.center().y < visible.center().y;
+        let margin = if top {
+            moved.min.y - visible.min.y
+        } else {
+            visible.max.y - moved.max.y
+        } / unit;
+        let margin = ((margin / 5.0).round() * 5.0).clamp(0.0, 400.0);
+        out.push(Command::SubtitlesPlaced {
+            top,
+            margin: f64::from(margin),
+        });
+        state.placed = Some((top, margin));
+    }
+    for (cue, origin) in cues.iter().zip(origins.iter_mut()) {
+        if cue.place == group {
+            origin.y += state.drag;
+        }
+    }
+    painter.rect_stroke(
+        moved.expand(6.0 * unit),
+        CornerRadius::same(6),
+        Stroke::new(2.0, colors.accent),
+        egui::StrokeKind::Outside,
+    );
+    let hint = painter.layout_no_wrap(hint.clone(), FontId::proportional(15.0), Color32::WHITE);
+    // in the other half from the subtitle, clear of the control bar
+    let y = if look.top {
+        visible.max.y.min(window.max.y - bar_height) - 20.0 - hint.size().y
+    } else {
+        visible.min.y + 20.0
+    };
+    let at = pos2(visible.center().x - hint.size().x / 2.0, y);
+    painter.rect_filled(
+        Rect::from_min_size(at, hint.size()).expand(8.0),
+        CornerRadius::same(8),
+        Color32::from_black_alpha(0xb0),
+    );
+    painter.galley(at, hint, Color32::WHITE);
+    origins
 }
 
 /// The bottom edge of the bottom stack: `margin` above the bottom of the
@@ -1617,6 +1765,7 @@ mod tests {
         fit: Fit,
         video_size: (i64, i64),
         respect: bool,
+        moving: Option<String>,
     }
 
     impl Default for Setup {
@@ -1624,6 +1773,7 @@ mod tests {
             Self {
                 secondary: None,
                 marks: HashMap::new(),
+                moving: None,
                 look: Appearance::default(),
                 fit: Fit::Contain,
                 video_size: (1920, 1080),
@@ -1644,6 +1794,7 @@ mod tests {
             fit,
             video_size,
             respect,
+            moving,
         } = setup;
         let marks: &'static HashMap<usize, Marks> = Box::leak(Box::new(marks));
         let secondary: &'static Option<(Subtitles, Obscure, bool)> = Box::leak(Box::new(secondary));
@@ -1670,6 +1821,7 @@ mod tests {
                         }),
                         keyboard: None,
                         marks: marks.clone(),
+                        moving: moving.clone(),
                     };
                     draw(ui.ctx(), &scene, state, 0.0, out);
                 },
@@ -1700,6 +1852,7 @@ mod tests {
                         secondary: None,
                         keyboard: None,
                         marks: HashMap::new(),
+                        moving: None,
                     };
                     draw(ui.ctx(), &scene, state, 0.0, out);
                 },
@@ -1812,6 +1965,75 @@ mod tests {
         h.drag_at(at);
         h.drop_at(at);
         h.run();
+    }
+
+    fn placed(h: &Harness<'_, (Subtitles, State, Vec<Command>)>) -> Option<(bool, f64)> {
+        h.state().2.iter().rev().find_map(|c| match c {
+            Command::SubtitlesPlaced { top, margin } => Some((*top, *margin)),
+            _ => None,
+        })
+    }
+
+    fn drag(h: &mut Harness<'_, (Subtitles, State, Vec<Command>)>, from: Pos2, to: Pos2) {
+        h.hover_at(from);
+        h.run();
+        h.drag_at(from);
+        h.run();
+        for step in 1..=4 {
+            h.hover_at(from + (to - from) * (step as f32 / 4.0));
+            h.run();
+        }
+        h.drop_at(to);
+        h.run();
+    }
+
+    // T-SUB-027: no lookups while moving; dropped in the top half, the main
+    // subtitle goes to the top at the distance it was dropped at
+    #[test]
+    fn the_main_subtitle_is_moved_with_a_drag() {
+        let srt = "1\n00:00:01,000 --> 00:00:03,000\n食べました\n";
+        let setup = Setup {
+            moving: Some("move".into()),
+            ..Setup::default()
+        };
+        let mut h = build_with(subtitles(srt, Format::Srt, 1500), Obscure::None, setup);
+        h.run();
+        let rect = h.state().1.drawn[0].rect;
+        assert!(rect.min.y > 360.0, "at the bottom: {rect:?}");
+        click(&mut h, rect.center());
+        assert!(
+            !h.state()
+                .2
+                .iter()
+                .any(|c| matches!(c, Command::GraphemeClicked { .. })),
+            "{:?}",
+            h.state().2
+        );
+        // a press without a move leaves it where it is: 75 from the bottom
+        if let Some((top, margin)) = placed(&h) {
+            assert!(!top && (margin - 75.0).abs() <= 5.0, "{top} {margin}");
+        }
+        // the 1280×720 window holds the whole 1080p video: a unit is 2/3
+        let from = rect.center();
+        let to = pos2(from.x, 100.0 + rect.height() / 2.0);
+        drag(&mut h, from, to);
+        let (top, margin) = placed(&h).expect("dropped");
+        assert!(top);
+        assert!((margin - 150.0).abs() <= 5.0, "{margin}");
+        assert!(
+            (h.state().1.drawn[0].rect.min.y - 100.0).abs() < 4.0,
+            "it stays where it was dropped: {:?}",
+            h.state().1.drawn[0].rect
+        );
+        // outside the mode a drag moves nothing
+        let mut h = build_with(
+            subtitles(srt, Format::Srt, 1500),
+            Obscure::None,
+            Setup::default(),
+        );
+        h.run();
+        drag(&mut h, rect.center(), to);
+        assert_eq!(placed(&h), None);
     }
 
     // T-SUB-017

@@ -691,6 +691,8 @@ Done outside the backlog on 2026-11-08, for 2.14.0: the fonts attached to the vi
 
 Done outside the backlog on 2026-11-08, for 2.15.0: the pause at the end of each line (SUB-026, T-SUB-026, D-46).
 
+Done outside the backlog on 2026-11-08, for 2.16.0: moving the subtitles with the mouse (SUB-027, T-SUB-027, D-47).
+
 ---
 
 ## Definition of done (applies to every PR)

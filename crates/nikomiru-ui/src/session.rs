@@ -487,6 +487,8 @@ pub struct Session {
     /// Where mpv stops for the pause at the end of each line, in player
     /// milliseconds (SUB-026).
     auto_pause_end: Option<i64>,
+    /// The main subtitle is being moved with the mouse (SUB-027).
+    moving_subtitles: bool,
     /// Series identified whose cover is being downloaded (MET-001).
     pending_identity:
         std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
@@ -735,6 +737,7 @@ impl Session {
             popup_hovered: false,
             replaying: false,
             auto_pause_end: None,
+            moving_subtitles: false,
             pending_identity: std::collections::HashMap::new(),
             advanced: None,
             advanced_word: None,
@@ -1131,6 +1134,36 @@ impl Session {
                 .services
                 .player
                 .stop_at(next.map(|end| end as f64 / 1000.0));
+        }
+    }
+
+    /// "Move the subtitles" (SUB-027): on, a drag moves the main subtitle
+    /// and lookups wait; Esc or the menu ends it.
+    pub fn toggle_moving_subtitles(&mut self) {
+        self.moving_subtitles = !self.moving_subtitles;
+        if self.moving_subtitles {
+            self.close_all_popups();
+        }
+    }
+
+    /// The main subtitle is being moved (SUB-027): the hint the overlay
+    /// shows, or `None`.
+    pub fn moving_subtitles(&self) -> Option<String> {
+        self.moving_subtitles
+            .then(|| self.tr("subtitles-move-hint", &[]))
+    }
+
+    /// The main subtitle was dropped (SUB-027): its edge and distance are
+    /// saved as those of Settings → Subtitles → Look (SUB-021).
+    pub fn subtitles_placed(&mut self, top: bool, margin: f64) {
+        let subtitles = &mut self.services.config.subtitles;
+        subtitles.position = if top { "top" } else { "bottom" }.to_string();
+        subtitles.margin = margin.clamp(
+            *nikomiru_core::config::SubtitlesConfig::MARGINS.start(),
+            *nikomiru_core::config::SubtitlesConfig::MARGINS.end(),
+        );
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
         }
     }
 
@@ -4352,6 +4385,10 @@ impl Session {
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
+            Action::Back if self.moving_subtitles => {
+                self.toggle_moving_subtitles();
+                return UiEffect::None;
+            }
             Action::Back if self.advanced.is_some() => {
                 self.close_advanced();
                 return UiEffect::None;

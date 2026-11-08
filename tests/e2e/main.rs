@@ -836,6 +836,13 @@ fn screenshots_of_the_interface() {
     h.state_until("the list closed", |s| s["sub_list_open"] == false);
     std::thread::sleep(Duration::from_millis(500));
     desk.capture(&dir.join("subtitles-look.png"));
+    // moving them with the mouse (SUB-027)
+    h.cmd(serde_json::json!({ "cmd": "move_subtitles" }));
+    h.state_until("moving", |s| s["moving_subtitles"] == true);
+    std::thread::sleep(Duration::from_millis(300));
+    desk.capture(&dir.join("subtitles-move.png"));
+    h.key("Escape");
+    h.state_until("moved", |s| s["moving_subtitles"] == false);
     h.cmd(serde_json::json!({ "cmd": "library", "action": "open" }));
     h.state_until("continue watching", |s| {
         s["library_page"]["continue"]

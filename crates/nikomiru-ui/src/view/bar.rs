@@ -201,6 +201,14 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         out.push(Command::Action(Action::SubToggle));
         ui.close();
     }
+    // SUB-027
+    if ui
+        .selectable_label(s.moving_subtitles().is_some(), tr("subtitles-move"))
+        .clicked()
+    {
+        out.push(Command::MoveSubtitles);
+        ui.close();
+    }
     // SUB-026
     if ui
         .selectable_label(
