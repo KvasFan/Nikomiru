@@ -261,6 +261,9 @@ pub struct SubtitlesConfig {
     pub reveal_on_hover: bool,
     /// Playback pauses at the end of each line (SUB-026).
     pub auto_pause: bool,
+    /// A PGS track chosen by itself is read as text when the reading model
+    /// is there (SUB-028).
+    pub read_graphic: bool,
     /// The subtitle list's text, in points (SUB-023).
     pub list_text_size: f32,
     /// The subtitle list's width, in points (SUB-023).
@@ -351,6 +354,7 @@ impl Default for SubtitlesConfig {
             position: "bottom".into(),
             reveal_on_hover: true,
             auto_pause: false,
+            read_graphic: true,
             list_text_size: 16.0,
             list_width: 420.0,
             other: toml::Table::new(),

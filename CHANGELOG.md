@@ -4,6 +4,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-11-09
+
+Blu-ray subtitles you can click.
+
+### Added
+
+- Blu-ray image subtitles (PGS) read as text on this computer by the manga's reading model, so their words can be clicked, listed and made into cards like those of a text track (SUB-028, D-49):
+  - "read as text" beside the track in the subtitle menu; a Japanese PGS track chosen by itself is read when the model is installed (`[subtitles] read_graphic`, on by default);
+  - the images stay until the text is ready, and the text is kept for the next time;
+  - without the model, choosing "read as text" downloads it once (117 MB);
+  - furigana above a line is left out, and two lines side by side are read apart.
+
+### Changed
+
+- The text read from a manga page writes ASCII in its full-width forms, as manga-ocr does (`!` → `！`).
+
 ## [2.17.1] - 2026-11-09
 
 ### Fixed

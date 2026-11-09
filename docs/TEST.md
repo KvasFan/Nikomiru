@@ -284,6 +284,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-SUB-025 | Fonts attached to the video | ffprobe's JSON read, fonts told from other attachments, the ffmpeg arguments (L1); a video with a font attached (made by the test from a system font): the font written once and the same bytes, found in the cache the second time, not written for a video without one (L4); a font file registered joins the families and changes the subtitles' family names, so the cues are laid out again (L1) | L1, L4 |
 | T-SUB-026 | Pause at the end of each line | The stop chosen from the lines' ends: the next one; kept while playing up to it, even in its last moments; the next line's once paused on it; kept by a pause in the middle; an earlier line's after a seek back; none after the last line (L1). L6: `av_basic.mkv` with `auto_pause = true` stops at 2.5 s, Space plays to 5.5 s with its sound (`audio-pts` moves on, AK-BUG-003), Shift+P removes the stop and playback goes past the third line | L1, L6 |
 | T-SUB-027 | Moving the subtitles | kittest: while moving, a click looks nothing up; a press without a move keeps the bottom at 75; dragged to 100 points from the top of a 720-point picture, the top at 150, drawn where it was dropped; outside the mode a drag sets nothing. L6: the mode on and off (Esc) in the screenshots | L3, L6 |
+| T-SUB-028 | Graphic subtitles read as text | PGS segments as cues: times, a clear screen, a fade, two objects, a cut tail, damaged data; a picture turned over and cut into lines, the furigana left out, two speakers apart; SRT written and read back; full-width ASCII (L1); the extraction's arguments (L3); pictures read line by line on several threads, neighbours joined, a cancel, errors (L3); a PGS track copied out of a video by ffmpeg and read with its times (L4); a Japanese PGS track chosen by itself, read and clicked (L6) | L1/L3/L4/L6 |
 
 ### 6.4 Dictionaries: import and management
 
@@ -598,6 +599,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-MNG-005 | The text | Clicked like a book's | L3/L6 |
 | T-MNG-006 | Cards | The sentence and the part of the page | L6 |
 | T-MNG-LIVE-001 | The real model | Fetched from Hugging Face by the app's code, then run on pictures named by the environment | L7 |
+| T-SUB-LIVE-028 | Graphic subtitles and the real model | Pictures named by the environment, written as PGS and read as the app reads them: the text and the time taken | L7 |
 
 ### 6.13g Review in Nikomiru (2.4.0)
 

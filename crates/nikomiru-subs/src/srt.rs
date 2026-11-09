@@ -85,9 +85,70 @@ pub fn parse(text: &str) -> Track {
     }
 }
 
+/// Writes `cues` (start, end in milliseconds, text with its lines apart by
+/// `\n`) as SRT, for text made by Nikomiru (SUB-028). `<` and `{`, which
+/// the parser takes for markup, become their full-width forms; empty lines
+/// inside a text are dropped, since they would end the cue.
+pub fn write(cues: &[(i64, i64, String)]) -> String {
+    fn clock(ms: i64) -> String {
+        let ms = ms.max(0);
+        format!(
+            "{:02}:{:02}:{:02},{:03}",
+            ms / 3_600_000,
+            ms / 60_000 % 60,
+            ms / 1000 % 60,
+            ms % 1000
+        )
+    }
+    let mut out = String::new();
+    for (n, (start, end, text)) in cues.iter().enumerate() {
+        let text: Vec<String> = text
+            .lines()
+            .map(|l| l.trim().replace('<', "\u{ff1c}").replace('{', "\u{ff5b}"))
+            .filter(|l| !l.is_empty())
+            .collect();
+        if text.is_empty() {
+            continue;
+        }
+        out.push_str(&format!(
+            "{}\n{} --> {}\n{}\n\n",
+            n + 1,
+            clock(*start),
+            clock(*end),
+            text.join("\n")
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-SUB-028: written and read back the same
+    #[test]
+    fn written_cues_read_back() {
+        let cues = vec![
+            (1_000, 2_500, "行くぞ！\n\n待って<".to_string()),
+            (3_723_004, 3_724_000, "{二行目}".to_string()),
+            (5_000, 6_000, " \n ".to_string()),
+        ];
+        let text = write(&cues);
+        assert!(text.contains("01:02:03,004 --> 01:02:04,000"), "{text}");
+        let track = parse(&text);
+        let read: Vec<_> = track
+            .cues
+            .iter()
+            .map(|c| (c.start_ms, c.end_ms, c.plain_text.as_str()))
+            .collect();
+        assert_eq!(
+            read,
+            [
+                (1_000, 2_500, "行くぞ！\n待って\u{ff1c}"),
+                (3_723_004, 3_724_000, "\u{ff5b}二行目}"),
+            ]
+        );
+    }
 
     #[test]
     fn blocks_with_and_without_indices() {

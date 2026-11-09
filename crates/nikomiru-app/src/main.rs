@@ -430,10 +430,13 @@ fn run(
         let waker = Arc::clone(&waker);
         platform::follow_theme(move |dark| waker.wake(Inbound::SystemTheme(Some(dark))));
     }
+    // one model for the pages and the graphic subtitles (SUB-028)
+    let ocr = nikomiru_app::ocr::OcrWorker::new(paths.ocr_model_dir());
     let subtitle_source = nikomiru_app::subtitles::Loader::start(
         translator.clone(),
         config.paths.ffmpeg.clone(),
         paths.cache_dir.join("subtitles"),
+        ocr.shared(),
     );
     let max_results = Arc::new(std::sync::atomic::AtomicUsize::new(
         config.lookup.max_results,
@@ -541,7 +544,7 @@ fn run(
         servers: Box::new(servers),
         sync: Box::new(sync),
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
-        ocr: Box::new(nikomiru_app::ocr::OcrWorker::new(paths.ocr_model_dir())),
+        ocr: Box::new(ocr),
         setup: Box::new(setup),
         catalog,
         word_audio: Box::new(word_audio),

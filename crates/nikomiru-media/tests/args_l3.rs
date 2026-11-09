@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use nikomiru_media::extract::{Extractor, Stream};
 
-// T-EXT-002
+// T-EXT-002, T-SUB-028
 #[test]
 fn extraction_arguments() {
     let srt = Stream {
@@ -17,6 +17,11 @@ fn extraction_arguments() {
         ff_index: 4,
         codec: "ass".into(),
     };
+    // SUB-028: pictures copied as they are
+    let pgs = Stream {
+        ff_index: 5,
+        codec: "hdmv_pgs_subtitle".into(),
+    };
     // a name that looks like an option and like a protocol
     let video = Path::new("/videos/-weird: name.mkv");
     let args = Extractor::args(
@@ -24,6 +29,7 @@ fn extraction_arguments() {
         &[
             (&srt, PathBuf::from("/cache/a-3.srt.part")),
             (&ass, PathBuf::from("/cache/a-4.ass.part")),
+            (&pgs, PathBuf::from("/cache/a-5.sup.part")),
         ],
     );
     let shown: Vec<String> = args

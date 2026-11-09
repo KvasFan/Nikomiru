@@ -2,8 +2,8 @@
 
 //! The subtitle loader: a thread that reads subtitle files with encoding
 //! detection (SUB-005, glibc iconv), extracts embedded text tracks with
-//! ffmpeg (SUB-007) and aligns cues with the audio (SUB-018), so the UI thread
-//! never waits. A new load cancels the extraction or alignment still running
+//! ffmpeg (SUB-007), reads graphic ones as text (SUB-028) and aligns cues
+//! with the audio (SUB-018), so the UI thread never waits. A new load cancels the extraction or alignment still running
 //! for an older one.
 
 use std::path::{Path, PathBuf};
@@ -20,10 +20,13 @@ use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::session::SubtitleSource;
 use nikomiru_ui::subtitles::{AlignRequest, Loaded, Request, Source};
 
+use crate::ocr::SharedEngine;
 use crate::platform::Iconv;
 
 /// The largest subtitle file read: the same bound as a downloaded one.
 const MAX_SUBTITLE_FILE: u64 = 64 << 20;
+/// The largest PGS stream read: a film's is tens of MiB.
+const MAX_PGS_STREAM: u64 = 1 << 30;
 
 type Done = Box<dyn FnOnce(Result<Loaded, String>) + Send>;
 type Aligned = Box<dyn FnOnce(Result<AlignResult, String>) + Send>;
@@ -58,8 +61,14 @@ impl std::fmt::Debug for Job {
 
 impl Loader {
     /// Starts the loader. `ffmpeg_setting` is `paths.ffmpeg`; extracted tracks
-    /// are cached in `cache_dir`. Errors are translated with `translator`.
-    pub fn start(translator: Translator, ffmpeg_setting: String, cache_dir: PathBuf) -> Self {
+    /// are cached in `cache_dir`; `ocr` reads graphic tracks. Errors are
+    /// translated with `translator`.
+    pub fn start(
+        translator: Translator,
+        ffmpeg_setting: String,
+        cache_dir: PathBuf,
+        ocr: SharedEngine,
+    ) -> Self {
         let (jobs, rx) = mpsc::channel::<Job>();
         let spawned = std::thread::Builder::new()
             .name("subtitles".into())
@@ -69,6 +78,7 @@ impl Loader {
                     search: Search::from_env(&ffmpeg_setting),
                     tools: None,
                     cache_dir,
+                    ocr,
                 };
                 for job in rx {
                     match job.task {
@@ -125,6 +135,7 @@ struct Worker {
     /// ffmpeg, probed the first time a track is extracted.
     tools: Option<Result<Tools, ToolsError>>,
     cache_dir: PathBuf,
+    ocr: SharedEngine,
 }
 
 /// The format of a subtitle file from its extension (SRT if unknown).
@@ -147,6 +158,9 @@ impl Worker {
                 loaded.encoding = None;
                 loaded
             }
+            Source::Read {
+                ff_index, codec, ..
+            } => self.read_graphic(request, *ff_index, codec, cancel)?,
             Source::Bitmap(_) => return Err(self.translator.tr("error-subtitle-bitmap", &[])),
         };
         if loaded.track.cues.is_empty() {
@@ -212,6 +226,85 @@ impl Worker {
         )
         .inspect_err(|e| tracing::warn!("fonts of {}: {e}", video.display()))
         .unwrap_or_default()
+    }
+
+    /// A PGS track as text (SUB-028): read once, then from the cache.
+    fn read_graphic(
+        &mut self,
+        request: &Request,
+        ff_index: i64,
+        codec: &str,
+        cancel: &Cancel,
+    ) -> Result<Loaded, String> {
+        use std::io::Read;
+        let translator = self.translator.clone();
+        let io = |e: std::io::Error| {
+            translator.tr(
+                "error-subtitle-read",
+                &[
+                    ("path", request.video.display().to_string()),
+                    ("reason", e.to_string()),
+                ],
+            )
+        };
+        let cached =
+            crate::graphic::cache_path(&self.cache_dir, &request.video, ff_index).map_err(io)?;
+        if !cached.is_file() {
+            if !self.ocr.available() {
+                return Err(self.translator.tr("error-subtitle-read-model", &[]));
+            }
+            let sup = self.extract(request, ff_index, codec, cancel)?;
+            let mut bytes = Vec::new();
+            std::fs::File::open(&sup)
+                .and_then(|f| f.take(MAX_PGS_STREAM).read_to_end(&mut bytes))
+                .map_err(io)?;
+            let cues = nikomiru_subs::pgs::parse(&bytes);
+            drop(bytes);
+            if cues.is_empty() {
+                return Err(self.translator.tr("error-subtitle-empty", &[]));
+            }
+            let engine = match crate::ocr::test_text() {
+                Some(_) => None,
+                None => Some(
+                    self.ocr
+                        .get()
+                        .map_err(|e| self.translator.error(&e as &dyn nikomiru_core::Localized))?,
+                ),
+            };
+            let read_line = |line: &nikomiru_subs::pgs::Picture| -> Result<String, String> {
+                let Some(engine) = &engine else {
+                    return Ok(crate::ocr::test_text().unwrap_or_default());
+                };
+                let picture = nikomiru_ocr::grey(line.width, line.height, line.grey.clone())
+                    .ok_or_else(|| "a line of no size".to_string())?;
+                engine.read(&picture).map_err(|e| e.to_string())
+            };
+            let started = std::time::Instant::now();
+            let threads = crate::graphic::threads();
+            let Some(read) =
+                crate::graphic::read(&cues, threads, cancel, &read_line).map_err(|reason| {
+                    self.translator
+                        .tr("error-subtitle-read-failed", &[("reason", reason)])
+                })?
+            else {
+                return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
+            };
+            tracing::info!(
+                "{} pictures of stream {ff_index} read as {} lines in {:?} on {threads} threads",
+                cues.len(),
+                read.len(),
+                started.elapsed()
+            );
+            let mut part = cached.clone().into_os_string();
+            part.push(".part");
+            let part = PathBuf::from(part);
+            std::fs::write(&part, nikomiru_subs::srt::write(&read))
+                .and_then(|()| std::fs::rename(&part, &cached))
+                .map_err(io)?;
+        }
+        let mut loaded = self.file(&cached, Some("UTF-8"))?;
+        loaded.encoding = None;
+        Ok(loaded)
     }
 
     /// The offset of the cues against the audio of the first 20 minutes.

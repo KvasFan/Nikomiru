@@ -20,6 +20,7 @@ pub mod cli;
 #[cfg(target_os = "linux")]
 pub mod dbus;
 pub mod dictionaries;
+pub mod graphic;
 #[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod hooker;

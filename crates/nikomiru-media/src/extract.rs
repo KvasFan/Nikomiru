@@ -23,14 +23,19 @@ pub struct Stream {
 }
 
 /// The format a stream is extracted to: ASS keeps its styles, WebVTT stays
-/// WebVTT, every other text codec becomes SRT.
+/// WebVTT, PGS is copied as it is to a `.sup` stream (SUB-028), every other
+/// text codec becomes SRT.
 pub fn target(codec: &str) -> (&'static str, &'static str) {
     match codec {
         "ass" | "ssa" => ("ass", "ass"),
         "webvtt" => ("webvtt", "vtt"),
+        PGS => ("sup", "sup"),
         _ => ("srt", "srt"),
     }
 }
+
+/// mpv's codec name of Blu-ray graphic subtitles (SUB-028).
+pub const PGS: &str = "hdmv_pgs_subtitle";
 
 /// Whether mpv's codec name is a text subtitle codec Nikomiru can draw.
 pub fn is_text_codec(codec: &str) -> bool {
@@ -94,7 +99,8 @@ impl Extractor {
             args.push("-map".into());
             args.push(format!("0:{}", stream.ff_index).into());
             args.push("-c:s".into());
-            args.push(muxer.into());
+            // pictures are copied: ffmpeg has no PGS encoder
+            args.push(if muxer == "sup" { "copy" } else { muxer }.into());
             args.push("-f".into());
             args.push(muxer.into());
             args.push(file_arg(out));

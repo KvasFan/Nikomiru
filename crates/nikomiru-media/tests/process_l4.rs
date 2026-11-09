@@ -140,3 +140,57 @@ fn embedded_tracks_in_one_pass_then_from_the_cache() {
     assert_eq!(again, files);
     assert_eq!(launches(), 1, "the second request comes from the cache");
 }
+
+// T-SUB-028: a PGS track copied out of a video as it is, and read back
+// with its times
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn a_pgs_track_is_copied_out_whole() {
+    use nikomiru_subs::pgs::{parse as parse_pgs, testing};
+    let ffmpeg = probe(&Search {
+        setting: String::new(),
+        env: None,
+        path: std::env::var_os("PATH"),
+        beside: None,
+    })
+    .unwrap()
+    .ffmpeg;
+    let dir = tempfile::tempdir().unwrap();
+    let mut sup = Vec::new();
+    testing::display_set(&mut sup, 1000, &[(100, 900, testing::block(60, 20))], 255);
+    testing::display_set(&mut sup, 2500, &[], 255);
+    testing::display_set(&mut sup, 4000, &[(100, 900, testing::block(80, 20))], 255);
+    testing::display_set(&mut sup, 5500, &[], 255);
+    let sup_path = dir.path().join("in.sup");
+    std::fs::write(&sup_path, &sup).unwrap();
+    let video = dir.path().join("with pgs.mkv");
+    // `-copyts`: ffmpeg would start the stream at 0
+    let muxed = std::process::Command::new(&ffmpeg)
+        .args(["-nostdin", "-loglevel", "error", "-copyts", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .arg("-i")
+        .arg(&sup_path)
+        .args(["-map", "0:v", "-map", "1:0", "-c", "copy"])
+        .arg(&video)
+        .status()
+        .unwrap();
+    assert!(muxed.success());
+    let extractor = Extractor {
+        ffmpeg,
+        cache_dir: dir.path().join("cache"),
+    };
+    let stream = Stream {
+        ff_index: 1,
+        codec: "hdmv_pgs_subtitle".into(),
+    };
+    let files = extractor
+        .extract(&video, &[stream], Duration::from_secs(12), &Cancel::new())
+        .unwrap();
+    assert!(files[0].1.extension().is_some_and(|e| e == "sup"));
+    let cues = parse_pgs(&std::fs::read(&files[0].1).unwrap());
+    let read: Vec<_> = cues
+        .iter()
+        .map(|c| (c.start_ms, c.end_ms, c.picture().map(|p| p.width)))
+        .collect();
+    assert_eq!(read, [(1000, 2500, Some(60)), (4000, 5500, Some(80))]);
+}
