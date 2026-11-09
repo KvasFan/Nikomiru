@@ -32,7 +32,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
       ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0, 2.8.0) ──► M18 Web pages (2.6.0)
       ──► M19 Setup assistant (2.17.0)
-      ──► the rest of the backlog
+      ──► M20 Knowing words (2.20.0) ──► M21 Comprehension score (2.21.0)
+      ──► M22 Watching by what you know (2.22.0) ──► M23 Condensed audio, gaps (2.23.0)
+      ──► M24 Videos from the web (2.24.0) ──► the rest of the backlog (D-51)
       (Ports, from spike S6, run alongside: D-16)
 ```
 
@@ -60,6 +62,11 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
+| M20 | Knowing words (D-51) | L | 2.20.0 | planned |
+| M21 | Choosing what to watch (D-51) | M | 2.21.0 | planned |
+| M22 | Watching by what you know (D-51) | M | 2.22.0 | planned |
+| M23 | Listening away from the screen (D-51) | S | 2.23.0 | planned |
+| M24 | Videos from the web (D-51) | M | 2.24.0 | planned |
 
 ---
 
@@ -689,6 +696,177 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 - [x] T-INS-001…T-INS-006 green.
 - [ ] The real pack read and the Japanese library downloaded once by hand.
 - [ ] **Release 2.17.0**.
+
+---
+
+## Gap analysis against Migaku and similar tools (2026-11-09)
+
+Asked by the maintainer: what Migaku and similar programs have that Nikomiru lacks. The programs compared are Migaku (its browser extension and apps), asbplayer, Language Reactor and SubMiner/Saitenka, as of 2026-11-09, from their store pages, their documentation and their sites. Nikomiru already has, among others:
+
+- the clickable subtitles and the popup;
+- the cards with audio and picture, and the review with FSRS;
+- the dual subtitles, the pause at the end of each line and the alignment with the audio;
+- books, manga and web pages.
+
+What it lacks is mostly one thing: **it does not know which words the learner knows**. Migaku's core is built on that, and asbplayer and SubMiner added it:
+
+- word statuses, and known words taken from Anki;
+- words coloured in the subtitles, and lines with one new word (i+1);
+- a comprehension score per episode;
+- playback that shows or pauses only on lines with new words.
+
+Nikomiru only underlines the words already made into cards (LKP-061). M20…M24 bring these in order of value; the AI and speech features stay excluded by §1.3 of the specification until the maintainer decides.
+
+| Feature | Who has it | Nikomiru | Where |
+|---|---|---|---|
+| Word statuses (unknown, learning, known, ignored) | Migaku, asbplayer, Language Reactor (saved words) | no: only cards made | M20 |
+| Known words from Anki decks, by card interval | Migaku, asbplayer, SubMiner | no | M20 |
+| Words coloured by status in the subtitles; i+1 lines | Migaku, asbplayer, SubMiner, Saitenka | underline of mined words only | M20 |
+| Word lists imported and exported | Migaku, asbplayer | no | M20 |
+| Furigana only over words not known | Migaku | all or none (LKP-051) | M20 |
+| Comprehension score of an episode, a series, a book | Migaku | no | M21 |
+| Word browser of the current media; known words over time | asbplayer, Migaku | no | M21 |
+| Subtitles shown only on lines with a new word; pause only there | Migaku | blur/hidden for every line, pause at every line | M22 |
+| Subtitle list filtered to lines with new words | Migaku | text search only | M22 |
+| Pitch accent as colours on the words of a subtitle | Migaku | in the popup only (LKP-042) | M22 |
+| Condensed audio of an episode for listening away from the screen | subs2srs, Immersion Kit tools | no | M23 |
+| Gaps without dialogue sped through | mpv's sub-skip, Language Reactor | no | M23 |
+| Videos from the web (YouTube) with their subtitles | Migaku, asbplayer, Language Reactor (in the browser) | local files and media servers only | M24 |
+| Machine translation of a line | Migaku, Language Reactor | no | decision |
+| AI explanation of a line | Migaku | no | decision |
+| Text to speech for words without a recording | Migaku | no | decision |
+| Subtitles made from the speech of a video without any | Migaku (AI subtitles), community Whisper tools | no | decision |
+| Netflix and other DRM streaming in the browser | Migaku, asbplayer, Language Reactor | no | excluded (DRM; Nikomiru is not a browser extension) |
+
+Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/detail/lkhiljgmbeecmljiogckofcalncmfnfo), [asbplayer's annotation guide](https://docs.asbplayer.dev/docs/guides/annotation), [Language Reactor](https://languagereactor.com), [SubMiner's subtitle annotations](https://subminer.pages.dev/subtitle-annotations).
+
+---
+
+## M20 — Knowing words → 2.20.0
+
+**Goal**: Nikomiru knows the words the learner knows, and shows it where words are read, as Migaku and asbplayer do.
+
+**Deliverables**
+
+- Word statuses: unknown, learning, known, ignored, by (expression, reading), in `library.redb`.
+  - Set from the popup (buttons and keys) and from the subtitle list.
+  - A word made into a card (ANK-039) or into a review card (REV-002) is learning until it is marked otherwise.
+  - Kept in the backup and the WebDAV sync (BAK-005), merged by the newest change.
+- Known words from Anki: the decks and the field chosen in Settings → Anki.
+  - A card whose interval is at least 21 days makes its word known; any other card makes it learning; suspended ones are left out.
+  - Read through AnkiConnect (`findCards`, `cardsInfo`) at start and on request; a word marked by hand wins.
+- Words coloured by status in the subtitles, the subtitle list, books and web pages. This generalises LKP-061.
+  - The colours are chosen in the settings, and the colouring can be turned off.
+  - A line with exactly one word not known (i+1) is marked.
+  - It uses the segmentation of LKP-060.
+- Word lists imported and exported: one word per line, or CSV with its status, to move from Migaku, asbplayer or a deck.
+- Furigana over words not known only, a third mode of LKP-051.
+
+**Notes**: own code and storage, no new dependency. The ignored status keeps names and noise out of the scores.
+
+**Exit criteria**
+
+- [ ] Requirements in SPECIFICATION.md, with tests for each (statuses, Anki rules against the fake AnkiConnect, colouring in L6, lists).
+- [ ] **Release 2.20.0**.
+
+---
+
+## M21 — Choosing what to watch → 2.21.0
+
+**Goal**: before playing, how much of an episode, a series or a book the learner will understand.
+
+**Deliverables**
+
+- The comprehension score: the share of word tokens known and the share of lines with no unknown word.
+  - Shown on the library's cards, in the episode list and on the books page.
+  - Computed in the background from the subtitles that would load (SUB-008) and cached by their key; recomputed when the statuses change.
+- A word browser of the current episode or book: its words by how often they occur, with their status, frequency and whether a card exists; several marked at once.
+- Word statistics in the Statistics tab: known words over time, and new words met per episode.
+
+**Exit criteria**
+
+- [ ] Requirements and tests; the score checked by hand on a real episode against a count made by hand.
+- [ ] **Release 2.21.0**.
+
+---
+
+## M22 — Watching by what you know → 2.22.0
+
+**Goal**: the subtitles help only where help is needed.
+
+**Deliverables**
+
+- A mode of the main subtitle (SUB-014): shown only on lines with a word not known, hidden or blurred on the others.
+- The pause at the end of a line (SUB-026) only after lines with a word not known.
+- The subtitle list (SUB-015) filtered to the lines with a word not known, or to i+1 lines.
+- Pitch accent as colours on the words of the subtitles, from the pitch dictionaries installed (LKP-042), off by default.
+  - The colours follow the usual convention: heiban blue, atamadaka red, nakadaka orange, odaka green.
+
+**Exit criteria**
+
+- [ ] Requirements and tests (L6 for the modes).
+- [ ] **Release 2.22.0**.
+
+---
+
+## M23 — Listening away from the screen → 2.23.0
+
+**Goal**: an episode's speech for passive listening, and less time spent where nobody speaks.
+
+**Deliverables**
+
+- Condensed audio: the lines of an episode only, written to an Opus or MP3 file by ffmpeg.
+  - Each line keeps the padding of ANK-032; lines closer than a second are merged.
+  - One chapter per line, so a player can step through it.
+  - From the episode's menu and for a whole series.
+- Gaps without dialogue longer than a few seconds sped through, or jumped, as mpv's sub-skip does (`[player] gap_speed`, off by default). The sound and the subtitles come back a moment before the next line.
+
+**Notes**: ffmpeg only, no new dependency.
+
+**Exit criteria**
+
+- [ ] Requirements and tests (L4 for the audio, L5/L6 for the gaps).
+- [ ] **Release 2.23.0**.
+
+---
+
+## M24 — Videos from the web → 2.24.0
+
+**Goal**: a YouTube video or another site's video watched as a file is, with clickable subtitles.
+
+**Deliverables**
+
+- A URL opened from the Open dialog, by drag and drop or on the command line, played through mpv's yt-dlp hook.
+- Its Japanese subtitles, uploaded or automatic, fetched by yt-dlp as text tracks, so they are clicked and mined as local ones are.
+- Cards from it: the clip's audio and picture taken from the stream by ffmpeg.
+- The source link of the card (ANK-050) reopens the URL at its time.
+
+**Notes**: yt-dlp (Unlicense) is the user's own executable, found as ffmpeg is (EXT-001), never shipped. The sites' terms of use are the user's to respect. Nothing goes to the network until a URL is opened (PRV-001).
+
+**Exit criteria**
+
+- [ ] Requirements and tests against a local HTTP server and a fake yt-dlp.
+- [ ] One real YouTube video with Japanese subtitles watched and mined by hand.
+- [ ] **Release 2.24.0**.
+
+---
+
+## For the maintainer to decide (§1.3 of the specification)
+
+These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:
+
+| Feature | How it could be done | What it costs |
+|---|---|---|
+| Machine translation of a line, on request and as a card field | DeepL's API with the user's key, or a LibreTranslate server of the user's | Text sent to a third party (PRV-001); terms of each service |
+| AI explanation of a line's grammar and meaning | A language model through the user's API key, or a local one | Text sent to a provider, or a model of several GB |
+| Text to speech for words without a recording | Piper (MIT) with its voices, or the system's speech-dispatcher | Voices of 20–100 MB each, some with licences that need checking |
+| Subtitles made from the speech of a video without any | whisper.cpp (MIT) with OpenAI's Whisper models (MIT), fetched on request as the manga model is (MNG-004) | Models of 75 MB to 3 GB; slow without a GPU |
+
+Also still open from earlier releases:
+
+- graphic subtitles read progressively from where the video is, so a first reading does not wait for the whole track;
+- external `.idx`/`.sub` pairs;
+- DVB subtitles.
 
 ---
 
