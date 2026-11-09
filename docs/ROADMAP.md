@@ -62,7 +62,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
-| M20 | Knowing words (D-51, D-52) | L | **2.20.0**, 2.21.0 | first part released: statuses by hand, colours, i+1 |
+| M20 | Knowing words (D-51, D-52) | L | **2.20.0**, **2.21.0** | released; colours in books and web pages open |
 | M21 | Choosing what to watch (D-51) | M | 2.22.0 | planned |
 | M22 | Watching by what you know (D-51) | M | 2.23.0 | planned |
 | M23 | Listening away from the screen (D-51) | S | 2.24.0 | planned |
@@ -767,13 +767,14 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Status as of 2026-11-09**
 
 - Done for 2.20.0 (KNW-001…KNW-004, D-52): the statuses set from the popup, kept and synced; the words coloured in the subtitles and their list; i+1 lines; readings over unknown words only.
-- Next, for 2.21.0: known words from Anki; word lists imported and exported; the colours in books and web pages.
+- Done for 2.21.0 (KNW-005, KNW-006): known words from the cards of Anki's decks, read at start and on request; word lists imported and exported.
+- Open: the colours in books and web pages; a real Anki collection read by hand.
 
 **Exit criteria**
 
 - [ ] Requirements in SPECIFICATION.md, with tests for each (statuses, Anki rules against the fake AnkiConnect, colouring in L6, lists).
 - [x] **Release 2.20.0** (the first part).
-- [ ] **Release 2.21.0**.
+- [x] **Release 2.21.0**.
 
 ---
 

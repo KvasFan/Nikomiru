@@ -145,6 +145,8 @@ pub enum Inbound {
     LapisDone(Result<crate::mining::LapisMade, String>),
     /// The cards kept for later (ANK-044).
     Later(Vec<crate::mining::LaterCard>),
+    /// The words known, read from Anki (KNW-005).
+    KnownWords(crate::mining::KnownWords),
     /// What the setup worker tells (INS-002…INS-004).
     Setup(crate::setup::SetupEvent),
     /// They were sent, or some of them.
@@ -266,6 +268,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::OptionsApplied(_) => "OptionsApplied",
             Inbound::Aligned { .. } => "Aligned",
             Inbound::FileWritten { .. } => "FileWritten",
+            Inbound::KnownWords(_) => "KnownWords",
             Inbound::Library(_) => "Library",
             Inbound::WordAudioListed { .. } => "WordAudioListed",
             Inbound::WordAudioPlayed(_) => "WordAudioPlayed",
@@ -381,6 +384,11 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// "Read them from Anki now" (KNW-005).
+    KnownFromAnki,
+    /// "Import a word list…" and "Export the words…" (KNW-006).
+    WordsImport,
+    WordsExport,
     /// A status chosen for the word of an entry (KNW-001).
     WordStatus {
         level: usize,
@@ -834,6 +842,10 @@ impl Ui {
                 self.session.later_listed(cards);
                 true
             }
+            Inbound::KnownWords(result) => {
+                self.session.known_words_read(result);
+                true
+            }
             Inbound::Setup(event) => {
                 self.session.setup_event(event);
                 true
@@ -905,6 +917,8 @@ impl Ui {
                     Dialog::Audiobook => self.session.open(&path),
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
+                    Dialog::WordsImport => self.session.words_import(&path),
+                    Dialog::WordsExport => self.session.words_export(&path),
                 }
                 true
             }
@@ -1313,6 +1327,10 @@ impl Ui {
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
             Command::HideFirstSteps => self.session.hide_first_steps(),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
+            // KNW-005, KNW-006
+            Command::KnownFromAnki => s.known_from_anki(true),
+            Command::WordsImport => self.view.dialog = Some(Dialog::WordsImport),
+            Command::WordsExport => self.view.dialog = Some(Dialog::WordsExport),
             Command::StatsLoad => s.stats_load(),
             Command::Review(job) => s.review(job),
             Command::ReviewReveal => s.review_reveal(),
@@ -1492,6 +1510,13 @@ impl Ui {
                     .session
                     .anki()
                     .send_later(Box::new(move |sent| waker.wake(Inbound::LaterSent(sent)))),
+                crate::mining::AnkiJob::KnownWords(decks, field) => {
+                    self.session.anki().known_words(
+                        decks,
+                        field,
+                        Box::new(move |r| waker.wake(Inbound::KnownWords(r))),
+                    )
+                }
                 crate::mining::AnkiJob::ForgetLater(id) => self
                     .session
                     .anki()

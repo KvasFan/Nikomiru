@@ -13,6 +13,7 @@
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
 //! `{"cmd":"word_status","level":0,"entry":0,"status":"known"}`,
+//! `{"cmd":"words","action":"import"|"export"|"anki","path":…}`,
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
 //! `{"cmd":"align"}`, `{"cmd":"move_subtitles"}`, `{"cmd":"setup","action":"open"|"close"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
@@ -143,6 +144,11 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::word_status(index("level")?, index("entry")?, text(command, "status")?)
                 .map(|()| Value::Null)
         }
+        Some("words") => harness::words(
+            text(command, "action")?,
+            command["path"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),

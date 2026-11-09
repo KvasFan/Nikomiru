@@ -419,9 +419,25 @@ pub struct LapisMade {
     pub note_type: String,
 }
 
+/// The words of the decks chosen, with what their cards say (KNW-005).
+pub type KnownWords =
+    Result<std::collections::HashMap<String, nikomiru_anki::known::Known>, String>;
+
 /// Mining, away from the UI thread: the `anki` worker of the app. `done`
 /// may run on any thread.
 pub trait AnkiService: Send {
+    /// The words of the cards of `decks`, from their field `field`
+    /// (KNW-005).
+    fn known_words(
+        &self,
+        decks: Vec<String>,
+        field: String,
+        done: Box<dyn FnOnce(KnownWords) + Send>,
+    ) {
+        let _ = (decks, field);
+        done(Err(String::new()));
+    }
+
     /// Which entries have a card already: `None` when Anki cannot be asked
     /// (not on this computer, or paused after a failure).
     fn check(&self, request: CheckRequest, done: Box<dyn FnOnce(Option<Vec<bool>>) + Send>);
@@ -540,6 +556,8 @@ pub enum AnkiJob {
     SendLater,
     /// Remove the one with this id.
     ForgetLater(String),
+    /// Read the words known from these decks and field (KNW-005).
+    KnownWords(Vec<String>, String),
 }
 
 /// The settings page's state in the session (ANK-006, ANK-011).

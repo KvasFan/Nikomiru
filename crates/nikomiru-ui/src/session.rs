@@ -362,6 +362,9 @@ pub struct Session {
     cards_made: bool,
     screenshots: Vec<String>,
     anki_jobs: Vec<crate::mining::AnkiJob>,
+    /// The known words were asked of Anki by the user, who hears how it
+    /// went (KNW-005).
+    known_asked: bool,
     /// The last card made since Nikomiru started (ANK-030).
     last_card: Option<crate::mining::LastCard>,
     /// A link whose video cannot be found: the view offers to locate it
@@ -662,7 +665,22 @@ impl Session {
                 }
                 Err(e) => tracing::warn!("reading the words' statuses: {e}"),
             }
+            // KNW-005
+            match library.anki_words() {
+                Ok(anki) => words.set_anki(anki),
+                Err(e) => tracing::warn!("reading the words from Anki: {e}"),
+            }
         }
+        // KNW-005: at start, the known words of the decks chosen
+        let c = &services.config.subtitles;
+        let anki_jobs = if c.word_colors && !c.known_decks.is_empty() {
+            vec![crate::mining::AnkiJob::KnownWords(
+                c.known_decks.clone(),
+                c.known_field.clone(),
+            )]
+        } else {
+            Vec::new()
+        };
         Self {
             services,
             bindings,
@@ -695,7 +713,8 @@ impl Session {
             dictionaries_installed,
             cards_made,
             screenshots: Vec::new(),
-            anki_jobs: Vec::new(),
+            anki_jobs,
+            known_asked: false,
             last_card: None,
             missing_link: None,
             popups_covered: false,
@@ -5970,6 +5989,138 @@ impl Session {
     /// What the learner knows of a word (KNW-001), for the popup.
     pub fn word_status(&self, expression: &str, reading: &str) -> crate::words::WordStatus {
         self.words.status(expression, reading)
+    }
+
+    /// Asks Anki for the words its cards know (KNW-005); `asked` by the
+    /// user, who then hears how it went.
+    pub fn known_from_anki(&mut self, asked: bool) {
+        let c = &self.services.config.subtitles;
+        if c.known_decks.is_empty() {
+            if asked {
+                self.toasts.push(self.tr("toast-known-no-decks", &[]));
+            }
+            return;
+        }
+        let job = crate::mining::AnkiJob::KnownWords(c.known_decks.clone(), c.known_field.clone());
+        self.known_asked = asked;
+        self.anki_jobs.push(job);
+    }
+
+    /// The words read from Anki (KNW-005): they take the place of the last
+    /// ones, and are kept for when Anki is closed.
+    pub fn known_words_read(&mut self, result: crate::mining::KnownWords) {
+        use crate::words::WordStatus;
+        use nikomiru_anki::known::Known;
+        let asked = std::mem::take(&mut self.known_asked);
+        let words = match result {
+            Ok(words) => words,
+            Err(reason) => {
+                tracing::warn!("the known words from Anki: {reason}");
+                if asked {
+                    self.toasts
+                        .push(self.tr("toast-known-failed", &[("reason", reason)]));
+                }
+                return;
+            }
+        };
+        let words: std::collections::HashMap<String, WordStatus> = words
+            .into_iter()
+            .map(|(w, k)| {
+                let status = match k {
+                    Known::Known => WordStatus::Known,
+                    Known::Learning => WordStatus::Learning,
+                };
+                (w, status)
+            })
+            .collect();
+        let known = words.values().filter(|s| **s == WordStatus::Known).count();
+        let learning = words.len() - known;
+        if asked || !words.is_empty() {
+            let args = [
+                ("known", known.to_string()),
+                ("learning", learning.to_string()),
+            ];
+            self.toasts.push(self.tr("toast-known-read", &args));
+        }
+        self.words.set_anki(words.clone());
+        if let Some(w) = &self.writer {
+            w.run(move |lib| {
+                if let Err(e) = lib.set_anki_words(&words) {
+                    tracing::warn!("saving the words from Anki: {e}");
+                }
+            });
+        }
+    }
+
+    /// A word list chosen (KNW-006): read here, since it is small and asked
+    /// for, and its statuses saved away from the UI thread.
+    pub fn words_import(&mut self, path: &std::path::Path) {
+        use std::io::Read;
+        let mut text = String::new();
+        let read = std::fs::File::open(path).and_then(|f| {
+            f.take(nikomiru_library::words::MAX_LIST_BYTES)
+                .read_to_string(&mut text)
+        });
+        if let Err(e) = read {
+            let reason = e.to_string();
+            self.toasts
+                .push(self.tr("toast-words-import-failed", &[("reason", reason)]));
+            return;
+        }
+        let list = nikomiru_library::words::parse_list(&text);
+        let changed_at = self.now_ms();
+        for (word, reading, status) in &list {
+            self.words.set_status(word, reading, *status);
+        }
+        let count = list.len().to_string();
+        if let Some(w) = &self.writer {
+            let marks: Vec<_> = list
+                .into_iter()
+                .map(|(word, reading, status)| {
+                    let mark = nikomiru_library::words::WordMark { status, changed_at };
+                    (word, reading, mark)
+                })
+                .collect();
+            w.run(move |lib| {
+                if let Err(e) = lib.set_word_statuses(&marks) {
+                    tracing::warn!("saving a word list: {e}");
+                }
+            });
+        }
+        self.toasts
+            .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// The words' statuses written to `path` (KNW-006), once the writes
+    /// before it are done.
+    pub fn words_export(&mut self, path: &std::path::Path) {
+        let Some(library) = self.services.library.clone() else {
+            return;
+        };
+        if let Some(w) = &self.writer {
+            w.wait();
+        }
+        let written = library
+            .word_statuses()
+            .map_err(|e| e.to_string())
+            .and_then(|marks| {
+                let list = nikomiru_library::words::write_list(&marks);
+                std::fs::write(path, list)
+                    .map(|()| marks.len())
+                    .map_err(|e| e.to_string())
+            });
+        match written {
+            Ok(count) => {
+                let args = [
+                    ("count", count.to_string()),
+                    ("path", path.display().to_string()),
+                ];
+                self.toasts.push(self.tr("toast-words-exported", &args));
+            }
+            Err(reason) => self
+                .toasts
+                .push(self.tr("toast-words-export-failed", &[("reason", reason)])),
+        }
     }
 
     /// The words are coloured by status (KNW-002): the popup offers them.

@@ -903,9 +903,9 @@ Asked by the maintainer: what Fushi's welcome wizard and recommended pack give, 
 | INS-005 | **Cards**, as Fushi's wizard asks: "Anki" or "Nikomiru's review" (REV-001). With Anki, AnkiConnect is asked at once: when it answers, an existing Lapis note type and its deck are chosen, or "Create Lapis deck" (ANK-011) is offered, in one click; when it does not, the steps to install Anki and AnkiConnect (add-on 2055492159) are shown, with "Try again", and "Anki, later" (ANK-044) is offered so that cards can be made meanwhile. The choice is saved as Settings → Anki saves it. |
 | INS-006 | **Progress**: one row per item, with what is done of its size; "Stop" ends the downloads and keeps what is downloaded for the next "Install"; downloads and imports go on while other pages are shown; an item that fails says why and is tried again by the next "Install"; the assistant can be closed (also with Esc) and opened again without losing what is under way. |
 
-### 6.22 Words known (KNW) — 2.20.0 (D-51, D-52)
+### 6.22 Words known (KNW) — 2.20.0, 2.21.0 (D-51, D-52)
 
-What the learner knows of each word, as Migaku and asbplayer keep it (M20 of the roadmap): the first part, by hand from the popup. Known words taken from Anki and word lists follow in 2.21.0.
+What the learner knows of each word, as Migaku and asbplayer keep it (M20 of the roadmap): by hand from the popup (2.20.0), from the cards of Anki's decks and from word lists (2.21.0).
 
 | ID | Requirement |
 |---|---|
@@ -913,6 +913,8 @@ What the learner knows of each word, as Migaku and asbplayer keep it (M20 of the
 | KNW-002 | **Words coloured by status** (`[subtitles] word_colors`, default off; Settings → Subtitles): the words of the subtitles found by the segmentation (LKP-060) are underlined in blue when not known and in yellow while being learned; known and ignored words are not marked. In the subtitle list (SUB-015) the same. The colours take the place of LKP-061's underline, which stays when they are off. Turned on or off without a restart. Books and web pages are not coloured yet. |
 | KNW-003 | **Lines with one new word (i+1)**: while the words are coloured, a line whose words not known are all one word (counted once by headword and reading) is marked: `+1` under its time in the subtitle list, and in the state of the harness. |
 | KNW-004 | **Readings only over the words not known** (`[subtitles] furigana_unknown_only`, default off, with LKP-051's furigana on): the readings of known and ignored words are left out; learning words keep theirs. |
+| KNW-005 | **Known words from Anki** (2.21.0): the decks named in `[subtitles] known_decks` (Settings → Subtitles, separated by commas) and the field `known_field` (default `Expression`) that holds the word. Through AnkiConnect, `findCards` on those decks (at most 200,000 cards), then `cardsInfo` 500 at a time: a card whose interval is at least 21 days (Anki's mature) makes its word known, a card studied but not mature makes it learning, new and suspended cards say nothing; a word with several cards takes the most they say. The word is the field's text without HTML, without the readings of `{furigana-plain}` (`漢字[かんじ]`) and without spaces. They are read at start while the words are coloured and decks are named, and on "Read them from Anki now"; the last ones read are kept in the `anki_words` table, not backed up nor synced, for when Anki is closed. A word is matched by its headword, whatever its reading. A status set by hand or by a list wins (KNW-001, KNW-006). Only the user's own request says when Anki could not be asked; at start it is logged. |
+| KNW-006 | **Word lists** (2.21.0), from Settings → Subtitles: "Import a word list…" reads a file of at most 16 MiB whose lines are a word, known with any reading, or `word,reading,status` (a comma or a tab between; the status `unknown`, `learning`, `known` or `ignored`, in any case, `new` for unknown); a heading line, empty lines, lines starting with `#` and lines with another status are skipped. Every word read is set at once, as by hand, in one transaction. A word set without a reading counts for each reading that has none of its own. "Export the words…" writes the statuses set, once the writes before it are done, as `expression,reading,status` lines under that heading, sorted, which the import reads back the same. |
 
 ## 7. Non-functional requirements (NFR)
 
@@ -955,6 +957,7 @@ What the learner knows of each word, as Migaku and asbplayer keep it (M20 of the
 | `study_segments` | `u128` uuid | media uid, start, end, `date_key`, hour, duration, characters, lookups, cards |
 | `mined_cards` | `u64` note id | expression, reading, sentence, video uid, start, end, `source_id`, date (a new table: the schema version does not change, [ADR 0007](adr/0007-mining-to-anki.md)) |
 | `word_status` | `&str` headword `\n` reading | status (unknown, learning, known, ignored) and when it was set (KNW-001; a new table: the schema version does not change) |
+| `anki_words` | `&str` headword | known or learning, as Anki's cards last said (KNW-005; replaced as a whole at each reading, neither backed up nor synced) |
 | `review_log` | `u128`: time (ms) in the high 64 bits, card id in the low | card, grade, phase before, days since the answer before, stability after (REV-007; a new table) |
 | `review_cards` | `u64` id, bit 62 set | expression, reading, sentence and the word's place, meanings as text, audio and picture files, video uid, title, start, end, date, FSRS memory (REV-002; a new table: the schema version does not change) |
 | `dictionaries` | `&str` id | title, revision, type, order, enabled, language, `display_name`, collapse state, user CSS, counts |
@@ -1006,6 +1009,8 @@ read_graphic = true         # read a PGS or VobSub track chosen by itself as tex
 mark_mined = true           # underline the words already made into cards (LKP-061)
 word_colors = false         # words coloured by what is known of them, i+1 lines (KNW-002, KNW-003)
 furigana_unknown_only = false # readings only over the words not known (KNW-004)
+known_decks = []            # Anki decks whose cards are known words (KNW-005)
+known_field = "Expression"  # the field of those cards with the word (KNW-005)
 
 [lookup]
 max_results = 10

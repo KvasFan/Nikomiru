@@ -74,6 +74,10 @@ pub struct StoredNote {
     pub fields: Vec<(String, String)>,
     /// Its tags.
     pub tags: Vec<String>,
+    /// Its one card's interval in days: 0 while new (KNW-005).
+    pub interval: i64,
+    /// Its card is suspended.
+    pub suspended: bool,
 }
 
 /// What the fake Anki holds.
@@ -538,9 +542,48 @@ impl Collection {
                         .as_array()
                         .map(|t| t.iter().map(text).collect())
                         .unwrap_or_default(),
+                    interval: 0,
+                    suspended: false,
                 });
                 Ok(json!(id))
             }
+            // KNW-005: one card per note, with the note's id plus one
+            "findCards" => Ok(json!(
+                self.find(&text(&p["query"]))
+                    .into_iter()
+                    .map(|id| id + 1)
+                    .collect::<Vec<_>>()
+            )),
+            "cardsInfo" => Ok(Value::Array(
+                p["cards"]
+                    .as_array()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| {
+                                let n = self.notes.iter().find(|n| Some(n.id + 1) == id.as_u64())?;
+                                let fields: serde_json::Map<String, Value> = n
+                                    .fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(order, (k, v))| {
+                                        (k.clone(), json!({ "value": v, "order": order }))
+                                    })
+                                    .collect();
+                                Some(json!({
+                                    "cardId": n.id + 1,
+                                    "note": n.id,
+                                    "deckName": n.deck,
+                                    "modelName": n.model,
+                                    "fields": fields,
+                                    "interval": n.interval,
+                                    "type": if n.interval > 0 { 2 } else { 0 },
+                                    "queue": if n.suspended { -1 } else if n.interval > 0 { 2 } else { 0 },
+                                }))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            )),
             "findNotes" => Ok(json!(self.find(&text(&p["query"])))),
             "notesInfo" => Ok(Value::Array(
                 p["notes"]

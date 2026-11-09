@@ -447,3 +447,47 @@ fn notes_are_read_updated_and_tagged() {
         Err(AnkiError::Anki(m)) if m == "Note was not found: 42"
     ));
 }
+
+// T-KNW-005: the words of a deck's cards, by their interval; new and
+// suspended cards and other decks say nothing; a word in two cards takes
+// the most
+#[test]
+fn the_words_known_come_from_the_cards_of_the_decks_chosen() {
+    use nikomiru_anki::known::Known;
+    let fake = FakeAnki::start().unwrap();
+    let c = client(&fake);
+    fake.collection().decks.push("Mining".into());
+    let add = |front: &str, deck: &str| {
+        let note = Note {
+            deck: deck.into(),
+            ..lapis_note(front)
+        };
+        c.add_note(&note, true).unwrap()
+    };
+    let ids = [
+        add("<b>食べる</b>", "Mining"),
+        add("飲む", "Mining"),
+        add("見る", "Mining"),
+        add("寝る", "Mining"),
+        add("飲む", "Mining"),
+        add("走る", "Default"),
+    ];
+    {
+        let mut collection = fake.collection();
+        let mut set = |id: u64, interval: i64, suspended: bool| {
+            let n = collection.notes.iter_mut().find(|n| n.id == id).unwrap();
+            n.interval = interval;
+            n.suspended = suspended;
+        };
+        set(ids[0], 30, false);
+        set(ids[1], 4, false);
+        set(ids[3], 50, true);
+        set(ids[4], 25, false);
+        set(ids[5], 40, false);
+    }
+    let words = c.known_words(&["Mining".into()], "Front").unwrap();
+    assert_eq!(words.len(), 2, "{words:?}");
+    assert_eq!(words["食べる"], Known::Known);
+    assert_eq!(words["飲む"], Known::Known, "the mature card of the two");
+    assert!(c.known_words(&[], "Front").unwrap().is_empty());
+}

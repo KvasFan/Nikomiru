@@ -74,6 +74,10 @@ pub enum Dialog {
     BackupSave,
     /// A backup to restore (BAK-003).
     BackupOpen,
+    /// A word list to import (KNW-006).
+    WordsImport,
+    /// Where to write the words' statuses (KNW-006).
+    WordsExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -169,6 +173,14 @@ impl FileDialog {
                 tr("backup-restore"),
                 vec![(tr("backup-filter"), vec!["*.nikomiru-backup"]), all],
             ),
+            Dialog::WordsImport => (
+                tr("words-import"),
+                vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
+            ),
+            Dialog::WordsExport => (
+                tr("words-export"),
+                vec![(tr("words-filter"), vec!["*.csv"]), all],
+            ),
         };
         Self {
             dialog,
@@ -178,6 +190,7 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),
                 _ => None,
             },
             folder: match dialog {

@@ -4,6 +4,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-11-09
+
+The words you know, from Anki.
+
+### Added
+
+- Known words from your Anki decks, as Migaku and asbplayer take them (KNW-005). Name the decks in Settings → Subtitles, with the field that holds the word (`Expression` by default):
+  - a word whose card has an interval of 21 days or more is known, one whose card was studied is being learned;
+  - they are read each time Nikomiru starts with the colours on, or with "Read them from Anki now", and kept for when Anki is closed;
+  - a status you set in a popup wins.
+- Word lists imported and exported (KNW-006):
+  - a list has one word per line, or `word,reading,status` lines;
+  - the export writes your statuses in the second form, which reads back the same.
+
 ## [2.20.0] - 2026-11-09
 
 Words you know, and words you don't.

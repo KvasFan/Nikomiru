@@ -606,6 +606,28 @@ pub fn word_status(level: usize, entry: usize, status: &str) -> Result<(), Strin
     })
 }
 
+/// A word list imported from `path` or the words exported to it, as from
+/// their file dialogs, or the known words read from Anki now (`anki`)
+/// (KNW-005, KNW-006).
+pub fn words(action: &str, path: Option<String>) -> Result<(), String> {
+    use crate::view::Dialog;
+    let action = action.to_string();
+    call(move |ui| {
+        let dialog = match action.as_str() {
+            "anki" => {
+                ui.run(Command::KnownFromAnki);
+                return Ok(());
+            }
+            "import" => Dialog::WordsImport,
+            "export" => Dialog::WordsExport,
+            other => return Err(format!("no words action {other}")),
+        };
+        let path = PathBuf::from(path.ok_or("missing \"path\"")?);
+        ui.handle(Inbound::Chosen { dialog, path });
+        Ok(())
+    })?
+}
+
 /// ♪ of an entry (`action` `play`), its right click (`menu`), or an audio
 /// of the menu (`url`) (AUD-004).
 pub fn word_audio(
