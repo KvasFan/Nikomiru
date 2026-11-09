@@ -4,6 +4,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-11-09
+
+DVD subtitles you can click.
+
+### Added
+
+- DVD image subtitles (VobSub) read as text on this computer, as Blu-ray ones are since 2.18.0, so their words can be clicked, listed and made into cards (SUB-029, D-50):
+  - "read as text" beside the track in the subtitle menu, and a Japanese VobSub track chosen by itself is read when the model is installed (`[subtitles] read_graphic`);
+  - the track's own colours are used, from its `.idx` header.
+
 ## [2.18.1] - 2026-11-09
 
 ### Fixed

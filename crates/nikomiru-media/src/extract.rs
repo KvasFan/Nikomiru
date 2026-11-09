@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use crate::process::{Cancel, Job, JobError, file_arg, run};
+use crate::process::{Cancel, Job, JobError, file_arg, output, run};
 
 /// A text subtitle stream of a video file, as mpv lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,19 +23,92 @@ pub struct Stream {
 }
 
 /// The format a stream is extracted to: ASS keeps its styles, WebVTT stays
-/// WebVTT, PGS is copied as it is to a `.sup` stream (SUB-028), every other
+/// WebVTT, PGS is copied as it is to a `.sup` stream (SUB-028), VobSub to
+/// an MPEG program stream, as a `.sub` file has it (SUB-029), every other
 /// text codec becomes SRT.
 pub fn target(codec: &str) -> (&'static str, &'static str) {
     match codec {
         "ass" | "ssa" => ("ass", "ass"),
         "webvtt" => ("webvtt", "vtt"),
         PGS => ("sup", "sup"),
+        DVD => ("mpeg", "sub"),
         _ => ("srt", "srt"),
     }
 }
 
 /// mpv's codec name of Blu-ray graphic subtitles (SUB-028).
 pub const PGS: &str = "hdmv_pgs_subtitle";
+
+/// mpv's codec name of DVD graphic subtitles, VobSub (SUB-029).
+pub const DVD: &str = "dvd_subtitle";
+
+/// Whether a graphic subtitle codec can be read as text (SUB-028, SUB-029).
+pub fn is_readable_graphic(codec: &str) -> bool {
+    matches!(codec, PGS | DVD)
+}
+
+/// The ffprobe arguments that print the private data of stream `ff_index`
+/// (a VobSub track's `.idx` header, with its palette) as JSON.
+pub fn private_data_args(video: &Path, ff_index: i64) -> Vec<OsString> {
+    let mut args: Vec<OsString> = ["-v", "error", "-select_streams"]
+        .iter()
+        .map(OsString::from)
+        .collect();
+    args.push(ff_index.to_string().into());
+    for a in [
+        "-show_entries",
+        "stream=extradata",
+        "-show_data",
+        "-of",
+        "json",
+    ] {
+        args.push(a.into());
+    }
+    args.push(file_arg(video));
+    args
+}
+
+/// The private data in what ffprobe printed, from its hex dump; `None`
+/// when there is none.
+pub fn parse_private_data(json: &str) -> Option<Vec<u8>> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let dump = value["streams"][0]["extradata"].as_str()?;
+    let mut out = Vec::new();
+    for line in dump.lines() {
+        let Some((_, rest)) = line.split_once(": ") else {
+            continue;
+        };
+        // eight groups of four digits, then the text
+        let hex: String = rest
+            .chars()
+            .take(39)
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        for pair in hex.as_bytes().chunks(2) {
+            let byte = std::str::from_utf8(pair)
+                .ok()
+                .and_then(|p| u8::from_str_radix(p, 16).ok())?;
+            out.push(byte);
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// The private data of stream `ff_index` of `video`, read by ffprobe.
+pub fn private_data(
+    ffprobe: &Path,
+    video: &Path,
+    ff_index: i64,
+    cancel: &Cancel,
+) -> Result<Option<Vec<u8>>, JobError> {
+    let job = Job {
+        program: ffprobe.to_path_buf(),
+        args: private_data_args(video, ff_index),
+        timeout: Duration::from_secs(60),
+        outputs: Vec::new(),
+    };
+    Ok(parse_private_data(&output(&job, cancel)?))
+}
 
 /// Whether mpv's codec name is a text subtitle codec Nikomiru can draw.
 pub fn is_text_codec(codec: &str) -> bool {
@@ -100,7 +173,13 @@ impl Extractor {
             args.push(format!("0:{}", stream.ff_index).into());
             args.push("-c:s".into());
             // pictures are copied: ffmpeg has no PGS encoder
-            args.push(if muxer == "sup" { "copy" } else { muxer }.into());
+            let copied = matches!(muxer, "sup" | "mpeg");
+            args.push(if copied { "copy" } else { muxer }.into());
+            if muxer == "mpeg" {
+                // the program stream would start half a second late
+                args.push("-preload".into());
+                args.push("0".into());
+            }
             args.push("-f".into());
             args.push(muxer.into());
             args.push(file_arg(out));

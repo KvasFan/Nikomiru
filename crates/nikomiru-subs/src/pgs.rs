@@ -65,6 +65,32 @@ pub struct Picture {
     pub alpha: Vec<u8>,
 }
 
+/// A picture of the subtitles, of PGS or VobSub (SUB-029), and when it
+/// shows.
+pub trait Graphic: Sync {
+    /// Start, in milliseconds from the start of the stream.
+    fn start_ms(&self) -> i64;
+    /// End, in milliseconds.
+    fn end_ms(&self) -> i64;
+    /// The picture, dark text on a light ground; `None` when nothing could
+    /// be decoded.
+    fn picture(&self) -> Option<Picture>;
+}
+
+impl Graphic for PgsCue {
+    fn start_ms(&self) -> i64 {
+        self.start_ms
+    }
+
+    fn end_ms(&self) -> i64 {
+        self.end_ms
+    }
+
+    fn picture(&self) -> Option<Picture> {
+        PgsCue::picture(self)
+    }
+}
+
 /// The opacity from which a pixel is ink, when lines are looked for.
 const INK: u8 = 96;
 

@@ -4584,8 +4584,11 @@ impl Session {
                 },
                 _ => Source::Bitmap(t.id),
             });
-            // SUB-028: a PGS track, also as text
-            if let (nikomiru_media::extract::PGS, Some(ff_index)) = (codec.as_str(), t.ff_index) {
+            // SUB-028, SUB-029: a PGS or VobSub track, also as text
+            if let (true, Some(ff_index)) = (
+                nikomiru_media::extract::is_readable_graphic(&codec),
+                t.ff_index,
+            ) {
                 sources.push(Source::Read {
                     id: t.id,
                     ff_index,
@@ -4615,7 +4618,7 @@ impl Session {
         let source = match choice {
             Some(Choice::External(p)) => Some(Source::File(p)),
             Some(Choice::Embedded(id)) => {
-                // SUB-028: a PGS track read when the model is there
+                // SUB-028, SUB-029: a graphic track read when the model is there
                 let read =
                     self.services.config.subtitles.read_graphic && self.services.ocr.installed();
                 let track = self.sub_sources.iter().find(

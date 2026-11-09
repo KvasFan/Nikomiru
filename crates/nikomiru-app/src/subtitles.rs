@@ -25,7 +25,7 @@ use crate::platform::Iconv;
 
 /// The largest subtitle file read: the same bound as a downloaded one.
 const MAX_SUBTITLE_FILE: u64 = 64 << 20;
-/// The largest PGS stream read: a film's is tens of MiB.
+/// The largest graphic stream read: a film's is tens of MiB.
 const MAX_PGS_STREAM: u64 = 1 << 30;
 
 type Done = Box<dyn FnOnce(Result<Loaded, String>) + Send>;
@@ -228,7 +228,8 @@ impl Worker {
         .unwrap_or_default()
     }
 
-    /// A PGS track as text (SUB-028): read once, then from the cache.
+    /// A PGS or VobSub track as text (SUB-028, SUB-029): read once, then
+    /// from the cache.
     fn read_graphic(
         &mut self,
         request: &Request,
@@ -258,43 +259,17 @@ impl Worker {
             std::fs::File::open(&sup)
                 .and_then(|f| f.take(MAX_PGS_STREAM).read_to_end(&mut bytes))
                 .map_err(io)?;
-            let cues = nikomiru_subs::pgs::parse(&bytes);
-            drop(bytes);
-            if cues.is_empty() {
-                return Err(self.translator.tr("error-subtitle-empty", &[]));
-            }
-            let engine = match crate::ocr::test_text() {
-                Some(_) => None,
-                None => Some(
-                    self.ocr
-                        .get()
-                        .map_err(|e| self.translator.error(&e as &dyn nikomiru_core::Localized))?,
-                ),
+            // SUB-029: VobSub, with the palette of its `.idx` header
+            let read = if codec == nikomiru_media::extract::DVD {
+                let palette = self.palette(&request.video, ff_index, cancel);
+                let cues = nikomiru_subs::vobsub::parse(&bytes, palette);
+                drop(bytes);
+                self.read_cues(&cues, ff_index, cancel)?
+            } else {
+                let cues = nikomiru_subs::pgs::parse(&bytes);
+                drop(bytes);
+                self.read_cues(&cues, ff_index, cancel)?
             };
-            let read_line = |line: &nikomiru_subs::pgs::Picture| -> Result<String, String> {
-                let Some(engine) = &engine else {
-                    return Ok(crate::ocr::test_text().unwrap_or_default());
-                };
-                let picture = nikomiru_ocr::grey(line.width, line.height, line.grey.clone())
-                    .ok_or_else(|| "a line of no size".to_string())?;
-                engine.read(&picture).map_err(|e| e.to_string())
-            };
-            let started = std::time::Instant::now();
-            let threads = crate::graphic::threads();
-            let Some(read) =
-                crate::graphic::read(&cues, threads, cancel, &read_line).map_err(|reason| {
-                    self.translator
-                        .tr("error-subtitle-read-failed", &[("reason", reason)])
-                })?
-            else {
-                return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
-            };
-            tracing::info!(
-                "{} pictures of stream {ff_index} read as {} lines in {:?} on {threads} threads",
-                cues.len(),
-                read.len(),
-                started.elapsed()
-            );
             let mut part = cached.clone().into_os_string();
             part.push(".part");
             let part = PathBuf::from(part);
@@ -305,6 +280,71 @@ impl Worker {
         let mut loaded = self.file(&cached, Some("UTF-8"))?;
         loaded.encoding = None;
         Ok(loaded)
+    }
+
+    /// The text of a graphic track's `cues`, read on part of the cores.
+    fn read_cues<C: nikomiru_subs::pgs::Graphic>(
+        &self,
+        cues: &[C],
+        ff_index: i64,
+        cancel: &Cancel,
+    ) -> Result<Vec<crate::graphic::ReadCue>, String> {
+        if cues.is_empty() {
+            return Err(self.translator.tr("error-subtitle-empty", &[]));
+        }
+        let engine = match crate::ocr::test_text() {
+            Some(_) => None,
+            None => Some(
+                self.ocr
+                    .get()
+                    .map_err(|e| self.translator.error(&e as &dyn nikomiru_core::Localized))?,
+            ),
+        };
+        let read_line = |line: &nikomiru_subs::pgs::Picture| -> Result<String, String> {
+            let Some(engine) = &engine else {
+                return Ok(crate::ocr::test_text().unwrap_or_default());
+            };
+            let picture = nikomiru_ocr::grey(line.width, line.height, line.grey.clone())
+                .ok_or_else(|| "a line of no size".to_string())?;
+            engine.read(&picture).map_err(|e| e.to_string())
+        };
+        let started = std::time::Instant::now();
+        let threads = crate::graphic::threads();
+        let Some(read) =
+            crate::graphic::read(cues, threads, cancel, &read_line).map_err(|reason| {
+                self.translator
+                    .tr("error-subtitle-read-failed", &[("reason", reason)])
+            })?
+        else {
+            return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
+        };
+        tracing::info!(
+            "{} pictures of stream {ff_index} read as {} lines in {:?} on {threads} threads",
+            cues.len(),
+            read.len(),
+            started.elapsed()
+        );
+        Ok(read)
+    }
+
+    /// The palette of VobSub stream `ff_index` (SUB-029), from its private
+    /// data; `None`, and the slots as a DVD usually draws them, when it
+    /// cannot be read.
+    fn palette(
+        &mut self,
+        video: &Path,
+        ff_index: i64,
+        cancel: &Cancel,
+    ) -> Option<nikomiru_subs::vobsub::Palette> {
+        let tools = self
+            .tools
+            .get_or_insert_with(|| probe(&self.search))
+            .as_ref()
+            .ok()?;
+        let data = nikomiru_media::extract::private_data(&tools.ffprobe, video, ff_index, cancel)
+            .inspect_err(|e| tracing::warn!("the palette of stream {ff_index}: {e}"))
+            .ok()??;
+        nikomiru_subs::vobsub::palette(&String::from_utf8_lossy(&data))
     }
 
     /// The offset of the cues against the audio of the first 20 minutes.

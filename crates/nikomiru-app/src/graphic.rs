@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Graphic subtitles read as text (SUB-028): the pictures of a PGS track,
-//! each cut into its lines and read by the manga's model, on part of the
+//! Graphic subtitles read as text (SUB-028, SUB-029): the pictures of a
+//! PGS or VobSub track, each cut into its lines and read by the manga's model, on part of the
 //! processor's cores so the video keeps playing; then neighbours that read
 //! the same are one line. As Fushi's whole-track reading
 //! (`fushi/lib/src/media/video/graphic_subtitle_track_ocr.dart`, commit
@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nikomiru_media::process::Cancel;
-use nikomiru_subs::pgs::{PgsCue, Picture, lines};
+use nikomiru_subs::pgs::{Graphic, Picture, lines};
 
 /// Neighbours that read the same, at most this far apart, are one line.
 const JOIN_GAP_MS: i64 = 120;
@@ -40,8 +40,8 @@ pub fn cache_path(cache_dir: &Path, video: &Path, ff_index: i64) -> std::io::Res
 /// The text of each cue, its lines apart by `\n`, read on `threads`
 /// threads; `None` when cancelled. A line that cannot be read is left out;
 /// the first error is returned only when no line could be read at all.
-pub fn read(
-    cues: &[PgsCue],
+pub fn read<C: Graphic>(
+    cues: &[C],
     threads: usize,
     cancel: &Cancel,
     read_line: &ReadLine<'_>,
@@ -71,7 +71,7 @@ pub fn read(
                                 Err(e) => {
                                     tracing::warn!(
                                         "reading a subtitle at {} ms: {e}",
-                                        cue.start_ms
+                                        cue.start_ms()
                                     );
                                     failure
                                         .lock()
@@ -104,7 +104,7 @@ pub fn read(
     let read = cues
         .iter()
         .zip(texts)
-        .filter_map(|(cue, text)| Some((cue.start_ms, cue.end_ms, text?)));
+        .filter_map(|(cue, text)| Some((cue.start_ms(), cue.end_ms(), text?)));
     Ok(Some(join(read)))
 }
 
@@ -126,7 +126,7 @@ fn join(cues: impl Iterator<Item = ReadCue>) -> Vec<ReadCue> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nikomiru_subs::pgs::{parse, testing};
+    use nikomiru_subs::pgs::{PgsCue, parse, testing};
 
     /// Three lines, two cut apart by a moment with nothing, of widths that
     /// the fake reader reads.
@@ -171,6 +171,24 @@ mod tests {
                 (4000, 5000, "上\n下".to_string()),
             ]
         );
+    }
+
+    // T-SUB-029: VobSub's pictures are read as PGS's are
+    #[test]
+    fn dvd_pictures_are_read_too() {
+        use nikomiru_subs::vobsub::{self, testing as dvd};
+        let (ps, _) = dvd::program_stream(
+            &[
+                (1000, dvd::spu(0, 0, &testing::block(60, 20), 1000)),
+                (3000, dvd::spu(0, 0, &testing::block(40, 20), 1000)),
+            ],
+            2000,
+        );
+        let cues = vobsub::parse(&ps, Some(dvd::PALETTE));
+        let read = read(&cues, 2, &Cancel::new(), &by_width).unwrap().unwrap();
+        let texts: Vec<&str> = read.iter().map(|c| c.2.as_str()).collect();
+        assert_eq!(texts, ["行くぞ", "上"]);
+        assert_eq!(read[0].0, 1000);
     }
 
     // T-SUB-028: stopped when cancelled; an error only when nothing reads

@@ -1156,6 +1156,64 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SUB-029: a Japanese VobSub track, a DVD's, chosen by itself and read
+// as text with the palette of its `.idx` header
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_dvd_track_is_read_as_text() {
+    use nikomiru_subs::pgs::testing::block;
+    use nikomiru_subs::vobsub::testing::{PALETTE, idx, program_stream, spu};
+    let dir = tempfile::tempdir().unwrap();
+    let (sub, starts) = program_stream(
+        &[
+            (1000, spu(100, 380, &block(300, 40), 1500)),
+            (4000, spu(100, 380, &block(200, 40), 1500)),
+        ],
+        2000,
+    );
+    std::fs::write(dir.path().join("in.sub"), &sub).unwrap();
+    std::fs::write(
+        dir.path().join("in.idx"),
+        idx(&PALETTE, &[1000, 4000], &starts),
+    )
+    .unwrap();
+    let video = dir.path().join("DVD.mkv");
+    let muxed = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-copyts", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .arg("-i")
+        .arg(dir.path().join("in.idx"))
+        .args(["-map", "0:v", "-map", "0:a", "-map", "1:0", "-c", "copy"])
+        .args(["-metadata:s:s:0", "language=jpn"])
+        .arg(&video)
+        .status()
+        .unwrap();
+    assert!(muxed.success());
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&video.to_string_lossy());
+    h.wait("file-loaded");
+    let s = h.state_until("the track read", |s| subs(s)["cues"] == 2);
+    assert!(
+        subs(&s)["source"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("read:"),
+        "{s}"
+    );
+    let menu = subs(&s)["menu"].as_array().cloned().unwrap_or_default();
+    let kinds: Vec<&str> = menu.iter().filter_map(|m| m["kind"].as_str()).collect();
+    assert_eq!(kinds, ["bitmap", "read"], "{s}");
+    let s = h.state_until("its first line", |s| !visible_text(s).is_empty());
+    // the tests' model reads every line as this
+    assert_eq!(visible_text(&s), ["明日も食べました"]);
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 3 }));
+    let s = h.state_until("the popup", |s| s["popups"][0]["empty"] == true);
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-SUB-028: a Japanese PGS track chosen by itself and read as text; the
 // words of its lines are clicked as those of a text track
 #[test]

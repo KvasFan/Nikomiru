@@ -30,8 +30,8 @@ pub enum Source {
     },
     /// An embedded graphic track, drawn by mpv.
     Bitmap(i64),
-    /// An embedded PGS track read as text (SUB-028): mpv draws it until
-    /// its text is ready.
+    /// An embedded PGS or VobSub track read as text (SUB-028, SUB-029):
+    /// mpv draws it until its text is ready.
     Read {
         /// mpv track id.
         id: i64,
