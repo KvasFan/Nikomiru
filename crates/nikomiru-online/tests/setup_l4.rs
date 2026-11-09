@@ -155,15 +155,67 @@ fn a_dictionary_is_checked_by_its_hash() {
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("dict.zip");
     let other = "cf5ddfdc6f99c5a9a6c3e3ad7f0bd3e18a1fd7c8a40b6c64b7c7c0c4ef7c6f3e";
-    let wrong = download_file(&http, &url, Some(other), &dest, &Cancel::new(), &mut |_| {});
+    let fetch = |sha256: Option<&str>| {
+        download_file(
+            &http,
+            &url,
+            sha256,
+            &dest,
+            Duration::ZERO,
+            &Cancel::new(),
+            &mut |_| {},
+        )
+    };
+    let wrong = fetch(Some(other));
     assert!(wrong.is_err() && !dest.exists() && !part_path(&dest).exists());
     use sha2::Digest;
     let its: String = sha2::Sha256::digest(b"a dictionary")
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    let got = download_file(&http, &url, Some(&its), &dest, &Cancel::new(), &mut |_| {}).unwrap();
+    let got = fetch(Some(&its)).unwrap();
     assert_eq!(std::fs::read(got).unwrap(), b"a dictionary");
+}
+
+// AK-BUG-005: a gateway's 504, as GitHub answered for KANJIDIC and Kanjium,
+// is tried again; a 404 is not, and three failures are one
+#[test]
+fn ak_bug_005_a_passing_failure_is_tried_again() {
+    let host = FakeFiles::start().unwrap();
+    host.put("/dict.zip", b"a dictionary".to_vec());
+    let http = Http::new("").unwrap();
+    let url = Url::parse(&host.url("/dict.zip")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("dict.zip");
+    let fetch = || {
+        download_file(
+            &http,
+            &url,
+            None,
+            &dest,
+            Duration::ZERO,
+            &Cancel::new(),
+            &mut |_| {},
+        )
+    };
+    host.then_status("/dict.zip", 504);
+    host.then_status("/dict.zip", 502);
+    assert_eq!(std::fs::read(fetch().unwrap()).unwrap(), b"a dictionary");
+    std::fs::remove_file(&dest).unwrap();
+    for _ in 0..3 {
+        host.then_status("/dict.zip", 504);
+    }
+    host.clear_requests();
+    assert!(matches!(
+        fetch(),
+        Err(OnlineError::Http { status: 504, .. })
+    ));
+    assert_eq!(host.requests().len(), 3);
+    assert!(!dest.exists() && !part_path(&dest).exists());
+    host.then_status("/dict.zip", 404);
+    host.clear_requests();
+    assert!(fetch().is_err());
+    assert_eq!(host.requests().len(), 1);
 }
 
 // T-INS-003 against Fushi's real pack, by hand: the manifest, the central

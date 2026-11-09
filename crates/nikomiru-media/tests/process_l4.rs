@@ -194,3 +194,114 @@ fn a_pgs_track_is_copied_out_whole() {
         .collect();
     assert_eq!(read, [(1000, 2500, Some(60)), (4000, 5500, Some(80))]);
 }
+
+/// ffmpeg and ffprobe, from `PATH`.
+fn tools() -> nikomiru_media::tools::Tools {
+    probe(&Search {
+        setting: String::new(),
+        env: None,
+        path: std::env::var_os("PATH"),
+        beside: None,
+    })
+    .unwrap()
+}
+
+/// The VobSub track of `video` (stream 1) copied out by the extractor, and
+/// read with the palette of its private data.
+fn vobsub_of(video: &Path, cache: PathBuf) -> Vec<nikomiru_subs::vobsub::VobCue> {
+    let tools = tools();
+    let extractor = Extractor {
+        ffmpeg: tools.ffmpeg.clone(),
+        cache_dir: cache,
+    };
+    let stream = Stream {
+        ff_index: 1,
+        codec: "dvd_subtitle".into(),
+    };
+    let files = extractor
+        .extract(video, &[stream], Duration::from_secs(12), &Cancel::new())
+        .unwrap();
+    assert!(files[0].1.extension().is_some_and(|e| e == "sub"));
+    let private = nikomiru_media::extract::private_data(&tools.ffprobe, video, 1, &Cancel::new())
+        .unwrap()
+        .unwrap();
+    let palette = nikomiru_subs::vobsub::palette(&String::from_utf8_lossy(&private));
+    assert!(palette.is_some());
+    nikomiru_subs::vobsub::parse(&std::fs::read(&files[0].1).unwrap(), palette)
+}
+
+// T-SUB-029: a VobSub track, from an `.idx` and `.sub` pair, put in a
+// video by ffmpeg, copied out with its times and read with its palette
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn a_vobsub_track_is_copied_out_with_its_palette() {
+    use nikomiru_subs::pgs::{Graphic, testing::block};
+    use nikomiru_subs::vobsub::testing::{PALETTE, idx, program_stream, spu};
+    let ffmpeg = tools().ffmpeg;
+    let dir = tempfile::tempdir().unwrap();
+    let spus = [
+        (1000, spu(100, 380, &block(60, 20), 1500)),
+        (4000, spu(100, 380, &block(80, 20), 1500)),
+    ];
+    let (sub, starts) = program_stream(&spus, 2000);
+    std::fs::write(dir.path().join("in.sub"), &sub).unwrap();
+    let header = idx(&PALETTE, &[1000, 4000], &starts);
+    std::fs::write(dir.path().join("in.idx"), header).unwrap();
+    let video = dir.path().join("with vobsub.mkv");
+    let muxed = std::process::Command::new(&ffmpeg)
+        .args(["-nostdin", "-loglevel", "error", "-copyts", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .arg("-i")
+        .arg(dir.path().join("in.idx"))
+        .args(["-map", "0:v", "-map", "1:0", "-c", "copy"])
+        .arg(&video)
+        .status()
+        .unwrap();
+    assert!(muxed.success());
+    let cues = vobsub_of(&video, dir.path().join("cache"));
+    let read: Vec<_> = cues
+        .iter()
+        .map(|c| (c.start_ms, c.end_ms, c.picture().map(|p| p.width)))
+        .collect();
+    assert_eq!(read, [(1000, 2490, Some(60)), (4000, 5490, Some(80))]);
+}
+
+// T-SUB-029: the sub-pictures of ffmpeg's own VobSub encoder, made from
+// PGS pictures, are read back
+#[test]
+#[ignore = "L4: needs `cargo xtask fixtures`"]
+fn ffmpeg_s_vobsub_is_read() {
+    use nikomiru_subs::pgs::{Graphic, lines, testing};
+    let ffmpeg = tools().ffmpeg;
+    let dir = tempfile::tempdir().unwrap();
+    let mut sup = Vec::new();
+    testing::display_set(&mut sup, 1000, &[(100, 900, testing::block(300, 40))], 255);
+    testing::display_set(&mut sup, 2500, &[], 255);
+    let sup_path = dir.path().join("in.sup");
+    std::fs::write(&sup_path, &sup).unwrap();
+    let video = dir.path().join("dvd.mkv");
+    let muxed = std::process::Command::new(&ffmpeg)
+        .args(["-nostdin", "-loglevel", "error", "-copyts", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .arg("-i")
+        .arg(&sup_path)
+        .args([
+            "-map", "0:v", "-map", "1:0", "-c:v", "copy", "-c:s", "dvdsub",
+        ])
+        .arg(&video)
+        .status()
+        .unwrap();
+    assert!(muxed.success());
+    let cues = vobsub_of(&video, dir.path().join("cache"));
+    assert_eq!(cues.len(), 1, "{cues:?}");
+    assert_eq!(cues[0].start_ms, 1000);
+    let picture = cues[0].picture().unwrap();
+    let lines = lines(&picture);
+    assert_eq!(lines.len(), 1);
+    // the line, whole, with its blank margin of a sixth of its height
+    let pad = 40 / 6;
+    assert_eq!(
+        (lines[0][0].width, lines[0][0].height),
+        (300 + 2 * pad, 40 + 2 * pad)
+    );
+}

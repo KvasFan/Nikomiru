@@ -30,3 +30,12 @@ copy
 -f
 sup
 file:/cache/a-5.sup.part
+-map
+0:6
+-c:s
+copy
+-preload
+0
+-f
+mpeg
+file:/cache/a-6.sub.part

@@ -714,7 +714,9 @@ Done outside the backlog on 2026-11-08, for 2.15.0: the pause at the end of each
 
 Done outside the backlog on 2026-11-08, for 2.16.0: moving the subtitles with the mouse (SUB-027, T-SUB-027, D-47).
 
-Done outside the backlog on 2026-11-09, for 2.18.0: Blu-ray graphic subtitles read as text (SUB-028, T-SUB-028, D-49). Open: VobSub and DVB; real Blu-ray subtitles checked by hand.
+Done outside the backlog on 2026-11-09, for 2.18.0: Blu-ray graphic subtitles read as text (SUB-028, T-SUB-028, D-49). Open: DVB; real Blu-ray subtitles checked by hand.
+
+Done outside the backlog on 2026-11-09, for 2.19.0: DVD graphic subtitles (VobSub) read as text (SUB-029, T-SUB-029, D-50). Open: external `.idx`/`.sub` pairs; real DVD subtitles checked by hand.
 
 ---
 

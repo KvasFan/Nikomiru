@@ -261,8 +261,8 @@ pub struct SubtitlesConfig {
     pub reveal_on_hover: bool,
     /// Playback pauses at the end of each line (SUB-026).
     pub auto_pause: bool,
-    /// A PGS track chosen by itself is read as text when the reading model
-    /// is there (SUB-028).
+    /// A PGS or VobSub track chosen by itself is read as text when the
+    /// reading model is there (SUB-028, SUB-029).
     pub read_graphic: bool,
     /// The subtitle list's text, in points (SUB-023).
     pub list_text_size: f32,
