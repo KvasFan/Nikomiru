@@ -356,6 +356,16 @@ fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut Str
     ui.checkbox(&mut subs.furigana, tr("settings-sub-furigana"));
     ui.checkbox(&mut subs.mark_mined, tr("settings-sub-mark-mined"));
     hint(ui, &tr("settings-sub-words-hint"));
+    // KNW-002, KNW-004
+    ui.checkbox(&mut subs.word_colors, tr("settings-sub-word-colors"));
+    hint(ui, &tr("settings-sub-word-colors-hint"));
+    ui.add_enabled(
+        subs.furigana,
+        egui::Checkbox::new(
+            &mut subs.furigana_unknown_only,
+            tr("settings-sub-furigana-unknown-only"),
+        ),
+    );
 }
 
 /// A colour with its opacity, written as `#rrggbbaa`.

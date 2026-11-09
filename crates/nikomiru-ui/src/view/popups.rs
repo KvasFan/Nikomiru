@@ -34,6 +34,10 @@ use crate::popup::{self, Origin, Popup, Side};
 use crate::popup_view::{Accent, EntryView, KanjiView, PitchRow, Section};
 use crate::session::Session;
 use crate::ui::Command;
+use crate::words::WordStatus;
+
+/// What the learner knows of a word, by its headword and reading (KNW-001).
+type StatusOf<'a> = &'a dyn Fn(&str, &str) -> WordStatus;
 
 /// The size of glossary text; `em` lengths count in it.
 const BASE: f32 = 15.0;
@@ -226,6 +230,9 @@ pub(crate) struct Scene<'a> {
     pub tr: &'a Translate<'a>,
     /// A word audio source is on: the entries have ♪ (AUD-004).
     pub word_audio: bool,
+    /// What the learner knows of a word, while the words are coloured: the
+    /// entries can change it (KNW-001).
+    pub word_status: Option<StatusOf<'a>>,
 }
 
 /// Draws the popups; returns the levels drawn with their content.
@@ -236,11 +243,13 @@ pub(crate) fn show(
     out: &mut Vec<Command>,
 ) -> Vec<usize> {
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
+    let status = |e: &str, r: &str| s.word_status(e, r);
     let scene = Scene {
         stack: s.popups.stack(),
         size: s.popups.size(),
         tr: &tr,
         word_audio: s.word_audio_on(),
+        word_status: s.word_colors_on().then_some(&status as StatusOf<'_>),
     };
     draw(ctx, &scene, state, out)
 }
@@ -451,6 +460,7 @@ pub(crate) fn draw(
                                 out: &mut *out,
                                 tr: scene.tr,
                                 word_audio: scene.word_audio,
+                                word_status: scene.word_status,
                                 #[cfg(test)]
                                 drawn: &mut state.drawn,
                             };
@@ -501,6 +511,7 @@ struct Draw<'a> {
     out: &'a mut Vec<Command>,
     tr: &'a Translate<'a>,
     word_audio: bool,
+    word_status: Option<StatusOf<'a>>,
     #[cfg(test)]
     drawn: &'a mut Vec<Drawn>,
 }
@@ -1076,6 +1087,38 @@ fn entry(
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
         });
     });
+    // KNW-001: what the learner knows of the word, to change
+    if let Some(status_of) = d.word_status {
+        let now = status_of(&e.expression, &e.reading);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+            for (status, id) in [
+                (WordStatus::Unknown, "word-status-unknown"),
+                (WordStatus::Learning, "word-status-learning"),
+                (WordStatus::Known, "word-status-known"),
+                (WordStatus::Ignored, "word-status-ignored"),
+            ] {
+                let on = status == now;
+                let name = d.tr(id);
+                let fill = if on {
+                    popup_colors().selection
+                } else {
+                    popup_colors().chip
+                };
+                let response = chip(ui, &name, fill, 12.0, "")
+                    .interact(Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand);
+                response.widget_info(|| WidgetInfo::selected(Role::RadioButton, true, on, &name));
+                if response.clicked() && !on {
+                    d.out.push(Command::WordStatus {
+                        level: card.level,
+                        entry: k,
+                        status,
+                    });
+                }
+            }
+        });
+    }
     match audio {
         Some(crate::word_audio::AudioMenu::Loading) => {
             ui.label(RichText::new(d.tr("word-audio-loading")).color(popup_colors().weak));
@@ -1938,6 +1981,8 @@ mod tests {
         nested: Vec<String>,
         /// A word audio source is on.
         word_audio: bool,
+        /// The words are coloured: the status of every word (KNW-001).
+        word_status: Option<WordStatus>,
     }
 
     fn word() -> popup::Rect {
@@ -2016,11 +2061,14 @@ mod tests {
                         t.out.push(Command::VideoClicked);
                     }
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
+                    let known = t.word_status;
+                    let status = move |_: &str, _: &str| known.unwrap_or(WordStatus::Unknown);
                     let scene = Scene {
                         stack: &t.stack,
                         size: t.size,
                         tr: &tr,
                         word_audio: t.word_audio,
+                        word_status: known.is_some().then_some(&status as StatusOf<'_>),
                     };
                     t.drawn = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                     // the session's part: the next popups take a dragged size
@@ -2059,6 +2107,7 @@ mod tests {
                     nest: false,
                     nested: Vec::new(),
                     word_audio: false,
+                    word_status: None,
                 },
             )
     }
@@ -2245,6 +2294,41 @@ mod tests {
         }
         assert!(h.query_by_label_contains("eat").is_some());
         assert!(h.query_by_label_contains("kanji-strokes").is_some());
+    }
+
+    // T-KNW-001: the status of an entry's word, shown and changed, while
+    // the words are coloured
+    #[test]
+    fn the_status_of_a_word_is_chosen_in_its_entry() {
+        let p = popup(1, Some(vec![entry("食べる", serde_json::json!("to eat"))]));
+        let mut h = harness(vec![p]);
+        h.run();
+        assert!(
+            h.query_by_role_and_label(Role::RadioButton, "word-status-known")
+                .is_none(),
+            "not coloured"
+        );
+        h.state_mut().word_status = Some(WordStatus::Learning);
+        h.run();
+        // the status it has: clicked, nothing changes
+        h.get_by_role_and_label(Role::RadioButton, "word-status-learning")
+            .click();
+        h.get_by_role_and_label(Role::RadioButton, "word-status-known")
+            .click();
+        h.run();
+        let mut out = std::mem::take(&mut h.state_mut().out);
+        out.retain(|c| !matches!(c, Command::PopupHover(_)));
+        assert!(
+            matches!(
+                out.as_slice(),
+                [Command::WordStatus {
+                    level: 0,
+                    entry: 0,
+                    status: WordStatus::Known
+                }]
+            ),
+            "{out:?}"
+        );
     }
 
     // T-AUD-004: ♪ plays, a right click opens the menu, an item plays

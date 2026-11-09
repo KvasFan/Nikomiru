@@ -381,6 +381,12 @@ pub(crate) enum Command {
         level: usize,
         entry: usize,
     },
+    /// A status chosen for the word of an entry (KNW-001).
+    WordStatus {
+        level: usize,
+        entry: usize,
+        status: crate::words::WordStatus,
+    },
     /// Shift+click on it: the "Advanced mining" dialog (ANK-040).
     CardAdvanced {
         level: usize,
@@ -1253,6 +1259,11 @@ impl Ui {
             Command::DictSetUserCss(id, css) => s.dict_set_user_css(&id, &css),
             Command::CardButton { level, entry } => s.card_button(level, entry),
             Command::CardAdvanced { level, entry } => s.card_advanced(level, entry),
+            Command::WordStatus {
+                level,
+                entry,
+                status,
+            } => s.popup_word_status(level, entry, status),
             Command::Advanced(edit) => s.advanced_edit(edit),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),

@@ -4,6 +4,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-11-09
+
+Words you know, and words you don't.
+
+### Added
+
+- Words coloured by what you know of them, as Migaku and asbplayer do (KNW-001…KNW-004, D-52). Turn it on in Settings → Subtitles, "Colour the words by what you know of them":
+  - words not known yet are underlined in blue, words being learned in yellow, in the subtitles and in their list;
+  - in a dictionary popup, mark each word new, learning, known or ignored; a word you made a card of counts as learning;
+  - a line with a single new word (i+1) is marked `+1` in the subtitle list;
+  - the statuses are kept, and synced between devices by the WebDAV sync;
+  - readings can be shown only over the words not known (`[subtitles] furigana_unknown_only`).
+
 ## [2.19.0] - 2026-11-09
 
 DVD subtitles you can click.

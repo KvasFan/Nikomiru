@@ -38,8 +38,6 @@ use crate::words::Marks;
 
 /// The selected grapheme and the text the popup matched (POP-002).
 const HIGHLIGHT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x66);
-/// The underline of the words already made into cards (LKP-061).
-const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
 /// The soft shadow under each row of text of a cue with an ASS style:
 /// `#cc000000` spread over the row, which leaves about a third of it where
 /// the glyphs are.
@@ -236,6 +234,9 @@ pub(crate) struct Drawn {
     pub readings: usize,
     /// How many underlines mark words already mined.
     pub mined: usize,
+    /// How many mark words not known, and being learned (KNW-002).
+    pub unknown: usize,
+    pub learning: usize,
     /// Whether any text was painted.
     pub painted: bool,
     /// A cue of the secondary subtitle.
@@ -502,6 +503,8 @@ fn draw_in(
             }
         }
         #[cfg(test)]
+        let count = |why| cue.underlines.iter().filter(|(_, u)| *u == why).count();
+        #[cfg(test)]
         state.drawn.push(Drawn {
             cue: cue.index,
             rect,
@@ -515,7 +518,9 @@ fn draw_in(
                 .collect(),
             highlighted: cue.highlight.len(),
             readings: cue.readings,
-            mined: cue.mined.len(),
+            mined: count(crate::words::Underline::Mined),
+            unknown: count(crate::words::Underline::Unknown),
+            learning: count(crate::words::Underline::Learning),
             painted,
             secondary: cue.secondary,
             look: (
@@ -1015,8 +1020,8 @@ struct Laid<'a> {
     highlight: Vec<Rect>,
     /// The readings drawn, the file's and the dictionaries'.
     readings: usize,
-    /// The underlines of the words already mined (LKP-061).
-    mined: Vec<Rect>,
+    /// The underlines of the words, each with why (LKP-061, KNW-002).
+    underlines: Vec<(Rect, crate::words::Underline)>,
     /// A cue of the secondary subtitle: drawn, never clicked (SUB-017).
     secondary: bool,
     /// What ASS does to it at this moment (SUB-019).
@@ -1288,7 +1293,7 @@ fn lay_out<'a>(
         graphemes: Vec::new(),
         highlight: Vec::new(),
         readings: 0,
-        mined: Vec::new(),
+        underlines: Vec::new(),
         secondary: false,
         frame: frame.cloned(),
         anchor: anchor(shown),
@@ -1370,8 +1375,11 @@ fn lay_out<'a>(
     }
     // drop the targets of graphemes with no glyph (a lone combining mark)
     laid.graphemes.retain(|h| h.rect.is_positive());
-    // a line under each word already mined, one per row it is on
-    for range in marks.map_or(&[][..], |m| &m.mined) {
+    // a line under each word marked, one per row it is on
+    let underlined: Vec<(Range<usize>, crate::words::Underline)> = marks
+        .map(|m| m.underlines().map(|(r, u)| (r.clone(), u)).collect())
+        .unwrap_or_default();
+    for (range, why) in underlined {
         let mut rows: Vec<Rect> = Vec::new();
         for hit in laid.graphemes.iter().filter(|h| range.contains(&h.offset)) {
             match rows
@@ -1383,10 +1391,12 @@ fn lay_out<'a>(
             }
         }
         let thick = (units.font / 14.0).max(2.0);
-        laid.mined.extend(
-            rows.into_iter()
-                .map(|r| Rect::from_min_max(pos2(r.min.x, r.max.y - thick), r.max)),
-        );
+        laid.underlines.extend(rows.into_iter().map(|r| {
+            (
+                Rect::from_min_max(pos2(r.min.x, r.max.y - thick), r.max),
+                why,
+            )
+        }));
     }
     laid
 }
@@ -1525,10 +1535,10 @@ fn paint(
     for (at, galley) in &cue.texts {
         draw_text(painter, *at + offset, galley, None, ink);
     }
-    for line in &cue.mined {
+    for (line, why) in &cue.underlines {
         let line = moved(line.translate(offset));
         painter.rect_filled(line.expand(width), 1.0, cue.outline);
-        painter.rect_filled(line, 1.0, MINED);
+        painter.rect_filled(line, 1.0, super::palette::underline(*why));
     }
 }
 
@@ -2274,6 +2284,26 @@ mod tests {
         assert!(h.state().1.drawn.is_empty());
     }
 
+    // T-KNW-002: the words not known and being learned, each in its colour
+    #[test]
+    fn words_are_underlined_by_status() {
+        let srt = "1\n00:00:01,000 --> 00:00:03,000\n猫が食べた\n";
+        let marks = Marks {
+            unknown: std::iter::once(0..3).collect(),
+            learning: vec![3..6, 6..15],
+            ..Marks::default()
+        };
+        let mut h = build(
+            subtitles(srt, Format::Srt, 1500),
+            Obscure::None,
+            None,
+            HashMap::from([(0, marks)]),
+        );
+        h.run();
+        let drawn = h.state().1.drawn[0].clone();
+        assert_eq!((drawn.unknown, drawn.learning, drawn.mined), (1, 2, 0));
+    }
+
     // T-LKP-051, T-LKP-061
     #[test]
     fn readings_and_mined_words_are_drawn_over_their_graphemes() {
@@ -2281,6 +2311,7 @@ mod tests {
         let marks = Marks {
             readings: vec![(0..3, "ねこ".into()), (6..9, "た".into())],
             mined: std::iter::once(6..15).collect(),
+            ..Marks::default()
         };
         let mut h = build(
             subtitles(srt, Format::Srt, 1500),

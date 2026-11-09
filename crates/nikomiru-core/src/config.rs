@@ -211,7 +211,7 @@ pub struct PlayerConfig {
 }
 
 /// `[subtitles]` (SUB-008, SUB-010, SUB-014, SUB-021…023, LKP-051, LKP-052,
-/// LKP-061).
+/// LKP-061, KNW-002, KNW-004).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitlesConfig {
@@ -236,6 +236,11 @@ pub struct SubtitlesConfig {
     pub furigana: bool,
     /// Underline the words already made into cards (LKP-061).
     pub mark_mined: bool,
+    /// Colour the words by what the learner knows of them, mark the lines
+    /// with one new word, and offer the statuses in the popup (KNW-002).
+    pub word_colors: bool,
+    /// Readings only over the words not known (KNW-004).
+    pub furigana_unknown_only: bool,
     /// The readings' size, in percent of the text (LKP-052).
     pub furigana_size: u8,
     /// The text's colour, `#rrggbb` (SUB-021).
@@ -343,6 +348,8 @@ impl Default for SubtitlesConfig {
             secondary_position: "top".into(),
             furigana: false,
             mark_mined: true,
+            word_colors: false,
+            furigana_unknown_only: false,
             furigana_size: 50,
             text_color: "#ffffff".into(),
             bold: false,

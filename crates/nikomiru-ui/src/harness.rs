@@ -256,7 +256,7 @@ pub fn state() -> Result<Value, String> {
                 "size": s.thumbnail(at).map(|(_, px)| json!(px.size)),
             })
         });
-        // the words' marks of each cue shown (LKP-051, LKP-061)
+        // the words' marks of each cue shown (LKP-051, LKP-061, KNW-002)
         let marks: Vec<Value> = s
             .subs
             .shown(false)
@@ -264,6 +264,10 @@ pub fn state() -> Result<Value, String> {
                 Some(m) => json!({
                     "readings": m.readings.iter().map(|(r, t)| json!([r.start, r.end, t])).collect::<Vec<_>>(),
                     "mined": m.mined.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
+                    // KNW-002, KNW-003
+                    "unknown": m.unknown.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
+                    "learning": m.learning.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
+                    "plus_one": m.plus_one,
                 }),
                 None => Value::Null,
             })
@@ -579,6 +583,27 @@ pub fn card(level: usize, entry: usize, item: Option<&str>) -> Result<(), String
         },
     };
     call(move |ui| ui.run(command))
+}
+
+/// The status chosen for the word of entry `entry` of popup `level`
+/// (`unknown`, `learning`, `known`, `ignored`), like the user's click
+/// (KNW-001).
+pub fn word_status(level: usize, entry: usize, status: &str) -> Result<(), String> {
+    use crate::words::WordStatus;
+    let status = match status {
+        "unknown" => WordStatus::Unknown,
+        "learning" => WordStatus::Learning,
+        "known" => WordStatus::Known,
+        "ignored" => WordStatus::Ignored,
+        other => return Err(format!("no word status {other}")),
+    };
+    call(move |ui| {
+        ui.run(Command::WordStatus {
+            level,
+            entry,
+            status,
+        })
+    })
 }
 
 /// ♪ of an entry (`action` `play`), its right click (`menu`), or an audio

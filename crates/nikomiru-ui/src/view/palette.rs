@@ -17,6 +17,8 @@ use std::cell::Cell;
 
 use egui::Color32;
 
+use crate::words::Underline;
+
 /// The colors of the pages and of the popups.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Palette {
@@ -431,6 +433,16 @@ pub(crate) fn suggested(text: impl Into<String>) -> egui::Button<'static> {
 pub(crate) fn on_video(ui: &mut egui::Ui) {
     if !ui.visuals().dark_mode {
         ui.set_style(ui.ctx().style_of(egui::Theme::Dark));
+    }
+}
+
+/// The line under a word of the subtitles, by why it is there, drawn over
+/// the video in either theme (LKP-061, KNW-002).
+pub(crate) fn underline(why: Underline) -> Color32 {
+    match why {
+        Underline::Mined => Color32::from_rgb(0x6f, 0xcf, 0x97),
+        Underline::Unknown => Color32::from_rgb(0x62, 0xa0, 0xea),
+        Underline::Learning => Color32::from_rgb(0xf6, 0xd3, 0x2d),
     }
 }
 
