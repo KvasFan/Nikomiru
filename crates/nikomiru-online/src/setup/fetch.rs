@@ -251,10 +251,47 @@ fn file_crc(file: &mut std::fs::File, cancel: &Cancel) -> Result<u32, OnlineErro
     }
 }
 
+/// Whether a failure may pass by itself: no answer, a gateway's or a
+/// server's error, too many requests (AK-BUG-005).
+fn passing(e: &OnlineError) -> bool {
+    match e {
+        OnlineError::Unreachable { .. }
+        | OnlineError::Timeout { .. }
+        | OnlineError::RateLimited { .. } => true,
+        OnlineError::Http { status, .. } => *status >= 500,
+        _ => false,
+    }
+}
+
 /// Downloads a dictionary of the catalogue to `dest` (INS-002): written to
 /// `dest` with `.part` added, checked against `sha256` when there is one,
-/// renamed.
+/// renamed. A failure that may pass by itself, such as GitHub's 504, is
+/// tried again from the start, [`ATTEMPTS`] times in all, after `backoff`,
+/// then twice that (AK-BUG-005).
 pub fn download_file(
+    http: &Http,
+    url: &Url,
+    sha256: Option<&str>,
+    dest: &Path,
+    backoff: Duration,
+    cancel: &Cancel,
+    progress: &mut dyn FnMut(u64),
+) -> Result<PathBuf, OnlineError> {
+    let mut round = 0;
+    loop {
+        match download_once(http, url, sha256, dest, cancel, progress) {
+            Err(e) if passing(&e) && round + 1 < ATTEMPTS && !cancel.is_cancelled() => {
+                tracing::warn!("dictionary {url}: {e}, trying again");
+                round += 1;
+                std::thread::sleep(backoff * round);
+                progress(0);
+            }
+            result => return result,
+        }
+    }
+}
+
+fn download_once(
     http: &Http,
     url: &Url,
     sha256: Option<&str>,

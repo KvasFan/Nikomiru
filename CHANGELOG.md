@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.18.1] - 2026-11-09
+
+### Fixed
+
+- The setup assistant tries a dictionary again when GitHub answers a passing error such as HTTP 504, as KANJIDIC and Kanjium did at a first setup; three tries in all (AK-BUG-005).
+
 ## [2.18.0] - 2026-11-09
 
 Blu-ray subtitles you can click.

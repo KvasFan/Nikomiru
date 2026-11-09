@@ -163,6 +163,7 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
             &url,
             d.sha256.as_deref(),
             &dest,
+            Duration::from_secs(2),
             cancel,
             &mut |done| {
                 events(SetupEvent::Progress {
