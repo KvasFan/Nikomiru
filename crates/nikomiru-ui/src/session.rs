@@ -283,6 +283,11 @@ const NEXT_COUNTDOWN: std::time::Duration = std::time::Duration::from_secs(5);
 /// The cues split into words ahead of the one playing (LKP-060).
 const AHEAD: usize = 3;
 
+/// The lines of the main subtitle sent to be split for its score at a time,
+/// once the ones shown are done, so that a new line never waits behind many
+/// (KNW-007).
+const SCORE_BATCH: usize = 16;
+
 /// How close to a stop of mpv's `end` a pause counts as made by it (SUB-026).
 const STOP_SLACK_MS: i64 = 150;
 
@@ -354,6 +359,10 @@ pub struct Session {
     lookups: Vec<(u64, String)>,
     /// The words of the subtitles (LKP-060, LKP-051, LKP-061).
     words: crate::words::Words,
+    /// The score of the main subtitle (KNW-007), with the words' revision
+    /// and the list version it was counted for; while its lines are being
+    /// split, how many are.
+    score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
     /// The thumbnails of the progress bar (PLY-014).
     thumbnails: crate::thumbnails::Thumbnails,
     /// A dictionary is installed, and a card was made: two of the first
@@ -706,6 +715,7 @@ impl Session {
             sub_loads: Vec::new(),
             sub_auto_done: false,
             sub_list_version: 0,
+            score: None,
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             words,
@@ -5926,7 +5936,47 @@ impl Session {
                 self.words.ask(&cue.plain_text);
             }
         }
+        self.count_score();
         self.words.take_queue()
+    }
+
+    /// While the words are coloured, splits the rest of the main
+    /// subtitle's lines a few at a time, and counts its score again when
+    /// they or the statuses change (KNW-007). The words' cache holds a long
+    /// film's lines; beyond, there is no score.
+    fn count_score(&mut self) {
+        if !self.services.config.subtitles.word_colors {
+            self.score = None;
+            return;
+        }
+        let cues = self.subs.timeline().cues();
+        if cues.is_empty() || cues.len() > crate::words::KEPT / 2 {
+            self.score = None;
+            return;
+        }
+        if self.words.idle() {
+            let rest: Vec<&str> = cues
+                .iter()
+                .map(|c| c.plain_text.as_str())
+                .filter(|t| !self.words.has(t))
+                .take(SCORE_BATCH)
+                .collect();
+            for text in rest {
+                self.words.ask(text);
+            }
+        }
+        let at = (self.words.revision(), self.sub_list_version);
+        if self.score.as_ref().is_none_or(|(r, v, _)| (*r, *v) != at) {
+            let cues = self.subs.timeline().cues();
+            let score = self.words.score(cues.iter().map(|c| c.plain_text.as_str()));
+            self.score = Some((at.0, at.1, score));
+        }
+    }
+
+    /// The score of the main subtitle, or how many of its lines are split
+    /// so far, while the words are coloured (KNW-007).
+    pub fn score(&self) -> Option<Result<crate::words::Score, usize>> {
+        self.score.as_ref().map(|(_, _, s)| *s)
     }
 
     /// Splits a subtitle text into words on the dictionary service.

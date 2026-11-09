@@ -3,9 +3,10 @@
 //! The words of the subtitles (LKP-060) and what the overlay marks on them:
 //! readings over their kanji (LKP-051), the words already made into cards
 //! (LKP-061), and the words by what the learner knows of them, with the
-//! lines that have one new word (KNW-002, KNW-003). Each text is split once, away from the UI thread; the cues
-//! about to come are asked ahead, so that their marks are ready when they
-//! show.
+//! lines that have one new word (KNW-002, KNW-003), and how much of the
+//! subtitles the learner understands (KNW-007). Each text is split once,
+//! away from the UI thread; the cues about to come are asked ahead, so that
+//! their marks are ready when they show.
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -19,7 +20,7 @@ use nikomiru_text::kana::is_kanji;
 
 /// Texts kept split; beyond, the cache starts again (an episode has a few
 /// hundred cues).
-const KEPT: usize = 4096;
+pub(crate) const KEPT: usize = 4096;
 
 /// What the overlay draws over a cue, in bytes of its text.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -74,6 +75,33 @@ impl Marks {
     }
 }
 
+/// How much of a set of subtitles the learner understands (KNW-007).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Score {
+    /// The words met, each time it is met: those a dictionary knows, not
+    /// ignored.
+    pub words: usize,
+    /// Of them, the known ones.
+    pub known: usize,
+    /// The lines with at least one such word.
+    pub lines: usize,
+    /// Of them, the lines with no word not known.
+    pub clear: usize,
+}
+
+impl Score {
+    /// The share of the words known, in whole percent (rounded down, so
+    /// that 100 means every one).
+    pub fn known_percent(&self) -> Option<usize> {
+        (self.words > 0).then(|| self.known * 100 / self.words)
+    }
+
+    /// The share of the lines with no word not known, in whole percent.
+    pub fn clear_percent(&self) -> Option<usize> {
+        (self.lines > 0).then(|| self.clear * 100 / self.lines)
+    }
+}
+
 /// What to mark over a text.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Wanted {
@@ -107,6 +135,9 @@ pub struct Words {
     statuses: HashMap<String, WordStatus>,
     /// What the cards of Anki's decks say, by headword (KNW-005).
     anki: HashMap<String, WordStatus>,
+    /// Changes whenever a text is split or a status may have changed, so
+    /// that a score is counted again (KNW-007).
+    revision: u64,
 }
 
 impl Words {
@@ -143,10 +174,61 @@ impl Words {
             self.split.clear();
         }
         self.split.insert(text, Arc::new(words));
+        self.revision += 1;
+    }
+
+    /// Changes whenever a score may change (KNW-007).
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// No text is being split nor waits to be.
+    pub fn idle(&self) -> bool {
+        self.asked.is_empty() && self.queue.is_empty()
+    }
+
+    /// Whether the words of `text` are known.
+    pub fn has(&self, text: &str) -> bool {
+        text.trim().is_empty() || self.split.contains_key(text)
+    }
+
+    /// How much of `texts`, the lines of a subtitle, the learner
+    /// understands (KNW-007); while some are not split yet, how many are.
+    /// A line counts each time it comes; ignored words count for nothing.
+    pub fn score<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Result<Score, usize> {
+        let mut score = Score::default();
+        let (mut split, mut missing) = (0, false);
+        for text in texts {
+            if text.trim().is_empty() {
+                continue;
+            }
+            let Some(words) = self.get(text) else {
+                missing = true;
+                continue;
+            };
+            split += 1;
+            let (mut counted, mut clear) = (false, true);
+            for h in words.iter().filter_map(|w| w.headword.as_ref()) {
+                match self.status(&h.expression, &h.reading) {
+                    WordStatus::Ignored => continue,
+                    WordStatus::Known => score.known += 1,
+                    WordStatus::Learning => {}
+                    WordStatus::Unknown => clear = false,
+                }
+                score.words += 1;
+                counted = true;
+            }
+            if counted {
+                score.lines += 1;
+                score.clear += usize::from(clear);
+            }
+        }
+        if missing { Err(split) } else { Ok(score) }
     }
 
     /// The dictionaries changed: every text is split again.
     pub fn forget(&mut self) {
+        self.revision += 1;
         self.generation += 1;
         self.split.clear();
         self.asked.clear();
@@ -160,26 +242,31 @@ impl Words {
 
     /// The headwords of the cards made (from the library).
     pub fn set_mined(&mut self, expressions: HashSet<String>) {
+        self.revision += 1;
         self.mined = expressions;
     }
 
     /// A card was made of `expression`.
     pub fn add_mined(&mut self, expression: String) {
+        self.revision += 1;
         self.mined.insert(expression);
     }
 
     /// The statuses set (from the library).
     pub fn set_statuses(&mut self, statuses: HashMap<String, WordStatus>) {
+        self.revision += 1;
         self.statuses = statuses;
     }
 
     /// The learner set the status of a word.
     pub fn set_status(&mut self, expression: &str, reading: &str, status: WordStatus) {
+        self.revision += 1;
         self.statuses.insert(word_key(expression, reading), status);
     }
 
     /// The words read from Anki (KNW-005).
     pub fn set_anki(&mut self, words: HashMap<String, WordStatus>) {
+        self.revision += 1;
         self.anki = words;
     }
 
@@ -399,6 +486,56 @@ mod tests {
             "set by hand wins"
         );
         assert_eq!(words.status("犬", "いぬ"), WordStatus::Learning);
+    }
+
+    // T-KNW-007: the words known and the lines with no new word, counted
+    // each time they come; ignored words and lines without words left out
+    #[test]
+    fn the_score_counts_what_is_known() {
+        let mut words = Words::default();
+        let lines = ["「猫が食べた」", "♪", "", "「猫が食べた」"];
+        assert_eq!(words.score(lines), Err(0), "nothing split yet");
+        let text = split(&mut words);
+        words.ask("♪");
+        words.take_queue();
+        assert!(!words.idle());
+        assert_eq!(words.score(lines), Err(2), "♪ is not split yet");
+        let before = words.revision();
+        words.done(0, "♪".into(), Ok(vec![word("♪", 0..3, None)]));
+        assert!(words.idle() && words.has("♪") && words.has(" "));
+        assert!(words.revision() > before);
+        let none = words.score(lines).unwrap();
+        assert_eq!(
+            none,
+            Score {
+                words: 6,
+                known: 0,
+                lines: 2,
+                clear: 0
+            }
+        );
+        assert_eq!(
+            (none.known_percent(), none.clear_percent()),
+            (Some(0), Some(0))
+        );
+        words.set_status("が", "が", WordStatus::Known);
+        words.set_status("猫", "ねこ", WordStatus::Ignored);
+        words.add_mined("食べる".into());
+        let score = words.score(lines).unwrap();
+        assert_eq!(
+            score,
+            Score {
+                words: 4,
+                known: 2,
+                lines: 2,
+                clear: 2
+            }
+        );
+        assert_eq!(score.known_percent(), Some(50), "learning is not known");
+        assert_eq!(score.clear_percent(), Some(100), "but not new either");
+        words.set_status("食べる", "たべる", WordStatus::Unknown);
+        assert_eq!(words.score([text]).unwrap().clear_percent(), Some(0));
+        assert_eq!(words.score(["♪"]).unwrap().known_percent(), None);
     }
 
     // T-KNW-004: readings only over the words not known

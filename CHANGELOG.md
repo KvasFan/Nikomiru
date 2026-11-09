@@ -4,6 +4,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-11-09
+
+How much of an episode you understand.
+
+### Added
+
+- The comprehension score of the subtitle you are watching, as Migaku shows it (KNW-007). With the words coloured, the subtitle list's header says:
+  - the share of the words you know, each counted every time it comes;
+  - the share of the lines with no new word.
+- Ignored words are left out of it, and a word you are learning does not count as known. The score follows each status you set.
+- The scores of episodes before you play them, on the library's pages, come in 2.23.0.
+
 ## [2.21.0] - 2026-11-09
 
 The words you know, from Anki.
