@@ -3380,8 +3380,8 @@ fn on_first_line(h: &mut support::Harness) {
     h.wait("popup-rendered");
 }
 
-// T-KNW-001, T-KNW-002, T-KNW-003: a word not known is underlined and
-// makes its line i+1; marked known in the popup, its underline goes, and
+// T-KNW-001, T-KNW-002, T-KNW-003, T-KNW-007: a word not known is
+// underlined, makes its line i+1 and counts in the score; marked known in the popup, its underline goes, and
 // it stays known after a restart
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -3400,8 +3400,21 @@ fn a_word_marked_known_loses_its_colour_for_good() {
         s["subtitles"]["marks"][0]["unknown"] == serde_json::json!([[0, 15]])
     });
     assert_eq!(s["subtitles"]["marks"][0]["plus_one"], true, "{s}");
+    // T-KNW-007: every line counted, nothing known yet
+    let s = h.state_until("the score", |s| s["subtitles"]["score"]["known"].is_u64());
+    let score = &s["subtitles"]["score"];
+    assert_eq!(
+        (score["known"].as_u64(), score["clear"].as_u64()),
+        (Some(0), Some(0)),
+        "{s}"
+    );
+    assert!(score["lines"].as_u64() >= Some(2), "{s}");
     h.cmd(serde_json::json!({ "cmd": "word_status", "level": 0, "entry": 0, "status": "known" }));
     h.state_until("known", |s| s["subtitles"]["marks"][0].is_null());
+    // the first line has no new word left
+    h.state_until("the score again", |s| {
+        s["subtitles"]["score"]["clear"] == 1 && s["subtitles"]["score"]["known"] == 1
+    });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     // the next time, still known

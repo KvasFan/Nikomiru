@@ -112,6 +112,9 @@ pub(crate) struct Scene<'a> {
     /// The playback position.
     pub pos_ms: i64,
     pub title: String,
+    /// How much of the subtitle the learner understands, or how far its
+    /// count is (KNW-007).
+    pub score: Option<String>,
     pub search_hint: String,
     pub close: String,
     /// The words of a text underlined, in bytes, each with why, and whether
@@ -256,6 +259,7 @@ pub(crate) fn show(
         version: s.sub_list_version,
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         title: tr("subtitle-list"),
+        score: score_line(s),
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         marks: &marks,
@@ -263,6 +267,29 @@ pub(crate) fn show(
         width: s.config().subtitles.list_width,
     };
     draw(ctx, &scene, state, search_focus, bar_height, out)
+}
+
+/// The score of the main subtitle as the list's header says it (KNW-007).
+fn score_line(s: &Session) -> Option<String> {
+    let percent = |p: Option<usize>| p.map_or_else(|| "–".into(), |p| p.to_string());
+    let t = s.translator();
+    Some(match s.score()? {
+        Ok(score) => t.tr(
+            "subtitle-score",
+            &[
+                ("known", percent(score.known_percent())),
+                ("clear", percent(score.clear_percent())),
+            ],
+        ),
+        Err(done) => {
+            let of = s.subs.timeline().cues().iter();
+            let of = of.filter(|c| !c.plain_text.trim().is_empty()).count();
+            t.tr(
+                "subtitle-score-counting",
+                &[("done", done.to_string()), ("of", of.to_string())],
+            )
+        }
+    })
 }
 
 pub(crate) fn draw(
@@ -304,6 +331,9 @@ pub(crate) fn draw(
                         });
                     });
 
+                    if let Some(score) = &scene.score {
+                        ui.label(RichText::new(score).small().color(TIME));
+                    }
                     open &= search(ui, state, search_focus, &scene.search_hint);
                     rows(ui, scene, state, out);
                 });
@@ -485,6 +515,8 @@ mod tests {
         out: Vec<Command>,
         /// `list_text_size` and `list_width` (SUB-023).
         sizes: (f32, f32),
+        /// The header's score (KNW-007).
+        score: Option<String>,
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
@@ -528,6 +560,7 @@ mod tests {
                         version: 1,
                         pos_ms: t.pos_ms,
                         title: "Subtitle list".into(),
+                        score: t.score.clone(),
                         search_hint: "Search".into(),
                         close: "Close".into(),
                         marks: &|text: &str| {
@@ -563,6 +596,7 @@ mod tests {
                     closed: false,
                     out: Vec::new(),
                     sizes: (16.0, 420.0),
+                    score: None,
                 },
             )
     }
@@ -586,6 +620,18 @@ mod tests {
             .iter()
             .map(|d| (d.cue, d.current))
             .collect()
+    }
+
+    // T-KNW-007: the score under the title, when there is one
+    #[test]
+    fn the_header_says_the_score() {
+        let mut h = harness(timeline(&[(1000, "一つ目")]), 0, false);
+        h.run();
+        use egui_kittest::kittest::Queryable;
+        assert!(h.query_by_label("Known: 50%").is_none());
+        h.state_mut().score = Some("Known: 50%".into());
+        h.run();
+        h.get_by_label("Known: 50%");
     }
 
     // T-SUB-015

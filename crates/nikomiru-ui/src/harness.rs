@@ -426,6 +426,11 @@ pub fn state() -> Result<Value, String> {
                 "disabled": s.subs.disabled,
                 "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
                 "marks": marks,
+                // KNW-007
+                "score": s.score().map(|r| match r {
+                    Ok(x) => json!({ "words": x.words, "known": x.known, "lines": x.lines, "clear": x.clear }),
+                    Err(done) => json!({ "counting": done }),
+                }),
             },
             "secondary": {
                 "source": s.secondary.source.as_ref().map(|x| x.key()),
