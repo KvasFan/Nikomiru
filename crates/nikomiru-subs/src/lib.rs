@@ -16,6 +16,7 @@ pub mod effects;
 pub mod encoding;
 pub mod lrc;
 mod markup;
+pub mod pgs;
 pub mod select;
 pub mod srt;
 mod time;

@@ -19,5 +19,5 @@ tracing.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
-nikomiru-subs.workspace = true
+nikomiru-subs = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true

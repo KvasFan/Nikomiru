@@ -105,10 +105,11 @@ fn source_label(source: &serde_json::Value) -> String {
     .filter(|p| !p.is_empty())
     .collect();
     let label = parts.join(" · ");
-    if text("kind") == "bitmap" {
-        format!("🖼 {label}")
-    } else {
-        label
+    match text("kind") {
+        "bitmap" => format!("🖼 {label}"),
+        // SUB-028
+        "read" => format!("🖼 {label} → {}", text("note")),
+        _ => label,
     }
 }
 

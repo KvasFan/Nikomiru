@@ -411,6 +411,8 @@ pub struct Session {
     ocr_job: Option<crate::ocr::OcrJob>,
     /// The reading model is to be fetched (MNG-004).
     ocr_fetch: bool,
+    /// A graphic track waits for the reading model, in this load (SUB-028).
+    read_waiting: Option<u64>,
     /// The hooker worker is to start, or to stop.
     hooker_run: Option<bool>,
     /// The name of the picture of the screen to take (PLY-015).
@@ -709,6 +711,7 @@ impl Session {
             book_reads: Vec::new(),
             ocr_job: None,
             ocr_fetch: false,
+            read_waiting: None,
             hooker_run: None,
             capture: None,
             sync_jobs: Vec::new(),
@@ -4577,10 +4580,18 @@ impl Session {
                 (true, Some(ff_index)) => Source::Embedded {
                     id: t.id,
                     ff_index,
-                    codec,
+                    codec: codec.clone(),
                 },
                 _ => Source::Bitmap(t.id),
             });
+            // SUB-028: a PGS track, also as text
+            if let (nikomiru_media::extract::PGS, Some(ff_index)) = (codec.as_str(), t.ff_index) {
+                sources.push(Source::Read {
+                    id: t.id,
+                    ff_index,
+                    codec,
+                });
+            }
             embedded.push(EmbeddedTrack {
                 id: t.id,
                 language: t.lang.clone(),
@@ -4603,16 +4614,26 @@ impl Session {
             .filter(|_| !off);
         let source = match choice {
             Some(Choice::External(p)) => Some(Source::File(p)),
-            Some(Choice::Embedded(id)) => self
-                .sub_sources
-                .iter()
-                .find(
+            Some(Choice::Embedded(id)) => {
+                // SUB-028: a PGS track read when the model is there
+                let read =
+                    self.services.config.subtitles.read_graphic && self.services.ocr.installed();
+                let track = self.sub_sources.iter().find(
                     |s| matches!(s, Source::Embedded { id: i, .. } | Source::Bitmap(i) if *i == id),
-                )
-                .cloned(),
+                );
+                let as_text = self
+                    .sub_sources
+                    .iter()
+                    .find(|s| matches!(s, Source::Read { id: i, .. } if *i == id));
+                match (track, as_text) {
+                    (Some(Source::Bitmap(_)), Some(text)) if read => Some(text.clone()),
+                    _ => track.cloned(),
+                }
+            }
             None => None,
         };
         // no text subtitles in the preferred language: online ones (MET-007)
+        // (a graphic track read as text is text: SUB-028)
         let online = !off && matches!(source, None | Some(Source::Bitmap(_)));
         if let Some(source) = source {
             self.use_subtitles(source);
@@ -4646,23 +4667,48 @@ impl Session {
                 self.subs.clear(Some(source));
                 self.cues_changed();
             }
+            // SUB-028: mpv draws the pictures until their text is ready
+            Source::Read { id, .. } => {
+                let _ = self.services.player.show_bitmap_subtitles(Some(*id));
+                let name = source_name(&source);
+                self.subs.clear(Some(source.clone()));
+                self.cues_changed();
+                if self.services.ocr.installed() {
+                    self.toasts
+                        .push(self.tr("toast-sub-reading", &[("name", name)]));
+                    self.load_main(source);
+                } else {
+                    self.read_waiting = Some(self.sub_generation);
+                    let size = (nikomiru_ocr::model_bytes() / 1_000_000).to_string();
+                    self.toasts.push(
+                        self.tr("toast-sub-read-fetching", &[("name", name), ("size", size)]),
+                    );
+                    self.books_page.ocr.installed = false;
+                    self.ocr_fetch();
+                }
+            }
             Source::File(_) | Source::Embedded { .. } => {
                 let _ = self.services.player.show_bitmap_subtitles(None);
-                let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
-                    return;
-                };
-                self.sub_loads.push((
-                    self.sub_generation,
-                    Request {
-                        video,
-                        source,
-                        encoding: self.subs.forced_encoding.clone(),
-                        duration_ms: (self.view.duration * 1000.0) as i64,
-                        secondary: false,
-                    },
-                ));
+                self.load_main(source);
             }
         }
+    }
+
+    /// Asks the loader for the main subtitle `source`.
+    fn load_main(&mut self, source: Source) {
+        let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
+            return;
+        };
+        self.sub_loads.push((
+            self.sub_generation,
+            Request {
+                video,
+                source,
+                encoding: self.subs.forced_encoding.clone(),
+                duration_ms: (self.view.duration * 1000.0) as i64,
+                secondary: false,
+            },
+        ));
     }
 
     /// Loads waiting to be started by the UI layer, with their generation.
@@ -4705,6 +4751,10 @@ impl Session {
                 }
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
+                // SUB-028: the text in place of the pictures
+                if matches!(source, Source::Read { .. }) {
+                    let _ = self.services.player.show_bitmap_subtitles(None);
+                }
                 // SUB-025: before its cues are laid out
                 crate::view::theme::register_fonts(&loaded.fonts);
                 self.subs.set_track(source, loaded);
@@ -4727,7 +4777,12 @@ impl Session {
             }
             Err(reason) => {
                 tracing::warn!("subtitles: {reason}");
-                self.subs.clear(None);
+                // SUB-028: the pictures stay, drawn by mpv
+                let pictures = match source {
+                    Source::Read { id, .. } => Some(Source::Bitmap(id)),
+                    _ => None,
+                };
+                self.subs.clear(pictures);
                 self.cues_changed();
                 self.toasts
                     .push(self.tr("error-subtitles", &[("reason", reason)]));
@@ -4777,11 +4832,13 @@ impl Session {
         let track = |id: i64| self.sub_tracks.iter().find(|t| t.id == id);
         match source {
             Source::File(p) => SubtitleChoice::File(p.to_string_lossy().into_owned()),
-            Source::Embedded { id, .. } | Source::Bitmap(id) => SubtitleChoice::Embedded {
-                ff_index: track(*id).and_then(|t| t.ff_index),
-                language: track(*id).and_then(|t| t.lang.clone()),
-                title: track(*id).and_then(|t| t.title.clone()),
-            },
+            Source::Embedded { id, .. } | Source::Bitmap(id) | Source::Read { id, .. } => {
+                SubtitleChoice::Embedded {
+                    ff_index: track(*id).and_then(|t| t.ff_index),
+                    language: track(*id).and_then(|t| t.lang.clone()),
+                    title: track(*id).and_then(|t| t.title.clone()),
+                }
+            }
         }
     }
 
@@ -4926,6 +4983,19 @@ impl Session {
                     "lang": track(*id).and_then(|t| t.lang.clone()),
                     "title": track(*id).and_then(|t| t.title.clone()),
                     "codec": track(*id).and_then(|t| t.codec.clone()),
+                }),
+                // SUB-028
+                Source::Read { id, codec, .. } => serde_json::json!({
+                    "key": s.key(), "kind": "read", "name": format!("#{id}"),
+                    "lang": track(*id).and_then(|t| t.lang.clone()),
+                    "title": track(*id).and_then(|t| t.title.clone()),
+                    "codec": codec,
+                    "note": if self.services.ocr.installed() {
+                        self.tr("subtitle-read-as-text", &[])
+                    } else {
+                        let size = (nikomiru_ocr::model_bytes() / 1_000_000).to_string();
+                        self.tr("subtitle-read-as-text-fetch", &[("size", size)])
+                    },
                 }),
             }
         });
@@ -5399,9 +5469,26 @@ impl Session {
             OcrEvent::Installed => {
                 ocr.fetched = None;
                 ocr.installed = true;
+                // SUB-028: the graphic track that waited for it
+                if self.read_waiting.take() == Some(self.sub_generation)
+                    && let Some(source @ Source::Read { .. }) = self.subs.source.clone()
+                {
+                    let name = source_name(&source);
+                    self.toasts
+                        .push(self.tr("toast-sub-reading", &[("name", name)]));
+                    self.load_main(source);
+                }
             }
             OcrEvent::Failed(e) => {
                 ocr.fetched = None;
+                if self.read_waiting.take() == Some(self.sub_generation)
+                    && let Some(Source::Read { id, .. }) = self.subs.source
+                {
+                    self.subs.clear(Some(Source::Bitmap(id)));
+                    self.cues_changed();
+                    self.toasts
+                        .push(self.tr("error-subtitles", &[("reason", e.clone())]));
+                }
                 self.books_page.status = Some((e, false));
             }
         }
@@ -6307,7 +6394,9 @@ fn source_name(source: &Source) -> String {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
-        Source::Embedded { id, .. } | Source::Bitmap(id) => format!("#{id}"),
+        Source::Embedded { id, .. } | Source::Bitmap(id) | Source::Read { id, .. } => {
+            format!("#{id}")
+        }
     }
 }
 

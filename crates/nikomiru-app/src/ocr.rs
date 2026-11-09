@@ -39,6 +39,38 @@ impl OcrWorker {
             engine: Arc::default(),
         }
     }
+
+    /// The model, loaded once for the pages and the graphic subtitles
+    /// (SUB-028) alike.
+    pub fn shared(&self) -> SharedEngine {
+        SharedEngine {
+            dir: self.dir.clone(),
+            engine: self.engine.clone(),
+        }
+    }
+}
+
+/// The model in its folder, loaded the first time it is asked for.
+#[derive(Debug, Clone)]
+pub struct SharedEngine {
+    dir: PathBuf,
+    engine: Arc<Mutex<Option<Arc<Engine>>>>,
+}
+
+impl SharedEngine {
+    /// Whether the model is there, or the tests' text stands in for it.
+    pub fn available(&self) -> bool {
+        test_text().is_some() || nikomiru_ocr::installed(&self.dir)
+    }
+
+    /// The model, loaded.
+    pub fn get(&self) -> Result<Arc<Engine>, nikomiru_ocr::OcrError> {
+        let mut engine = self.engine.lock().unwrap_or_else(|e| e.into_inner());
+        match &*engine {
+            Some(loaded) => Ok(loaded.clone()),
+            None => Ok(engine.insert(Arc::new(Engine::load(&self.dir)?)).clone()),
+        }
+    }
 }
 
 /// Fetches `files` into `dir`, each checked before it takes its name, so
@@ -107,7 +139,7 @@ fn fetch(
 }
 
 /// The text the end-to-end tests read in place of the model.
-fn test_text() -> Option<String> {
+pub(crate) fn test_text() -> Option<String> {
     if cfg!(feature = "test-harness") {
         std::env::var("NIKOMIRU_TEST_OCR").ok()
     } else {
@@ -115,24 +147,11 @@ fn test_text() -> Option<String> {
     }
 }
 
-fn recognize(
-    engine: &Mutex<Option<Arc<Engine>>>,
-    dir: &Path,
-    job: &OcrJob,
-) -> Result<Recognized, nikomiru_ocr::OcrError> {
+fn recognize(engine: &SharedEngine, job: &OcrJob) -> Result<Recognized, nikomiru_ocr::OcrError> {
     let crop = nikomiru_ocr::crop(&job.picture, job.area)?;
     let text = match test_text() {
         Some(text) => text,
-        None => {
-            let loaded = {
-                let mut engine = engine.lock().unwrap_or_else(|e| e.into_inner());
-                match &*engine {
-                    Some(loaded) => loaded.clone(),
-                    None => engine.insert(Arc::new(Engine::load(dir)?)).clone(),
-                }
-            };
-            loaded.read(&crop)?
-        }
+        None => engine.get()?.read(&crop)?,
     };
     Ok(Recognized {
         text,
@@ -142,7 +161,7 @@ fn recognize(
 
 impl OcrService for OcrWorker {
     fn installed(&self) -> bool {
-        test_text().is_some() || nikomiru_ocr::installed(&self.dir)
+        self.shared().available()
     }
 
     fn install(&self, proxy: String, translator: Translator, reports: Reports) {
@@ -170,11 +189,11 @@ impl OcrService for OcrWorker {
     }
 
     fn read(&self, job: OcrJob, translator: Translator, done: Box<dyn FnOnce(Reading) + Send>) {
-        let (engine, dir) = (self.engine.clone(), self.dir.clone());
+        let engine = self.shared();
         let spawned = std::thread::Builder::new()
             .name("ocr".into())
             .spawn(move || {
-                let read = recognize(&engine, &dir, &job).map_err(|e| {
+                let read = recognize(&engine, &job).map_err(|e| {
                     tracing::warn!("reading a page: {e}");
                     translator.error(&e as &dyn Localized)
                 });

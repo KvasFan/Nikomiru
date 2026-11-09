@@ -30,6 +30,16 @@ pub enum Source {
     },
     /// An embedded graphic track, drawn by mpv.
     Bitmap(i64),
+    /// An embedded PGS track read as text (SUB-028): mpv draws it until
+    /// its text is ready.
+    Read {
+        /// mpv track id.
+        id: i64,
+        /// FFmpeg stream index.
+        ff_index: i64,
+        /// Codec name.
+        codec: String,
+    },
 }
 
 impl Source {
@@ -38,6 +48,7 @@ impl Source {
         match self {
             Source::File(p) => format!("file:{}", p.display()),
             Source::Embedded { id, .. } | Source::Bitmap(id) => format!("track:{id}"),
+            Source::Read { id, .. } => format!("read:{id}"),
         }
     }
 }

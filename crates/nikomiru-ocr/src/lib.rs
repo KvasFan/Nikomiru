@@ -153,6 +153,13 @@ fn pixels(area: [f32; 4], width: u32, height: u32) -> Option<(u32, u32, u32, u32
     (w >= MIN_SIDE && h >= MIN_SIDE).then_some((x, y, w, h))
 }
 
+/// A grey picture, `width` by `height`, row by row: the lines of a graphic
+/// subtitle (SUB-028). `None` when the sizes do not match.
+pub fn grey(width: usize, height: usize, pixels: Vec<u8>) -> Option<DynamicImage> {
+    let (w, h) = (u32::try_from(width).ok()?, u32::try_from(height).ok()?);
+    image::GrayImage::from_raw(w, h, pixels).map(DynamicImage::ImageLuma8)
+}
+
 /// A picture as JPEG, for a card (MNG-006).
 pub fn jpeg(picture: &DynamicImage) -> Result<Vec<u8>, OcrError> {
     let mut bytes = Vec::new();
@@ -177,14 +184,38 @@ fn pixel_values(picture: &DynamicImage) -> Tensor {
 /// The text of the tokens: no specials, no spaces, which the model only
 /// makes up.
 fn clean(tokens: &[i64], vocabulary: &[String]) -> String {
-    tokens
+    let text = tokens
         .iter()
         .filter_map(|t| usize::try_from(*t).ok())
         .filter(|t| *t >= SPECIAL)
         .filter_map(|t| vocabulary.get(t))
         .flat_map(|token| token.chars())
         .filter(|c| !c.is_whitespace())
-        .collect()
+        .collect();
+    full_width(text)
+}
+
+/// What manga-ocr does last to a text: an ellipsis and runs of dots or
+/// middle dots as dots, then ASCII and digits in their full-width forms,
+/// as Japanese text writes them (`!` → `！`).
+fn full_width(text: String) -> String {
+    let text = text.replace('…', "...");
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let dot = |c: char| c == '.' || c == '・';
+    let mut i = 0;
+    while i < chars.len() {
+        let run = chars[i..].iter().take_while(|c| dot(**c)).count();
+        let (c, n) = if run >= 2 { ('.', run) } else { (chars[i], 1) };
+        for _ in 0..n {
+            out.push(match c {
+                '!'..='~' => char::from_u32(c as u32 - 0x21 + 0xff01).unwrap_or(c),
+                _ => c,
+            });
+        }
+        i += n;
+    }
+    out
 }
 
 /// The model, loaded.
@@ -332,6 +363,16 @@ mod tests {
         vocabulary.extend(["あ", " ", "い"].map(String::from));
         let tokens = [2, 15, 16, 17, 999, -1];
         assert_eq!(clean(&tokens, &vocabulary), "あい");
+    }
+
+    // T-MNG-003, T-SUB-028: manga-ocr's last step
+    #[test]
+    fn ascii_takes_its_full_width_form() {
+        assert_eq!(full_width("行くぞ!".into()), "行くぞ！");
+        assert_eq!(full_width("3D?".into()), "３Ｄ？");
+        assert_eq!(full_width("え…".into()), "え．．．");
+        assert_eq!(full_width("あ・・・".into()), "あ．．．");
+        assert_eq!(full_width("東京・大阪".into()), "東京・大阪");
     }
 
     // T-MNG-004

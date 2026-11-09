@@ -1156,6 +1156,58 @@ fn embedded_subtitles_are_drawn_clickable_and_navigable() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-SUB-028: a Japanese PGS track chosen by itself and read as text; the
+// words of its lines are clicked as those of a text track
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_graphic_track_is_read_as_text() {
+    use nikomiru_subs::pgs::testing;
+    let dir = tempfile::tempdir().unwrap();
+    let mut sup = Vec::new();
+    testing::display_set(&mut sup, 1000, &[(100, 900, testing::block(300, 40))], 255);
+    testing::display_set(&mut sup, 2500, &[], 255);
+    testing::display_set(&mut sup, 4000, &[(100, 900, testing::block(200, 40))], 255);
+    testing::display_set(&mut sup, 5500, &[], 255);
+    let sup_path = dir.path().join("in.sup");
+    std::fs::write(&sup_path, &sup).unwrap();
+    let video = dir.path().join("Blu-ray.mkv");
+    // `-copyts`: ffmpeg would start the stream at 0
+    let muxed = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-loglevel", "error", "-copyts", "-i"])
+        .arg(fixture("av_basic.mkv"))
+        .arg("-i")
+        .arg(&sup_path)
+        .args(["-map", "0:v", "-map", "0:a", "-map", "1:0", "-c", "copy"])
+        .args(["-metadata:s:s:0", "language=jpn"])
+        .arg(&video)
+        .status()
+        .unwrap();
+    assert!(muxed.success());
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.open(&video.to_string_lossy());
+    h.wait("file-loaded");
+    let s = h.state_until("the track read", |s| subs(s)["cues"] == 2);
+    assert!(
+        subs(&s)["source"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("read:"),
+        "{s}"
+    );
+    let menu = subs(&s)["menu"].as_array().cloned().unwrap_or_default();
+    let kinds: Vec<&str> = menu.iter().filter_map(|m| m["kind"].as_str()).collect();
+    assert_eq!(kinds, ["bitmap", "read"], "{s}");
+    let s = h.state_until("its first line", |s| !visible_text(s).is_empty());
+    // the tests' model reads every line as this
+    assert_eq!(visible_text(&s), ["明日も食べました"]);
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 3 }));
+    let s = h.state_until("the popup", |s| s["popups"][0]["empty"] == true);
+    assert_eq!(s["popups"][0]["query"], "食べました", "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-SUB-006
 // T-SUB-008
 #[test]

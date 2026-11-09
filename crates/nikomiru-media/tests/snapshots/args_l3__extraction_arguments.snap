@@ -23,3 +23,10 @@ ass
 -f
 ass
 file:/cache/a-4.ass.part
+-map
+0:5
+-c:s
+copy
+-f
+sup
+file:/cache/a-5.sup.part

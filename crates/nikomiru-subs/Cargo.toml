@@ -10,6 +10,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# PGS streams written by the tests of other crates (`nikomiru_subs::pgs::testing`).
+test-support = []
+
 [dependencies]
 unicode-segmentation.workspace = true
 

@@ -349,6 +349,9 @@ fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut Str
     ui.checkbox(&mut subs.reveal_on_hover, tr("settings-sub-reveal"));
     hint(ui, &tr("settings-sub-hint"));
     ui.checkbox(&mut subs.respect_ass_styles, tr("settings-sub-ass"));
+    // SUB-028
+    ui.checkbox(&mut subs.read_graphic, tr("settings-sub-read-graphic"));
+    hint(ui, &tr("settings-sub-read-graphic-hint"));
     // the words of the subtitles (LKP-051, LKP-061)
     ui.checkbox(&mut subs.furigana, tr("settings-sub-furigana"));
     ui.checkbox(&mut subs.mark_mined, tr("settings-sub-mark-mined"));
