@@ -16,6 +16,7 @@ use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
 use crate::review::{REVIEW_CARDS, ReviewCard};
 use crate::review_log::{Answer, REVIEW_LOG};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
+use crate::words::{WORD_STATUS, WordMark};
 
 /// The format of a device's file.
 pub const FORMAT: u32 = 1;
@@ -108,6 +109,10 @@ pub struct DeviceState {
     /// older files have none.
     #[serde(default)]
     pub review_log: BTreeMap<String, Answer>,
+    /// What the learner knows of each word, by its key (KNW-001): older
+    /// files have none.
+    #[serde(default)]
+    pub words: BTreeMap<String, WordMark>,
 }
 
 /// Which of two versions of a review card wins (REV-006): the one answered
@@ -222,6 +227,16 @@ impl DeviceState {
                 Some(_) => {}
                 None => {
                     self.review.insert(*id, card.clone());
+                }
+            }
+        }
+        // KNW-001: the newer mark of a word
+        for (key, mark) in &other.words {
+            match self.words.get_mut(key) {
+                Some(mine) if mark.wins_over(mine) => *mine = *mark,
+                Some(_) => {}
+                None => {
+                    self.words.insert(key.clone(), *mark);
                 }
             }
         }
@@ -360,6 +375,9 @@ impl Library {
             collect::<_, Answer>(tx, REVIEW_LOG, |key: u128, a| {
                 state.review_log.insert(format!("{key:032x}"), a);
             })?;
+            collect::<_, WordMark>(tx, WORD_STATUS, |key: &str, m| {
+                state.words.insert(key.to_string(), m);
+            })?;
             collect::<_, BookRecord>(tx, BOOKS, |uid: &str, b| {
                 if b.last_read_at.is_some() {
                     state.books.insert(
@@ -457,6 +475,10 @@ impl Library {
             let mut review = db_err!(tx.open_table(REVIEW_CARDS))?;
             for (id, c) in &state.review {
                 db_err!(review.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
+            }
+            let mut words = db_err!(tx.open_table(WORD_STATUS))?;
+            for (key, mark) in &state.words {
+                db_err!(words.insert(key.as_str(), postcard::to_stdvec(mark)?.as_slice()))?;
             }
             let mut log = db_err!(tx.open_table(REVIEW_LOG))?;
             for (key, a) in &state.review_log {
@@ -587,6 +609,7 @@ mod tests {
             prop::collection::btree_map(0..3u64, review_card(), 0..3),
             prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
             prop::collection::btree_map(0..3u64, 0..4u8, 0..3),
+            prop::collection::btree_map("[ab]", (0..4usize, 0..4i64), 0..3),
         )
             .prop_map(
                 |(
@@ -600,8 +623,26 @@ mod tests {
                     review,
                     buried,
                     log,
+                    words,
                 )| {
+                    use crate::words::WordStatus;
+                    let statuses = [
+                        WordStatus::Unknown,
+                        WordStatus::Learning,
+                        WordStatus::Known,
+                        WordStatus::Ignored,
+                    ];
                     DeviceState {
+                        words: words
+                            .into_iter()
+                            .map(|(k, (s, at))| {
+                                let mark = WordMark {
+                                    status: statuses[s],
+                                    changed_at: at,
+                                };
+                                (k, mark)
+                            })
+                            .collect(),
                         review,
                         review_log: log
                             .into_iter()
@@ -737,6 +778,39 @@ mod tests {
         assert_eq!(b.review_card(id).unwrap(), None);
         sync(&b, &a);
         assert_eq!(a.review_card(id).unwrap(), None);
+    }
+
+    // T-KNW-001: a word's status goes to another device, the newer wins
+    #[test]
+    fn word_statuses_travel_and_the_newer_wins() {
+        use crate::words::{WordStatus, word_key};
+        let dir = tempfile::tempdir().unwrap();
+        let a = Library::open(&dir.path().join("a.redb")).unwrap();
+        let b = Library::open(&dir.path().join("b.redb")).unwrap();
+        let sync = |from: &Library, to: &Library| {
+            let mut state = to.export_state(5_000).unwrap();
+            state.merge(&from.export_state(5_000).unwrap());
+            to.apply_state(&state).unwrap();
+        };
+        let mark = |status, changed_at| WordMark { status, changed_at };
+        a.set_word_status("猫", "ねこ", mark(WordStatus::Known, 10))
+            .unwrap();
+        b.set_word_status("猫", "ねこ", mark(WordStatus::Learning, 5))
+            .unwrap();
+        sync(&a, &b);
+        let key = word_key("猫", "ねこ");
+        assert_eq!(
+            b.word_statuses().unwrap()[&key],
+            mark(WordStatus::Known, 10)
+        );
+        // set back to unknown on b, later: a follows
+        b.set_word_status("猫", "ねこ", mark(WordStatus::Unknown, 20))
+            .unwrap();
+        sync(&b, &a);
+        assert_eq!(
+            a.word_statuses().unwrap()[&key],
+            mark(WordStatus::Unknown, 20)
+        );
     }
 
     fn video_at(position_ms: u64, at: i64) -> VideoState {

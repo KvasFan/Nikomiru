@@ -3320,12 +3320,11 @@ fn the_words_of_a_subtitle_get_readings_and_a_card_an_underline() {
     let s = h.state_until("the readings", |s| {
         s["subtitles"]["marks"][0]["readings"].is_array()
     });
-    // 食べました: た over 食, nothing mined yet
-    assert_eq!(
-        s["subtitles"]["marks"][0],
-        serde_json::json!({ "readings": [[0, 3, "た"]], "mined": [] }),
-        "{s}"
-    );
+    // 食べました: た over 食, nothing mined yet, no colours
+    let marks = &s["subtitles"]["marks"][0];
+    assert_eq!(marks["readings"], serde_json::json!([[0, 3, "た"]]), "{s}");
+    assert_eq!(marks["mined"], serde_json::json!([]), "{s}");
+    assert_eq!(marks["unknown"], serde_json::json!([]), "{s}");
     h.state_until("checked", |s| s["popups"][0]["cards"][0] == "add");
     h.cmd(serde_json::json!({ "cmd": "card", "level": 0, "entry": 0 }));
     h.wait("card-created");
@@ -3351,6 +3350,68 @@ fn the_words_of_a_subtitle_get_readings_and_a_card_an_underline() {
     }));
     h.state_until("no marks", |s| s["subtitles"]["marks"][0].is_null());
     h.cmd(serde_json::json!({ "cmd": "settings", "tab": "close" }));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-KNW-001, T-KNW-002, T-KNW-003: a word not known is underlined and
+// makes its line i+1; marked known in the popup, its underline goes, and
+// it stays known after a restart
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn a_word_marked_known_loses_its_colour_for_good() {
+    // paused on the first line, 食べました, whatever the machine's speed
+    let on_first_line = |h: &mut support::Harness| {
+        h.wait("cue-shown");
+        h.key("Space");
+        h.state_until("paused", |s| s["paused"] == true);
+        let first = |s: &serde_json::Value| s["subtitles"]["visible"][0]["index"] == 0;
+        for _ in 0..4 {
+            if first(&h.state()) {
+                break;
+            }
+            h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowLeft", "mods": ["Ctrl"] }));
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        // the step stops just before the line: a moment of play into it
+        if !first(&h.state()) {
+            h.key("Space");
+            h.state_until("the first line", first);
+            h.key("Space");
+            h.state_until("paused again", |s| s["paused"] == true);
+        }
+        assert!(first(&h.state()), "{}", h.state());
+        h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+        h.wait("popup-rendered");
+    };
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[subtitles]\nword_colors = true\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    on_first_line(&mut h);
+    // 食べました is one word, not known: the line has one new word
+    let s = h.state_until("the colours", |s| {
+        s["subtitles"]["marks"][0]["unknown"] == serde_json::json!([[0, 15]])
+    });
+    assert_eq!(s["subtitles"]["marks"][0]["plus_one"], true, "{s}");
+    h.cmd(serde_json::json!({ "cmd": "word_status", "level": 0, "entry": 0, "status": "known" }));
+    h.state_until("known", |s| s["subtitles"]["marks"][0].is_null());
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // the next time, still known
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    on_first_line(&mut h);
+    // the line is split again: give it a moment, then still no mark
+    std::thread::sleep(Duration::from_millis(500));
+    let s = h.state();
+    assert_eq!(s["subtitles"]["visible"][0]["index"], 0, "{s}");
+    assert!(s["subtitles"]["marks"][0].is_null(), "{s}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

@@ -12,6 +12,7 @@
 //! `{"cmd":"popup_button","button":"replay"|"goto"}`, `{"cmd":"lookup","text":…}`,
 //! `{"cmd":"popup_content","level":0}`, `{"cmd":"dict_css","id":…,"css":…}`,
 //! `{"cmd":"card","level":0,"entry":0,"item":"add-anyway"}` (`item` optional),
+//! `{"cmd":"word_status","level":0,"entry":0,"status":"known"}`,
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
 //! `{"cmd":"align"}`, `{"cmd":"move_subtitles"}`, `{"cmd":"setup","action":"open"|"close"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
@@ -129,6 +130,17 @@ fn run(command: &Value) -> Result<Value, String> {
                     .ok_or_else(|| format!("missing \"{name}\""))
             };
             harness::card(index("level")?, index("entry")?, command["item"].as_str())
+                .map(|()| Value::Null)
+        }
+        // KNW-001
+        Some("word_status") => {
+            let index = |name: &str| {
+                command[name]
+                    .as_u64()
+                    .map(|v| v as usize)
+                    .ok_or_else(|| format!("missing \"{name}\""))
+            };
+            harness::word_status(index("level")?, index("entry")?, text(command, "status")?)
                 .map(|()| Value::Null)
         }
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),

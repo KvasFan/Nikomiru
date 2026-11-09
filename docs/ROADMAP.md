@@ -32,9 +32,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M15 MDict, StarDict, DSL (1.5.0) ──► M16 Books, manga, audiobooks (2.0.0)
       ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0, 2.8.0) ──► M18 Web pages (2.6.0)
       ──► M19 Setup assistant (2.17.0)
-      ──► M20 Knowing words (2.20.0) ──► M21 Comprehension score (2.21.0)
-      ──► M22 Watching by what you know (2.22.0) ──► M23 Condensed audio, gaps (2.23.0)
-      ──► M24 Videos from the web (2.24.0) ──► the rest of the backlog (D-51)
+      ──► M20 Knowing words (2.20.0, 2.21.0) ──► M21 Comprehension score (2.22.0)
+      ──► M22 Watching by what you know (2.23.0) ──► M23 Condensed audio, gaps (2.24.0)
+      ──► M24 Videos from the web (2.25.0) ──► the rest of the backlog (D-51)
       (Ports, from spike S6, run alongside: D-16)
 ```
 
@@ -62,11 +62,11 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
-| M20 | Knowing words (D-51) | L | 2.20.0 | planned |
-| M21 | Choosing what to watch (D-51) | M | 2.21.0 | planned |
-| M22 | Watching by what you know (D-51) | M | 2.22.0 | planned |
-| M23 | Listening away from the screen (D-51) | S | 2.23.0 | planned |
-| M24 | Videos from the web (D-51) | M | 2.24.0 | planned |
+| M20 | Knowing words (D-51, D-52) | L | **2.20.0**, 2.21.0 | first part released: statuses by hand, colours, i+1 |
+| M21 | Choosing what to watch (D-51) | M | 2.22.0 | planned |
+| M22 | Watching by what you know (D-51) | M | 2.23.0 | planned |
+| M23 | Listening away from the screen (D-51) | S | 2.24.0 | planned |
+| M24 | Videos from the web (D-51) | M | 2.25.0 | planned |
 
 ---
 
@@ -742,7 +742,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 ---
 
-## M20 — Knowing words → 2.20.0
+## M20 — Knowing words → 2.20.0, 2.21.0
 
 **Goal**: Nikomiru knows the words the learner knows, and shows it where words are read, as Migaku and asbplayer do.
 
@@ -764,14 +764,20 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 **Notes**: own code and storage, no new dependency. The ignored status keeps names and noise out of the scores.
 
+**Status as of 2026-11-09**
+
+- Done for 2.20.0 (KNW-001…KNW-004, D-52): the statuses set from the popup, kept and synced; the words coloured in the subtitles and their list; i+1 lines; readings over unknown words only.
+- Next, for 2.21.0: known words from Anki; word lists imported and exported; the colours in books and web pages.
+
 **Exit criteria**
 
 - [ ] Requirements in SPECIFICATION.md, with tests for each (statuses, Anki rules against the fake AnkiConnect, colouring in L6, lists).
-- [ ] **Release 2.20.0**.
+- [x] **Release 2.20.0** (the first part).
+- [ ] **Release 2.21.0**.
 
 ---
 
-## M21 — Choosing what to watch → 2.21.0
+## M21 — Choosing what to watch → 2.22.0
 
 **Goal**: before playing, how much of an episode, a series or a book the learner will understand.
 
@@ -786,11 +792,11 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Exit criteria**
 
 - [ ] Requirements and tests; the score checked by hand on a real episode against a count made by hand.
-- [ ] **Release 2.21.0**.
+- [ ] **Release 2.22.0**.
 
 ---
 
-## M22 — Watching by what you know → 2.22.0
+## M22 — Watching by what you know → 2.23.0
 
 **Goal**: the subtitles help only where help is needed.
 
@@ -805,11 +811,11 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Exit criteria**
 
 - [ ] Requirements and tests (L6 for the modes).
-- [ ] **Release 2.22.0**.
+- [ ] **Release 2.23.0**.
 
 ---
 
-## M23 — Listening away from the screen → 2.23.0
+## M23 — Listening away from the screen → 2.24.0
 
 **Goal**: an episode's speech for passive listening, and less time spent where nobody speaks.
 
@@ -826,11 +832,11 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Exit criteria**
 
 - [ ] Requirements and tests (L4 for the audio, L5/L6 for the gaps).
-- [ ] **Release 2.23.0**.
+- [ ] **Release 2.24.0**.
 
 ---
 
-## M24 — Videos from the web → 2.24.0
+## M24 — Videos from the web → 2.25.0
 
 **Goal**: a YouTube video or another site's video watched as a file is, with clickable subtitles.
 
@@ -847,7 +853,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 - [ ] Requirements and tests against a local HTTP server and a fake yt-dlp.
 - [ ] One real YouTube video with Japanese subtitles watched and mined by hand.
-- [ ] **Release 2.24.0**.
+- [ ] **Release 2.25.0**.
 
 ---
 

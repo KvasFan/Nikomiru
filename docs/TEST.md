@@ -631,6 +631,10 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-INS-004 | A library downloaded | Resumed from a `.part`, asking only what is missing; a part that fails asked of the whole pack; a CRC-32 that does not match refused and nothing kept; a compressed entry refused before any request; a file that is not an audio database refused (L4) | L4 |
 | T-INS-005 | Cards | kittest: Lapis found and chosen in one click, made when missing; Anki away: try again or "Anki, later"; the review chosen | L3 |
 | T-INS-006 | Progress | The events move the rows, an import waiting keeps the assistant busy (L1); Stop keeps the `.part` (L4) | L1, L4 |
+| T-KNW-001 | Word statuses | Kept by headword and reading, the last one set, no migration; the newer mark wins, ties alike everywhere; synced to another device, set back to unknown later (L1); a card makes a word learning; the four statuses in a popup entry, a click sends the new one, the one it has sends nothing (L3); marked known from the popup and still known after a restart (L6) | L1/L3/L6 |
+| T-KNW-002 | Words coloured by status | Unknown and learning words marked, known and ignored not, the colours in the place of the mined underline (L1); underlines drawn in the overlay by kind (L3); a word not known underlined in a real subtitle, gone once known (L6) | L1/L3/L6 |
+| T-KNW-003 | Lines with one new word | One word not known makes the line i+1, two do not (L1); `+1` in the subtitle list (L3); a real line with one new word (L6) | L1/L3/L6 |
+| T-KNW-004 | Readings over unknown words only | The readings of a known word left out, a learning word's kept (L1) | L1 |
 | T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
 
 ### 6.14 Reliability and fuzzing

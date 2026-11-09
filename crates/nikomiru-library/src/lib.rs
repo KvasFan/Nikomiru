@@ -26,6 +26,7 @@ pub mod server_items;
 pub mod stats;
 pub mod sync;
 pub mod uid;
+pub mod words;
 pub mod writer;
 
 pub use cards::MinedCard;

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 //! The words of the subtitles (LKP-060) and what the overlay marks on them:
-//! readings over their kanji (LKP-051) and the words already made into cards
-//! (LKP-061). Each text is split once, away from the UI thread; the cues
+//! readings over their kanji (LKP-051), the words already made into cards
+//! (LKP-061), and the words by what the learner knows of them, with the
+//! lines that have one new word (KNW-002, KNW-003). Each text is split once, away from the UI thread; the cues
 //! about to come are asked ahead, so that their marks are ready when they
 //! show.
 
@@ -11,6 +12,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nikomiru_dict::segment::Word;
+pub use nikomiru_library::words::WordStatus;
+use nikomiru_library::words::word_key;
 use nikomiru_text::furigana::distribute_inflected;
 use nikomiru_text::kana::is_kanji;
 
@@ -23,14 +26,71 @@ const KEPT: usize = 4096;
 pub struct Marks {
     /// Readings over kanji (LKP-051).
     pub readings: Vec<(Range<usize>, String)>,
-    /// Words already made into cards (LKP-061).
+    /// Words already made into cards (LKP-061), while the words are not
+    /// coloured by status.
     pub mined: Vec<Range<usize>>,
+    /// Words not known yet (KNW-002).
+    pub unknown: Vec<Range<usize>>,
+    /// Words being learned (KNW-002).
+    pub learning: Vec<Range<usize>>,
+    /// The line has exactly one word not known (KNW-003).
+    pub plus_one: bool,
 }
 
 impl Marks {
     /// Nothing to draw.
     pub fn is_empty(&self) -> bool {
-        self.readings.is_empty() && self.mined.is_empty()
+        self.readings.is_empty()
+            && self.mined.is_empty()
+            && self.unknown.is_empty()
+            && self.learning.is_empty()
+            && !self.plus_one
+    }
+}
+
+/// Why a word is underlined.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Underline {
+    /// A card was made of it (LKP-061).
+    Mined,
+    /// Not known yet (KNW-002).
+    Unknown,
+    /// Being learned (KNW-002).
+    Learning,
+}
+
+impl Marks {
+    /// The words underlined, each with why.
+    pub fn underlines(&self) -> impl Iterator<Item = (&Range<usize>, Underline)> {
+        fn tag(
+            list: &[Range<usize>],
+            u: Underline,
+        ) -> impl Iterator<Item = (&Range<usize>, Underline)> {
+            list.iter().map(move |r| (r, u))
+        }
+        tag(&self.mined, Underline::Mined)
+            .chain(tag(&self.unknown, Underline::Unknown))
+            .chain(tag(&self.learning, Underline::Learning))
+    }
+}
+
+/// What to mark over a text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Wanted {
+    /// Readings over kanji (LKP-051).
+    pub furigana: bool,
+    /// Only over the words not known (KNW-004).
+    pub furigana_unknown_only: bool,
+    /// The words of the cards made (LKP-061).
+    pub mined: bool,
+    /// The words by status, and the i+1 line (KNW-002, KNW-003).
+    pub colors: bool,
+}
+
+impl Wanted {
+    /// Whether anything is marked, so the words must be split.
+    pub fn any(&self) -> bool {
+        self.furigana || self.mined || self.colors
     }
 }
 
@@ -43,6 +103,8 @@ pub struct Words {
     /// Changes with the dictionaries: older answers are dropped.
     generation: u64,
     mined: HashSet<String>,
+    /// The statuses set, by headword and reading (KNW-001).
+    statuses: HashMap<String, WordStatus>,
 }
 
 impl Words {
@@ -104,11 +166,31 @@ impl Words {
         self.mined.insert(expression);
     }
 
-    /// What to draw over `text`: readings when `furigana`, cards made when
-    /// `mined`. `None` while its words are not known.
-    pub fn marks(&self, text: &str, furigana: bool, mined: bool) -> Option<Marks> {
+    /// The statuses set (from the library).
+    pub fn set_statuses(&mut self, statuses: HashMap<String, WordStatus>) {
+        self.statuses = statuses;
+    }
+
+    /// The learner set the status of a word.
+    pub fn set_status(&mut self, expression: &str, reading: &str, status: WordStatus) {
+        self.statuses.insert(word_key(expression, reading), status);
+    }
+
+    /// What the learner knows of a word: the status set, else learning when
+    /// a card was made of it, else unknown (KNW-001).
+    pub fn status(&self, expression: &str, reading: &str) -> WordStatus {
+        match self.statuses.get(&word_key(expression, reading)) {
+            Some(status) => *status,
+            None if self.mined.contains(expression) => WordStatus::Learning,
+            None => WordStatus::Unknown,
+        }
+    }
+
+    /// What to draw over `text`. `None` while its words are not known.
+    pub fn marks(&self, text: &str, wanted: &Wanted) -> Option<Marks> {
         let words = self.get(text)?;
         let mut marks = Marks::default();
+        let mut new_words: HashSet<(&str, &str)> = HashSet::new();
         for w in words {
             let Some(h) = &w.headword else {
                 continue;
@@ -116,10 +198,22 @@ impl Words {
             let Some(surface) = text.get(w.range.clone()) else {
                 continue;
             };
-            if mined && self.mined.contains(&h.expression) {
+            let status = self.status(&h.expression, &h.reading);
+            if wanted.colors {
+                match status {
+                    WordStatus::Unknown => {
+                        marks.unknown.push(w.range.clone());
+                        new_words.insert((&h.expression, &h.reading));
+                    }
+                    WordStatus::Learning => marks.learning.push(w.range.clone()),
+                    WordStatus::Known | WordStatus::Ignored => {}
+                }
+            } else if wanted.mined && self.mined.contains(&h.expression) {
                 marks.mined.push(w.range.clone());
             }
-            if furigana && surface.chars().any(is_kanji) {
+            let known = matches!(status, WordStatus::Known | WordStatus::Ignored);
+            let reading = wanted.furigana && !(wanted.furigana_unknown_only && known);
+            if reading && surface.chars().any(is_kanji) {
                 let mut at = w.range.start;
                 for s in distribute_inflected(&h.expression, &h.reading, surface) {
                     let end = at + s.text.len();
@@ -131,6 +225,7 @@ impl Words {
                 }
             }
         }
+        marks.plus_one = wanted.colors && new_words.len() == 1;
         Some(marks)
     }
 
@@ -193,15 +288,28 @@ mod tests {
     #[test]
     fn readings_go_over_the_kanji_of_each_word() {
         let mut words = Words::default();
-        assert_eq!(words.marks("「猫が食べた」", true, true), None);
+        let all = Wanted {
+            furigana: true,
+            mined: true,
+            ..Wanted::default()
+        };
+        assert_eq!(words.marks("「猫が食べた」", &all), None);
         let text = split(&mut words);
-        let marks = words.marks(text, true, false).unwrap();
+        let furigana = Wanted {
+            furigana: true,
+            ..Wanted::default()
+        };
+        let marks = words.marks(text, &furigana).unwrap();
         assert_eq!(
             marks.readings,
             [(3..6, "ねこ".to_string()), (9..12, "た".to_string())]
         );
         assert!(marks.mined.is_empty());
-        assert!(words.marks(text, false, true).unwrap().is_empty());
+        let mined = Wanted {
+            mined: true,
+            ..Wanted::default()
+        };
+        assert!(words.marks(text, &mined).unwrap().is_empty());
     }
 
     // T-LKP-061
@@ -210,12 +318,67 @@ mod tests {
         let mut words = Words::default();
         let text = split(&mut words);
         words.set_mined(HashSet::from(["猫".to_string()]));
-        let mined = words.marks(text, false, true).unwrap().mined;
+        let wanted = Wanted {
+            mined: true,
+            ..Wanted::default()
+        };
+        let mined = words.marks(text, &wanted).unwrap().mined;
         assert_eq!((mined.len(), &mined[0]), (1, &(3..6)));
         // a card just made, of an inflected word's headword
         words.add_mined("食べる".into());
-        assert_eq!(words.marks(text, false, true).unwrap().mined, [3..6, 9..18]);
-        assert!(words.marks(text, false, false).unwrap().is_empty());
+        assert_eq!(words.marks(text, &wanted).unwrap().mined, [3..6, 9..18]);
+        assert!(words.marks(text, &Wanted::default()).unwrap().is_empty());
+    }
+
+    // T-KNW-002, T-KNW-003: the words by status; a card makes a word
+    // learning; one word not known makes the line i+1
+    #[test]
+    fn the_words_are_marked_by_what_is_known() {
+        let mut words = Words::default();
+        let text = split(&mut words);
+        let colors = Wanted {
+            mined: true,
+            colors: true,
+            ..Wanted::default()
+        };
+        let marks = words.marks(text, &colors).unwrap();
+        assert_eq!(marks.unknown, [3..6, 6..9, 9..18]);
+        assert!(!marks.plus_one);
+        assert!(
+            marks.mined.is_empty(),
+            "the colours take the underline's place"
+        );
+        words.set_status("が", "が", WordStatus::Known);
+        words.add_mined("食べる".into());
+        assert_eq!(words.status("食べる", "たべる"), WordStatus::Learning);
+        let marks = words.marks(text, &colors).unwrap();
+        assert_eq!(marks.unknown, std::iter::once(3..6).collect::<Vec<_>>());
+        assert_eq!(marks.learning, std::iter::once(9..18).collect::<Vec<_>>());
+        assert!(marks.plus_one, "only 猫 is new");
+        // known, even with a card; ignored
+        words.set_status("食べる", "たべる", WordStatus::Known);
+        words.set_status("猫", "ねこ", WordStatus::Ignored);
+        let marks = words.marks(text, &colors).unwrap();
+        assert!(marks.is_empty(), "{marks:?}");
+        // the same headword with another reading is another word
+        assert_eq!(words.status("猫", "びょう"), WordStatus::Unknown);
+    }
+
+    // T-KNW-004: readings only over the words not known
+    #[test]
+    fn readings_skip_the_words_known() {
+        let mut words = Words::default();
+        let text = split(&mut words);
+        let wanted = Wanted {
+            furigana: true,
+            furigana_unknown_only: true,
+            ..Wanted::default()
+        };
+        words.set_status("猫", "ねこ", WordStatus::Known);
+        let readings = words.marks(text, &wanted).unwrap().readings;
+        assert_eq!(readings, [(9..12, "た".to_string())]);
+        words.set_status("猫", "ねこ", WordStatus::Learning);
+        assert_eq!(words.marks(text, &wanted).unwrap().readings.len(), 2);
     }
 
     // T-LKP-060

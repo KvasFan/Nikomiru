@@ -655,6 +655,13 @@ impl Session {
                 Ok(mined) => words.set_mined(mined),
                 Err(e) => tracing::warn!("reading the cards made: {e}"),
             }
+            // KNW-001
+            match library.word_statuses() {
+                Ok(marks) => {
+                    words.set_statuses(marks.into_iter().map(|(k, m)| (k, m.status)).collect())
+                }
+                Err(e) => tracing::warn!("reading the words' statuses: {e}"),
+            }
         }
         Self {
             services,
@@ -5891,8 +5898,7 @@ impl Session {
     /// The subtitle texts to split into words, taken by the UI layer: the
     /// cues shown and the next few, while the overlay marks words (LKP-060).
     pub fn take_segmentations(&mut self) -> Vec<(u64, String)> {
-        let c = &self.services.config.subtitles;
-        if c.furigana || c.mark_mined {
+        if self.wanted_marks().any() {
             let t = self.subs.timeline();
             let pos = (self.view.time_pos * 1000.0) as i64;
             let next = t.list_position(pos).map_or(0, |i| i + 1);
@@ -5926,7 +5932,8 @@ impl Session {
     /// The rows of the subtitle list in view: their words are split, to
     /// underline the mined ones (LKP-061).
     pub fn list_rows(&mut self, cues: &[usize]) {
-        if !self.services.config.subtitles.mark_mined {
+        let c = &self.services.config.subtitles;
+        if !(c.mark_mined || c.word_colors) {
             return;
         }
         for &i in cues {
@@ -5936,16 +5943,78 @@ impl Session {
         }
     }
 
-    /// The words of `text` already made into cards, in bytes, while they are
-    /// underlined (LKP-061).
-    pub fn mined_words(&self, text: &str) -> Vec<std::ops::Range<usize>> {
-        if !self.services.config.subtitles.mark_mined {
-            return Vec::new();
+    /// The words of `text` the subtitle list underlines, and whether it has
+    /// one new word (LKP-061, KNW-002, KNW-003): no readings there.
+    pub fn list_marks(&self, text: &str) -> Option<crate::words::Marks> {
+        let wanted = crate::words::Wanted {
+            furigana: false,
+            ..self.wanted_marks()
+        };
+        if !wanted.any() {
+            return None;
         }
-        self.words
-            .marks(text, false, true)
-            .map(|m| m.mined)
-            .unwrap_or_default()
+        self.words.marks(text, &wanted)
+    }
+
+    /// What the settings ask to mark over the words of a text.
+    fn wanted_marks(&self) -> crate::words::Wanted {
+        let c = &self.services.config.subtitles;
+        crate::words::Wanted {
+            furigana: c.furigana,
+            furigana_unknown_only: c.furigana_unknown_only,
+            mined: c.mark_mined,
+            colors: c.word_colors,
+        }
+    }
+
+    /// What the learner knows of a word (KNW-001), for the popup.
+    pub fn word_status(&self, expression: &str, reading: &str) -> crate::words::WordStatus {
+        self.words.status(expression, reading)
+    }
+
+    /// The words are coloured by status (KNW-002): the popup offers them.
+    pub fn word_colors_on(&self) -> bool {
+        self.services.config.subtitles.word_colors
+    }
+
+    /// A status chosen in entry `entry` of popup `level` (KNW-001).
+    pub fn popup_word_status(
+        &mut self,
+        level: usize,
+        entry: usize,
+        status: crate::words::WordStatus,
+    ) {
+        let Some((expression, reading)) = self
+            .popups
+            .stack()
+            .get(level)
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| r.content.entries.get(entry))
+            .map(|e| (e.expression.clone(), e.reading.clone()))
+        else {
+            return;
+        };
+        self.set_word_status(expression, reading, status);
+    }
+
+    /// The learner set the status of a word, from the popup (KNW-001):
+    /// marked at once, saved away from the UI thread.
+    pub fn set_word_status(
+        &mut self,
+        expression: String,
+        reading: String,
+        status: crate::words::WordStatus,
+    ) {
+        self.words.set_status(&expression, &reading, status);
+        let changed_at = self.now_ms();
+        if let Some(w) = &self.writer {
+            let mark = nikomiru_library::words::WordMark { status, changed_at };
+            w.run(move |lib| {
+                if let Err(e) = lib.set_word_status(&expression, &reading, mark) {
+                    tracing::warn!("saving the status of {expression}: {e}");
+                }
+            });
+        }
     }
 
     /// The last step of the progress bar the pointer was over (PLY-014).
@@ -6008,15 +6077,13 @@ impl Session {
         self.thumbnails.get(at_ms)
     }
 
-    /// What the overlay marks over `text` (LKP-051, LKP-061).
+    /// What the overlay marks over `text` (LKP-051, LKP-061, KNW-002).
     pub fn word_marks(&self, text: &str) -> Option<crate::words::Marks> {
-        let c = &self.services.config.subtitles;
-        if !(c.furigana || c.mark_mined) {
+        let wanted = self.wanted_marks();
+        if !wanted.any() {
             return None;
         }
-        self.words
-            .marks(text, c.furigana, c.mark_mined)
-            .filter(|m| !m.is_empty())
+        self.words.marks(text, &wanted).filter(|m| !m.is_empty())
     }
 
     /// Starts a lookup on the dictionary service.

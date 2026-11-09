@@ -27,7 +27,6 @@ use crate::subtitles::clock;
 use crate::ui::Command;
 
 /// The underline of the words already made into cards, as in the overlay.
-const MINED: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x97);
 const BACKGROUND: Color32 = Color32::from_rgba_unmultiplied_const(0x14, 0x14, 0x18, 0xe6);
 const CURRENT: Color32 = Color32::from_rgba_unmultiplied_const(0x4a, 0x90, 0xe2, 0x3a);
 const TIME: Color32 = Color32::from_rgb(0x9a, 0xb8, 0xff);
@@ -102,6 +101,7 @@ struct Drawn {
     galley: Arc<Galley>,
     current: bool,
     mined: usize,
+    plus_one: bool,
 }
 
 /// What the list shows: the session's part of it.
@@ -114,8 +114,9 @@ pub(crate) struct Scene<'a> {
     pub title: String,
     pub search_hint: String,
     pub close: String,
-    /// The bytes of a text's words already made into cards (LKP-061).
-    pub mined: &'a dyn Fn(&str) -> Vec<Range<usize>>,
+    /// The words of a text underlined, in bytes, each with why, and whether
+    /// it has one new word (LKP-061, KNW-002, KNW-003).
+    pub marks: &'a dyn Fn(&str) -> Option<crate::words::Marks>,
     /// `[subtitles] list_text_size` and `list_width` (SUB-023).
     pub text_size: f32,
     pub width: f32,
@@ -249,7 +250,7 @@ pub(crate) fn show(
     out: &mut Vec<Command>,
 ) -> bool {
     let tr = |id: &str| s.translator().tr(id, &[]);
-    let mined = |text: &str| s.mined_words(text);
+    let marks = |text: &str| s.list_marks(text);
     let scene = Scene {
         timeline: s.subs.timeline(),
         version: s.sub_list_version,
@@ -257,7 +258,7 @@ pub(crate) fn show(
         title: tr("subtitle-list"),
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
-        mined: &mined,
+        marks: &marks,
         text_size: s.config().subtitles.list_text_size,
         width: s.config().subtitles.list_width,
     };
@@ -396,19 +397,35 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 let at = rect.min + vec2(sizes.text_x, PAD);
                 let text_rect = Rect::from_min_size(at, text.size());
                 painter.galley(at, Arc::clone(&text), Color32::WHITE);
-                let underlines: Vec<Rect> = (scene.mined)(plain)
-                    .into_iter()
-                    .flat_map(|bytes| {
+                let marks = (scene.marks)(plain).unwrap_or_default();
+                let underlines: Vec<(Rect, crate::words::Underline)> = marks
+                    .underlines()
+                    .flat_map(|(bytes, why)| {
                         let char_of = |b: usize| plain.get(..b).map_or(0, |s| s.chars().count());
                         char_rects(&text, char_of(bytes.start)..char_of(bytes.end))
+                            .into_iter()
+                            .map(move |r| (r, why))
                     })
-                    .map(|r| {
-                        Rect::from_min_max(pos2(r.min.x, r.max.y - 2.0), r.max)
-                            .translate(at.to_vec2())
+                    .map(|(r, why)| {
+                        let line = Rect::from_min_max(pos2(r.min.x, r.max.y - 2.0), r.max);
+                        (line.translate(at.to_vec2()), why)
                     })
                     .collect();
-                for line in &underlines {
-                    painter.rect_filled(*line, 1.0, MINED);
+                for (line, why) in &underlines {
+                    painter.rect_filled(*line, 1.0, palette::underline(*why));
+                }
+                // KNW-003: a line with one new word, under its time
+                if marks.plus_one {
+                    let badge = painter.layout_no_wrap(
+                        "+1".into(),
+                        FontId::proportional(sizes.time * 0.9),
+                        palette::underline(crate::words::Underline::Unknown),
+                    );
+                    painter.galley(
+                        pos2(time_rect.min.x, time_rect.max.y + 2.0),
+                        badge,
+                        Color32::WHITE,
+                    );
                 }
                 let clicked = ui
                     .interact(text_rect, id.with("text"), Sense::click())
@@ -436,6 +453,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     galley: text,
                     current: current == Some(k),
                     mined: underlines.len(),
+                    plus_one: marks.plus_one,
                 });
             }
 
@@ -512,10 +530,16 @@ mod tests {
                         title: "Subtitle list".into(),
                         search_hint: "Search".into(),
                         close: "Close".into(),
-                        mined: &|text: &str| {
-                            text.match_indices('猫')
+                        marks: &|text: &str| {
+                            let mined: Vec<Range<usize>> = text
+                                .match_indices('猫')
                                 .map(|(i, m)| i..i + m.len())
-                                .collect()
+                                .collect();
+                            Some(crate::words::Marks {
+                                plus_one: mined.len() == 1,
+                                mined,
+                                ..Default::default()
+                            })
                         },
                         text_size: t.sizes.0,
                         width: t.sizes.1,
@@ -680,7 +704,7 @@ mod tests {
         assert!(row.min.y >= 0.0 && row.max.y <= 720.0, "{row:?}");
     }
 
-    // T-LKP-061
+    // T-LKP-061, T-KNW-003
     #[test]
     fn the_words_already_mined_are_underlined_and_the_rows_in_view_asked() {
         let mut h = harness(
@@ -691,6 +715,9 @@ mod tests {
         h.run();
         let mined: Vec<usize> = h.state().state.drawn.iter().map(|d| d.mined).collect();
         assert_eq!(mined, [1, 0, 2]);
+        // T-KNW-003 the line with one new word marked
+        let plus_one: Vec<bool> = h.state().state.drawn.iter().map(|d| d.plus_one).collect();
+        assert_eq!(plus_one, [true, false, false]);
         let asked: Vec<_> = h
             .state()
             .out
