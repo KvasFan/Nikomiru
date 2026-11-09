@@ -635,6 +635,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-KNW-002 | Words coloured by status | Unknown and learning words marked, known and ignored not, the colours in the place of the mined underline (L1); underlines drawn in the overlay by kind (L3); a word not known underlined in a real subtitle, gone once known (L6) | L1/L3/L6 |
 | T-KNW-003 | Lines with one new word | One word not known makes the line i+1, two do not (L1); `+1` in the subtitle list (L3); a real line with one new word (L6) | L1/L3/L6 |
 | T-KNW-004 | Readings over unknown words only | The readings of a known word left out, a learning word's kept (L1) | L1 |
+| T-KNW-005 | Known words from Anki | The word of a field without HTML and readings; mature known, studied learning, new and suspended nothing (L1); the words read from Anki replaced as a whole; under a status set by hand (L1); against the fake AnkiConnect, the cards of one deck only, a word in two cards takes the most (L4); a mature card's word not marked at start (L6) | L1/L4/L6 |
+| T-KNW-006 | Word lists | Plain and `word,reading,status` lines, a heading, comments, a status not known skipped; the list written read back the same; many statuses in one transaction; a word without a reading counts for every reading (L1); a list imported over Anki's word, the words exported (L6) | L1/L6 |
 | T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
 
 ### 6.14 Reliability and fuzzing

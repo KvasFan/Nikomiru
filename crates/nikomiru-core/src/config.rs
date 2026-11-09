@@ -241,6 +241,10 @@ pub struct SubtitlesConfig {
     pub word_colors: bool,
     /// Readings only over the words not known (KNW-004).
     pub furigana_unknown_only: bool,
+    /// The Anki decks whose cards say which words are known (KNW-005).
+    pub known_decks: Vec<String>,
+    /// The field of those cards that holds the word (KNW-005).
+    pub known_field: String,
     /// The readings' size, in percent of the text (LKP-052).
     pub furigana_size: u8,
     /// The text's colour, `#rrggbb` (SUB-021).
@@ -350,6 +354,8 @@ impl Default for SubtitlesConfig {
             mark_mined: true,
             word_colors: false,
             furigana_unknown_only: false,
+            known_decks: Vec::new(),
+            known_field: "Expression".into(),
             furigana_size: 50,
             text_color: "#ffffff".into(),
             bold: false,

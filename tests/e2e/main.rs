@@ -3354,36 +3354,38 @@ fn the_words_of_a_subtitle_get_readings_and_a_card_an_underline() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+/// Paused on the first line, 食べました, whatever the machine's speed,
+/// with its popup open.
+fn on_first_line(h: &mut support::Harness) {
+    h.wait("cue-shown");
+    h.key("Space");
+    h.state_until("paused", |s| s["paused"] == true);
+    let first = |s: &serde_json::Value| s["subtitles"]["visible"][0]["index"] == 0;
+    for _ in 0..4 {
+        if first(&h.state()) {
+            break;
+        }
+        h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowLeft", "mods": ["Ctrl"] }));
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    // the step stops just before the line: a moment of play into it
+    if !first(&h.state()) {
+        h.key("Space");
+        h.state_until("the first line", first);
+        h.key("Space");
+        h.state_until("paused again", |s| s["paused"] == true);
+    }
+    assert!(first(&h.state()), "{}", h.state());
+    h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
+    h.wait("popup-rendered");
+}
+
 // T-KNW-001, T-KNW-002, T-KNW-003: a word not known is underlined and
 // makes its line i+1; marked known in the popup, its underline goes, and
 // it stays known after a restart
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
 fn a_word_marked_known_loses_its_colour_for_good() {
-    // paused on the first line, 食べました, whatever the machine's speed
-    let on_first_line = |h: &mut support::Harness| {
-        h.wait("cue-shown");
-        h.key("Space");
-        h.state_until("paused", |s| s["paused"] == true);
-        let first = |s: &serde_json::Value| s["subtitles"]["visible"][0]["index"] == 0;
-        for _ in 0..4 {
-            if first(&h.state()) {
-                break;
-            }
-            h.cmd(serde_json::json!({ "cmd": "key", "code": "ArrowLeft", "mods": ["Ctrl"] }));
-            std::thread::sleep(Duration::from_millis(300));
-        }
-        // the step stops just before the line: a moment of play into it
-        if !first(&h.state()) {
-            h.key("Space");
-            h.state_until("the first line", first);
-            h.key("Space");
-            h.state_until("paused again", |s| s["paused"] == true);
-        }
-        assert!(first(&h.state()), "{}", h.state());
-        h.cmd(serde_json::json!({ "cmd": "click_grapheme", "layer": "main", "cue_index": 0, "grapheme_index": 0 }));
-        h.wait("popup-rendered");
-    };
     let mut desk = Desktop::start();
     desk.import_dictionaries(&["mini-ja"]);
     desk.write_config(
@@ -3412,6 +3414,60 @@ fn a_word_marked_known_loses_its_colour_for_good() {
     let s = h.state();
     assert_eq!(s["subtitles"]["visible"][0]["index"], 0, "{s}");
     assert!(s["subtitles"]["marks"][0].is_null(), "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-KNW-005, T-KNW-006: the known words of a deck read from Anki at
+// start; a word list imported over them; the words exported
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn known_words_come_from_anki_and_from_a_list() {
+    use nikomiru_anki::fake::FakeAnki;
+    let fake = FakeAnki::start().unwrap();
+    let client = nikomiru_anki::Client::new(&fake.url(), "").unwrap();
+    nikomiru_anki::lapis::create(&client).unwrap();
+    let note = nikomiru_anki::Note {
+        deck: "Lapis".into(),
+        model: "Lapis".into(),
+        fields: vec![("Expression".into(), "食べる".into())],
+        tags: Vec::new(),
+        scope: nikomiru_anki::DuplicateScope::Deck,
+    };
+    let id = client.add_note(&note, true).unwrap();
+    if let Some(n) = fake.collection().notes.iter_mut().find(|n| n.id == id) {
+        n.interval = 30;
+    }
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(&format!(
+        "[player]\nmpv_options = {{ ao = \"null\" }}\n[subtitles]\nword_colors = true\n\
+         known_decks = [\"Lapis\"]\n[anki]\nurl = \"{}\"\n",
+        fake.url()
+    ));
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    on_first_line(&mut h);
+    // 食べる is mature in Anki: known, not marked
+    h.state_until("known from Anki", |s| s["subtitles"]["marks"][0].is_null());
+    // a list says it is not known after all
+    let dir = tempfile::tempdir().unwrap();
+    let list = dir.path().join("list.csv");
+    std::fs::write(&list, "食べる,たべる,unknown\n猫\n").unwrap();
+    h.cmd(serde_json::json!({ "cmd": "words", "action": "import", "path": list }));
+    h.state_until("unknown again", |s| {
+        s["subtitles"]["marks"][0]["unknown"] == serde_json::json!([[0, 15]])
+    });
+    let out = dir.path().join("words.csv");
+    h.cmd(serde_json::json!({ "cmd": "words", "action": "export", "path": out }));
+    let written = support::until(Duration::from_secs(5), "the export", || {
+        std::fs::read_to_string(&out).ok()
+    });
+    assert_eq!(
+        written,
+        "expression,reading,status\n猫,,known\n食べる,たべる,unknown\n"
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

@@ -105,6 +105,8 @@ pub struct Words {
     mined: HashSet<String>,
     /// The statuses set, by headword and reading (KNW-001).
     statuses: HashMap<String, WordStatus>,
+    /// What the cards of Anki's decks say, by headword (KNW-005).
+    anki: HashMap<String, WordStatus>,
 }
 
 impl Words {
@@ -176,14 +178,25 @@ impl Words {
         self.statuses.insert(word_key(expression, reading), status);
     }
 
-    /// What the learner knows of a word: the status set, else learning when
-    /// a card was made of it, else unknown (KNW-001).
+    /// The words read from Anki (KNW-005).
+    pub fn set_anki(&mut self, words: HashMap<String, WordStatus>) {
+        self.anki = words;
+    }
+
+    /// What the learner knows of a word: the status set for it, else the
+    /// one set for its headword with any reading (a list, KNW-006), else
+    /// what Anki's cards say (KNW-005), else learning when a card was made
+    /// of it, else unknown (KNW-001).
     pub fn status(&self, expression: &str, reading: &str) -> WordStatus {
-        match self.statuses.get(&word_key(expression, reading)) {
-            Some(status) => *status,
-            None if self.mined.contains(expression) => WordStatus::Learning,
-            None => WordStatus::Unknown,
-        }
+        let set = |reading: &str| self.statuses.get(&word_key(expression, reading)).copied();
+        set(reading)
+            .or_else(|| set(""))
+            .or_else(|| self.anki.get(expression).copied())
+            .unwrap_or(if self.mined.contains(expression) {
+                WordStatus::Learning
+            } else {
+                WordStatus::Unknown
+            })
     }
 
     /// What to draw over `text`. `None` while its words are not known.
@@ -362,6 +375,30 @@ mod tests {
         assert!(marks.is_empty(), "{marks:?}");
         // the same headword with another reading is another word
         assert_eq!(words.status("猫", "びょう"), WordStatus::Unknown);
+    }
+
+    // T-KNW-005, T-KNW-006: a word of a list known with any reading; Anki's
+    // cards below a status set by hand
+    #[test]
+    fn lists_and_anki_give_statuses_under_the_ones_set() {
+        let mut words = Words::default();
+        words.set_status("生", "", WordStatus::Known);
+        assert_eq!(words.status("生", "なま"), WordStatus::Known);
+        words.set_status("生", "なま", WordStatus::Learning);
+        assert_eq!(words.status("生", "なま"), WordStatus::Learning);
+        assert_eq!(words.status("生", "せい"), WordStatus::Known);
+        words.set_anki(HashMap::from([
+            ("猫".to_string(), WordStatus::Known),
+            ("犬".to_string(), WordStatus::Learning),
+        ]));
+        assert_eq!(words.status("猫", "ねこ"), WordStatus::Known);
+        words.set_status("猫", "ねこ", WordStatus::Unknown);
+        assert_eq!(
+            words.status("猫", "ねこ"),
+            WordStatus::Unknown,
+            "set by hand wins"
+        );
+        assert_eq!(words.status("犬", "いぬ"), WordStatus::Learning);
     }
 
     // T-KNW-004: readings only over the words not known

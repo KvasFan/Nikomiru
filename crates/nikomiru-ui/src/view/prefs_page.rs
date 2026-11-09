@@ -29,6 +29,8 @@ pub(crate) struct State {
     draft: Option<(SettingsTab, Config)>,
     /// The preferred languages as typed.
     languages: String,
+    /// The decks of the known words as typed (KNW-005).
+    known_decks: String,
     /// The Shortcuts tab.
     pub shortcuts: shortcuts_page::State,
     /// The sample cue of the Subtitles tab's preview (SUB-021), and how the
@@ -120,6 +122,7 @@ pub(crate) fn draw(
     if state.draft.as_ref().is_none_or(|(tab, _)| *tab != s.tab) {
         state.draft = Some((s.tab, s.saved.clone()));
         state.languages.clear();
+        state.known_decks.clear();
     }
     let tr = |id: &str| (s.tr)(id, &[]);
     let leave = settings::page(ctx, s.tab, &tr, s.status, |buttons, ui| {
@@ -139,6 +142,7 @@ pub(crate) fn draw(
             if reset.clicked() {
                 draft.reset(section);
                 state.languages.clear();
+                state.known_decks.clear();
                 state.shortcuts.reset();
             }
         }
@@ -146,7 +150,13 @@ pub(crate) fn draw(
         match s.tab {
             SettingsTab::General => general(ui, s, draft, out),
             SettingsTab::Subtitles => {
-                subtitles(ui, s, draft, &mut state.languages);
+                subtitles(
+                    ui,
+                    s,
+                    draft,
+                    (&mut state.languages, &mut state.known_decks),
+                    out,
+                );
                 let subs = state.sample.get_or_insert_with(sample);
                 look(ui, s, draft, subs, &mut state.preview);
             }
@@ -295,7 +305,13 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     ui.checkbox(&mut draft.player.auto_next, tr("settings-auto-next"));
 }
 
-fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut String) {
+fn subtitles(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    draft: &mut Config,
+    (languages, decks): (&mut String, &mut String),
+    out: &mut Vec<Command>,
+) {
     let tr = |id: &str| (s.tr)(id, &[]);
     let modes = [
         ("none", tr("subtitle-secondary-shown")),
@@ -366,6 +382,41 @@ fn subtitles(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, languages: &mut Str
             tr("settings-sub-furigana-unknown-only"),
         ),
     );
+    // KNW-005, KNW-006
+    section(ui, &tr("settings-known-words"));
+    form(ui, "settings-known-words", |ui| {
+        row(ui, &tr("settings-known-decks"), |ui| {
+            if decks.is_empty() {
+                *decks = subs.known_decks.join(", ");
+            }
+            let response = ui.add(TextEdit::singleline(decks).desired_width(240.0));
+            if response.changed() {
+                subs.known_decks = decks
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|d| !d.is_empty())
+                    .map(str::to_string)
+                    .collect();
+            }
+            response
+        });
+        row(ui, &tr("settings-known-field"), |ui| {
+            ui.add(TextEdit::singleline(&mut subs.known_field).desired_width(160.0))
+        });
+    });
+    hint(ui, &tr("settings-known-hint"));
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(tr("settings-known-read")).clicked() {
+            out.push(Command::KnownFromAnki);
+        }
+        if ui.button(tr("words-import")).clicked() {
+            out.push(Command::WordsImport);
+        }
+        if ui.button(tr("words-export")).clicked() {
+            out.push(Command::WordsExport);
+        }
+    });
+    hint(ui, &tr("words-list-hint"));
 }
 
 /// A colour with its opacity, written as `#rrggbbaa`.

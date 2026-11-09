@@ -90,6 +90,7 @@ type Browsed = Box<dyn FnOnce(Result<(), String>) + Send>;
 type Listed = Box<dyn FnOnce(Result<AnkiLists, String>) + Send>;
 type LapisDone = Box<dyn FnOnce(Result<LapisMade, String>) + Send>;
 type LaterListed = Box<dyn FnOnce(Vec<LaterCard>) + Send>;
+type KnownDone = Box<dyn FnOnce(nikomiru_ui::mining::KnownWords) + Send>;
 type LaterDone = Box<dyn FnOnce(LaterSent) + Send>;
 /// Renders the field values for a list of note fields.
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
@@ -104,6 +105,7 @@ enum Job {
     Later(LaterListed),
     SendLater(LaterDone),
     ForgetLater(String, LaterListed),
+    KnownWords(Vec<String>, String, KnownDone),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -160,6 +162,9 @@ impl Anki {
                         Job::Later(done) => done(worker.later()),
                         Job::SendLater(done) => done(worker.send_later()),
                         Job::ForgetLater(id, done) => done(worker.forget_later(&id)),
+                        Job::KnownWords(decks, field, done) => {
+                            done(worker.known_words(&decks, &field));
+                        }
                     }
                 }
             });
@@ -197,6 +202,7 @@ impl Anki {
             Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
             Job::Configure(_) => {}
             Job::Later(done) | Job::ForgetLater(_, done) => done(Vec::new()),
+            Job::KnownWords(_, _, done) => done(Err(self.unavailable.clone())),
             Job::SendLater(done) => done(LaterSent {
                 first_problem: Some(self.unavailable.clone()),
                 ..LaterSent::default()
@@ -254,6 +260,12 @@ impl AnkiService for Anki {
 
     fn forget_later(&self, id: String, done: LaterListed) {
         if let Some(job) = self.send(Job::ForgetLater(id, done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn known_words(&self, decks: Vec<String>, field: String, done: KnownDone) {
+        if let Some(job) = self.send(Job::KnownWords(decks, field, done)) {
             self.refuse(job);
         }
     }
@@ -1150,6 +1162,15 @@ impl Worker {
         if let Err(e) = library.put_mined_card(note_id, &card) {
             tracing::warn!("mined_cards: {e}");
         }
+    }
+
+    /// The words of the cards of `decks` (KNW-005), with the settings'
+    /// address.
+    fn known_words(&mut self, decks: &[String], field: &str) -> nikomiru_ui::mining::KnownWords {
+        let client = self.client().map_err(|e| self.message(&e))?;
+        client
+            .known_words(decks, field)
+            .map_err(|e| self.message(&e))
     }
 
     /// The connection test of the settings (ANK-006), with their address.

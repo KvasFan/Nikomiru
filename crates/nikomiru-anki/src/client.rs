@@ -278,7 +278,7 @@ impl Client {
             .collect())
     }
 
-    fn protocol(&self, reason: &str) -> AnkiError {
+    pub(crate) fn protocol(&self, reason: &str) -> AnkiError {
         AnkiError::Protocol {
             url: self.shown.clone(),
             reason: reason.to_string(),

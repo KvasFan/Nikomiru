@@ -18,6 +18,7 @@ pub mod error;
 pub mod fake;
 pub mod glossary;
 pub mod html;
+pub mod known;
 pub mod lapis;
 pub mod link;
 pub mod media;
