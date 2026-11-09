@@ -2645,7 +2645,8 @@ fn the_progress_bar_shows_a_thumbnail_under_the_pointer() {
     let mut desk = Desktop::start();
     desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n");
     let (mut app, mut h) = desk.launch();
-    h.open(&fixture("av_hd60_h264.mkv"));
+    // a 16:9 video that `cargo xtask fixtures` always makes (not --perf)
+    h.open(&fixture("av_basic.mkv"));
     h.wait("file-loaded");
     h.wait("first-frame");
     h.cmd(serde_json::json!({ "cmd": "mouse_moved" }));
