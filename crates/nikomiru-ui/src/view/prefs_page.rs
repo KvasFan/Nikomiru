@@ -382,6 +382,23 @@ fn subtitles(
             tr("settings-sub-furigana-unknown-only"),
         ),
     );
+    // KNW-011, KNW-012: help only where a word is new
+    ui.add_enabled_ui(subs.word_colors, |ui| {
+        form(ui, "settings-known-lines", |ui| {
+            row(ui, &tr("settings-sub-known-lines"), |ui| {
+                choice(
+                    ui,
+                    "settings-sub-known-lines",
+                    &mut subs.known_lines,
+                    &modes,
+                )
+            });
+        });
+        ui.checkbox(
+            &mut subs.auto_pause_new_only,
+            tr("settings-sub-pause-new-only"),
+        );
+    });
     // KNW-005, KNW-006
     section(ui, &tr("settings-known-words"));
     form(ui, "settings-known-words", |ui| {

@@ -366,6 +366,9 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
+    /// The words' revision the pause at the end of a line was last set
+    /// for, when it stops only after new words (KNW-012).
+    auto_pause_revision: u64,
     /// The scores of the episodes of the series open (KNW-008).
     episode_scores: crate::scores::EpisodeScores,
     /// The thumbnails of the progress bar (PLY-014).
@@ -722,6 +725,7 @@ impl Session {
             sub_list_version: 0,
             score: None,
             episode_scores: Default::default(),
+            auto_pause_revision: 0,
             word_list: None,
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -1185,12 +1189,25 @@ impl Session {
         }
         let pos = (self.view.time_pos * 1000.0).round() as i64;
         let t = self.subs.timeline();
-        let next = crate::subtitles::auto_pause_end(
-            t.cues().iter().map(|c| c.end_ms + t.delay_ms),
-            pos,
-            self.view.paused,
-            self.auto_pause_end,
-        );
+        // KNW-012: only after the lines with a new word (or not split yet)
+        let c = &self.services.config.subtitles;
+        let new_only = c.word_colors && c.auto_pause_new_only;
+        let words = &self.words;
+        let ends: Vec<i64> = t
+            .cues()
+            .iter()
+            // the lines already passed are not asked for their words
+            .filter(|q| {
+                !new_only
+                    || q.end_ms + t.delay_ms <= pos
+                    || words.new_words(&q.plain_text) != Some(0)
+            })
+            .map(|q| q.end_ms + t.delay_ms)
+            .collect();
+        // a stop at a line that has no new word any more goes
+        let current = self.auto_pause_end.filter(|end| ends.contains(end));
+        let next =
+            crate::subtitles::auto_pause_end(ends.into_iter(), pos, self.view.paused, current);
         if next != self.auto_pause_end {
             // stopped there: mpv's audio stopped with the picture
             let stopped = self.view.paused
@@ -1247,6 +1264,24 @@ impl Session {
     /// the tests.
     pub fn auto_pause_end(&self) -> Option<i64> {
         self.auto_pause_end
+    }
+
+    /// The main subtitle's mode for the lines shown (SUB-014): while the
+    /// words are coloured, the mode of the lines with no new word when
+    /// none of those shown has one (KNW-011). A line not split yet counts
+    /// as having one, so that it is never hidden by mistake.
+    fn main_mode(&self) -> Obscure {
+        let c = &self.services.config.subtitles;
+        let known = Obscure::from_config(&c.known_lines);
+        if !c.word_colors || known == Obscure::None {
+            return self.subs.mode;
+        }
+        let mut shown = self.subs.shown(false).peekable();
+        if shown.peek().is_none() {
+            return self.subs.mode;
+        }
+        let any_new = shown.any(|s| self.words.new_words(&s.cue.plain_text) != Some(0));
+        if any_new { self.subs.mode } else { known }
     }
 
     /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
@@ -5899,6 +5934,15 @@ impl Session {
             }
         }
         self.count_score();
+        // KNW-012: a line whose words are now all known loses its stop
+        let c = &self.services.config.subtitles;
+        if c.auto_pause && c.auto_pause_new_only && c.word_colors {
+            let revision = self.words.revision();
+            if revision != self.auto_pause_revision {
+                self.auto_pause_revision = revision;
+                self.update_auto_pause();
+            }
+        }
         self.words.take_queue()
     }
 
@@ -5941,6 +5985,11 @@ impl Session {
                 .map(std::sync::Arc::new);
             self.score = Some((at.0, at.1, score));
         }
+    }
+
+    /// Changes whenever the words' marks may change (KNW-013).
+    pub fn words_revision(&self) -> u64 {
+        self.words.revision()
     }
 
     /// The words of the main subtitle by how often they come, once all its
@@ -6710,7 +6759,7 @@ impl Session {
     /// The obscuring that applies now (SUB-014).
     pub fn obscure_now(&self) -> Obscure {
         crate::subtitles::obscured(
-            self.subs.mode,
+            self.main_mode(),
             self.view.loaded && !self.view.paused,
             self.popups.is_open(),
             self.subs.hovered,

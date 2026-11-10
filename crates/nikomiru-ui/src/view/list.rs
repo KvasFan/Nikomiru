@@ -58,11 +58,38 @@ impl Sizes {
     }
 }
 
+/// Which lines the list shows, while the words are coloured (KNW-013).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LineFilter {
+    /// Every line.
+    #[default]
+    All,
+    /// The lines with a word not known.
+    New,
+    /// The lines with one word not known (KNW-003).
+    PlusOne,
+}
+
+impl LineFilter {
+    const ALL: [LineFilter; 3] = [LineFilter::All, LineFilter::New, LineFilter::PlusOne];
+
+    /// Whether a line with these marks is shown; a line not split yet is
+    /// shown with the new ones.
+    fn keeps(self, marks: Option<&crate::words::Marks>) -> bool {
+        match (self, marks) {
+            (LineFilter::All, _) | (LineFilter::New, None) => true,
+            (LineFilter::New, Some(m)) => !m.unknown.is_empty(),
+            (LineFilter::PlusOne, m) => m.is_some_and(|m| m.plus_one),
+        }
+    }
+}
+
 /// The rows on show: their cues and where each one starts.
 #[derive(Debug, Default)]
 struct Rows {
-    /// The list version and the query the rows were picked for.
-    picked: Option<(u64, String)>,
+    /// The list version, the query, the filter and, with a filter, the
+    /// words' revision the rows were picked for.
+    picked: Option<(u64, String, LineFilter, u64)>,
     /// Changes whenever other rows are picked.
     generation: u64,
     /// The width the heights were measured at.
@@ -88,6 +115,8 @@ pub(crate) struct State {
     asked: Vec<usize>,
     /// The Words tab is shown (KNW-009).
     words_tab: bool,
+    /// The lines shown (KNW-013).
+    filter: LineFilter,
     /// What it keeps.
     words: super::word_list::State,
     /// The rows drawn in the last frame.
@@ -122,6 +151,10 @@ pub(crate) struct Scene<'a> {
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
     /// the words once all lines are split.
     pub tabs: Option<(String, String)>,
+    /// The filters of the lines, in the order of `LineFilter::ALL`
+    /// (KNW-013), and the words' revision, which changes their marks.
+    pub filters: [String; 3],
+    pub marks_version: u64,
     pub words: Option<&'a [crate::words::ListedWord]>,
     pub word_labels: super::word_list::Labels,
     pub search_hint: String,
@@ -150,19 +183,35 @@ fn time_job(ms: i64, size: f32) -> LayoutJob {
 impl Rows {
     /// Picks the rows again when the cues or the query change, and measures
     /// them again when the width changes too.
-    fn update(&mut self, ctx: &egui::Context, scene: &Scene<'_>, query: &str, width: f32) {
+    fn update(
+        &mut self,
+        ctx: &egui::Context,
+        scene: &Scene<'_>,
+        query: &str,
+        filter: LineFilter,
+        width: f32,
+    ) {
         let timeline = scene.timeline;
-        let fresh = self
-            .picked
-            .as_ref()
-            .is_none_or(|(v, q)| *v != scene.version || q != query);
+        let revision = if filter == LineFilter::All {
+            0
+        } else {
+            scene.marks_version
+        };
+        let fresh = self.picked.as_ref().is_none_or(|(v, q, f, r)| {
+            *v != scene.version || q != query || *f != filter || *r != revision
+        });
         if fresh {
             self.cues = if query.is_empty() {
                 (0..timeline.cues().len()).collect()
             } else {
                 timeline.search(query)
             };
-            self.picked = Some((scene.version, query.to_string()));
+            if filter != LineFilter::All {
+                let cues = timeline.cues();
+                self.cues
+                    .retain(|&i| filter.keeps((scene.marks)(&cues[i].plain_text).as_ref()));
+            }
+            self.picked = Some((scene.version, query.to_string(), filter, revision));
             self.generation += 1;
         } else if self.width == width && self.size == scene.text_size {
             return;
@@ -273,6 +322,12 @@ pub(crate) fn show(
         title: tr("subtitle-list"),
         score: score_line(s),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
+        filters: [
+            tr("subtitle-lines-all"),
+            tr("subtitle-lines-new"),
+            tr("subtitle-lines-plus-one"),
+        ],
+        marks_version: s.words_revision(),
         words: words.as_deref().map(Vec::as_slice),
         word_labels: super::word_list::Labels {
             new_only: tr("subtitle-words-new-only"),
@@ -369,6 +424,19 @@ pub(crate) fn draw(
                             }
                         });
                     }
+                    // KNW-013: the lines with a new word, or with one
+                    if scene.tabs.is_some() && !state.words_tab {
+                        ui.horizontal_wrapped(|ui| {
+                            for (filter, label) in LineFilter::ALL.iter().zip(&scene.filters) {
+                                if ui
+                                    .selectable_label(state.filter == *filter, label)
+                                    .clicked()
+                                {
+                                    state.filter = *filter;
+                                }
+                            }
+                        });
+                    }
                     open &= search(ui, state, search_focus, &scene.search_hint);
                     if scene.tabs.is_some() && state.words_tab {
                         if let Some(all) = scene.words {
@@ -430,7 +498,12 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
         .show_viewport(ui, |ui, viewport| {
             let ctx = ui.ctx().clone();
             let width = ui.max_rect().width();
-            state.rows.update(&ctx, scene, &state.query, width);
+            let filter = if scene.tabs.is_some() {
+                state.filter
+            } else {
+                LineFilter::All
+            };
+            state.rows.update(&ctx, scene, &state.query, filter, width);
             let rows = &state.rows;
             ui.set_height(rows.tops.last().copied().unwrap_or(0.0));
             let origin = ui.max_rect().min;
@@ -566,6 +639,8 @@ mod tests {
         sizes: (f32, f32),
         /// The header's score (KNW-007).
         score: Option<String>,
+        /// The tabs and filters are shown (KNW-009, KNW-013).
+        tabs: bool,
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
@@ -610,7 +685,9 @@ mod tests {
                         pos_ms: t.pos_ms,
                         title: "Subtitle list".into(),
                         score: t.score.clone(),
-                        tabs: None,
+                        tabs: t.tabs.then(|| ("Lines".into(), "Words".into())),
+                        filters: ["All", "New", "+1"].map(String::from),
+                        marks_version: 0,
                         words: None,
                         word_labels: Default::default(),
                         search_hint: "Search".into(),
@@ -620,9 +697,15 @@ mod tests {
                                 .match_indices('猫')
                                 .map(|(i, m)| i..i + m.len())
                                 .collect();
+                            // 鯨 is a word not known (KNW-013)
+                            let unknown: Vec<Range<usize>> = text
+                                .match_indices('鯨')
+                                .map(|(i, m)| i..i + m.len())
+                                .collect();
                             Some(crate::words::Marks {
                                 plus_one: mined.len() == 1,
                                 mined,
+                                unknown,
                                 ..Default::default()
                             })
                         },
@@ -649,6 +732,7 @@ mod tests {
                     out: Vec::new(),
                     sizes: (16.0, 420.0),
                     score: None,
+                    tabs: false,
                 },
             )
     }
@@ -684,6 +768,32 @@ mod tests {
         h.state_mut().score = Some("Known: 50%".into());
         h.run();
         h.get_by_label("Known: 50%");
+    }
+
+    // T-KNW-013: the lines with a new word, or with one, while the words
+    // are coloured
+    #[test]
+    fn the_lines_are_filtered_by_their_new_words() {
+        use egui_kittest::kittest::Queryable;
+        let t = timeline(&[(1000, "鯨だ"), (3000, "猫だ"), (5000, "鳥だ")]);
+        let mut h = harness(t, 0, false);
+        h.run();
+        assert!(
+            h.query_by_label("New").is_none(),
+            "no filters without colours"
+        );
+        h.state_mut().tabs = true;
+        h.run();
+        assert_eq!(drawn(&h).len(), 3);
+        h.get_by_label("New").click();
+        h.run();
+        assert_eq!(drawn(&h), [(0, false)]);
+        h.get_by_label("+1").click();
+        h.run();
+        assert_eq!(drawn(&h), [(1, false)]);
+        h.get_by_label("All").click();
+        h.run();
+        assert_eq!(drawn(&h).len(), 3);
     }
 
     // T-SUB-015
