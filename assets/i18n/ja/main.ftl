@@ -422,6 +422,12 @@ subtitle-search = 字幕を検索
 subtitle-list-close = 字幕リストを閉じる
 subtitle-score = 既知語: { $known }% · 未知語のない行: { $clear }%
 subtitle-score-counting = 単語を数えています… { $done } / { $of } 行
+subtitle-list-lines = 行
+subtitle-list-words = 単語
+subtitle-words-new-only = 未知の単語だけ
+subtitle-words-all = 表示中をすべて
+subtitle-words-ticked = { $count } 語を選択中:
+subtitle-words-card = カード作成済み
 library-score-counting = 字幕の単語を数えています…
 file-filter-subtitles = 字幕ファイル
 toast-sub-loaded = 字幕: { $name }
@@ -847,6 +853,15 @@ review-new-per-day = 1日の新規カード数
 books-web = ウェブページ
 books-web-open = 開く
 error-book-not-page = このページは読めません：Nikomiru が知らない文字コードで書かれています。
+stats-words = 単語
+stats-words-set = 既知: { $known } · 学習中: { $learning } · 無視: { $ignored }
+stats-words-anki = Ankiから: 既知 { $known }、学習中 { $learning }
+stats-words-days = 既知の単語（過去30日）
+stats-words-day = { $ago ->
+    [0] 今日
+    [1] 昨日
+   *[other] { $ago }日前
+}: 既知 { $count } 語
 stats-review = 復習
 stats-review-today = 今日：回答 { $count } 件、覚えていた { $kept } 件
 stats-review-retention = 復習で覚えていた割合（過去30日）：{ $percent } %

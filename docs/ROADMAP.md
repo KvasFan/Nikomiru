@@ -63,7 +63,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
 | M20 | Knowing words (D-51, D-52) | L | **2.20.0**, **2.21.0** | released; colours in books and web pages open |
-| M21 | Choosing what to watch (D-51, D-53, D-54) | M | **2.22.0**, **2.23.0**, 2.24.0 | scores of the subtitle watched and of the episodes released; word browser and statistics next |
+| M21 | Choosing what to watch (D-51, D-53…D-55) | M | **2.22.0**, **2.23.0**, **2.24.0** | released; scores for embedded tracks, series cards and books open |
 | M22 | Watching by what you know (D-51) | M | 2.25.0 | planned |
 | M23 | Listening away from the screen (D-51) | S | 2.26.0 | planned |
 | M24 | Videos from the web (D-51) | M | 2.27.0 | planned |
@@ -794,7 +794,8 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 - Done for 2.22.0 (KNW-007, D-53): the score of the main subtitle being watched, in the subtitle list's header, counted from all its lines in the background and again when a status changes.
 - Done for 2.23.0 (KNW-008, D-54): the scores of a series' episodes before they play, in the episode list, from the subtitle file each would load by itself.
-- Next, for 2.24.0: the word browser; the word statistics.
+- Done for 2.24.0 (KNW-009, KNW-010, D-55): the words of the subtitle being watched in a tab of the subtitle list, several marked at once; the words in the Statistics tab, known by day.
+- Open as well: the word browser of a book; new words met per episode.
 - Open: scores for episodes that would play an embedded track; on the series' cards and the books page.
 
 **Exit criteria**
@@ -802,7 +803,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 - [ ] Requirements and tests; the score checked by hand on a real episode against a count made by hand.
 - [x] **Release 2.22.0** (the first part).
 - [x] **Release 2.23.0** (the second part).
-- [ ] **Release 2.24.0**.
+- [x] **Release 2.24.0**.
 
 ---
 

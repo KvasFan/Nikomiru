@@ -148,6 +148,49 @@ fn review_section(ui: &mut Ui, r: &nikomiru_library::review_log::ReviewStats, tr
     });
 }
 
+/// The words' part of the tab (KNW-010): how many by status, and the
+/// words known over the last days.
+fn words_section(ui: &mut Ui, w: &nikomiru_library::words::WordStats, tr: &Translate<'_>) {
+    use nikomiru_library::words::WORD_DAYS;
+    section(ui, &tr("stats-words", &[]));
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 24.0;
+        ui.label(
+            RichText::new(tr(
+                "stats-words-set",
+                &[
+                    ("known", w.known.to_string()),
+                    ("learning", w.learning.to_string()),
+                    ("ignored", w.ignored.to_string()),
+                ],
+            ))
+            .family(theme::bold()),
+        );
+        if w.anki_known + w.anki_learning > 0 {
+            ui.label(
+                RichText::new(tr(
+                    "stats-words-anki",
+                    &[
+                        ("known", w.anki_known.to_string()),
+                        ("learning", w.anki_learning.to_string()),
+                    ],
+                ))
+                .color(palette::current().details),
+            );
+        }
+    });
+    ui.label(RichText::new(tr("stats-words-days", &[])).color(palette::current().details));
+    bars(ui, &w.known_by_day, 80.0, |i| {
+        tr(
+            "stats-words-day",
+            &[
+                ("ago", (WORD_DAYS as usize - 1 - i).to_string()),
+                ("count", w.known_by_day[i].to_string()),
+            ],
+        )
+    });
+}
+
 /// Draws the tab.
 pub(crate) fn draw(
     ui: &mut Ui,
@@ -288,6 +331,9 @@ pub(crate) fn draw(
     if let Some(review) = &stats.review {
         review_section(ui, review, tr);
     }
+    if let Some(words) = &stats.words {
+        words_section(ui, words, tr);
+    }
 
     // by series
     if !stats.series.is_empty() {
@@ -410,6 +456,14 @@ mod tests {
                 mature: 5,
                 ahead: vec![4, 2, 0, 0, 1, 0, 0],
             }),
+            words: Some(nikomiru_library::words::WordStats {
+                known: 120,
+                learning: 30,
+                ignored: 4,
+                anki_known: 800,
+                anki_learning: 50,
+                known_by_day: vec![100; 30],
+            }),
         };
         let mut h = Harness::builder()
             .with_size(vec2(1280.0, 1200.0))
@@ -443,6 +497,9 @@ mod tests {
         h.get_by_label("stats-review-today 12 10");
         h.get_by_label("stats-review-retention 87");
         h.get_by_label("stats-review-cards 3 1 20 5");
+        // T-KNW-010 the words' part
+        h.get_by_label("stats-words-set 120 30 4");
+        h.get_by_label("stats-words-anki 800 50");
         h.get_by_label("stats-range 30").click();
         h.run();
         assert_eq!(h.state().state.range, 1);

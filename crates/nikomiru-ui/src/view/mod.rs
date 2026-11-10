@@ -34,6 +34,7 @@ mod setup_page;
 mod shortcuts_page;
 mod stats_view;
 pub(crate) mod theme;
+mod word_list;
 
 use std::collections::HashSet;
 use std::path::PathBuf;

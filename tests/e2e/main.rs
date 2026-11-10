@@ -3380,8 +3380,9 @@ fn on_first_line(h: &mut support::Harness) {
     h.wait("popup-rendered");
 }
 
-// T-KNW-001, T-KNW-002, T-KNW-003, T-KNW-007: a word not known is
-// underlined, makes its line i+1 and counts in the score; marked known in the popup, its underline goes, and
+// T-KNW-001, T-KNW-002, T-KNW-003, T-KNW-007, T-KNW-009: a word not
+// known is underlined, makes its line i+1, counts in the score and is listed;
+// once known, it is in the Statistics tab (T-KNW-010); marked known in the popup, its underline goes, and
 // it stays known after a restart
 #[test]
 #[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
@@ -3409,12 +3410,37 @@ fn a_word_marked_known_loses_its_colour_for_good() {
         "{s}"
     );
     assert!(score["lines"].as_u64() >= Some(2), "{s}");
+    // T-KNW-009: the words of the subtitle listed, 食べる among them
+    let eat = |s: &serde_json::Value| {
+        s["subtitles"]["words"]
+            .as_array()
+            .and_then(|w| w.iter().find(|w| w["expression"] == "食べる").cloned())
+    };
+    let word = eat(&s).unwrap_or_else(|| panic!("{s}"));
+    assert_eq!(
+        (&word["count"], &word["status"]),
+        (&serde_json::json!(1), &serde_json::json!("unknown"))
+    );
     h.cmd(serde_json::json!({ "cmd": "word_status", "level": 0, "entry": 0, "status": "known" }));
     h.state_until("known", |s| s["subtitles"]["marks"][0].is_null());
+    h.state_until("known in the list", |s| {
+        eat(s).is_some_and(|w| w["status"] == "known")
+    });
     // the first line has no new word left
     h.state_until("the score again", |s| {
         s["subtitles"]["score"]["clear"] == 1 && s["subtitles"]["score"]["known"] == 1
     });
+    // T-KNW-010: one word known today, in the Statistics tab
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "statistics" }));
+    let s = h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
+    assert_eq!(
+        s["library_page"]["stats"]["words"],
+        serde_json::json!({
+            "known": 1, "learning": 0, "ignored": 0, "anki_known": 0, "known_today": 1
+        }),
+        "{s}"
+    );
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "close" }));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     // the next time, still known

@@ -4,6 +4,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-11-10
+
+The words of an episode, and the words you know.
+
+### Added
+
+- A Words tab in the subtitle list, with the words coloured (KNW-009): every word of the episode with how often it comes, what you know of it and whether it has a card, the most frequent first.
+  - Narrow it with the search or to the words you don't know yet.
+  - Tick some, or all those shown, and mark them known, learning, new or ignored at once.
+- Words in the Statistics tab (KNW-010): how many words you set known, learning and ignored, how many Anki says you know, and the words known over the last 30 days.
+
 ## [2.23.0] - 2026-11-10
 
 How much of an episode you will understand, before you play it.

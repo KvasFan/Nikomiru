@@ -428,6 +428,12 @@ subtitle-search = Cerca nei sottotitoli
 subtitle-list-close = Chiudi l'elenco dei sottotitoli
 subtitle-score = Parole note: { $known }% · righe senza parole nuove: { $clear }%
 subtitle-score-counting = Conto delle parole… { $done } righe su { $of }
+subtitle-list-lines = Righe
+subtitle-list-words = Parole
+subtitle-words-new-only = Solo parole non note
+subtitle-words-all = Tutte quelle mostrate
+subtitle-words-ticked = { $count } selezionate:
+subtitle-words-card = Ne è stata fatta una carta
 library-score-counting = Conto delle parole dei sottotitoli…
 file-filter-subtitles = File di sottotitoli
 toast-sub-loaded = Sottotitoli: { $name }
@@ -863,6 +869,15 @@ review-new-per-day = Carte nuove al giorno
 books-web = Pagina web
 books-web-open = Apri
 error-book-not-page = Questa pagina non si può leggere: il suo testo è in una codifica che Nikomiru non conosce.
+stats-words = Parole
+stats-words-set = Note: { $known } · in studio: { $learning } · ignorate: { $ignored }
+stats-words-anki = Da Anki: { $known } note, { $learning } in studio
+stats-words-days = Parole note, ultimi 30 giorni
+stats-words-day = { $ago ->
+    [0] Oggi
+    [1] Ieri
+   *[other] { $ago } giorni fa
+}: { $count } parole note
 stats-review = Ripasso
 stats-review-today = Oggi: { $count } risposte, { $kept } ricordate
 stats-review-retention = Ricordate in ripasso, ultimi 30 giorni: { $percent } %

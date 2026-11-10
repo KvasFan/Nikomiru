@@ -244,6 +244,7 @@ mod tests {
                 "servers-address-hint",
                 "review-total",
                 "anki-destination-anki",
+                "stats-words-day",
                 "stats-review-day",
                 "stats-review-due",
                 "review-answers",
