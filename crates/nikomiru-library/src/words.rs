@@ -216,6 +216,17 @@ impl Counted {
         counted
     }
 
+    /// How many times each word of `words` comes (KNW-009).
+    pub fn occurrences(&self) -> Vec<usize> {
+        let mut out = vec![0; self.words.len()];
+        for &i in self.lines.iter().flatten() {
+            if let Some(n) = out.get_mut(i as usize) {
+                *n += 1;
+            }
+        }
+        out
+    }
+
     /// The score, given what the learner knows of each word; each word is
     /// asked once.
     pub fn score(&self, status: impl Fn(&str, &str) -> WordStatus) -> Score {
@@ -228,6 +239,73 @@ impl Counted {
             );
         }
         score
+    }
+}
+
+/// The days the word statistics chart (KNW-010).
+pub const WORD_DAYS: i64 = 30;
+
+/// What the Statistics tab says of the words (KNW-010).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WordStats {
+    /// The words set known by hand or by a list.
+    pub known: usize,
+    /// Set being learned.
+    pub learning: usize,
+    /// Set ignored.
+    pub ignored: usize,
+    /// The words Anki's cards say are known (KNW-005).
+    pub anki_known: usize,
+    /// Those they say are being learned.
+    pub anki_learning: usize,
+    /// The words known now that were set known by the end of each of the
+    /// last [`WORD_DAYS`] days, today last.
+    pub known_by_day: Vec<u32>,
+}
+
+impl WordStats {
+    /// The statistics of the statuses set and of Anki's words, on local
+    /// day `today` (the review's days, with its rollover).
+    pub fn of(
+        marks: &HashMap<String, WordMark>,
+        anki: &HashMap<String, WordStatus>,
+        today: i64,
+        offset_s: i32,
+    ) -> Self {
+        let mut s = WordStats {
+            known_by_day: vec![0; WORD_DAYS as usize],
+            ..WordStats::default()
+        };
+        for mark in marks.values() {
+            match mark.status {
+                WordStatus::Unknown => {}
+                WordStatus::Learning => s.learning += 1,
+                WordStatus::Ignored => s.ignored += 1,
+                WordStatus::Known => {
+                    s.known += 1;
+                    let day = crate::review::day_of(mark.changed_at, offset_s);
+                    let first = today - (WORD_DAYS - 1);
+                    // known from that day on: every bar from it counts it
+                    let from = (day - first).max(0);
+                    for n in s.known_by_day.iter_mut().skip(from as usize) {
+                        *n += 1;
+                    }
+                }
+            }
+        }
+        for status in anki.values() {
+            match status {
+                WordStatus::Known => s.anki_known += 1,
+                WordStatus::Learning => s.anki_learning += 1,
+                _ => {}
+            }
+        }
+        s
+    }
+
+    /// Whether there is anything to show.
+    pub fn any(&self) -> bool {
+        self.known + self.learning + self.ignored + self.anki_known + self.anki_learning > 0
     }
 }
 
@@ -294,6 +372,16 @@ impl Library {
         })
     }
 
+    /// The word statistics on local day `today` (KNW-010).
+    pub fn word_stats(&self, today: i64, offset_s: i32) -> Result<WordStats, LibraryError> {
+        Ok(WordStats::of(
+            &self.word_statuses()?,
+            &self.anki_words()?,
+            today,
+            offset_s,
+        ))
+    }
+
     /// Every word marked, by [`word_key`].
     pub fn word_statuses(&self) -> Result<HashMap<String, WordMark>, LibraryError> {
         self.read(|tx| match tx.open_table(WORD_STATUS) {
@@ -315,6 +403,46 @@ impl Library {
 mod tests {
     use super::*;
 
+    // T-KNW-010: the words by status; the ones known now, by the day they
+    // were set known, counted on that day and after
+    #[test]
+    fn the_word_statistics_count_by_status_and_day() {
+        let day_ms = 86_400_000;
+        // noon of day 100, in UTC
+        let at = |day: i64| day * day_ms + day_ms / 2;
+        let mark = |status, day| WordMark {
+            status,
+            changed_at: at(day),
+        };
+        let marks = HashMap::from([
+            ("a\n".to_string(), mark(WordStatus::Known, 50)),
+            ("b\n".to_string(), mark(WordStatus::Known, 99)),
+            ("c\n".to_string(), mark(WordStatus::Known, 100)),
+            ("d\n".to_string(), mark(WordStatus::Learning, 100)),
+            ("e\n".to_string(), mark(WordStatus::Ignored, 100)),
+            ("f\n".to_string(), mark(WordStatus::Unknown, 100)),
+        ]);
+        let anki = HashMap::from([
+            ("g".to_string(), WordStatus::Known),
+            ("h".to_string(), WordStatus::Learning),
+        ]);
+        let s = WordStats::of(&marks, &anki, 100, 0);
+        assert_eq!(
+            (
+                s.known,
+                s.learning,
+                s.ignored,
+                s.anki_known,
+                s.anki_learning
+            ),
+            (3, 1, 1, 1, 1)
+        );
+        assert_eq!(s.known_by_day.len(), WORD_DAYS as usize);
+        assert_eq!(s.known_by_day[0], 1, "known before the chart starts");
+        assert_eq!(&s.known_by_day[28..], [2, 3]);
+        assert!(s.any() && !WordStats::default().any());
+    }
+
     // T-KNW-007, T-KNW-008: the words of the lines counted once each, the
     // score worked out from them again for other statuses
     #[test]
@@ -327,6 +455,7 @@ mod tests {
         ]);
         assert_eq!(counted.words.len(), 3);
         assert_eq!(counted.lines, [vec![0, 1, 0], vec![2]]);
+        assert_eq!(counted.occurrences(), [2, 1, 1]);
         let all = counted.score(|_, _| WordStatus::Unknown);
         assert_eq!(
             all,

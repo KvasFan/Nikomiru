@@ -75,6 +75,50 @@ impl Marks {
     }
 }
 
+/// A word of the subtitle in the word list (KNW-009).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedWord {
+    /// Its headword.
+    pub expression: String,
+    /// Its reading.
+    pub reading: String,
+    /// How many times it comes.
+    pub count: usize,
+    /// What the learner knows of it.
+    pub status: WordStatus,
+    /// A card was made of it.
+    pub card: bool,
+}
+
+impl Words {
+    /// The words of `texts` with how often each comes, its status and
+    /// whether it has a card, the most frequent first (KNW-009); `None`
+    /// while some text is not split.
+    pub fn listed<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Option<Vec<ListedWord>> {
+        let counted = self.counted(texts)?;
+        let counts = counted.occurrences();
+        let mut out: Vec<ListedWord> = counted
+            .words
+            .into_iter()
+            .zip(counts)
+            .map(|((expression, reading), count)| ListedWord {
+                status: self.status(&expression, &reading),
+                card: self.is_mined(&expression),
+                expression,
+                reading,
+                count,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.count
+                .cmp(&a.count)
+                .then_with(|| a.expression.cmp(&b.expression))
+                .then_with(|| a.reading.cmp(&b.reading))
+        });
+        Some(out)
+    }
+}
+
 /// What to mark over a text.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Wanted {
@@ -158,6 +202,30 @@ impl Words {
     /// Changes whenever a score may change (KNW-007).
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// A card was made of `expression` (LKP-061).
+    pub fn is_mined(&self, expression: &str) -> bool {
+        self.mined.contains(expression)
+    }
+
+    /// The words of `texts`, each line's in order, once all are split
+    /// (KNW-009).
+    pub fn counted<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Option<Counted> {
+        let mut lines = Vec::new();
+        for text in texts {
+            if text.trim().is_empty() {
+                continue;
+            }
+            let words = self.get(text)?;
+            lines.push(
+                words
+                    .iter()
+                    .filter_map(|w| w.headword.as_ref())
+                    .map(|h| (h.expression.clone(), h.reading.clone())),
+            );
+        }
+        Some(Counted::from_lines(lines))
     }
 
     /// No text is being split nor waits to be.
@@ -505,6 +573,30 @@ mod tests {
         words.set_status("食べる", "たべる", WordStatus::Unknown);
         assert_eq!(words.score([text]).unwrap().clear_percent(), Some(0));
         assert_eq!(words.score(["♪"]).unwrap().known_percent(), None);
+    }
+
+    // T-KNW-009: the words of the lines by how often they come, with their
+    // status and card
+    #[test]
+    fn the_words_are_listed_by_how_often_they_come() {
+        let mut words = Words::default();
+        let text = split(&mut words);
+        assert_eq!(words.listed([text, "犬"]), None, "犬 is not split");
+        words.set_status("が", "が", WordStatus::Known);
+        words.add_mined("食べる".into());
+        let listed = words.listed([text, "", text]).unwrap();
+        let rows: Vec<_> = listed
+            .iter()
+            .map(|w| (w.expression.as_str(), w.count, w.status, w.card))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("が", 2, WordStatus::Known, false),
+                ("猫", 2, WordStatus::Unknown, false),
+                ("食べる", 2, WordStatus::Learning, true),
+            ]
+        );
     }
 
     // T-KNW-004: readings only over the words not known

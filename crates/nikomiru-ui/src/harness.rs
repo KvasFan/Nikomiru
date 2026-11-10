@@ -283,6 +283,18 @@ pub fn state() -> Result<Value, String> {
                 None => Value::Null,
             })
             .collect();
+        // the words of the subtitle, the most frequent first (KNW-009)
+        let word_list = s.word_list().map(|list| {
+            list.iter()
+                .take(100)
+                .map(|w| {
+                    json!({
+                        "expression": w.expression, "reading": w.reading, "count": w.count,
+                        "status": w.status.name(), "card": w.card,
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
         let visible: Vec<Value> = s
             .subs
             .active()
@@ -408,6 +420,11 @@ pub fn state() -> Result<Value, String> {
                         "learning": r.learning, "young": r.young, "mature": r.mature,
                         "ahead": r.ahead,
                     })),
+                    // KNW-010
+                    "words": st.words.as_ref().map(|w| json!({
+                        "known": w.known, "learning": w.learning, "ignored": w.ignored,
+                        "anki_known": w.anki_known, "known_today": w.known_by_day.last(),
+                    })),
                 })),
             })
         };
@@ -438,6 +455,7 @@ pub fn state() -> Result<Value, String> {
                 "disabled": s.subs.disabled,
                 "highlight": s.subs.highlight.as_ref().map(|(c, r)| json!([c, r.start, r.end])),
                 "marks": marks,
+                "words": word_list,
                 // KNW-007
                 "score": s.score().map(|r| match r {
                     Ok(x) => json!({ "words": x.words, "known": x.known, "lines": x.lines, "clear": x.clear }),

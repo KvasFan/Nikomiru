@@ -399,6 +399,8 @@ pub(crate) enum Command {
     /// "Import a word list…" and "Export the words…" (KNW-006).
     WordsImport,
     WordsExport,
+    /// A status chosen for the words ticked in the word list (KNW-009).
+    WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
     WordStatus {
         level: usize,
@@ -1296,6 +1298,7 @@ impl Ui {
                 entry,
                 status,
             } => s.popup_word_status(level, entry, status),
+            Command::WordsStatus(words, status) => s.set_word_statuses(words, status),
             Command::Advanced(edit) => s.advanced_edit(edit),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),

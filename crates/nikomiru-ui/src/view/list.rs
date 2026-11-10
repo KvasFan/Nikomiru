@@ -86,6 +86,10 @@ pub(crate) struct State {
     search_focused: bool,
     /// The cues of the rows in view, last asked for their words.
     asked: Vec<usize>,
+    /// The Words tab is shown (KNW-009).
+    words_tab: bool,
+    /// What it keeps.
+    words: super::word_list::State,
     /// The rows drawn in the last frame.
     #[cfg(test)]
     drawn: Vec<Drawn>,
@@ -115,6 +119,11 @@ pub(crate) struct Scene<'a> {
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
     pub score: Option<String>,
+    /// The Lines and Words tabs, while the words are coloured (KNW-009);
+    /// the words once all lines are split.
+    pub tabs: Option<(String, String)>,
+    pub words: Option<&'a [crate::words::ListedWord]>,
+    pub word_labels: super::word_list::Labels,
     pub search_hint: String,
     pub close: String,
     /// The words of a text underlined, in bytes, each with why, and whether
@@ -254,12 +263,27 @@ pub(crate) fn show(
 ) -> bool {
     let tr = |id: &str| s.translator().tr(id, &[]);
     let marks = |text: &str| s.list_marks(text);
+    let words = s.word_list();
+    let coloured = s.word_colors_on();
+    let ticked = state.words.ticked.len();
     let scene = Scene {
         timeline: s.subs.timeline(),
         version: s.sub_list_version,
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         title: tr("subtitle-list"),
         score: score_line(s),
+        tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
+        words: words.as_deref().map(Vec::as_slice),
+        word_labels: super::word_list::Labels {
+            new_only: tr("subtitle-words-new-only"),
+            all: tr("subtitle-words-all"),
+            ticked: s
+                .translator()
+                .tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
+            card: tr("subtitle-words-card"),
+            statuses: super::word_list::STATUSES
+                .map(|st| tr(&format!("word-status-{}", st.name()))),
+        },
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         marks: &marks,
@@ -334,8 +358,33 @@ pub(crate) fn draw(
                     if let Some(score) = &scene.score {
                         ui.label(RichText::new(score).small().color(TIME));
                     }
+                    // KNW-009: the lines or their words
+                    if let Some((lines, words)) = &scene.tabs {
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(!state.words_tab, lines).clicked() {
+                                state.words_tab = false;
+                            }
+                            if ui.selectable_label(state.words_tab, words).clicked() {
+                                state.words_tab = true;
+                            }
+                        });
+                    }
                     open &= search(ui, state, search_focus, &scene.search_hint);
-                    rows(ui, scene, state, out);
+                    if scene.tabs.is_some() && state.words_tab {
+                        if let Some(all) = scene.words {
+                            let query = state.query.clone();
+                            super::word_list::show(
+                                ui,
+                                all,
+                                &query,
+                                &scene.word_labels,
+                                &mut state.words,
+                                out,
+                            );
+                        }
+                    } else {
+                        rows(ui, scene, state, out);
+                    }
                 });
         });
     open
@@ -561,6 +610,9 @@ mod tests {
                         pos_ms: t.pos_ms,
                         title: "Subtitle list".into(),
                         score: t.score.clone(),
+                        tabs: None,
+                        words: None,
+                        word_labels: Default::default(),
                         search_hint: "Search".into(),
                         close: "Close".into(),
                         marks: &|text: &str| {

@@ -48,6 +48,9 @@ pub struct Stats {
     pub sessions: Vec<(u128, Segment, String)>,
     /// The review's statistics, once it holds a card or an answer (REV-008).
     pub review: Option<nikomiru_library::review_log::ReviewStats>,
+    /// The words' statistics, once a status is set or Anki's words are
+    /// read (KNW-010).
+    pub words: Option<nikomiru_library::words::WordStats>,
 }
 
 /// The sessions the page lists.

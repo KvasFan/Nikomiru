@@ -208,11 +208,14 @@ impl Worker {
         let review = lib.review_stats(self.now(), offset).map_err(e)?;
         let used = review.new + review.learning + review.young + review.mature > 0
             || review.days.iter().any(|n| *n > 0);
+        let today = nikomiru_library::review::day_of(self.now(), offset);
+        let words = lib.word_stats(today, offset).map_err(e)?;
         Ok(Stats {
             days: lib.day_totals().map_err(e)?,
             series: lib.series_totals().map_err(e)?,
             sessions,
             review: used.then_some(review),
+            words: words.any().then_some(words),
         })
     }
 

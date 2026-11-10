@@ -363,6 +363,9 @@ pub struct Session {
     /// and the list version it was counted for; while its lines are being
     /// split, how many are.
     score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
+    /// The words of the main subtitle, once all its lines are split
+    /// (KNW-009); counted again with its score.
+    word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     /// The scores of the episodes of the series open (KNW-008).
     episode_scores: crate::scores::EpisodeScores,
     /// The thumbnails of the progress bar (PLY-014).
@@ -719,6 +722,7 @@ impl Session {
             sub_list_version: 0,
             score: None,
             episode_scores: Default::default(),
+            word_list: None,
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             words,
@@ -5905,11 +5909,13 @@ impl Session {
     fn count_score(&mut self) {
         if !self.services.config.subtitles.word_colors {
             self.score = None;
+            self.word_list = None;
             return;
         }
         let cues = self.subs.timeline().cues();
         if cues.is_empty() || cues.len() > crate::words::KEPT / 2 {
             self.score = None;
+            self.word_list = None;
             return;
         }
         if self.words.idle() {
@@ -5926,9 +5932,21 @@ impl Session {
         let at = (self.words.revision(), self.sub_list_version);
         if self.score.as_ref().is_none_or(|(r, v, _)| (*r, *v) != at) {
             let cues = self.subs.timeline().cues();
-            let score = self.words.score(cues.iter().map(|c| c.plain_text.as_str()));
+            let texts = || cues.iter().map(|c| c.plain_text.as_str());
+            let score = self.words.score(texts());
+            self.word_list = score
+                .is_ok()
+                .then(|| self.words.listed(texts()))
+                .flatten()
+                .map(std::sync::Arc::new);
             self.score = Some((at.0, at.1, score));
         }
+    }
+
+    /// The words of the main subtitle by how often they come, once all its
+    /// lines are split, while the words are coloured (KNW-009).
+    pub fn word_list(&self) -> Option<std::sync::Arc<Vec<crate::words::ListedWord>>> {
+        self.word_list.clone()
     }
 
     /// The score of the main subtitle, or how many of its lines are split
@@ -6234,6 +6252,28 @@ impl Session {
             w.run(move |lib| {
                 if let Err(e) = lib.set_word_status(&expression, &reading, mark) {
                     tracing::warn!("saving the status of {expression}: {e}");
+                }
+            });
+        }
+    }
+
+    /// The learner set the status of many words at once, from the word
+    /// list (KNW-009): marked at once, saved in one transaction.
+    pub fn set_word_statuses(
+        &mut self,
+        words: Vec<(String, String)>,
+        status: crate::words::WordStatus,
+    ) {
+        for (expression, reading) in &words {
+            self.words.set_status(expression, reading, status);
+        }
+        let changed_at = self.now_ms();
+        if let Some(w) = &self.writer {
+            let mark = nikomiru_library::words::WordMark { status, changed_at };
+            let marks: Vec<_> = words.into_iter().map(|(e, r)| (e, r, mark)).collect();
+            w.run(move |lib| {
+                if let Err(e) = lib.set_word_statuses(&marks) {
+                    tracing::warn!("saving the statuses of {} words: {e}", marks.len());
                 }
             });
         }

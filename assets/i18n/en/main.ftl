@@ -428,6 +428,12 @@ subtitle-search = Search the subtitles
 subtitle-list-close = Close the subtitle list
 subtitle-score = Words known: { $known }% · lines with no new word: { $clear }%
 subtitle-score-counting = Counting the words… { $done } of { $of } lines
+subtitle-list-lines = Lines
+subtitle-list-words = Words
+subtitle-words-new-only = Only words not known
+subtitle-words-all = All shown
+subtitle-words-ticked = { $count } ticked:
+subtitle-words-card = A card was made of it
 library-score-counting = Counting the words of the subtitles…
 file-filter-subtitles = Subtitle files
 toast-sub-loaded = Subtitles: { $name }
@@ -863,6 +869,15 @@ review-new-per-day = New cards a day
 books-web = Web page
 books-web-open = Open
 error-book-not-page = This page cannot be read: its text is in an encoding Nikomiru does not know.
+stats-words = Words
+stats-words-set = Known: { $known } · learning: { $learning } · ignored: { $ignored }
+stats-words-anki = From Anki: { $known } known, { $learning } learning
+stats-words-days = Words known, the last 30 days
+stats-words-day = { $ago ->
+    [0] Today
+    [1] Yesterday
+   *[other] { $ago } days ago
+}: { $count } words known
 stats-review = Review
 stats-review-today = Today: { $count } answers, { $kept } remembered
 stats-review-retention = Remembered in review, last 30 days: { $percent } %
