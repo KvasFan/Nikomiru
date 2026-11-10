@@ -428,6 +428,7 @@ subtitle-search = Cerca nei sottotitoli
 subtitle-list-close = Chiudi l'elenco dei sottotitoli
 subtitle-score = Parole note: { $known }% · righe senza parole nuove: { $clear }%
 subtitle-score-counting = Conto delle parole… { $done } righe su { $of }
+library-score-counting = Conto delle parole dei sottotitoli…
 file-filter-subtitles = File di sottotitoli
 toast-sub-loaded = Sottotitoli: { $name }
 toast-sub-loaded-encoding = Sottotitoli: { $name } ({ $encoding })

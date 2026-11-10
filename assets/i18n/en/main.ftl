@@ -428,6 +428,7 @@ subtitle-search = Search the subtitles
 subtitle-list-close = Close the subtitle list
 subtitle-score = Words known: { $known }% · lines with no new word: { $clear }%
 subtitle-score-counting = Counting the words… { $done } of { $of } lines
+library-score-counting = Counting the words of the subtitles…
 file-filter-subtitles = Subtitle files
 toast-sub-loaded = Subtitles: { $name }
 toast-sub-loaded-encoding = Subtitles: { $name } ({ $encoding })

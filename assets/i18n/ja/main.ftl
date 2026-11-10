@@ -422,6 +422,7 @@ subtitle-search = 字幕を検索
 subtitle-list-close = 字幕リストを閉じる
 subtitle-score = 既知語: { $known }% · 未知語のない行: { $clear }%
 subtitle-score-counting = 単語を数えています… { $done } / { $of } 行
+library-score-counting = 字幕の単語を数えています…
 file-filter-subtitles = 字幕ファイル
 toast-sub-loaded = 字幕: { $name }
 toast-sub-loaded-encoding = 字幕: { $name }（{ $encoding }）

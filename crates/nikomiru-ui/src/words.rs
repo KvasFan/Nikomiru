@@ -13,8 +13,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nikomiru_dict::segment::Word;
-pub use nikomiru_library::words::WordStatus;
 use nikomiru_library::words::word_key;
+pub use nikomiru_library::words::{Counted, Score, WordStatus};
 use nikomiru_text::furigana::distribute_inflected;
 use nikomiru_text::kana::is_kanji;
 
@@ -72,33 +72,6 @@ impl Marks {
         tag(&self.mined, Underline::Mined)
             .chain(tag(&self.unknown, Underline::Unknown))
             .chain(tag(&self.learning, Underline::Learning))
-    }
-}
-
-/// How much of a set of subtitles the learner understands (KNW-007).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Score {
-    /// The words met, each time it is met: those a dictionary knows, not
-    /// ignored.
-    pub words: usize,
-    /// Of them, the known ones.
-    pub known: usize,
-    /// The lines with at least one such word.
-    pub lines: usize,
-    /// Of them, the lines with no word not known.
-    pub clear: usize,
-}
-
-impl Score {
-    /// The share of the words known, in whole percent (rounded down, so
-    /// that 100 means every one).
-    pub fn known_percent(&self) -> Option<usize> {
-        (self.words > 0).then(|| self.known * 100 / self.words)
-    }
-
-    /// The share of the lines with no word not known, in whole percent.
-    pub fn clear_percent(&self) -> Option<usize> {
-        (self.lines > 0).then(|| self.clear * 100 / self.lines)
     }
 }
 
@@ -177,6 +150,11 @@ impl Words {
         self.revision += 1;
     }
 
+    /// Changes with the dictionaries.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Changes whenever a score may change (KNW-007).
     pub fn revision(&self) -> u64 {
         self.revision
@@ -207,21 +185,12 @@ impl Words {
                 continue;
             };
             split += 1;
-            let (mut counted, mut clear) = (false, true);
-            for h in words.iter().filter_map(|w| w.headword.as_ref()) {
-                match self.status(&h.expression, &h.reading) {
-                    WordStatus::Ignored => continue,
-                    WordStatus::Known => score.known += 1,
-                    WordStatus::Learning => {}
-                    WordStatus::Unknown => clear = false,
-                }
-                score.words += 1;
-                counted = true;
-            }
-            if counted {
-                score.lines += 1;
-                score.clear += usize::from(clear);
-            }
+            score.add_line(
+                words
+                    .iter()
+                    .filter_map(|w| w.headword.as_ref())
+                    .map(|h| self.status(&h.expression, &h.reading)),
+            );
         }
         if missing { Err(split) } else { Ok(score) }
     }

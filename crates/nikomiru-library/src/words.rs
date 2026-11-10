@@ -133,6 +133,104 @@ pub fn write_list(marks: &HashMap<String, WordMark>) -> String {
     out
 }
 
+/// How much of a subtitle the learner understands (KNW-007).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Score {
+    /// The words met, each time it is met: those a dictionary knows, not
+    /// ignored.
+    pub words: usize,
+    /// Of them, the known ones.
+    pub known: usize,
+    /// The lines with at least one such word.
+    pub lines: usize,
+    /// Of them, the lines with no word not known.
+    pub clear: usize,
+}
+
+impl Score {
+    /// Counts a line, given the statuses of its words in order.
+    pub fn add_line(&mut self, statuses: impl IntoIterator<Item = WordStatus>) {
+        let (mut counted, mut clear) = (false, true);
+        for status in statuses {
+            match status {
+                WordStatus::Ignored => continue,
+                WordStatus::Known => self.known += 1,
+                WordStatus::Learning => {}
+                WordStatus::Unknown => clear = false,
+            }
+            self.words += 1;
+            counted = true;
+        }
+        if counted {
+            self.lines += 1;
+            self.clear += usize::from(clear);
+        }
+    }
+
+    /// The share of the words known, in whole percent (rounded down, so
+    /// that 100 means every one).
+    pub fn known_percent(&self) -> Option<usize> {
+        (self.words > 0).then(|| self.known * 100 / self.words)
+    }
+
+    /// The share of the lines with no word not known, in whole percent.
+    pub fn clear_percent(&self) -> Option<usize> {
+        (self.lines > 0).then(|| self.clear * 100 / self.lines)
+    }
+}
+
+/// The words of a subtitle's lines, counted once so that its score can be
+/// worked out again whenever the statuses change (KNW-008).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Counted {
+    /// Each word met, by headword and reading, once.
+    pub words: Vec<(String, String)>,
+    /// The lines with a word, as the indices of their words in `words`, in
+    /// order and with repeats.
+    pub lines: Vec<Vec<u32>>,
+}
+
+impl Counted {
+    /// The words of each line, by headword and reading.
+    pub fn from_lines<I, L>(lines: I) -> Self
+    where
+        I: IntoIterator<Item = L>,
+        L: IntoIterator<Item = (String, String)>,
+    {
+        let mut counted = Counted::default();
+        let mut index: HashMap<(String, String), u32> = HashMap::new();
+        for line in lines {
+            let line: Vec<u32> = line
+                .into_iter()
+                .map(|word| {
+                    *index.entry(word.clone()).or_insert_with(|| {
+                        counted.words.push(word);
+                        (counted.words.len() - 1) as u32
+                    })
+                })
+                .collect();
+            if !line.is_empty() {
+                counted.lines.push(line);
+            }
+        }
+        counted
+    }
+
+    /// The score, given what the learner knows of each word; each word is
+    /// asked once.
+    pub fn score(&self, status: impl Fn(&str, &str) -> WordStatus) -> Score {
+        let statuses: Vec<WordStatus> = self.words.iter().map(|(e, r)| status(e, r)).collect();
+        let mut score = Score::default();
+        for line in &self.lines {
+            score.add_line(
+                line.iter()
+                    .filter_map(|&i| statuses.get(i as usize).copied()),
+            );
+        }
+        score
+    }
+}
+
 impl Library {
     /// Sets the status of a word.
     pub fn set_word_status(
@@ -216,6 +314,54 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-KNW-007, T-KNW-008: the words of the lines counted once each, the
+    // score worked out from them again for other statuses
+    #[test]
+    fn a_count_gives_the_score_for_any_statuses() {
+        let w = |e: &str, r: &str| (e.to_string(), r.to_string());
+        let counted = Counted::from_lines([
+            vec![w("猫", "ねこ"), w("が", "が"), w("猫", "ねこ")],
+            vec![],
+            vec![w("食べる", "たべる")],
+        ]);
+        assert_eq!(counted.words.len(), 3);
+        assert_eq!(counted.lines, [vec![0, 1, 0], vec![2]]);
+        let all = counted.score(|_, _| WordStatus::Unknown);
+        assert_eq!(
+            all,
+            Score {
+                words: 4,
+                known: 0,
+                lines: 2,
+                clear: 0
+            }
+        );
+        let some = counted.score(|e, _| match e {
+            "猫" => WordStatus::Known,
+            "が" => WordStatus::Ignored,
+            _ => WordStatus::Learning,
+        });
+        assert_eq!(
+            some,
+            Score {
+                words: 3,
+                known: 2,
+                lines: 2,
+                clear: 2
+            }
+        );
+        assert_eq!(
+            (some.known_percent(), some.clear_percent()),
+            (Some(66), Some(100))
+        );
+        assert_eq!(
+            Counted::default()
+                .score(|_, _| WordStatus::Known)
+                .known_percent(),
+            None
+        );
+    }
 
     // T-KNW-001: statuses kept by headword and reading, the last one set
     #[test]

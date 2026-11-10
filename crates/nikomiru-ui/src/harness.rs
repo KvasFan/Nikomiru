@@ -239,6 +239,17 @@ pub fn click_grapheme(layer: &str, cue: usize, grapheme: usize) -> Result<(), St
     })?
 }
 
+/// An episode's score in the state (KNW-008).
+fn episode_score_json(score: Option<crate::scores::EpisodeScore>) -> Value {
+    match score {
+        Some(crate::scores::EpisodeScore::Score(x)) => {
+            json!({ "words": x.words, "known": x.known, "lines": x.lines, "clear": x.clear })
+        }
+        Some(crate::scores::EpisodeScore::Counting) => json!("counting"),
+        None => Value::Null,
+    }
+}
+
 /// The player state as the page shows it.
 pub fn state() -> Result<Value, String> {
     call(|ui| {
@@ -378,6 +389,7 @@ pub fn state() -> Result<Value, String> {
                     "id": id,
                     "episodes": eps.as_ref().map(|e| e.iter().map(|(u, v)| json!({
                         "uid": u, "path": v.path, "season": v.season, "episode": v.episode,
+                        "score": episode_score_json(s.episode_score(u)),
                     })).collect::<Vec<_>>()),
                 })),
                 "covers": page.covers.keys().collect::<Vec<_>>(),
