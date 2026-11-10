@@ -1633,6 +1633,10 @@ impl Ui {
                     catalog.cover(id, Box::new(move |r| reply(LibraryReply::Cover(id, r))));
                 }
                 LibraryJob::Stats => {
+                    // the statuses just set are counted (KNW-010): the
+                    // writes queued before are done first, as for an export
+                    self.session.wait_writes();
+                    let catalog = self.session.catalog();
                     catalog.stats(Box::new(move |r| reply(LibraryReply::Stats(r))))
                 }
                 LibraryJob::ExportCsv(path) => {

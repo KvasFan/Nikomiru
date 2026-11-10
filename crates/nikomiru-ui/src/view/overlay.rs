@@ -237,6 +237,8 @@ pub(crate) struct Drawn {
     /// How many mark words not known, and being learned (KNW-002).
     pub unknown: usize,
     pub learning: usize,
+    /// Words with their accent over them (LKP-062).
+    pub pitch: usize,
     /// Whether any text was painted.
     pub painted: bool,
     /// A cue of the secondary subtitle.
@@ -521,6 +523,11 @@ fn draw_in(
             mined: count(crate::words::Underline::Mined),
             unknown: count(crate::words::Underline::Unknown),
             learning: count(crate::words::Underline::Learning),
+            pitch: cue
+                .underlines
+                .iter()
+                .filter(|(_, u)| matches!(u, crate::words::Underline::Pitch(_)))
+                .count(),
             painted,
             secondary: cue.secondary,
             look: (
@@ -1375,9 +1382,19 @@ fn lay_out<'a>(
     }
     // drop the targets of graphemes with no glyph (a lone combining mark)
     laid.graphemes.retain(|h| h.rect.is_positive());
-    // a line under each word marked, one per row it is on
+    // a line under each word marked, one per row it is on; over it, the
+    // colour of its accent (LKP-062)
     let underlined: Vec<(Range<usize>, crate::words::Underline)> = marks
-        .map(|m| m.underlines().map(|(r, u)| (r.clone(), u)).collect())
+        .map(|m| {
+            m.underlines()
+                .map(|(r, u)| (r.clone(), u))
+                .chain(
+                    m.pitch
+                        .iter()
+                        .map(|(r, p)| (r.clone(), crate::words::Underline::Pitch(*p))),
+                )
+                .collect()
+        })
         .unwrap_or_default();
     for (range, why) in underlined {
         let mut rows: Vec<Rect> = Vec::new();
@@ -1391,11 +1408,14 @@ fn lay_out<'a>(
             }
         }
         let thick = (units.font / 14.0).max(2.0);
+        let over = matches!(why, crate::words::Underline::Pitch(_));
         laid.underlines.extend(rows.into_iter().map(|r| {
-            (
-                Rect::from_min_max(pos2(r.min.x, r.max.y - thick), r.max),
-                why,
-            )
+            let line = if over {
+                Rect::from_min_max(r.min, pos2(r.max.x, r.min.y + thick))
+            } else {
+                Rect::from_min_max(pos2(r.min.x, r.max.y - thick), r.max)
+            };
+            (line, why)
         }));
     }
     laid
@@ -2291,6 +2311,8 @@ mod tests {
         let marks = Marks {
             unknown: std::iter::once(0..3).collect(),
             learning: vec![3..6, 6..15],
+            // T-LKP-062: the accents, over the words
+            pitch: vec![(0..3, crate::words::Category::Heiban)],
             ..Marks::default()
         };
         let mut h = build(
@@ -2302,6 +2324,7 @@ mod tests {
         h.run();
         let drawn = h.state().1.drawn[0].clone();
         assert_eq!((drawn.unknown, drawn.learning, drawn.mined), (1, 2, 0));
+        assert_eq!(drawn.pitch, 1);
     }
 
     // T-LKP-051, T-LKP-061

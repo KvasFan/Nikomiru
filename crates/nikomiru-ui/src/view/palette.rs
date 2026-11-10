@@ -17,7 +17,7 @@ use std::cell::Cell;
 
 use egui::Color32;
 
-use crate::words::Underline;
+use crate::words::{Category, Underline};
 
 /// The colors of the pages and of the popups.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -443,6 +443,14 @@ pub(crate) fn underline(why: Underline) -> Color32 {
         Underline::Mined => Color32::from_rgb(0x6f, 0xcf, 0x97),
         Underline::Unknown => Color32::from_rgb(0x62, 0xa0, 0xea),
         Underline::Learning => Color32::from_rgb(0xf6, 0xd3, 0x2d),
+        // the usual colours of the accents (LKP-062)
+        Underline::Pitch(p) => match p {
+            Category::Heiban => Color32::from_rgb(0x4a, 0x9e, 0xff),
+            Category::Atamadaka => Color32::from_rgb(0xff, 0x5c, 0x5c),
+            Category::Nakadaka => Color32::from_rgb(0xff, 0xa3, 0x48),
+            Category::Odaka => Color32::from_rgb(0x57, 0xd9, 0x6b),
+            Category::Kifuku => Color32::from_rgb(0xc0, 0x7c, 0xff),
+        },
     }
 }
 

@@ -8,8 +8,10 @@
 
 use std::ops::Range;
 
-use crate::lookup::Lookup;
+use crate::lookup::{Entry, Lookup};
+use crate::pitch::{Category, category, morae};
 use crate::store::StoreError;
+use crate::yomitan::PitchPosition;
 
 /// A headword and its reading.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +20,9 @@ pub struct Headword {
     pub expression: String,
     /// Reading (the headword itself when the dictionary gives none).
     pub reading: String,
+    /// Its pitch accent: the first downstep of the first pitch dictionary
+    /// that has it (LKP-042, LKP-062).
+    pub pitch: Option<Category>,
 }
 
 /// A piece of a text.
@@ -43,6 +48,26 @@ fn starts_no_word(c: char) -> bool {
             | '・' | '…' | '‥' | '―' | '—' | '–' | '♪' | '♫' | '→' | '←')
 }
 
+/// The accent of an entry: the first downstep of its first pitch
+/// dictionary (LKP-062); patterns are left out.
+fn pitch_of(e: &Entry) -> Option<Category> {
+    let reading = if e.reading.is_empty() {
+        &e.expression
+    } else {
+        &e.reading
+    };
+    e.pitches
+        .iter()
+        .flat_map(|g| &g.pitches)
+        .find_map(|p| match p.position {
+            PitchPosition::Downstep(n) => {
+                let rules = format!("{} {}", e.rules, p.tags.join(" "));
+                Some(category(morae(reading).len(), n, &rules))
+            }
+            PitchPosition::Pattern(_) => None,
+        })
+}
+
 /// Splits `text` into words (LKP-060).
 pub fn segment(lookup: &Lookup, text: &str) -> Result<Vec<Word>, StoreError> {
     let mut words: Vec<Word> = Vec::new();
@@ -56,6 +81,7 @@ pub fn segment(lookup: &Lookup, text: &str) -> Result<Vec<Word>, StoreError> {
             found = Some((
                 e.matched.len(),
                 Headword {
+                    pitch: pitch_of(&e),
                     expression: e.expression,
                     reading: e.reading,
                 },

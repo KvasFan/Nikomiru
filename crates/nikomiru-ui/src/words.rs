@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
+pub use nikomiru_dict::pitch::Category;
 use nikomiru_dict::segment::Word;
 use nikomiru_library::words::word_key;
 pub use nikomiru_library::words::{Counted, Score, WordStatus};
@@ -36,6 +37,8 @@ pub struct Marks {
     pub learning: Vec<Range<usize>>,
     /// The line has exactly one word not known (KNW-003).
     pub plus_one: bool,
+    /// The words' pitch accents (LKP-062).
+    pub pitch: Vec<(Range<usize>, Category)>,
 }
 
 impl Marks {
@@ -46,6 +49,7 @@ impl Marks {
             && self.unknown.is_empty()
             && self.learning.is_empty()
             && !self.plus_one
+            && self.pitch.is_empty()
     }
 }
 
@@ -58,6 +62,8 @@ pub enum Underline {
     Unknown,
     /// Being learned (KNW-002).
     Learning,
+    /// Its pitch accent (LKP-062): a line over the word, not under.
+    Pitch(Category),
 }
 
 impl Marks {
@@ -130,12 +136,14 @@ pub struct Wanted {
     pub mined: bool,
     /// The words by status, and the i+1 line (KNW-002, KNW-003).
     pub colors: bool,
+    /// The words' pitch accents (LKP-062).
+    pub pitch: bool,
 }
 
 impl Wanted {
     /// Whether anything is marked, so the words must be split.
     pub fn any(&self) -> bool {
-        self.furigana || self.mined || self.colors
+        self.furigana || self.mined || self.colors || self.pitch
     }
 }
 
@@ -361,6 +369,11 @@ impl Words {
             } else if wanted.mined && self.mined.contains(&h.expression) {
                 marks.mined.push(w.range.clone());
             }
+            if wanted.pitch
+                && let Some(p) = h.pitch
+            {
+                marks.pitch.push((w.range.clone(), p));
+            }
             let known = matches!(status, WordStatus::Known | WordStatus::Ignored);
             let reading = wanted.furigana && !(wanted.furigana_unknown_only && known);
             if reading && surface.chars().any(is_kanji) {
@@ -408,6 +421,12 @@ mod tests {
         Word {
             range,
             headword: headword.map(|(e, r)| Headword {
+                // 猫 is heiban, 食べる nakadaka in the tests' dictionary
+                pitch: match e {
+                    "猫" => Some(Category::Heiban),
+                    "食べる" => Some(Category::Nakadaka),
+                    _ => None,
+                },
                 expression: e.into(),
                 reading: r.into(),
             }),
@@ -624,6 +643,24 @@ mod tests {
         assert_eq!(words.new_words(text), Some(1), "learning is not new");
         words.set_status("猫", "ねこ", WordStatus::Ignored);
         assert_eq!(words.new_words(text), Some(0));
+    }
+
+    // T-LKP-062: the words' accents, when asked for
+    #[test]
+    fn the_accents_of_the_words_are_marked() {
+        let mut words = Words::default();
+        let text = split(&mut words);
+        assert!(words.marks(text, &Wanted::default()).unwrap().is_empty());
+        let pitch = Wanted {
+            pitch: true,
+            ..Wanted::default()
+        };
+        let marks = words.marks(text, &pitch).unwrap();
+        assert_eq!(
+            marks.pitch,
+            [(3..6, Category::Heiban), (9..18, Category::Nakadaka)]
+        );
+        assert!(marks.unknown.is_empty() && marks.readings.is_empty());
     }
 
     // T-KNW-004: readings only over the words not known

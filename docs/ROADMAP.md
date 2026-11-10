@@ -64,7 +64,7 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
 | M20 | Knowing words (D-51, D-52) | L | **2.20.0**, **2.21.0** | released; colours in books and web pages open |
 | M21 | Choosing what to watch (D-51, D-53…D-55) | M | **2.22.0**, **2.23.0**, **2.24.0** | released; scores for embedded tracks, series cards and books open |
-| M22 | Watching by what you know (D-51, D-56) | M | **2.25.0**, 2.26.0 | first part released: known lines obscured, pause after new words, list filters; pitch colours next |
+| M22 | Watching by what you know (D-51, D-56) | M | **2.25.0**, **2.26.0** | released |
 | M23 | Listening away from the screen (D-51) | S | 2.27.0 | planned |
 | M24 | Videos from the web (D-51) | M | 2.28.0 | planned |
 
@@ -822,13 +822,13 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Status as of 2026-11-10**
 
 - Done for 2.25.0 (KNW-011…KNW-013, D-56): the look of the lines with no new word, the pause only after lines with a new word, the list's filters.
-- Next, for 2.26.0: the pitch accent as colours on the words.
+- Done for 2.26.0 (LKP-062): the pitch accent as a coloured line over each word of the subtitles.
 
 **Exit criteria**
 
 - [x] Requirements and tests (L6 for the modes).
 - [x] **Release 2.25.0** (the first part).
-- [ ] **Release 2.26.0**.
+- [x] **Release 2.26.0**.
 
 ---
 

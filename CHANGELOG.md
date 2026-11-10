@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-11-10
+
+The pitch accent on the words.
+
+### Added
+
+- "Colour the pitch accent of the words" in Settings → Subtitles (LKP-062): from your pitch dictionaries, a line over each word of the subtitles in the colour of its accent, as Migaku shows it. Heiban is blue, atamadaka red, nakadaka orange, odaka green and kifuku purple.
+
 ## [2.25.0] - 2026-11-10
 
 Help only where a word is new.

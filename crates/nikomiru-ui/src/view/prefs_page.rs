@@ -382,6 +382,9 @@ fn subtitles(
             tr("settings-sub-furigana-unknown-only"),
         ),
     );
+    // LKP-062
+    ui.checkbox(&mut subs.pitch_colors, tr("settings-sub-pitch-colors"));
+    hint(ui, &tr("settings-sub-pitch-colors-hint"));
     // KNW-011, KNW-012: help only where a word is new
     ui.add_enabled_ui(subs.word_colors, |ui| {
         form(ui, "settings-known-lines", |ui| {

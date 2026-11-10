@@ -3432,7 +3432,10 @@ fn a_word_marked_known_loses_its_colour_for_good() {
     });
     // T-KNW-010: one word known today, in the Statistics tab
     h.cmd(serde_json::json!({ "cmd": "library", "action": "statistics" }));
-    let s = h.state_until("the statistics", |s| s["library_page"]["stats"].is_object());
+    // statistics read at start may be there already: the new ones replace them
+    let s = h.state_until("the statistics", |s| {
+        s["library_page"]["stats"]["words"].is_object()
+    });
     assert_eq!(
         s["library_page"]["stats"]["words"],
         serde_json::json!({
@@ -3548,6 +3551,28 @@ fn help_comes_only_on_lines_with_a_new_word() {
     // and the stop comes at the second line's end, which has new words
     let s = h.state_until("the stop", |s| s["paused"] == true && time_pos(s) > 2.0);
     assert!((time_pos(&s) - 5.5).abs() < 0.15, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-LKP-062: the accent of a word of a real subtitle, from a pitch
+// dictionary, over it
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_words_carry_the_colour_of_their_accent() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja", "mini-pitch"]);
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[subtitles]\npitch_colors = true\n",
+    );
+    let (mut app, mut h) = desk.launch();
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("file-loaded");
+    on_first_line(&mut h);
+    // 食べる: a verb with its downstep on the second mora
+    h.state_until("the accent", |s| {
+        s["subtitles"]["marks"][0]["pitch"] == serde_json::json!([[0, 15, "kifuku"]])
+    });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

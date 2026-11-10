@@ -276,6 +276,9 @@ pub struct SubtitlesConfig {
     /// While the words are coloured, the pause at the end of each line
     /// stops only after lines with a new word (KNW-012).
     pub auto_pause_new_only: bool,
+    /// A line over each word of the subtitles in the colour of its pitch
+    /// accent (LKP-062).
+    pub pitch_colors: bool,
     /// A PGS or VobSub track chosen by itself is read as text when the
     /// reading model is there (SUB-028, SUB-029).
     pub read_graphic: bool,
@@ -375,6 +378,7 @@ impl Default for SubtitlesConfig {
             auto_pause: false,
             known_lines: "none".into(),
             auto_pause_new_only: false,
+            pitch_colors: false,
             read_graphic: true,
             list_text_size: 16.0,
             list_width: 420.0,

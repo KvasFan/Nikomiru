@@ -279,6 +279,8 @@ pub fn state() -> Result<Value, String> {
                     "unknown": m.unknown.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
                     "learning": m.learning.iter().map(|r| json!([r.start, r.end])).collect::<Vec<_>>(),
                     "plus_one": m.plus_one,
+                    // LKP-062
+                    "pitch": m.pitch.iter().map(|(r, p)| json!([r.start, r.end, p.name()])).collect::<Vec<_>>(),
                 }),
                 None => Value::Null,
             })
