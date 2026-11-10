@@ -33,8 +33,8 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
       ──► M17 Review in Nikomiru (2.4.0, 2.5.0, 2.7.0, 2.8.0) ──► M18 Web pages (2.6.0)
       ──► M19 Setup assistant (2.17.0)
       ──► M20 Knowing words (2.20.0, 2.21.0) ──► M21 Comprehension score (2.22.0…2.24.0)
-      ──► M22 Watching by what you know (2.25.0) ──► M23 Condensed audio, gaps (2.26.0)
-      ──► M24 Videos from the web (2.27.0) ──► the rest of the backlog (D-51)
+      ──► M22 Watching by what you know (2.25.0, 2.26.0) ──► M23 Condensed audio, gaps (2.27.0)
+      ──► M24 Videos from the web (2.28.0) ──► the rest of the backlog (D-51)
       (Ports, from spike S6, run alongside: D-16)
 ```
 
@@ -64,9 +64,9 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
 | M20 | Knowing words (D-51, D-52) | L | **2.20.0**, **2.21.0** | released; colours in books and web pages open |
 | M21 | Choosing what to watch (D-51, D-53…D-55) | M | **2.22.0**, **2.23.0**, **2.24.0** | released; scores for embedded tracks, series cards and books open |
-| M22 | Watching by what you know (D-51) | M | 2.25.0 | planned |
-| M23 | Listening away from the screen (D-51) | S | 2.26.0 | planned |
-| M24 | Videos from the web (D-51) | M | 2.27.0 | planned |
+| M22 | Watching by what you know (D-51, D-56) | M | **2.25.0**, 2.26.0 | first part released: known lines obscured, pause after new words, list filters; pitch colours next |
+| M23 | Listening away from the screen (D-51) | S | 2.27.0 | planned |
+| M24 | Videos from the web (D-51) | M | 2.28.0 | planned |
 
 ---
 
@@ -807,7 +807,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 ---
 
-## M22 — Watching by what you know → 2.25.0
+## M22 — Watching by what you know → 2.25.0, 2.26.0
 
 **Goal**: the subtitles help only where help is needed.
 
@@ -819,14 +819,20 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 - Pitch accent as colours on the words of the subtitles, from the pitch dictionaries installed (LKP-042), off by default.
   - The colours follow the usual convention: heiban blue, atamadaka red, nakadaka orange, odaka green.
 
+**Status as of 2026-11-10**
+
+- Done for 2.25.0 (KNW-011…KNW-013, D-56): the look of the lines with no new word, the pause only after lines with a new word, the list's filters.
+- Next, for 2.26.0: the pitch accent as colours on the words.
+
 **Exit criteria**
 
-- [ ] Requirements and tests (L6 for the modes).
-- [ ] **Release 2.25.0**.
+- [x] Requirements and tests (L6 for the modes).
+- [x] **Release 2.25.0** (the first part).
+- [ ] **Release 2.26.0**.
 
 ---
 
-## M23 — Listening away from the screen → 2.26.0
+## M23 — Listening away from the screen → 2.27.0
 
 **Goal**: an episode's speech for passive listening, and less time spent where nobody speaks.
 
@@ -843,11 +849,11 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 **Exit criteria**
 
 - [ ] Requirements and tests (L4 for the audio, L5/L6 for the gaps).
-- [ ] **Release 2.26.0**.
+- [ ] **Release 2.27.0**.
 
 ---
 
-## M24 — Videos from the web → 2.27.0
+## M24 — Videos from the web → 2.28.0
 
 **Goal**: a YouTube video or another site's video watched as a file is, with clickable subtitles.
 
@@ -864,7 +870,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 - [ ] Requirements and tests against a local HTTP server and a fake yt-dlp.
 - [ ] One real YouTube video with Japanese subtitles watched and mined by hand.
-- [ ] **Release 2.27.0**.
+- [ ] **Release 2.28.0**.
 
 ---
 

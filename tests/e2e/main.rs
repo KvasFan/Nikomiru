@@ -3503,6 +3503,55 @@ fn the_episodes_are_scored_before_they_play() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-KNW-011, T-KNW-012: with 食べる known, the first line has no new word:
+// it is hidden while it plays, and the pause at the end of a line skips it
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn help_comes_only_on_lines_with_a_new_word() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[subtitles]\nword_colors = true\n\
+         known_lines = \"hidden\"\nauto_pause = true\nauto_pause_new_only = true\n",
+    );
+    let (mut app, mut h) = desk.launch_with(&["--", &fixture("av_basic.mkv")]);
+    h.wait("first-frame");
+    h.key("Space");
+    h.state_until("the pause", |s| s["paused"] == true);
+    let dir = tempfile::tempdir().unwrap();
+    let list = dir.path().join("list.txt");
+    std::fs::write(&list, "食べる\n").unwrap();
+    h.cmd(serde_json::json!({ "cmd": "words", "action": "import", "path": list }));
+    // every line split, 食べる known
+    h.state_until("the score", |s| {
+        s["subtitles"]["score"]["known"]
+            .as_u64()
+            .is_some_and(|n| n >= 1)
+    });
+    // back to the start: the first stop is the second line's end (5.5 s)
+    let mut s = h.state();
+    for _ in 0..3 {
+        if s["auto_pause_end"] == 5_500 && time_pos(&s) < 1.5 {
+            break;
+        }
+        h.key("ArrowLeft");
+        std::thread::sleep(Duration::from_millis(300));
+        s = h.state();
+    }
+    assert_eq!(s["auto_pause_end"], 5_500, "{s}");
+    h.key("Space");
+    // the first line plays hidden
+    let s = h.state_until("the first line playing", |s| {
+        s["subtitles"]["visible"][0]["index"] == 0 && s["paused"] == false
+    });
+    assert_eq!(s["subtitles"]["obscure"], "hidden", "{s}");
+    // and the stop comes at the second line's end, which has new words
+    let s = h.state_until("the stop", |s| s["paused"] == true && time_pos(s) > 2.0);
+    assert!((time_pos(&s) - 5.5).abs() < 0.15, "{s}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-KNW-005, T-KNW-006: the known words of a deck read from Anki at
 // start; a word list imported over them; the words exported
 #[test]

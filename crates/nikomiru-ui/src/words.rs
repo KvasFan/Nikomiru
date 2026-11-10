@@ -204,6 +204,19 @@ impl Words {
         self.revision
     }
 
+    /// How many words not known `text` has, each counted once by headword
+    /// and reading (KNW-003, KNW-011); `None` while it is not split.
+    pub fn new_words(&self, text: &str) -> Option<usize> {
+        let words = self.get(text)?;
+        let new: HashSet<(&str, &str)> = words
+            .iter()
+            .filter_map(|w| w.headword.as_ref())
+            .filter(|h| self.status(&h.expression, &h.reading) == WordStatus::Unknown)
+            .map(|h| (h.expression.as_str(), h.reading.as_str()))
+            .collect();
+        Some(new.len())
+    }
+
     /// A card was made of `expression` (LKP-061).
     pub fn is_mined(&self, expression: &str) -> bool {
         self.mined.contains(expression)
@@ -597,6 +610,20 @@ mod tests {
                 ("食べる", 2, WordStatus::Learning, true),
             ]
         );
+    }
+
+    // T-KNW-011: the words not known of a line, each once
+    #[test]
+    fn the_new_words_of_a_line_are_counted() {
+        let mut words = Words::default();
+        assert_eq!(words.new_words("「猫が食べた」"), None);
+        let text = split(&mut words);
+        assert_eq!(words.new_words(text), Some(3));
+        words.set_status("が", "が", WordStatus::Known);
+        words.add_mined("食べる".into());
+        assert_eq!(words.new_words(text), Some(1), "learning is not new");
+        words.set_status("猫", "ねこ", WordStatus::Ignored);
+        assert_eq!(words.new_words(text), Some(0));
     }
 
     // T-KNW-004: readings only over the words not known

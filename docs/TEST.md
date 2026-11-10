@@ -641,6 +641,9 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-KNW-008 | Scores of the episodes | The file the player would load: chosen, preferred language, untagged, none for an embedded track or off (L1); the files next to a video and the downloaded ones (L1); each text split once (L1); scores worked out again for a new revision, a count for older dictionaries dropped (L1); the short score and `…` in the episode list (L3); a series imported, its episode with a subtitle scored, the one without none (L6) | L1/L3/L6 |
 | T-KNW-009 | Word list | Each word counted every time it comes, the most frequent first, with its status and card, none while a line is not split (L1); listed, narrowed to the words not known and by the search, all shown ticked and set known at once, one ticked and ignored (L3); a real subtitle's word listed, known in the list once set (L6) | L1/L3/L6 |
 | T-KNW-010 | Word statistics | By status, Anki's words apart, the words known counted from the day they were set known (L1); the Words part of the tab (L3); one word known today in the tab (L6) | L1/L3/L6 |
+| T-KNW-011 | Known lines obscured | The new words of a line counted once, learning not new (L1); a line whose word is known plays hidden (L6) | L1/L6 |
+| T-KNW-012 | Pause after new words | The stop at a line whose word becomes known goes for the next line with a new word, and playback stops there (L6) | L6 |
+| T-KNW-013 | Lines filtered | All lines, those with a new word, those with one; no filter without the colours (L3) | L3 |
 | T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
 
 ### 6.14 Reliability and fuzzing

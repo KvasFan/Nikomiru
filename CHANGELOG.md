@@ -4,6 +4,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-11-10
+
+Help only where a word is new.
+
+### Added
+
+- With the words coloured, Settings → Subtitles has two new choices:
+  - "Lines with no new word" (KNW-011): blur or hide the main subtitle while every word of the line is known, so it shows only where a word is new; the pointer still reveals it.
+  - "Pause at the end of a line only when it has a new word" (KNW-012), with the pause at the end of each line on.
+- The subtitle list's lines can be narrowed to those with a new word, or with just one (KNW-013).
+
 ## [2.24.0] - 2026-11-10
 
 The words of an episode, and the words you know.
