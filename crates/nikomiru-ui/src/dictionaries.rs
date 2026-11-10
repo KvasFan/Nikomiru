@@ -98,6 +98,17 @@ pub trait DictionaryService: Send {
         let _ = text;
         done(Ok(Vec::new()));
     }
+    /// Counts the words of the subtitle file an episode would play with,
+    /// away from the UI thread and from the subtitles shown (KNW-008);
+    /// `None` when it has none to count. Without dictionaries, no count.
+    fn count_words(
+        &self,
+        request: crate::scores::CountRequest,
+        done: Done<Option<nikomiru_library::words::Counted>>,
+    ) {
+        let _ = request;
+        done(Ok(None));
+    }
     /// The registered dictionaries, in order.
     fn list(&self) -> Result<Vec<(String, DictionaryRecord)>, String>;
     /// What importing `zip` would do (DIC-016).

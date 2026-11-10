@@ -83,6 +83,15 @@ pub enum Inbound {
         /// Its words, or a message.
         result: Result<Vec<nikomiru_dict::segment::Word>, String>,
     },
+    /// The words of an episode counted (KNW-008).
+    WordCount {
+        /// The words' generation (the dictionaries').
+        generation: u64,
+        /// The episode.
+        uid: String,
+        /// Its words, none to count, or a message.
+        result: Result<Option<nikomiru_library::words::Counted>, String>,
+    },
     /// Progress of a dictionary import.
     ImportProgress {
         /// The import's generation.
@@ -244,6 +253,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Subtitles { .. } => "Subtitles",
             Inbound::Lookup { .. } => "Lookup",
             Inbound::Words { .. } => "Words",
+            Inbound::WordCount { .. } => "WordCount",
             Inbound::Thumbnail { .. } => "Thumbnail",
             Inbound::ImportProgress { .. } => "ImportProgress",
             Inbound::ImportDone { .. } => "ImportDone",
@@ -763,6 +773,14 @@ impl Ui {
                 result,
             } => {
                 self.session.segmented(generation, text, result);
+                true
+            }
+            Inbound::WordCount {
+                generation,
+                uid,
+                result,
+            } => {
+                self.session.word_count_done(generation, uid, result);
                 true
             }
             Inbound::Thumbnail {
@@ -1949,6 +1967,20 @@ impl Ui {
                     waker.wake(Inbound::Words {
                         generation,
                         text: asked,
+                        result,
+                    });
+                }),
+            );
+        }
+        for (uid, request) in self.session.take_word_counts() {
+            let waker = self.waker.clone();
+            let generation = request.generation;
+            self.session.start_word_count(
+                request,
+                Box::new(move |result| {
+                    waker.wake(Inbound::WordCount {
+                        generation,
+                        uid,
                         result,
                     });
                 }),

@@ -4,6 +4,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-11-10
+
+How much of an episode you will understand, before you play it.
+
+### Added
+
+- The episodes of a series show their comprehension score on the Library page, with the words coloured (KNW-008): `80% · 25%` is the share of the words you know and the share of the lines with no new word, written out in full on hover.
+- The score is counted from the subtitle file the episode would play with: the one you chose, else the one in your language next to it or downloaded for it. Episodes that would play an embedded track have none yet.
+- The words are counted once, away from the player, and the scores follow every status you set.
+
 ## [2.22.0] - 2026-11-09
 
 How much of an episode you understand.

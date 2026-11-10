@@ -3431,6 +3431,52 @@ fn a_word_marked_known_loses_its_colour_for_good() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-KNW-008: the episodes of a series scored before they play, from the
+// subtitle file next to each; one without any has no score
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and `cargo xtask fixtures`"]
+fn the_episodes_are_scored_before_they_play() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[subtitles]\nword_colors = true\n",
+    );
+    let root = desk.path("videos");
+    let show = root.join("Show");
+    std::fs::create_dir_all(&show).unwrap();
+    for name in ["Show - 01.mkv", "Show - 02.mkv"] {
+        std::os::unix::fs::symlink(fixture("av_basic.mkv"), show.join(name)).unwrap();
+    }
+    std::fs::write(
+        show.join("Show - 01.ja.srt"),
+        "1\n00:00:02,000 --> 00:00:02,500\n食べました\n\n\
+         2\n00:00:05,000 --> 00:00:05,500\n食べました\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the page", |s| s["library_page"]["series"].is_array());
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "import", "path": root }));
+    let s = h.state_until("the series", |s| {
+        s["library_page"]["series"]
+            .as_array()
+            .is_some_and(|a| a.len() == 1)
+    });
+    let id = s["library_page"]["series"][0]["id"].as_u64().unwrap();
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "series", "id": id }));
+    let s = h.state_until("the scores", |s| {
+        let episodes = &s["library_page"]["open_series"]["episodes"];
+        episodes.is_array() && episodes[0]["score"].is_object() && episodes[1]["score"].is_null()
+    });
+    let score = &s["library_page"]["open_series"]["episodes"][0]["score"];
+    assert_eq!(
+        score,
+        &serde_json::json!({ "words": 2, "known": 0, "lines": 2, "clear": 0 }),
+        "{s}"
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-KNW-005, T-KNW-006: the known words of a deck read from Anki at
 // start; a word list imported over them; the words exported
 #[test]

@@ -129,6 +129,9 @@ pub(crate) struct Scene<'a> {
     pub review_settings: nikomiru_library::review::Settings,
     /// Cards go to the review (REV-001): its tab is shown even without any.
     pub to_review: bool,
+    /// The score of an episode, by uid, while the words are coloured
+    /// (KNW-008).
+    pub episode_score: &'a dyn Fn(&str) -> Option<crate::scores::EpisodeScore>,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -148,6 +151,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         },
         review_settings: crate::review::settings(&s.config().review),
         to_review: s.config().anki.to_review(),
+        episode_score: &|uid: &str| s.episode_score(uid),
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
@@ -964,6 +968,7 @@ fn series(
                         if play.clicked() {
                             out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
                         }
+                        episode_score(ui, s, uid);
                         if let Some(d) = v.duration_ms.filter(|_| v.last_position_ms > 0) {
                             ui.label(
                                 RichText::new(format!(
@@ -1024,6 +1029,32 @@ fn series(
     }
 }
 
+/// The score of an episode, short, with the whole of it on hover
+/// (KNW-008): the words known and the lines with no new word.
+fn episode_score(ui: &mut Ui, s: &Scene<'_>, uid: &str) {
+    let color = palette::current().details;
+    match (s.episode_score)(uid) {
+        Some(crate::scores::EpisodeScore::Counting) => {
+            ui.label(RichText::new("…").color(color))
+                .on_hover_text(tr(s, "library-score-counting"));
+        }
+        Some(crate::scores::EpisodeScore::Score(score)) => {
+            let percent = |p: Option<usize>| p.map_or_else(|| "–".into(), |p| p.to_string());
+            let (known, clear) = (
+                percent(score.known_percent()),
+                percent(score.clear_percent()),
+            );
+            let full = (s.tr)(
+                "subtitle-score",
+                &[("known", known.clone()), ("clear", clear.clone())],
+            );
+            ui.label(RichText::new(format!("{known}% · {clear}%")).color(color))
+                .on_hover_text(full);
+        }
+        None => {}
+    }
+}
+
 /// A series to choose, among `others`.
 fn target(
     ui: &mut Ui,
@@ -1070,6 +1101,8 @@ mod tests {
         state: State,
         out: Vec<Command>,
         closed: bool,
+        /// The episodes' scores (KNW-008).
+        scores: HashMap<String, crate::scores::EpisodeScore>,
     }
 
     fn harness(page: LibraryPage) -> Harness<'static, Test> {
@@ -1093,6 +1126,7 @@ mod tests {
                         },
                         review_settings: nikomiru_library::review::Settings::default(),
                         to_review: false,
+                        episode_score: &|uid: &str| t.scores.get(uid).copied(),
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -1105,6 +1139,7 @@ mod tests {
                     state: State::default(),
                     out: Vec::new(),
                     closed: false,
+                    scores: HashMap::new(),
                 },
             )
     }
@@ -1547,6 +1582,36 @@ mod tests {
     }
 
     // T-LIB-011, T-LIB-012
+    // T-KNW-008: each episode's score, or that it is being counted
+    #[test]
+    fn the_episodes_show_their_scores() {
+        use crate::scores::EpisodeScore;
+        let episodes = vec![
+            ("a".to_string(), video("/v/Alpha - 01.mkv", 1, 1, 0)),
+            ("b".to_string(), video("/v/Alpha - 02.mkv", 1, 2, 0)),
+            ("c".to_string(), video("/v/Alpha - 03.mkv", 1, 3, 0)),
+        ];
+        let mut h = harness(LibraryPage {
+            home: Some(home()),
+            series: Some((1, Some(episodes))),
+            ..LibraryPage::default()
+        });
+        let score = nikomiru_library::words::Score {
+            words: 10,
+            known: 8,
+            lines: 4,
+            clear: 1,
+        };
+        h.state_mut().scores = HashMap::from([
+            ("a".to_string(), EpisodeScore::Score(score)),
+            ("b".to_string(), EpisodeScore::Counting),
+        ]);
+        h.run();
+        h.get_by_label("80% · 25%");
+        h.get_by_label("…");
+        assert_eq!(h.query_all_by_label_contains("%").count(), 1, "c has none");
+    }
+
     #[test]
     fn a_series_is_edited_and_its_episodes_moved() {
         let episodes = vec![

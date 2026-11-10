@@ -7,11 +7,13 @@
 //! cancels and waits for when it goes; the page's other operations are quick
 //! registry writes.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
+use std::time::SystemTime;
 
 use nikomiru_core::Cancel;
 use nikomiru_dict::import::Progress;
@@ -19,6 +21,7 @@ use nikomiru_dict::import::Progress;
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::Options;
 use nikomiru_dict::segment::{Word, segment};
+use nikomiru_library::words::Counted;
 use nikomiru_library::{
     Check, Collapse as RecordCollapse, DictionaryError, DictionaryManager, DictionaryRecord,
 };
@@ -26,6 +29,7 @@ use nikomiru_ui::dictionaries::{DictionaryService, Done};
 use nikomiru_ui::i18n::Translator;
 use nikomiru_ui::popup::Reply;
 use nikomiru_ui::popup_view::{self, Collapse, DictView};
+use nikomiru_ui::scores::{self, CountRequest};
 
 /// The dictionaries of the registry: lookups on a worker thread, in order;
 /// imports on threads of their own.
@@ -37,6 +41,12 @@ pub struct Dictionaries {
     worker: Option<JoinHandle<()>>,
     words: Option<Jobs<Vec<Word>>>,
     words_worker: Option<JoinHandle<()>>,
+    /// The episodes whose words are counted (KNW-008), on a thread of
+    /// their own so that the subtitles shown never wait behind them.
+    counts: Option<mpsc::Sender<(CountRequest, Done<Option<Counted>>)>>,
+    counts_worker: Option<JoinHandle<()>>,
+    /// Set when the service goes: the episodes still to count are left.
+    counts_stop: Arc<AtomicBool>,
     /// The imports that may still run, with their cancels.
     imports: Mutex<Vec<(Cancel, JoinHandle<()>)>>,
 }
@@ -57,9 +67,15 @@ impl Drop for Dictionaries {
         }
         drop(self.jobs.take());
         drop(self.words.take());
-        for worker in [self.worker.take(), self.words_worker.take()]
-            .into_iter()
-            .flatten()
+        self.counts_stop.store(true, Ordering::Relaxed);
+        drop(self.counts.take());
+        for worker in [
+            self.worker.take(),
+            self.words_worker.take(),
+            self.counts_worker.take(),
+        ]
+        .into_iter()
+        .flatten()
         {
             let _ = worker.join();
         }
@@ -101,6 +117,98 @@ fn spawn_worker<T: 'static>(
     }
 }
 
+/// The counts kept by file, size, time and the words' generation: opening
+/// a series again counts nothing that did not change.
+type CountCache = HashMap<(PathBuf, u64, Option<SystemTime>, u64), Counted>;
+
+/// The counts kept at most; beyond, the cache starts again.
+const COUNTS_KEPT: usize = 256;
+
+/// The thread that counts the words of episodes (KNW-008), and its sender.
+#[allow(clippy::type_complexity)]
+fn spawn_counter(
+    manager: &Arc<DictionaryManager>,
+    translator: &Translator,
+    stop: &Arc<AtomicBool>,
+) -> (
+    mpsc::Sender<(CountRequest, Done<Option<Counted>>)>,
+    Option<JoinHandle<()>>,
+) {
+    let (tx, rx) = mpsc::channel::<(CountRequest, Done<Option<Counted>>)>();
+    let manager = Arc::clone(manager);
+    let translator = translator.clone();
+    let stop = Arc::clone(stop);
+    let spawned = std::thread::Builder::new()
+        .name("nikomiru-count".into())
+        .spawn(move || {
+            let mut cache = CountCache::new();
+            for (request, done) in rx {
+                // the app is closing: what is queued would only delay it
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let started = std::time::Instant::now();
+                let result = count_episode(&manager, &translator, &stop, &mut cache, &request);
+                tracing::debug!(video = %request.video.display(), elapsed = ?started.elapsed(), "words counted");
+                done(result);
+            }
+        });
+    match spawned {
+        Ok(worker) => (tx, Some(worker)),
+        Err(e) => {
+            tracing::error!("cannot start the thread nikomiru-count: {e}");
+            (tx, None)
+        }
+    }
+}
+
+/// The words of the subtitle file `request`'s video would play with
+/// (SUB-006, SUB-008, MET-008), or `None` when it has none.
+fn count_episode(
+    manager: &DictionaryManager,
+    translator: &Translator,
+    stop: &AtomicBool,
+    cache: &mut CountCache,
+    request: &CountRequest,
+) -> Result<Option<Counted>, String> {
+    let video = &request.video;
+    if !video.is_file() {
+        return Ok(None);
+    }
+    let downloaded = nikomiru_online::hash::video_hash(video)
+        .map(|h| {
+            nikomiru_online::store::list(&nikomiru_online::store::folder(
+                &request.subtitles_dir,
+                &h,
+            ))
+        })
+        .unwrap_or_default();
+    let externals = scores::subtitle_files(video, &downloaded);
+    let Some(file) = scores::automatic_file(&externals, request.saved.as_ref(), &request.preferred)
+    else {
+        return Ok(None);
+    };
+    let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
+    let key = (file, meta.len(), meta.modified().ok(), request.generation);
+    if let Some(counted) = cache.get(&key) {
+        return Ok(Some(counted.clone()));
+    }
+    let loaded = crate::subtitles::read_file(&key.0, None, translator)?;
+    let lookup = manager.lookup().map_err(|e| translator.error(&e))?;
+    let lines = loaded.track.cues.into_iter().map(|c| c.plain_text);
+    let counted = scores::count(lines, |text| {
+        if stop.load(Ordering::Relaxed) {
+            return Err("closing".into());
+        }
+        segment(&lookup, text).map_err(|e| translator.error(&DictionaryError::from(e)))
+    })?;
+    if cache.len() >= COUNTS_KEPT {
+        cache.clear();
+    }
+    cache.insert(key, counted.clone());
+    Ok(Some(counted))
+}
+
 /// Sends `text` to a worker; without one, `done` gets the error at once.
 fn send<T>(jobs: Option<&Jobs<T>>, text: String, done: Done<T>, translator: &Translator) {
     let unsent = match jobs {
@@ -130,6 +238,8 @@ impl Dictionaries {
             spawn_worker("nikomiru-words", &manager, &translator, |m, text| {
                 Ok(segment(&*m.lookup()?, text)?)
             });
+        let counts_stop = Arc::new(AtomicBool::new(false));
+        let (counts, counts_worker) = spawn_counter(&manager, &translator, &counts_stop);
         Self {
             manager,
             translator,
@@ -137,6 +247,9 @@ impl Dictionaries {
             worker,
             words: words_worker.is_some().then_some(words),
             words_worker,
+            counts: counts_worker.is_some().then_some(counts),
+            counts_worker,
+            counts_stop,
             imports: Mutex::new(Vec::new()),
         }
     }
@@ -153,6 +266,19 @@ impl DictionaryService for Dictionaries {
 
     fn segment(&self, text: String, done: Done<Vec<Word>>) {
         send(self.words.as_ref(), text, done, &self.translator);
+    }
+
+    fn count_words(&self, request: CountRequest, done: Done<Option<Counted>>) {
+        let unsent = match &self.counts {
+            Some(counts) => counts
+                .send((request, done))
+                .err()
+                .map(|mpsc::SendError((_, done))| done),
+            None => Some(done),
+        };
+        if let Some(done) = unsent {
+            done(Err(self.translator.tr("error-dict-unavailable", &[])));
+        }
     }
 
     fn list(&self) -> Result<Vec<(String, DictionaryRecord)>, String> {

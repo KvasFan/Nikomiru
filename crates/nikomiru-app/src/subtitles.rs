@@ -145,6 +145,38 @@ fn format_of(path: &Path) -> Format {
         .unwrap_or(Format::Srt)
 }
 
+/// Reads a subtitle file, its encoding found or `forced` (SUB-005).
+pub fn read_file(
+    path: &Path,
+    forced: Option<&str>,
+    translator: &Translator,
+) -> Result<Loaded, String> {
+    use std::io::Read;
+    let name = || path.display().to_string();
+    let failed = |e: std::io::Error| {
+        translator.tr(
+            "error-subtitle-read",
+            &[("path", name()), ("reason", e.to_string())],
+        )
+    };
+    // a subtitle file is text: one this large is not one
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(MAX_SUBTITLE_FILE + 1).read_to_end(&mut bytes))
+        .map_err(failed)?;
+    if bytes.len() as u64 > MAX_SUBTITLE_FILE {
+        return Err(translator.tr("error-subtitle-too-large", &[("path", name())]));
+    }
+    let decoded = decode(&bytes, forced, &Iconv)
+        .ok_or_else(|| translator.tr("error-subtitle-encoding", &[("path", name())]))?;
+    tracing::info!("subtitles {} ({})", path.display(), decoded.encoding);
+    Ok(Loaded {
+        track: parse(format_of(path), &decoded.text),
+        encoding: Some(decoded.encoding),
+        fonts: Vec::new(),
+    })
+}
+
 impl Worker {
     fn load(&mut self, request: &Request, cancel: &Cancel) -> Result<Loaded, String> {
         let loaded = match &request.source {
@@ -174,34 +206,7 @@ impl Worker {
     }
 
     fn file(&self, path: &Path, forced: Option<&str>) -> Result<Loaded, String> {
-        use std::io::Read;
-        let name = || path.display().to_string();
-        let failed = |e: std::io::Error| {
-            self.translator.tr(
-                "error-subtitle-read",
-                &[("path", name()), ("reason", e.to_string())],
-            )
-        };
-        // a subtitle file is text: one this large is not one
-        let mut bytes = Vec::new();
-        std::fs::File::open(path)
-            .and_then(|f| f.take(MAX_SUBTITLE_FILE + 1).read_to_end(&mut bytes))
-            .map_err(failed)?;
-        if bytes.len() as u64 > MAX_SUBTITLE_FILE {
-            return Err(self
-                .translator
-                .tr("error-subtitle-too-large", &[("path", name())]));
-        }
-        let decoded = decode(&bytes, forced, &Iconv).ok_or_else(|| {
-            self.translator
-                .tr("error-subtitle-encoding", &[("path", name())])
-        })?;
-        tracing::info!("subtitles {} ({})", path.display(), decoded.encoding);
-        Ok(Loaded {
-            track: parse(format_of(path), &decoded.text),
-            encoding: Some(decoded.encoding),
-            fonts: Vec::new(),
-        })
+        read_file(path, forced, &self.translator)
     }
 
     /// The fonts attached to the video, for an ASS track (SUB-025); none

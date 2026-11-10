@@ -363,6 +363,8 @@ pub struct Session {
     /// and the list version it was counted for; while its lines are being
     /// split, how many are.
     score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
+    /// The scores of the episodes of the series open (KNW-008).
+    episode_scores: crate::scores::EpisodeScores,
     /// The thumbnails of the progress bar (PLY-014).
     thumbnails: crate::thumbnails::Thumbnails,
     /// A dictionary is installed, and a card was made: two of the first
@@ -716,6 +718,7 @@ impl Session {
             sub_auto_done: false,
             sub_list_version: 0,
             score: None,
+            episode_scores: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             words,
@@ -4542,32 +4545,6 @@ impl Session {
         let Some(video) = self.current.as_ref().map(|c| c.path.clone()) else {
             return;
         };
-        let files = |dir: &Path| -> Vec<PathBuf> {
-            std::fs::read_dir(dir)
-                .map(|rd| {
-                    rd.flatten()
-                        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-                        .map(|e| e.path())
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        let folder = video.parent().map(Path::to_path_buf).unwrap_or_default();
-        let mut entries = files(&folder);
-        // the folders releases keep subtitles in (SUB-006), and the one named
-        // after this video inside them (`Subs/<video name>/`)
-        let stem = video
-            .file_stem()
-            .map(|s| s.to_os_string())
-            .unwrap_or_default();
-        let mut own = Vec::new();
-        for name in select::SUBTITLE_FOLDERS {
-            let sub = folder.join(name);
-            if sub.is_dir() {
-                entries.extend(files(&sub));
-                own.extend(files(&sub.join(&stem)));
-            }
-        }
         // and the subtitles downloaded for it (MET-008)
         let downloaded = self
             .current
@@ -4575,26 +4552,7 @@ impl Session {
             .and_then(|c| c.subtitles.as_ref())
             .map(|folder| nikomiru_online::store::list(folder))
             .unwrap_or_default();
-        let mut externals = select::external_files(&video, &entries);
-        if externals.is_empty() {
-            // none with its name: those of its episode, or of a folder of its own
-            let only_video = !entries.iter().any(|p| {
-                p != &video
-                    && p.parent() == video.parent()
-                    && p.extension().is_some_and(|e| {
-                        let e = format!("*.{}", e.to_string_lossy().to_lowercase());
-                        crate::view::VIDEO_PATTERNS.contains(&e.as_str())
-                    })
-            });
-            let language =
-                |name: &str| nikomiru_online::language::subtitle_language(name).map(str::to_string);
-            let read = select::NameReader {
-                episode: &nikomiru_online::language::subtitle_episode,
-                language: &language,
-            };
-            externals = select::related_files(&video, &entries, &own, only_video, &read);
-        }
-        externals.extend(select::downloaded_files(&downloaded));
+        let externals = crate::scores::subtitle_files(&video, &downloaded);
         let mut sources: Vec<Source> = externals
             .iter()
             .map(|e| Source::File(e.path.clone()))
@@ -5977,6 +5935,69 @@ impl Session {
     /// so far, while the words are coloured (KNW-007).
     pub fn score(&self) -> Option<Result<crate::words::Score, usize>> {
         self.score.as_ref().map(|(_, _, s)| *s)
+    }
+
+    /// The episodes of the series open whose words to count, taken by the
+    /// UI layer while the words are coloured; the scores of those counted
+    /// worked out again when the statuses change (KNW-008).
+    pub fn take_word_counts(&mut self) -> Vec<(String, crate::scores::CountRequest)> {
+        let c = &self.services.config.subtitles;
+        let open = self.library_page.series.as_ref();
+        let series = open.map(|(id, _)| *id).filter(|_| c.word_colors);
+        let generation = self.words.generation();
+        self.episode_scores.reset_for(series, generation);
+        let mut out = Vec::new();
+        if let (Some(_), Some((_, Some(episodes)))) = (series, open) {
+            for (uid, v) in episodes {
+                if self.episode_scores.asked(uid) {
+                    continue;
+                }
+                self.episode_scores.counting(uid.clone());
+                // LIB-010: the subtitles chosen for it or its series
+                let saved = self
+                    .services
+                    .library
+                    .as_ref()
+                    .and_then(|lib| lib.effective(uid).ok())
+                    .and_then(|e| e.subtitle);
+                let request = crate::scores::CountRequest {
+                    video: PathBuf::from(&v.path),
+                    saved,
+                    preferred: c.preferred_languages.clone(),
+                    subtitles_dir: self.services.subtitles_dir.clone(),
+                    generation,
+                };
+                out.push((uid.clone(), request));
+            }
+        }
+        let words = &self.words;
+        self.episode_scores
+            .update(words.revision(), |e, r| words.status(e, r));
+        out
+    }
+
+    /// Counts an episode's words on the dictionary service.
+    pub fn start_word_count(
+        &self,
+        request: crate::scores::CountRequest,
+        done: Box<dyn FnOnce(Result<Option<nikomiru_library::words::Counted>, String>) + Send>,
+    ) {
+        self.services.dictionaries.count_words(request, done);
+    }
+
+    /// The words of an episode, counted.
+    pub fn word_count_done(
+        &mut self,
+        generation: u64,
+        uid: String,
+        result: Result<Option<nikomiru_library::words::Counted>, String>,
+    ) {
+        self.episode_scores.done(generation, uid, result);
+    }
+
+    /// What the episode list says of an episode's score (KNW-008).
+    pub fn episode_score(&self, uid: &str) -> Option<crate::scores::EpisodeScore> {
+        self.episode_scores.get(uid)
     }
 
     /// Splits a subtitle text into words on the dictionary service.
