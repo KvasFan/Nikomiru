@@ -626,6 +626,7 @@ The algorithm is a port of Yomitan's, as implemented by fushidicts. Fushi: `nati
 |---|---|
 | LKP-060 | Word segmentation without a morphological tokenizer: greedy longest-match with `lookup(max_results = 1)` (like Fushi `japanese_language.dart`); spaces and punctuation are not looked up, and text no dictionary knows stays in one piece. No MeCab/IPADIC dictionary (licenses). It runs on a thread of its own, so a click never waits behind it, and its lookups bypass the cache of LKP-038. The cues shown and the next three are split ahead, once per text; a change of the dictionaries splits them again. Used by the furigana (LKP-051), the mined words (LKP-061), and to move the keyboard lookup (← →) word by word once a cue is split (grapheme by grapheme before, and where no word follows, which reaches the words inside a compound). M9 (D-17). |
 | LKP-061 | The words already made into cards (`mined_cards`, ANK-039) are underlined in the subtitles and in the subtitle list (SUB-015; the rows in view are split as they come into view) (`[subtitles] mark_mined`, default on), matched by headword, so an inflected form is marked too; a card just made marks its word at once. Cards made outside Nikomiru are not known. M9 (D-17). |
+| LKP-062 | **Pitch accent colours** (2.26.0, D-56): `[subtitles] pitch_colors` (default off; Settings → Subtitles). Each word the segmentation finds (LKP-060) carries the accent of the first pitch dictionary that gives one for its headword and reading, its first downstep (patterns left out), as a category of LKP-042; the overlay draws a line over the word in its colour: heiban blue, atamadaka red, nakadaka orange, odaka green, kifuku purple. The line goes over the word so that it never meets the status underlines (KNW-002); the subtitle list is not marked. Without a pitch dictionary nothing is drawn. |
 
 #### 6.6.8 Intended differences from Fushi
 
@@ -1020,6 +1021,7 @@ known_decks = []            # Anki decks whose cards are known words (KNW-005)
 known_field = "Expression"  # the field of those cards with the word (KNW-005)
 known_lines = "none"        # the main subtitle on lines with no new word: "none" | "blur" | "hidden" (KNW-011)
 auto_pause_new_only = false # the pause at the end of a line only after new words (KNW-012)
+pitch_colors = false        # a line over each word in the colour of its pitch accent (LKP-062)
 
 [lookup]
 max_results = 10

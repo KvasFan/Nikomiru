@@ -312,6 +312,7 @@ mod tests {
             headword: Some(Headword {
                 expression: e.into(),
                 reading: r.into(),
+                pitch: None,
             }),
         }
     }

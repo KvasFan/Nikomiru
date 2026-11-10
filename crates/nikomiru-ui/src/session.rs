@@ -6121,6 +6121,7 @@ impl Session {
             furigana_unknown_only: c.furigana_unknown_only,
             mined: c.mark_mined,
             colors: c.word_colors,
+            pitch: c.pitch_colors,
         }
     }
 
@@ -6227,6 +6228,14 @@ impl Session {
         }
         self.toasts
             .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// Waits until the library writes queued so far are done, so that a
+    /// read on another thread sees them (KNW-010).
+    pub fn wait_writes(&self) {
+        if let Some(w) = &self.writer {
+            w.wait();
+        }
     }
 
     /// The words' statuses written to `path` (KNW-006), once the writes

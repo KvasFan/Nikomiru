@@ -644,6 +644,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-KNW-011 | Known lines obscured | The new words of a line counted once, learning not new (L1); a line whose word is known plays hidden (L6) | L1/L6 |
 | T-KNW-012 | Pause after new words | The stop at a line whose word becomes known goes for the next line with a new word, and playback stops there (L6) | L6 |
 | T-KNW-013 | Lines filtered | All lines, those with a new word, those with one; no filter without the colours (L3) | L3 |
+| T-LKP-062 | Pitch accent colours | The accents of the words marked only when asked (L1); drawn with the status underlines (L3); 食べる from a pitch dictionary, a verb with a downstep, kifuku over its word in a real subtitle (L6) | L1/L3/L6 |
 | T-E2E-WEB-001 | A web page read | An address typed on the Books page opens as a book, a word of it is looked up, and it stays in the list, saved once | L6 |
 
 ### 6.14 Reliability and fuzzing
