@@ -1011,3 +1011,5 @@ stats-encounters-detail = 再生中に出会った時点で新しかった単語
 stats-encounters-episode = { $title }：新しい単語 { $count } 語
 
 condense-reading = 字幕の読み取りが終わってから音声をまとめて書き出してください。
+
+error-subtitle-vobsub-index = VobSub のインデックスが破損しているか、読み取れる言語トラックがありません。

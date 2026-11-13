@@ -43,6 +43,12 @@ pub enum Source {
 }
 
 impl Source {
+    /// A local model reads this embedded or explicit paired-file source.
+    pub fn is_graphic_read(&self) -> bool {
+        matches!(self, Self::Read { .. })
+            || matches!(self, Self::File(path) if path.extension().is_some_and(|s| matches!(s.to_string_lossy().to_ascii_lowercase().as_str(), "idx" | "sub")))
+    }
+
     /// Identifier used by the menu.
     pub fn key(&self) -> String {
         match self {
@@ -58,6 +64,8 @@ impl Source {
 pub struct Request {
     /// Captured playback position, without subtitle delay, for OCR priority.
     pub position_ms: i64,
+    /// Language priority for external VobSub tracks.
+    pub preferred_languages: Vec<String>,
     /// The video.
     pub video: PathBuf,
     /// The subtitles to load (a file or an embedded text track).

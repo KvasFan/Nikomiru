@@ -60,6 +60,8 @@ Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.i
 
 I sottotitoli a immagini letti come testo ora compaiono progressivamente: la lettura parte vicino alla posizione corrente e le righe non ancora lette mantengono le immagini. Puoi cercare le parole del testo già pronto mentre il lavoro continua. Comprensione dell’intera traccia, accelerazione delle pause ed esportazione dell’audio condensato attendono il completamento; cambiare o disattivare i sottotitoli annulla la lettura precedente.
 
+Per leggere una coppia VobSub esterna, apri o trascina il file `.idx` o `.sub` mentre è caricato un video. Mantieni accanto il file compagno con lo stesso nome; le maiuscole delle estensioni non contano. Il modello locale legge la lingua preferita con i timestamp dell’indice. Riaprire il video ripristina questa scelta esplicita. Le coppie esterne non mostrano immagini mentre il testo è in preparazione; file compagni mancanti o danneggiati producono un errore.
+
 ## 4. Cercare le parole
 
 - **Clic** su un carattere di un sottotitolo: il popup mostra la parola più lunga che comincia lì, con letture, significati, accento tonale e frequenze.

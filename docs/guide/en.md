@@ -60,6 +60,8 @@ Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL 
 
 Graphic subtitles read as text now appear progressively: OCR starts near the current playback position, and unread lines keep their pictures. Text already read can be looked up while work continues. Whole-track comprehension, gap acceleration and condensed-audio export wait for completion; changing or disabling subtitles cancels the earlier reading.
 
+To read an external VobSub pair, open or drop its `.idx` or `.sub` file while a video is loaded. Keep the same-stem companion beside it; extension case does not matter. The preferred language is read with the local model and index timestamps. Reopening the video restores this explicit choice. External pairs have no picture fallback while text is pending; missing or damaged companions report an error.
+
 ## 4. Looking words up
 
 - **Click** a character of a subtitle: the popup shows the longest word that starts there, its readings, meanings, pitch accent and frequencies.

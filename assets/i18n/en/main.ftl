@@ -1028,3 +1028,5 @@ stats-encounters-detail = Distinct words that were new when encountered during p
 stats-encounters-episode = { $title }: { $count } new words met
 
 condense-reading = Wait for subtitle reading to finish before exporting condensed audio.
+
+error-subtitle-vobsub-index = The VobSub index is damaged or does not identify a readable language track.

@@ -4990,25 +4990,39 @@ impl Session {
             .iter()
             .find_map(|lang| select::choose(saved.as_ref(), &externals, &embedded, lang))
             .filter(|_| !off);
-        let source = match choice {
-            Some(Choice::External(p)) => Some(Source::File(p)),
-            Some(Choice::Embedded(id)) => {
-                // SUB-028, SUB-029: a graphic track read when the model is there
-                let read =
-                    self.services.config.subtitles.read_graphic && self.services.ocr.installed();
-                let track = self.sub_sources.iter().find(
+        let saved_pair = match self.prefs.subtitle.as_ref() {
+            Some(SubtitleChoice::File(path)) => {
+                let source = Source::File(PathBuf::from(path));
+                (source.is_graphic_read() && Path::new(path).is_file()).then_some(source)
+            }
+            _ => None,
+        };
+        let source = if let Some(pair) = saved_pair {
+            if !self.sub_sources.contains(&pair) {
+                self.sub_sources.push(pair.clone());
+            }
+            Some(pair)
+        } else {
+            match choice {
+                Some(Choice::External(p)) => Some(Source::File(p)),
+                Some(Choice::Embedded(id)) => {
+                    // SUB-028, SUB-029: a graphic track read when the model is there
+                    let read = self.services.config.subtitles.read_graphic
+                        && self.services.ocr.installed();
+                    let track = self.sub_sources.iter().find(
                     |s| matches!(s, Source::Embedded { id: i, .. } | Source::Bitmap(i) if *i == id),
                 );
-                let as_text = self
-                    .sub_sources
-                    .iter()
-                    .find(|s| matches!(s, Source::Read { id: i, .. } if *i == id));
-                match (track, as_text) {
-                    (Some(Source::Bitmap(_)), Some(text)) if read => Some(text.clone()),
-                    _ => track.cloned(),
+                    let as_text = self
+                        .sub_sources
+                        .iter()
+                        .find(|s| matches!(s, Source::Read { id: i, .. } if *i == id));
+                    match (track, as_text) {
+                        (Some(Source::Bitmap(_)), Some(text)) if read => Some(text.clone()),
+                        _ => track.cloned(),
+                    }
                 }
+                None => None,
             }
-            None => None,
         };
         // no text subtitles in the preferred language: online ones (MET-007)
         // (a graphic track read as text is text: SUB-028)
@@ -5048,12 +5062,16 @@ impl Session {
                 self.cues_changed();
             }
             // SUB-028: mpv draws the pictures until their text is ready
-            Source::Read { id, .. } => {
-                let _ = self.services.player.show_bitmap_subtitles(Some(*id));
+            graphic if graphic.is_graphic_read() => {
+                let id = match graphic {
+                    Source::Read { id, .. } => Some(*id),
+                    _ => None,
+                };
+                let _ = self.services.player.show_bitmap_subtitles(id);
                 let name = source_name(&source);
                 self.subs.clear(Some(source.clone()));
                 self.subs.incomplete = true;
-                self.graphic_bitmap = Some(true);
+                self.graphic_bitmap = Some(id.is_some());
                 self.cues_changed();
                 if self.services.ocr.installed() {
                     self.toasts
@@ -5069,7 +5087,7 @@ impl Session {
                     self.ocr_fetch();
                 }
             }
-            Source::File(_) | Source::Embedded { .. } => {
+            Source::File(_) | Source::Embedded { .. } | Source::Read { .. } => {
                 let _ = self.services.player.show_bitmap_subtitles(None);
                 self.load_main(source);
             }
@@ -5084,6 +5102,7 @@ impl Session {
         self.sub_loads.push((
             self.sub_generation,
             Request {
+                preferred_languages: self.services.config.subtitles.preferred_languages.clone(),
                 position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
@@ -5217,7 +5236,7 @@ impl Session {
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 // SUB-028: the text in place of the pictures
-                if matches!(source, Source::Read { .. }) {
+                if source.is_graphic_read() {
                     let _ = self.services.player.show_bitmap_subtitles(None);
                     self.graphic_bitmap = Some(false);
                 }
@@ -5386,6 +5405,7 @@ impl Session {
         self.sub_loads.push((
             self.secondary_generation,
             Request {
+                preferred_languages: self.services.config.subtitles.preferred_languages.clone(),
                 position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
@@ -5995,7 +6015,7 @@ impl Session {
                 ocr.installed = true;
                 // SUB-028: the graphic track that waited for it
                 if self.read_waiting.take() == Some(self.sub_generation)
-                    && let Some(source @ Source::Read { .. }) = self.subs.source.clone()
+                    && let Some(source) = self.subs.source.clone().filter(Source::is_graphic_read)
                 {
                     let name = source_name(&source);
                     self.toasts
@@ -6006,9 +6026,13 @@ impl Session {
             OcrEvent::Failed(e) => {
                 ocr.fetched = None;
                 if self.read_waiting.take() == Some(self.sub_generation)
-                    && let Some(Source::Read { id, .. }) = self.subs.source
+                    && let Some(source) = self.subs.source.clone().filter(Source::is_graphic_read)
                 {
-                    self.subs.clear(Some(Source::Bitmap(id)));
+                    let pictures = match source {
+                        Source::Read { id, .. } => Some(Source::Bitmap(id)),
+                        _ => None,
+                    };
+                    self.subs.clear(pictures);
                     self.cues_changed();
                     self.toasts
                         .push(self.tr("error-subtitles", &[("reason", e.clone())]));

@@ -105,7 +105,9 @@ pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
-const SUBTITLE_PATTERNS: [&str; 5] = ["*.srt", "*.ass", "*.ssa", "*.vtt", "*.lrc"];
+const SUBTITLE_PATTERNS: [&str; 7] = [
+    "*.srt", "*.ass", "*.ssa", "*.vtt", "*.lrc", "*.idx", "*.sub",
+];
 const AUDIO_PATTERNS: [&str; 9] = [
     "*.m4b", "*.m4a", "*.mp3", "*.aac", "*.flac", "*.ogg", "*.opus", "*.wav", "*.wma",
 ];

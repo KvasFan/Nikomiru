@@ -128,6 +128,16 @@ fn files_off_remote_and_graphic_sources_do_not_launch_unneeded_work() {
             .unwrap()
             .is_none()
     );
+    // T-SUB-031: explicit paired-file choices never start background OCR/probes.
+    for extension in ["idx", "SUB"] {
+        request.saved = Some(SubtitleChoice::File(format!("pair.{extension}")));
+        assert!(
+            resolver
+                .resolve(&request, &cancel, &tr())
+                .unwrap()
+                .is_none()
+        );
+    }
     request.saved = None;
     let file = root.join("video with spaces.ja.srt");
     std::fs::write(&file, "external").unwrap();

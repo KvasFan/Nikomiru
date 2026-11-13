@@ -218,6 +218,9 @@ impl Worker {
         reports: &nikomiru_ui::subtitles::Reports,
     ) -> Result<Loaded, String> {
         let loaded = match &request.source {
+            Source::File(path) if request.source.is_graphic_read() => {
+                self.read_pair(request, path, cancel, reports)?
+            }
             Source::File(path) => self.file(path, request.encoding.as_deref())?,
             Source::Embedded {
                 ff_index, codec, ..
@@ -329,6 +332,79 @@ impl Worker {
             if cancel.is_cancelled() {
                 return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
             }
+            let saved = std::fs::write(&part, nikomiru_subs::srt::write(&read)).and_then(|()| {
+                if cancel.is_cancelled() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "cancelled",
+                    ));
+                }
+                std::fs::rename(&part, &cached)
+            });
+            if saved.is_err() {
+                let _ = std::fs::remove_file(&part);
+            }
+            saved.map_err(io)?;
+        }
+        let mut loaded = self.file(&cached, Some("UTF-8"))?;
+        loaded.encoding = None;
+        Ok(loaded)
+    }
+
+    fn read_pair(
+        &mut self,
+        request: &Request,
+        selected: &Path,
+        cancel: &Cancel,
+        reports: &nikomiru_ui::subtitles::Reports,
+    ) -> Result<Loaded, String> {
+        let bad = || self.translator.tr("error-subtitle-vobsub-index", &[]);
+        let io = |error: std::io::Error| {
+            self.translator.tr(
+                "error-subtitle-read",
+                &[
+                    ("path", selected.display().to_string()),
+                    ("reason", error.to_string()),
+                ],
+            )
+        };
+        let (idx_path, sub_path) = crate::vobsub_pair::sources(selected).map_err(io)?;
+        let bytes = crate::vobsub_pair::read(
+            &idx_path,
+            nikomiru_subs::vobsub_index::MAX_BYTES as u64,
+            cancel,
+        )
+        .map_err(io)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| bad())?;
+        let index = nikomiru_subs::vobsub_index::Index::parse(text).ok_or_else(bad)?;
+        let track = index.choose(&request.preferred_languages).ok_or_else(bad)?;
+        let cached =
+            crate::vobsub_pair::cache_path(&self.cache_dir, &idx_path, &sub_path, track.index)
+                .map_err(io)?;
+        if !cached.is_file() {
+            if !self.ocr.available() {
+                return Err(self.translator.tr("error-subtitle-read-model", &[]));
+            }
+            let bytes = crate::vobsub_pair::read(&sub_path, MAX_PGS_STREAM, cancel).map_err(io)?;
+            let cues =
+                nikomiru_subs::vobsub::parse_indexed(&bytes, &index, track).ok_or_else(bad)?;
+            let read = self.read_cues(
+                &cues,
+                i64::from(track.index),
+                request.position_ms,
+                cancel,
+                reports,
+            )?;
+            if read.is_empty() {
+                return Err(self.translator.tr("error-subtitle-empty", &[]));
+            }
+            if cancel.is_cancelled() {
+                return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
+            }
+            let mut part = cached.clone().into_os_string();
+            part.push(".part");
+            let part = PathBuf::from(part);
+            std::fs::create_dir_all(&self.cache_dir).map_err(io)?;
             let saved = std::fs::write(&part, nikomiru_subs::srt::write(&read)).and_then(|()| {
                 if cancel.is_cancelled() {
                     return Err(std::io::Error::new(

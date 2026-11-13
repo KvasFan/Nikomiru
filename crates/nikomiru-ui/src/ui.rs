@@ -1187,7 +1187,9 @@ impl Ui {
                 }
                 self.session.dict_choose(path.to_path_buf());
             }
-            Some("srt" | "ass" | "ssa" | "vtt" | "lrc") if self.session.view.loaded => {
+            Some("srt" | "ass" | "ssa" | "vtt" | "lrc" | "idx" | "sub")
+                if self.session.view.loaded =>
+            {
                 self.session.open_subtitle_file(path);
             }
             _ => self.session.open(path),

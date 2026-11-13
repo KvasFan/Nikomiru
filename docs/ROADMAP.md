@@ -909,7 +909,7 @@ without requiring a new request after each increment.
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M25 | Graphic subtitle OCR progressively from the playback position | done |
-| M26 | External VobSub `.idx`/`.sub` pairs read as text | not started |
+| M26 | External VobSub `.idx`/`.sub` pairs read as text | done |
 | M27 | Embedded DVB subtitles read as text | not started |
 | M28 | Cancel book and series comprehension analyses | not started |
 | M29 | Browse and bulk-mark the words of a whole analysed book | not started |
@@ -929,6 +929,22 @@ lookup/mining, but is not presented as a complete comprehension/export source.
 
 **Exit criteria**: priority/batching/cancellation/error tests, actual loader
 and GUI progress checks, unchanged whole-track cache behavior, `cargo xtask ci`.
+
+---
+
+## M26 — External VobSub pairs
+
+**Requirements**: SUB-031. Open/drop either member of a local `.idx`/`.sub`
+pair on the current video and read its selected language as text. The index
+supplies palette, stream id, packet positions and authoritative timestamps.
+OCR is progressive as M25; the cache includes signatures of both files and
+the selected stream. This increment is explicit opening, not automatic sidecar
+selection or background comprehension/OCR. Pending external text has no mpv
+picture fallback. Missing/damaged/oversized pairs fail without a partial cache.
+
+**Exit criteria**: multi-stream/index/timestamp/bounds and companion/cache
+tests; actual paired-file GUI lookup, replacement and changed-source refresh;
+`cargo xtask ci`.
 
 ---
 
