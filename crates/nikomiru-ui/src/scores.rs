@@ -4,8 +4,8 @@
 //! (KNW-008): for each episode, the subtitle file the player would load by
 //! itself (SUB-006, SUB-008, MET-008), its lines split into words away from
 //! the UI thread once, and the score worked out again from those words
-//! whenever the statuses change. Embedded tracks are known only to the
-//! player, so an episode that would play one has no score.
+//! whenever the statuses change. The app's counter also probes and extracts
+//! local embedded text tracks (2.30.0), using the same selection policy.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -71,11 +71,10 @@ pub fn subtitle_files(video: &Path, downloaded: &[PathBuf]) -> Vec<External> {
     externals
 }
 
-/// The file among `externals` the player would load by itself (SUB-008):
-/// the one chosen for the video or its series, else one in the first
-/// preferred language that has one, else one without a language. `None`
-/// when the subtitles were turned off or an embedded track was chosen.
-pub fn automatic_file(
+/// A file whose selection needs no embedded metadata (SUB-008): a valid
+/// saved file, or the first language's tagged/untagged file. Other cases
+/// need a probe before trying the lower-priority languages. Off stays off.
+pub fn decisive_file(
     externals: &[External],
     saved: Option<&SubtitleChoice>,
     preferred: &[String],
@@ -86,8 +85,8 @@ pub fn automatic_file(
         None => None,
     };
     preferred
-        .iter()
-        .find_map(|lang| select::choose(saved.as_ref(), externals, &[], lang))
+        .first()
+        .and_then(|lang| select::choose(saved.as_ref(), externals, &[], lang))
         .and_then(|c| match c {
             Choice::External(p) => Some(p),
             Choice::Embedded(_) => None,
@@ -105,9 +104,13 @@ pub struct CountRequest {
     pub preferred: Vec<String>,
     /// Where the downloaded subtitles are kept (MET-008).
     pub subtitles_dir: PathBuf,
+    /// The configured FFmpeg location, for embedded tracks (EXT-001).
+    pub ffmpeg: String,
     /// The words' generation: a count made with other dictionaries is not
     /// reused.
     pub generation: u64,
+    /// The UI count epoch: old replies cannot replace a newer request.
+    pub epoch: u64,
 }
 
 /// The words of a subtitle file's lines: `split` gives the words of a line,
@@ -164,20 +167,49 @@ pub struct EpisodeScores {
     series: Option<u64>,
     /// The words' generation they were counted with.
     generation: u64,
+    /// UI count epoch, distinct from the dictionaries' cache generation.
+    epoch: u64,
+    preferred: Vec<String>,
+    ffmpeg: String,
     entries: HashMap<String, Entry>,
 }
 
 impl EpisodeScores {
-    /// Starts again when another series opens or the dictionaries change;
+    /// Starts again for another series, dictionaries, languages or tool setting;
     /// returns whether it did.
-    pub fn reset_for(&mut self, series: Option<u64>, generation: u64) -> bool {
-        if (self.series, self.generation) == (series, generation) {
+    pub fn reset_for(
+        &mut self,
+        series: Option<u64>,
+        generation: u64,
+        preferred: &[String],
+        ffmpeg: &str,
+    ) -> bool {
+        if (
+            self.series,
+            self.generation,
+            self.preferred.as_slice(),
+            self.ffmpeg.as_str(),
+        ) == (series, generation, preferred, ffmpeg)
+        {
             return false;
         }
         self.series = series;
         self.generation = generation;
-        self.entries.clear();
+        self.preferred = preferred.to_vec();
+        self.ffmpeg = ffmpeg.into();
+        self.invalidate();
         true
+    }
+
+    /// Reopening a series rechecks sources even when its id has not changed.
+    pub fn invalidate(&mut self) {
+        self.epoch += 1;
+        self.entries.clear();
+    }
+
+    /// Stamp replies so older series/settings requests cannot replace them.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     /// Whether `uid` was asked for.
@@ -190,9 +222,9 @@ impl EpisodeScores {
         self.entries.insert(uid, Entry::Counting);
     }
 
-    /// The count of `uid`, unless it is for older dictionaries.
-    pub fn done(&mut self, generation: u64, uid: String, result: Result<Option<Counted>, String>) {
-        if generation != self.generation || !self.entries.contains_key(&uid) {
+    /// The count of `uid`, unless it belongs to an older count epoch.
+    pub fn done(&mut self, epoch: u64, uid: String, result: Result<Option<Counted>, String>) {
+        if epoch != self.epoch || !self.entries.contains_key(&uid) {
             return;
         }
         let entry = match result {
@@ -259,32 +291,34 @@ mod tests {
         ];
         let ja = ["ja".to_string()];
         assert_eq!(
-            automatic_file(&files, None, &ja),
+            decisive_file(&files, None, &ja),
             Some("/v/ep.ja.srt".into())
         );
         let chosen = SubtitleChoice::File("/v/ep.en.srt".into());
         assert_eq!(
-            automatic_file(&files, Some(&chosen), &ja),
+            decisive_file(&files, Some(&chosen), &ja),
             Some("/v/ep.en.srt".into())
         );
         let gone = SubtitleChoice::File("/v/other.srt".into());
         assert_eq!(
-            automatic_file(&files, Some(&gone), &ja),
+            decisive_file(&files, Some(&gone), &ja),
             Some("/v/ep.ja.srt".into())
         );
-        assert_eq!(
-            automatic_file(&files, Some(&SubtitleChoice::Off), &ja),
-            None
-        );
+        assert_eq!(decisive_file(&files, Some(&SubtitleChoice::Off), &ja), None);
         let track = SubtitleChoice::Embedded {
             ff_index: Some(2),
             language: Some("jpn".into()),
             title: None,
         };
-        assert_eq!(automatic_file(&files, Some(&track), &ja), None);
-        assert_eq!(automatic_file(&files[..1], None, &ja), None, "English only");
+        assert_eq!(decisive_file(&files, Some(&track), &ja), None);
+        assert_eq!(decisive_file(&files[..1], None, &ja), None, "English only");
+        assert_eq!(
+            decisive_file(&files[..1], None, &["ja".into(), "en".into()]),
+            None,
+            "must inspect Japanese embedded tracks first"
+        );
         let plain = [external("/v/ep.srt", None)];
-        assert_eq!(automatic_file(&plain, None, &ja), Some("/v/ep.srt".into()));
+        assert_eq!(decisive_file(&plain, None, &ja), Some("/v/ep.srt".into()));
     }
 
     // T-KNW-008: the files next to a video and the ones downloaded
@@ -345,15 +379,15 @@ mod tests {
     #[test]
     fn the_scores_follow_the_statuses() {
         let mut scores = EpisodeScores::default();
-        assert!(!scores.reset_for(None, 0));
-        assert!(scores.reset_for(Some(1), 0));
+        assert!(!scores.reset_for(None, 0, &[], ""));
+        assert!(scores.reset_for(Some(1), 0, &[], ""));
         scores.counting("a".into());
         scores.counting("b".into());
         assert_eq!(scores.get("a"), Some(EpisodeScore::Counting));
         let counted = Counted::from_lines([vec![("猫".to_string(), "ねこ".to_string())]]);
-        scores.done(0, "a".into(), Ok(Some(counted)));
-        scores.done(0, "b".into(), Ok(None));
-        scores.done(0, "c".into(), Ok(None));
+        scores.done(scores.epoch(), "a".into(), Ok(Some(counted)));
+        scores.done(scores.epoch(), "b".into(), Ok(None));
+        scores.done(scores.epoch(), "c".into(), Ok(None));
         assert!(!scores.asked("c"), "not asked");
         assert_eq!(scores.get("a"), None, "not worked out yet");
         scores.update(1, |_, _| WordStatus::Unknown);
@@ -374,9 +408,35 @@ mod tests {
         assert_eq!(s.known_percent(), Some(100));
         assert_eq!(scores.get("b"), None);
         // the dictionaries changed: an older count is dropped
-        assert!(scores.reset_for(Some(1), 1));
+        assert!(scores.reset_for(Some(1), 1, &[], ""));
         scores.counting("a".into());
         scores.done(0, "a".into(), Ok(None));
         assert_eq!(scores.get("a"), Some(EpisodeScore::Counting));
+    }
+
+    // T-KNW-008: a reply from the same dictionaries but older settings or
+    // an earlier visit cannot replace the current series' scores.
+    #[test]
+    fn old_count_epochs_are_rejected_after_settings_or_a_reopen() {
+        let mut scores = EpisodeScores::default();
+        scores.reset_for(Some(1), 0, &["ja".into()], "");
+        let old = scores.epoch();
+        scores.counting("a".into());
+        assert!(scores.reset_for(Some(1), 0, &["en".into()], ""));
+        scores.counting("a".into());
+        scores.done(old, "a".into(), Ok(None));
+        assert_eq!(scores.get("a"), Some(EpisodeScore::Counting));
+        let old = scores.epoch();
+        assert!(scores.reset_for(Some(1), 0, &["en".into()], "/tools"));
+        scores.counting("a".into());
+        scores.done(old, "a".into(), Ok(None));
+        assert_eq!(scores.get("a"), Some(EpisodeScore::Counting));
+        let old = scores.epoch();
+        scores.invalidate();
+        scores.counting("a".into());
+        scores.done(old, "a".into(), Ok(None));
+        assert_eq!(scores.get("a"), Some(EpisodeScore::Counting));
+        scores.done(scores.epoch(), "a".into(), Ok(None));
+        assert_eq!(scores.get("a"), None);
     }
 }

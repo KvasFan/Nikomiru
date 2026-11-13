@@ -14,9 +14,68 @@ use crate::ui::Command;
 const TOAST_SECONDS: f64 = 1.5;
 const FADE_SECONDS: f64 = 0.2;
 
+pub(crate) fn web_video(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut Vec<Command>) {
+    let tr = |id: &str| s.translator().tr(id, &[]);
+    if s.web_loading() {
+        Area::new(Id::unique("web-video-loading"))
+            .order(Order::Foreground)
+            .anchor(Align2::CENTER_TOP, [0.0, 16.0])
+            .show(ctx, |ui| {
+                Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(tr("webvideo-opening"));
+                    });
+                });
+            });
+    }
+    if !view.web_url_open {
+        return;
+    }
+    let mut close = false;
+    egui::Modal::new(Id::unique("web-video-open")).show(ctx, |ui| {
+        ui.set_width(440.0);
+        ui.heading(tr("webvideo-open"));
+        let label = ui.label(tr("webvideo-address"));
+        let edit = ui
+            .add(egui::TextEdit::singleline(&mut view.web_url).desired_width(f32::INFINITY))
+            .labelled_by(label.id);
+        if std::mem::take(&mut view.web_url_focus) {
+            edit.request_focus();
+        }
+        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        ui.label(tr("webvideo-hint"));
+        ui.horizontal(|ui| {
+            if ui.button(tr("webvideo-cancel")).clicked() {
+                close = true;
+            }
+            if ui
+                .add_enabled(
+                    crate::ui::is_web_address(view.web_url.trim()),
+                    egui::Button::new(tr("webvideo-play")),
+                )
+                .clicked()
+                || enter
+            {
+                out.push(Command::WebOpen(view.web_url.clone()));
+                close = true;
+            }
+        });
+        close |= ui.input(|i| i.key_pressed(egui::Key::Escape));
+    });
+    if close {
+        view.web_url_open = false;
+    }
+}
+
 pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View) {
     let screen = ctx.content_rect();
-    let error = s.view.error.as_deref().unwrap_or("");
+    let error = s
+        .view
+        .error
+        .as_deref()
+        .or(s.web_error.as_deref())
+        .unwrap_or("");
     if !error.is_empty() {
         Area::new(Id::unique("error"))
             .order(Order::Middle)

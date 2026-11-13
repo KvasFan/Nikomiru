@@ -38,13 +38,41 @@ pub fn address_of(text: &str) -> Option<&str> {
 
 /// Reads a page Nikomiru saved, or an HTML file in UTF-8.
 pub(crate) fn read(path: &Path) -> Result<Book, BookError> {
+    read_inner(path, LIMIT, None)
+}
+
+/// Analysis enforces its smaller bound on the bytes actually read, even if
+/// the file grows after the metadata check.
+pub(crate) fn read_analysis(
+    path: &Path,
+    cancel: &nikomiru_core::Cancel,
+) -> Result<Book, BookError> {
+    read_inner(path, crate::analysis::MAX_ENTRY_BYTES, Some(cancel))
+}
+
+fn read_inner(
+    path: &Path,
+    limit: u64,
+    cancel: Option<&nikomiru_core::Cancel>,
+) -> Result<Book, BookError> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|e| BookError::Io(e.to_string()))?;
     let mut bytes = Vec::new();
-    file.take(LIMIT + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|e| BookError::Io(e.to_string()))?;
-    if bytes.len() as u64 > LIMIT {
+    let mut file = file.take(limit + 1);
+    let mut chunk = [0; 16 << 10];
+    loop {
+        if let Some(cancel) = cancel {
+            crate::analysis::check_cancel(cancel)?;
+        }
+        let n = file
+            .read(&mut chunk)
+            .map_err(|e| BookError::Io(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..n]);
+    }
+    if bytes.len() as u64 > limit {
         return Err(BookError::TooLarge);
     }
     let text = String::from_utf8(bytes).map_err(|_| BookError::NotPage)?;
@@ -172,6 +200,36 @@ pub fn page(text: &str) -> Result<Book, BookError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-KNW-016: enforce the analysis budget during the read, independently
+    // of metadata checked by the caller, and honour cancellation.
+    #[test]
+    fn analysis_read_enforces_its_own_byte_limit_and_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("page.html");
+        std::fs::write(
+            &path,
+            format!(
+                "<!--{}--><main><p>日本語</p></main>",
+                "a".repeat(crate::analysis::MAX_ENTRY_BYTES as usize)
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_analysis(&path, &nikomiru_core::Cancel::new()),
+            Err(BookError::TooLarge)
+        );
+        assert_eq!(
+            read(&path).unwrap().chapters[0].paragraphs[0].text,
+            "日本語"
+        );
+        let cancel = nikomiru_core::Cancel::new();
+        cancel.cancel();
+        assert_eq!(
+            read_analysis(&path, &cancel),
+            Err(BookError::Io("cancelled".into()))
+        );
+    }
 
     fn texts(book: &Book) -> Vec<&str> {
         book.chapters[0]

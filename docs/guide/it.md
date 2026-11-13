@@ -120,12 +120,17 @@ Nulla va online se non lo chiedi.
 - **Continua a guardare** mostra quello che hai iniziato.
 - Alla fine di un episodio, il successivo parte dopo un conto alla rovescia di 5 secondi.
 - Una serie ricorda il sottotitolo, il ritardo e la lingua dell'audio.
+- Con i colori delle parole attivi, ogni episodio mostra `80% · 25%`: occorrenze di parole note e righe senza parole nuove. Contano anche i sottotitoli di testo incorporati nei video locali, con la stessa traccia salvata e priorità di lingua della riproduzione. `…` indica il conteggio; sottotitoli a immagini, video remoti e sottotitoli disattivati non hanno punteggio. Riapri la serie per aggiornare le sorgenti dei sottotitoli modificate.
 - Nella pagina di una serie puoi rinominarla, unirla a un'altra, spostare o togliere episodi, o eliminarla. I tuoi file non vengono mai toccati.
 - **Identifica online** chiede ad AniList (o a MyAnimeList) titoli, episodi e copertina della serie. Se più serie corrispondono, scegli tu. Jimaku poi trova i sottotitoli dal suo id AniList.
 - **Statistiche** mostra il tempo guardato e i caratteri letti:
   - per giorno, per serie e per sessione;
   - un calendario dell'anno;
   - un'esportazione CSV.
+
+Con i colori delle parole attivi, **Analizza** sotto la scheda di una serie ne calcola la comprensione senza aprirla o riprodurla. Il punteggio combina le occorrenze delle parole e le righe degli episodi con testo utilizzabile; il numero di episodi analizzati sul totale indica la copertura, compreso il numero di analisi non riuscite. **Aggiorna** rilegge la serie e le sorgenti. Vengono conservati fino a quattro risultati; cambiare lo stato delle parole li aggiorna subito. Le serie con più di 256 episodi non hanno un punteggio complessivo.
+
+Con i colori delle parole attivi, Statistiche mostra anche **Parole nuove incontrate per episodio**: i lemmi distinti che erano nuovi quando li hai incontrati nel sottotitolo principale attivo durante la riproduzione. Ripetizioni e riascolti contano una volta per episodio; gli spostamenti in pausa e le analisi dalla libreria non contano. Lo storico resta quando una parola diventa nota, sopravvive al riavvio e segue backup e sincronizzazione WebDAV. La visione precedente e le righe non segmentate mentre erano attive non vengono stimate in seguito. Sono mostrati i 200 episodi con gli incontri più recenti.
 
 ### Texthooker
 
@@ -134,6 +139,10 @@ Per visual novel e giochi: "Texthooker" nella pagina della libreria mostra le ri
 ### Libri
 
 "Libri" nella pagina della libreria legge file EPUB: scegline uno, e il file resta dov'è. Clicca una parola per cercarla e crea una carta dal popup, con la frase e senza immagine né audio. Un libro si riapre dove l'hai lasciato. "Verticale" passa alla scrittura verticale, con ← e → o la rotella per girare pagina; un libro che si legge da destra si apre così.
+
+Con **Colora le parole secondo quanto le conosci** attivo in Impostazioni → Sottotitoli, libri e pagine web sottolineano le parole nuove in blu e quelle in studio in giallo. Il punteggio del capitolo mostra le parole note e i paragrafi senza parole nuove; le parole ignorate sono escluse. **Parole** elenca i lemmi del capitolo per frequenza: cerca per parola o lettura, filtra quelle nuove/in studio, selezionane alcune o tutte quelle mostrate e scegli lo stato. **Leggi** riporta alla posizione di lettura. I capitoli molto lunghi restano leggibili senza punteggio o elenco del capitolo. I paragrafi eccezionalmente lunghi non vengono colorati.
+
+Nell'elenco Libri, **Analizza** mostra la comprensione di tutti i capitoli di testo senza aprire il libro o cambiare la posizione di lettura. I colori delle parole devono essere attivi. **Aggiorna** rilegge il file locale; cambiare lo stato delle parole aggiorna subito un punteggio conservato. Vengono conservate fino a quattro analisi finché non chiudi l'app, disattivi i colori delle parole o cambi i dizionari. Per le pagine web salvate viene usato il testo locale. Manga, libri di sole immagini e libri oltre i limiti di analisi non hanno punteggio; possono essere aperti come al solito.
 
 ### Pagine web
 
@@ -155,6 +164,8 @@ Con l'audiolibro in riproduzione, apri il suo libro nella pagina dei libri e pre
 
 Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione.
 
+**Apri video dal web**, nella Libreria o nella barra del player, accetta l'indirizzo della pagina di un video. Puoi anche trascinare l'indirizzo o passarlo dalla riga di comando. Installa `yt-dlp`; se non è nel PATH, imposta l'eseguibile in Impostazioni → Avanzate oppure con `NIKOMIRU_YT_DLP`. Le lingue preferite si applicano ai sottotitoli caricati dall'autore e a quelli automatici. Ricerca e carte funzionano come per i file locali; i collegamenti delle carte riaprono la pagina originale alla scena. Sono supportati video su richiesta disponibili come file HTTP, anche con audio separato; dirette, DRM e flussi disponibili solo a segmenti restano esclusi.
+
 ## 8. Impostazioni
 
 ⚙ nella barra, oppure Ctrl+, apre le impostazioni. Le schede sono in colonna a sinistra.
@@ -169,6 +180,10 @@ Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indiriz
 | Avanzate | Il programma ffmpeg, dove sono il file delle impostazioni e i log |
 
 Ogni scheda ha **Salva** e **Ripristina**. Puoi modificare anche `~/.config/nikomiru/config.toml` a mano: Nikomiru conserva i tuoi commenti.
+
+Generale → Riproduzione → **Velocità tra le battute** accelera a 2–4× le pause di almeno tre secondi e torna alla velocità scelta prima della battuta successiva. Richiede sottotitoli di testo ed è disattivata inizialmente. Pausa, popup del dizionario e replay mantengono la velocità scelta; quella temporanea delle pause non viene salvata per l'episodio.
+
+Il menu dei sottotitoli e i menu di episodi e serie nella libreria offrono **Esporta audio condensato**: scegli Opus o MP3 e una cartella. Ogni episodio diventa un file con le battute dei sottotitoli, con i margini impostati per le carte; le pause sotto un secondo vengono mantenute. I capitoli seguono le battute. I file esistenti vengono preservati e dal menu puoi annullare l'esportazione. Per le serie vengono segnalati separatamente gli episodi senza sottotitoli di testo o audio utilizzabili.
 
 ### Backup e sincronizzazione
 

@@ -395,6 +395,7 @@ pub fn state() -> Result<Value, String> {
                 "series": home.map(|h| h.series.iter().map(|x| json!({
                     "id": x.id, "title": x.record.title, "episodes": x.episodes,
                     "watched": x.watched, "started": x.started,
+                    "score": series_score_json(page.scores.get(x.id)),
                 })).collect::<Vec<_>>()),
                 "folders": home.map(|h| h.folders.iter().map(|(p, f)| json!({
                     "path": p, "grouping": format!("{:?}", f.grouping),
@@ -410,6 +411,7 @@ pub fn state() -> Result<Value, String> {
                 "series_info": series_info,
                 "identify": identify,
                 "stats": page.stats.as_ref().map(|st| json!({
+                    "encounters": st.encounters.iter().map(|(uid,title,count)| json!({"uid":uid,"title":title,"count":count})).collect::<Vec<_>>(),
                     "days": st.days.iter().map(|d| json!({
                         "date": d.date, "ms": d.duration_ms, "chars": d.chars,
                     })).collect::<Vec<_>>(),
@@ -531,14 +533,30 @@ pub fn state() -> Result<Value, String> {
             })),
             "dictionaries": s.dict_page.json(),
         });
+        state["web_video"] =
+            json!({ "page": s.web_page(), "loading": s.web_loading(), "error": s.web_error });
+        state["audio_export"] = json!({
+            "running": s.audio_export.running.is_some(),
+            "written": s.audio_export.report.as_ref().map(|r| &r.written),
+            "failed": s.audio_export.report.as_ref().map(|r| &r.failed),
+        });
         // SUB-027
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
         // INS-001
         state["setup_open"] = json!(s.setup_page.open);
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["books"] = json!({
-            "list": s.books_page.list.iter().map(|(_, b)| {
-                json!({ "title": b.title, "read": b.read_chars, "chapter": b.chapter, "chars": b.chars })
+            "list": s.books_page.list.iter().map(|(uid, b)| {
+                let whole_score = match s.books_page.scores.get(uid) {
+                    Some(crate::book_scores::Status::Counting) => json!("counting"),
+                    Some(crate::book_scores::Status::Score(score)) => json!({"words":score.words,"known":score.known,"paragraphs":score.lines,"clear":score.clear}),
+                    Some(crate::book_scores::Status::NoText) => json!("no-text"),
+                    Some(crate::book_scores::Status::TooLarge) => json!("too-large"),
+                    Some(crate::book_scores::Status::Failed(error)) => json!({"error":error}),
+                    None => Value::Null,
+                };
+                json!({ "uid":uid, "title": b.title, "read": b.read_chars, "chapter": b.chapter, "chars": b.chars,
+                    "last_read_at": b.last_read_at, "whole_score":whole_score })
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
@@ -555,6 +573,29 @@ pub fn state() -> Result<Value, String> {
                 "heard": a.heard.map(|(c, p)| json!([c, p])),
             })),
         });
+        state["books"]["marks"] = json!({
+            "unknown": ui.view.books.drawn_marks.unknown,
+            "learning": ui.view.books.drawn_marks.learning,
+        });
+        state["books"]["score"] = s
+            .books_page
+            .study
+            .score
+            .map(|score| match score {
+                Ok(score) => json!({"words": score.words, "known": score.known,
+                "paragraphs": score.lines, "clear": score.clear}),
+                Err(done) => json!({"counted": done, "of": s.books_page.study.paragraphs}),
+            })
+            .unwrap_or(Value::Null);
+        state["books"]["words"] = json!(s.books_page.study.words.as_ref().map(|words| {
+            words
+                .iter()
+                .map(|w| {
+                    json!({"expression": w.expression, "reading": w.reading,
+                "count": w.count, "status": w.status.name(), "card": w.card})
+                })
+                .collect::<Vec<_>>()
+        }));
         state["hooker"] = json!({
             "lines": s.hooker_page.lines,
             "connected": s.hooker_page.connected,
@@ -759,6 +800,21 @@ pub fn player(
     })?
 }
 
+/// Export current-episode audio through the menu and folder-dialog paths (AUD-010).
+pub fn condense(folder: &str, format: &str) -> Result<(), String> {
+    let folder = PathBuf::from(folder);
+    let format = match format {
+        "opus" => nikomiru_media::condense::Format::Opus,
+        "mp3" => nikomiru_media::condense::Format::Mp3,
+        _ => return Err("unknown audio format".into()),
+    };
+    call(move |ui| {
+        ui.run(Command::Condense(crate::condense::Target::Current, format));
+        ui.view.dialog = None;
+        ui.session.condense_to(folder);
+    })
+}
+
 /// The settings (SET-008): the tab `tab` opened as ⚙ or a tab does, or
 /// `close`d. With `save`, TOML laid over the settings in use, the tab saves
 /// it as its Save button does (SET-001: General, Subtitles, Lookup,
@@ -820,6 +876,17 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
+            "analyse" => {
+                let uid = ui
+                    .session
+                    .books_page
+                    .list
+                    .iter()
+                    .find(|(uid, b)| path.as_ref().is_some_and(|p| p == uid || p == &b.path))
+                    .map(|(uid, _)| uid.clone())
+                    .ok_or("book to analyse not found")?;
+                out.push(Command::BookAnalyse(uid));
+            }
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
             "listen" => out.push(Command::BookListen),
@@ -853,7 +920,8 @@ pub fn books(
         for c in out {
             ui.run(c);
         }
-    })
+        Ok(())
+    })?
 }
 
 /// The Texthooker page (HOK-001…HOK-004): `open`, `close`, `click` (`line`,
@@ -962,6 +1030,7 @@ pub fn library(
                 Command::LibraryScan(path()?, grouping)
             }
             "series" => Command::LibrarySeries(id().ok()),
+            "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"
             "identify" => Command::LibraryIdentify(id()?),
@@ -1150,4 +1219,21 @@ pub fn mpv_get(property: &str) -> Result<Value, String> {
 /// Closes the window like the user does.
 pub fn quit() -> Result<(), String> {
     call(Ui::quit)
+}
+
+fn series_score_json(status: Option<&crate::series_scores::Status>) -> Value {
+    use crate::series_scores::Status;
+    match status {
+        None => Value::Null,
+        Some(Status::Loading) => json!("loading"),
+        Some(Status::Counting { done, total }) => json!({ "counting": done, "total": total }),
+        Some(Status::Ready(s)) => json!({ "words": s.score.words, "known": s.score.known,
+            "lines": s.score.lines, "clear": s.score.clear, "scored": s.scored,
+            "total": s.total, "failed": s.failed }),
+        Some(Status::Unavailable { total, failed }) => {
+            json!({ "unavailable": true, "total": total, "failed": failed })
+        }
+        Some(Status::TooLarge) => json!("too-large"),
+        Some(Status::Failed(error)) => json!({ "error": error }),
+    }
 }

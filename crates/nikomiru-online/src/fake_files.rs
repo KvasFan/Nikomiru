@@ -153,7 +153,16 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
         .header("range")
         .and_then(|r| r.strip_prefix("bytes="))
         .and_then(|r| r.split_once('-'))
-        .and_then(|(a, b)| Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?)));
+        .and_then(|(a, b)| {
+            Some((
+                a.parse::<usize>().ok()?,
+                if b.is_empty() {
+                    usize::MAX
+                } else {
+                    b.parse::<usize>().ok()?
+                },
+            ))
+        });
     match range {
         Some((from, last)) if from < file.len() && from <= last => {
             let last = last.min(file.len() - 1);

@@ -301,6 +301,24 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             ];
             choice(ui, "settings-fit", &mut draft.player.fit, &names)
         });
+        row(ui, &tr("settings-gap-speed"), |ui| {
+            let label = |speed: u8| {
+                if speed == 0 {
+                    tr("settings-gap-speed-off")
+                } else {
+                    format!("{speed}×")
+                }
+            };
+            ComboBox::from_id_salt("settings-gap-speed")
+                .selected_text(label(draft.player.gap_speed))
+                .show_ui(ui, |ui| {
+                    for speed in [0, 2, 3, 4] {
+                        ui.selectable_value(&mut draft.player.gap_speed, speed, label(speed));
+                    }
+                })
+                .response
+                .on_hover_text(tr("settings-gap-speed-hint"))
+        });
     });
     ui.checkbox(&mut draft.player.auto_next, tr("settings-auto-next"));
 }
@@ -612,6 +630,15 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             ui.add(
                 TextEdit::singleline(&mut draft.paths.ffmpeg)
                     .hint_text(tr("settings-ffmpeg-hint"))
+                    .desired_width(360.0),
+            )
+        });
+    });
+    form(ui, "settings-web-video", |ui| {
+        row(ui, &tr("settings-yt-dlp"), |ui| {
+            ui.add(
+                TextEdit::singleline(&mut draft.paths.yt_dlp)
+                    .hint_text(tr("settings-yt-dlp-hint"))
                     .desired_width(360.0),
             )
         });

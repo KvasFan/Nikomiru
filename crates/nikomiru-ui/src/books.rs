@@ -30,6 +30,10 @@ pub struct OpenBook {
 /// The Books page.
 #[derive(Debug, Default)]
 pub struct BooksPage {
+    /// Whole-book scores requested from the list (KNW-016).
+    pub scores: crate::book_scores::Scores,
+    /// The current text chapter's score and words (KNW-014/015).
+    pub study: crate::reader_words::Study,
     /// The books.
     pub list: Vec<(String, BookRecord)>,
     /// The book open.

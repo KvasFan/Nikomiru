@@ -224,6 +224,19 @@ pub(crate) fn draw(
         ui.label(summary("stats-all", total(&days, i64::MIN, i64::MAX)));
     });
 
+    if !stats.encounters.is_empty() {
+        section(ui, &tr("stats-encounters", &[]));
+        ui.label(
+            RichText::new(tr("stats-encounters-detail", &[])).color(palette::current().details),
+        );
+        for (_, title, count) in &stats.encounters {
+            ui.label(tr(
+                "stats-encounters-episode",
+                &[("title", title.clone()), ("count", count.to_string())],
+            ));
+        }
+    }
+
     // the chart by range
     section(ui, &tr("stats-chart", &[]));
     ui.horizontal(|ui| {
@@ -420,6 +433,7 @@ mod tests {
     }
 
     // T-STA-005
+    // T-KNW-018: the historical new-word count has its own episode label.
     #[test]
     fn the_tab_shows_totals_and_deletes_a_session() {
         let today = day_number("2026-10-25").unwrap();
@@ -430,6 +444,7 @@ mod tests {
             ..DayTotal::default()
         };
         let stats = Stats {
+            encounters: vec![("video/show-01".into(), "Show - 01".into(), 7)],
             days: vec![
                 day("2026-10-20", 600_000, 100),
                 day("2026-10-25", 1_500_000, 400),
@@ -498,6 +513,7 @@ mod tests {
         h.get_by_label("stats-review-retention 87");
         h.get_by_label("stats-review-cards 3 1 20 5");
         // T-KNW-010 the words' part
+        h.get_by_label("stats-encounters-episode Show - 01 7");
         h.get_by_label("stats-words-set 120 30 4");
         h.get_by_label("stats-words-anki 800 50");
         h.get_by_label("stats-range 30").click();

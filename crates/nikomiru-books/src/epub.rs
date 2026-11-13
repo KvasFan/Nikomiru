@@ -125,14 +125,16 @@ fn resolve(base: &str, href: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-struct Archive {
+struct Archive<'a> {
     zip: ZipArchive<File>,
     left: u64,
     /// The bytes of pictures still allowed.
     pictures: u64,
+    file_limit: u64,
+    cancel: Option<&'a nikomiru_core::Cancel>,
 }
 
-impl Archive {
+impl Archive<'_> {
     /// A picture, or nothing when it cannot be had: the book reads without.
     fn image(&mut self, name: &str) -> Option<Vec<u8>> {
         let entry = self.zip.by_name(name).ok()?;
@@ -151,12 +153,22 @@ impl Archive {
             .zip
             .by_name(name)
             .map_err(|_| format("a file of the book is missing"))?;
-        let limit = FILE_LIMIT.min(self.left);
+        let limit = self.file_limit.min(self.left);
         let mut bytes = Vec::new();
-        entry
-            .take(limit + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| BookError::NotEpub(e.to_string()))?;
+        let mut entry = entry.take(limit + 1);
+        let mut chunk = [0; 16 << 10];
+        loop {
+            if let Some(cancel) = self.cancel {
+                crate::analysis::check_cancel(cancel)?;
+            }
+            let n = entry
+                .read(&mut chunk)
+                .map_err(|e| BookError::NotEpub(e.to_string()))?;
+            if n == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&chunk[..n]);
+        }
         if bytes.len() as u64 > limit {
             return Err(BookError::TooLarge);
         }
@@ -169,6 +181,17 @@ impl Archive {
 
 /// Reads the book at `path`.
 pub fn read(path: &Path) -> Result<Book, BookError> {
+    read_inner(path, None)
+}
+
+pub(crate) fn read_analysis(
+    path: &Path,
+    cancel: &nikomiru_core::Cancel,
+) -> Result<Book, BookError> {
+    read_inner(path, Some(cancel))
+}
+
+fn read_inner(path: &Path, cancel: Option<&nikomiru_core::Cancel>) -> Result<Book, BookError> {
     let file = File::open(path).map_err(|e| BookError::Io(e.to_string()))?;
     let zip = ZipArchive::new(file).map_err(|_| format("not a zip archive"))?;
     if zip.len() > ENTRY_LIMIT {
@@ -176,8 +199,18 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     }
     let mut archive = Archive {
         zip,
-        left: TOTAL_LIMIT,
+        left: if cancel.is_some() {
+            crate::analysis::MAX_SOURCE_BYTES
+        } else {
+            TOTAL_LIMIT
+        },
         pictures: IMAGES_LIMIT,
+        file_limit: if cancel.is_some() {
+            crate::analysis::MAX_ENTRY_BYTES
+        } else {
+            FILE_LIMIT
+        },
+        cancel,
     };
     let container = archive.text("META-INF/container.xml")?;
     let package = tags(&container, "rootfile")
@@ -191,12 +224,21 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
         .filter_map(|t| Some((attribute(t, "id")?, attribute(t, "href")?)))
         .collect();
     let spine = tags(&opf, "itemref");
-    if spine.len() > CHAPTER_LIMIT {
+    let chapter_limit = if cancel.is_some() {
+        crate::analysis::MAX_CHAPTERS
+    } else {
+        CHAPTER_LIMIT
+    };
+    if spine.len() > chapter_limit {
         return Err(BookError::TooLarge);
     }
     let mut chapters = Vec::new();
     let mut images = std::collections::BTreeMap::new();
+    let mut budget = crate::analysis::Budget::default();
     for itemref in &spine {
+        if let Some(cancel) = cancel {
+            crate::analysis::check_cancel(cancel)?;
+        }
         let Some(href) = attribute(itemref, "idref").and_then(|id| manifest.get(id)) else {
             continue;
         };
@@ -205,6 +247,10 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
             continue;
         };
         let mut chapter = chapter_of(&archive.text(&name)?);
+        if cancel.is_some() {
+            chapter.paragraphs.retain(|p| p.image.is_none());
+            budget.accept(&chapter)?;
+        }
         // pictures are relative to their chapter, and one that cannot be had
         // is left out
         chapter.paragraphs.retain_mut(|paragraph| {

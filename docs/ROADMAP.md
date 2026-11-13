@@ -62,11 +62,11 @@ M0 Foundations + spikes ──► M1 Player ──► M2 Subtitles ──► M4 
 | M17 | Review in Nikomiru (D-34, D-35, D-37, D-38) | M | **2.4.0**, 2.5.0, 2.7.0, 2.8.0 | released |
 | M18 | Web pages (D-12, D-36) | S | **2.6.0** | released |
 | M19 | Setup assistant (D-48) | M | **2.17.0** | done; the real Japanese library to download whole by hand |
-| M20 | Knowing words (D-51, D-52) | L | **2.20.0**, **2.21.0** | released; colours in books and web pages open |
-| M21 | Choosing what to watch (D-51, D-53…D-55) | M | **2.22.0**, **2.23.0**, **2.24.0** | released; scores for embedded tracks, series cards and books open |
+| M20 | Knowing words (D-51, D-52, D-58) | L | **2.20.0**, **2.21.0**, 2.29.0 | reader colours implemented; real Anki manual check open |
+| M21 | Choosing what to watch (D-51, D-53…D-55, D-58…D-62) | M | **2.22.0**, **2.23.0**, **2.24.0**, 2.29.0, 2.30.0…2.33.0 | chapter words, embedded episode scores and whole-book and series-card analysis plus playback word history implemented; manual comparisons open |
 | M22 | Watching by what you know (D-51, D-56) | M | **2.25.0**, **2.26.0** | released |
-| M23 | Listening away from the screen (D-51) | S | 2.27.0 | planned |
-| M24 | Videos from the web (D-51) | M | 2.28.0 | planned |
+| M23 | Listening away from the screen (D-51) | S | 2.27.0 | implementation complete; 2.27.0 prepared |
+| M24 | Videos from the web (D-51, D-57) | M | 2.28.0 | implementation complete; live YouTube smoke check passed; manual check open |
 
 ---
 
@@ -742,7 +742,7 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 ---
 
-## M20 — Knowing words → 2.20.0, 2.21.0
+## M20 — Knowing words → 2.20.0, 2.21.0, 2.29.0
 
 **Goal**: Nikomiru knows the words the learner knows, and shows it where words are read, as Migaku and asbplayer do.
 
@@ -764,21 +764,25 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 **Notes**: own code and storage, no new dependency. The ignored status keeps names and noise out of the scores.
 
-**Status as of 2026-11-09**
+**Status as of 2026-11-12**
 
 - Done for 2.20.0 (KNW-001…KNW-004, D-52): the statuses set from the popup, kept and synced; the words coloured in the subtitles and their list; i+1 lines; readings over unknown words only.
 - Done for 2.21.0 (KNW-005, KNW-006): known words from the cards of Anki's decks, read at start and on request; word lists imported and exported.
-- Open: the colours in books and web pages; a real Anki collection read by hand.
+- Done for 2.29.0 (KNW-002, D-58): status underlines in horizontal and vertical EPUB and web-page text, with the same setting and statuses as the subtitles. Native ruby and lookup are preserved.
+- Open: a real Anki collection read by hand.
 
 **Exit criteria**
 
 - [ ] Requirements in SPECIFICATION.md, with tests for each (statuses, Anki rules against the fake AnkiConnect, colouring in L6, lists).
 - [x] **Release 2.20.0** (the first part).
 - [x] **Release 2.21.0**.
+- [x] **2.29.0 source release prepared** (reader colours; not published).
 
 ---
 
-## M21 — Choosing what to watch → 2.22.0, 2.23.0, 2.24.0
+## M21 — Choosing what to watch → 2.22.0…2.24.0, 2.29.0…2.33.0
+
+**Requirements**: KNW-008, KNW-014…KNW-018.
 
 **Goal**: before playing, how much of an episode, a series or a book the learner will understand.
 
@@ -790,13 +794,17 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 - A word browser of the current episode or book: its words by how often they occur, with their status, frequency and whether a card exists; several marked at once.
 - Word statistics in the Statistics tab: known words over time, and new words met per episode.
 
-**Status as of 2026-11-09**
+**Status as of 2026-11-13**
 
 - Done for 2.22.0 (KNW-007, D-53): the score of the main subtitle being watched, in the subtitle list's header, counted from all its lines in the background and again when a status changes.
 - Done for 2.23.0 (KNW-008, D-54): the scores of a series' episodes before they play, in the episode list, from the subtitle file each would load by itself.
 - Done for 2.24.0 (KNW-009, KNW-010, D-55): the words of the subtitle being watched in a tab of the subtitle list, several marked at once; the words in the Statistics tab, known by day.
-- Open as well: the word browser of a book; new words met per episode.
-- Open: scores for episodes that would play an embedded track; on the series' cards and the books page.
+- Done for 2.29.0 (KNW-014, KNW-015, D-58): the current text chapter's score and Words view, including web pages, with search, frequency and bulk status changes. Bounded analysis runs after subtitle and visible text work; completed counts survive segmentation-cache eviction.
+- Done for 2.30.0 (KNW-008, D-59): episode scores include local embedded text subtitles, with saved-track identity and language priorities matching playback. Probing/extraction and queued work are cancelled at shutdown; count epochs reject stale replies after series, language, tool or dictionary changes.
+- Done for 2.31.0 (2026-11-13, KNW-016, D-60): explicit whole-book analysis from the Books list, bounded local EPUB/HTML text on a dedicated worker, retained counts rescored with shared statuses, and no reading-progress writes.
+- Done for 2.32.0 (2026-11-13, KNW-017, D-61): explicit series-card analysis, weighted token/line totals, source coverage, one queued episode at a time and status rescoring.
+- Done for 2.33.0 (2026-11-13, KNW-018, D-62): historical distinct unknown words encountered in active main text during playback, shown by episode in Statistics, kept across status edits/restarts/backups and merged by earliest encounter in sync.
+- Open: manual comparisons on a real book and series; a real two-device sync of encounter history.
 
 **Exit criteria**
 
@@ -804,6 +812,11 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 - [x] **Release 2.22.0** (the first part).
 - [x] **Release 2.23.0** (the second part).
 - [x] **Release 2.24.0**.
+- [x] **2.29.0 source release prepared** (current chapter; not published).
+- [x] **2.30.0 source release prepared** (embedded episode scores; not published).
+- [x] **2.31.0 source release prepared** (whole-book analysis; not published).
+- [x] **2.32.0 source release prepared** (series-card analysis; not published).
+- [x] **2.33.0 source release prepared** (new words encountered during playback; not published).
 
 ---
 
@@ -836,6 +849,8 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 **Goal**: an episode's speech for passive listening, and less time spent where nobody speaks.
 
+**Requirements**: PLY-022, AUD-010.
+
 **Deliverables**
 
 - Condensed audio: the lines of an episode only, written to an Opus or MP3 file by ffmpeg.
@@ -844,12 +859,14 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
   - From the episode's menu and for a whole series.
 - Gaps without dialogue longer than a few seconds sped through, or jumped, as mpv's sub-skip does (`[player] gap_speed`, off by default). The sound and the subtitles come back a moment before the next line.
 
+**Progress** (2026-11-12): PLY-022 implements gap speed at 2–4× in Settings → General → Playback. Gaps between main-subtitle lines at least 3 s long accelerate, leaving the dialogue edges at the user's speed; offsets and overlaps count. Pause, replay and popups restore that speed, hold-to-speed takes priority, and only the user's choice is saved per episode. AUD-010 adds current-episode, library-episode and whole-series exports to Opus/MP3, including embedded text tracks, accurate chapters, cancellation, per-episode errors and output name reservation. L4 checks both formats, the chosen audio track, chapters, no overwrite and cleanup; L6 checks that changing files does not change the captured export. The 2.27.0 source release is prepared; publishing was not requested.
+
 **Notes**: ffmpeg only, no new dependency.
 
 **Exit criteria**
 
-- [ ] Requirements and tests (L4 for the audio, L5/L6 for the gaps).
-- [ ] **Release 2.27.0**.
+- [x] Requirements and tests (L4 for the audio, L6 for export and gaps); `cargo xtask ci` green on 2026-11-12.
+- [x] **2.27.0 source release prepared** (not published).
 
 ---
 
@@ -857,20 +874,27 @@ Sources: [Migaku in the Chrome Web Store](https://chromewebstore.google.com/deta
 
 **Goal**: a YouTube video or another site's video watched as a file is, with clickable subtitles.
 
+**Requirements**: PLY-023.
+
+Reuses the scene links already assigned to M4 (ANK-050).
+
 **Deliverables**
 
-- A URL opened from the Open dialog, by drag and drop or on the command line, played through mpv's yt-dlp hook.
+- A URL opened from the Open web video dialog, by drag and drop or on the command line, resolved by yt-dlp and played through the shared local relay (D-57).
 - Its Japanese subtitles, uploaded or automatic, fetched by yt-dlp as text tracks, so they are clicked and mined as local ones are.
 - Cards from it: the clip's audio and picture taken from the stream by ffmpeg.
 - The source link of the card (ANK-050) reopens the URL at its time.
 
 **Notes**: yt-dlp (Unlicense) is the user's own executable, found as ffmpeg is (EXT-001), never shipped. The sites' terms of use are the user's to respect. Nothing goes to the network until a URL is opened (PRV-001).
 
+**Progress** (2026-11-12): PLY-023 implements uploaded/automatic subtitles, separate audio/video HTTP streams, source links and resume through the original page, without a schema change. Local-server/fake-extractor L4 and real-app L6 checks pass, including a card with audio and picture and reopening its source after restart. The opt-in L7 check also passed on a real NHK YouTube video: 66 Japanese cues, a sentence audio clip and PNG frame. The human check below stays open; no release is published. See [QA notes](qa/m23-m24.md).
+
 **Exit criteria**
 
-- [ ] Requirements and tests against a local HTTP server and a fake yt-dlp.
+- [x] Requirements and tests against a local HTTP server and a fake yt-dlp.
+- [x] Real YouTube extraction, Japanese text, sentence audio and frame (L7, 2026-11-12).
 - [ ] One real YouTube video with Japanese subtitles watched and mined by hand.
-- [ ] **Release 2.28.0**.
+- [x] **2.28.0 source release prepared** (not published).
 
 ---
 

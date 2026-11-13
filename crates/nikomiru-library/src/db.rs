@@ -161,7 +161,7 @@ pub struct FolderRecord {
 /// migrations).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct VideoRecord {
-    /// Absolute path of the file.
+    /// Absolute file path, original web page URL (PLY-023), or server uid.
     pub path: String,
     /// File size in bytes, to recognize a moved file (DAT-003).
     pub size: u64,

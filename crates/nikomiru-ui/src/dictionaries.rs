@@ -90,6 +90,15 @@ pub type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// The dictionaries, from the application. Errors are already translated.
 pub trait DictionaryService: Send {
+    /// Count a whole local book on a worker separate from lookups and episodes.
+    fn count_book(
+        &self,
+        request: crate::book_scores::Request,
+        done: Done<crate::book_scores::Outcome>,
+    ) {
+        let _ = request;
+        done(Err("dictionary service unavailable".into()));
+    }
     /// Looks `text` up away from the UI thread; `done` gets the popup content.
     fn lookup(&self, text: String, done: Done<Reply>);
     /// Splits `text` into words away from the UI thread, without holding up
@@ -98,7 +107,7 @@ pub trait DictionaryService: Send {
         let _ = text;
         done(Ok(Vec::new()));
     }
-    /// Counts the words of the subtitle file an episode would play with,
+    /// Counts the words of the local text subtitles an episode would play with,
     /// away from the UI thread and from the subtitles shown (KNW-008);
     /// `None` when it has none to count. Without dictionaries, no count.
     fn count_words(

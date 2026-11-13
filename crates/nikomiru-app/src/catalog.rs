@@ -59,6 +59,10 @@ enum Job {
     Stats(Done<Stats>),
     ExportCsv(PathBuf, Done<PathBuf>),
     Review(ReviewJob, Settings, Done<Review>),
+    Condense(
+        Box<nikomiru_ui::condense::Request>,
+        Done<nikomiru_ui::condense::Report>,
+    ),
 }
 
 /// The service: the jobs go to the worker thread, in order.
@@ -70,6 +74,7 @@ pub struct Catalog {
     closing: Arc<AtomicBool>,
     cancel: Cancel,
     unavailable: String,
+    export_cancel: std::sync::Mutex<Option<Cancel>>,
 }
 
 impl std::fmt::Debug for Catalog {
@@ -83,6 +88,11 @@ impl Drop for Catalog {
     fn drop(&mut self) {
         self.closing.store(true, Ordering::SeqCst);
         self.cancel.cancel();
+        if let Ok(cancel) = self.export_cancel.lock()
+            && let Some(cancel) = &*cancel
+        {
+            cancel.cancel();
+        }
         drop(self.jobs.take());
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -210,7 +220,20 @@ impl Worker {
             || review.days.iter().any(|n| *n > 0);
         let today = nikomiru_library::review::day_of(self.now(), offset);
         let words = lib.word_stats(today, offset).map_err(e)?;
+        let encounters = lib
+            .encounter_stats(SESSIONS_SHOWN)
+            .map_err(e)?
+            .into_iter()
+            .map(|(uid, count, _)| {
+                let title = videos
+                    .get(&uid)
+                    .and_then(|v| Path::new(&v.path).file_stem())
+                    .map_or_else(|| uid.clone(), |name| name.to_string_lossy().into_owned());
+                (uid, title, count)
+            })
+            .collect();
         Ok(Stats {
+            encounters,
             days: lib.day_totals().map_err(e)?,
             series: lib.series_totals().map_err(e)?,
             sessions,
@@ -389,6 +412,19 @@ impl Catalog {
                         break;
                     }
                     match job {
+                        Job::Condense(request, done) => {
+                            let result = worker.tools().and_then(|(ffmpeg, ffprobe)| {
+                                crate::condense::run(
+                                    &worker.parts.library,
+                                    &request,
+                                    &ffmpeg,
+                                    &ffprobe,
+                                    &worker.parts.cache_dir,
+                                    &worker.parts.translator,
+                                )
+                            });
+                            done(result);
+                        }
                         Job::Home(done) => done(worker.home()),
                         Job::Episodes(id, done) => done(worker.series(id)),
                         Job::Import(root, grouping, done) => done(worker.import(&root, grouping)),
@@ -413,6 +449,7 @@ impl Catalog {
             closing,
             cancel,
             unavailable,
+            export_cancel: std::sync::Mutex::new(None),
         }
     }
 
@@ -423,6 +460,7 @@ impl Catalog {
         };
         let no = self.unavailable.clone();
         match refused {
+            Some(Job::Condense(_, done)) => done(Err(no)),
             Some(Job::Home(done)) => done(Err(no)),
             Some(Job::Episodes(_, done)) => done(Err(no)),
             Some(Job::Import(_, _, done)) => done(Err(no)),
@@ -437,6 +475,17 @@ impl Catalog {
 }
 
 impl LibraryService for Catalog {
+    fn condense(
+        &self,
+        request: nikomiru_ui::condense::Request,
+        done: Done<nikomiru_ui::condense::Report>,
+    ) {
+        if let Ok(mut cancel) = self.export_cancel.lock() {
+            *cancel = Some(request.cancel.clone());
+        }
+        self.send(Job::Condense(Box::new(request), done));
+    }
+
     fn home(&self, done: Done<Home>) {
         self.send(Job::Home(done));
     }

@@ -13,6 +13,7 @@ pub mod books;
 pub mod cards;
 pub mod db;
 pub mod dictionaries;
+pub mod encounters;
 pub mod grouping;
 pub mod home;
 pub mod import;

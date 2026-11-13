@@ -129,6 +129,10 @@ pub(crate) struct Scene<'a> {
     pub review_settings: nikomiru_library::review::Settings,
     /// Cards go to the review (REV-001): its tab is shown even without any.
     pub to_review: bool,
+    /// A condensed-audio export is running.
+    pub exporting: bool,
+    /// Word-status colours enable explicit series scores (KNW-017).
+    pub colours: bool,
     /// The score of an episode, by uid, while the words are coloured
     /// (KNW-008).
     pub episode_score: &'a dyn Fn(&str) -> Option<crate::scores::EpisodeScore>,
@@ -151,6 +155,8 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         },
         review_settings: crate::review::settings(&s.config().review),
         to_review: s.config().anki.to_review(),
+        exporting: s.audio_export.running.is_some(),
+        colours: s.config().subtitles.word_colors,
         episode_score: &|uid: &str| s.episode_score(uid),
         tr: &tr,
     };
@@ -632,6 +638,9 @@ fn first_steps(
 }
 
 fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    if ui.button(tr(s, "webvideo-open")).clicked() {
+        out.push(Command::WebOpenDialog);
+    }
     let Some(home) = &s.page.home else {
         ui.spinner();
         return;
@@ -680,32 +689,42 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         ui.label(RichText::new(tr(s, "library-empty")).color(palette::current().details));
     }
     rows(ui, NARROW, &home.series, |ui, summary| {
-        let clicked = card(
-            ui,
-            NARROW,
-            state.textures.get(&summary.id),
-            &summary.record.title,
-            &mut state.focus_first,
-            |ui| {
-                ui.add(
-                    egui::Label::new(RichText::new(&summary.record.title).family(theme::bold()))
+        ui.vertical(|ui| {
+            let clicked = card(
+                ui,
+                NARROW,
+                state.textures.get(&summary.id),
+                &summary.record.title,
+                &mut state.focus_first,
+                |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&summary.record.title).family(theme::bold()),
+                        )
                         .truncate(),
-                );
-                let count = (s.tr)(
-                    "library-watched",
-                    &[
-                        ("watched", summary.watched.to_string()),
-                        ("total", summary.episodes.to_string()),
-                    ],
-                );
-                ui.label(RichText::new(count).color(palette::current().details));
-                let share = summary.watched as f32 / summary.episodes.max(1) as f32;
-                progress(ui, NARROW, share, palette::current().good);
-            },
-        );
-        if clicked {
-            out.push(Command::LibrarySeries(Some(summary.id)));
-        }
+                    );
+                    let count = (s.tr)(
+                        "library-watched",
+                        &[
+                            ("watched", summary.watched.to_string()),
+                            ("total", summary.episodes.to_string()),
+                        ],
+                    );
+                    ui.label(RichText::new(count).color(palette::current().details));
+                    let share = summary.watched as f32 / summary.episodes.max(1) as f32;
+                    progress(ui, NARROW, share, palette::current().good);
+                },
+            );
+            if clicked {
+                out.push(Command::LibrarySeries(Some(summary.id)));
+            }
+            if s.colours {
+                ui.set_width(NARROW + 16.0);
+                ui.push_id(("series-score", summary.id), |ui| {
+                    series_score(ui, s, summary.id, &summary.record.title, out);
+                });
+            }
+        });
     });
     if !home.folders.is_empty() {
         section(ui, &tr(s, "library-folders"));
@@ -739,6 +758,76 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 }
             });
         }
+    }
+}
+
+fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<Command>) {
+    use crate::series_scores::Status;
+    let status = s.page.scores.get(id);
+    match status {
+        Some(Status::Loading) => {
+            ui.label(tr(s, "library-score-loading"));
+        }
+        Some(Status::Counting { done, total }) => {
+            ui.label((s.tr)(
+                "library-score-counting",
+                &[("done", done.to_string()), ("total", total.to_string())],
+            ));
+        }
+        Some(Status::Ready(summary)) => {
+            let percent =
+                |value: Option<usize>| value.map_or_else(|| "–".into(), |n| n.to_string());
+            let args = [
+                ("known", percent(summary.score.known_percent())),
+                ("clear", percent(summary.score.clear_percent())),
+                ("scored", summary.scored.to_string()),
+                ("total", summary.total.to_string()),
+                ("failed", summary.failed.to_string()),
+            ];
+            ui.label((s.tr)("library-score-summary", &args))
+                .on_hover_text((s.tr)("library-score-detail", &args));
+            ui.label((s.tr)("library-score-coverage", &args));
+        }
+        Some(Status::Unavailable { total, failed }) => {
+            ui.label(tr(s, "library-score-unavailable"))
+                .on_hover_text((s.tr)(
+                    "library-score-coverage",
+                    &[
+                        ("scored", "0".into()),
+                        ("total", total.to_string()),
+                        ("failed", failed.to_string()),
+                    ],
+                ));
+        }
+        Some(Status::TooLarge) => {
+            ui.label(tr(s, "library-score-too-large"));
+        }
+        Some(Status::Failed(error)) => {
+            ui.label(tr(s, "library-score-unavailable"))
+                .on_hover_text(error);
+        }
+        None => {}
+    }
+    let button = ui.add_enabled(
+        !s.page.busy && !s.page.scores.busy(),
+        Button::new(tr(
+            s,
+            if status.is_some() {
+                "library-score-refresh"
+            } else {
+                "library-score-analyse"
+            },
+        )),
+    );
+    button.widget_info(|| {
+        WidgetInfo::labeled(
+            Role::Button,
+            button.enabled(),
+            (s.tr)("library-score-analyse-title", &[("title", title.into())]),
+        )
+    });
+    if button.clicked() {
+        out.push(Command::SeriesAnalyse(id));
     }
 }
 
@@ -922,6 +1011,13 @@ fn series(
         ui.spinner();
         return;
     };
+    super::condense::menu(
+        ui,
+        s.tr,
+        crate::condense::Target::Series(id),
+        s.exporting,
+        out,
+    );
     section(
         ui,
         &(s.tr)("library-episodes", &[("count", episodes.len().to_string())]),
@@ -968,6 +1064,13 @@ fn series(
                         if play.clicked() {
                             out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
                         }
+                        super::condense::menu(
+                            ui,
+                            s.tr,
+                            crate::condense::Target::Episode(uid.clone()),
+                            s.exporting,
+                            out,
+                        );
                         episode_score(ui, s, uid);
                         if let Some(d) = v.duration_ms.filter(|_| v.last_position_ms > 0) {
                             ui.label(
@@ -1103,6 +1206,7 @@ mod tests {
         closed: bool,
         /// The episodes' scores (KNW-008).
         scores: HashMap<String, crate::scores::EpisodeScore>,
+        colours: bool,
     }
 
     fn harness(page: LibraryPage) -> Harness<'static, Test> {
@@ -1126,6 +1230,8 @@ mod tests {
                         },
                         review_settings: nikomiru_library::review::Settings::default(),
                         to_review: false,
+                        exporting: false,
+                        colours: t.colours,
                         episode_score: &|uid: &str| t.scores.get(uid).copied(),
                         tr: &tr,
                     };
@@ -1140,6 +1246,7 @@ mod tests {
                     out: Vec::new(),
                     closed: false,
                     scores: HashMap::new(),
+                    colours: false,
                 },
             )
     }
@@ -1183,6 +1290,48 @@ mod tests {
             folders: vec![("/v".into(), FolderRecord::default())],
             server_titles: Default::default(),
         }
+    }
+
+    // T-KNW-017: the explicit card action is separate from opening the
+    // series and is hidden/disabled with colours off/another analysis.
+    #[test]
+    fn a_series_card_requests_analysis_without_opening_it() {
+        let mut page = LibraryPage {
+            home: Some(home()),
+            ..Default::default()
+        };
+        page.home.as_mut().unwrap().series.truncate(1);
+        let mut h = harness(page);
+        h.run();
+        assert!(h.query_by_label("library-score-analyse-title").is_none());
+        h.state_mut().colours = true;
+        h.run();
+        h.state_mut().out.clear();
+        h.get_by_label("library-score-analyse-title").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SeriesAnalyse(1)))
+        );
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibrarySeries(_)))
+        );
+        h.state_mut().out.clear();
+        h.state_mut().page.scores.request(1).unwrap();
+        h.run_steps(2);
+        h.get_by_label("library-score-analyse-title").click();
+        h.run_steps(2);
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SeriesAnalyse(_)))
+        );
     }
 
     fn server_item(id: &str, kind: nikomiru_online::servers::ItemKind) -> Item {

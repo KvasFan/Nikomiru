@@ -129,15 +129,15 @@ pub fn blur_sigma(font_size: f64) -> f64 {
     (0.45 * font_size).max(12.0)
 }
 
-/// A line ending sooner than this after the position is the one playback
-/// just stopped at (SUB-026).
+/// mpv can pause on the last frame just before the end, or report the end
+/// position just before its pause event (SUB-026, AK-BUG-007).
 const PASSED_MS: i64 = 100;
 
 /// Where playback stops for the pause at the end of each line (SUB-026),
 /// given the lines' ends (offset counted) and the stop set now: while
-/// playing, the stop set stays until it is passed or an earlier end comes,
-/// so a line about to end is never skipped; once paused at it, the next
-/// line's end.
+/// playing, the stop stays through the endpoint's event margin or until
+/// an earlier end comes; once paused there, the next line's end. A seek
+/// beyond the margin still advances to the next line.
 pub fn auto_pause_end(
     ends: impl Iterator<Item = i64>,
     pos: i64,
@@ -145,7 +145,7 @@ pub fn auto_pause_end(
     current: Option<i64>,
 ) -> Option<i64> {
     let next = ends.filter(|&end| end > pos + PASSED_MS).min();
-    let ahead = if paused { PASSED_MS } else { 0 };
+    let ahead = if paused { PASSED_MS } else { -PASSED_MS };
     match current {
         Some(end) if end > pos + ahead && next.is_none_or(|n| n >= end) => Some(end),
         _ => next,
@@ -401,6 +401,22 @@ mod tests {
         // after the last line: none
         assert_eq!(auto_pause_end(ends(), 5_000, false, Some(4_500)), None);
         assert_eq!(auto_pause_end(std::iter::empty(), 0, false, None), None);
+    }
+
+    // T-SUB-026, AK-BUG-007: a position event can reach the end before
+    // mpv's pause event. Advancing the end then cancels the pending stop.
+    #[test]
+    fn the_stop_waits_for_the_pause_event_at_the_endpoint() {
+        let ends = || [2_500, 5_500, 8_500].into_iter();
+        for pos in [2_500, 2_520, 2_580] {
+            assert_eq!(auto_pause_end(ends(), pos, false, Some(2_500)), Some(2_500));
+            assert_eq!(auto_pause_end(ends(), pos, true, Some(2_500)), Some(5_500));
+        }
+        // A seek well beyond the old end still arms the next line.
+        assert_eq!(
+            auto_pause_end(ends(), 3_000, false, Some(2_500)),
+            Some(5_500)
+        );
     }
 
     #[test]

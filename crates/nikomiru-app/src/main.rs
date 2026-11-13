@@ -262,6 +262,13 @@ fn import_dictionaries(paths: &Paths, zips: &[std::path::PathBuf]) -> ExitCode {
 struct NoDictionaries(String);
 
 impl DictionaryService for NoDictionaries {
+    fn count_book(
+        &self,
+        _: nikomiru_ui::book_scores::Request,
+        done: nikomiru_ui::dictionaries::Done<nikomiru_ui::book_scores::Outcome>,
+    ) {
+        done(Err(self.0.clone()));
+    }
     fn lookup(&self, _text: String, done: Done<Reply>) {
         done(Ok(Reply {
             empty: true,
@@ -535,12 +542,14 @@ fn run(
                 manager,
                 translator.clone(),
                 Arc::clone(&max_results),
+                paths.cache_dir.join("episode-scores"),
             )),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
         screenshots_dir: paths.screenshots_dir(),
         anki: Box::new(anki),
         online: Box::new(online),
+        web_video: Box::new(nikomiru_app::web_video::Worker::start(translator.clone())),
         servers: Box::new(servers),
         sync: Box::new(sync),
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),

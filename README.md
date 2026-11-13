@@ -59,7 +59,8 @@
 ## Why Nikomiru
 
 - **Every word is clickable.** Nikomiru draws the subtitles itself (SRT, ASS, WebVTT, embedded tracks), so any character can be looked up; mpv draws only the video. Image subtitles of Blu-rays (PGS) and DVDs (VobSub) are read as text on your computer, so they can be clicked too.
-- **Words you know, words you don't.** Mark each word new, learning, known or ignored from the popup, or take them from your Anki decks and from word lists; the subtitles underline what you don't know yet, point out the lines with a single new word, and say how much of an episode you understand, even before you play it; its words can be listed and marked known all at once.
+- **Words you know, words you don't.** Mark each word new, learning, known or ignored from the popup, or take them from your Anki decks and from word lists. Subtitles, EPUB and web pages underline what you don't know yet; episodes and the chapter being read show how much you understand, with their words listed by frequency and several marked known at once.
+- **Choose before watching.** The episode list scores local external and embedded text subtitles, with the same saved track and preferred languages as playback.
 - **Your Yomitan dictionaries.** Import the same ZIP files as Yomitan: terms, kanji, frequencies and pitch accent, with conjugations undone as Yomitan does.
 - **One-click Anki cards.** A Lapis card with the word in the sentence, the frame, the audio of the line and a link that reopens the scene; Ctrl+Enter from the keyboard. Anki closed? Keep the cards for later and send them all when it is open. The setup assistant gets dictionaries, word audio and Anki ready on the first start. No Anki? The cards can stay in Nikomiru and come back on its own review.
 - **Subtitles that fit.** Files next to the video are found also by episode; the missing ones come from Jimaku or OpenSubtitles, by hand or by themselves; an offset is found from the audio; a second subtitle (a translation) can sit above the first.
@@ -68,7 +69,7 @@
 
 ## What works today
 
-Version 2.10.1 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 2.33.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -94,6 +95,14 @@ Version 2.10.1 is for Linux. The status of each area follows the [ROADMAP](docs/
 | Web pages read as books: an address typed on the Books page, or an HTML file, with lookups and cards | Works with pages made by the tests; real sites still to check (M18) |
 | Review in Nikomiru: cards kept without Anki, brought back with FSRS on the Library page, synced with their media, with statistics | Works; the sync of the review against the simulated WebDAV only (M17) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |
+
+Condensed episode audio can be exported to Opus or MP3, with chapters for the subtitle lines, from the subtitle menu or the library's episode and series menus. Settings → General → Playback can also speed through long gaps between lines.
+
+**Open web video** on the Library page or player bar opens a video page with the user's own `yt-dlp`, including its uploaded or automatic text subtitles. A page URL can also be dropped or passed on the command line. Set the executable in Settings → Advanced if it is not on PATH. This supports on-demand direct HTTP media and separate audio/video streams; live, DRM and segmented-only streams are outside this release.
+
+With word colours enabled, **Analyse** in the Books list counts comprehension across a whole local EPUB or saved web page before opening it. **Refresh** rereads the source; shared word statuses update retained scores without changing reading progress.
+
+With word colours enabled, **Analyse** below a series card combines episode comprehension and shows subtitle-source coverage. Statistics also keeps the distinct new words encountered per episode during playback; later status changes preserve that history, including across backups and sync.
 
 ## Quick start
 

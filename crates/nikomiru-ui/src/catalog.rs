@@ -40,6 +40,8 @@ impl Home {
 /// What the statistics page shows (STA-005).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Stats {
+    /// Historical distinct unknown words, by media uid/title (KNW-018).
+    pub encounters: Vec<(String, String, usize)>,
     /// The totals of each day studied, by day.
     pub days: Vec<DayTotal>,
     /// Time and characters by series (or file), the most studied first.
@@ -155,6 +157,8 @@ type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// The library worker (the app's `library` thread).
 pub trait LibraryService: Send {
+    /// Export condensed episode audio off the UI thread (AUD-010).
+    fn condense(&self, request: crate::condense::Request, done: Done<crate::condense::Report>);
     /// The home page.
     fn home(&self, done: Done<Home>);
     /// The episodes of a series, in order, and what is known of it online.
@@ -184,6 +188,9 @@ pub trait LibraryService: Send {
 pub struct NoLibrary(pub String);
 
 impl LibraryService for NoLibrary {
+    fn condense(&self, _: crate::condense::Request, done: Done<crate::condense::Report>) {
+        done(Err(self.0.clone()));
+    }
     fn home(&self, done: Done<Home>) {
         done(Err(self.0.clone()));
     }
@@ -218,12 +225,16 @@ impl LibraryService for NoLibrary {
 }
 
 /// A job for the library worker, taken from the session by the UI layer.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum LibraryJob {
+    /// Export condensed episode audio.
+    Condense(Box<crate::condense::Request>),
     /// Read the home page.
     Home,
     /// Read the episodes of a series.
     Episodes(u64),
+    /// Read episodes for an explicit card analysis, without opening it.
+    SeriesAnalysis(crate::series_scores::Request),
     /// Import or scan a folder.
     Import(PathBuf, Grouping),
     /// Apply an edit.
@@ -241,10 +252,14 @@ pub enum LibraryJob {
 /// What the library worker answers, back on the UI thread.
 #[derive(Debug)]
 pub enum LibraryReply {
+    /// Condensed files and per-episode failures.
+    Condensed(Result<crate::condense::Report, String>),
     /// The home page.
     Home(Result<Home, String>),
     /// The episodes of a series, and what is known of it online.
     Episodes(u64, Result<SeriesDetail, String>),
+    /// Episode list for the stamped card analysis.
+    SeriesAnalysis(crate::series_scores::Request, Result<SeriesDetail, String>),
     /// A folder imported or scanned.
     Imported(Result<ImportReport, String>),
     /// An edit applied.
@@ -265,6 +280,8 @@ pub type Episodes = Vec<(String, VideoRecord)>;
 /// The Library page in the session.
 #[derive(Debug, Default)]
 pub struct LibraryPage {
+    /// Explicit series-card analyses (KNW-017).
+    pub scores: crate::series_scores::Scores,
     /// The home page, once read.
     pub home: Option<Home>,
     /// The series open, and its episodes once read.

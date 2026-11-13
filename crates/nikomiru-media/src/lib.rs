@@ -10,6 +10,7 @@
 
 pub mod attachments;
 pub mod clip;
+pub mod condense;
 pub mod cover;
 pub mod energy;
 pub mod extract;

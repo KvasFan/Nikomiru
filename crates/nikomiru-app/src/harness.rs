@@ -120,6 +120,8 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::popup_content(level as usize)
         }
         Some("state") => harness::state(),
+        Some("condense") => harness::condense(text(command, "folder")?, text(command, "format")?)
+            .map(|()| Value::Null),
         Some("dict_css") => {
             harness::dict_css(text(command, "id")?, text(command, "css")?).map(|()| Value::Null)
         }

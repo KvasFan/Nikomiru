@@ -184,6 +184,8 @@ pub struct Services {
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
     pub online: Box<dyn crate::online::OnlineService>,
+    /// Explicit web-video resolution (PLY-023).
+    pub web_video: Box<dyn crate::web_video::WebVideoService>,
     /// Media servers (SPECIFICATION §6.13).
     pub servers: Box<dyn crate::servers::ServerService>,
     /// Backup and sync (SPECIFICATION §6.14).
@@ -252,6 +254,7 @@ struct Current {
     subtitles: Option<PathBuf>,
     /// What a media server says of it.
     server: Option<ServerPlaying>,
+    web: Option<crate::web_video::Ready>,
 }
 
 /// A media server's video playing (SRV-011).
@@ -325,6 +328,7 @@ pub struct Session {
     token: LoadToken,
     saver: ProgressSaver,
     hold: HoldToSpeed,
+    gap_speed: crate::gaps::GapSpeed,
     controls: ControlsVisibility,
     screensaver: ScreensaverPolicy,
     inhibited: bool,
@@ -359,6 +363,8 @@ pub struct Session {
     lookups: Vec<(u64, String)>,
     /// The words of the subtitles (LKP-060, LKP-051, LKP-061).
     words: crate::words::Words,
+    /// Unknown headwords encountered in the current playback visit.
+    encounters: crate::encounters::Collector,
     /// The score of the main subtitle (KNW-007), with the words' revision
     /// and the list version it was counted for; while its lines are being
     /// split, how many are.
@@ -446,6 +452,12 @@ pub struct Session {
     server_pending: Option<String>,
     /// That video, ready, for `open` to take.
     server_ready: Option<crate::servers::ServerVideo>,
+    web_ready: Option<crate::web_video::Ready>,
+    web_pending: Option<(u64, nikomiru_core::Cancel)>,
+    web_generation: u64,
+    web_jobs: Vec<crate::web_video::Request>,
+    /// Last web-video resolution error (PLY-023).
+    pub web_error: Option<String>,
     /// The tabs of the servers and their settings page.
     pub servers_page: crate::servers::ServersPage,
     /// The Online subtitles page (MET-009).
@@ -466,6 +478,8 @@ pub struct Session {
     captured: Option<String>,
     /// The Library page (LIB-005).
     pub library_page: crate::catalog::LibraryPage,
+    /// Condensed-audio destination, running job and report (AUD-010).
+    pub audio_export: crate::condense::State,
     /// The last message of the Word audio tab, and whether it is good news.
     pub audio_status: Option<(String, bool)>,
     /// The row of the Word audio tab a database is being chosen for.
@@ -704,6 +718,7 @@ impl Session {
             token: LoadToken::default(),
             saver: ProgressSaver::default(),
             hold: HoldToSpeed::default(),
+            gap_speed: crate::gaps::GapSpeed::default(),
             controls: ControlsVisibility::default(),
             screensaver: ScreensaverPolicy::default(),
             inhibited: false,
@@ -727,6 +742,7 @@ impl Session {
             episode_scores: Default::default(),
             auto_pause_revision: 0,
             word_list: None,
+            encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
             words,
@@ -766,6 +782,11 @@ impl Session {
             external_links: Vec::new(),
             server_pending: None,
             server_ready: None,
+            web_ready: None,
+            web_pending: None,
+            web_generation: 0,
+            web_jobs: Vec::new(),
+            web_error: None,
             servers_page: crate::servers::ServersPage::default(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
@@ -773,6 +794,7 @@ impl Session {
             system_dark: None,
             capturing: false,
             captured: None,
+            audio_export: crate::condense::State::default(),
             library_page: crate::catalog::LibraryPage::default(),
             audio_status: None,
             audio_database_row: None,
@@ -821,6 +843,79 @@ impl Session {
         &self.services.translator
     }
 
+    fn open_web(&mut self, page: &str) {
+        self.cancel_next();
+        if let Some((_, cancel)) = self.web_pending.take() {
+            cancel.cancel();
+        }
+        self.web_generation += 1;
+        let cancel = nikomiru_core::Cancel::new();
+        let uid = nikomiru_online::web_video::uid(page);
+        self.web_pending = Some((self.web_generation, cancel.clone()));
+        self.web_error = None;
+        self.toasts.push(self.tr("webvideo-opening", &[]));
+        self.web_jobs.push(crate::web_video::Request {
+            generation: self.web_generation,
+            page: page.trim().to_string(),
+            executable: self.services.config.paths.yt_dlp.clone(),
+            proxy: self.services.config.network.proxy.clone(),
+            languages: self.services.config.subtitles.preferred_languages.clone(),
+            folder: self.services.subtitles_dir.join("web").join(uid),
+            cancel,
+        });
+    }
+
+    /// Web requests queued by explicit opens (PLY-023).
+    pub fn take_web_jobs(&mut self) -> Vec<crate::web_video::Request> {
+        std::mem::take(&mut self.web_jobs)
+    }
+
+    /// Start resolution on the app's worker (PLY-023).
+    pub fn start_web_video(
+        &self,
+        request: crate::web_video::Request,
+        done: Box<dyn FnOnce(Result<crate::web_video::Ready, String>) + Send>,
+    ) {
+        self.services.web_video.open(request, done);
+    }
+
+    /// Ignore superseded results; open a current result through ordinary playback.
+    pub fn web_video_ready(
+        &mut self,
+        generation: u64,
+        result: Result<crate::web_video::Ready, String>,
+    ) {
+        if self
+            .web_pending
+            .as_ref()
+            .is_none_or(|(g, _)| *g != generation)
+        {
+            return;
+        }
+        self.web_pending = None;
+        match result {
+            Ok(video) => {
+                let page = video.page.clone();
+                self.web_ready = Some(video);
+                self.open(Path::new(&page));
+            }
+            Err(e) => {
+                self.web_error = Some(e.clone());
+                self.toasts.push(e);
+            }
+        }
+    }
+
+    /// A web video is being resolved (PLY-023).
+    pub fn web_loading(&self) -> bool {
+        self.web_pending.is_some()
+    }
+
+    /// Original page of the current web video (PLY-023).
+    pub fn web_page(&self) -> Option<&str> {
+        self.current.as_ref()?.web.as_ref().map(|w| w.page.as_str())
+    }
+
     /// The video item has a render context: a pending file can be loaded now.
     pub fn renderer_ready(&mut self) {
         self.renderer_ready = true;
@@ -835,6 +930,18 @@ impl Session {
             self.pending = Some(path.to_path_buf());
             return;
         }
+        let web = self.web_ready.take();
+        if web.is_none()
+            && self.server_ready.is_none()
+            && crate::ui::is_web_address(&path.to_string_lossy())
+        {
+            self.open_web(&path.to_string_lossy());
+            return;
+        }
+        if let Some((_, cancel)) = self.web_pending.take() {
+            cancel.cancel();
+        }
+        self.web_error = None;
         // a server's video needs its relay first (SRV-008): `server_ready`
         // comes back here
         let server = self.server_ready.take();
@@ -850,7 +957,11 @@ impl Session {
         if closing_server && server.is_none() {
             self.services.servers.close();
         }
+        self.release_hold();
         self.flush_position();
+        self.restore_gap_speed();
+        self.view.speed = self.gap_speed.normal(self.view.speed);
+        self.gap_speed = crate::gaps::GapSpeed::default();
         self.end_replay();
         // `end` would stop the next file too
         self.clear_auto_pause();
@@ -866,7 +977,10 @@ impl Session {
         self.view.error = None;
         let path = match &server {
             Some(video) => PathBuf::from(&video.url),
-            None => nikomiru_library::scan::identity(path),
+            None => web.as_ref().map_or_else(
+                || nikomiru_library::scan::identity(path),
+                |w| PathBuf::from(&w.video),
+            ),
         };
         let meta = std::fs::metadata(&path).ok();
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
@@ -874,6 +988,7 @@ impl Session {
         let uid = library.and_then(|lib| {
             let uid = match &server {
                 Some(video) => video.uid.clone(),
+                None if web.is_some() => web.as_ref().map(|w| w.uid.clone()).unwrap_or_default(),
                 None => lib
                     .uid_for_path(&path)
                     .inspect_err(|e| tracing::warn!("library: {e}"))
@@ -887,7 +1002,10 @@ impl Session {
                 .unwrap_or_else(|| VideoRecord {
                     path: match &server {
                         Some(video) => video.uid.clone(),
-                        None => path.to_string_lossy().into_owned(),
+                        None => web.as_ref().map_or_else(
+                            || path.to_string_lossy().into_owned(),
+                            |w| w.page.clone(),
+                        ),
                     },
                     ..VideoRecord::default()
                 });
@@ -977,6 +1095,9 @@ impl Session {
             volume: record.volume,
             speed: record.speed,
         };
+        if let Some(speed) = record.speed {
+            self.gap_speed.chosen(control::clamp_speed(speed));
+        }
         self.saver.reset();
         self.next_up = None;
         self.first_frame = false;
@@ -987,6 +1108,7 @@ impl Session {
         self.view.loaded = false;
         self.view.title = match &server {
             Some(video) => video.item.title.clone(),
+            None if web.is_some() => web.as_ref().map(|w| w.title.clone()).unwrap_or_default(),
             None => path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -1033,6 +1155,7 @@ impl Session {
             uid,
             path,
             subtitles,
+            web,
             server: server.map(|video| ServerPlaying {
                 video,
                 reported: now,
@@ -1053,6 +1176,14 @@ impl Session {
                 self.report_server(nikomiru_online::servers::PlayState::Started);
                 self.events.push(UiEvent::FileLoaded);
                 self.view.loaded = true;
+                if let Some(audio) = self
+                    .current
+                    .as_ref()
+                    .and_then(|c| c.web.as_ref())
+                    .and_then(|w| w.audio.as_deref())
+                {
+                    let _ = self.services.player.add_audio(audio);
+                }
                 self.saver.ready();
             }
             PlayerEvent::TimePos(t) => {
@@ -1098,6 +1229,7 @@ impl Session {
             PlayerEvent::Speed(s) => {
                 self.study_sample(!self.view.paused);
                 self.view.speed = s;
+                self.gap_speed.observed(s);
             }
             PlayerEvent::Volume(v) => self.view.volume = v,
             PlayerEvent::Mute(m) => self.view.muted = m,
@@ -1135,6 +1267,7 @@ impl Session {
             }
             _ => return false,
         }
+        self.update_gap_speed();
         self.update_screensaver();
         true
     }
@@ -1142,6 +1275,7 @@ impl Session {
     /// Periodic update (from the UI's timer): the screensaver policy, and a
     /// hover popup the pointer left (POP-003).
     pub fn tick(&mut self) {
+        self.update_gap_speed();
         self.update_screensaver();
         let now = self.services.clock.monotonic();
         // STA-004: the session saved every minute
@@ -1157,6 +1291,38 @@ impl Session {
             .expired(now, self.services.config.lookup.resume_on_leave)
         {
             self.close_all_popups();
+        }
+    }
+
+    fn restore_gap_speed(&mut self) {
+        if let Some(speed) = self.gap_speed.update(self.view.speed, None) {
+            let _ = self.services.player.set_speed(speed);
+        }
+    }
+
+    fn update_gap_speed(&mut self) {
+        // Hold-to-speed owns mpv's speed until its key is released. Its
+        // original speed was captured before the gap override was removed.
+        if self.hold.active() {
+            return;
+        }
+        let speed = self.services.config.player.gap_speed;
+        let enabled = (2..=4).contains(&speed)
+            && self.view.loaded
+            && !self.view.paused
+            && !self.replaying
+            && !self.popups.is_open();
+        let pos_ms = (self.view.time_pos * 1000.0).round() as i64;
+        let target = (enabled
+            && crate::gaps::in_gap(
+                self.subs.timeline(),
+                pos_ms,
+                self.gap_speed.normal(self.view.speed),
+                f64::from(speed),
+            ))
+        .then_some(f64::from(speed));
+        if let Some(speed) = self.gap_speed.update(self.view.speed, target) {
+            let _ = self.services.player.set_speed(speed);
         }
     }
 
@@ -1295,6 +1461,7 @@ impl Session {
             return;
         };
         let (start, end) = (t.start_pos(cue), c.end_ms + t.delay_ms);
+        self.restore_gap_speed();
         let p = &self.services.player;
         let _ = p.stop_at(Some(end as f64 / 1000.0));
         let _ = p.seek_absolute(start as f64 / 1000.0);
@@ -1348,6 +1515,7 @@ impl Session {
         match record.map(|r| PathBuf::from(r.path)) {
             Some(path)
                 if path.is_file()
+                    || crate::ui::is_web_address(&path.to_string_lossy())
                     || nikomiru_library::server_items::parse_server_uid(
                         &path.to_string_lossy(),
                     )
@@ -1904,6 +2072,7 @@ impl Session {
             }
             _ => {}
         }
+        self.update_gap_speed();
         self.keep_status = false;
         self.saving_page = SavingPage::Settings;
         if self.services.config_writable {
@@ -2119,6 +2288,7 @@ impl Session {
 
     /// A series opened on the page, or closed (`None`).
     pub fn library_series(&mut self, series: Option<u64>) {
+        self.episode_scores.invalidate();
         self.library_page.series = series.map(|id| (id, None));
         if let Some(id) = series {
             self.library_jobs
@@ -2128,6 +2298,7 @@ impl Session {
 
     /// A folder to import (LIB-002), or to scan again with a grouping.
     pub fn library_import(&mut self, root: PathBuf, grouping: nikomiru_library::Grouping) {
+        self.library_page.scores.clear();
         self.library_page.busy = true;
         let text = self.tr("library-scanning", &[("path", root.display().to_string())]);
         self.library_page.status = Some((text, true));
@@ -2137,9 +2308,87 @@ impl Session {
 
     /// An edit of the library (LIB-011, LIB-012).
     pub fn library_edit(&mut self, edit: crate::catalog::LibraryEdit) {
+        self.library_page.scores.clear();
         self.library_page.busy = true;
         self.library_jobs
             .push(crate::catalog::LibraryJob::Edit(edit));
+    }
+
+    /// Capture export choices before the folder dialog (AUD-010).
+    pub fn condense_choose(
+        &mut self,
+        target: crate::condense::Target,
+        format: nikomiru_media::condense::Format,
+    ) -> bool {
+        if self.audio_export.running.is_some() {
+            return false;
+        }
+        let current = if target == crate::condense::Target::Current {
+            let Some(video) = self.current_path() else {
+                return false;
+            };
+            if self.subs.timeline().is_empty() {
+                self.toasts.push(self.tr("condense-no-subtitles", &[]));
+                return false;
+            }
+            let (input, stream) = self.audio_source(video);
+            let t = self.subs.timeline();
+            let c = &self.services.config.anki;
+            let lines = t
+                .cues()
+                .iter()
+                .enumerate()
+                .map(|(i, q)| {
+                    let (start_ms, end_ms) = t.clip(
+                        i,
+                        i64::from(c.audio_pad_head_ms),
+                        i64::from(c.audio_pad_tail_ms),
+                    );
+                    nikomiru_media::condense::Line {
+                        start_ms,
+                        end_ms,
+                        text: q.plain_text.clone(),
+                    }
+                })
+                .collect();
+            Some(crate::condense::Snapshot {
+                input,
+                stream,
+                lines,
+                duration_ms: (self.view.duration * 1000.0).round() as i64,
+            })
+        } else {
+            None
+        };
+        self.audio_export.pending = Some(crate::condense::Request {
+            target,
+            current,
+            folder: PathBuf::new(),
+            format,
+            config: Box::new(self.services.config.clone()),
+            subtitles_dir: self.services.subtitles_dir.clone(),
+            cancel: nikomiru_core::Cancel::new(),
+        });
+        true
+    }
+
+    /// Start the captured export in the selected folder (AUD-010).
+    pub fn condense_to(&mut self, folder: PathBuf) {
+        if let Some(mut request) = self.audio_export.pending.take() {
+            request.folder = folder;
+            self.audio_export.running = Some(request.cancel.clone());
+            self.audio_export.report = None;
+            self.toasts.push(self.tr("condense-running", &[]));
+            self.library_jobs
+                .push(crate::catalog::LibraryJob::Condense(Box::new(request)));
+        }
+    }
+
+    /// Cancel a running condensed-audio export (AUD-010).
+    pub fn condense_cancel(&self) {
+        if let Some(cancel) = &self.audio_export.running {
+            cancel.cancel();
+        }
     }
 
     /// The sessions as CSV, to `path` chosen in the save dialog (STA-005).
@@ -2158,6 +2407,38 @@ impl Session {
         use crate::catalog::{LibraryJob, LibraryReply};
         let page = &mut self.library_page;
         match reply {
+            LibraryReply::Condensed(result) => {
+                let cancelled = self
+                    .audio_export
+                    .running
+                    .take()
+                    .is_some_and(|c| c.is_cancelled());
+                match result {
+                    Ok(report) => {
+                        let text = self.tr(
+                            if cancelled {
+                                "condense-cancelled"
+                            } else {
+                                "condense-done"
+                            },
+                            &[
+                                ("count", report.written.len().to_string()),
+                                ("failed", report.failed.len().to_string()),
+                            ],
+                        );
+                        self.toasts.push(text.clone());
+                        self.library_page.status = Some((text, report.failed.is_empty()));
+                        for (name, error) in report.failed.iter().take(3) {
+                            self.toasts.push(format!("{name}: {error}"));
+                        }
+                        self.audio_export.report = Some(report);
+                    }
+                    Err(e) => {
+                        self.toasts.push(e.clone());
+                        self.library_page.status = Some((e, false));
+                    }
+                }
+            }
             LibraryReply::Home(Ok(home)) => {
                 for s in &home.series {
                     if !page.covers_asked.contains(&s.id) {
@@ -2166,6 +2447,10 @@ impl Session {
                     }
                 }
                 page.home = Some(home);
+            }
+            LibraryReply::SeriesAnalysis(request, result) => {
+                page.scores
+                    .loaded(request, result.map(|detail| detail.episodes));
             }
             LibraryReply::Episodes(id, Ok(detail)) => {
                 if let Some((open, episodes)) = &mut page.series
@@ -2460,7 +2745,7 @@ impl Session {
     /// LIB-009: the episode ended; with `auto_next`, the next one of its
     /// series starts in 5 s, unless cancelled.
     fn episode_ended(&mut self, now: std::time::Duration) {
-        if !self.services.config.player.auto_next || self.next_up.is_some() {
+        if self.web_loading() || !self.services.config.player.auto_next || self.next_up.is_some() {
             return;
         }
         // SRV-008: on a server, what comes next is its own
@@ -3256,6 +3541,10 @@ impl Session {
 
     /// Nikomiru closes: the server hears of it, and a book saves its place.
     pub fn quitting(&mut self) {
+        if let Some((_, cancel)) = self.web_pending.take() {
+            cancel.cancel();
+        }
+        self.condense_cancel();
         self.report_stopped();
         self.book_close();
     }
@@ -3532,6 +3821,11 @@ impl Session {
             position_ms: (self.view.time_pos * 1000.0) as i64,
             uid: current.uid.clone(),
             title: match &current.server {
+                None if current.web.is_some() => current
+                    .web
+                    .as_ref()
+                    .map(|w| w.title.clone())
+                    .unwrap_or_default(),
                 Some(playing) => playing.video.item.title.clone(),
                 None => current
                     .path
@@ -3742,6 +4036,9 @@ impl Session {
             AdvancedEdit::Preview => {
                 // the clip from its start, paused at its end, as "Replay"
                 if let Some((start, end)) = a.clip {
+                    if let Some(speed) = self.gap_speed.update(self.view.speed, None) {
+                        let _ = self.services.player.set_speed(speed);
+                    }
                     let p = &self.services.player;
                     let _ = p.stop_at(Some(end as f64 / 1000.0));
                     let _ = p.seek_absolute(start as f64 / 1000.0);
@@ -3794,6 +4091,15 @@ impl Session {
     /// The active audio track: the file it is in (an external track's own
     /// file) and its ff-index there; `None` without one.
     fn audio_source(&self, video: &Path) -> (PathBuf, Option<i64>) {
+        if let Some(audio) = self
+            .current
+            .as_ref()
+            .and_then(|c| c.web.as_ref())
+            .and_then(|w| w.audio.as_deref())
+        {
+            return (PathBuf::from(audio), Some(0));
+        }
+
         let selected = self
             .view
             .audio_tracks
@@ -4205,7 +4511,7 @@ impl Session {
             uid.clone(),
             self.view.aid,
             self.view.volume,
-            self.view.speed,
+            self.gap_speed.normal(self.view.speed),
             self.view.duration,
         );
         w.run(move |lib| {
@@ -4280,7 +4586,9 @@ impl Session {
             return (UiEffect::None, true);
         }
         if action == Action::HoldSpeed {
-            if let Some(speed) = self.hold.key_down(self.view.speed, auto_repeat) {
+            let normal = self.gap_speed.normal(self.view.speed);
+            if let Some(speed) = self.hold.key_down(normal, auto_repeat) {
+                self.restore_gap_speed();
                 let _ = self.services.player.set_speed(speed);
             }
             return (UiEffect::None, true);
@@ -4295,6 +4603,7 @@ impl Session {
     /// loses the keyboard and the release will never arrive.
     pub fn release_hold(&mut self) {
         if let Some(speed) = self.hold.key_up() {
+            self.gap_speed.chosen(speed);
             let _ = self.services.player.set_speed(speed);
         }
     }
@@ -4364,13 +4673,15 @@ impl Session {
                 p.set_mute(!self.view.muted)
             }
             Action::SpeedUp | Action::SpeedDown | Action::SpeedReset => {
+                let normal = self.gap_speed.normal(self.view.speed);
                 let s = match action {
-                    Action::SpeedUp => control::step_speed(self.view.speed, 1),
-                    Action::SpeedDown => control::step_speed(self.view.speed, -1),
+                    Action::SpeedUp => control::step_speed(normal, 1),
+                    Action::SpeedDown => control::step_speed(normal, -1),
                     _ => 1.0,
                 };
                 self.toasts
                     .push(self.tr("toast-speed", &[("value", format!("{s:.2}"))]));
+                self.gap_speed.chosen(s);
                 p.set_speed(s)
             }
             Action::FramePrev => p.frame_step(false),
@@ -4558,6 +4869,7 @@ impl Session {
     /// close, since they looked up words of the cues that were (and replay or
     /// go to them).
     fn cues_changed(&mut self) {
+        self.restore_gap_speed();
         self.sub_list_version += 1;
         self.update_auto_pause();
         if self.popups.is_open() {
@@ -4591,6 +4903,10 @@ impl Session {
             .and_then(|c| c.subtitles.as_ref())
             .map(|folder| nikomiru_online::store::list(folder))
             .unwrap_or_default();
+        let mut downloaded = downloaded;
+        if let Some(web) = self.current.as_ref().and_then(|c| c.web.as_ref()) {
+            downloaded.extend(web.subtitles.iter().cloned());
+        }
         let externals = crate::scores::subtitle_files(&video, &downloaded);
         let mut sources: Vec<Source> = externals
             .iter()
@@ -4674,7 +4990,7 @@ impl Session {
         if let Some(source) = source {
             self.use_subtitles(source);
         }
-        if online {
+        if online && self.current.as_ref().is_none_or(|c| c.web.is_none()) {
             self.ask_online_subtitles(&video);
         }
         // a link's cue comes with this load or not at all (ANK-052)
@@ -5204,6 +5520,48 @@ impl Session {
         }
     }
 
+    /// Analyse a whole book without opening it or touching its reading place.
+    pub fn book_analyse(&mut self, uid: &str) {
+        if !self.services.config.subtitles.word_colors {
+            return;
+        }
+        if let Some((_, record)) = self.books_page.list.iter().find(|(u, _)| u == uid) {
+            self.books_page.scores.request(
+                uid.into(),
+                PathBuf::from(&record.path),
+                self.words.generation(),
+            );
+        }
+    }
+
+    /// Rescore retained whole-book counts and dispatch explicit requests.
+    pub fn take_book_counts(&mut self) -> Vec<crate::book_scores::Request> {
+        self.books_page.scores.update(
+            self.services.config.subtitles.word_colors,
+            &self.books_page.list,
+            &self.words,
+        );
+        self.books_page.scores.take()
+    }
+
+    /// Start the dedicated whole-book dictionary worker.
+    pub fn start_book_count(
+        &self,
+        request: crate::book_scores::Request,
+        done: crate::dictionaries::Done<crate::book_scores::Outcome>,
+    ) {
+        self.services.dictionaries.count_book(request, done);
+    }
+
+    /// An analysis result; stale ids/paths/generations are ignored.
+    pub fn book_count_done(
+        &mut self,
+        request: &crate::book_scores::Request,
+        result: Result<crate::book_scores::Outcome, String>,
+    ) {
+        self.books_page.scores.done(request, result);
+    }
+
     /// The books to read, taken by the UI layer.
     pub fn take_book_reads(&mut self) -> Vec<PathBuf> {
         std::mem::take(&mut self.book_reads)
@@ -5242,6 +5600,7 @@ impl Session {
             tracing::warn!("library: {e}");
         }
         let chapter = (record.chapter as usize).min(book.chapters.len().saturating_sub(1));
+        self.books_page.study.clear();
         self.books_page.open = Some(crate::books::OpenBook {
             uid,
             chapter,
@@ -5559,6 +5918,7 @@ impl Session {
     /// The book closes: its place is saved, and the time read goes into the
     /// statistics (BOK-008).
     pub fn book_close(&mut self) {
+        self.books_page.study.clear();
         self.close_all_popups();
         self.book_save();
         self.books_page.along = None;
@@ -5601,6 +5961,7 @@ impl Session {
 
     /// Forgets a book: its file stays.
     pub fn book_remove(&mut self, uid: &str) {
+        self.books_page.scores.forget(uid);
         if let Some(lib) = self.services.library.as_ref().filter(|l| !l.read_only())
             && let Err(e) = lib.remove_book(uid)
         {
@@ -5934,6 +6295,23 @@ impl Session {
             }
         }
         self.count_score();
+        // KNW-002: reader text in view first; the whole chapter follows
+        // the player's pending subtitle work (KNW-014/015).
+        let page = &mut self.books_page;
+        if self.services.config.subtitles.word_colors
+            && let Some(open) = page.open.as_ref().filter(|o| !o.book.manga)
+            && let Some(chapter) = open.book.chapters.get(open.chapter)
+        {
+            for p in chapter.paragraphs.iter().skip(open.paragraph).take(AHEAD) {
+                if p.image.is_none() && p.text.len() <= crate::reader_words::MAX_PARAGRAPH_BYTES {
+                    self.words.ask(&p.text);
+                }
+            }
+            page.study
+                .update(&open.uid, open.chapter, chapter, &mut self.words);
+        } else {
+            page.study.clear();
+        }
         // KNW-012: a line whose words are now all known loses its stop
         let c = &self.services.config.subtitles;
         if c.auto_pause && c.auto_pause_new_only && c.word_colors {
@@ -5943,7 +6321,44 @@ impl Session {
                 self.update_auto_pause();
             }
         }
+        self.record_word_encounters();
         self.words.take_queue()
+    }
+
+    fn record_word_encounters(&mut self) {
+        if !self.services.config.subtitles.word_colors
+            || !self.view.loaded
+            || self.view.paused
+            || self.writer.is_none()
+        {
+            return;
+        }
+        let Some(uid) = self
+            .current
+            .as_ref()
+            .and_then(|current| current.uid.as_deref())
+        else {
+            return;
+        };
+        let texts = self
+            .subs
+            .active()
+            .iter()
+            .filter_map(|&index| self.subs.cue(index))
+            .map(|cue| cue.plain_text.as_str());
+        let fresh = self.encounters.observe(uid, true, texts, &self.words);
+        if fresh.is_empty() {
+            return;
+        }
+        let uid = uid.to_string();
+        let at = self.now_ms();
+        if let Some(writer) = &self.writer {
+            writer.run(move |lib| {
+                if let Err(error) = lib.record_encounters(&uid, &fresh, at) {
+                    tracing::warn!("saving word encounters: {error}");
+                }
+            });
+        }
     }
 
     /// While the words are coloured, splits the rest of the main
@@ -6012,7 +6427,12 @@ impl Session {
         let open = self.library_page.series.as_ref();
         let series = open.map(|(id, _)| *id).filter(|_| c.word_colors);
         let generation = self.words.generation();
-        self.episode_scores.reset_for(series, generation);
+        self.episode_scores.reset_for(
+            series,
+            generation,
+            &c.preferred_languages,
+            &self.services.config.paths.ffmpeg,
+        );
         let mut out = Vec::new();
         if let (Some(_), Some((_, Some(episodes)))) = (series, open) {
             for (uid, v) in episodes {
@@ -6032,7 +6452,9 @@ impl Session {
                     saved,
                     preferred: c.preferred_languages.clone(),
                     subtitles_dir: self.services.subtitles_dir.clone(),
+                    ffmpeg: self.services.config.paths.ffmpeg.clone(),
                     generation,
+                    epoch: self.episode_scores.epoch(),
                 };
                 out.push((uid.clone(), request));
             }
@@ -6041,6 +6463,71 @@ impl Session {
         self.episode_scores
             .update(words.revision(), |e, r| words.status(e, r));
         out
+    }
+
+    fn update_series_scores(&mut self) {
+        let ids: Vec<_> = self
+            .library_page
+            .home
+            .as_ref()
+            .map(|h| h.series.iter().map(|s| s.id).collect())
+            .unwrap_or_default();
+        let c = &self.services.config;
+        self.library_page.scores.update(
+            c.subtitles.word_colors,
+            &self.words,
+            &c.subtitles.preferred_languages,
+            &c.paths.ffmpeg,
+            &ids,
+        );
+    }
+
+    /// Explicitly analyse a local series without opening it (KNW-017).
+    pub fn series_analyse(&mut self, id: u64) {
+        self.update_series_scores();
+        if !self.services.config.subtitles.word_colors
+            || self.library_page.busy
+            || !self
+                .library_page
+                .home
+                .as_ref()
+                .is_some_and(|h| h.series.iter().any(|s| s.id == id))
+        {
+            return;
+        }
+        if let Some(request) = self.library_page.scores.request(id) {
+            self.library_jobs
+                .push(crate::catalog::LibraryJob::SeriesAnalysis(request));
+        }
+    }
+
+    /// Take one series-analysis episode after normal episode-list requests.
+    pub fn take_series_word_count(
+        &mut self,
+    ) -> Option<(
+        crate::series_scores::Request,
+        String,
+        crate::scores::CountRequest,
+    )> {
+        self.update_series_scores();
+        let (analysis, uid, video) = self.library_page.scores.next_episode()?;
+        let saved = self
+            .services
+            .library
+            .as_ref()
+            .and_then(|lib| lib.effective(&uid).ok())
+            .and_then(|e| e.subtitle);
+        let c = &self.services.config;
+        let request = crate::scores::CountRequest {
+            video: PathBuf::from(video.path),
+            saved,
+            preferred: c.subtitles.preferred_languages.clone(),
+            subtitles_dir: self.services.subtitles_dir.clone(),
+            ffmpeg: c.paths.ffmpeg.clone(),
+            generation: self.words.generation(),
+            epoch: analysis.serial,
+        };
+        Some((analysis, uid, request))
     }
 
     /// Counts an episode's words on the dictionary service.
@@ -6098,6 +6585,50 @@ impl Session {
                 self.words.ask(&cue.plain_text);
             }
         }
+    }
+
+    /// Visible text paragraphs, stamped with the book and chapter that drew
+    /// them. A navigation command earlier in the frame makes an old list stale.
+    pub fn book_rows(&mut self, uid: &str, chapter: usize, paragraphs: &[usize]) {
+        if !self.services.config.subtitles.word_colors {
+            return;
+        }
+        let Some(open) = self
+            .books_page
+            .open
+            .as_ref()
+            .filter(|o| o.uid == uid && o.chapter == chapter && !o.book.manga)
+        else {
+            return;
+        };
+        let Some(text) = open.book.chapters.get(chapter) else {
+            return;
+        };
+        for &index in paragraphs {
+            if let Some(p) = text.paragraphs.get(index).filter(|p| {
+                p.image.is_none() && p.text.len() <= crate::reader_words::MAX_PARAGRAPH_BYTES
+            }) {
+                self.words.ask(&p.text);
+            }
+        }
+    }
+
+    /// Status underlines for text in the reader (KNW-002). Native ruby is
+    /// drawn by the book; subtitle furigana, mined and pitch marks stay there.
+    pub fn book_marks(&self, text: &str) -> Option<crate::words::Marks> {
+        if !self.services.config.subtitles.word_colors
+            || text.len() > crate::reader_words::MAX_PARAGRAPH_BYTES
+            || self.books_page.open.as_ref().is_none_or(|o| o.book.manga)
+        {
+            return None;
+        }
+        self.words.marks(
+            text,
+            &crate::words::Wanted {
+                colors: true,
+                ..Default::default()
+            },
+        )
     }
 
     /// The words of `text` the subtitle list underlines, and whether it has
