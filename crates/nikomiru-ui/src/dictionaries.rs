@@ -99,6 +99,28 @@ pub trait DictionaryService: Send {
         let _ = request;
         done(Err("dictionary service unavailable".into()));
     }
+    /// Count with a request-specific cancellation token.
+    fn count_book_cancellable(
+        &self,
+        request: crate::book_scores::Request,
+        cancel: Cancel,
+        done: Done<crate::book_scores::Outcome>,
+    ) {
+        if !cancel.is_cancelled() {
+            self.count_book(request, done);
+        }
+    }
+    /// Count series text with cancellation separate from ordinary episode scores.
+    fn count_words_cancellable(
+        &self,
+        request: crate::scores::CountRequest,
+        cancel: Cancel,
+        done: Done<Option<nikomiru_library::words::Counted>>,
+    ) {
+        if !cancel.is_cancelled() {
+            self.count_words(request, done);
+        }
+    }
     /// Looks `text` up away from the UI thread; `done` gets the popup content.
     fn lookup(&self, text: String, done: Done<Reply>);
     /// Splits `text` into words away from the UI thread, without holding up

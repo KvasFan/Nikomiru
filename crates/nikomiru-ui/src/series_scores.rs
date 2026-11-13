@@ -67,6 +67,7 @@ pub enum Status {
 
 #[derive(Debug)]
 struct Entry {
+    cancel: nikomiru_core::Cancel,
     request: Request,
     status: Status,
     queue: VecDeque<(String, VideoRecord)>,
@@ -81,6 +82,12 @@ struct Key {
     generation: u64,
     preferred: Vec<String>,
     ffmpeg: String,
+}
+
+impl Drop for Entry {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 
 /// Ephemeral series analyses, separate from the currently open episode list.
@@ -178,6 +185,7 @@ impl Scores {
         self.entries.insert(
             series,
             Entry {
+                cancel: nikomiru_core::Cancel::new(),
                 request,
                 status: Status::Loading,
                 queue: VecDeque::new(),
@@ -254,6 +262,19 @@ impl Scores {
         }
     }
 
+    /// Discard a requested analysis and stop its worker before accepting new work.
+    pub fn cancel(&mut self, series: u64) {
+        self.entries.remove(&series);
+    }
+
+    /// Cancellation identity of the current request only.
+    pub fn token(&self, request: Request) -> Option<nikomiru_core::Cancel> {
+        self.entries
+            .get(&request.series)
+            .filter(|e| e.request == request)
+            .map(|e| e.cancel.clone())
+    }
+
     /// A card's current analysis state.
     pub fn get(&self, series: u64) -> Option<&Status> {
         self.entries.get(&series).map(|e| &e.status)
@@ -264,6 +285,29 @@ impl Scores {
 mod tests {
     use super::*;
     use crate::words::WordStatus;
+
+    // T-KNW-019: stop metadata or episode work, discard queue and late results.
+    #[test]
+    fn cancelled_series_stops_inflight_and_never_dispatches_remaining_episodes() {
+        let mut scores = Scores::default();
+        let old = scores.request(1).unwrap();
+        let loading = scores.token(old).unwrap();
+        scores.cancel(1);
+        assert!(loading.is_cancelled());
+        scores.loaded(old, Ok(episodes(2)));
+        assert!(scores.next_episode().is_none());
+        let request = scores.request(1).unwrap();
+        scores.loaded(request, Ok(episodes(2)));
+        let (_, uid, _) = scores.next_episode().unwrap();
+        let active = scores.token(request).unwrap();
+        scores.cancel(1);
+        assert!(active.is_cancelled());
+        assert!(scores.next_episode().is_none());
+        let new = scores.request(1).unwrap();
+        scores.done(request, &uid, Ok(Some(count(1, "猫"))));
+        assert_eq!(scores.get(1), Some(&Status::Loading));
+        assert!(!scores.token(new).unwrap().is_cancelled());
+    }
 
     fn episodes(n: usize) -> Episodes {
         (0..n)

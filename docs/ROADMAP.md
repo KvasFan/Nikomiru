@@ -911,7 +911,7 @@ without requiring a new request after each increment.
 | M25 | Graphic subtitle OCR progressively from the playback position | done |
 | M26 | External VobSub `.idx`/`.sub` pairs read as text | done |
 | M27 | Embedded DVB subtitles read as text | done |
-| M28 | Cancel book and series comprehension analyses | not started |
+| M28 | Cancel book and series comprehension analyses | done |
 | M29 | Browse and bulk-mark the words of a whole analysed book | not started |
 | M30 | Browse and bulk-mark the words of an analysed series | not started |
 | M31 | Export analysed media word lists for study elsewhere | not started |
@@ -959,6 +959,18 @@ DVB bitmap and remains outside this increment.
 
 **Exit criteria**: extraction arguments/cache/cancellation tests, real
 DVB→DVD conversion and decoded pictures/timing, GUI text/lookup, full CI.
+
+---
+
+## M28 — Cancel comprehension analysis
+
+**Requirements**: KNW-019. Explicit cancellation stops the selected book or
+series work, drops pending episodes and rejects stale responses. Child
+processes observe the same request token as segmentation. Playback and
+ordinary episode-list scoring keep independent cancellation identities.
+
+**Exit criteria**: linked token isolation, cancellation/restart and stale
+metadata/count tests, accessible UI actions and `cargo xtask ci`.
 
 ---
 

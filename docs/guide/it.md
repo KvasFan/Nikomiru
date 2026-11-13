@@ -225,3 +225,5 @@ Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio 
 - Se le impostazioni non si salvano, controlla che `~/.config/nikomiru` sia tua. Se è stata creata con `sudo`, riprendila con `sudo chown -R $USER: ~/.config/nikomiru`.
 - Se un'impostazione in `config.toml` ha un valore del tipo sbagliato, Nikomiru usa quello predefinito e la nomina in un avviso all'avvio.
 - Problemi e idee: <https://github.com/KvasFan/nikomiru/issues>.
+
+Durante l’analisi di un libro intero o di una serie, Annulla analisi interrompe il lavoro e scarta il risultato incompleto. Puoi analizzare subito un altro elemento; riproduzione e punteggi degli episodi continuano.

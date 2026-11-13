@@ -53,10 +53,17 @@ pub enum Status {
 
 #[derive(Debug)]
 struct Entry {
+    cancel: nikomiru_core::Cancel,
     request: Request,
     status: Status,
     counted: Option<Arc<Counted>>,
     revision: Option<u64>,
+}
+
+impl Drop for Entry {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 
 /// Ephemeral whole-book counts; separate from chapter reading state.
@@ -120,6 +127,7 @@ impl Scores {
         self.entries.insert(
             uid,
             Entry {
+                cancel: nikomiru_core::Cancel::new(),
                 request,
                 status: Status::Counting,
                 counted: None,
@@ -185,6 +193,20 @@ impl Scores {
         };
     }
 
+    /// Discard a requested analysis and stop its worker before accepting new work.
+    pub fn cancel(&mut self, uid: &str) {
+        self.entries.remove(uid);
+        self.pending.retain(|r| r.uid != uid);
+    }
+
+    /// Cancellation identity of the current request only.
+    pub fn token(&self, request: &Request) -> Option<nikomiru_core::Cancel> {
+        self.entries
+            .get(&request.uid)
+            .filter(|e| e.request == *request)
+            .map(|e| e.cancel.clone())
+    }
+
     /// The score or analysis state for a library row.
     pub fn get(&self, uid: &str) -> Option<&Status> {
         self.entries.get(uid).map(|e| &e.status)
@@ -196,6 +218,26 @@ mod tests {
     use super::*;
     use crate::words::WordStatus;
     use nikomiru_library::books::BookRecord;
+
+    // T-KNW-019: cancellation frees the slot and rejects a late old answer.
+    #[test]
+    fn cancelled_book_stops_worker_and_cannot_replace_restart() {
+        let mut scores = Scores::default();
+        scores.request("book/0".into(), "0.epub".into(), 0);
+        let old = scores.take().pop().unwrap();
+        let cancel = scores.token(&old).unwrap();
+        scores.cancel("book/0");
+        assert!(cancel.is_cancelled());
+        assert!(!scores.busy());
+        scores.request("book/0".into(), "0.epub".into(), 0);
+        let new = scores.take().pop().unwrap();
+        scores.done(&old, Ok(count()));
+        assert_eq!(scores.get("book/0"), Some(&Status::Counting));
+        assert!(!scores.token(&new).unwrap().is_cancelled());
+        let active = scores.token(&new).unwrap();
+        scores.clear();
+        assert!(active.is_cancelled());
+    }
 
     fn records() -> Vec<(String, BookRecord)> {
         (0..6)

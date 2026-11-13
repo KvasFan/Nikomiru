@@ -808,6 +808,11 @@ fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<
         }
         None => {}
     }
+    if matches!(status, Some(Status::Loading | Status::Counting { .. }))
+        && ui.button(tr(s, "analysis-cancel")).clicked()
+    {
+        out.push(Command::SeriesAnalysisCancel(id));
+    }
     let button = ui.add_enabled(
         !s.page.busy && !s.page.scores.busy(),
         Button::new(tr(
@@ -1331,6 +1336,15 @@ mod tests {
                 .out
                 .iter()
                 .any(|c| matches!(c, Command::SeriesAnalyse(_)))
+        );
+        // T-KNW-019: accessible action is available during active analysis.
+        h.get_by_label("analysis-cancel").click();
+        h.run_steps(2);
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SeriesAnalysisCancel(1)))
         );
     }
 

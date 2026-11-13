@@ -225,3 +225,5 @@ The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, En
 - If the settings cannot be saved, check that `~/.config/nikomiru` belongs to you. If it was created with `sudo`, give it back with `sudo chown -R $USER: ~/.config/nikomiru`.
 - If a setting in `config.toml` has a value of the wrong kind, Nikomiru uses the default for it and names it in a notice at startup.
 - Problems and ideas: <https://github.com/KvasFan/nikomiru/issues>.
+
+While a whole-book or series analysis is running, Cancel analysis stops it and discards its incomplete result. You can immediately analyse another item; playback and episode-list scores continue.

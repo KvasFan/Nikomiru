@@ -555,6 +555,10 @@ pub(crate) enum Command {
     /// The Books page opened.
     BooksOpen,
     BookAnalyse(String),
+    /// Cancel a whole-book analysis.
+    BookAnalysisCancel(String),
+    /// Cancel a series analysis.
+    SeriesAnalysisCancel(u64),
     /// Explicit comprehension analysis from a local series card.
     SeriesAnalyse(u64),
     /// "Open" with a web page's address on the Books page (WEB-001).
@@ -1490,6 +1494,8 @@ impl Ui {
                 }
             }
             Command::BooksOpen => s.books_open(),
+            Command::BookAnalysisCancel(uid) => s.book_analysis_cancel(&uid),
+            Command::SeriesAnalysisCancel(id) => s.series_analysis_cancel(id),
             Command::BookAnalyse(uid) => s.book_analyse(&uid),
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
@@ -2123,7 +2129,8 @@ impl Ui {
         }
         if let Some((analysis, uid, request)) = self.session.take_series_word_count() {
             let waker = self.waker.clone();
-            self.session.start_word_count(
+            self.session.start_series_word_count(
+                analysis,
                 request,
                 Box::new(move |result| {
                     waker.wake(Inbound::SeriesWordCount {

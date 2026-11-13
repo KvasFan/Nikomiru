@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Cancel whole-book and series comprehension analyses, stopping their own workers and discarding stale replies (KNW-019, M28).
+
 ### Added
 
 - DVB bitmap subtitle OCR (SUB-032, M27): Read as text uses the same local model and progressive pipeline as Blu-ray/DVD subtitles. FFmpeg converts the bitmap stream with an explicit matching palette, preserving the source images until text is ready. Teletext is excluded.

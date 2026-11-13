@@ -877,7 +877,7 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
-            "analyse" => {
+            "analyse" | "cancel-analysis" => {
                 let uid = ui
                     .session
                     .books_page
@@ -886,7 +886,11 @@ pub fn books(
                     .find(|(uid, b)| path.as_ref().is_some_and(|p| p == uid || p == &b.path))
                     .map(|(uid, _)| uid.clone())
                     .ok_or("book to analyse not found")?;
-                out.push(Command::BookAnalyse(uid));
+                out.push(if action == "analyse" {
+                    Command::BookAnalyse(uid)
+                } else {
+                    Command::BookAnalysisCancel(uid)
+                });
             }
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
@@ -1031,6 +1035,7 @@ pub fn library(
                 Command::LibraryScan(path()?, grouping)
             }
             "series" => Command::LibrarySeries(id().ok()),
+            "cancel-analysis" => Command::SeriesAnalysisCancel(id()?),
             "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"

@@ -1030,3 +1030,5 @@ stats-encounters-episode = { $title }: { $count } parole nuove incontrate
 condense-reading = Attendi il completamento della lettura dei sottotitoli prima di esportare l’audio condensato.
 
 error-subtitle-vobsub-index = L’indice VobSub è danneggiato o non identifica una traccia di lingua leggibile.
+
+analysis-cancel = Annulla analisi

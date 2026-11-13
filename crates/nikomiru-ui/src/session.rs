@@ -5699,7 +5699,11 @@ impl Session {
         request: crate::book_scores::Request,
         done: crate::dictionaries::Done<crate::book_scores::Outcome>,
     ) {
-        self.services.dictionaries.count_book(request, done);
+        if let Some(cancel) = self.books_page.scores.token(&request) {
+            self.services
+                .dictionaries
+                .count_book_cancellable(request, cancel, done);
+        }
     }
 
     /// An analysis result; stale ids/paths/generations are ignored.
@@ -6682,6 +6686,30 @@ impl Session {
             epoch: analysis.serial,
         };
         Some((analysis, uid, request))
+    }
+
+    /// Stop one book analysis and release the slot immediately.
+    pub fn book_analysis_cancel(&mut self, uid: &str) {
+        self.books_page.scores.cancel(uid);
+    }
+
+    /// Stop one series analysis, including its queued episodes.
+    pub fn series_analysis_cancel(&mut self, id: u64) {
+        self.library_page.scores.cancel(id);
+    }
+
+    /// Start a series job with the parent analysis cancellation identity.
+    pub fn start_series_word_count(
+        &self,
+        analysis: crate::series_scores::Request,
+        request: crate::scores::CountRequest,
+        done: crate::dictionaries::Done<Option<nikomiru_library::words::Counted>>,
+    ) {
+        if let Some(cancel) = self.library_page.scores.token(analysis) {
+            self.services
+                .dictionaries
+                .count_words_cancellable(request, cancel, done);
+        }
     }
 
     /// Counts an episode's words on the dictionary service.
