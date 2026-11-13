@@ -62,6 +62,8 @@ I sottotitoli a immagini letti come testo ora compaiono progressivamente: la let
 
 Per leggere una coppia VobSub esterna, apri o trascina il file `.idx` o `.sub` mentre è caricato un video. Mantieni accanto il file compagno con lo stesso nome; le maiuscole delle estensioni non contano. Il modello locale legge la lingua preferita con i timestamp dell’indice. Riaprire il video ripristina questa scelta esplicita. Le coppie esterne non mostrano immagini mentre il testo è in preparazione; file compagni mancanti o danneggiati producono un errore.
 
+Anche i sottotitoli bitmap DVB incorporati offrono Leggi come testo. FFmpeg converte le immagini in locale per il modello installato; il televideo è escluso.
+
 ## 4. Cercare le parole
 
 - **Clic** su un carattere di un sottotitolo: il popup mostra la parola più lunga che comincia lì, con letture, significati, accento tonale e frequenze.

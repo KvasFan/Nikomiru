@@ -313,8 +313,18 @@ impl Worker {
                 ));
             }
             // SUB-029: VobSub, with the palette of its `.idx` header
-            let read = if codec == nikomiru_media::extract::DVD {
-                let palette = self.palette(&request.video, ff_index, cancel);
+            let read = if matches!(
+                codec,
+                nikomiru_media::extract::DVD | nikomiru_media::extract::DVB
+            ) {
+                let palette = if codec == nikomiru_media::extract::DVB {
+                    nikomiru_subs::vobsub::palette(&format!(
+                        "palette: {}",
+                        nikomiru_media::extract::DVB_PALETTE
+                    ))
+                } else {
+                    self.palette(&request.video, ff_index, cancel)
+                };
                 let cues = nikomiru_subs::vobsub::parse(&bytes, palette);
                 drop(bytes);
                 self.read_cues(&cues, ff_index, request.position_ms, cancel, reports)?

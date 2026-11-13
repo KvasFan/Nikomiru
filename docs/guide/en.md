@@ -62,6 +62,8 @@ Graphic subtitles read as text now appear progressively: OCR starts near the cur
 
 To read an external VobSub pair, open or drop its `.idx` or `.sub` file while a video is loaded. Keep the same-stem companion beside it; extension case does not matter. The preferred language is read with the local model and index timestamps. Reopening the video restores this explicit choice. External pairs have no picture fallback while text is pending; missing or damaged companions report an error.
 
+Embedded DVB bitmap subtitles also offer Read as text. FFmpeg converts their pictures locally for the installed model; teletext is excluded.
+
 ## 4. Looking words up
 
 - **Click** a character of a subtitle: the popup shows the longest word that starts there, its readings, meanings, pitch accent and frequencies.

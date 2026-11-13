@@ -910,7 +910,7 @@ without requiring a new request after each increment.
 |---|---|---|
 | M25 | Graphic subtitle OCR progressively from the playback position | done |
 | M26 | External VobSub `.idx`/`.sub` pairs read as text | done |
-| M27 | Embedded DVB subtitles read as text | not started |
+| M27 | Embedded DVB subtitles read as text | done |
 | M28 | Cancel book and series comprehension analyses | not started |
 | M29 | Browse and bulk-mark the words of a whole analysed book | not started |
 | M30 | Browse and bulk-mark the words of an analysed series | not started |
@@ -945,6 +945,20 @@ picture fallback. Missing/damaged/oversized pairs fail without a partial cache.
 **Exit criteria**: multi-stream/index/timestamp/bounds and companion/cache
 tests; actual paired-file GUI lookup, replacement and changed-source refresh;
 `cargo xtask ci`.
+
+---
+
+## M27 — Embedded DVB subtitles read as text
+
+**Requirements**: SUB-032. Reuse FFmpeg's bitmap codecs to convert embedded
+DVB subtitles into a bounded DVD bitmap stream with an explicit grayscale
+palette, then the existing progressive local OCR pipeline. Pictures remain
+available until text is ready; extraction and shutdown share cancellation.
+The conversion cache is separate from copied DVD streams. Teletext is not
+DVB bitmap and remains outside this increment.
+
+**Exit criteria**: extraction arguments/cache/cancellation tests, real
+DVB→DVD conversion and decoded pictures/timing, GUI text/lookup, full CI.
 
 ---
 

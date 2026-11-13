@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- DVB bitmap subtitle OCR (SUB-032, M27): Read as text uses the same local model and progressive pipeline as Blu-ray/DVD subtitles. FFmpeg converts the bitmap stream with an explicit matching palette, preserving the source images until text is ready. Teletext is excluded.
+
 - External VobSub pairs (SUB-031, M26): open or drop `.idx` or `.sub` on the current video. The local model reads the preferred language with the index palette and timestamps; both source signatures invalidate the cache. Missing/damaged companions fail without caching a partial result.
 
 - Progressive graphic subtitle OCR (SUB-030, M25): nearby pictures are read first in bounded batches. Their text becomes clickable while later pictures are still being read; unread lines keep their pictures. Lookups survive expanded timelines, and only completed text is cached or offered as a full comprehension/audio-export source. Disabling/replacing subtitles cancels the old work.

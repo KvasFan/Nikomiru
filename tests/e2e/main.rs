@@ -10,6 +10,7 @@
 mod book_scores;
 mod condense;
 mod drag;
+mod dvb_subtitles;
 mod encounters;
 mod episode_scores;
 mod gaps;

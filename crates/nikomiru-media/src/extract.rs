@@ -32,6 +32,7 @@ pub fn target(codec: &str) -> (&'static str, &'static str) {
         "webvtt" => ("webvtt", "vtt"),
         PGS => ("sup", "sup"),
         DVD => ("mpeg", "sub"),
+        DVB => ("mpeg", "dvb-v1.sub"),
         _ => ("srt", "srt"),
     }
 }
@@ -42,9 +43,15 @@ pub const PGS: &str = "hdmv_pgs_subtitle";
 /// mpv's codec name of DVD graphic subtitles, VobSub (SUB-029).
 pub const DVD: &str = "dvd_subtitle";
 
+/// DVB bitmap subtitles, converted to DVD packets for local OCR (SUB-032).
+pub const DVB: &str = "dvb_subtitle";
+
+/// Explicit grayscale palette used for both conversion and OCR decoding.
+pub const DVB_PALETTE: &str = "000000,ffffff,808080,404040,c0c0c0,202020,606060,a0a0a0,e0e0e0,101010,303030,505050,707070,909090,b0b0b0,d0d0d0";
+
 /// Whether a graphic subtitle codec can be read as text (SUB-028, SUB-029).
 pub fn is_readable_graphic(codec: &str) -> bool {
-    matches!(codec, PGS | DVD)
+    matches!(codec, PGS | DVD | DVB)
 }
 
 /// The ffprobe arguments that print the private data of stream `ff_index`
@@ -174,7 +181,13 @@ impl Extractor {
             args.push("-c:s".into());
             // pictures are copied: ffmpeg has no PGS encoder
             let copied = matches!(muxer, "sup" | "mpeg");
-            args.push(if copied { "copy" } else { muxer }.into());
+            if stream.codec == DVB {
+                args.push("dvdsub".into());
+                args.push("-palette".into());
+                args.push(DVB_PALETTE.into());
+            } else {
+                args.push(if copied { "copy" } else { muxer }.into());
+            }
             if muxer == "mpeg" {
                 // the program stream would start half a second late
                 args.push("-preload".into());
