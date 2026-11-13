@@ -1026,3 +1026,5 @@ library-score-too-large = Too many episodes for series analysis
 stats-encounters = New words met by episode
 stats-encounters-detail = Distinct words that were new when encountered during playback. Later status changes keep this history.
 stats-encounters-episode = { $title }: { $count } new words met
+
+condense-reading = Wait for subtitle reading to finish before exporting condensed audio.

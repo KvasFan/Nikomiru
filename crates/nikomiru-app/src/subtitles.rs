@@ -32,7 +32,7 @@ type Done = Box<dyn FnOnce(Result<Loaded, String>) + Send>;
 type Aligned = Box<dyn FnOnce(Result<AlignResult, String>) + Send>;
 
 enum Task {
-    Load(Request, Done),
+    Load(Request, nikomiru_ui::subtitles::Reports, Done),
     Align(AlignRequest, Aligned),
 }
 
@@ -53,7 +53,7 @@ pub struct Loader {
 impl std::fmt::Debug for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.task {
-            Task::Load(request, _) => f.debug_tuple("Load").field(request).finish(),
+            Task::Load(request, _, _) => f.debug_tuple("Load").field(request).finish(),
             Task::Align(request, _) => f.debug_tuple("Align").field(&request.input).finish(),
         }
     }
@@ -82,7 +82,9 @@ impl Loader {
                 };
                 for job in rx {
                     match job.task {
-                        Task::Load(request, done) => done(worker.load(&request, &job.cancel)),
+                        Task::Load(request, reports, done) => {
+                            done(worker.load(&request, &job.cancel, &reports))
+                        }
                         Task::Align(request, done) => done(worker.align(&request, &job.cancel)),
                     }
                 }
@@ -98,8 +100,28 @@ impl Loader {
     }
 }
 
+impl Drop for Loader {
+    fn drop(&mut self) {
+        if let Ok(cancel) = self.running.lock() {
+            cancel.cancel();
+        }
+        if let Ok(cancel) = self.running_secondary.lock() {
+            cancel.cancel();
+        }
+    }
+}
+
 impl SubtitleSource for Loader {
     fn load(&self, request: Request, done: Done) {
+        self.load_progressive(request, Box::new(|_| {}), done);
+    }
+
+    fn load_progressive(
+        &self,
+        request: Request,
+        reports: nikomiru_ui::subtitles::Reports,
+        done: Done,
+    ) {
         let cancel = Cancel::new();
         let slot = if request.secondary {
             &self.running_secondary
@@ -111,9 +133,20 @@ impl SubtitleSource for Loader {
             *running = cancel.clone();
         }
         let _ = self.jobs.send(Job {
-            task: Task::Load(request, done),
+            task: Task::Load(request, reports, done),
             cancel,
         });
+    }
+
+    fn cancel(&self, secondary: bool) {
+        let slot = if secondary {
+            &self.running_secondary
+        } else {
+            &self.running
+        };
+        if let Ok(cancel) = slot.lock() {
+            cancel.cancel();
+        }
     }
 
     fn align(&self, request: AlignRequest, done: Aligned) {
@@ -178,7 +211,12 @@ pub fn read_file(
 }
 
 impl Worker {
-    fn load(&mut self, request: &Request, cancel: &Cancel) -> Result<Loaded, String> {
+    fn load(
+        &mut self,
+        request: &Request,
+        cancel: &Cancel,
+        reports: &nikomiru_ui::subtitles::Reports,
+    ) -> Result<Loaded, String> {
         let loaded = match &request.source {
             Source::File(path) => self.file(path, request.encoding.as_deref())?,
             Source::Embedded {
@@ -192,7 +230,7 @@ impl Worker {
             }
             Source::Read {
                 ff_index, codec, ..
-            } => self.read_graphic(request, *ff_index, codec, cancel)?,
+            } => self.read_graphic(request, *ff_index, codec, cancel, reports)?,
             Source::Bitmap(_) => return Err(self.translator.tr("error-subtitle-bitmap", &[])),
         };
         if loaded.track.cues.is_empty() {
@@ -241,6 +279,7 @@ impl Worker {
         ff_index: i64,
         codec: &str,
         cancel: &Cancel,
+        reports: &nikomiru_ui::subtitles::Reports,
     ) -> Result<Loaded, String> {
         use std::io::Read;
         let translator = self.translator.clone();
@@ -262,25 +301,47 @@ impl Worker {
             let sup = self.extract(request, ff_index, codec, cancel)?;
             let mut bytes = Vec::new();
             std::fs::File::open(&sup)
-                .and_then(|f| f.take(MAX_PGS_STREAM).read_to_end(&mut bytes))
+                .and_then(|f| f.take(MAX_PGS_STREAM + 1).read_to_end(&mut bytes))
                 .map_err(io)?;
+            if bytes.len() as u64 > MAX_PGS_STREAM {
+                return Err(self.translator.tr(
+                    "error-subtitle-too-large",
+                    &[("path", request.video.display().to_string())],
+                ));
+            }
             // SUB-029: VobSub, with the palette of its `.idx` header
             let read = if codec == nikomiru_media::extract::DVD {
                 let palette = self.palette(&request.video, ff_index, cancel);
                 let cues = nikomiru_subs::vobsub::parse(&bytes, palette);
                 drop(bytes);
-                self.read_cues(&cues, ff_index, cancel)?
+                self.read_cues(&cues, ff_index, request.position_ms, cancel, reports)?
             } else {
                 let cues = nikomiru_subs::pgs::parse(&bytes);
                 drop(bytes);
-                self.read_cues(&cues, ff_index, cancel)?
+                self.read_cues(&cues, ff_index, request.position_ms, cancel, reports)?
             };
+            if read.is_empty() {
+                return Err(self.translator.tr("error-subtitle-empty", &[]));
+            }
             let mut part = cached.clone().into_os_string();
             part.push(".part");
             let part = PathBuf::from(part);
-            std::fs::write(&part, nikomiru_subs::srt::write(&read))
-                .and_then(|()| std::fs::rename(&part, &cached))
-                .map_err(io)?;
+            if cancel.is_cancelled() {
+                return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
+            }
+            let saved = std::fs::write(&part, nikomiru_subs::srt::write(&read)).and_then(|()| {
+                if cancel.is_cancelled() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "cancelled",
+                    ));
+                }
+                std::fs::rename(&part, &cached)
+            });
+            if saved.is_err() {
+                let _ = std::fs::remove_file(&part);
+            }
+            saved.map_err(io)?;
         }
         let mut loaded = self.file(&cached, Some("UTF-8"))?;
         loaded.encoding = None;
@@ -292,7 +353,9 @@ impl Worker {
         &self,
         cues: &[C],
         ff_index: i64,
+        position_ms: i64,
         cancel: &Cancel,
+        reports: &nikomiru_ui::subtitles::Reports,
     ) -> Result<Vec<crate::graphic::ReadCue>, String> {
         if cues.is_empty() {
             return Err(self.translator.tr("error-subtitle-empty", &[]));
@@ -307,6 +370,13 @@ impl Worker {
         };
         let read_line = |line: &nikomiru_subs::pgs::Picture| -> Result<String, String> {
             let Some(engine) = &engine else {
+                #[cfg(feature = "test-harness")]
+                if let Some(delay) = std::env::var("NIKOMIRU_TEST_OCR_DELAY_MS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                {
+                    std::thread::sleep(Duration::from_millis(delay.min(2000)));
+                }
                 return Ok(crate::ocr::test_text().unwrap_or_default());
             };
             let picture = nikomiru_ocr::grey(line.width, line.height, line.grey.clone())
@@ -315,11 +385,28 @@ impl Worker {
         };
         let started = std::time::Instant::now();
         let threads = crate::graphic::threads();
-        let Some(read) =
-            crate::graphic::read(cues, threads, cancel, &read_line).map_err(|reason| {
-                self.translator
-                    .tr("error-subtitle-read-failed", &[("reason", reason)])
-            })?
+        let Some(read) = crate::graphic::read_progressive(
+            cues,
+            position_ms,
+            threads,
+            cancel,
+            &read_line,
+            &|read, done, total| {
+                reports(nikomiru_ui::subtitles::Progress {
+                    loaded: Loaded {
+                        track: parse(Format::Srt, &nikomiru_subs::srt::write(read)),
+                        encoding: None,
+                        fonts: Vec::new(),
+                    },
+                    done,
+                    total,
+                });
+            },
+        )
+        .map_err(|reason| {
+            self.translator
+                .tr("error-subtitle-read-failed", &[("reason", reason)])
+        })?
         else {
             return Err(self.translator.tr("error-subtitle-read-cancelled", &[]));
         };

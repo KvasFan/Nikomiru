@@ -58,6 +58,8 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 
 Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL (`.dsl`, `.dsl.dz`) and MDict (`.mdx`) dictionaries. Their definitions show as plain text, without pictures. An MDict locked to a user cannot be read.
 
+Graphic subtitles read as text now appear progressively: OCR starts near the current playback position, and unread lines keep their pictures. Text already read can be looked up while work continues. Whole-track comprehension, gap acceleration and condensed-audio export wait for completion; changing or disabling subtitles cancels the earlier reading.
+
 ## 4. Looking words up
 
 - **Click** a character of a subtitle: the popup shows the longest word that starts there, its readings, meanings, pitch accent and frequencies.

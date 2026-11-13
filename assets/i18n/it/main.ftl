@@ -1026,3 +1026,5 @@ library-score-too-large = Troppi episodi per l'analisi della serie
 stats-encounters = Parole nuove incontrate per episodio
 stats-encounters-detail = Parole distinte che erano nuove quando le hai incontrate durante la riproduzione. I cambi di stato successivi conservano questo storico.
 stats-encounters-episode = { $title }: { $count } parole nuove incontrate
+
+condense-reading = Attendi il completamento della lettura dei sottotitoli prima di esportare l’audio condensato.

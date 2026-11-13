@@ -21,6 +21,15 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// Cumulative graphic OCR text, stamped against source changes.
+    SubtitleProgress {
+        /// Load generation.
+        generation: u64,
+        /// Graphic source.
+        source: Source,
+        /// Partial text and work counts.
+        progress: crate::subtitles::Progress,
+    },
     /// One episode counted for a series-card analysis.
     SeriesWordCount {
         /// Stamped series analysis.
@@ -274,6 +283,7 @@ impl std::fmt::Debug for Inbound {
         let name = match self {
             Inbound::Player(e) => return write!(f, "Player({:?})", e.value),
             Inbound::Subtitles { .. } => "Subtitles",
+            Inbound::SubtitleProgress { .. } => "SubtitleProgress",
             Inbound::Lookup { .. } => "Lookup",
             Inbound::Words { .. } => "Words",
             Inbound::WordCount { .. } => "WordCount",
@@ -787,6 +797,15 @@ impl Ui {
     pub fn handle(&mut self, message: Inbound) -> bool {
         let redraw = match message {
             Inbound::Player(event) => self.session.on_event(event),
+            Inbound::SubtitleProgress {
+                generation,
+                source,
+                progress,
+            } => {
+                self.session
+                    .subtitles_progress(generation, source, progress);
+                true
+            }
             Inbound::Subtitles {
                 generation,
                 source,
@@ -1546,8 +1565,19 @@ impl Ui {
             let waker = self.waker.clone();
             let source = request.source.clone();
             let secondary = request.secondary;
+            let progress_waker = self.waker.clone();
+            let progress_source = source.clone();
             self.session.start_subtitle_load(
                 request,
+                Box::new(move |progress| {
+                    if !secondary {
+                        progress_waker.wake(Inbound::SubtitleProgress {
+                            generation,
+                            source: progress_source.clone(),
+                            progress,
+                        });
+                    }
+                }),
                 Box::new(move |result| {
                     waker.wake(Inbound::Subtitles {
                         generation,

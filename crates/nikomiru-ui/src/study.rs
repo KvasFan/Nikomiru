@@ -76,6 +76,11 @@ impl Study {
         self.credit = Some(credit);
     }
 
+    /// Discard character credits while an incomplete OCR timeline changes ids.
+    pub fn clear_credits(&mut self) {
+        self.credit = None;
+    }
+
     /// The key the credits of `source` with `cues` cues are kept under.
     pub fn credit_key(source: &str, cues: usize) -> String {
         format!("{source}#{cues}")

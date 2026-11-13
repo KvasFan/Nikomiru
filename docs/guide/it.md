@@ -58,6 +58,8 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 
 Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.ifo`), DSL (`.dsl`, `.dsl.dz`) e MDict (`.mdx`). Le definizioni appaiono come testo semplice, senza immagini. Un MDict legato a un utente non si può leggere.
 
+I sottotitoli a immagini letti come testo ora compaiono progressivamente: la lettura parte vicino alla posizione corrente e le righe non ancora lette mantengono le immagini. Puoi cercare le parole del testo già pronto mentre il lavoro continua. Comprensione dell’intera traccia, accelerazione delle pause ed esportazione dell’audio condensato attendono il completamento; cambiare o disattivare i sottotitoli annulla la lettura precedente.
+
 ## 4. Cercare le parole
 
 - **Clic** su un carattere di un sottotitolo: il popup mostra la parola più lunga che comincia lì, con letture, significati, accento tonale e frequenze.

@@ -1009,3 +1009,5 @@ library-score-too-large = エピソード数が分析上限を超えています
 stats-encounters = エピソードで出会った新しい単語
 stats-encounters-detail = 再生中に出会った時点で新しかった単語の異なり数です。後で状態を変えても、この履歴は残ります。
 stats-encounters-episode = { $title }：新しい単語 { $count } 語
+
+condense-reading = 字幕の読み取りが終わってから音声をまとめて書き出してください。

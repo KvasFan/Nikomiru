@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Progressive graphic subtitle OCR (SUB-030, M25): nearby pictures are read first in bounded batches. Their text becomes clickable while later pictures are still being read; unread lines keep their pictures. Lookups survive expanded timelines, and only completed text is cached or offered as a full comprehension/audio-export source. Disabling/replacing subtitles cancels the old work.
+
 ## [2.33.0] - 2026-11-13
 
 The new words met while watching.

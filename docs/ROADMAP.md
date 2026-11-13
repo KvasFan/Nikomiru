@@ -898,6 +898,40 @@ Reuses the scene links already assigned to M4 (ANK-050).
 
 ---
 
+## Next ten milestones — M25…M34 (2026-11-14)
+
+The maintainer asked for ten consecutive milestones, prioritising subtitles
+and study tools. AI/speech services and ports are outside this batch. Each
+milestone gets its requirement and automated checks before implementation;
+manual checks remain explicit. Development continues to the next milestone
+without requiring a new request after each increment.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M25 | Graphic subtitle OCR progressively from the playback position | done |
+| M26 | External VobSub `.idx`/`.sub` pairs read as text | not started |
+| M27 | Embedded DVB subtitles read as text | not started |
+| M28 | Cancel book and series comprehension analyses | not started |
+| M29 | Browse and bulk-mark the words of a whole analysed book | not started |
+| M30 | Browse and bulk-mark the words of an analysed series | not started |
+| M31 | Export analysed media word lists for study elsewhere | not started |
+| M32 | Inspect and clear historical word encounters, including sync | not started |
+| M33 | Order/filter library material by comprehension | not started |
+| M34 | Bounded persistent analysis caches with source/dictionary invalidation | not started |
+
+## M25 — Progressive graphic OCR
+
+**Requirements**: SUB-030. **Goal**: use nearby recognised subtitle text while
+later pictures are still being read. Prioritise cues at/after the captured
+playback position, deliver bounded batches, reject stale generations and
+write the cache only when the whole track completes. Partial text supports
+lookup/mining, but is not presented as a complete comprehension/export source.
+
+**Exit criteria**: priority/batching/cancellation/error tests, actual loader
+and GUI progress checks, unchanged whole-track cache behavior, `cargo xtask ci`.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
 These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:

@@ -149,6 +149,19 @@ pub trait SubtitleSource: Send {
     /// Loads `request` and calls `done` with the result or a translated error.
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 
+    /// Read with cumulative graphic OCR reports; ordinary sources use load.
+    fn load_progressive(
+        &self,
+        request: Request,
+        _reports: crate::subtitles::Reports,
+        done: Box<dyn FnOnce(Result<Loaded, String>) + Send>,
+    ) {
+        self.load(request, done);
+    }
+
+    /// Cancel pending/running loads when subtitles are disabled or replaced.
+    fn cancel(&self, _secondary: bool) {}
+
     /// Aligns cues with the audio (SUB-018); a new load cancels it.
     fn align(
         &self,
@@ -377,6 +390,8 @@ pub struct Session {
     auto_pause_revision: u64,
     /// The scores of the episodes of the series open (KNW-008).
     episode_scores: crate::scores::EpisodeScores,
+    /// Last mpv picture visibility during progressive OCR.
+    graphic_bitmap: Option<bool>,
     /// The thumbnails of the progress bar (PLY-014).
     thumbnails: crate::thumbnails::Thumbnails,
     /// A dictionary is installed, and a card was made: two of the first
@@ -740,6 +755,7 @@ impl Session {
             sub_list_version: 0,
             score: None,
             episode_scores: Default::default(),
+            graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
             encounters: Default::default(),
@@ -1301,6 +1317,10 @@ impl Session {
     }
 
     fn update_gap_speed(&mut self) {
+        if self.subs.incomplete {
+            self.restore_gap_speed();
+            return;
+        }
         // Hold-to-speed owns mpv's speed until its key is released. Its
         // original speed was captured before the gap override was removed.
         if self.hold.active() {
@@ -2324,6 +2344,10 @@ impl Session {
             return false;
         }
         let current = if target == crate::condense::Target::Current {
+            if self.subs.incomplete {
+                self.toasts.push(self.tr("condense-reading", &[]));
+                return false;
+            }
             let Some(video) = self.current_path() else {
                 return false;
             };
@@ -4878,6 +4902,8 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.services.subtitle_source.cancel(false);
+        self.services.subtitle_source.cancel(true);
         self.secondary.clear(None);
         self.secondary_generation += 1;
         self.subs.clear(None);
@@ -5008,6 +5034,8 @@ impl Session {
     /// Shows `source`: mpv draws graphic tracks; text ones are loaded in the
     /// background and drawn by the overlay.
     fn use_subtitles(&mut self, source: Source) {
+        self.services.subtitle_source.cancel(false);
+        self.graphic_bitmap = None;
         // a choice made: the automatic one must not come after and replace it,
         // as it did for a file dropped before mpv listed its tracks (SUB-008)
         self.sub_auto_done = true;
@@ -5024,6 +5052,8 @@ impl Session {
                 let _ = self.services.player.show_bitmap_subtitles(Some(*id));
                 let name = source_name(&source);
                 self.subs.clear(Some(source.clone()));
+                self.subs.incomplete = true;
+                self.graphic_bitmap = Some(true);
                 self.cues_changed();
                 if self.services.ocr.installed() {
                     self.toasts
@@ -5054,6 +5084,7 @@ impl Session {
         self.sub_loads.push((
             self.sub_generation,
             Request {
+                position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
                 encoding: self.subs.forced_encoding.clone(),
@@ -5072,9 +5103,91 @@ impl Session {
     pub fn start_subtitle_load(
         &self,
         request: Request,
+        reports: crate::subtitles::Reports,
         done: Box<dyn FnOnce(Result<Loaded, String>) + Send>,
     ) {
-        self.services.subtitle_source.load(request, done);
+        self.services
+            .subtitle_source
+            .load_progressive(request, reports, done);
+    }
+
+    /// Partial text from the current graphic OCR; stale/finalised reports
+    /// cannot replace a newer source or a complete track.
+    pub fn subtitles_progress(
+        &mut self,
+        generation: u64,
+        source: Source,
+        progress: crate::subtitles::Progress,
+    ) {
+        if generation != self.sub_generation
+            || !self.subs.incomplete
+            || self.subs.source.as_ref() != Some(&source)
+        {
+            return;
+        }
+        self.study.clear_credits();
+        self.set_progress_track(source, progress.loaded);
+        self.subs.incomplete = true;
+        self.subs.update((self.view.time_pos * 1000.0) as i64);
+        self.progress_changed();
+        self.update_graphic_bitmap();
+    }
+
+    fn set_progress_track(&mut self, source: Source, loaded: Loaded) {
+        let remap =
+            crate::subtitles::progress_cues(self.subs.timeline().cues(), &loaded.track.cues);
+        let mapped = |i: usize| remap.get(i).copied().flatten();
+        let selection = self
+            .subs
+            .selection
+            .and_then(|(i, byte)| Some((mapped(i)?, byte)));
+        let highlight = self
+            .subs
+            .highlight
+            .take()
+            .and_then(|(i, bytes)| Some((mapped(i)?, bytes)));
+        let mut orphan = false;
+        for popup in self.popups.stack_mut() {
+            if let Origin::Subtitle { cue, .. } = &mut popup.origin {
+                if let Some(index) = mapped(*cue) {
+                    *cue = index;
+                } else {
+                    orphan = true;
+                }
+            }
+        }
+        self.keyboard_lookup = self
+            .keyboard_lookup
+            .and_then(|(i, byte)| Some((mapped(i)?, byte)));
+        self.subs.set_track(source, loaded);
+        self.subs.selection = selection;
+        self.subs.highlight = highlight;
+        if orphan {
+            self.close_all_popups();
+        }
+    }
+
+    fn progress_changed(&mut self) {
+        self.restore_gap_speed();
+        self.sub_list_version += 1;
+        self.update_auto_pause();
+    }
+
+    fn update_graphic_bitmap(&mut self) {
+        if !self.subs.incomplete {
+            return;
+        }
+        let Some(Source::Read { id, .. }) = self.subs.source.as_ref() else {
+            return;
+        };
+        let show = self.subs.active().is_empty() && !self.subs.disabled;
+        if self.graphic_bitmap != Some(show) {
+            let _ = self
+                .services
+                .player
+                .show_bitmap_subtitles(show.then_some(*id));
+            self.graphic_bitmap = Some(show);
+        }
     }
 
     /// A load finished. A result for an older request is dropped.
@@ -5106,12 +5219,22 @@ impl Session {
                 // SUB-028: the text in place of the pictures
                 if matches!(source, Source::Read { .. }) {
                     let _ = self.services.player.show_bitmap_subtitles(None);
+                    self.graphic_bitmap = Some(false);
                 }
                 // SUB-025: before its cues are laid out
                 crate::view::theme::register_fonts(&loaded.fonts);
-                self.subs.set_track(source, loaded);
+                let progressive = self.subs.incomplete;
+                if progressive {
+                    self.set_progress_track(source, loaded);
+                } else {
+                    self.subs.set_track(source, loaded);
+                }
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
-                self.cues_changed();
+                if progressive {
+                    self.progress_changed();
+                } else {
+                    self.cues_changed();
+                }
                 if let Some(link) = link {
                     self.go_to_link_cue(link);
                 }
@@ -5131,7 +5254,11 @@ impl Session {
                 tracing::warn!("subtitles: {reason}");
                 // SUB-028: the pictures stay, drawn by mpv
                 let pictures = match source {
-                    Source::Read { id, .. } => Some(Source::Bitmap(id)),
+                    Source::Read { id, .. } => {
+                        let _ = self.services.player.show_bitmap_subtitles(Some(id));
+                        self.graphic_bitmap = None;
+                        Some(Source::Bitmap(id))
+                    }
                     _ => None,
                 };
                 self.subs.clear(pictures);
@@ -5203,6 +5330,7 @@ impl Session {
         };
         self.remember(Remember::Subtitle(remembered));
         if key == "off" {
+            self.services.subtitle_source.cancel(false);
             self.sub_generation += 1;
             let _ = self.services.player.show_bitmap_subtitles(None);
             self.subs.clear(None);
@@ -5258,6 +5386,7 @@ impl Session {
         self.sub_loads.push((
             self.secondary_generation,
             Request {
+                position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
                 encoding: None,
@@ -6294,6 +6423,7 @@ impl Session {
                 self.words.ask(&cue.plain_text);
             }
         }
+        self.update_graphic_bitmap();
         self.count_score();
         // KNW-002: reader text in view first; the whole chapter follows
         // the player's pending subtitle work (KNW-014/015).
@@ -6366,7 +6496,7 @@ impl Session {
     /// they or the statuses change (KNW-007). The words' cache holds a long
     /// film's lines; beyond, there is no score.
     fn count_score(&mut self) {
-        if !self.services.config.subtitles.word_colors {
+        if !self.services.config.subtitles.word_colors || self.subs.incomplete {
             self.score = None;
             self.word_list = None;
             return;
