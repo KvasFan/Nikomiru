@@ -1015,3 +1015,6 @@ condense-reading = 字幕の読み取りが終わってから音声をまとめ�
 error-subtitle-vobsub-index = VobSub のインデックスが破損しているか、読み取れる言語トラックがありません。
 
 analysis-cancel = 解析をキャンセル
+
+analysis-words = 学習する単語
+analysis-words-back = 一覧に戻る

@@ -1032,3 +1032,6 @@ condense-reading = Attendi il completamento della lettura dei sottotitoli prima 
 error-subtitle-vobsub-index = L’indice VobSub è danneggiato o non identifica una traccia di lingua leggibile.
 
 analysis-cancel = Annulla analisi
+
+analysis-words = Parole da studiare
+analysis-words-back = Torna all’elenco

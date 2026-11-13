@@ -60,6 +60,8 @@ pub(crate) struct State {
     pub(crate) drawn_marks: DrawnMarks,
     study_key: Option<(String, usize)>,
     words_open: bool,
+    analysis: Option<String>,
+    analysis_words: super::analysis_words::State,
     word_query: String,
     words: super::word_list::State,
     /// The chapter laid out: its book, its number, the rows and the columns
@@ -988,7 +990,14 @@ fn reader(
     close
 }
 
-fn whole_book_score(ui: &mut Ui, s: &Scene<'_>, uid: &str, title: &str, out: &mut Vec<Command>) {
+fn whole_book_score(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    uid: &str,
+    title: &str,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
     use crate::book_scores::Status;
     let status = s.page.scores.get(uid);
     match status {
@@ -1019,6 +1028,9 @@ fn whole_book_score(ui: &mut Ui, s: &Scene<'_>, uid: &str, title: &str, out: &mu
     }
     if matches!(status, Some(Status::Counting)) && ui.button(tr(s, "analysis-cancel")).clicked() {
         out.push(Command::BookAnalysisCancel(uid.into()));
+    }
+    if s.page.scores.words(uid).is_some() && ui.button(tr(s, "analysis-words")).clicked() {
+        state.analysis = Some(uid.into());
     }
     let button = ui.add_enabled(
         !s.page.scores.busy(),
@@ -1081,6 +1093,27 @@ fn list(
             }
         });
     });
+    if let Some(uid) = state.analysis.clone() {
+        if s.colours
+            && let Some((serial, words)) = s.page.scores.words(&uid)
+            && let Some((_, book)) = s.page.list.iter().find(|(u, _)| u == &uid)
+        {
+            if super::analysis_words::show(
+                ui,
+                format!("{uid}/{serial}"),
+                &book.title,
+                words,
+                &mut state.analysis_words,
+                s.tr,
+                out,
+            ) {
+                state.analysis = None;
+            }
+            return;
+        }
+        state.analysis = None;
+        state.analysis_words = Default::default();
+    }
     if let Some((text, ok)) = &s.page.status {
         let shade: Color32 = if *ok {
             palette::current().good
@@ -1127,7 +1160,7 @@ fn list(
                     );
                     if s.colours {
                         ui.push_id(("book-score", uid), |ui| {
-                            whole_book_score(ui, s, uid, &record.title, out)
+                            whole_book_score(ui, s, uid, &record.title, state, out)
                         });
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1291,6 +1324,55 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::BookAnalysisCancel(uid) if uid == "book/a"))
         );
+    }
+
+    // T-KNW-020: whole-book vocabulary is reached without opening the reader.
+    #[test]
+    fn whole_book_words_use_the_shared_bulk_status_controls() {
+        let mut page = BooksPage {
+            list: vec![(
+                "book/a".into(),
+                nikomiru_library::books::BookRecord {
+                    path: "a.epub".into(),
+                    title: "Book".into(),
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        page.scores.request("book/a".into(), "a.epub".into(), 0);
+        let request = page.scores.take().pop().unwrap();
+        page.scores.done(
+            &request,
+            Ok(crate::book_scores::Outcome::Counted(
+                crate::words::Counted::from_lines([
+                    vec![("猫".into(), "ねこ".into()); 2],
+                    vec![("読む".into(), "よむ".into())],
+                ]),
+            )),
+        );
+        page.scores
+            .update(true, &page.list, &crate::words::Words::default());
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        h.get_by_label("analysis-words").click();
+        h.run_steps(2);
+        h.get_by_label("×2");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-known").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::WordsStatus(words, crate::words::WordStatus::Known) if words.len() == 2)));
+        assert!(h.state().page.open.is_none());
+        h.state_mut()
+            .page
+            .scores
+            .request("book/a".into(), "a.epub".into(), 0);
+        h.run_steps(2);
+        assert!(h.query_by_label("analysis-words-back").is_none());
+        assert!(h.state().state.analysis.is_none());
     }
 
     fn open() -> OpenBook {

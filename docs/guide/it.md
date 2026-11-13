@@ -227,3 +227,5 @@ Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio 
 - Problemi e idee: <https://github.com/KvasFan/nikomiru/issues>.
 
 Durante l’analisi di un libro intero o di una serie, Annulla analisi interrompe il lavoro e scarta il risultato incompleto. Puoi analizzare subito un altro elemento; riproduzione e punteggi degli episodi continuano.
+
+Dopo l’analisi dell’intero libro, Parole da studiare apre il vocabolario di tutti i capitoli. Cerca una parola o lettura, filtra le parole nuove/in apprendimento, seleziona righe o tutte quelle visibili e assegna loro uno stato insieme. Il punteggio del libro segue questi cambiamenti condivisi. Aggiornare l’analisi chiude il vecchio elenco.

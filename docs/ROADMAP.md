@@ -912,7 +912,7 @@ without requiring a new request after each increment.
 | M26 | External VobSub `.idx`/`.sub` pairs read as text | done |
 | M27 | Embedded DVB subtitles read as text | done |
 | M28 | Cancel book and series comprehension analyses | done |
-| M29 | Browse and bulk-mark the words of a whole analysed book | not started |
+| M29 | Browse and bulk-mark the words of a whole analysed book | done |
 | M30 | Browse and bulk-mark the words of an analysed series | not started |
 | M31 | Export analysed media word lists for study elsewhere | not started |
 | M32 | Inspect and clear historical word encounters, including sync | not started |
@@ -971,6 +971,17 @@ ordinary episode-list scoring keep independent cancellation identities.
 
 **Exit criteria**: linked token isolation, cancellation/restart and stale
 metadata/count tests, accessible UI actions and `cargo xtask ci`.
+
+---
+
+## M29 — Whole-book vocabulary
+
+**Requirements**: KNW-020. Browse complete retained whole-book counts with
+frequency, shared statuses, search and bulk marking. Reuse the word-list
+controls; keep the reader closed and clear stale selections on refresh.
+
+**Exit criteria**: whole-book occurrence/status/invalidation and accessible
+browser/bulk-mark tests; `cargo xtask ci`.
 
 ---
 

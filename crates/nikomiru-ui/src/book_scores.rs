@@ -4,7 +4,7 @@
 //! Four retained counts, one requested analysis at a time; statuses rescore
 //! those counts without reopening files. Results never open the reader.
 
-use crate::words::{Counted, Score, Words};
+use crate::words::{Counted, ListedWord, Score, Words};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -57,6 +57,7 @@ struct Entry {
     request: Request,
     status: Status,
     counted: Option<Arc<Counted>>,
+    words: Option<Arc<Vec<ListedWord>>>,
     revision: Option<u64>,
 }
 
@@ -131,6 +132,7 @@ impl Scores {
                 request,
                 status: Status::Counting,
                 counted: None,
+                words: None,
                 revision: None,
             },
         );
@@ -162,6 +164,7 @@ impl Scores {
             {
                 e.status =
                     Status::Score(counted.score(|word, reading| words.status(word, reading)));
+                e.words = Some(Arc::new(words.listed_counted(counted)));
                 e.revision = Some(words.revision());
             }
         }
@@ -207,6 +210,12 @@ impl Scores {
             .map(|e| e.cancel.clone())
     }
 
+    /// Complete vocabulary only, paired with its immutable analysis identity.
+    pub fn words(&self, uid: &str) -> Option<(u64, &Arc<Vec<ListedWord>>)> {
+        let entry = self.entries.get(uid)?;
+        Some((entry.request.serial, entry.words.as_ref()?))
+    }
+
     /// The score or analysis state for a library row.
     pub fn get(&self, uid: &str) -> Option<&Status> {
         self.entries.get(uid).map(|e| &e.status)
@@ -237,6 +246,32 @@ mod tests {
         let active = scores.token(&new).unwrap();
         scores.clear();
         assert!(active.is_cancelled());
+    }
+
+    // T-KNW-020: all paragraphs contribute and live statuses need no new read.
+    #[test]
+    fn vocabulary_is_complete_live_and_invalidated_on_refresh() {
+        let mut scores = Scores::default();
+        let mut words = Words::default();
+        scores.request("book/0".into(), "0.epub".into(), 0);
+        let request = scores.take().pop().unwrap();
+        assert!(scores.words("book/0").is_none());
+        scores.done(&request, Ok(count()));
+        scores.update(true, &records(), &words);
+        let (serial, list) = scores.words("book/0").unwrap();
+        assert_eq!(serial, request.serial);
+        assert_eq!(list[0].expression, "猫");
+        assert_eq!(list[0].count, 2);
+        assert_eq!(list[1].expression, "読む");
+        words.set_status("猫", "ねこ", WordStatus::Known);
+        scores.update(true, &records(), &words);
+        assert_eq!(
+            scores.words("book/0").unwrap().1[0].status,
+            WordStatus::Known
+        );
+        assert!(scores.take().is_empty());
+        scores.request("book/0".into(), "0.epub".into(), 0);
+        assert!(scores.words("book/0").is_none());
     }
 
     fn records() -> Vec<(String, BookRecord)> {

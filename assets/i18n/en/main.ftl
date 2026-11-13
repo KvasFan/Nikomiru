@@ -1032,3 +1032,6 @@ condense-reading = Wait for subtitle reading to finish before exporting condense
 error-subtitle-vobsub-index = The VobSub index is damaged or does not identify a readable language track.
 
 analysis-cancel = Cancel analysis
+
+analysis-words = Study words
+analysis-words-back = Back to list

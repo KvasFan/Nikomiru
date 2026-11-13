@@ -8,6 +8,7 @@
 //! subtitles, the subtitle list, the control bar, the dictionary popups, the
 //! dictionaries page, the toast.
 
+mod analysis_words;
 mod anki_page;
 mod audio_page;
 mod backup_page;
