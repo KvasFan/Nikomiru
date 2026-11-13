@@ -10,10 +10,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod book_scores;
 pub mod books;
 pub mod catalog;
+pub mod condense;
 pub mod controls;
 pub mod dictionaries;
+mod encounters;
+mod gaps;
 #[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod hooker;
@@ -25,10 +29,12 @@ pub mod online;
 pub mod player_settings;
 pub mod popup;
 pub mod popup_view;
+pub mod reader_words;
 pub mod review;
 pub mod scores;
 pub mod screensaver;
 pub mod screenshot;
+pub mod series_scores;
 pub mod servers;
 pub mod session;
 pub mod setup;
@@ -39,6 +45,7 @@ pub mod sync;
 pub mod thumbnails;
 mod ui;
 pub mod view;
+pub mod web_video;
 pub mod word_audio;
 pub mod words;
 

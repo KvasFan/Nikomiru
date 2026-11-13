@@ -4,6 +4,73 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-11-13
+
+The new words met while watching.
+
+### Added
+
+- Historical new words met per episode in Statistics (KNW-018, M21): with word colours enabled, distinct unknown headwords from active main text during playback are kept once per episode. Paused seeking and passive analysis do not count, and later status edits preserve history. Encounters survive restarts, backups and WebDAV sync; devices merge by word and earliest encounter time.
+
+## [2.32.0] - 2026-11-13
+
+Comprehension on the series cards.
+
+### Added
+
+- Series comprehension on Library cards (KNW-017, M21): Analyse/Refresh counts local subtitle sources without opening or playing the series. Scores sum word occurrences and lines across episodes and show analysed/total coverage and failed sources. Retained counts follow shared statuses; language, tool and dictionary changes invalidate them.
+
+## [2.31.0] - 2026-11-13
+
+Comprehension across a whole book before opening it.
+
+### Added
+
+- Whole-book comprehension from the Books list (KNW-016, M21): with word colours enabled, Analyse counts every text chapter of a local EPUB or saved web page without opening it or changing reading progress. Refresh rereads the source; retained counts follow shared word statuses. Analysis runs on its own worker, skips images and manga, and reports source errors or size limits without a partial score.
+
+## [2.30.0] - 2026-11-12
+
+Choose an episode by its embedded subtitles too.
+
+### Added
+
+- Episode comprehension scores before playback now include embedded text subtitles in local videos (KNW-008, M21). Selection follows the player's saved track and language priorities, including a preferred-language embedded track ahead of another language's external file. Graphic subtitles and remote videos stay unscored.
+- Probing and extraction run on the episode counter's worker, with a private cache and cancellation at shutdown. Reopening a series rechecks its subtitle sources; language/tool setting changes invalidate earlier results, and stale replies cannot replace the new scores.
+
+## [2.29.0] - 2026-11-12
+
+The words of the chapter you are reading.
+
+### Added
+
+- Word status underlines in EPUB and web pages, in horizontal and vertical writing (KNW-002, M20). Settings → Subtitles → Colour the words applies to the reader too, using the same statuses as subtitles and Anki.
+- The current chapter's comprehension score and Words view (KNW-014, KNW-015, M21): known word tokens, paragraphs with no new word, and headwords by frequency. Search or narrow to new/learning words, select several and change their status together. Returning to Read keeps your position. Very long chapters remain readable without a partial score; manga image chapters are excluded.
+
+### Fixed
+
+- Auto-pause keeps the current subtitle's stop briefly when an end-position event arrives before the player's pause event, preventing the stop from being advanced too early (AK-BUG-007).
+
+## [2.28.0] - 2026-11-12
+
+Videos from web pages, with clickable subtitles.
+
+### Added
+
+- Videos from web addresses (PLY-023, M24): Open web video on the Library page or player bar, a dropped URL or a URL on the command line. The user's yt-dlp resolves the media and downloads uploaded or automatic text subtitles in the preferred languages; the subtitles can be clicked and mined, including videos with separate audio streams. The original page is kept for resume and the card's source link. Choose the executable in Settings → Advanced, `NIKOMIRU_YT_DLP` or PATH. On-demand HTTP media is supported; live, DRM and segmented-only streams are not.
+
+## [2.27.0] - 2026-11-12
+
+Listening between study sessions.
+
+### Added
+
+- Condensed audio (AUD-010, M23): export an episode from its subtitle menu, an episode from the library or a whole series, as Opus or MP3. The lines keep the card audio's padding, nearby lines are joined and every line gets a chapter. The current episode uses the current subtitle offset and audio track; library exports also read embedded text tracks. Exports can be cancelled, report failures per episode and never overwrite an existing file.
+- Speed through pauses between subtitle lines (PLY-022, M23): Settings → General → Playback offers 2–4× for gaps of at least three seconds, off by default. Dialogue keeps the chosen playback speed, as do its edges; pause, replay and popups restore it, and the temporary speed is never saved for an episode.
+
+### Fixed
+
+- Gap speed restores earlier before the next subtitle line, allowing for audio queued at the faster rate (AK-BUG-006).
+
 ## [2.26.0] - 2026-11-10
 
 The pitch accent on the words.

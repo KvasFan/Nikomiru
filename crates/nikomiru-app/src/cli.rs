@@ -9,7 +9,7 @@ use std::path::Path;
 pub const USAGE: &str = "\
 Usage: nikomiru [OPTIONS] [FILE | URL]
 
-Opens FILE (a video) or URL (file://, nikomiru://) in Nikomiru. If Nikomiru is
+Opens FILE (a video) or URL (file://, nikomiru://, https://) in Nikomiru. If Nikomiru is
 already running, the running window opens it.
 
 Options:

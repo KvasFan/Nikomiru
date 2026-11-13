@@ -592,6 +592,12 @@ impl PlayerHandle {
         )
     }
 
+    /// Attach the separate audio stream of an explicitly opened web video
+    /// (PLY-023), selecting it without reloading the video.
+    pub fn add_audio(&self, url: &str) -> Result<(), PlayerError> {
+        self.cmd("audio-add", &[url, "select"])
+    }
+
     /// Stops playback at `seconds` (or no longer): mpv pauses on that frame,
     /// because `keep-open` turns the end into a pause (SUB-013, cue replay).
     pub fn stop_at(&self, seconds: Option<f64>) -> Result<(), PlayerError> {

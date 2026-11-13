@@ -21,6 +21,29 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// One episode counted for a series-card analysis.
+    SeriesWordCount {
+        /// Stamped series analysis.
+        request: crate::series_scores::Request,
+        /// Episode uid.
+        uid: String,
+        /// Complete count, unavailable source or error.
+        result: Result<Option<nikomiru_library::words::Counted>, String>,
+    },
+    /// Whole-book analysis, returned without opening the reader.
+    BookCount {
+        /// The stamped local source request.
+        request: crate::book_scores::Request,
+        /// Full count or analysis exclusion/error.
+        result: Result<crate::book_scores::Outcome, String>,
+    },
+    /// Resolved web video, carrying the request generation (PLY-023).
+    WebVideo {
+        /// Request generation.
+        generation: u64,
+        /// Relays and subtitles, or the translated failure.
+        result: Result<crate::web_video::Ready, String>,
+    },
     /// A player event.
     Player(Stamped<PlayerEvent>),
     /// A media server's video is ready, or is not (SRV-008).
@@ -85,7 +108,7 @@ pub enum Inbound {
     },
     /// The words of an episode counted (KNW-008).
     WordCount {
-        /// The words' generation (the dictionaries').
+        /// The count epoch (series, settings and dictionary changes).
         generation: u64,
         /// The episode.
         uid: String,
@@ -258,6 +281,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::ImportProgress { .. } => "ImportProgress",
             Inbound::ImportDone { .. } => "ImportDone",
             Inbound::Open(_) => "Open",
+            Inbound::WebVideo { .. } => "WebVideo",
             Inbound::Activate => "Activate",
             Inbound::ShowLibrary => "ShowLibrary",
             Inbound::Chosen { .. } => "Chosen",
@@ -293,6 +317,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::Ocr(_) => "Ocr",
             Inbound::OcrRead(_) => "OcrRead",
             Inbound::BookRead { .. } => "BookRead",
+            Inbound::BookCount { .. } => "BookCount",
+            Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
             #[cfg(feature = "test-harness")]
             Inbound::Harness(_) => "Harness",
@@ -325,6 +351,10 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    WebOpenDialog,
+    WebOpen(String),
+    Condense(crate::condense::Target, nikomiru_media::condense::Format),
+    CondenseCancel,
     Action(Action),
     SeekTo(f64),
     SetVolume(f64),
@@ -361,6 +391,8 @@ pub(crate) enum Command {
     /// The rows of the subtitle list in view changed: their words are
     /// wanted (LKP-061).
     ListRows(Vec<usize>),
+    /// Reader paragraphs stamped with their book/chapter (KNW-002).
+    BookRows(String, usize, Vec<usize>),
     PopupLookup {
         level: usize,
         text: String,
@@ -512,6 +544,9 @@ pub(crate) enum Command {
     WordAudioSetup,
     /// The Books page opened.
     BooksOpen,
+    BookAnalyse(String),
+    /// Explicit comprehension analysis from a local series card.
+    SeriesAnalyse(u64),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
     /// A book of the list.
@@ -804,6 +839,10 @@ impl Ui {
                 self.session.dict_finished(generation, result);
                 true
             }
+            Inbound::WebVideo { generation, result } => {
+                self.session.web_video_ready(generation, result);
+                true
+            }
             Inbound::Open(target) => {
                 if target
                     .get(..9)
@@ -933,6 +972,7 @@ impl Ui {
                         .library_import(path, nikomiru_library::Grouping::BySeries),
                     Dialog::AudioDatabase => self.session.audio_database_chosen(&path),
                     Dialog::StatsExport => self.session.stats_export(path),
+                    Dialog::CondensedFolder => self.session.condense_to(path),
                     Dialog::Book | Dialog::MangaFolder => self.session.book_add(path),
                     Dialog::Audiobook => self.session.open(&path),
                     Dialog::BackupSave => self.session.backup_to(path),
@@ -989,6 +1029,18 @@ impl Ui {
             }
             Inbound::OcrRead(reading) => {
                 self.session.manga_recognized(reading);
+                true
+            }
+            Inbound::SeriesWordCount {
+                request,
+                uid,
+                result,
+            } => {
+                self.session.library_page.scores.done(request, &uid, result);
+                true
+            }
+            Inbound::BookCount { request, result } => {
+                self.session.book_count_done(&request, result);
                 true
             }
             Inbound::BookRead { path, read } => {
@@ -1097,6 +1149,12 @@ impl Ui {
     /// a drop counts. A zip is a dictionary; a subtitle file goes with the open
     /// video; anything else is a video.
     pub fn dropped(&mut self, path: &Path) {
+        if is_web_address(&path.to_string_lossy()) {
+            self.session.open(path);
+            self.pump();
+            return;
+        }
+
         let extension = path
             .extension()
             .and_then(|e| e.to_str())
@@ -1214,7 +1272,8 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
-        self.session.popups_covered = self.view.dict_page_open
+        self.session.popups_covered = self.view.web_url_open
+            || self.view.dict_page_open
             || self.view.anki_page_open
             || self.view.online_page_open
             || self.view.player_page_open
@@ -1266,6 +1325,7 @@ impl Ui {
             Command::ListTime(cue) => s.seek_to_cue(cue),
             Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),
+            Command::BookRows(uid, chapter, paragraphs) => s.book_rows(&uid, chapter, &paragraphs),
             Command::PopupLookup {
                 level,
                 text,
@@ -1347,6 +1407,24 @@ impl Ui {
             Command::LibraryOpen => s.library_open(),
             Command::LibraryAddFolder => self.view.dialog = Some(Dialog::LibraryFolder),
             Command::HideFirstSteps => self.session.hide_first_steps(),
+            Command::WebOpenDialog => {
+                self.view.web_url_open = true;
+                self.view.web_url_focus = true;
+            }
+            Command::WebOpen(page) => {
+                self.view.web_url_open = false;
+                if is_web_address(page.trim()) {
+                    s.open(Path::new(page.trim()));
+                } else {
+                    self.view.toast(s.translator().tr("webvideo-invalid", &[]));
+                }
+            }
+            Command::Condense(target, format) => {
+                if s.condense_choose(target, format) {
+                    self.view.dialog = Some(Dialog::CondensedFolder);
+                }
+            }
+            Command::CondenseCancel => s.condense_cancel(),
             Command::StatsExport => self.view.dialog = Some(Dialog::StatsExport),
             // KNW-005, KNW-006
             Command::KnownFromAnki => s.known_from_anki(true),
@@ -1391,6 +1469,8 @@ impl Ui {
                 }
             }
             Command::BooksOpen => s.books_open(),
+            Command::BookAnalyse(uid) => s.book_analyse(&uid),
+            Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookPage(address) => s.book_page(&address),
             Command::BookRemove(uid) => s.book_remove(&uid),
@@ -1617,7 +1697,15 @@ impl Ui {
             let reply = move |r: LibraryReply| waker.wake(Inbound::Library(r));
             let catalog = self.session.catalog();
             match job {
+                LibraryJob::Condense(request) => catalog.condense(
+                    *request,
+                    Box::new(move |r| reply(LibraryReply::Condensed(r))),
+                ),
                 LibraryJob::Home => catalog.home(Box::new(move |r| reply(LibraryReply::Home(r)))),
+                LibraryJob::SeriesAnalysis(request) => catalog.episodes(
+                    request.series,
+                    Box::new(move |r| reply(LibraryReply::SeriesAnalysis(request, r))),
+                ),
                 LibraryJob::Episodes(id) => {
                     catalog.episodes(id, Box::new(move |r| reply(LibraryReply::Episodes(id, r))))
                 }
@@ -1648,6 +1736,14 @@ impl Ui {
                     Box::new(move |r| reply(LibraryReply::Review(r))),
                 ),
             }
+        }
+        for request in self.session.take_web_jobs() {
+            let generation = request.generation;
+            let waker = self.waker.clone();
+            self.session.start_web_video(
+                request,
+                Box::new(move |result| waker.wake(Inbound::WebVideo { generation, result })),
+            );
         }
         for path in self.session.take_book_reads() {
             let waker = self.waker.clone();
@@ -1981,13 +2077,39 @@ impl Ui {
         }
         for (uid, request) in self.session.take_word_counts() {
             let waker = self.waker.clone();
-            let generation = request.generation;
+            let generation = request.epoch;
             self.session.start_word_count(
                 request,
                 Box::new(move |result| {
                     waker.wake(Inbound::WordCount {
                         generation,
                         uid,
+                        result,
+                    });
+                }),
+            );
+        }
+        if let Some((analysis, uid, request)) = self.session.take_series_word_count() {
+            let waker = self.waker.clone();
+            self.session.start_word_count(
+                request,
+                Box::new(move |result| {
+                    waker.wake(Inbound::SeriesWordCount {
+                        request: analysis,
+                        uid,
+                        result,
+                    });
+                }),
+            );
+        }
+        for request in self.session.take_book_counts() {
+            let waker = self.waker.clone();
+            let asked = request.clone();
+            self.session.start_book_count(
+                request,
+                Box::new(move |result| {
+                    waker.wake(Inbound::BookCount {
+                        request: asked,
                         result,
                     });
                 }),

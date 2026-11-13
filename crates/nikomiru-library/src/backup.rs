@@ -430,10 +430,17 @@ mod tests {
     }
 
     // T-BAK-003: a round trip, with what was there kept
+    // T-KNW-018: encounter history is captured and restored with the database.
     #[test]
     fn a_restore_gives_back_the_library() {
         let f = fixture();
+        f.library
+            .record_encounters("video/ep", &[("猫".into(), "ねこ".into())], 10)
+            .unwrap();
         let out = backup(&f, false);
+        f.library
+            .record_encounters("video/ep", &[("犬".into(), "いぬ".into())], 20)
+            .unwrap();
         let mut changed = f.library.video("video/ep").unwrap().unwrap();
         changed.last_position_ms = 9;
         f.library.put_video("video/ep", &changed).unwrap();
@@ -465,6 +472,9 @@ mod tests {
             library.video("video/ep").unwrap().unwrap().last_position_ms,
             1234
         );
+        let encounters = library.word_encounters().unwrap();
+        assert_eq!(encounters["video/ep"].len(), 1);
+        assert_eq!(encounters["video/ep"]["猫\nねこ"], 10);
         assert!(!finish(&data, &config, &presets).unwrap());
         drop(dir);
     }

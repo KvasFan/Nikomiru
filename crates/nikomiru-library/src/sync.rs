@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::books::{BOOKS, BookRecord};
 use crate::cards::{MINED_CARDS, MinedCard};
 use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
+use crate::encounters::{ENCOUNTERS, Encounters};
 use crate::review::{REVIEW_CARDS, ReviewCard};
 use crate::review_log::{Answer, REVIEW_LOG};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
@@ -113,6 +114,9 @@ pub struct DeviceState {
     /// files have none.
     #[serde(default)]
     pub words: BTreeMap<String, WordMark>,
+    /// Historical new headwords per media uid (KNW-018); older files have none.
+    #[serde(default)]
+    pub encounters: BTreeMap<String, Encounters>,
 }
 
 /// Which of two versions of a review card wins (REV-006): the one answered
@@ -229,6 +233,9 @@ impl DeviceState {
                     self.review.insert(*id, card.clone());
                 }
             }
+        }
+        for (uid, encounters) in &other.encounters {
+            crate::encounters::merge(self.encounters.entry(uid.clone()).or_default(), encounters);
         }
         // KNW-001: the newer mark of a word
         for (key, mark) in &other.words {
@@ -375,6 +382,9 @@ impl Library {
             collect::<_, Answer>(tx, REVIEW_LOG, |key: u128, a| {
                 state.review_log.insert(format!("{key:032x}"), a);
             })?;
+            collect::<_, Encounters>(tx, ENCOUNTERS, |uid: &str, words| {
+                state.encounters.insert(uid.to_string(), words);
+            })?;
             collect::<_, WordMark>(tx, WORD_STATUS, |key: &str, m| {
                 state.words.insert(key.to_string(), m);
             })?;
@@ -475,6 +485,10 @@ impl Library {
             let mut review = db_err!(tx.open_table(REVIEW_CARDS))?;
             for (id, c) in &state.review {
                 db_err!(review.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
+            }
+            let mut encounters = db_err!(tx.open_table(ENCOUNTERS))?;
+            for (uid, words) in &state.encounters {
+                db_err!(encounters.insert(uid.as_str(), postcard::to_stdvec(words)?.as_slice()))?;
             }
             let mut words = db_err!(tx.open_table(WORD_STATUS))?;
             for (key, mark) in &state.words {
@@ -610,6 +624,11 @@ mod tests {
             prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
             prop::collection::btree_map(0..3u64, 0..4u8, 0..3),
             prop::collection::btree_map("[ab]", (0..4usize, 0..4i64), 0..3),
+            prop::collection::btree_map(
+                "[ab]",
+                prop::collection::btree_map("[xy]", 0..50i64, 0..3),
+                0..3,
+            ),
         )
             .prop_map(
                 |(
@@ -624,6 +643,7 @@ mod tests {
                     buried,
                     log,
                     words,
+                    encounters,
                 )| {
                     use crate::words::WordStatus;
                     let statuses = [
@@ -633,6 +653,7 @@ mod tests {
                         WordStatus::Ignored,
                     ];
                     DeviceState {
+                        encounters,
                         words: words
                             .into_iter()
                             .map(|(k, (s, at))| {
@@ -989,5 +1010,52 @@ mod tests {
         merged.merge(&a.export_state(now_ms()).unwrap());
         b.apply_state(&merged).unwrap();
         assert!(b.video("video/ep1").unwrap().unwrap().removed);
+    }
+}
+
+#[cfg(test)]
+mod encounter_tests {
+    use super::*;
+
+    // T-KNW-018: actual libraries export/merge/apply encounter sets, with
+    // old default-empty JSON and the same compressed state round trip.
+    #[test]
+    fn playback_encounters_sync_without_duplicates_and_old_files_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = Library::open(&dir.path().join("a.redb")).unwrap();
+        let b = Library::open(&dir.path().join("b.redb")).unwrap();
+        let cat = ("猫".into(), "ねこ".into());
+        let dog = ("犬".into(), "いぬ".into());
+        a.record_encounters("video/a", std::slice::from_ref(&cat), 20)
+            .unwrap();
+        b.record_encounters("video/a", &[cat.clone(), dog], 10)
+            .unwrap();
+        let mut ab = a.export_state(100).unwrap();
+        let mut ba = b.export_state(100).unwrap();
+        let original_a = ab.clone();
+        ab.merge(&ba);
+        ba.merge(&original_a);
+        assert_eq!(ab, ba);
+        ab.merge(&ba);
+        assert_eq!(ab, ba);
+        assert_eq!(ab.encounters["video/a"].len(), 2);
+        assert_eq!(
+            ab.encounters["video/a"][&crate::words::word_key(&cat.0, &cat.1)],
+            10
+        );
+        a.apply_state(&ab).unwrap();
+        b.apply_state(&ab).unwrap();
+        assert_eq!(a.word_encounters().unwrap(), b.word_encounters().unwrap());
+        assert_eq!(DeviceState::decode(&ab.encode().unwrap()).unwrap(), ab);
+        let mut old = serde_json::to_value(&ab).unwrap();
+        old.as_object_mut().unwrap().remove("encounters");
+        let mut zip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        zip.write_all(&serde_json::to_vec(&old).unwrap()).unwrap();
+        assert!(
+            DeviceState::decode(&zip.finish().unwrap())
+                .unwrap()
+                .encounters
+                .is_empty()
+        );
     }
 }

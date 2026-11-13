@@ -21,6 +21,24 @@ use crate::books::{BooksPage, OpenBook, percent};
 use crate::popup;
 use crate::session::Session;
 use crate::ui::Command;
+use crate::words::{Marks, Underline};
+
+/// Actual visible underline segments, for the GUI harness.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct DrawnMarks {
+    pub unknown: usize,
+    pub learning: usize,
+}
+
+impl DrawnMarks {
+    fn record(&mut self, why: Underline) {
+        match why {
+            Underline::Unknown => self.unknown += 1,
+            Underline::Learning => self.learning += 1,
+            _ => {}
+        }
+    }
+}
 
 /// The size of the text, in points.
 const TEXT_SIZE: f32 = 22.0;
@@ -39,6 +57,11 @@ const MIN_SELECTION: f32 = 8.0;
 /// What the page keeps between frames.
 #[derive(Default)]
 pub(crate) struct State {
+    pub(crate) drawn_marks: DrawnMarks,
+    study_key: Option<(String, usize)>,
+    words_open: bool,
+    word_query: String,
+    words: super::word_list::State,
     /// The chapter laid out: its book, its number, the rows and the columns
     /// of a page, and its cells.
     columns: Option<((String, usize, usize, usize), Columns)>,
@@ -69,6 +92,10 @@ impl std::fmt::Debug for State {
 
 /// What the page shows.
 pub(crate) struct Scene<'a> {
+    /// Reader-only word status marks; native ruby is kept apart.
+    pub marks: &'a dyn Fn(&str) -> Option<Marks>,
+    /// The shared word-colour setting, for the chapter study controls.
+    pub colours: bool,
     /// The books and the one open.
     pub page: &'a BooksPage,
     /// The book is drawn vertically (BOK-009).
@@ -84,6 +111,8 @@ pub(crate) struct Scene<'a> {
 pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut Vec<Command>) {
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
     let scene = Scene {
+        marks: &|text| s.book_marks(text),
+        colours: s.word_colors_on(),
         page: &s.books_page,
         vertical: s.book_vertical(),
         double: s.book_double(),
@@ -177,7 +206,8 @@ fn paragraph(
     name: &str,
     marked: Option<std::ops::Range<usize>>,
     heard: bool,
-) -> (Option<(usize, egui::Rect)>, egui::Rect) {
+    marks: Option<&Marks>,
+) -> (Option<(usize, egui::Rect)>, egui::Rect, DrawnMarks) {
     let size = if item.heading {
         TEXT_SIZE * 1.3
     } else {
@@ -220,6 +250,22 @@ fn paragraph(
         }
     }
     ui.painter().galley(rect.min, galley.clone(), color);
+    let mut drawn = DrawnMarks::default();
+    if let Some(marks) = marks {
+        for (bytes, why) in marks.underlines() {
+            for row in range_rects(&galley, &item.text, bytes.clone()) {
+                let row = row.translate(rect.min.to_vec2());
+                let line = egui::Rect::from_min_max(
+                    egui::pos2(row.left(), row.bottom() - 2.0),
+                    row.right_bottom(),
+                );
+                if ui.clip_rect().intersects(line) {
+                    ui.painter().rect_filled(line, 0.0, palette::underline(why));
+                    drawn.record(why);
+                }
+            }
+        }
+    }
     for ruby in &item.ruby {
         let chars = item.text[..ruby.range.start].chars().count();
         let length = item.text[ruby.range.clone()].chars().count();
@@ -255,7 +301,7 @@ fn paragraph(
         let offset = crate::subtitles::char_to_byte(&item.text, cursor.index.0);
         (offset, rect)
     });
-    (clicked, rect)
+    (clicked, rect, drawn)
 }
 
 /// Where a cell goes on the page: its centre.
@@ -429,7 +475,7 @@ fn manga_reader(
     reading_line(ui, s, out);
     if !item.text.is_empty() {
         let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
-        let (clicked, _) = paragraph(ui, item, &item.text, marked, false);
+        let (clicked, _, _) = paragraph(ui, item, &item.text, marked, false, None);
         if let Some((offset, rect)) = clicked {
             out.push(Command::BookClicked {
                 paragraph: 0,
@@ -612,6 +658,43 @@ fn vertical_reader(
     for cell in &cells {
         draw_cell(ui, area, state.column, cell);
     }
+    let shown: std::collections::BTreeSet<_> = cells.iter().map(|c| c.paragraph).collect();
+    if s.colours {
+        for &index in &shown {
+            if let Some(item) = chapter.paragraphs.get(index)
+                && let Some(marks) = (s.marks)(&item.text)
+            {
+                // A paragraph may span many pages. Search its disjoint status
+                // ranges for each visible cell instead of scanning the page
+                // for every word in that whole paragraph.
+                let mut ranges: Vec<_> = marks.underlines().collect();
+                ranges.sort_unstable_by_key(|(bytes, _)| bytes.start);
+                for cell in cells.iter().filter(|c| c.paragraph == index) {
+                    let after = ranges.partition_point(|(bytes, _)| bytes.start <= cell.offset);
+                    if let Some((bytes, why)) = after.checked_sub(1).and_then(|i| ranges.get(i))
+                        && bytes.contains(&cell.offset)
+                    {
+                        let centre = cell_centre(area, state.column, cell);
+                        // Native ruby is to the right; leave it room.
+                        let line = egui::Rect::from_center_size(
+                            centre - vec2(TEXT_SIZE * 0.55, 0.0),
+                            vec2(2.0, TEXT_SIZE * CELL),
+                        );
+                        if ui.clip_rect().intersects(line) {
+                            ui.painter()
+                                .rect_filled(line, 0.0, palette::underline(*why));
+                            state.drawn_marks.record(*why);
+                        }
+                    }
+                }
+            }
+        }
+        out.push(Command::BookRows(
+            open.uid.clone(),
+            open.chapter,
+            shown.into_iter().collect(),
+        ));
+    }
     let picture = columns
         .pictures
         .iter()
@@ -674,6 +757,13 @@ fn reader(
     state: &mut State,
     out: &mut Vec<Command>,
 ) -> bool {
+    let key = (open.uid.clone(), open.chapter);
+    if state.study_key.as_ref() != Some(&key) {
+        state.study_key = Some(key);
+        state.words_open = false;
+        state.word_query.clear();
+        state.words = super::word_list::State::default();
+    }
     if state.book != open.uid {
         // the same name may be another picture in another book
         state.book.clone_from(&open.uid);
@@ -744,6 +834,74 @@ fn reader(
         manga_reader(ui, s, open, state, out);
         return close;
     }
+    if s.colours {
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .selectable_label(!state.words_open, tr(s, "books-read"))
+                .clicked()
+            {
+                state.words_open = false;
+            }
+            if ui
+                .selectable_label(state.words_open, tr(s, "books-words"))
+                .clicked()
+            {
+                state.words_open = true;
+            }
+            let study = &s.page.study;
+            let percent = |p: Option<usize>| p.map_or_else(|| "–".into(), |n| n.to_string());
+            let score = match study.score {
+                Some(Ok(score)) => Some((s.tr)(
+                    "books-chapter-score",
+                    &[
+                        ("known", percent(score.known_percent())),
+                        ("clear", percent(score.clear_percent())),
+                    ],
+                )),
+                Some(Err(done)) => Some((s.tr)(
+                    "books-chapter-counting",
+                    &[
+                        ("done", done.to_string()),
+                        ("of", study.paragraphs.to_string()),
+                    ],
+                )),
+                None if study.limited => Some(tr(s, "books-chapter-too-long")),
+                None => None,
+            };
+            if let Some(score) = score {
+                ui.label(score);
+            }
+        });
+        if state.words_open {
+            let label = ui.label(tr(s, "books-words-search"));
+            ui.add(egui::TextEdit::singleline(&mut state.word_query).desired_width(320.0))
+                .labelled_by(label.id);
+            if let Some(words) = &s.page.study.words {
+                let labels = super::word_list::Labels {
+                    new_only: tr(s, "subtitle-words-new-only"),
+                    all: tr(s, "subtitle-words-all"),
+                    ticked: (s.tr)(
+                        "subtitle-words-ticked",
+                        &[("count", state.words.ticked.len().to_string())],
+                    ),
+                    card: tr(s, "subtitle-words-card"),
+                    statuses: super::word_list::STATUSES
+                        .map(|st| tr(s, &format!("word-status-{}", st.name()))),
+                };
+                super::word_list::show(
+                    ui,
+                    words,
+                    &state.word_query,
+                    &labels,
+                    &mut state.words,
+                    out,
+                );
+            }
+            return close;
+        }
+    } else {
+        state.words_open = false;
+    }
     if s.vertical {
         vertical_reader(ui, s, open, state, out);
         return close;
@@ -757,6 +915,7 @@ fn reader(
     if open.jump && open.paragraph == 0 {
         area = area.vertical_scroll_offset(0.0);
     }
+    let mut shown = Vec::new();
     area.show(ui, |ui| {
         let width = ui.available_width().min(COLUMN);
         ui.vertical_centered(|ui| {
@@ -784,7 +943,14 @@ fn reader(
                         .map(|(_, range)| range.clone());
                     let heard =
                         s.page.along.as_ref().and_then(|a| a.heard) == Some((open.chapter, index));
-                    let (clicked, rect) = paragraph(ui, item, &name, marked, heard);
+                    let marks = (s.marks)(&item.text);
+                    let (clicked, rect, drawn) =
+                        paragraph(ui, item, &name, marked, heard, marks.as_ref());
+                    state.drawn_marks.unknown += drawn.unknown;
+                    state.drawn_marks.learning += drawn.learning;
+                    if s.colours && ui.clip_rect().intersects(rect) {
+                        shown.push(index);
+                    }
                     if open.jump && index == open.paragraph {
                         ui.scroll_to_rect(rect, Some(Align::Min));
                     }
@@ -816,7 +982,65 @@ fn reader(
             });
         });
     });
+    if s.colours {
+        out.push(Command::BookRows(open.uid.clone(), open.chapter, shown));
+    }
     close
+}
+
+fn whole_book_score(ui: &mut Ui, s: &Scene<'_>, uid: &str, title: &str, out: &mut Vec<Command>) {
+    use crate::book_scores::Status;
+    let status = s.page.scores.get(uid);
+    match status {
+        Some(Status::Counting) => {
+            ui.spinner();
+            ui.label(tr(s, "books-score-counting"));
+        }
+        Some(Status::Score(score)) => {
+            let percent =
+                |value: Option<usize>| value.map_or_else(|| "–".into(), |n| n.to_string());
+            let args = [
+                ("known", percent(score.known_percent())),
+                ("clear", percent(score.clear_percent())),
+            ];
+            ui.label((s.tr)("books-score-summary", &args))
+                .on_hover_text((s.tr)("books-score-detail", &args));
+        }
+        Some(Status::NoText) => {
+            ui.label(tr(s, "books-score-no-text"));
+        }
+        Some(Status::TooLarge) => {
+            ui.label(tr(s, "books-score-too-long"));
+        }
+        Some(Status::Failed(error)) => {
+            ui.label(tr(s, "books-score-failed")).on_hover_text(error);
+        }
+        None => {}
+    }
+    let button = ui.add_enabled(
+        !s.page.scores.busy(),
+        Button::new(tr(
+            s,
+            if status.is_some() {
+                "books-score-refresh"
+            } else {
+                "books-score-analyse"
+            },
+        )),
+    );
+    button.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::Role::Button,
+            button.enabled(),
+            (s.tr)("books-score-analyse-title", &[("title", title.into())]),
+        )
+    });
+    if button
+        .on_disabled_hover_text(tr(s, "books-score-wait"))
+        .clicked()
+    {
+        out.push(Command::BookAnalyse(uid.into()));
+    }
 }
 
 fn list(
@@ -898,6 +1122,11 @@ fn list(
                         RichText::new(format!("{} %", percent(record)))
                             .color(palette::current().details),
                     );
+                    if s.colours {
+                        ui.push_id(("book-score", uid), |ui| {
+                            whole_book_score(ui, s, uid, &record.title, out)
+                        });
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let label = (s.tr)("books-remove", &[("title", record.title.clone())]);
                         if ui.button(label).clicked() {
@@ -916,6 +1145,7 @@ pub(crate) fn draw(
     state: &mut State,
     out: &mut Vec<Command>,
 ) -> (bool, bool) {
+    state.drawn_marks = DrawnMarks::default();
     let screen = ctx.content_rect();
     let (mut close, mut add) = (false, false);
     // under the popups, which are in the foreground (BOK-006)
@@ -939,7 +1169,10 @@ pub(crate) fn draw(
                                 out.push(Command::BookClose);
                             }
                         }
-                        None => list(ui, s, state, &mut add, &mut close, out),
+                        None => {
+                            state.study_key = None;
+                            list(ui, s, state, &mut add, &mut close, out);
+                        }
                     }
                 });
         });
@@ -957,6 +1190,8 @@ mod tests {
 
     struct Test {
         page: BooksPage,
+        marks: Marks,
+        colours: bool,
         vertical: bool,
         double: bool,
         state: State,
@@ -978,6 +1213,8 @@ mod tests {
                 |ui, t: &mut Test| {
                     let tr = |id: &str, _: &[(&str, String)]| id.to_string();
                     let scene = Scene {
+                        marks: &|_| Some(t.marks.clone()),
+                        colours: t.colours,
                         page: &t.page,
                         vertical: t.vertical,
                         double: t.double,
@@ -988,6 +1225,8 @@ mod tests {
                 },
                 Test {
                     page,
+                    marks: Marks::default(),
+                    colours: false,
                     vertical,
                     double: false,
                     state: State::default(),
@@ -996,6 +1235,50 @@ mod tests {
                     can_read_along: false,
                 },
             )
+    }
+
+    // T-KNW-016: the explicit list action never opens the reader; hidden
+    // when colours are off, and disabled while another analysis is active.
+    #[test]
+    fn whole_book_analysis_is_requested_from_the_list() {
+        let mut h = harness(BooksPage {
+            list: vec![(
+                "book/a".into(),
+                nikomiru_library::books::BookRecord {
+                    path: "a.epub".into(),
+                    title: "Book".into(),
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        });
+        h.run();
+        assert!(h.query_by_label("books-score-analyse-title").is_none());
+        h.state_mut().colours = true;
+        h.run();
+        h.get_by_label("books-score-analyse-title").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookAnalyse(uid) if uid == "book/a"))
+        );
+        assert!(h.state().page.open.is_none());
+        h.state_mut().out.clear();
+        h.state_mut()
+            .page
+            .scores
+            .request("book/a".into(), "a.epub".into(), 0);
+        h.run_steps(2);
+        h.get_by_label("books-score-analyse-title").click();
+        h.run_steps(2);
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookAnalyse(_)))
+        );
     }
 
     fn open() -> OpenBook {
@@ -1026,6 +1309,105 @@ mod tests {
             jump: false,
             started: (0, 0),
         }
+    }
+
+    // T-BOK-006: a click gives the paragraph and the byte of the character
+    // T-KNW-002: both writing directions draw status marks beside native ruby.
+    #[test]
+    fn status_marks_follow_the_writing_direction() {
+        for vertical in [false, true] {
+            let mut h = vertical_harness(
+                BooksPage {
+                    open: Some(open()),
+                    ..BooksPage::default()
+                },
+                vertical,
+            );
+            h.state_mut().colours = true;
+            h.state_mut().marks = Marks {
+                unknown: vec![0..3, 6..9],
+                learning: vec![3..6, 9..12],
+                ..Marks::default()
+            };
+            h.run();
+            assert_eq!(h.state().state.drawn_marks.unknown, 2);
+            assert_eq!(h.state().state.drawn_marks.learning, 2);
+            assert!(
+                h.state()
+                    .out
+                    .iter()
+                    .any(|c| matches!(c, Command::BookRows(_, 0, rows) if rows.contains(&0)))
+            );
+            h.state_mut().colours = false;
+            h.state_mut().marks = Marks::default();
+            h.run();
+            assert_eq!(h.state().state.drawn_marks.unknown, 0);
+        }
+    }
+
+    // T-KNW-002: a word crossing a row/column boundary keeps all its segments.
+    #[test]
+    fn status_marks_wrap_with_the_text() {
+        for vertical in [false, true] {
+            let mut open = open();
+            open.book.chapters[0].paragraphs[0].text = "読む本です".repeat(100);
+            let mut h = vertical_harness(
+                BooksPage {
+                    open: Some(open),
+                    ..BooksPage::default()
+                },
+                vertical,
+            );
+            h.state_mut().colours = true;
+            h.state_mut().marks = Marks {
+                unknown: std::iter::once(0..300).collect(),
+                learning: std::iter::once(300..600).collect(),
+                ..Marks::default()
+            };
+            h.run();
+            assert!(h.state().state.drawn_marks.unknown > 1);
+            assert!(h.state().state.drawn_marks.learning > 1);
+        }
+    }
+
+    // T-KNW-015: the reader uses the shared bulk-status widget and resets
+    // selection/search when moving to another chapter.
+    #[test]
+    fn chapter_words_can_be_marked_together_and_reset_on_navigation() {
+        use crate::words::{ListedWord, WordStatus};
+        let mut page = BooksPage {
+            open: Some(open()),
+            ..BooksPage::default()
+        };
+        page.study.words = Some(std::sync::Arc::new(vec![ListedWord {
+            expression: "読む".into(),
+            reading: "よむ".into(),
+            count: 2,
+            status: WordStatus::Unknown,
+            card: false,
+        }]));
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        h.get_by_label("books-words").click();
+        h.run();
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-known").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::WordsStatus(words, WordStatus::Known) if words == &vec![("読む".into(), "よむ".into())])));
+        assert_eq!(h.state().page.open.as_ref().unwrap().paragraph, 0);
+        h.state_mut().state.word_query = "読む".into();
+        h.state_mut()
+            .state
+            .words
+            .ticked
+            .insert("old selection".into());
+        h.state_mut().page.open.as_mut().unwrap().chapter = 1;
+        h.run();
+        assert!(!h.state().state.words_open);
+        assert!(h.state().state.word_query.is_empty());
+        assert!(h.state().state.words.ticked.is_empty());
     }
 
     // T-BOK-006: a click gives the paragraph and the byte of the character

@@ -31,6 +31,7 @@ pub mod search;
 pub mod servers;
 pub mod setup;
 pub mod store;
+pub mod web_video;
 pub mod webdav;
 
 pub use error::OnlineError;

@@ -120,12 +120,17 @@ Nothing goes online unless you ask for it.
 - **Continue watching** shows what you started.
 - When an episode ends, the next one starts after a 5-second countdown.
 - A series remembers its subtitle, offset and audio language.
+- With word colours on, each episode shows `80% · 25%`: known word tokens and subtitle lines without a new word. Local embedded text subtitles count too, using the same saved track and language priorities as playback. `…` means counting; graphic subtitles, remote videos and subtitles turned off have no score. Reopen the series to refresh changed subtitle sources.
 - On a series' page you can rename it, merge it, move or remove episodes, or delete it. Your files are never touched.
 - **Identify online** asks AniList (or MyAnimeList) for the series' titles, episodes and cover. If several series match, you choose. Jimaku then finds its subtitles by its AniList id.
 - **Statistics** shows the time watched and the characters read:
   - by day, by series and by session;
   - a calendar of the year;
   - a CSV export.
+
+With word colours enabled, **Analyse** below a series card counts comprehension without opening or playing it. The score combines word occurrences and lines across the episodes with usable text; the analysed/total episode count shows its coverage, including the number that failed. **Refresh** rereads the series and sources. At most four series results are retained; changing word statuses rescores them immediately. Series above 256 episodes have no aggregate score.
+
+With word colours enabled, Statistics also shows **New words met by episode**: distinct headwords that were new when encountered in the active main subtitle during playback. Repetitions and replay count once per episode; paused seeking and analyses from the library do not count. The history stays when a word becomes known, survives a restart and travels with backups and WebDAV sync. Earlier playback and lines not segmented while active are not estimated afterwards. The 200 most recently encountered episodes are shown.
 
 ### Texthooker
 
@@ -134,6 +139,10 @@ For visual novels and games: "Texthooker" on the Library page shows the lines Te
 ### Books
 
 "Books" on the Library page reads EPUB files: choose one, and its file stays where it is. Click a word to look it up, and make a card from the popup, with the sentence and no picture or audio. A book reopens where you left it. "Vertical" switches to vertical writing, with ← and → or the wheel to turn the page; a book that reads from the right opens that way.
+
+With **Colour the words by what you know of them** on in Settings → Subtitles, books and web pages underline new words in blue and learning words in yellow. The chapter's score shows known word tokens and paragraphs without a new word; ignored words are left out. **Words** lists the chapter's headwords by frequency: search by word or reading, filter to new/learning words, tick several or all shown, then choose their status. **Read** returns to your reading position. Very long chapters remain readable without a chapter score or word list. Exceptionally long paragraphs are not coloured.
+
+In the Books list, **Analyse** shows comprehension across every text chapter without opening the book or changing your reading position. Word colours must be enabled. **Refresh** reads the local file again; changing word statuses updates a retained score immediately. Up to four analyses are kept until you close the app, turn off word colours or change dictionaries. Saved web pages use their local text. Manga, image-only books and books above the analysis limits have no score; they can still be opened as usual.
 
 ### Web pages
 
@@ -155,6 +164,8 @@ With the audiobook playing, open its book on the Books page and press **Read alo
 
 Add a server in Settings → Media servers: for Jellyfin the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays.
 
+**Open web video** on the Library page or the player bar accepts a video page URL. You can also drop the URL or pass it on the command line. Install `yt-dlp` yourself; if it is not on PATH, set its executable in Settings → Advanced (or `NIKOMIRU_YT_DLP`). The preferred subtitle languages apply to uploaded and automatic subtitles. Web videos use the same dictionary popups and cards, and their source links reopen the original page at the scene. On-demand direct HTTP media is supported, including separate audio/video streams; live, DRM and segmented-only streams are not.
+
 ## 8. Settings
 
 ⚙ in the bar, or Ctrl+, opens the settings. The tabs run down the left side.
@@ -169,6 +180,10 @@ Add a server in Settings → Media servers: for Jellyfin the address, user and p
 | Advanced | The ffmpeg program, where the settings file and the logs are |
 
 Each tab has **Save** and **Reset**. `~/.config/nikomiru/config.toml` can also be edited by hand: Nikomiru keeps your comments.
+
+General → Playback → **Speed between subtitle lines** speeds through pauses of at least three seconds at 2–4×, returning to your chosen speed before the next line. It needs a text subtitle and is off by default. Pause, dictionary popups and replays keep your chosen speed; the faster gap speed is never saved for an episode.
+
+The subtitle menu and the library's episode/series menus offer **Export condensed audio**: choose Opus or MP3 and a folder. Each episode gets a file containing only the subtitle lines, with the padding configured for cards; gaps under a second are kept. Chapters follow the lines. Existing files are kept, and the menu can cancel a running export. Series exports report episodes without usable text subtitles or audio separately.
 
 ### Backup and sync
 

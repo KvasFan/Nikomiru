@@ -14,6 +14,7 @@ mod backup_page;
 mod bar;
 mod books_page;
 mod chrome;
+mod condense;
 mod dict_page;
 mod hooker_page;
 mod library_page;
@@ -65,6 +66,8 @@ pub enum Dialog {
     AudioDatabase,
     /// Where to export the study sessions (STA-005).
     StatsExport,
+    /// Folder for condensed episode audio (AUD-010).
+    CondensedFolder,
     /// A book to add (BOK-004).
     Book,
     /// An audiobook to play (ABK-001).
@@ -142,6 +145,7 @@ impl FileDialog {
                 tr("player-export"),
                 vec![(tr("player-filter-conf"), vec!["*.conf"]), all],
             ),
+            Dialog::CondensedFolder => (tr("condense-folder"), Vec::new()),
             Dialog::LibraryFolder => (tr("library-add-folder"), Vec::new()),
             Dialog::AudioDatabase => (
                 tr("audio-database-button"),
@@ -198,7 +202,10 @@ impl FileDialog {
                 Dialog::MpvImport => s.mpv_conf_folder(),
                 _ => None,
             },
-            directory: matches!(dialog, Dialog::LibraryFolder | Dialog::MangaFolder),
+            directory: matches!(
+                dialog,
+                Dialog::LibraryFolder | Dialog::MangaFolder | Dialog::CondensedFolder
+            ),
         }
     }
 }
@@ -253,6 +260,10 @@ pub(crate) struct View {
     pub prefs_open: Option<settings::SettingsTab>,
     /// What it keeps.
     pub prefs: prefs_page::State,
+    /// URL entry dialog for an explicitly opened web video (PLY-023).
+    pub web_url_open: bool,
+    pub web_url: String,
+    pub web_url_focus: bool,
     /// How the interface looks, as of the last frame (SET-003, SET-005).
     look: Option<crate::session::Look>,
     /// egui's zoom, as of the last frame (SET-005).
@@ -654,6 +665,7 @@ impl View {
         if let Some(missing) = &s.missing_link {
             link::show(&ctx, s, missing, &mut out);
         }
+        chrome::web_video(&ctx, s, self, &mut out);
         chrome::show(&ctx, s, self);
         chrome::next_up(&ctx, s, bar_height, &mut out);
 

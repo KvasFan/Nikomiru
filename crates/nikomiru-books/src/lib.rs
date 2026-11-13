@@ -11,6 +11,7 @@
 #![deny(missing_docs)]
 
 pub mod align;
+pub mod analysis;
 mod cbz;
 mod epub;
 mod markup;

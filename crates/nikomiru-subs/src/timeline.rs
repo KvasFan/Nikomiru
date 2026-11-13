@@ -64,6 +64,22 @@ impl Timeline {
         self.cues.is_empty()
     }
 
+    /// The gap containing `pos_ms`, bounded by the latest end of all preceding
+    /// cues and the next start, in player time (PLY-022). No gap is returned
+    /// before the first line, after the last, or inside overlapping lines.
+    pub fn gap(&self, pos_ms: i64) -> Option<(i64, i64)> {
+        let t = pos_ms.saturating_sub(self.delay_ms);
+        let next = self.cues.partition_point(|c| c.start_ms <= t);
+        let end = *self.max_end.get(next.checked_sub(1)?)?;
+        let start = self.cues.get(next)?.start_ms;
+        (end <= t && t < start).then(|| {
+            (
+                end.saturating_add(self.delay_ms),
+                start.saturating_add(self.delay_ms),
+            )
+        })
+    }
+
     fn cue_time(&self, pos_ms: i64) -> i64 {
         pos_ms - self.delay_ms
     }
@@ -287,6 +303,24 @@ mod tests {
         assert_eq!(t.active(3500), [0, 2]);
         assert_eq!(t.replay(3500), Some((3000, 4000)));
         assert_eq!(t.replay(9000), Some((0, 10_000)));
+    }
+
+    // T-PLY-022
+    #[test]
+    fn gaps_count_overlapping_lines_and_the_offset() {
+        let mut t = timeline(&[(1000, 10_000), (2000, 3000), (15_000, 16_000)]);
+        assert_eq!(t.gap(500), None);
+        assert_eq!(t.gap(4000), None, "the long line is still active");
+        assert_eq!(t.gap(10_000), Some((10_000, 15_000)));
+        assert_eq!(t.gap(14_999), Some((10_000, 15_000)));
+        assert_eq!(t.gap(15_000), None);
+        assert_eq!(t.gap(17_000), None);
+        t.delay_ms = 1200;
+        assert_eq!(t.gap(10_500), None);
+        assert_eq!(t.gap(12_000), Some((11_200, 16_200)));
+        t.delay_ms = -1200;
+        assert_eq!(t.gap(10_000), Some((8800, 13_800)));
+        assert_eq!(timeline(&[]).gap(5000), None);
     }
 
     // T-SUB-015

@@ -33,13 +33,13 @@ const MAX_LIST: u64 = 1 << 20;
 /// What is called with the files of a drop, on a thread of its own.
 pub type OnDrop = Arc<dyn Fn(Vec<PathBuf>) + Send + Sync>;
 
-/// The files of a `text/uri-list`: its `file://` addresses, comments and
-/// other schemes left out.
+/// Files and HTTP(S) web-video addresses of a `text/uri-list` (PLY-023).
+/// Comments and other schemes are left out.
 pub fn uri_list(text: &str) -> Vec<PathBuf> {
     text.lines()
         .map(|l| l.trim_end_matches('\r').trim())
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .filter(|l| l.starts_with("file://"))
+        .filter(|l| l.starts_with("file://") || nikomiru_ui::is_web_address(l))
         .map(url_to_path)
         .collect()
 }
@@ -330,12 +330,14 @@ mod tests {
     use super::*;
 
     #[test]
+    // T-PLY-023
     fn a_uri_list_gives_its_files() {
         let list = "# from the file manager\r\nfile:///v/My%20Show/ep%2001.mkv\r\nhttps://example.org/x.mkv\r\n\r\nfile:///d/jmdict.zip\n";
         assert_eq!(
             uri_list(list),
             [
                 PathBuf::from("/v/My Show/ep 01.mkv"),
+                PathBuf::from("https://example.org/x.mkv"),
                 PathBuf::from("/d/jmdict.zip")
             ]
         );

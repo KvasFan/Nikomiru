@@ -187,6 +187,13 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
             }
         }
     });
+    super::condense::menu(
+        ui,
+        &|id, args| s.translator().tr(id, args),
+        crate::condense::Target::Current,
+        s.audio_export.running.is_some(),
+        out,
+    );
     // SUB-018
     if ui
         .add_enabled(!current.is_empty(), egui::Button::new(tr("subtitle-align")))
@@ -488,6 +495,9 @@ pub(crate) fn show(
                             }
                             if icon(ui, true, "📂", &tr("open-file")) {
                                 view.dialog = Some(Dialog::Video);
+                            }
+                            if icon(ui, true, "↗", &tr("webvideo-open")) {
+                                out.push(Command::WebOpenDialog);
                             }
                             if icon(ui, true, "📚", &tr("dict-page-title")) {
                                 view.open_settings(SettingsTab::Dictionaries, out);

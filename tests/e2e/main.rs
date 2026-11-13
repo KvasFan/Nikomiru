@@ -7,10 +7,18 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+mod book_scores;
+mod condense;
 mod drag;
+mod encounters;
+mod episode_scores;
+mod gaps;
 mod perf;
+mod reader_words;
+mod series_scores;
 mod servers;
 mod support;
+mod web_video;
 
 use std::time::Duration;
 
@@ -3473,9 +3481,8 @@ fn the_episodes_are_scored_before_they_play() {
     let root = desk.path("videos");
     let show = root.join("Show");
     std::fs::create_dir_all(&show).unwrap();
-    for name in ["Show - 01.mkv", "Show - 02.mkv"] {
-        std::os::unix::fs::symlink(fixture("av_basic.mkv"), show.join(name)).unwrap();
-    }
+    std::os::unix::fs::symlink(fixture("av_basic.mkv"), show.join("Show - 01.mkv")).unwrap();
+    std::os::unix::fs::symlink(fixture("av_noaudio.mp4"), show.join("Show - 02.mkv")).unwrap();
     std::fs::write(
         show.join("Show - 01.ja.srt"),
         "1\n00:00:02,000 --> 00:00:02,500\n食べました\n\n\

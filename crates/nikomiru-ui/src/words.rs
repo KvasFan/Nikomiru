@@ -102,10 +102,16 @@ impl Words {
     /// while some text is not split.
     pub fn listed<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Option<Vec<ListedWord>> {
         let counted = self.counted(texts)?;
+        Some(self.listed_counted(&counted))
+    }
+
+    /// A retained count with current statuses and card marks (KNW-015).
+    pub fn listed_counted(&self, counted: &Counted) -> Vec<ListedWord> {
         let counts = counted.occurrences();
         let mut out: Vec<ListedWord> = counted
             .words
-            .into_iter()
+            .iter()
+            .cloned()
             .zip(counts)
             .map(|((expression, reading), count)| ListedWord {
                 status: self.status(&expression, &reading),
@@ -121,7 +127,7 @@ impl Words {
                 .then_with(|| a.expression.cmp(&b.expression))
                 .then_with(|| a.reading.cmp(&b.reading))
         });
-        Some(out)
+        out
     }
 }
 

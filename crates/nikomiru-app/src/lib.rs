@@ -15,8 +15,10 @@
 pub mod anki;
 #[cfg(target_os = "linux")]
 pub mod appearance;
+pub mod book_scores;
 pub mod catalog;
 pub mod cli;
+pub mod condense;
 #[cfg(target_os = "linux")]
 pub mod dbus;
 pub mod dictionaries;
@@ -44,12 +46,14 @@ pub mod platform;
 #[cfg_attr(windows, path = "windows/portal.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod portal;
+pub mod score_subtitles;
 pub mod servers;
 pub mod setup;
 pub mod shell;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
+pub mod web_video;
 #[allow(unsafe_code)]
 pub mod window;
 pub mod word_audio;

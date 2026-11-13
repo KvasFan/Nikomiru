@@ -205,6 +205,8 @@ pub struct PlayerConfig {
     pub time_remaining: bool,
     /// `"contain"`, `"cover"` or `"stretch"` (PLY-021).
     pub fit: String,
+    /// Speed between subtitle lines (PLY-022): 0 off, or 2–4×.
+    pub gap_speed: u8,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -937,6 +939,9 @@ impl Default for AnkiConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PathsConfig {
+    /// The yt-dlp executable, or its folder; empty selects NIKOMIRU_YT_DLP,
+    /// then PATH. Looked up only for an explicit web-video open (PLY-023).
+    pub yt_dlp: String,
     /// The ffmpeg executable, or its folder; empty = `NIKOMIRU_FFMPEG`, then
     /// `PATH` (EXT-001). ffprobe is looked for next to it.
     pub ffmpeg: String,
@@ -973,6 +978,7 @@ impl Default for PlayerConfig {
             mpv_options: BTreeMap::new(),
             time_remaining: false,
             fit: "contain".into(),
+            gap_speed: 0,
             other: toml::Table::new(),
         }
     }
@@ -1070,6 +1076,9 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        if !(2..=4).contains(&c.player.gap_speed) {
+            c.player.gap_speed = 0;
+        }
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
         c.subtitles = c.subtitles.bounded();
         if !PlayerConfig::FITS.contains(&c.player.fit.as_str()) {
@@ -1153,6 +1162,7 @@ impl Config {
                 self.player.seek_seconds = from.player.seek_seconds;
                 self.player.auto_next = from.player.auto_next;
                 self.player.fit = from.player.fit.clone();
+                self.player.gap_speed = from.player.gap_speed;
             }
             Section::Subtitles => self.subtitles = from.subtitles.clone(),
             Section::Lookup => {
@@ -1189,6 +1199,7 @@ impl Config {
                 self.player.seek_seconds = d.player.seek_seconds;
                 self.player.auto_next = d.player.auto_next;
                 self.player.fit = d.player.fit;
+                self.player.gap_speed = d.player.gap_speed;
             }
             Section::Subtitles => {
                 let other = std::mem::take(&mut self.subtitles.other);
@@ -1642,6 +1653,28 @@ opensubtitles_password = "pw-s3cret"
         assert_eq!(c.lookup.max_results, 50);
         assert!(c.lookup.hover_without_modifier && c.lookup.resume_on_leave);
         assert_eq!(Config::default().lookup.max_results, 10);
+    }
+
+    // T-PLY-022
+    #[test]
+    fn gap_speed_is_opt_in_bounded_and_owned_by_the_general_tab() {
+        assert_eq!(Config::from_toml("").unwrap().player.gap_speed, 0);
+        for speed in [0, 1, 2, 3, 4, 5, 255] {
+            let c = Config::from_toml(&format!("[player]\ngap_speed = {speed}")).unwrap();
+            let expected = if (2..=4).contains(&speed) { speed } else { 0 };
+            assert_eq!(c.player.gap_speed, expected);
+            assert!(c.unknown_keys().is_empty());
+            let text = toml::to_string(&c).unwrap();
+            assert_eq!(Config::from_toml(&text).unwrap(), c);
+        }
+        let draft = Config::from_toml("[player]\ngap_speed = 4").unwrap();
+        let mut c = Config::default();
+        c.copy_section(Section::Subtitles, &draft);
+        assert_eq!(c.player.gap_speed, 0);
+        c.copy_section(Section::General, &draft);
+        assert_eq!(c.player.gap_speed, 4);
+        c.reset(Section::General);
+        assert_eq!(c.player.gap_speed, 0);
     }
 
     // T-POP-006
