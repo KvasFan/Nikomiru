@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Study the combined vocabulary of an analysed series with episode coverage and shared bulk statuses (KNW-021, M30).
+
 - Browse and bulk-mark vocabulary from completed whole-book analyses (KNW-020, M29).
 
 - Cancel whole-book and series comprehension analyses, stopping their own workers and discarding stale replies (KNW-019, M28).

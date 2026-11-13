@@ -32,6 +32,8 @@ const NARROW: f32 = 184.0;
 pub(crate) struct State {
     /// The covers as textures, by series.
     textures: HashMap<u64, TextureHandle>,
+    analysis: Option<u64>,
+    analysis_words: super::analysis_words::State,
     /// The name being typed for the series open.
     rename: Option<(u64, String)>,
     /// The series to merge the open one into.
@@ -645,6 +647,36 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         ui.spinner();
         return;
     };
+    if let Some(id) = state.analysis {
+        if s.colours
+            && let Some((serial, words)) = s.page.scores.words(id)
+            && let Some(series) = home.series.iter().find(|s| s.id == id)
+            && let Some(crate::series_scores::Status::Ready(summary)) = s.page.scores.get(id)
+        {
+            ui.label((s.tr)(
+                "library-score-coverage",
+                &[
+                    ("scored", summary.scored.to_string()),
+                    ("total", summary.total.to_string()),
+                    ("failed", summary.failed.to_string()),
+                ],
+            ));
+            if super::analysis_words::show(
+                ui,
+                format!("series/{id}/{serial}"),
+                &series.record.title,
+                words,
+                &mut state.analysis_words,
+                s.tr,
+                out,
+            ) {
+                state.analysis = None;
+            }
+            return;
+        }
+        state.analysis = None;
+        state.analysis_words = Default::default();
+    }
     if let Some(steps) = s.first_steps {
         first_steps(ui, s, steps, state, out);
     }
@@ -721,7 +753,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             if s.colours {
                 ui.set_width(NARROW + 16.0);
                 ui.push_id(("series-score", summary.id), |ui| {
-                    series_score(ui, s, summary.id, &summary.record.title, out);
+                    series_score(ui, s, summary.id, &summary.record.title, state, out);
                 });
             }
         });
@@ -761,7 +793,14 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
 }
 
-fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<Command>) {
+fn series_score(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    id: u64,
+    title: &str,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
     use crate::series_scores::Status;
     let status = s.page.scores.get(id);
     match status {
@@ -812,6 +851,9 @@ fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<
         && ui.button(tr(s, "analysis-cancel")).clicked()
     {
         out.push(Command::SeriesAnalysisCancel(id));
+    }
+    if s.page.scores.words(id).is_some() && ui.button(tr(s, "analysis-words")).clicked() {
+        state.analysis = Some(id);
     }
     let button = ui.add_enabled(
         !s.page.busy && !s.page.scores.busy(),
@@ -1295,6 +1337,55 @@ mod tests {
             folders: vec![("/v".into(), FolderRecord::default())],
             server_titles: Default::default(),
         }
+    }
+
+    // T-KNW-021: vocabulary actions keep library navigation and playback untouched.
+    #[test]
+    fn series_vocabulary_shows_frequency_and_bulk_status_controls() {
+        let mut page = LibraryPage {
+            home: Some(home()),
+            ..Default::default()
+        };
+        page.home.as_mut().unwrap().series.truncate(1);
+        let words = crate::words::Words::default();
+        page.scores.update(true, &words, &[], "", &[1]);
+        let request = page.scores.request(1).unwrap();
+        page.scores
+            .loaded(request, Ok(vec![("ep/a".into(), VideoRecord::default())]));
+        let (_, uid, _) = page.scores.next_episode().unwrap();
+        page.scores.done(
+            request,
+            &uid,
+            Ok(Some(crate::words::Counted::from_lines([vec![
+                (
+                    "猫".into(),
+                    "ねこ".into()
+                );
+                3
+            ]]))),
+        );
+        page.scores.update(true, &words, &[], "", &[1]);
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        h.get_by_label("analysis-words").click();
+        h.run_steps(2);
+        h.get_by_label("×3");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-learning").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::WordsStatus(words, crate::words::WordStatus::Learning) if words.len() == 1)));
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibrarySeries(_) | Command::LibraryPlay(_)))
+        );
+        h.state_mut().page.scores.clear();
+        h.run_steps(2);
+        assert!(h.query_by_label("analysis-words-back").is_none());
     }
 
     // T-KNW-017: the explicit card action is separate from opening the

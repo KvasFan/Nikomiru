@@ -229,3 +229,5 @@ The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, En
 While a whole-book or series analysis is running, Cancel analysis stops it and discards its incomplete result. You can immediately analyse another item; playback and episode-list scores continue.
 
 After a whole-book analysis finishes, Study words opens the vocabulary of every chapter. Search by word or reading, filter unknown/learning words, select rows or All shown, and choose a status for them together. The whole-book score follows those shared changes. Refreshing the analysis closes the old list.
+
+Series cards also offer Study words after analysis. Frequencies sum across the counted episodes. Coverage remains visible: excluded or failed episodes do not contribute words. Changing a status updates the series score and other study views.

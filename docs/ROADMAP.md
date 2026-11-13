@@ -913,7 +913,7 @@ without requiring a new request after each increment.
 | M27 | Embedded DVB subtitles read as text | done |
 | M28 | Cancel book and series comprehension analyses | done |
 | M29 | Browse and bulk-mark the words of a whole analysed book | done |
-| M30 | Browse and bulk-mark the words of an analysed series | not started |
+| M30 | Browse and bulk-mark the words of an analysed series | done |
 | M31 | Export analysed media word lists for study elsewhere | not started |
 | M32 | Inspect and clear historical word encounters, including sync | not started |
 | M33 | Order/filter library material by comprehension | not started |
@@ -981,6 +981,17 @@ frequency, shared statuses, search and bulk marking. Reuse the word-list
 controls; keep the reader closed and clear stale selections on refresh.
 
 **Exit criteria**: whole-book occurrence/status/invalidation and accessible
+browser/bulk-mark tests; `cargo xtask ci`.
+
+---
+
+## M30 — Series vocabulary
+
+**Requirements**: KNW-021. Combine the completed episode vocabulary, retaining
+separate readings and summed frequencies. Show coverage, search/filter and
+shared bulk statuses without playing or opening a series.
+
+**Exit criteria**: aggregation/coverage/partial/invalidation and accessible
 browser/bulk-mark tests; `cargo xtask ci`.
 
 ---
