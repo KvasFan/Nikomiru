@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Vocabulary coverage targets (KNW-047, M76).
+
 - Vocabulary reading filters (KNW-046, M75).
 
 - Single or multiline captions (SUB-051, M74).

@@ -393,6 +393,8 @@ impl Default for SubtitlesConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StudyPreset {
+    /// Optional occurrence coverage percentage, 1 through 100.
+    pub coverage_target: Option<u8>,
     /// Any, distinct nonempty reading, or no distinct reading.
     pub reading_filter: u8,
     /// Inclusive non-whitespace scalar minimum length.
@@ -430,6 +432,7 @@ impl StudyPreset {
             && !self.name.chars().any(char::is_control)
             && self.query.len() <= 4096
             && self.status.is_none_or(|s| s < 4)
+            && self.coverage_target.is_none_or(|p| (1..=100).contains(&p))
             && self.reading_filter < 3
             && self.script < 4
             && self.card < 3

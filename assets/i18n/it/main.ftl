@@ -1252,3 +1252,6 @@ vocabulary-reading-tools = Filtri per lettura e copertura
 vocabulary-reading-any = Qualsiasi lettura
 vocabulary-reading-distinct = Con lettura distinta
 vocabulary-reading-same = Senza lettura distinta
+
+vocabulary-coverage-target = Parole più frequenti che coprono questa percentuale di occorrenze
+vocabulary-coverage-reset = Azzera obiettivo di copertura

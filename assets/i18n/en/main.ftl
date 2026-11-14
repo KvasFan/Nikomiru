@@ -1252,3 +1252,6 @@ vocabulary-reading-tools = Reading and coverage filters
 vocabulary-reading-any = Any reading
 vocabulary-reading-distinct = Has a distinct reading
 vocabulary-reading-same = No distinct reading
+
+vocabulary-coverage-target = Keep top words covering this occurrence percentage
+vocabulary-coverage-reset = Reset coverage target

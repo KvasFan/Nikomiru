@@ -1235,3 +1235,6 @@ vocabulary-reading-tools = 読みとカバー率の条件
 vocabulary-reading-any = すべての読み
 vocabulary-reading-distinct = 異なる読みがある語
 vocabulary-reading-same = 異なる読みがない語
+
+vocabulary-coverage-target = 出現回数の指定割合をカバーする頻出語
+vocabulary-coverage-reset = カバー率の条件をリセット

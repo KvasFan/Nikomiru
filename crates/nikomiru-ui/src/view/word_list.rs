@@ -34,6 +34,7 @@ pub(crate) struct Labels {
     pub preset_too_long: String,
     pub named: [String; 4],
     pub scripts: [String; 4],
+    pub coverage_labels: [String; 2],
     pub reading_labels: [String; 4],
     pub lengths: [String; 3],
     pub batch: [String; 5],
@@ -72,6 +73,8 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            coverage_labels: ["vocabulary-coverage-target", "vocabulary-coverage-reset"]
+                .map(|k| tr(k, &[])),
             reading_labels: [
                 "vocabulary-reading-tools",
                 "vocabulary-reading-any",
@@ -187,6 +190,7 @@ pub(crate) struct State {
     pub min_length: usize,
     pub max_length: Option<usize>,
     pub script: u8,
+    pub coverage_target: Option<u8>,
     pub reading_filter: u8,
     pub exact: bool,
     preset_name: String,
@@ -203,6 +207,7 @@ pub(crate) struct State {
 
 #[derive(Debug, Clone)]
 struct Preset {
+    coverage_target: Option<u8>,
     reading_filter: u8,
     min_length: usize,
     max_length: Option<usize>,
@@ -225,6 +230,7 @@ impl Preset {
             query: query.to_string(),
             script: state.script,
             reading_filter: state.reading_filter,
+            coverage_target: state.coverage_target,
             min_length: state.min_length,
             max_length: state.max_length,
             new_only: state.new_only,
@@ -240,6 +246,7 @@ impl Preset {
         query.clone_from(&self.query);
         state.script = self.script;
         state.reading_filter = self.reading_filter;
+        state.coverage_target = self.coverage_target;
         state.min_length = self.min_length;
         state.max_length = self.max_length;
         state.new_only = self.new_only;
@@ -287,6 +294,7 @@ fn named_presets(
             let snapshot = StudyPreset {
                 script: state.script,
                 reading_filter: state.reading_filter,
+                coverage_target: state.coverage_target,
                 min_length: state.min_length,
                 max_length: state.max_length,
                 name: state.preset_name.trim().to_string(),
@@ -328,6 +336,7 @@ fn named_presets(
                             query: p.query.clone(),
                             script: p.script,
                             reading_filter: p.reading_filter,
+                            coverage_target: p.coverage_target,
                             min_length: p.min_length,
                             max_length: p.max_length,
                             new_only: p.new_only,
@@ -459,8 +468,37 @@ pub(crate) fn filtered<'a>(
             }
         })
         .collect();
+    if let Some(percent) = state.coverage_target {
+        retain_coverage(&mut rows, percent);
+    }
     sort(&mut rows, state.order);
     rows
+}
+
+// Compute ceil(total * percent / 100) without overflowing even wide sums.
+fn retain_coverage(rows: &mut Vec<&ListedWord>, percent: u8) {
+    sort(rows, WordOrder::Frequent);
+    let total: u128 = rows.iter().map(|w| w.count as u128).sum();
+    if total == 0 {
+        rows.clear();
+        return;
+    }
+    let percent = u128::from(percent.clamp(1, 100));
+    let threshold = total / 100 * percent + (total % 100 * percent).div_ceil(100);
+    let mut sum = 0u128;
+    let mut cutoff = None;
+    let mut keep = 0;
+    for word in rows.iter() {
+        if cutoff.is_some_and(|count| word.count < count) {
+            break;
+        }
+        sum += word.count as u128;
+        keep += 1;
+        if cutoff.is_none() && sum >= threshold {
+            cutoff = Some(word.count);
+        }
+    }
+    rows.truncate(keep);
 }
 
 fn sort(rows: &mut [&ListedWord], order: WordOrder) {
@@ -552,6 +590,22 @@ pub(crate) fn show(
     egui::CollapsingHeader::new(&labels.reading_labels[0])
         .id_salt("vocabulary-reading-filters")
         .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let mut enabled = state.coverage_target.is_some();
+                if ui
+                    .checkbox(&mut enabled, &labels.coverage_labels[0])
+                    .changed()
+                {
+                    state.coverage_target = enabled.then_some(90);
+                }
+                if let Some(percent) = &mut state.coverage_target {
+                    ui.add(egui::DragValue::new(percent).range(1..=100).suffix("%"));
+                }
+                if ui.button(&labels.coverage_labels[1]).clicked() {
+                    state.coverage_target = None;
+                }
+            });
+
             for (i, label) in labels.reading_labels[1..].iter().enumerate() {
                 ui.selectable_value(&mut state.reading_filter, i as u8, label);
             }
@@ -931,6 +985,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        coverage_labels: ["Coverage target", "Reset coverage"].map(String::from),
                         reading_labels: [
                             "Reading filters",
                             "Any reading",
@@ -1523,5 +1578,52 @@ mod tests {
         assert!(h.query_by_label("猫 ねこ").is_none());
         assert!(h.query_all_by_label("が").count() > 0);
         assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
+    } // T-KNW-047: exact thresholds, tied boundary words, zero totals, wide counts and display order.
+    #[test]
+    fn coverage_target_includes_boundary_ties_before_display_order() {
+        let all = vec![
+            word("Z", "", 6, WordStatus::Unknown),
+            word("A", "", 2, WordStatus::Unknown),
+            word("B", "", 2, WordStatus::Known),
+            word("C", "", 0, WordStatus::Unknown),
+        ];
+        let mut state = State {
+            coverage_target: Some(60),
+            order: WordOrder::Expression,
+            ..Default::default()
+        };
+        assert_eq!(
+            filtered(&all, "", &state)
+                .iter()
+                .map(|w| w.expression.as_str())
+                .collect::<Vec<_>>(),
+            ["Z"]
+        );
+        state.coverage_target = Some(70);
+        assert_eq!(filtered(&all, "", &state).len(), 3);
+        state.coverage_target = Some(100);
+        assert_eq!(filtered(&all, "", &state).len(), 3);
+        state.status = Some(WordStatus::Known);
+        assert_eq!(filtered(&all, "", &state).len(), 1);
+        state.status = None;
+        let preset = Preset::capture("", &state).unwrap();
+        state.coverage_target = None;
+        preset.apply(&mut String::new(), &mut state);
+        assert_eq!(state.coverage_target, Some(100));
+        let wide = vec![
+            word("A", "", usize::MAX, WordStatus::Unknown),
+            word("B", "", usize::MAX, WordStatus::Unknown),
+        ];
+        state.coverage_target = Some(1);
+        assert_eq!(filtered(&wide, "", &state).len(), 2);
+        assert!(filtered(&[word("zero", "", 0, WordStatus::Known)], "", &state).is_empty());
+        let mut h = harness();
+        h.state_mut().state.coverage_target = Some(1);
+        h.run();
+        h.get_by_label("Reading filters").click();
+        h.run();
+        h.get_by_label("Reset coverage").click();
+        h.run();
+        assert_eq!(h.state().state.coverage_target, None);
     }
 }
