@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Order study vocabulary by frequency, expression or reading, including exported selections (KNW-028, M37).
+
 - Filter vocabulary by exact word status and card presence across study views (KNW-027, M36).
 
 - Search vocabulary, encounter history and subtitle lists consistently across kana, width and case variants (KNW-026, M35).

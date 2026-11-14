@@ -243,3 +243,5 @@ Completed whole-book and episode/series analyses can reuse local count caches af
 Search in vocabulary, historical words and subtitle lists accepts kana-script and width variants and ignores letter case. Separate terms with whitespace to require all of them; words can match either expression or reading. This changes filtering only, keeping the original spelling and lookup targets.
 
 Vocabulary lists also offer exact status and card-presence filters. They combine with the search and Only words not known. Hidden ticked words stay selected for bulk actions or Export selected; Export shown follows all current filters.
+
+Vocabulary order offers most/least frequent, expression and reading order. Missing readings sort by expression; lexical order uses the original Unicode strings. Selected words stay selected when you change order, and exports follow the selected order.

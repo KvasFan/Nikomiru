@@ -1051,7 +1051,7 @@ The same subtitle/study priority applies; development proceeds in order.
 |---|---|---|
 | M35 | Normalised kana/width/case search in study lists, history and subtitles | done |
 | M36 | Precise word-status and card filters in vocabulary lists | done |
-| M37 | Vocabulary ordering by frequency, expression and reading | not started |
+| M37 | Vocabulary ordering by frequency, expression and reading | done |
 | M38 | Copy shown/selected study vocabulary to the clipboard | not started |
 | M39 | Export per-episode historical encounters | not started |
 | M40 | Browse episode vocabulary before playback | not started |
@@ -1079,6 +1079,17 @@ for explicit selected actions and apply filters to shown exports.
 
 **Exit criteria**: filter intersection, hidden selections, accessible controls
 and export-snapshot checks; `cargo xtask ci`.
+
+---
+
+## M37 — Vocabulary ordering
+
+**Requirements**: KNW-028. Shared vocabulary views offer both frequency
+directions, expression and reading order. Preserve selections and use the
+chosen order for shown/selected exports, including hidden selections.
+
+**Exit criteria**: frequency/lexical/tie/fallback and filter/selection tests,
+accessible selector and export ordering; full CI.
 
 ---
 

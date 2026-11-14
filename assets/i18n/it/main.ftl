@@ -1060,3 +1060,9 @@ vocabulary-card-filter = Filtro schede
 vocabulary-any-card = Qualsiasi scheda
 vocabulary-with-card = Con scheda
 vocabulary-without-card = Senza scheda
+
+vocabulary-order = Ordine del vocabolario
+vocabulary-frequency-desc = Più frequenti prima
+vocabulary-frequency-asc = Meno frequenti prima
+vocabulary-expression = Ordine per parola
+vocabulary-reading = Ordine per lettura

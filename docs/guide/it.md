@@ -243,3 +243,5 @@ Le analisi completate di libri interi ed episodi/serie possono riusare conteggi 
 La ricerca in vocabolario, parole storiche e lista sottotitoli accetta varianti kana e di larghezza e ignora maiuscole/minuscole. Separa i termini con spazi per richiederli tutti; le parole possono corrispondere alla forma o alla lettura. Cambia solo il filtro, mantenendo grafia originale e bersagli del dizionario.
 
 Gli elenchi di vocabolario offrono anche filtri per stato esatto e presenza di una scheda. Si combinano con ricerca e Solo parole non conosciute. Le parole spuntate nascoste restano selezionate per azioni in blocco o Esporta selezionate; Esporta visibili segue tutti i filtri correnti.
+
+Ordine del vocabolario offre frequenza crescente/decrescente, parola e lettura. Le letture mancanti usano la parola; l’ordine lessicale confronta le stringhe Unicode originali. Le parole selezionate restano tali cambiando ordine e le esportazioni seguono l’ordine scelto.

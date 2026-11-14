@@ -1060,3 +1060,9 @@ vocabulary-card-filter = Card filter
 vocabulary-any-card = Any card
 vocabulary-with-card = With card
 vocabulary-without-card = Without card
+
+vocabulary-order = Vocabulary order
+vocabulary-frequency-desc = Most frequent first
+vocabulary-frequency-asc = Least frequent first
+vocabulary-expression = Expression order
+vocabulary-reading = Reading order

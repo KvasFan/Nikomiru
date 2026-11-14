@@ -35,6 +35,8 @@ pub(crate) struct Labels {
     pub all_statuses: String,
     pub card_filter: String,
     pub cards: [String; 3],
+    pub order: String,
+    pub orders: [String; 4],
     /// The four statuses, in the order of `STATUSES`.
     pub statuses: [String; 4],
 }
@@ -47,6 +49,14 @@ impl Labels {
             ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
             card: tr("subtitle-words-card", &[]),
             statuses: STATUSES.map(|s| tr(&format!("word-status-{}", s.name()), &[])),
+            order: tr("vocabulary-order", &[]),
+            orders: [
+                "vocabulary-frequency-desc",
+                "vocabulary-frequency-asc",
+                "vocabulary-expression",
+                "vocabulary-reading",
+            ]
+            .map(|k| tr(k, &[])),
             status_filter: tr("vocabulary-status-filter", &[]),
             all_statuses: tr("vocabulary-all-statuses", &[]),
             card_filter: tr("vocabulary-card-filter", &[]),
@@ -68,6 +78,15 @@ pub(crate) enum CardFilter {
     Without,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WordOrder {
+    #[default]
+    Frequent,
+    Rare,
+    Expression,
+    Reading,
+}
+
 /// The statuses offered, in order.
 pub(crate) const STATUSES: [WordStatus; 4] = [
     WordStatus::Unknown,
@@ -83,6 +102,7 @@ pub(crate) struct State {
     pub new_only: bool,
     pub status: Option<WordStatus>,
     pub card: CardFilter,
+    pub order: WordOrder,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
 }
@@ -108,7 +128,8 @@ pub(crate) fn filtered<'a>(
     state: &State,
 ) -> Vec<&'a ListedWord> {
     let query = nikomiru_text::search::Query::new(query);
-    all.iter()
+    let mut rows: Vec<_> = all
+        .iter()
         .filter(|w| {
             !state.new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning)
         })
@@ -119,7 +140,40 @@ pub(crate) fn filtered<'a>(
             CardFilter::Without => !w.card,
         })
         .filter(|w| query.matches(&[&w.expression, &w.reading]))
-        .collect()
+        .collect();
+    sort(&mut rows, state.order);
+    rows
+}
+
+fn sort(rows: &mut [&ListedWord], order: WordOrder) {
+    let lexical = |a: &ListedWord, b: &ListedWord| {
+        a.expression
+            .cmp(&b.expression)
+            .then_with(|| a.reading.cmp(&b.reading))
+    };
+    fn reading(w: &ListedWord) -> &str {
+        if w.reading.is_empty() {
+            &w.expression
+        } else {
+            &w.reading
+        }
+    }
+    rows.sort_by(|a, b| match order {
+        WordOrder::Frequent => b.count.cmp(&a.count).then_with(|| lexical(a, b)),
+        WordOrder::Rare => a.count.cmp(&b.count).then_with(|| lexical(a, b)),
+        WordOrder::Expression => lexical(a, b),
+        WordOrder::Reading => reading(a).cmp(reading(b)).then_with(|| lexical(a, b)),
+    });
+}
+
+/// Selected identities, including hidden rows, in the user's chosen order.
+pub(crate) fn selected<'a>(all: &'a [ListedWord], state: &State) -> Vec<&'a ListedWord> {
+    let mut rows: Vec<_> = all
+        .iter()
+        .filter(|w| state.ticked.contains(&word_key(&w.expression, &w.reading)))
+        .collect();
+    sort(&mut rows, state.order);
+    rows
 }
 
 /// Draws the words of `all` that the query and the filter let through.
@@ -132,6 +186,26 @@ pub(crate) fn show(
     out: &mut Vec<Command>,
 ) {
     ui.horizontal_wrapped(|ui| {
+        let orders = [
+            WordOrder::Frequent,
+            WordOrder::Rare,
+            WordOrder::Expression,
+            WordOrder::Reading,
+        ];
+        let index = orders
+            .iter()
+            .position(|order| order == &state.order)
+            .unwrap_or(0);
+        let response = egui::ComboBox::from_id_salt("vocabulary-order")
+            .selected_text(&labels.orders[index])
+            .show_ui(ui, |ui| {
+                for (order, text) in orders.into_iter().zip(&labels.orders) {
+                    ui.selectable_value(&mut state.order, order, text);
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.order));
         let response = egui::ComboBox::from_id_salt("vocabulary-status-filter")
             .selected_text(
                 state
@@ -280,6 +354,8 @@ mod tests {
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
                         statuses: ["new", "learning", "known", "ignore"].map(String::from),
+                        order: "Order".into(),
+                        orders: ["Frequent", "Rare", "Expression", "Reading"].map(String::from),
                         status_filter: "Status filter".into(),
                         all_statuses: "All statuses".into(),
                         card_filter: "Card filter".into(),
@@ -298,6 +374,39 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-KNW-028: ordering is deterministic and preserves hidden selected identities.
+    #[test]
+    fn frequency_expression_and_reading_orders_combine_with_filters() {
+        let rows = vec![
+            word("b", "a", 2, WordStatus::Unknown),
+            word("a", "z", 5, WordStatus::Known),
+            word("c", "", 2, WordStatus::Learning),
+        ];
+        let mut state = State::default();
+        let names = |rows: Vec<&ListedWord>| {
+            rows.into_iter()
+                .map(|w| w.expression.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(filtered(&rows, "", &state)), ["a", "b", "c"]);
+        state.order = WordOrder::Rare;
+        assert_eq!(names(filtered(&rows, "", &state)), ["b", "c", "a"]);
+        state.order = WordOrder::Expression;
+        assert_eq!(names(filtered(&rows, "", &state)), ["a", "b", "c"]);
+        state.order = WordOrder::Reading;
+        assert_eq!(names(filtered(&rows, "", &state)), ["b", "c", "a"]);
+        state
+            .ticked
+            .extend([word_key("b", "a"), word_key("a", "z")]);
+        state.status = Some(WordStatus::Known);
+        assert_eq!(names(filtered(&rows, "", &state)), ["a"]);
+        assert_eq!(names(selected(&rows, &state)), ["b", "a"]);
+        assert_eq!(
+            names(filtered(&rows, "missing", &state)),
+            Vec::<String>::new()
+        );
     }
 
     // T-KNW-027: exact filters intersect; hidden ticks remain explicit bulk targets.

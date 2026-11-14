@@ -52,17 +52,8 @@ pub(crate) fn show(
                 shown.into_iter().cloned().collect(),
             ));
         }
-        let selected: Vec<_> = words
-            .iter()
-            .filter(|w| {
-                state
-                    .words
-                    .ticked
-                    .contains(&nikomiru_library::words::word_key(
-                        &w.expression,
-                        &w.reading,
-                    ))
-            })
+        let selected: Vec<_> = word_list::selected(words, &state.words)
+            .into_iter()
             .cloned()
             .collect();
         if ui
@@ -170,5 +161,18 @@ mod tests {
         h.run();
         assert!(h.state().state.words.ticked.is_empty());
         assert!(h.state().state.query.is_empty());
+        // T-KNW-028: exports follow the accessible vocabulary ordering choice.
+        h.state_mut().rows[0].count = 9;
+        h.run();
+        h.get_by_label("vocabulary-order").click();
+        h.run();
+        h.get_by_label("vocabulary-frequency-asc").click();
+        h.run_steps(2);
+        h.get_by_label("analysis-export-shown").click();
+        h.run();
+        assert!(
+            matches!(&h.state().out[4], Command::AnalysisWordsExport(rows)
+            if rows.len() == 2 && rows[0].expression == "犬" && rows[1].expression == "猫")
+        );
     }
 }

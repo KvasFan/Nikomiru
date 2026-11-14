@@ -1043,3 +1043,9 @@ vocabulary-card-filter = カードフィルター
 vocabulary-any-card = カードの有無を問わない
 vocabulary-with-card = カードあり
 vocabulary-without-card = カードなし
+
+vocabulary-order = 単語の並び順
+vocabulary-frequency-desc = 頻度が高い順
+vocabulary-frequency-asc = 頻度が低い順
+vocabulary-expression = 表記順
+vocabulary-reading = 読み順
