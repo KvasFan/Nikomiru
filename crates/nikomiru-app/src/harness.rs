@@ -154,6 +154,10 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
+        Some("study-report") => {
+            harness::study_report(text(command, "scope")?, text(command, "path")?)
+                .map(|()| Value::Null)
+        }
         Some("subtitle-export") => {
             harness::subtitle_export(text(command, "path")?).map(|()| Value::Null)
         }

@@ -1077,3 +1077,8 @@ analysis-cache-unavailable = キャッシュ使用量を取得できません。
 analysis-cache-refresh = 使用量を更新
 analysis-cache-clear = カウントキャッシュを消去
 analysis-cache-detail = 本・エピソードの派生カウントは最大64 MiBです。現在の分析は維持され、完了した処理によりキャッシュが再作成されることがあります。
+
+study-report-export = 分析済みの概要を出力…
+study-report-empty = このレポートに使える完了済みの分析がありません。
+study-report-saved = 理解度レポートを { $path } に保存しました。
+study-report-failed = レポートを保存できませんでした：{ $reason }

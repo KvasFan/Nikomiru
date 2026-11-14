@@ -110,6 +110,15 @@ fn a_series_card_counts_local_subtitles_and_keeps_source_coverage() {
                     .any(|w| w["expression"] == "食べる" && w["status"] == "known")
             })
     });
+    // T-KNW-033: weighted totals and source coverage survive a portable report snapshot.
+    let report = desk.path("series.tsv");
+    h.cmd(json!({"cmd":"study-report", "scope":"series", "path":report}));
+    let text = std::fs::read_to_string(&report).unwrap();
+    let row: Vec<_> = text.lines().nth(1).unwrap().split('\t').collect();
+    assert_eq!(
+        (row[0], row[4], row[9], row[10], row[11]),
+        ("series", "10", "2", "4", "0")
+    );
     std::fs::write(&sidecar, "1\n00:00:01,000 --> 00:00:02,000\n日本語\n").unwrap();
     h.cmd(json!({"cmd":"library", "action":"analyse-series", "id":id}));
     let s = h.state_until("series refresh rereads changed text", |s| {
@@ -117,6 +126,11 @@ fn a_series_card_counts_local_subtitles_and_keeps_source_coverage() {
     });
     assert_eq!(s["library_page"]["open_series"]["id"], id);
     assert_eq!(s["loaded"], false);
+    assert_eq!(
+        std::fs::read_to_string(&report).unwrap(),
+        text,
+        "later rescoring leaves the exported snapshot intact"
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     // T-KNW-025: persistent per-episode counts rebuild the explicit series aggregate.

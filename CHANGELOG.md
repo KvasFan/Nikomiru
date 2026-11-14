@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Export completed book and series comprehension summaries with current totals and source coverage (KNW-033, M44).
+
 - Inspect and clear persisted count caches from Statistics, preserving current analyses and unrelated data (KNW-032, M43).
 
 - Export the complete current primary text subtitle track as SRT with the captured delay (SUB-034, M42).

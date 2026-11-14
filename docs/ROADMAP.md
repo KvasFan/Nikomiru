@@ -1058,7 +1058,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M41 | Visible graphic OCR progress and explicit cancellation | done |
 | M42 | Export the current complete text subtitle track as SRT | done |
 | M43 | Inspect and clear persistent analysis caches | done |
-| M44 | Export comprehension summaries for analysed books and series | not started |
+| M44 | Export comprehension summaries for analysed books and series | done |
 
 ## M35 — Normalised study and subtitle search
 
@@ -1156,6 +1156,18 @@ and unrelated data; serialise cache writes/clear and clean interrupted writes.
 
 **Exit criteria**: ownership/usage/temporary/clear/repopulate boundary tests,
 accessible controls and actual worker/history-preservation case; full CI.
+
+---
+
+## M44 — Export comprehension summaries
+
+**Requirements**: KNW-033. Export retained completed book or series summaries
+with current shared statuses, weighted counts, defined percentages and explicit
+series coverage, as bounded atomic TSV independent of view filters.
+
+**Exit criteria**: deterministic safe totals/coverage/blank-ratio tests,
+accessible scoped actions and actual report snapshots/status parity; full CI
+and final batch regression.
 
 ---
 

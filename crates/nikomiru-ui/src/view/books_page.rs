@@ -1107,6 +1107,18 @@ fn list(
     }
     if s.colours {
         state.analysis_order.controls(ui, s.tr);
+        let ready = s.page.list.iter().any(|(uid, _)| {
+            matches!(
+                s.page.scores.get(uid),
+                Some(crate::book_scores::Status::Score(_))
+            )
+        });
+        if ui
+            .add_enabled(ready, Button::new(tr(s, "study-report-export")))
+            .clicked()
+        {
+            out.push(Command::StudyReport(crate::study_report::Scope::Books));
+        }
     }
     if let Some((text, ok)) = &s.page.status {
         let shade: Color32 = if *ok {
@@ -1297,6 +1309,15 @@ mod tests {
         assert!(h.query_by_label("books-score-analyse-title").is_none());
         h.state_mut().colours = true;
         h.run();
+        // T-KNW-033: no completed result means the report action cannot emit a command.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(_)))
+        );
         h.get_by_label("books-score-analyse-title").click();
         h.run();
         assert!(
@@ -1376,6 +1397,17 @@ mod tests {
         h.run_steps(2);
         assert!(h.query_by_label("Other book").is_none());
         assert!(h.state().out.is_empty());
+        // T-KNW-033: the completed book view exposes a scoped report action.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(crate::study_report::Scope::Books)))
+        );
+        h.state_mut().out.clear();
+
         h.state_mut().colours = false;
         h.run();
         h.get_by_label("Other book");

@@ -4,7 +4,7 @@
 
 use crate::words::ListedWord;
 
-fn field(text: &str) -> String {
+pub(crate) fn field(text: &str) -> String {
     let clean = text.replace(['\t', '\r', '\n'], " ");
     if clean.trim_start().starts_with(['=', '+', '-', '@']) {
         format!("'{clean}")

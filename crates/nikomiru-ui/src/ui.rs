@@ -571,6 +571,8 @@ pub(crate) enum Command {
     GraphicReadCancel,
     /// Export current complete text subtitles as SRT.
     SubtitleExport,
+    /// Export a captured completed-analysis summary.
+    StudyReport(crate::study_report::Scope),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
     /// A book of the list.
@@ -1011,6 +1013,7 @@ impl Ui {
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
+                    Dialog::StudyReport => self.session.study_report_to(&path),
                     Dialog::SubtitleExport => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
@@ -1520,6 +1523,11 @@ impl Ui {
             Command::BookAnalysisCancel(uid) => s.book_analysis_cancel(&uid),
             Command::SeriesAnalysisCancel(id) => s.series_analysis_cancel(id),
             Command::BookAnalyse(uid) => s.book_analyse(&uid),
+            Command::StudyReport(scope) => {
+                if s.study_report_prepare(scope) {
+                    self.view.dialog = Some(Dialog::StudyReport);
+                }
+            }
             Command::SubtitleExport => {
                 if s.subtitle_export_prepare() {
                     self.view.dialog = Some(Dialog::SubtitleExport);

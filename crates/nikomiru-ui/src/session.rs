@@ -388,6 +388,7 @@ pub struct Session {
     analysis_export: Option<String>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
+    study_report: Option<String>,
     /// The words' revision the pause at the end of a line was last set
     /// for, when it stops only after new words (KNW-012).
     auto_pause_revision: u64,
@@ -764,6 +765,7 @@ impl Session {
             analysis_export: None,
             history_export: None,
             subtitle_export: None,
+            study_report: None,
             encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -7060,6 +7062,87 @@ impl Session {
     pub fn wait_writes(&self) {
         if let Some(w) = &self.writer {
             w.wait();
+        }
+    }
+
+    /// Capture every retained complete analysis of the chosen view with current statuses.
+    pub fn study_report_prepare(&mut self, scope: crate::study_report::Scope) -> bool {
+        use crate::study_report::{Row, Scope};
+        self.study_report = None;
+        self.books_page.scores.update(
+            self.services.config.subtitles.word_colors,
+            &self.books_page.list,
+            &self.words,
+        );
+        self.update_series_scores();
+        let rows = match scope {
+            Scope::Books => self
+                .books_page
+                .list
+                .iter()
+                .filter_map(|(uid, book)| {
+                    let crate::book_scores::Status::Score(score) =
+                        self.books_page.scores.get(uid)?
+                    else {
+                        return None;
+                    };
+                    Some(Row {
+                        uid: uid.clone(),
+                        title: book.title.clone(),
+                        score: *score,
+                        coverage: None,
+                    })
+                })
+                .collect(),
+            Scope::Series => self
+                .library_page
+                .home
+                .as_ref()
+                .map(|home| {
+                    home.series
+                        .iter()
+                        .filter_map(|series| {
+                            let crate::series_scores::Status::Ready(summary) =
+                                self.library_page.scores.get(series.id)?
+                            else {
+                                return None;
+                            };
+                            Some(Row {
+                                uid: series.id.to_string(),
+                                title: series.record.title.clone(),
+                                score: summary.score,
+                                coverage: Some((summary.scored, summary.total, summary.failed)),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        match crate::study_report::tsv(scope, rows) {
+            Ok(text) => {
+                self.study_report = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the previously captured comprehension report.
+    pub fn study_report_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.study_report.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "study-report-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self
+                .toasts
+                .push(self.tr("study-report-failed", &[("reason", error.to_string())])),
         }
     }
 

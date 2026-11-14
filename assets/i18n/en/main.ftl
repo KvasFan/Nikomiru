@@ -1094,3 +1094,8 @@ analysis-cache-unavailable = Cache usage is unavailable.
 analysis-cache-refresh = Refresh cache usage
 analysis-cache-clear = Clear count cache
 analysis-cache-detail = Up to 64 MiB of derived book/episode counts. Current analyses stay open; completed work may refill the cache.
+
+study-report-export = Export analysed summaries…
+study-report-empty = No completed analyses are available for this report.
+study-report-saved = Comprehension report saved to { $path }.
+study-report-failed = The report could not be saved: { $reason }

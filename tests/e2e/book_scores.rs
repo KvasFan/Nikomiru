@@ -67,6 +67,13 @@ fn an_epub_is_scored_before_opening_and_keeps_its_reading_place() {
     std::fs::write(&known, "word,reading,status\n食べる,たべる,known\n").unwrap();
     h.cmd(json!({"cmd":"words","action":"import","path":known}));
     h.state_until("both chapters rescored", |s| score(s)["known"] == 2);
+    // T-KNW-033: book reports capture current shared statuses without opening the reader.
+    let report = desk.path("books.tsv");
+    h.cmd(json!({"cmd":"study-report", "scope":"books", "path":report}));
+    let text = std::fs::read_to_string(&report).unwrap();
+    let row: Vec<_> = text.lines().nth(1).unwrap().split('\t').collect();
+    assert_eq!((row[0], row[2], row[4]), ("book", uid.as_str(), "2"));
+    assert_eq!(row.len(), 12);
     h.cmd(json!({"cmd":"books","action":"add","path":path}));
     let s = h.state_until("the saved chapter open", |s| {
         s["books"]["chapter"] == 1 && s["books"]["score"]["known"] == 1

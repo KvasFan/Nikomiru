@@ -724,6 +724,18 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
     if s.colours {
         state.analysis_order.controls(ui, s.tr);
+        let ready = home.series.iter().any(|series| {
+            matches!(
+                s.page.scores.get(series.id),
+                Some(crate::series_scores::Status::Ready(_))
+            )
+        });
+        if ui
+            .add_enabled(ready, Button::new(tr(s, "study-report-export")))
+            .clicked()
+        {
+            out.push(Command::StudyReport(crate::study_report::Scope::Series));
+        }
     }
     let indices = if s.colours {
         state.analysis_order.indices(home.series.len(), |i| {
@@ -1492,6 +1504,17 @@ mod tests {
         h.run_steps(2);
         assert_eq!(h.query_all_by_label("Beta").count(), 0);
         assert!(h.state().out.is_empty());
+        // T-KNW-033: export all completed series summaries without opening them.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(crate::study_report::Scope::Series)))
+        );
+        h.state_mut().out.clear();
+
         h.get_by_label("analysis-words").click();
         h.run_steps(2);
         h.get_by_label("×3");
@@ -1527,6 +1550,15 @@ mod tests {
         h.state_mut().colours = true;
         h.run();
         h.state_mut().out.clear();
+        // T-KNW-033: no completed result means the report action cannot emit a command.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(_)))
+        );
         h.get_by_label("library-score-analyse-title").click();
         h.run();
         assert!(

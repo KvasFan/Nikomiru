@@ -1282,3 +1282,21 @@ pub fn subtitle_export(path: &str) -> Result<(), String> {
         }
     })
 }
+
+/// Native-save equivalent for a completed-analysis report (KNW-033).
+pub fn study_report(scope: &str, path: &str) -> Result<(), String> {
+    let scope = match scope {
+        "books" => crate::study_report::Scope::Books,
+        "series" => crate::study_report::Scope::Series,
+        _ => return Err("unknown report scope".into()),
+    };
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if ui.session.study_report_prepare(scope) {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::StudyReport,
+                path,
+            });
+        }
+    })
+}

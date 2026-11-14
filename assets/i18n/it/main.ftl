@@ -1094,3 +1094,8 @@ analysis-cache-unavailable = Utilizzo della cache non disponibile.
 analysis-cache-refresh = Aggiorna utilizzo cache
 analysis-cache-clear = Svuota cache conteggi
 analysis-cache-detail = Fino a 64 MiB di conteggi derivati di libri/episodi. Le analisi correnti restano aperte; il lavoro completato può riempire di nuovo la cache.
+
+study-report-export = Esporta riepiloghi analizzati…
+study-report-empty = Non ci sono analisi completate disponibili per questo riepilogo.
+study-report-saved = Riepilogo di comprensione salvato in { $path }.
+study-report-failed = Impossibile salvare il riepilogo: { $reason }
