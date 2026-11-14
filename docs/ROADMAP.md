@@ -1426,3 +1426,20 @@ actual local-worker/UI checks, `cargo xtask ci`, refreshed license/vendor data.
 
 Status: done. `cargo xtask ci --full` passed 952 workspace tests and 97 GUI
 tests; real Linux x86_64 upstream downloads/probes passed. See [M45 QA](qa/m45.md).
+
+## Continuation M62–M71 after source tag 2.70.0
+
+The maintainer authorises ten consecutive subtitle/study milestones and final Git tag/push.
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M62 | KNW-041 | Named persistent study presets | done |
+| M63 | KNW-042 | Vocabulary script filters | planned |
+| M64 | KNW-043 | Vocabulary expression length | planned |
+| M65 | SUB-044 | Subtitle duration filters | planned |
+| M66 | SUB-045 | Listening text masking | planned |
+| M67 | KNW-044 | Vocabulary from subtitle study scopes | planned |
+| M68 | SUB-046 | Bilingual HTML study sheets | planned |
+| M69 | SUB-047 | Subtitle range selection | planned |
+| M70 | KNW-045 | Vocabulary study batches | planned |
+| M71 | SUB-048 | Finite subtitle repetition | planned |

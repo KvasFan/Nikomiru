@@ -1273,3 +1273,20 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | Structured content | Yomitan JSON format for rich glossaries (tables, ruby, images) |
 | hwdec | mpv hardware video decoding |
 | Spike | Time-boxed prototype to reduce a technical risk; the code is thrown away |
+
+## Continuation M62–M71 (D-66)
+
+| ID | Requirement |
+| --- | --- |
+| KNW-041 | **Named persistent study presets** (M62, D-66): Save up to sixteen named vocabulary filter presets in configuration; validate names and bounded queries, explicitly apply/delete, preserve ticks and report save failures. |
+| KNW-042 | **Vocabulary script filters** (M63, D-66): Filter headwords by kanji, kana or Latin presence with explicit Unicode ranges; compose with other filters and retain both session and persistent presets. |
+| KNW-043 | **Vocabulary expression length** (M64, D-66): Inclusive non-whitespace Unicode scalar length bounds compose with filters, selections and both preset types; reversed bounds show no rows. |
+| SUB-044 | **Subtitle duration filters** (M65, D-66): Inclusive millisecond duration bounds compose with time/speed/search/concordance; cache and all shown exports use the same predicate. |
+| SUB-045 | **Listening text masking** (M66, D-66): Explicitly hide subtitle-list text and reveal individual or shown cues; hidden text is absent from rendering and accessible labels; source changes reset reveals. |
+| KNW-044 | **Vocabulary from subtitle study scopes** (M67, D-66): Explicitly capture shown/selected complete segmented cue vocabulary; retain headword counts, rescore statuses, invalidate on source/dictionary replacement and return to full scope. |
+| SUB-046 | **Bilingual HTML study sheets** (M68, D-66): Export a bounded standalone escaped bilingual HTML snapshot with translations behind details, no external resources and atomic native saving. |
+| SUB-047 | **Subtitle range selection** (M69, D-66): Shift-select ranges in shown order and invert shown ticks, preserve hidden selections, clear range anchors on source changes. |
+| KNW-045 | **Vocabulary study batches** (M70, D-66): Select next N unticked shown words in chosen order (1–1000, default 20); clear/invert shown only and retain hidden ticks. |
+| SUB-048 | **Finite subtitle repetition** (M71, D-66): Repeat an explicitly chosen cue two, three or five times then pause; cancel on manual playback/source/delay actions and prevent gap-speed/auto-pause conflicts. |
+
+D-66 — The maintainer requested tag/push followed by ten further consecutive milestones on 2026-11-14. Verify published 2.70.0, implement M62–M71, run regression, and publish a new source tag and development branch. Existing stable binary packages remain separate.

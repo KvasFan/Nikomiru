@@ -1170,3 +1170,8 @@ vocabulary-preset-apply = 記憶したフィルターを適用
 vocabulary-preset-clear = フィルターを忘れる
 vocabulary-preset-hint = このセッション中のみ記憶します。語の選択は各画面に保持します。
 vocabulary-preset-too-long = 検索が長すぎます（4096 バイトまで）。
+
+vocabulary-named-presets = 学習プリセット
+vocabulary-preset-name = プリセット名
+vocabulary-preset-store = プリセットを保存
+vocabulary-preset-delete = プリセットを削除

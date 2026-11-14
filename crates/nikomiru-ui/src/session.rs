@@ -443,6 +443,7 @@ pub struct Session {
     /// A write of the settings is running: the next one waits for it.
     config_saving: bool,
     /// Tool paths awaiting a successful settings write (INS-007).
+    preset_saving: bool,
     setup_saving: std::collections::BTreeSet<String>,
     /// The settings "Create Lapis deck" was asked with.
     lapis_request: Option<nikomiru_core::config::AnkiConfig>,
@@ -799,6 +800,7 @@ impl Session {
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
             config_saving: false,
+            preset_saving: false,
             setup_saving: Default::default(),
             lapis_request: None,
             keep_status: false,
@@ -1783,6 +1785,12 @@ impl Session {
             // newer settings wait: their write tells how it went
             return;
         }
+        if std::mem::take(&mut self.preset_saving) {
+            self.toasts.push(match &result {
+                Ok(()) => self.tr("settings-saved", &[]),
+                Err(message) => message.clone(),
+            });
+        }
         let setup_paths = std::mem::take(&mut self.setup_saving);
         for id in &setup_paths {
             self.setup_page.items.insert(
@@ -2097,6 +2105,38 @@ impl Session {
     /// Saves a tab of the settings, the keys of `section` in `draft`: they
     /// apply at once (SET-002) and go to `config.toml` unless it could not
     /// be read. Shortcuts that conflict are refused (KEY-001).
+    /// Explicit persistent preset mutation, using the serial configuration writer.
+    pub fn study_preset_change(
+        &mut self,
+        preset: Option<nikomiru_core::config::StudyPreset>,
+        delete: Option<String>,
+    ) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let saved = &mut self.services.config.lookup.study_presets;
+        if let Some(p) = preset {
+            if !p.valid() {
+                return;
+            }
+            if let Some(old) = saved.iter_mut().find(|old| old.name == p.name) {
+                *old = p;
+            } else if saved.len() < 16 {
+                saved.push(p);
+            } else {
+                return;
+            }
+        } else if let Some(name) = delete {
+            saved.retain(|p| p.name != name);
+        } else {
+            return;
+        }
+        self.preset_saving = true;
+        self.config_save = Some(self.services.config.clone());
+    }
+
+    /// Apply and queue the selected settings section for persistence.
     pub fn settings_save(&mut self, section: nikomiru_core::config::Section, draft: &Config) {
         use nikomiru_core::config::Section;
         if section == Section::Shortcuts {

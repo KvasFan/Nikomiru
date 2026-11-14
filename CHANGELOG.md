@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Named persistent study presets (KNW-041, M62).
+
 ## [2.70.0] - 2026-11-14
 
 Ten consecutive subtitle/study milestones (M52–M61) after source tag 2.60.0.

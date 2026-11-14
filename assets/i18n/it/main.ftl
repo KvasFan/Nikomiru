@@ -1187,3 +1187,8 @@ vocabulary-preset-apply = Applica filtri memorizzati
 vocabulary-preset-clear = Dimentica filtri
 vocabulary-preset-hint = Memorizzati solo per questa sessione. Le selezioni restano proprie di ogni vista.
 vocabulary-preset-too-long = La ricerca è troppo lunga da memorizzare (limite di 4096 byte).
+
+vocabulary-named-presets = Preset di studio salvati
+vocabulary-preset-name = Nome del preset
+vocabulary-preset-store = Salva preset
+vocabulary-preset-delete = Elimina preset

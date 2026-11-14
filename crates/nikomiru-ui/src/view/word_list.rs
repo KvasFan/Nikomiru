@@ -32,6 +32,7 @@ pub(crate) struct Labels {
     pub preset_clear: String,
     pub preset_hint: String,
     pub preset_too_long: String,
+    pub named: [String; 4],
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -74,6 +75,13 @@ impl Labels {
             preset_clear: tr("vocabulary-preset-clear", &[]),
             preset_hint: tr("vocabulary-preset-hint", &[]),
             preset_too_long: tr("vocabulary-preset-too-long", &[]),
+            named: [
+                "vocabulary-named-presets",
+                "vocabulary-preset-name",
+                "vocabulary-preset-store",
+                "vocabulary-preset-delete",
+            ]
+            .map(|k| tr(k, &[])),
             all: tr("subtitle-words-all", &[]),
             ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
             card: tr("subtitle-words-card", &[]),
@@ -145,6 +153,7 @@ pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
     pub exact: bool,
+    preset_name: String,
     pub status: Option<WordStatus>,
     pub card: CardFilter,
     pub order: WordOrder,
@@ -192,6 +201,104 @@ impl Preset {
         state.min_count = self.min_count;
         state.max_count = self.max_count;
     }
+}
+
+pub(super) fn sync_presets(ctx: &egui::Context, presets: &[nikomiru_core::config::StudyPreset]) {
+    ctx.data_mut(|d| {
+        d.insert_temp(
+            egui::Id::unique("vocabulary-named-presets"),
+            presets.to_vec(),
+        )
+    });
+}
+
+fn named_presets(
+    ui: &mut egui::Ui,
+    query: &mut String,
+    labels: &Labels,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    use nikomiru_core::config::StudyPreset;
+    egui::CollapsingHeader::new(&labels.named[0])
+        .id_salt("vocabulary-persistent-presets")
+        .show(ui, |ui| {
+            let saved = ui
+                .ctx()
+                .data(|d| {
+                    d.get_temp::<Vec<StudyPreset>>(egui::Id::unique("vocabulary-named-presets"))
+                })
+                .unwrap_or_default();
+            ui.add(
+                egui::TextEdit::singleline(&mut state.preset_name)
+                    .char_limit(64)
+                    .hint_text(&labels.named[1]),
+            )
+            .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, &labels.named[1]));
+            let snapshot = StudyPreset {
+                name: state.preset_name.trim().to_string(),
+                query: query.clone(),
+                new_only: state.new_only,
+                exact: state.exact,
+                status: state
+                    .status
+                    .and_then(|s| STATUSES.iter().position(|x| *x == s))
+                    .map(|i| i as u8),
+                card: match state.card {
+                    CardFilter::Any => 0,
+                    CardFilter::With => 1,
+                    CardFilter::Without => 2,
+                },
+                order: match state.order {
+                    WordOrder::Frequent => 0,
+                    WordOrder::Rare => 1,
+                    WordOrder::Expression => 2,
+                    WordOrder::Reading => 3,
+                },
+                min_count: state.min_count,
+                max_count: state.max_count,
+            };
+            let available = saved.len() < 16 || saved.iter().any(|p| p.name == snapshot.name);
+            if ui
+                .add_enabled(
+                    snapshot.valid() && available,
+                    egui::Button::new(&labels.named[2]),
+                )
+                .clicked()
+            {
+                out.push(Command::StudyPresetSave(snapshot));
+            }
+            for p in saved {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(&p.name).clicked() {
+                        Preset {
+                            query: p.query.clone(),
+                            new_only: p.new_only,
+                            exact: p.exact,
+                            status: p.status.and_then(|i| STATUSES.get(usize::from(i)).copied()),
+                            card: [CardFilter::Any, CardFilter::With, CardFilter::Without]
+                                [usize::from(p.card)],
+                            order: [
+                                WordOrder::Frequent,
+                                WordOrder::Rare,
+                                WordOrder::Expression,
+                                WordOrder::Reading,
+                            ][usize::from(p.order)],
+                            min_count: p.min_count,
+                            max_count: p.max_count,
+                        }
+                        .apply(query, state);
+                        ui.ctx().request_repaint();
+                    }
+                    if ui
+                        .button(format!("{}: {}", labels.named[3], p.name))
+                        .clicked()
+                    {
+                        out.push(Command::StudyPresetDelete(p.name.clone()));
+                    }
+                });
+            }
+        });
 }
 
 fn presets(ui: &mut egui::Ui, query: &mut String, labels: &Labels, state: &mut State) {
@@ -350,6 +457,7 @@ pub(crate) fn show(
     out: &mut Vec<Command>,
 ) {
     presets(ui, query, labels, state);
+    named_presets(ui, query, labels, state, out);
     ui.horizontal_wrapped(|ui| {
         let orders = [
             WordOrder::Frequent,
@@ -666,6 +774,13 @@ mod tests {
                         preset_clear: "Forget filters".into(),
                         preset_hint: "Session only".into(),
                         preset_too_long: "Query too long".into(),
+                        named: [
+                            "Named presets",
+                            "Preset name",
+                            "Store preset",
+                            "Delete preset",
+                        ]
+                        .map(String::from),
                         all: "All".into(),
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
@@ -1072,6 +1187,34 @@ mod tests {
         assert!(
             matches!(out.as_slice(), [Command::WordsStatus(w, WordStatus::Ignored)] if w.len() == 1),
             "{out:?}"
+        );
+    }
+    // T-KNW-041: saved presets apply across view state without changing ticks.
+    #[test]
+    fn named_preset_applies_and_deletes_explicitly() {
+        let mut h = harness();
+        sync_presets(
+            &h.ctx,
+            &[nikomiru_core::config::StudyPreset {
+                name: "Cats".into(),
+                query: "猫".into(),
+                exact: true,
+                ..Default::default()
+            }],
+        );
+        h.state_mut().state.ticked.insert(word_key("が", "が"));
+        h.run();
+        h.get_by_label("Named presets").click();
+        h.run();
+        h.get_by_label("Cats").click();
+        h.run();
+        assert_eq!(h.state().query, "猫");
+        assert!(h.state().state.exact);
+        assert!(h.state().state.ticked.contains(&word_key("が", "が")));
+        h.get_by_label("Delete preset: Cats").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.last(), Some(Command::StudyPresetDelete(name)) if name == "Cats")
         );
     }
 }

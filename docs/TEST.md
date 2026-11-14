@@ -828,3 +828,18 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 
 
 **L6 tests never run on the developer's graphical session.** A covered window does not receive the compositor's frame callbacks and does not render (ADR 0001). An off-screen compositor is always used: headless Weston, virtual KWin or Xvfb.
+
+## M62–M71 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-KNW-041 | Named persistent study presets | Save up to sixteen named vocabulary filter presets in configuration; validate names and bounded queries, explicitly apply/delete, preserve ticks and report save failures. | L1, L3 |
+| T-KNW-042 | Vocabulary script filters | Filter headwords by kanji, kana or Latin presence with explicit Unicode ranges; compose with other filters and retain both session and persistent presets. | L1, L3 |
+| T-KNW-043 | Vocabulary expression length | Inclusive non-whitespace Unicode scalar length bounds compose with filters, selections and both preset types; reversed bounds show no rows. | L1, L3 |
+| T-SUB-044 | Subtitle duration filters | Inclusive millisecond duration bounds compose with time/speed/search/concordance; cache and all shown exports use the same predicate. | L1, L3 |
+| T-SUB-045 | Listening text masking | Explicitly hide subtitle-list text and reveal individual or shown cues; hidden text is absent from rendering and accessible labels; source changes reset reveals. | L1, L3 |
+| T-KNW-044 | Vocabulary from subtitle study scopes | Explicitly capture shown/selected complete segmented cue vocabulary; retain headword counts, rescore statuses, invalidate on source/dictionary replacement and return to full scope. | L1, L3 |
+| T-SUB-046 | Bilingual HTML study sheets | Export a bounded standalone escaped bilingual HTML snapshot with translations behind details, no external resources and atomic native saving. | L1, L3 |
+| T-SUB-047 | Subtitle range selection | Shift-select ranges in shown order and invert shown ticks, preserve hidden selections, clear range anchors on source changes. | L1, L3 |
+| T-KNW-045 | Vocabulary study batches | Select next N unticked shown words in chosen order (1–1000, default 20); clear/invert shown only and retain hidden ticks. | L1, L3 |
+| T-SUB-048 | Finite subtitle repetition | Repeat an explicitly chosen cue two, three or five times then pause; cancel on manual playback/source/delay actions and prevent gap-speed/auto-pause conflicts. | L1, L3 |

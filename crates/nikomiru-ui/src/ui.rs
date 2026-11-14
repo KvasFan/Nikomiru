@@ -397,6 +397,8 @@ pub(crate) enum Command {
     },
     ListTime(usize),
     /// Exact current-subtitle word examples.
+    StudyPresetSave(nikomiru_core::config::StudyPreset),
+    StudyPresetDelete(String),
     VocabularyExamples {
         expression: String,
         reading: String,
@@ -1401,6 +1403,8 @@ impl Ui {
                 self.view.sub_list_open = true;
             }
             Command::SubtitleExamplesClear => s.subtitle_examples_clear(),
+            Command::StudyPresetSave(preset) => s.study_preset_change(Some(preset), None),
+            Command::StudyPresetDelete(name) => s.study_preset_change(None, Some(name)),
             Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),
             Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),

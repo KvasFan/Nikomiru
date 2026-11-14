@@ -389,10 +389,50 @@ impl Default for SubtitlesConfig {
     }
 }
 
+/// A bounded, named vocabulary filter snapshot (KNW-041).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StudyPreset {
+    /// Unique display name.
+    pub name: String,
+    /// Normalised search input.
+    pub query: String,
+    /// Keep only new or learning words.
+    pub new_only: bool,
+    /// Match complete fields.
+    pub exact: bool,
+    /// Unknown, learning, known or ignored index.
+    pub status: Option<u8>,
+    /// Any, with or without card index.
+    pub card: u8,
+    /// Frequency descending, ascending, expression or reading index.
+    pub order: u8,
+    /// Inclusive minimum occurrence count.
+    pub min_count: usize,
+    /// Optional inclusive maximum occurrence count.
+    pub max_count: Option<usize>,
+}
+
+impl StudyPreset {
+    /// Reject invalid snapshots instead of silently changing their meaning.
+    pub fn valid(&self) -> bool {
+        !self.name.trim().is_empty()
+            && self.name == self.name.trim()
+            && self.name.len() <= 64
+            && !self.name.chars().any(char::is_control)
+            && self.query.len() <= 4096
+            && self.status.is_none_or(|s| s < 4)
+            && self.card < 3
+            && self.order < 4
+    }
+}
+
 /// `[lookup]` (LKP-035, POP-003).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LookupConfig {
+    /// Explicit named study filters, at most sixteen.
+    pub study_presets: Vec<StudyPreset>,
     /// Headword groups in a popup (LKP-035), 1–50.
     pub max_results: usize,
     /// Look words up on hover without holding Shift (POP-003).
@@ -409,6 +449,7 @@ impl Default for LookupConfig {
     fn default() -> Self {
         Self {
             max_results: 10,
+            study_presets: Vec::new(),
             hover_without_modifier: false,
             resume_on_leave: true,
             other: toml::Table::new(),
@@ -1082,6 +1123,11 @@ impl Config {
             c.player.gap_speed = 0;
         }
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
+        let mut names = std::collections::HashSet::new();
+        c.lookup
+            .study_presets
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        c.lookup.study_presets.truncate(16);
         c.subtitles = c.subtitles.bounded();
         if !PlayerConfig::FITS.contains(&c.player.fit.as_str()) {
             c.player.fit = PlayerConfig::default().fit;
@@ -2103,5 +2149,54 @@ enabled = false
         }
         assert!(!locked.join(".nikomiru-write-check").exists());
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod study_preset_tests {
+    use super::*;
+    // T-KNW-041: restart round-trip and invalid/duplicate/bounded snapshots.
+    #[test]
+    fn named_presets_round_trip_and_bound() {
+        let p = StudyPreset {
+            name: "Listening".into(),
+            query: "猫".into(),
+            exact: true,
+            ..Default::default()
+        };
+        let mut c = Config::default();
+        c.lookup.study_presets = vec![p.clone(), p.clone(), StudyPreset::default()];
+        let text = toml::to_string(&c).unwrap();
+        let read = Config::from_toml(&text).unwrap();
+        assert_eq!(read.lookup.study_presets, vec![p.clone()]);
+        assert!(p.valid());
+        assert!(
+            !StudyPreset {
+                name: " x ".into(),
+                ..p.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !StudyPreset {
+                query: "x".repeat(4097),
+                ..p.clone()
+            }
+            .valid()
+        );
+        c.lookup.study_presets = (0..20)
+            .map(|i| StudyPreset {
+                name: i.to_string(),
+                ..p.clone()
+            })
+            .collect();
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .lookup
+                .study_presets
+                .len(),
+            16
+        );
     }
 }
