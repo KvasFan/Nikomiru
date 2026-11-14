@@ -231,3 +231,5 @@ Durante l’analisi di un libro intero o di una serie, Annulla analisi interromp
 Dopo l’analisi dell’intero libro, Parole da studiare apre il vocabolario di tutti i capitoli. Cerca una parola o lettura, filtra le parole nuove/in apprendimento, seleziona righe o tutte quelle visibili e assegna loro uno stato insieme. Il punteggio del libro segue questi cambiamenti condivisi. Aggiornare l’analisi chiude il vecchio elenco.
 
 Anche le schede delle serie offrono Parole da studiare dopo l’analisi. Le frequenze sommano gli episodi conteggiati. La copertura resta visibile: gli episodi esclusi o falliti non contribuiscono parole. Cambiare uno stato aggiorna il punteggio della serie e le altre viste di studio.
+
+Negli elenchi delle analisi, Esporta visibili salva i risultati di ricerca/filtro; Esporta selezionate salva tutte le parole spuntate, anche quelle nascoste. Il TSV UTF-8 locale include parola, lettura, stato, occorrenze e presenza di una scheda. L’esportazione fotografa l’elenco al clic, con un limite di 16 MiB; non modifica gli stati delle parole.

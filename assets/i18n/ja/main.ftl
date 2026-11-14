@@ -1018,3 +1018,8 @@ analysis-cancel = 解析をキャンセル
 
 analysis-words = 学習する単語
 analysis-words-back = 一覧に戻る
+
+analysis-export-shown = 表示中の単語を出力
+analysis-export-selected = 選択した単語を出力
+analysis-export-saved = { $path } に単語を保存しました。
+analysis-export-too-large = 単語一覧が出力上限の16 MiBを超えています。

@@ -385,6 +385,7 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
+    analysis_export: Option<String>,
     /// The words' revision the pause at the end of a line was last set
     /// for, when it stops only after new words (KNW-012).
     auto_pause_revision: u64,
@@ -758,6 +759,7 @@ impl Session {
             graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            analysis_export: None,
             encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -6948,6 +6950,38 @@ impl Session {
     pub fn wait_writes(&self) {
         if let Some(w) = &self.writer {
             w.wait();
+        }
+    }
+
+    /// Freeze the list at the click, before the native save dialog opens.
+    pub fn analysis_export_prepare(&mut self, rows: &[crate::words::ListedWord]) -> bool {
+        self.analysis_export = None;
+        match crate::word_export::tsv(rows) {
+            Ok(text) => {
+                self.analysis_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the frozen local vocabulary, without status/history changes.
+    pub fn analysis_export_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.analysis_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self.toasts.push(self.tr(
+                "toast-words-export-failed",
+                &[("reason", error.to_string())],
+            )),
         }
     }
 

@@ -231,3 +231,5 @@ While a whole-book or series analysis is running, Cancel analysis stops it and d
 After a whole-book analysis finishes, Study words opens the vocabulary of every chapter. Search by word or reading, filter unknown/learning words, select rows or All shown, and choose a status for them together. The whole-book score follows those shared changes. Refreshing the analysis closes the old list.
 
 Series cards also offer Study words after analysis. Frequencies sum across the counted episodes. Coverage remains visible: excluded or failed episodes do not contribute words. Changing a status updates the series score and other study views.
+
+In either analysis vocabulary list, Export shown saves the current search/filter results; Export selected saves all ticked words, even hidden ones. The local UTF-8 TSV includes expression, reading, status, count and card. The export is a snapshot taken when clicked, limited to 16 MiB; it does not change your word statuses.

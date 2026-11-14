@@ -441,6 +441,8 @@ pub(crate) enum Command {
     /// "Import a word list…" and "Export the words…" (KNW-006).
     WordsImport,
     WordsExport,
+    /// Export a complete analysed vocabulary snapshot.
+    AnalysisWordsExport(Vec<crate::words::ListedWord>),
     /// A status chosen for the words ticked in the word list (KNW-009).
     WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
@@ -1001,6 +1003,7 @@ impl Ui {
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
+                    Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
                 }
                 true
@@ -1454,6 +1457,11 @@ impl Ui {
             // KNW-005, KNW-006
             Command::KnownFromAnki => s.known_from_anki(true),
             Command::WordsImport => self.view.dialog = Some(Dialog::WordsImport),
+            Command::AnalysisWordsExport(rows) => {
+                if s.analysis_export_prepare(&rows) {
+                    self.view.dialog = Some(Dialog::AnalysisWordsExport);
+                }
+            }
             Command::WordsExport => self.view.dialog = Some(Dialog::WordsExport),
             Command::StatsLoad => s.stats_load(),
             Command::Review(job) => s.review(job),

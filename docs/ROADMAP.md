@@ -914,7 +914,7 @@ without requiring a new request after each increment.
 | M28 | Cancel book and series comprehension analyses | done |
 | M29 | Browse and bulk-mark the words of a whole analysed book | done |
 | M30 | Browse and bulk-mark the words of an analysed series | done |
-| M31 | Export analysed media word lists for study elsewhere | not started |
+| M31 | Export analysed media word lists for study elsewhere | done |
 | M32 | Inspect and clear historical word encounters, including sync | not started |
 | M33 | Order/filter library material by comprehension | not started |
 | M34 | Bounded persistent analysis caches with source/dictionary invalidation | not started |
@@ -993,6 +993,17 @@ shared bulk statuses without playing or opening a series.
 
 **Exit criteria**: aggregation/coverage/partial/invalidation and accessible
 browser/bulk-mark tests; `cargo xtask ci`.
+
+---
+
+## M31 — Export study vocabulary
+
+**Requirements**: KNW-022. Export shown/selected analysis rows through the
+native save dialog as a bounded atomic UTF-8 TSV snapshot. Retain frequency,
+status and card columns, neutralise control characters/formula fields.
+
+**Exit criteria**: format/size/sanitisation tests and filtered/selected UI
+snapshot commands; `cargo xtask ci`.
 
 ---
 

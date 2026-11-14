@@ -66,6 +66,19 @@ fn label(labels: &Labels, status: WordStatus) -> &str {
     &labels.statuses[i]
 }
 
+/// Rows visible under the shared search and status filter.
+pub(crate) fn filtered<'a>(
+    all: &'a [ListedWord],
+    query: &str,
+    new_only: bool,
+) -> Vec<&'a ListedWord> {
+    let query = query.trim();
+    all.iter()
+        .filter(|w| !new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning))
+        .filter(|w| query.is_empty() || w.expression.contains(query) || w.reading.contains(query))
+        .collect()
+}
+
 /// Draws the words of `all` that the query and the filter let through.
 pub(crate) fn show(
     ui: &mut egui::Ui,
@@ -75,14 +88,7 @@ pub(crate) fn show(
     state: &mut State,
     out: &mut Vec<Command>,
 ) {
-    let query = query.trim();
-    let shown: Vec<&ListedWord> = all
-        .iter()
-        .filter(|w| {
-            !state.new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning)
-        })
-        .filter(|w| query.is_empty() || w.expression.contains(query) || w.reading.contains(query))
-        .collect();
+    let shown = filtered(all, query, state.new_only);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.new_only, &labels.new_only);

@@ -47,6 +47,7 @@ mod ui;
 pub mod view;
 pub mod web_video;
 pub mod word_audio;
+pub mod word_export;
 pub mod words;
 
 pub use session::Services;

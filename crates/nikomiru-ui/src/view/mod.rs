@@ -83,6 +83,8 @@ pub enum Dialog {
     WordsImport,
     /// Where to write the words' statuses (KNW-006).
     WordsExport,
+    /// A completed media vocabulary snapshot (KNW-022).
+    AnalysisWordsExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -185,6 +187,10 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::AnalysisWordsExport => (
+                tr("analysis-export-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::WordsExport => (
                 tr("words-export"),
                 vec![(tr("words-filter"), vec!["*.csv"]), all],
@@ -198,6 +204,7 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),
                 _ => None,
             },

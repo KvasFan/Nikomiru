@@ -1035,3 +1035,8 @@ analysis-cancel = Annulla analisi
 
 analysis-words = Parole da studiare
 analysis-words-back = Torna all’elenco
+
+analysis-export-shown = Esporta visibili
+analysis-export-selected = Esporta selezionate
+analysis-export-saved = Vocabolario salvato in { $path }.
+analysis-export-too-large = Il vocabolario supera il limite di esportazione di 16 MiB.

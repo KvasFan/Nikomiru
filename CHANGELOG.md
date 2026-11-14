@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Export shown or selected study vocabulary as a local UTF-8 TSV snapshot (KNW-022, M31).
+
 - Study the combined vocabulary of an analysed series with episode coverage and shared bulk statuses (KNW-021, M30).
 
 - Browse and bulk-mark vocabulary from completed whole-book analyses (KNW-020, M29).
