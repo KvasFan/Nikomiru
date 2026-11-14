@@ -141,6 +141,14 @@ fn encounter_history_can_be_inspected_and_cleared_without_losing_word_statuses()
         s["library_page"]["stats"]["encounter_words"]["video/history"][0]
             == json!(["猫", "ねこ", 42])
     });
+    // T-KNW-030: actual worker writes original history without changing known status.
+    let exported = desk.path("history.tsv");
+    h.cmd(json!({"cmd":"library", "action":"export-encounters", "title":"video/history", "path":exported}));
+    h.state_until("full history export", |_| exported.exists());
+    assert_eq!(
+        std::fs::read_to_string(&exported).unwrap(),
+        "expression\treading\tfirst_encounter_ms\n猫\tねこ\t42\n"
+    );
     h.cmd(json!({"cmd":"library", "action":"clear-encounters", "path":"video/history"}));
     h.state_until("history cleared", |s| {
         history(s).as_array().is_some_and(Vec::is_empty)

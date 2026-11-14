@@ -386,6 +386,7 @@ pub struct Session {
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     analysis_export: Option<String>,
+    history_export: Option<String>,
     /// The words' revision the pause at the end of a line was last set
     /// for, when it stops only after new words (KNW-012).
     auto_pause_revision: u64,
@@ -760,6 +761,7 @@ impl Session {
             auto_pause_revision: 0,
             word_list: None,
             analysis_export: None,
+            history_export: None,
             encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -2510,6 +2512,12 @@ impl Session {
                 page.covers.insert(id, cover);
             }
             LibraryReply::Stats(Ok(stats)) => page.stats = Some(stats),
+            LibraryReply::HistoryExported(Ok(path)) => {
+                self.toasts.push(self.tr(
+                    "encounter-export-saved",
+                    &[("path", path.display().to_string())],
+                ));
+            }
             LibraryReply::Exported(Ok(path)) => {
                 let text = self.tr("stats-exported", &[("path", path.display().to_string())]);
                 self.library_page.status = Some((text, true));
@@ -2519,6 +2527,7 @@ impl Session {
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
             | LibraryReply::Stats(Err(e))
+            | LibraryReply::HistoryExported(Err(e))
             | LibraryReply::Exported(Err(e))
             | LibraryReply::Episodes(_, Err(e))
             | LibraryReply::Imported(Err(e))
@@ -6954,6 +6963,26 @@ impl Session {
     pub fn wait_writes(&self) {
         if let Some(w) = &self.writer {
             w.wait();
+        }
+    }
+
+    /// Capture the episode identity before the save dialog, not a truncated display list.
+    pub fn history_export_prepare(&mut self, uid: &str) -> bool {
+        self.history_export = self
+            .library_page
+            .stats
+            .as_ref()
+            .filter(|s| s.encounters.iter().any(|(u, _, _)| u == uid))
+            .map(|_| uid.to_string());
+        self.history_export.is_some()
+    }
+
+    /// Queue a full history export on the library worker.
+    pub fn history_export_to(&mut self, path: PathBuf) {
+        if let Some(uid) = self.history_export.take() {
+            self.wait_writes();
+            self.library_jobs
+                .push(crate::catalog::LibraryJob::ExportEncounters(uid, path));
         }
     }
 

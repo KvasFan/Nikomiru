@@ -224,6 +224,9 @@ pub(crate) fn draw(
             let label = ui.label(tr("books-words-search", &[]));
             ui.add(egui::TextEdit::singleline(&mut state.query))
                 .labelled_by(label.id);
+            if ui.button(tr("encounter-export", &[])).clicked() {
+                out.push(Command::EncounterExport(uid.clone()));
+            }
             if ui.button(tr("encounter-history-clear", &[])).clicked() {
                 out.push(Command::LibraryEdit(LibraryEdit::ClearEncounters(
                     uid.clone(),
@@ -592,6 +595,15 @@ mod tests {
         h.run();
         assert!(h.query_by_label("猫 · ねこ · 42").is_none());
         h.get_by_label("犬 · いぬ · 30");
+        // T-KNW-030: export identifies the media, independent of the display query.
+        h.get_by_label("encounter-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EncounterExport(uid) if uid == "video/show-01"))
+        );
         h.get_by_label("encounter-history-clear").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c,

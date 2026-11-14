@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Export an episode’s complete historical encounters, including original first-encounter times (KNW-030, M39).
+
 - Copy shown or selected study vocabulary to the clipboard as bounded TSV (KNW-029, M38).
 
 - Order study vocabulary by frequency, expression or reading, including exported selections (KNW-028, M37).

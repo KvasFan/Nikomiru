@@ -443,6 +443,8 @@ pub(crate) enum Command {
     WordsExport,
     /// Export a complete analysed vocabulary snapshot.
     AnalysisWordsExport(Vec<crate::words::ListedWord>),
+    /// Save the full historical set of one episode.
+    EncounterExport(String),
     /// A status chosen for the words ticked in the word list (KNW-009).
     WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
@@ -1003,6 +1005,7 @@ impl Ui {
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
+                    Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
                 }
@@ -1457,6 +1460,11 @@ impl Ui {
             // KNW-005, KNW-006
             Command::KnownFromAnki => s.known_from_anki(true),
             Command::WordsImport => self.view.dialog = Some(Dialog::WordsImport),
+            Command::EncounterExport(uid) => {
+                if s.history_export_prepare(&uid) {
+                    self.view.dialog = Some(Dialog::EncounterExport);
+                }
+            }
             Command::AnalysisWordsExport(rows) => {
                 if s.analysis_export_prepare(&rows) {
                     self.view.dialog = Some(Dialog::AnalysisWordsExport);
@@ -1772,6 +1780,13 @@ impl Ui {
                     self.session.wait_writes();
                     let catalog = self.session.catalog();
                     catalog.stats(Box::new(move |r| reply(LibraryReply::Stats(r))))
+                }
+                LibraryJob::ExportEncounters(uid, path) => {
+                    catalog.export_encounters(
+                        uid,
+                        path,
+                        Box::new(move |r| reply(LibraryReply::HistoryExported(r))),
+                    );
                 }
                 LibraryJob::ExportCsv(path) => {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));

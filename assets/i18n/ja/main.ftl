@@ -1053,3 +1053,6 @@ vocabulary-reading = 読み順
 vocabulary-copy-shown = 表示中の単語をコピー
 vocabulary-copy-selected = 選択した単語をコピー
 vocabulary-copied = 単語をコピーしました。
+
+encounter-export = エピソードの全履歴を出力
+encounter-export-saved = エピソードの履歴を { $path } に保存しました。

@@ -1070,3 +1070,6 @@ vocabulary-reading = Ordine per lettura
 vocabulary-copy-shown = Copia visibili
 vocabulary-copy-selected = Copia selezionate
 vocabulary-copied = Vocabolario copiato.
+
+encounter-export = Esporta cronologia completa episodio
+encounter-export-saved = Cronologia dell’episodio salvata in { $path }.

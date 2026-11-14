@@ -1070,3 +1070,6 @@ vocabulary-reading = Reading order
 vocabulary-copy-shown = Copy shown
 vocabulary-copy-selected = Copy selected
 vocabulary-copied = Vocabulary copied.
+
+encounter-export = Export full episode history
+encounter-export-saved = Episode history saved to { $path }.

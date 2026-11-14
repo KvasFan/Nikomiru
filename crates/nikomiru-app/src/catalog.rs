@@ -58,6 +58,7 @@ enum Job {
     Cover(u64, Done<Cover>),
     Stats(Done<Stats>),
     ExportCsv(PathBuf, Done<PathBuf>),
+    ExportEncounters(String, PathBuf, Done<PathBuf>),
     Review(ReviewJob, Settings, Done<Review>),
     Condense(
         Box<nikomiru_ui::condense::Request>,
@@ -252,6 +253,21 @@ impl Worker {
         })
     }
 
+    fn export_encounters(&self, uid: &str, path: &Path) -> Result<PathBuf, String> {
+        let words = self
+            .parts
+            .library
+            .encounters_for(uid)
+            .map_err(|e| self.message(&e))?;
+        let text = nikomiru_ui::word_export::encounters_tsv(&words)
+            .map_err(|key| self.parts.translator.tr(key, &[]))?;
+        if self.cancel.is_cancelled() {
+            return Err("cancelled".into());
+        }
+        nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600).map_err(|e| e.to_string())?;
+        Ok(path.into())
+    }
+
     /// STA-005: the sessions as CSV, at `path`.
     fn export_csv(&self, path: &Path) -> Result<PathBuf, String> {
         let csv = self
@@ -441,6 +457,9 @@ impl Catalog {
                         Job::Edit(edit, done) => done(worker.edit(edit)),
                         Job::Cover(id, done) => done(worker.cover(id)),
                         Job::Stats(done) => done(worker.stats()),
+                        Job::ExportEncounters(uid, path, done) => {
+                            done(worker.export_encounters(&uid, &path))
+                        }
                         Job::ExportCsv(path, done) => done(worker.export_csv(&path)),
                         Job::Review(job, settings, done) => done(worker.review(job, &settings)),
                     }
@@ -477,6 +496,7 @@ impl Catalog {
             Some(Job::Edit(_, done)) => done(Err(no)),
             Some(Job::Cover(_, done)) => done(Err(no)),
             Some(Job::Stats(done)) => done(Err(no)),
+            Some(Job::ExportEncounters(_, _, done)) => done(Err(no)),
             Some(Job::ExportCsv(_, done)) => done(Err(no)),
             Some(Job::Review(_, _, done)) => done(Err(no)),
             None => {}
@@ -518,6 +538,10 @@ impl LibraryService for Catalog {
 
     fn stats(&self, done: Done<Stats>) {
         self.send(Job::Stats(done));
+    }
+
+    fn export_encounters(&self, uid: String, path: PathBuf, done: Done<PathBuf>) {
+        self.send(Job::ExportEncounters(uid, path, done));
     }
 
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>) {

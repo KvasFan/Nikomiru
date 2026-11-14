@@ -89,6 +89,18 @@ impl Library {
         Ok(())
     }
 
+    /// One episode's complete historical set, without reading unrelated histories.
+    pub fn encounters_for(&self, uid: &str) -> Result<Encounters, LibraryError> {
+        self.read(|tx| match tx.open_table(ENCOUNTERS) {
+            Ok(table) => match db_err!(table.get(uid))? {
+                Some(value) => Ok(postcard::from_bytes(value.value())?),
+                None => Ok(Encounters::new()),
+            },
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(Encounters::new()),
+            Err(error) => Err(LibraryError::Db(error.into())),
+        })
+    }
+
     /// Encounter sets by media uid. Older or read-only libraries without
     /// this additive table have no history; no table is created by a read.
     pub fn word_encounters(&self) -> Result<BTreeMap<String, Encounters>, LibraryError> {

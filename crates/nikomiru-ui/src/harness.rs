@@ -1037,6 +1037,17 @@ pub fn library(
             }
             "series" => Command::LibrarySeries(id().ok()),
             "cancel-analysis" => Command::SeriesAnalysisCancel(id()?),
+            "export-encounters" => {
+                let uid = title.as_deref().ok_or("missing history uid in title")?;
+                if !ui.session.history_export_prepare(uid) {
+                    return Err("history not loaded".into());
+                }
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::EncounterExport,
+                    path: path()?,
+                });
+                return Ok(());
+            }
             "clear-encounters" => Command::LibraryEdit(LibraryEdit::ClearEncounters(
                 path()?.to_string_lossy().into_owned(),
             )),

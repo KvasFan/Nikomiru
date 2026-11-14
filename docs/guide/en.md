@@ -247,3 +247,5 @@ Vocabulary lists also offer exact status and card-presence filters. They combine
 Vocabulary order offers most/least frequent, expression and reading order. Missing readings sort by expression; lexical order uses the original Unicode strings. Selected words stay selected when you change order, and exports follow the selected order.
 
 Copy shown and Copy selected put the same TSV vocabulary columns on the clipboard. All vocabulary views support this. Copy selected includes hidden ticked words, keeps the selection and follows your chosen order. The same 16 MiB and spreadsheet-safety rules apply.
+
+Inspect history → Export full episode history writes every recorded word for that episode, beyond the 1,000 display limit, with its original first-encounter Unix milliseconds. The worker reads the selected episode at save time. The 16 MiB atomic TSV export leaves history and word statuses unchanged.

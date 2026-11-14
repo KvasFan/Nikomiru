@@ -247,3 +247,5 @@ Gli elenchi di vocabolario offrono anche filtri per stato esatto e presenza di u
 Ordine del vocabolario offre frequenza crescente/decrescente, parola e lettura. Le letture mancanti usano la parola; l’ordine lessicale confronta le stringhe Unicode originali. Le parole selezionate restano tali cambiando ordine e le esportazioni seguono l’ordine scelto.
 
 Copia visibili e Copia selezionate inseriscono negli appunti le stesse colonne TSV del vocabolario. Sono disponibili in tutte le viste delle parole. Copia selezionate include le parole spuntate nascoste, conserva la selezione e segue l’ordine scelto. Valgono gli stessi limiti di 16 MiB e le protezioni per i fogli di calcolo.
+
+Esamina cronologia → Esporta cronologia completa episodio scrive tutte le parole registrate per quell’episodio, oltre il limite di 1.000 righe visualizzate, con i millisecondi Unix del primo incontro originale. Il worker legge l’episodio scelto al momento del salvataggio. Il TSV atomico, limitato a 16 MiB, non modifica cronologia o stati delle parole.

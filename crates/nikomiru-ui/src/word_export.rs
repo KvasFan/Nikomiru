@@ -34,10 +34,45 @@ pub fn tsv(rows: &[ListedWord]) -> Result<String, &'static str> {
     Ok(out)
 }
 
+/// All historical words for one media, newest first, independent of display caps.
+pub fn encounters_tsv(
+    words: &nikomiru_library::encounters::Encounters,
+) -> Result<String, &'static str> {
+    let mut rows: Vec<_> = words.iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    let mut out = String::from("expression\treading\tfirst_encounter_ms\n");
+    for (key, at) in rows {
+        let Some((expression, reading)) = key.split_once('\n') else {
+            continue;
+        };
+        let row = format!("{}\t{}\t{at}\n", field(expression), field(reading));
+        if out.len().saturating_add(row.len()) > nikomiru_library::words::MAX_LIST_BYTES as usize {
+            return Err("analysis-export-too-large");
+        }
+        out.push_str(&row);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::words::WordStatus;
+
+    // T-KNW-030: export full history beyond display cap and preserve first times.
+    #[test]
+    fn history_export_includes_all_rows_with_original_timestamps() {
+        let mut words = nikomiru_library::encounters::Encounters::new();
+        for i in 0..1005 {
+            words.insert(format!("word{i}\nreading{i}"), i);
+        }
+        words.insert("=formula\nread\ting".into(), 2000);
+        let text = encounters_tsv(&words).unwrap();
+        assert_eq!(text.lines().count(), 1007);
+        assert!(text.starts_with("expression\treading\tfirst_encounter_ms\n'=formula\tread ing\t2000\nword1004\treading1004\t1004\n"));
+        assert!(text.ends_with("word0\treading0\t0\n"));
+        assert_eq!(words.len(), 1006);
+    }
 
     // T-KNW-022: literal UTF-8 fields, spreadsheet safety and whole-output bounds.
     #[test]

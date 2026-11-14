@@ -1053,7 +1053,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M36 | Precise word-status and card filters in vocabulary lists | done |
 | M37 | Vocabulary ordering by frequency, expression and reading | done |
 | M38 | Copy shown/selected study vocabulary to the clipboard | done |
-| M39 | Export per-episode historical encounters | not started |
+| M39 | Export per-episode historical encounters | done |
 | M40 | Browse episode vocabulary before playback | not started |
 | M41 | Visible graphic OCR progress and explicit cancellation | not started |
 | M42 | Export the current complete text subtitle track as SRT | not started |
@@ -1101,6 +1101,17 @@ chosen ordering and statuses; give copied/limit feedback.
 
 **Exit criteria**: actual egui clipboard output, scope/filter/selection and
 no-status-command checks; full CI.
+
+---
+
+## M39 — Export historical encounters
+
+**Requirements**: KNW-030. Export the complete episode history on the library
+worker, not the bounded/query-filtered display projection, with original first
+encounter timestamps and bounded atomic TSV output.
+
+**Exit criteria**: full-history order/format/sanitisation, accessible action
+and actual worker file/status-preservation checks; full CI.
 
 ---
 

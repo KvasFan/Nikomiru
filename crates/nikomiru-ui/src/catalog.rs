@@ -178,6 +178,11 @@ pub trait LibraryService: Send {
     fn stats(&self, done: Done<Stats>);
     /// The sessions as CSV, written to `path` (STA-005).
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>);
+    /// Export the full historical word set of one episode on the library worker.
+    fn export_encounters(&self, uid: String, path: PathBuf, done: Done<PathBuf>) {
+        let _ = (uid, path);
+        done(Err("library unavailable".into()));
+    }
     /// Does `job` in the review, then reads it again (REV-004).
     fn review(
         &self,
@@ -249,6 +254,8 @@ pub enum LibraryJob {
     Stats,
     /// Write the sessions as CSV.
     ExportCsv(PathBuf),
+    /// Export one episode’s full historical encounters.
+    ExportEncounters(String, PathBuf),
     /// A job of the review (REV-004).
     Review(crate::review::ReviewJob, Settings),
 }
@@ -272,6 +279,8 @@ pub enum LibraryReply {
     Cover(u64, Result<Cover, String>),
     /// The statistics.
     Stats(Result<Stats, String>),
+    /// Full history written, or its failure.
+    HistoryExported(Result<PathBuf, String>),
     /// The CSV written, or not.
     Exported(Result<PathBuf, String>),
     /// The review after a job.
