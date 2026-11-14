@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Export overlap-aligned bilingual study transcripts with independent primary/secondary delays (SUB-038, M49).
+
 - Export shown or selected complete subtitle lines as escaped, portable WebVTT (SUB-037, M48).
 
 - Copy shown or selected subtitle transcripts as safe, timed TSV snapshots (SUB-036, M47).

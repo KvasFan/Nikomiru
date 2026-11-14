@@ -111,6 +111,8 @@ pub(crate) struct StudyLabels {
     export_selected: String,
     vtt_shown: String,
     vtt_selected: String,
+    bilingual_shown: String,
+    bilingual_selected: String,
     select_line: String,
     copy_shown: String,
     copy_selected: String,
@@ -127,6 +129,8 @@ impl StudyLabels {
             export_selected: tr("sub-export-selected", &[]),
             vtt_shown: tr("sub-vtt-shown", &[]),
             vtt_selected: tr("sub-vtt-selected", &[]),
+            bilingual_shown: tr("sub-bilingual-shown", &[]),
+            bilingual_selected: tr("sub-bilingual-selected", &[]),
             select_line: tr("sub-select-line", &[]),
             copy_shown: tr("sub-copy-shown", &[]),
             copy_selected: tr("sub-copy-selected", &[]),
@@ -188,6 +192,7 @@ pub(crate) struct Scene<'a> {
     pub reading: Option<(String, Option<f32>)>,
     pub reading_cancel: String,
     pub export_ready: bool,
+    pub bilingual_ready: bool,
     pub export_label: String,
     pub study: StudyLabels,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
@@ -373,6 +378,9 @@ pub(crate) fn show(
         reading: s.graphic_read_status(),
         reading_cancel: tr("sub-reading-cancel"),
         export_ready: s.subtitle_export_ready(),
+        bilingual_ready: s.subtitle_export_ready()
+            && !s.secondary.incomplete
+            && !s.secondary.timeline().cues().is_empty(),
         export_label: tr("sub-export"),
         study: StudyLabels::translated(&|key, args| s.translator().tr(key, args)),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
@@ -658,6 +666,33 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     }
                 }
             });
+            ui.horizontal_wrapped(|ui| {
+                for selected in [false, true] {
+                    let label = if selected {
+                        &scene.study.bilingual_selected
+                    } else {
+                        &scene.study.bilingual_shown
+                    };
+                    if ui
+                        .add_enabled(
+                            scene.bilingual_ready && (!selected || !state.selected.is_empty()),
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        let indices = if selected {
+                            state.selected.iter().copied().collect()
+                        } else {
+                            shown_indices(scene, state)
+                        };
+                        out.push(Command::SubtitleRowsExport {
+                            version: scene.version,
+                            indices,
+                            format: crate::subtitle_export::ExportFormat::Bilingual,
+                        });
+                    }
+                }
+            });
             if let Some(ok) = state.copied {
                 ui.label(if ok {
                     &scene.study.copied
@@ -909,6 +944,21 @@ mod tests {
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Vtt, .. } if indices == &[1])));
     }
 
+    // T-SUB-038: the bilingual action uses the same filtered original indices.
+    #[test]
+    fn bilingual_action_captures_shown_rows() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-bilingual-shown").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Bilingual, .. } if indices == &[0])));
+    }
+
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
         let srt: String = cues
             .iter()
@@ -950,6 +1000,7 @@ mod tests {
                         version: 1,
                         pos_ms: t.pos_ms,
                         export_ready: !t.timeline.cues().is_empty(),
+                        bilingual_ready: !t.timeline.cues().is_empty(),
                         export_label: "Export SRT".into(),
                         study: StudyLabels::translated(&|key, _| key.to_string()),
                         reading: None,

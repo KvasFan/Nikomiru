@@ -15,6 +15,12 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
     std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
     let subtitles = desk.path("study.ja.srt");
     std::fs::write(&subtitles, "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:06,000\n犬\n\n3\n00:00:08,000 --> 00:00:10,000\n鳥\n").unwrap();
+    let english = desk.path("study.en.srt");
+    std::fs::write(
+        &english,
+        "1\n00:00:01,500 --> 00:00:02,500\ncat\n\n2\n00:00:04,000 --> 00:00:05,000\ndog\n",
+    )
+    .unwrap();
     let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
     h.wait("first-frame");
     h.drop_files(&[subtitles.to_str().unwrap()]);
@@ -57,6 +63,18 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
     let invalid = desk.path("invalid.srt");
     h.cmd(json!({"cmd":"subtitle-export", "path":invalid, "indices":[0,9]}));
     assert!(!invalid.exists());
+    // T-SUB-038: missing secondary text cannot export; loaded translations align by time.
+    let missing = desk.path("missing.tsv");
+    h.cmd(json!({"cmd":"subtitle-export", "path":missing, "format":"bilingual"}));
+    assert!(!missing.exists());
+    h.cmd(json!({"cmd":"secondary", "key":format!("file:{}", english.display())}));
+    h.state_until("secondary text ready", |s| s["secondary"]["cues"] == 2);
+    let bilingual = desk.path("bilingual.tsv");
+    h.cmd(json!({"cmd":"subtitle-export", "path":bilingual, "format":"bilingual"}));
+    assert_eq!(
+        std::fs::read_to_string(bilingual).unwrap(),
+        "start_ms\tend_ms\tprimary\tsecondary\n1000\t2000\t猫\tcat\n3000\t6000\t犬\tdog\n8000\t10000\t鳥\t\n"
+    );
     let after = h.state();
     assert_eq!(
         before["subtitles"]["version"],

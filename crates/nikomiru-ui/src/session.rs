@@ -7220,6 +7220,11 @@ impl Session {
             self.subs.timeline().delay_ms,
             !self.subs.incomplete,
             format,
+            Some((
+                self.secondary.timeline().cues(),
+                self.secondary.timeline().delay_ms,
+                !self.secondary.incomplete,
+            )),
         ) {
             Ok(text) => {
                 self.subtitle_export = Some(text);

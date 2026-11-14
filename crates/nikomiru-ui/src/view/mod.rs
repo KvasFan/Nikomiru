@@ -93,6 +93,8 @@ pub enum Dialog {
     SubtitleExport,
     /// Complete selected primary text in WebVTT format.
     SubtitleVtt,
+    /// Overlap-aligned primary/secondary study TSV.
+    SubtitleBilingual,
     /// Completed comprehension summaries for a library view.
     StudyReport,
 }
@@ -205,6 +207,10 @@ impl FileDialog {
                 tr("encounter-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
             ),
+            Dialog::SubtitleBilingual => (
+                tr("sub-bilingual-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::SubtitleVtt => (
                 tr("sub-vtt-shown"),
                 vec![(tr("sub-vtt-filter"), vec!["*.vtt"]), all],
@@ -232,6 +238,7 @@ impl FileDialog {
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleBilingual => Some("nikomiru-bilingual.tsv".into()),
                 Dialog::SubtitleVtt => Some("nikomiru-subtitles.vtt".into()),
                 Dialog::SubtitleExport => Some("nikomiru-subtitles.srt".into()),
                 Dialog::StudyReport => Some("nikomiru-comprehension.tsv".into()),

@@ -9,6 +9,8 @@ pub enum ExportFormat {
     Srt,
     /// Web Video Text Tracks.
     Vtt,
+    /// Primary/secondary overlap-aligned study transcript.
+    Bilingual,
 }
 
 /// Render a selected snapshot with an explicitly chosen format.
@@ -18,10 +20,15 @@ pub fn render(
     delay_ms: i64,
     complete: bool,
     format: ExportFormat,
+    secondary: Option<(&[nikomiru_subs::Cue], i64, bool)>,
 ) -> Result<String, &'static str> {
     match format {
         ExportFormat::Srt => selected_srt(cues, indices, delay_ms, complete),
         ExportFormat::Vtt => vtt(cues, indices, delay_ms, complete),
+        ExportFormat::Bilingual => {
+            let (other, delay, ready) = secondary.ok_or("sub-export-unavailable")?;
+            bilingual(cues, indices, delay_ms, other, delay, complete && ready)
+        }
     }
 }
 
@@ -70,6 +77,94 @@ pub fn vtt(
         if out.len() > 16 << 20 {
             return Err("sub-export-too-large");
         }
+    }
+    if written == 0 {
+        return Err("sub-export-unavailable");
+    }
+    Ok(out)
+}
+
+/// A bounded temporal concordance with independent primary and secondary delays.
+pub fn bilingual(
+    primary: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    secondary: &[nikomiru_subs::Cue],
+    secondary_delay: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let primary = selected(primary, indices, complete)?;
+    if secondary.len() > 100_000
+        || secondary
+            .iter()
+            .fold(0usize, |n, c| n.saturating_add(c.plain_text.len()))
+            > 16 << 20
+    {
+        return Err("sub-export-too-large");
+    }
+    let mut secondary: Vec<_> = secondary
+        .iter()
+        .filter_map(|c| {
+            let start = c.start_ms.saturating_add(secondary_delay).max(0);
+            let end = c.end_ms.saturating_add(secondary_delay);
+            (end > start && !c.plain_text.trim().is_empty()).then_some((
+                start,
+                end,
+                c.plain_text.as_str(),
+            ))
+        })
+        .collect();
+    if secondary.is_empty() {
+        return Err("sub-export-unavailable");
+    }
+    secondary.sort_by_key(|c| c.0);
+    let mut longest = i64::MIN;
+    let ends: Vec<_> = secondary
+        .iter()
+        .map(|c| {
+            longest = longest.max(c.1);
+            longest
+        })
+        .collect();
+    let mut out = String::from("start_ms\tend_ms\tprimary\tsecondary\n");
+    let mut work = 0usize;
+    let mut written = 0;
+    for cue in primary {
+        let start = cue.start_ms.saturating_add(delay_ms).max(0);
+        let end = cue.end_ms.saturating_add(delay_ms);
+        if end <= start || cue.plain_text.trim().is_empty() {
+            continue;
+        }
+        let left = ends.partition_point(|e| *e <= start);
+        let right = secondary.partition_point(|c| c.0 < end);
+        let mut seen = std::collections::HashSet::new();
+        let mut joined = String::new();
+        for c in secondary.get(left..right).unwrap_or_default() {
+            work += 1;
+            if work > 1_000_000 {
+                return Err("sub-export-too-large");
+            }
+            if c.1 <= start || !seen.insert(c.2) {
+                continue;
+            }
+            if joined.len().saturating_add(c.2.len()).saturating_add(3) > 16 << 20 {
+                return Err("sub-export-too-large");
+            }
+            if !joined.is_empty() {
+                joined.push_str(" | ");
+            }
+            joined.push_str(c.2);
+        }
+        let row = format!(
+            "{start}\t{end}\t{}\t{}\n",
+            crate::word_export::field(&cue.plain_text),
+            crate::word_export::field(&joined)
+        );
+        if out.len().saturating_add(row.len()) > 16 << 20 {
+            return Err("sub-export-too-large");
+        }
+        out.push_str(&row);
+        written += 1;
     }
     if written == 0 {
         return Err("sub-export-unavailable");
@@ -186,6 +281,29 @@ pub fn transcript(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-038: positive effective overlap, independent offsets, unmatched rows and duplicate captions.
+    #[test]
+    fn bilingual_transcripts_pair_by_effective_intervals() {
+        let primary = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:04,000 --> 00:00:05,000\n犬\n",
+        )
+        .cues;
+        let secondary = nikomiru_subs::parse(nikomiru_subs::Format::Srt, "1\n00:00:01,500 --> 00:00:02,100\ncat\n\n2\n00:00:01,600 --> 00:00:01,800\ncat\n\n3\n00:00:02,200 --> 00:00:03,000\nkitten\n\n4\n00:00:02,750 --> 00:00:03,000\nedge\n").cues;
+        assert_eq!(
+            bilingual(&primary, &[1, 0], 250, &secondary, -500, true).unwrap(),
+            "start_ms\tend_ms\tprimary\tsecondary\n1250\t2250\t猫\tcat | kitten\n4250\t5250\t犬\t\n"
+        );
+        assert!(bilingual(&primary, &[0], 0, &secondary, 0, false).is_err());
+        assert!(bilingual(&primary, &[0], 0, &[], 0, true).is_err());
+        let mut large = secondary;
+        large[0].plain_text = "x".repeat((16 << 20) + 1);
+        assert_eq!(
+            bilingual(&primary, &[0], 0, &large, 0, true),
+            Err("sub-export-too-large")
+        );
+    }
+
     // T-SUB-037: VTT round trips escaped Unicode/markup/overlaps without cue injection.
     #[test]
     fn webvtt_snapshots_are_portable_bounded_and_not_partial() {
