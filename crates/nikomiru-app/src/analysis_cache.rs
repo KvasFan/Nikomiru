@@ -10,6 +10,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+static CACHE_IO: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const ENTRY_BYTES: u64 = 4 << 20;
 const SOURCE_BYTES: u64 = 32 << 20;
 
@@ -18,6 +20,74 @@ struct Entry {
     format: u32,
     key: String,
     counted: Counted,
+}
+
+fn owned(name: &str) -> bool {
+    fn digest(s: &str) -> bool {
+        s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+    }
+    name.strip_suffix(".json").is_some_and(digest)
+        || name
+            .strip_prefix('.')
+            .and_then(|s| s.split_once(".json.tmp-"))
+            .is_some_and(|(hash, pid)| {
+                digest(hash) && !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit())
+            })
+}
+
+fn files(root: &Path) -> std::io::Result<Vec<(PathBuf, u64)>> {
+    if std::fs::symlink_metadata(root).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "count-cache root is a symlink",
+        ));
+    }
+    let mut files = Vec::new();
+    for name in ["books", "episodes"] {
+        let dir = root.join(name);
+        let meta = match std::fs::symlink_metadata(&dir) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        };
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            continue;
+        }
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            if entry.file_type()?.is_file() && owned(&entry.file_name().to_string_lossy()) {
+                files.push((entry.path(), entry.metadata()?.len()));
+            }
+        }
+    }
+    Ok(files)
+}
+
+/// Worker-side snapshot of recognised book/episode count files, not other caches.
+pub fn usage(root: &Path) -> std::io::Result<nikomiru_ui::catalog::AnalysisCacheUsage> {
+    let _guard = CACHE_IO
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let files = files(root)?;
+    Ok(nikomiru_ui::catalog::AnalysisCacheUsage {
+        files: files.len(),
+        bytes: files.iter().map(|(_, n)| *n).sum(),
+    })
+}
+
+/// Remove only recognised count files/temporaries. Future completed work may refill them.
+pub fn clear(root: &Path) -> std::io::Result<()> {
+    let _guard = CACHE_IO
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    for (path, _) in files(root)? {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Stable source/content/dictionary identity, or no caching for unreadable/large sources.
@@ -178,21 +248,40 @@ impl Store {
         if bytes.len() as u64 > ENTRY_BYTES || cancel.is_cancelled() {
             return;
         }
+        let _guard = CACHE_IO
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let path = self.path(key);
         if nikomiru_core::fs::write_atomic(&path, &bytes, 0o600).is_ok() && cancel.is_cancelled() {
             let _ = std::fs::remove_file(path);
         }
-        self.prune();
+        self.prune_locked();
     }
 
     fn prune(&self) {
+        let _guard = CACHE_IO
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.prune_locked();
+    }
+
+    fn prune_locked(&self) {
+        if std::fs::symlink_metadata(&self.dir).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return;
+        }
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return;
         };
         let mut files: Vec<_> = entries
             .flatten()
             .filter_map(|e| {
-                if e.path().extension()? != "json" || !e.file_type().ok()?.is_file() {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                if !owned(&name) || !e.file_type().ok()?.is_file() {
+                    return None;
+                }
+                if name.starts_with('.') {
+                    let _ = std::fs::remove_file(e.path());
                     return None;
                 }
                 let meta = e.metadata().ok()?;
@@ -219,6 +308,56 @@ mod tests {
     use super::*;
     fn count() -> Counted {
         Counted::from_lines([vec![("猫".into(), "ねこ".into()); 3]])
+    }
+
+    // T-KNW-032: usage/clear/pruning recognise only owned names and preserve unrelated data.
+    #[test]
+    fn cache_management_cleans_owned_counts_and_interrupted_writes_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("counts-v1");
+        let store = Store::new(root.join("books"));
+        store.put("book", &count(), &Cancel::new());
+        let keep = root.join("books/readme.json");
+        std::fs::write(&keep, "keep").unwrap();
+        let graphic = dir.path().join("subtitles.srt");
+        std::fs::write(&graphic, "keep subtitle").unwrap();
+        let temporary = root.join(format!("books/.{}.json.tmp-1234", "a".repeat(64)));
+        std::fs::write(&temporary, "interrupted").unwrap();
+        assert_eq!(usage(&root).unwrap().files, 2);
+        assert!(usage(&root).unwrap().bytes > 11);
+        let store = Store::new(root.join("books"));
+        assert!(!temporary.exists());
+        assert_eq!(usage(&root).unwrap().files, 1);
+        clear(&root).unwrap();
+        assert_eq!(usage(&root).unwrap().files, 0);
+        assert_eq!(std::fs::read_to_string(keep).unwrap(), "keep");
+        assert!(graphic.exists());
+        store.put("again", &count(), &Cancel::new());
+        assert_eq!(usage(&root).unwrap().files, 1);
+    }
+
+    // T-KNW-032: directory and file links never turn Clear into outside deletion.
+    #[cfg(unix)]
+    #[test]
+    fn cache_clear_does_not_follow_links() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let target = outside.join(format!("{}.json", "a".repeat(64)));
+        std::fs::write(&target, "keep").unwrap();
+        let root = dir.path().join("counts-v1");
+        std::fs::create_dir(&root).unwrap();
+        symlink(&outside, root.join("episodes")).unwrap();
+        std::fs::create_dir(root.join("books")).unwrap();
+        symlink(&target, root.join(format!("books/{}.json", "b".repeat(64)))).unwrap();
+        clear(&root).unwrap();
+        assert!(target.exists());
+        assert_eq!(usage(&root).unwrap().files, 0);
+        let link = dir.path().join("root-link");
+        symlink(&root, &link).unwrap();
+        assert!(clear(&link).is_err());
+        assert!(target.exists());
     }
 
     // T-KNW-025: source bytes, dictionary/language identity, path and cancellation.

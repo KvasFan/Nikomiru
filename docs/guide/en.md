@@ -255,3 +255,5 @@ In an open series, episodes with a completed score offer Study words before play
 While a graphic track is being read, the primary subtitle menu and subtitle list show preparation or processed/total pictures. Cancel reading stops that request and removes partial text: embedded tracks return to pictures, external pairs turn off. Playback continues. Cancelling reading does not cancel a separately requested model download.
 
 The primary subtitle menu and list offer Export current text as SRT after the whole text track is ready, including completed OCR. It freezes plain text and the current delay when clicked. Negative starts are clipped to zero; fully negative or empty intervals are omitted. Styles/fonts are not exported, and the destination is written atomically with a 16 MiB limit.
+
+Statistics shows the file count and byte usage of persisted analysis counts. Refresh cache usage reads a new snapshot; Clear count cache removes recognised book/episode count files and interrupted write temporaries. Current analyses, history, dictionaries and subtitle/OCR caches remain available. Work completed afterwards can refill the cache.

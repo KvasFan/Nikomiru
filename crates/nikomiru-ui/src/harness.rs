@@ -413,6 +413,7 @@ pub fn state() -> Result<Value, String> {
                 "episode_words": s.library_page.episode_words.as_ref().map(|study| json!({
                     "uid": study.uid, "words": study.words.iter().map(|w| json!({"expression":w.expression,"reading":w.reading,"count":w.count,"status":w.status.name(),"card":w.card})).collect::<Vec<_>>() })),
                 "stats": page.stats.as_ref().map(|st| json!({
+                    "analysis_cache": st.analysis_cache,
                     "encounter_words": st.encounter_words,
                     "encounters": st.encounters.iter().map(|(uid,title,count)| json!({"uid":uid,"title":title,"count":count})).collect::<Vec<_>>(),
                     "days": st.days.iter().map(|d| json!({
@@ -1051,6 +1052,7 @@ pub fn library(
                 });
                 return Ok(());
             }
+            "clear-analysis-cache" => Command::LibraryEdit(LibraryEdit::ClearAnalysisCache),
             "clear-encounters" => Command::LibraryEdit(LibraryEdit::ClearEncounters(
                 path()?.to_string_lossy().into_owned(),
             )),

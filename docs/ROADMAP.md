@@ -1057,7 +1057,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M40 | Browse episode vocabulary before playback | done |
 | M41 | Visible graphic OCR progress and explicit cancellation | done |
 | M42 | Export the current complete text subtitle track as SRT | done |
-| M43 | Inspect and clear persistent analysis caches | not started |
+| M43 | Inspect and clear persistent analysis caches | done |
 | M44 | Export comprehension summaries for analysed books and series | not started |
 
 ## M35 — Normalised study and subtitle search
@@ -1145,6 +1145,17 @@ Partial OCR and non-text timelines cannot export.
 
 **Exit criteria**: delay/negative/overflow/line/overlap/bound tests, accessible
 action and actual complete/partial OCR export checks; full CI.
+
+---
+
+## M43 — Manage count caches
+
+**Requirements**: KNW-032. Statistics reads cache file/byte usage on its worker
+and clears recognised count files/temporaries only. Preserve current analyses
+and unrelated data; serialise cache writes/clear and clean interrupted writes.
+
+**Exit criteria**: ownership/usage/temporary/clear/repopulate boundary tests,
+accessible controls and actual worker/history-preservation case; full CI.
 
 ---
 

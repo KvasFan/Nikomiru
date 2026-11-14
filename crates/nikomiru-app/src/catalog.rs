@@ -164,7 +164,14 @@ impl Worker {
 
     fn edit(&self, edit: LibraryEdit) -> Result<(), String> {
         let lib = &self.parts.library;
+        if matches!(edit, LibraryEdit::ClearAnalysisCache) {
+            return crate::analysis_cache::clear(
+                &self.parts.cache_dir.join("episode-scores/counts-v1"),
+            )
+            .map_err(|e| e.to_string());
+        }
         let result = match edit {
+            LibraryEdit::ClearAnalysisCache => unreachable!("handled before library edits"),
             LibraryEdit::Rename(id, title) => lib.rename_series(id, &title),
             LibraryEdit::Delete(id) => lib.delete_series(id),
             LibraryEdit::Merge { from, into } => lib.merge_series(from, into),
@@ -243,6 +250,10 @@ impl Worker {
             })
             .collect();
         Ok(Stats {
+            analysis_cache: crate::analysis_cache::usage(
+                &self.parts.cache_dir.join("episode-scores/counts-v1"),
+            )
+            .ok(),
             encounter_words,
             encounters,
             days: lib.day_totals().map_err(e)?,

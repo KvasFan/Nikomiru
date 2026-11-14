@@ -118,6 +118,15 @@ fn new_words_are_recorded_only_during_playback_and_survive_a_restart() {
 #[ignore = "L6: needs kwin_wayland and dbus-daemon"]
 fn encounter_history_can_be_inspected_and_cleared_without_losing_word_statuses() {
     let mut desk = Desktop::start();
+    // T-KNW-032: a recognised count plus unrelated cache content.
+    let counts = desk.path("cache/nikomiru/episode-scores/counts-v1/books");
+    let store = nikomiru_app::analysis_cache::Store::new(counts.clone());
+    store.put(
+        "book",
+        &nikomiru_library::words::Counted::from_lines([vec![("猫".into(), "ねこ".into())]]),
+        &nikomiru_core::Cancel::new(),
+    );
+    std::fs::write(counts.join("readme.json"), "unrelated").unwrap();
     let path = desk.data_file("library.redb");
     let old = {
         let lib = Library::open(&path).unwrap();
@@ -141,6 +150,17 @@ fn encounter_history_can_be_inspected_and_cleared_without_losing_word_statuses()
         s["library_page"]["stats"]["encounter_words"]["video/history"][0]
             == json!(["猫", "ねこ", 42])
     });
+    let s = h.state();
+    assert_eq!(s["library_page"]["stats"]["analysis_cache"]["files"], 1);
+    h.cmd(json!({"cmd":"library", "action":"clear-analysis-cache"}));
+    let s = h.state_until("owned count cache cleared", |s| {
+        s["library_page"]["stats"]["analysis_cache"]["files"] == 0
+    });
+    assert_eq!(history(&s)[0]["count"], 1);
+    assert_eq!(
+        std::fs::read_to_string(counts.join("readme.json")).unwrap(),
+        "unrelated"
+    );
     // T-KNW-030: actual worker writes original history without changing known status.
     let exported = desk.path("history.tsv");
     h.cmd(json!({"cmd":"library", "action":"export-encounters", "title":"video/history", "path":exported}));

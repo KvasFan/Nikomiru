@@ -1087,3 +1087,10 @@ sub-export-too-large = La traccia supera il limite di esportazione di 16 MiB.
 sub-export-saved = Sottotitoli salvati in { $path }.
 
 sub-export-failed = Impossibile salvare i sottotitoli: { $reason }
+
+analysis-cache-title = Cache dei conteggi di analisi
+analysis-cache-usage = { $files } file · { $bytes } byte
+analysis-cache-unavailable = Utilizzo della cache non disponibile.
+analysis-cache-refresh = Aggiorna utilizzo cache
+analysis-cache-clear = Svuota cache conteggi
+analysis-cache-detail = Fino a 64 MiB di conteggi derivati di libri/episodi. Le analisi correnti restano aperte; il lavoro completato può riempire di nuovo la cache.

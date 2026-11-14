@@ -249,6 +249,36 @@ pub(crate) fn draw(
         }
         state.history = None;
     }
+    section(ui, &tr("analysis-cache-title", &[]));
+    match stats.analysis_cache {
+        Some(usage) => {
+            ui.label(tr(
+                "analysis-cache-usage",
+                &[
+                    ("files", usage.files.to_string()),
+                    ("bytes", usage.bytes.to_string()),
+                ],
+            ));
+        }
+        None => {
+            ui.label(tr("analysis-cache-unavailable", &[]));
+        }
+    }
+    ui.horizontal(|ui| {
+        if ui.button(tr("analysis-cache-refresh", &[])).clicked() {
+            out.push(Command::StatsLoad);
+        }
+        if ui
+            .add_enabled(
+                stats.analysis_cache.is_some_and(|u| u.files > 0),
+                Button::new(tr("analysis-cache-clear", &[])),
+            )
+            .clicked()
+        {
+            out.push(Command::LibraryEdit(LibraryEdit::ClearAnalysisCache));
+        }
+    });
+    ui.label(tr("analysis-cache-detail", &[]));
     let days: BTreeMap<i64, &DayTotal> = stats
         .days
         .iter()
@@ -498,6 +528,10 @@ mod tests {
         };
         let stats = Stats {
             encounters: vec![("video/show-01".into(), "Show - 01".into(), 7)],
+            analysis_cache: Some(crate::catalog::AnalysisCacheUsage {
+                files: 2,
+                bytes: 4096,
+            }),
             encounter_words: BTreeMap::from([(
                 "video/show-01".into(),
                 vec![
@@ -595,6 +629,7 @@ mod tests {
         h.run();
         assert!(h.query_by_label("猫 · ねこ · 42").is_none());
         h.get_by_label("犬 · いぬ · 30");
+        // T-KNW-032 controls are tested after returning from history below.
         // T-KNW-030: export identifies the media, independent of the display query.
         h.get_by_label("encounter-export").click();
         h.run();
@@ -608,6 +643,25 @@ mod tests {
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c,
             Command::LibraryEdit(LibraryEdit::ClearEncounters(uid)) if uid == "video/show-01")));
+        // T-KNW-032: metrics and explicit refresh/clear use the catalogue worker.
+        h.run_steps(2);
+        h.get_by_label("analysis-cache-usage 2 4096");
+        h.get_by_label("analysis-cache-refresh").click();
+        h.run();
+        h.get_by_label("analysis-cache-clear").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StatsLoad))
+        );
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibraryEdit(LibraryEdit::ClearAnalysisCache)))
+        );
         assert_eq!(
             duration(5_400_000, &|id, a| format!("{id}{a:?}")),
             "stats-hours[(\"h\", \"1\"), (\"m\", \"30\")]"

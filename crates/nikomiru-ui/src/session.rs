@@ -2334,7 +2334,11 @@ impl Session {
 
     /// An edit of the library (LIB-011, LIB-012).
     pub fn library_edit(&mut self, edit: crate::catalog::LibraryEdit) {
-        if matches!(edit, crate::catalog::LibraryEdit::ClearEncounters(_)) {
+        if matches!(
+            edit,
+            crate::catalog::LibraryEdit::ClearEncounters(_)
+                | crate::catalog::LibraryEdit::ClearAnalysisCache
+        ) {
             self.wait_writes();
         } else {
             self.library_page.scores.clear();
@@ -2513,7 +2517,7 @@ impl Session {
             LibraryReply::Cover(id, Ok(cover)) => {
                 page.covers.insert(id, cover);
             }
-            LibraryReply::Stats(Ok(stats)) => page.stats = Some(stats),
+            LibraryReply::Stats(Ok(stats)) => page.stats = Some(*stats),
             LibraryReply::HistoryExported(Ok(path)) => {
                 self.toasts.push(self.tr(
                     "encounter-export-saved",

@@ -1793,7 +1793,9 @@ impl Ui {
                     // writes queued before are done first, as for an export
                     self.session.wait_writes();
                     let catalog = self.session.catalog();
-                    catalog.stats(Box::new(move |r| reply(LibraryReply::Stats(r))))
+                    catalog.stats(Box::new(move |r| {
+                        reply(LibraryReply::Stats(r.map(Box::new)))
+                    }))
                 }
                 LibraryJob::ExportEncounters(uid, path) => {
                     catalog.export_encounters(

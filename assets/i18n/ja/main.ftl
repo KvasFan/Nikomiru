@@ -1070,3 +1070,10 @@ sub-export-too-large = 字幕が出力上限の16 MiBを超えています。
 sub-export-saved = 字幕を { $path } に保存しました。
 
 sub-export-failed = 字幕を保存できませんでした：{ $reason }
+
+analysis-cache-title = 分析カウントのキャッシュ
+analysis-cache-usage = { $files } ファイル · { $bytes } バイト
+analysis-cache-unavailable = キャッシュ使用量を取得できません。
+analysis-cache-refresh = 使用量を更新
+analysis-cache-clear = カウントキャッシュを消去
+analysis-cache-detail = 本・エピソードの派生カウントは最大64 MiBです。現在の分析は維持され、完了した処理によりキャッシュが再作成されることがあります。

@@ -1087,3 +1087,10 @@ sub-export-too-large = This subtitle track exceeds the 16 MiB export limit.
 sub-export-saved = Subtitles saved to { $path }.
 
 sub-export-failed = Subtitles could not be saved: { $reason }
+
+analysis-cache-title = Analysis count cache
+analysis-cache-usage = { $files } files · { $bytes } bytes
+analysis-cache-unavailable = Cache usage is unavailable.
+analysis-cache-refresh = Refresh cache usage
+analysis-cache-clear = Clear count cache
+analysis-cache-detail = Up to 64 MiB of derived book/episode counts. Current analyses stay open; completed work may refill the cache.
