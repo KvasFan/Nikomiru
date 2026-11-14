@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Export complete bilingual SRT files using the bounded independent-delay translation pairing (SUB-042, M59).
+
 - Inspect shown/selected subtitle statistics with Unicode character totals and overlap-merged dialogue duration (SUB-041, M58).
 
 - Filter subtitle study scopes by exact non-whitespace Unicode characters per second (SUB-040, M57).

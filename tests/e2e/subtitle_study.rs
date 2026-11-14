@@ -75,6 +75,21 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
         std::fs::read_to_string(bilingual).unwrap(),
         "start_ms\tend_ms\tprimary\tsecondary\n1000\t2000\t猫\tcat\n3000\t6000\t犬\tdog\n8000\t10000\t鳥\t\n"
     );
+    // T-SUB-042: the actual native-save path writes portable combined SRT and retains unmatched cues.
+    let combined = desk.path("bilingual.srt");
+    h.cmd(json!({"cmd":"subtitle-export","path":combined,"format":"bilingual-srt"}));
+    let combined = nikomiru_subs::parse(
+        nikomiru_subs::Format::Srt,
+        &std::fs::read_to_string(combined).unwrap(),
+    );
+    assert_eq!(
+        combined
+            .cues
+            .iter()
+            .map(|c| c.plain_text.as_str())
+            .collect::<Vec<_>>(),
+        ["猫\ncat", "犬\ndog", "鳥"]
+    );
     let after = h.state();
     assert_eq!(
         before["subtitles"]["version"],

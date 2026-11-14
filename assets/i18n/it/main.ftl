@@ -1174,3 +1174,6 @@ sub-stats-selected = Selezionate
 sub-stats-lines = righe
 sub-stats-characters = caratteri
 sub-stats-dialogue = Dialogo
+
+sub-bilingual-srt-shown = Esporta SRT bilingue visibile…
+sub-bilingual-srt-selected = Esporta SRT bilingue selezionato…

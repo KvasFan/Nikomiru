@@ -1157,3 +1157,6 @@ sub-stats-selected = 選択中
 sub-stats-lines = 行
 sub-stats-characters = 文字
 sub-stats-dialogue = 発話時間
+
+sub-bilingual-srt-shown = 表示中の対訳を SRT で保存…
+sub-bilingual-srt-selected = 選択した対訳を SRT で保存…

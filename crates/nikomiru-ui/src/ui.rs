@@ -1039,9 +1039,10 @@ impl Ui {
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
                     Dialog::StudyReport => self.session.study_report_to(&path),
-                    Dialog::SubtitleExport | Dialog::SubtitleVtt | Dialog::SubtitleBilingual => {
-                        self.session.subtitle_export_to(&path)
-                    }
+                    Dialog::SubtitleExport
+                    | Dialog::SubtitleVtt
+                    | Dialog::SubtitleBilingual
+                    | Dialog::SubtitleBilingualSrt => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
@@ -1578,6 +1579,9 @@ impl Ui {
             } => {
                 if s.subtitle_selected_prepare(version, &indices, format) {
                     self.view.dialog = Some(match format {
+                        crate::subtitle_export::ExportFormat::BilingualSrt => {
+                            Dialog::SubtitleBilingualSrt
+                        }
                         crate::subtitle_export::ExportFormat::Srt => Dialog::SubtitleExport,
                         crate::subtitle_export::ExportFormat::Vtt => Dialog::SubtitleVtt,
                         crate::subtitle_export::ExportFormat::Bilingual => {

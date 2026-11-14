@@ -120,6 +120,8 @@ pub(crate) struct StudyLabels {
     vtt_selected: String,
     bilingual_shown: String,
     bilingual_selected: String,
+    bilingual_srt_shown: String,
+    bilingual_srt_selected: String,
     select_line: String,
     copy_shown: String,
     copy_selected: String,
@@ -153,6 +155,8 @@ impl StudyLabels {
             vtt_selected: tr("sub-vtt-selected", &[]),
             bilingual_shown: tr("sub-bilingual-shown", &[]),
             bilingual_selected: tr("sub-bilingual-selected", &[]),
+            bilingual_srt_shown: tr("sub-bilingual-srt-shown", &[]),
+            bilingual_srt_selected: tr("sub-bilingual-srt-selected", &[]),
             select_line: tr("sub-select-line", &[]),
             copy_shown: tr("sub-copy-shown", &[]),
             copy_selected: tr("sub-copy-selected", &[]),
@@ -900,6 +904,33 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     }
                 }
             });
+            ui.horizontal_wrapped(|ui| {
+                for selected in [false, true] {
+                    let label = if selected {
+                        &scene.study.bilingual_srt_selected
+                    } else {
+                        &scene.study.bilingual_srt_shown
+                    };
+                    if ui
+                        .add_enabled(
+                            scene.bilingual_ready && (!selected || !state.selected.is_empty()),
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        let indices = if selected {
+                            state.selected.iter().copied().collect()
+                        } else {
+                            shown_indices(scene, state)
+                        };
+                        out.push(Command::SubtitleRowsExport {
+                            version: scene.version,
+                            indices,
+                            format: crate::subtitle_export::ExportFormat::BilingualSrt,
+                        });
+                    }
+                }
+            });
             if let Some(ok) = state.copied {
                 ui.label(if ok {
                     &scene.study.copied
@@ -1311,6 +1342,21 @@ mod tests {
         h.state_mut().state.query.clear();
         h.run();
         assert!(h.query_by_label("sub-stats-shown: 2 sub-stats-lines · 4 sub-stats-characters · sub-stats-dialogue: 0:02.000").is_some());
+    }
+
+    // T-SUB-042: bilingual SRT buttons capture their shown/selected scopes explicitly.
+    #[test]
+    fn bilingual_srt_action_uses_the_requested_scope() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-bilingual-srt-shown").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format:crate::subtitle_export::ExportFormat::BilingualSrt, .. } if indices == &[0])));
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

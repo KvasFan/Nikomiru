@@ -11,6 +11,8 @@ pub enum ExportFormat {
     Vtt,
     /// Primary/secondary overlap-aligned study transcript.
     Bilingual,
+    /// Combined primary/secondary plain-text SRT.
+    BilingualSrt,
 }
 
 /// Render a selected snapshot with an explicitly chosen format.
@@ -25,9 +27,13 @@ pub fn render(
     match format {
         ExportFormat::Srt => selected_srt(cues, indices, delay_ms, complete),
         ExportFormat::Vtt => vtt(cues, indices, delay_ms, complete),
-        ExportFormat::Bilingual => {
+        ExportFormat::Bilingual | ExportFormat::BilingualSrt => {
             let (other, delay, ready) = secondary.ok_or("sub-export-unavailable")?;
-            bilingual(cues, indices, delay_ms, other, delay, complete && ready)
+            if format == ExportFormat::BilingualSrt {
+                bilingual_srt(cues, indices, delay_ms, other, delay, complete && ready)
+            } else {
+                bilingual(cues, indices, delay_ms, other, delay, complete && ready)
+            }
         }
     }
 }
@@ -84,7 +90,14 @@ pub fn vtt(
     Ok(out)
 }
 
-/// A bounded temporal concordance with independent primary and secondary delays.
+struct PairedLine {
+    start: i64,
+    end: i64,
+    primary: String,
+    secondary: String,
+}
+
+/// Bounded overlap-aligned study TSV with independent track delays.
 pub fn bilingual(
     primary: &[nikomiru_subs::Cue],
     indices: &[usize],
@@ -93,6 +106,73 @@ pub fn bilingual(
     secondary_delay: i64,
     complete: bool,
 ) -> Result<String, &'static str> {
+    let rows = paired(
+        primary,
+        indices,
+        delay_ms,
+        secondary,
+        secondary_delay,
+        complete,
+    )?;
+    let mut out = String::from("start_ms\tend_ms\tprimary\tsecondary\n");
+    for row in rows {
+        out.push_str(&format!(
+            "{}\t{}\t{}\t{}\n",
+            row.start,
+            row.end,
+            crate::word_export::field(&row.primary),
+            crate::word_export::field(&row.secondary)
+        ));
+        if out.len() > 16 << 20 {
+            return Err("sub-export-too-large");
+        }
+    }
+    Ok(out)
+}
+
+/// Portable SRT combining each primary cue and its overlapping translations.
+pub fn bilingual_srt(
+    primary: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    secondary: &[nikomiru_subs::Cue],
+    secondary_delay: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let rows = paired(
+        primary,
+        indices,
+        delay_ms,
+        secondary,
+        secondary_delay,
+        complete,
+    )?;
+    let rows: Vec<_> = rows
+        .into_iter()
+        .map(|row| {
+            let text = if row.secondary.is_empty() {
+                row.primary
+            } else {
+                format!("{}\n{}", row.primary, row.secondary)
+            };
+            (row.start, row.end, text)
+        })
+        .collect();
+    let out = nikomiru_subs::srt::write(&rows);
+    if out.len() > 16 << 20 {
+        return Err("sub-export-too-large");
+    }
+    Ok(out)
+}
+
+fn paired(
+    primary: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    secondary: &[nikomiru_subs::Cue],
+    secondary_delay: i64,
+    complete: bool,
+) -> Result<Vec<PairedLine>, &'static str> {
     let primary = selected(primary, indices, complete)?;
     if secondary.len() > 100_000
         || secondary
@@ -126,7 +206,8 @@ pub fn bilingual(
             longest
         })
         .collect();
-    let mut out = String::from("start_ms\tend_ms\tprimary\tsecondary\n");
+    let mut out = Vec::new();
+    let mut bytes = 0usize;
     let mut work = 0usize;
     let mut written = 0;
     for cue in primary {
@@ -155,15 +236,19 @@ pub fn bilingual(
             }
             joined.push_str(c.2);
         }
-        let row = format!(
-            "{start}\t{end}\t{}\t{}\n",
-            crate::word_export::field(&cue.plain_text),
-            crate::word_export::field(&joined)
-        );
-        if out.len().saturating_add(row.len()) > 16 << 20 {
+        bytes = bytes
+            .saturating_add(cue.plain_text.len())
+            .saturating_add(joined.len())
+            .saturating_add(64);
+        if bytes > 16 << 20 {
             return Err("sub-export-too-large");
         }
-        out.push_str(&row);
+        out.push(PairedLine {
+            start,
+            end,
+            primary: cue.plain_text,
+            secondary: joined,
+        });
         written += 1;
     }
     if written == 0 {
@@ -281,6 +366,32 @@ pub fn transcript(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-042: SRT shares the bounded delayed overlap pairing and preserves unmatched primary cues.
+    #[test]
+    fn bilingual_srt_keeps_primary_timing_and_separate_translation_lines() {
+        let primary = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:04,000 --> 00:00:05,000\n犬\n",
+        )
+        .cues;
+        let secondary = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,500 --> 00:00:02,500\ncat\n",
+        )
+        .cues;
+        let text = bilingual_srt(&primary, &[0, 1], 250, &secondary, -500, true).unwrap();
+        let parsed = nikomiru_subs::parse(nikomiru_subs::Format::Srt, &text);
+        assert_eq!(parsed.cues.len(), 2);
+        assert_eq!(parsed.cues[0].plain_text, "猫\ncat");
+        assert_eq!(parsed.cues[1].plain_text, "犬");
+        assert_eq!(
+            (parsed.cues[0].start_ms, parsed.cues[0].end_ms),
+            (1250, 2250)
+        );
+        assert!(bilingual_srt(&primary, &[0], 0, &secondary, 0, false).is_err());
+        assert!(bilingual_srt(&primary, &[0], 0, &[], 0, true).is_err());
+    }
+
     // T-SUB-038: positive effective overlap, independent offsets, unmatched rows and duplicate captions.
     #[test]
     fn bilingual_transcripts_pair_by_effective_intervals() {
