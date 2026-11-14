@@ -1451,7 +1451,7 @@ M62–M71 are complete. Full regression passed 997 workspace/integration tests a
 | Milestone | Requirements | Scope | Status |
 | --- | --- | --- | --- |
 | M72 | SUB-049 | Subtitle text-length bounds | done |
-| M73 | SUB-050 | Unique subtitle captions | planned |
+| M73 | SUB-050 | Unique subtitle captions | done |
 | M74 | SUB-051 | Single or multiline captions | planned |
 | M75 | KNW-046 | Vocabulary reading filters | planned |
 | M76 | KNW-047 | Vocabulary coverage targets | planned |

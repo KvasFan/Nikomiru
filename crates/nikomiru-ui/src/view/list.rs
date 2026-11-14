@@ -92,6 +92,7 @@ struct Scope {
     speed: ReadingSpeed,
     duration: DurationBounds,
     text_length: TextLength,
+    unique: bool,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -140,6 +141,7 @@ pub(crate) struct StudyLabels {
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
+    unique_label: String,
     text_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
@@ -160,6 +162,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            unique_label: tr("sub-unique-captions", &[]),
             text_labels: [
                 "sub-text-tools",
                 "sub-text-min",
@@ -272,6 +275,7 @@ pub(crate) struct State {
     speed: ReadingSpeed,
     duration: DurationBounds,
     text_length: TextLength,
+    unique: bool,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -588,6 +592,7 @@ pub(crate) fn draw(
         state.speed = ReadingSpeed::default();
         state.duration = DurationBounds::default();
         state.text_length = TextLength::default();
+        state.unique = false;
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -738,6 +743,7 @@ fn search(ui: &mut egui::Ui, state: &mut State, focus: &mut bool, hint: &str) ->
 
 fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope) -> Vec<usize> {
     let query = nikomiru_text::search::Query::new(query);
+    let mut seen = std::collections::HashSet::new();
     scene
         .timeline
         .cues()
@@ -754,6 +760,15 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
+        .filter(|(_, cue)| {
+            !scope.unique
+                || seen.insert(
+                    cue.plain_text
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+        })
         .map(|(i, _)| i)
         .collect()
 }
@@ -768,6 +783,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             speed: state.speed,
             duration: state.duration,
             text_length: state.text_length,
+            unique: state.unique,
         },
     )
 }
@@ -784,6 +800,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             speed: state.speed,
             duration: state.duration,
             text_length: state.text_length,
+            unique: state.unique,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -1000,6 +1017,7 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
             egui::CollapsingHeader::new(&scene.study.text_labels[0])
                 .id_salt("subtitle-text-filters")
                 .show(ui, |ui| {
+                    ui.checkbox(&mut state.unique, &scene.study.unique_label);
                     ui.horizontal_wrapped(|ui| {
                         let mut min = state.text_length.min.is_some();
                         if ui.checkbox(&mut min, &scene.study.text_labels[1]).changed() {
@@ -1318,6 +1336,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     speed: state.speed,
                     duration: state.duration,
                     text_length: state.text_length,
+                    unique: state.unique,
                 },
                 width,
             );
@@ -1653,6 +1672,36 @@ mod tests {
                 .any(|c| matches!(c, Command::SubtitleExamplesClear))
         );
         h.state_mut().concordance = None;
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-050: first occurrence is chosen after other filters, without rewriting original text/indices.
+    #[test]
+    fn unique_captions_follow_the_filtered_scope_and_preserve_hidden_ticks() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "猫 犬"), (3000, "猫  犬"), (5000, "猫 犬！")]),
+            0,
+            false,
+        );
+        h.run();
+        h.state_mut().state.selected.insert(1);
+        h.state_mut().state.unique = true;
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 2]);
+        h.state_mut().state.window.from = Some(2500);
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1, 2]);
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-text-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-unique-captions").click();
+        h.run();
+        assert!(!h.state().state.unique);
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+        h.state_mut().state.window = Default::default();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
     }

@@ -1241,3 +1241,5 @@ sub-text-tools = Caption text filters
 sub-text-min = Minimum characters
 sub-text-max = Maximum characters
 sub-text-reset = Reset character bounds
+
+sub-unique-captions = First occurrence of each caption only

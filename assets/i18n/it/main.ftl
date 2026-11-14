@@ -1241,3 +1241,5 @@ sub-text-tools = Filtri sul testo delle battute
 sub-text-min = Caratteri minimi
 sub-text-max = Caratteri massimi
 sub-text-reset = Azzera limiti di caratteri
+
+sub-unique-captions = Solo la prima occorrenza di ogni battuta

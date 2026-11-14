@@ -1224,3 +1224,5 @@ sub-text-tools = 字幕テキストの条件
 sub-text-min = 最小文字数
 sub-text-max = 最大文字数
 sub-text-reset = 文字数条件をリセット
+
+sub-unique-captions = 同じ字幕は最初の出現だけ表示

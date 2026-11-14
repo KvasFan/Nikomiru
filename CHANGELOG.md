@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Unique subtitle captions (SUB-050, M73).
+
 - Subtitle text-length bounds (SUB-049, M72).
 
 ## [2.80.0] - 2026-11-14
