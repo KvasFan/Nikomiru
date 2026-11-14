@@ -153,3 +153,89 @@ fn analysis_failures_never_return_a_partial_count() {
         "closing"
     );
 }
+
+// T-KNW-025: actual dictionary/book counts reuse stable restart keys, invalidate
+// dictionary settings/language and changed source, and rescore fresh statuses.
+#[test]
+fn persistent_book_counts_survive_restart_and_validate_sources_and_dictionaries() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("page.html");
+    std::fs::write(&path, "<title>Page</title><main><p>食べる</p></main>").unwrap();
+    let request = request(&path);
+    let cancel = Cancel::new();
+    let cache_path = dir.path().join("cache");
+    let original_key;
+    let original;
+    {
+        let manager = manager(dir.path());
+        let store = nikomiru_app::analysis_cache::Store::new(cache_path.clone());
+        original_key =
+            nikomiru_app::analysis_cache::key(&manager, &path, &request.uid, &cancel).unwrap();
+        let Outcome::Counted(counted) =
+            nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
+                .unwrap()
+        else {
+            panic!("complete book expected")
+        };
+        original = counted;
+        assert_eq!(store.get(&original_key, &cancel), Some(original.clone()));
+    }
+    let library = Arc::new(Library::open(&dir.path().join("library.redb")).unwrap());
+    let manager = DictionaryManager::open(
+        library,
+        dir.path().join("dicts"),
+        Arc::new(ManualClock::new(SystemTime::UNIX_EPOCH)),
+        "ja",
+    )
+    .unwrap();
+    let store = nikomiru_app::analysis_cache::Store::new(cache_path);
+    assert_eq!(
+        nikomiru_app::analysis_cache::key(&manager, &path, &request.uid, &cancel),
+        Some(original_key.clone())
+    );
+    let Outcome::Counted(restarted) =
+        nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
+            .unwrap()
+    else {
+        panic!("cached book expected")
+    };
+    assert_eq!(restarted, original);
+    assert_eq!(
+        restarted.score(|_, _| WordStatus::Known).known,
+        restarted.score(|_, _| WordStatus::Unknown).words
+    );
+    manager.set_study_language("en");
+    assert_ne!(
+        nikomiru_app::analysis_cache::key(&manager, &path, &request.uid, &cancel),
+        Some(original_key.clone())
+    );
+    manager.set_study_language("ja");
+    let id = manager.list().unwrap()[0].0.clone();
+    manager.set_enabled(&id, false).unwrap();
+    assert_ne!(
+        nikomiru_app::analysis_cache::key(&manager, &path, &request.uid, &cancel),
+        Some(original_key.clone())
+    );
+    let Outcome::Counted(disabled) =
+        nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
+            .unwrap()
+    else {
+        panic!()
+    };
+    assert!(disabled.words.is_empty());
+    manager.set_enabled(&id, true).unwrap();
+    std::fs::write(&path, "<title>Page</title><main><p>日本語</p></main>").unwrap();
+    let Outcome::Counted(changed) =
+        nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
+            .unwrap()
+    else {
+        panic!()
+    };
+    assert!(changed.words.iter().any(|(word, _)| word == "日本語"));
+    assert!(!changed.words.iter().any(|(word, _)| word == "食べる"));
+    cancel.cancel();
+    assert!(
+        nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
+            .is_err()
+    );
+}

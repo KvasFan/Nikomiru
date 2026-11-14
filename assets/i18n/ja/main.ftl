@@ -1034,3 +1034,5 @@ analysis-order-most = 既知の割合が高い順
 analysis-order-least = 既知の割合が低い順
 analysis-only-scored = 分析済みのみ
 analysis-minimum-known = 既知の割合の下限 %
+
+analysis-source-changed = 分析中にソースまたは辞書が変更されました。再分析してください。

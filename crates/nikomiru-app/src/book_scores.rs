@@ -51,3 +51,33 @@ pub fn count(
     }
     Ok(Outcome::Counted(counted))
 }
+
+/// Reuse complete persisted counts after validating source and dictionary identity.
+pub fn count_cached(
+    manager: &DictionaryManager,
+    request: &Request,
+    cancel: &Cancel,
+    tr: &Translator,
+    cache: &crate::analysis_cache::Store,
+) -> Result<Outcome, String> {
+    if cancel.is_cancelled() {
+        return Err("cancelled".into());
+    }
+    let before = crate::analysis_cache::key(manager, &request.path, &request.uid, cancel);
+    if let Some(key) = &before
+        && let Some(counted) = cache.get(key, cancel)
+    {
+        tracing::debug!(book = %request.uid, "book count cache hit");
+        return Ok(Outcome::Counted(counted));
+    }
+    let result = count(manager, request, cancel, tr)?;
+    if let (Some(key), Outcome::Counted(counted)) = (&before, &result) {
+        if crate::analysis_cache::key(manager, &request.path, &request.uid, cancel).as_ref()
+            != Some(key)
+        {
+            return Err(tr.tr("analysis-source-changed", &[]));
+        }
+        cache.put(key, counted, cancel);
+    }
+    Ok(result)
+}

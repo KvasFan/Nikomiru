@@ -100,6 +100,18 @@ fn a_series_card_counts_local_subtitles_and_keeps_source_coverage() {
     assert_eq!(s["loaded"], false);
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    // T-KNW-025: persistent per-episode counts rebuild the explicit series aggregate.
+    let (mut app, mut h) = desk.launch_with(&["--debug"]);
+    h.state_until("series on restart", |s| {
+        s["library_page"]["series"][0]["id"] == id
+    });
+    h.cmd(json!({"cmd":"library", "action":"analyse-series", "id":id}));
+    h.state_until("persistent series counts rescored", |s| {
+        score(s)["scored"] == 2 && score(s)["known"] == 1
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(desk.log().contains("episode count cache hit"));
     let lib = Library::open(&desk.data_file("library.redb")).unwrap();
     assert!(lib.segments().unwrap().is_empty());
     assert!(lib.word_encounters().unwrap().is_empty());

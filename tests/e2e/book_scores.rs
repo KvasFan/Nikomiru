@@ -81,7 +81,16 @@ fn an_epub_is_scored_before_opening_and_keeps_its_reading_place() {
         s["books"]["open"].is_null() && score(s)["known"] == 2
     });
     h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success()); // T-KNW-025: restart reuses persisted counts, rescoring current statuses.
+    let (mut app, mut h) = desk.launch_with(&["--debug"]);
+    h.cmd(json!({"cmd":"books", "action":"open"}));
+    h.cmd(json!({"cmd":"books", "action":"analyse", "path":uid}));
+    h.state_until("persistent book count with current statuses", |s| {
+        score(s)["known"] == 2
+    });
+    h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(desk.log().contains("book count cache hit"));
 }
 
 // T-KNW-016: explicit refresh, no partial scores, no network or study writes.

@@ -13,7 +13,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::SystemTime;
 
 use nikomiru_core::Cancel;
 use nikomiru_dict::import::Progress;
@@ -105,6 +104,7 @@ fn spawn_book_counter(
     manager: &Arc<DictionaryManager>,
     translator: &Translator,
     stop: &Cancel,
+    cache_dir: PathBuf,
 ) -> (BookJobs, Option<JoinHandle<()>>) {
     let (tx, rx) = mpsc::channel::<(
         nikomiru_ui::book_scores::Request,
@@ -117,6 +117,7 @@ fn spawn_book_counter(
     match std::thread::Builder::new()
         .name("nikomiru-book-count".into())
         .spawn(move || {
+            let cache = crate::analysis_cache::Store::new(cache_dir);
             for (request, cancel, done) in rx {
                 if stop.is_cancelled() {
                     break;
@@ -125,11 +126,12 @@ fn spawn_book_counter(
                 if cancel.is_cancelled() {
                     continue;
                 }
-                done(crate::book_scores::count(
+                done(crate::book_scores::count_cached(
                     &manager,
                     &request,
                     &cancel,
                     &translator,
+                    &cache,
                 ));
             }
         }) {
@@ -170,9 +172,8 @@ fn spawn_worker<T: 'static>(
     }
 }
 
-/// The counts kept by file, size, time and the words' generation: opening
-/// a series again counts nothing that did not change.
-type CountCache = HashMap<(PathBuf, u64, Option<SystemTime>, u64), Counted>;
+/// Complete counts by stable source/content/dictionary fingerprint.
+type CountCache = HashMap<String, Counted>;
 
 /// The counts kept at most; beyond, the cache starts again.
 const COUNTS_KEPT: usize = 256;
@@ -193,6 +194,7 @@ fn spawn_counter(
         .name("nikomiru-count".into())
         .spawn(move || {
             let mut cache = CountCache::new();
+            let persisted = crate::analysis_cache::Store::new(cache_dir.join("counts-v1/episodes"));
             let mut resolver = crate::score_subtitles::Resolver::new(cache_dir);
             for (request, cancel, done) in rx {
                 // the app is closing: what is queued would only delay it
@@ -202,7 +204,7 @@ fn spawn_counter(
                 let started = std::time::Instant::now();
                 let cancel = stop.linked(&cancel);
                 if cancel.is_cancelled() { continue; }
-                let result = count_episode(&manager, &translator, &cancel, &mut cache, &mut resolver, &request);
+                let result = count_episode(&manager, &translator, &cancel, &mut cache, &persisted, &mut resolver, &request);
                 tracing::debug!(video = %request.video.display(), elapsed = ?started.elapsed(), "words counted");
                 done(result);
             }
@@ -223,18 +225,31 @@ fn count_episode(
     translator: &Translator,
     stop: &Cancel,
     cache: &mut CountCache,
+    persisted: &crate::analysis_cache::Store,
     resolver: &mut crate::score_subtitles::Resolver,
     request: &CountRequest,
 ) -> Result<Option<Counted>, String> {
     let Some(file) = resolver.resolve(request, stop, translator)? else {
         return Ok(None);
     };
-    let meta = std::fs::metadata(&file).map_err(|e| e.to_string())?;
-    let key = (file, meta.len(), meta.modified().ok(), request.generation);
-    if let Some(counted) = cache.get(&key) {
-        return Ok(Some(counted.clone()));
+    if stop.is_cancelled() {
+        return Err("cancelled".into());
     }
-    let loaded = crate::subtitles::read_file(&key.0, None, translator)?;
+    let key = crate::analysis_cache::key(manager, &file, "episode", stop);
+    if let Some(key) = &key {
+        if let Some(counted) = cache.get(key) {
+            return Ok(Some(counted.clone()));
+        }
+        if let Some(counted) = persisted.get(key, stop) {
+            if cache.len() >= COUNTS_KEPT {
+                cache.clear();
+            }
+            cache.insert(key.clone(), counted.clone());
+            tracing::debug!(video = %request.video.display(), "episode count cache hit");
+            return Ok(Some(counted));
+        }
+    }
+    let loaded = crate::subtitles::read_file(&file, None, translator)?;
     let lookup = manager.lookup().map_err(|e| translator.error(&e))?;
     let lines = loaded.track.cues.into_iter().map(|c| c.plain_text);
     let counted = scores::count(lines, |text| {
@@ -249,7 +264,13 @@ fn count_episode(
     if cache.len() >= COUNTS_KEPT {
         cache.clear();
     }
-    cache.insert(key, counted.clone());
+    if let Some(key) = key {
+        if crate::analysis_cache::key(manager, &file, "episode", stop).as_ref() != Some(&key) {
+            return Err(translator.tr("analysis-source-changed", &[]));
+        }
+        persisted.put(&key, &counted, stop);
+        cache.insert(key, counted.clone());
+    }
     Ok(Some(counted))
 }
 
@@ -284,9 +305,14 @@ impl Dictionaries {
                 Ok(segment(&*m.lookup()?, text)?)
             });
         let counts_stop = Cancel::new();
+        let (books, books_worker) = spawn_book_counter(
+            &manager,
+            &translator,
+            &counts_stop,
+            scores_cache.join("counts-v1/books"),
+        );
         let (counts, counts_worker) =
             spawn_counter(&manager, &translator, &counts_stop, scores_cache);
-        let (books, books_worker) = spawn_book_counter(&manager, &translator, &counts_stop);
         Self {
             manager,
             translator,

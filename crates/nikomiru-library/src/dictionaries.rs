@@ -296,6 +296,18 @@ impl DictionaryManager {
         Ok(self.library.dictionaries()?)
     }
 
+    /// Stable count-cache identity across restarts: imports have unique registry ids.
+    /// Includes study language and registry settings, independent of word statuses.
+    pub fn analysis_identity(&self) -> Result<Vec<u8>, DictionaryError> {
+        let language = self
+            .study_language
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default();
+        let records = self.list()?;
+        Ok(postcard::to_stdvec(&(language, records)).map_err(LibraryError::from)?)
+    }
+
     /// What importing `zip` would do (DIC-016).
     pub fn check(&self, zip: &Path) -> Result<Check, DictionaryError> {
         let index = import::read_index(zip)?;

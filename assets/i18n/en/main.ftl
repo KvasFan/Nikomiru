@@ -1051,3 +1051,5 @@ analysis-order-most = Most known first
 analysis-order-least = Least known first
 analysis-only-scored = Only scored
 analysis-minimum-known = Minimum known %
+
+analysis-source-changed = The source or dictionaries changed during analysis. Please refresh.

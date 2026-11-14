@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Reuse complete book and episode/series analysis counts across restarts in bounded, source/dictionary-validated private caches (KNW-025, M34).
+
 - Order books and series by comprehension and filter scored material by a minimum known-word percentage (KNW-024, M33).
 
 - Inspect and clear per-episode encounter history, with persistent sync resets preventing old-device resurrection (KNW-023, M32).

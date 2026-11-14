@@ -917,7 +917,7 @@ without requiring a new request after each increment.
 | M31 | Export analysed media word lists for study elsewhere | done |
 | M32 | Inspect and clear historical word encounters, including sync | done |
 | M33 | Order/filter library material by comprehension | done |
-| M34 | Bounded persistent analysis caches with source/dictionary invalidation | not started |
+| M34 | Bounded persistent analysis caches with source/dictionary invalidation | done |
 
 ## M25 — Progressive graphic OCR
 
@@ -1030,6 +1030,18 @@ filter controls without automatic analysis; `cargo xtask ci`.
 
 ---
 
+## M34 — Persistent analysis counts
+
+**Requirements**: KNW-025. Reuse complete local counts across restarts on the
+existing workers, with stable source/content/dictionary fingerprints. Bound
+entries and total disk bytes, reject corrupt/partial/cancelled data, and
+rescore current statuses instead of persisting stale percentages.
+
+**Exit criteria**: restart/source/dictionary invalidation, corrupt/oversized
+cache and eviction/cancellation tests, actual worker parity and full CI.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
 These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:
@@ -1041,11 +1053,7 @@ These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthes
 | Text to speech for words without a recording | Piper (MIT) with its voices, or the system's speech-dispatcher | Voices of 20–100 MB each, some with licences that need checking |
 | Subtitles made from the speech of a video without any | whisper.cpp (MIT) with OpenAI's Whisper models (MIT), fetched on request as the manga model is (MNG-004) | Models of 75 MB to 3 GB; slow without a GPU |
 
-Also still open from earlier releases:
-
-- graphic subtitles read progressively from where the video is, so a first reading does not wait for the whole track;
-- external `.idx`/`.sub` pairs;
-- DVB subtitles.
+Completed in M25–M27: progressive graphic OCR, explicit external VobSub pairs and embedded DVB bitmap subtitles. Real-source manual comparisons remain open.
 
 ---
 

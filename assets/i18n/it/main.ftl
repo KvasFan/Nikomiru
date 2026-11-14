@@ -1051,3 +1051,5 @@ analysis-order-most = Più conosciuti prima
 analysis-order-least = Meno conosciuti prima
 analysis-only-scored = Solo analizzati
 analysis-minimum-known = Minimo conosciuto %
+
+analysis-source-changed = La sorgente o i dizionari sono cambiati durante l’analisi. Aggiorna il conteggio.

@@ -12,6 +12,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod analysis_cache;
 pub mod anki;
 #[cfg(target_os = "linux")]
 pub mod appearance;
