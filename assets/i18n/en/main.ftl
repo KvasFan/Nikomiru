@@ -1247,3 +1247,8 @@ sub-unique-captions = First occurrence of each caption only
 sub-shape-any = Any line structure
 sub-shape-single = Single-line captions
 sub-shape-multiple = Multiline captions
+
+vocabulary-reading-tools = Reading and coverage filters
+vocabulary-reading-any = Any reading
+vocabulary-reading-distinct = Has a distinct reading
+vocabulary-reading-same = No distinct reading

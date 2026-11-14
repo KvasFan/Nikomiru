@@ -1247,3 +1247,8 @@ sub-unique-captions = Solo la prima occorrenza di ogni battuta
 sub-shape-any = Qualsiasi struttura
 sub-shape-single = Battute su una riga
 sub-shape-multiple = Battute su più righe
+
+vocabulary-reading-tools = Filtri per lettura e copertura
+vocabulary-reading-any = Qualsiasi lettura
+vocabulary-reading-distinct = Con lettura distinta
+vocabulary-reading-same = Senza lettura distinta

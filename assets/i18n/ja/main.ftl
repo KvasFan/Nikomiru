@@ -1230,3 +1230,8 @@ sub-unique-captions = 同じ字幕は最初の出現だけ表示
 sub-shape-any = 行数の指定なし
 sub-shape-single = 一行の字幕
 sub-shape-multiple = 複数行の字幕
+
+vocabulary-reading-tools = 読みとカバー率の条件
+vocabulary-reading-any = すべての読み
+vocabulary-reading-distinct = 異なる読みがある語
+vocabulary-reading-same = 異なる読みがない語

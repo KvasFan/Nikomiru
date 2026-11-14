@@ -393,6 +393,8 @@ impl Default for SubtitlesConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StudyPreset {
+    /// Any, distinct nonempty reading, or no distinct reading.
+    pub reading_filter: u8,
     /// Inclusive non-whitespace scalar minimum length.
     pub min_length: usize,
     /// Optional inclusive scalar maximum length.
@@ -428,6 +430,7 @@ impl StudyPreset {
             && !self.name.chars().any(char::is_control)
             && self.query.len() <= 4096
             && self.status.is_none_or(|s| s < 4)
+            && self.reading_filter < 3
             && self.script < 4
             && self.card < 3
             && self.order < 4

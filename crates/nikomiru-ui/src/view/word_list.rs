@@ -34,6 +34,7 @@ pub(crate) struct Labels {
     pub preset_too_long: String,
     pub named: [String; 4],
     pub scripts: [String; 4],
+    pub reading_labels: [String; 4],
     pub lengths: [String; 3],
     pub batch: [String; 5],
     /// "All shown": ticks them.
@@ -71,6 +72,13 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            reading_labels: [
+                "vocabulary-reading-tools",
+                "vocabulary-reading-any",
+                "vocabulary-reading-distinct",
+                "vocabulary-reading-same",
+            ]
+            .map(|k| tr(k, &[])),
             batch: [
                 "vocabulary-batch-tools",
                 "vocabulary-batch-next",
@@ -179,6 +187,7 @@ pub(crate) struct State {
     pub min_length: usize,
     pub max_length: Option<usize>,
     pub script: u8,
+    pub reading_filter: u8,
     pub exact: bool,
     preset_name: String,
     pub status: Option<WordStatus>,
@@ -194,6 +203,7 @@ pub(crate) struct State {
 
 #[derive(Debug, Clone)]
 struct Preset {
+    reading_filter: u8,
     min_length: usize,
     max_length: Option<usize>,
     script: u8,
@@ -214,6 +224,7 @@ impl Preset {
         Some(Self {
             query: query.to_string(),
             script: state.script,
+            reading_filter: state.reading_filter,
             min_length: state.min_length,
             max_length: state.max_length,
             new_only: state.new_only,
@@ -228,6 +239,7 @@ impl Preset {
     fn apply(&self, query: &mut String, state: &mut State) {
         query.clone_from(&self.query);
         state.script = self.script;
+        state.reading_filter = self.reading_filter;
         state.min_length = self.min_length;
         state.max_length = self.max_length;
         state.new_only = self.new_only;
@@ -274,6 +286,7 @@ fn named_presets(
             .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, &labels.named[1]));
             let snapshot = StudyPreset {
                 script: state.script,
+                reading_filter: state.reading_filter,
                 min_length: state.min_length,
                 max_length: state.max_length,
                 name: state.preset_name.trim().to_string(),
@@ -314,6 +327,7 @@ fn named_presets(
                         Preset {
                             query: p.query.clone(),
                             script: p.script,
+                            reading_filter: p.reading_filter,
                             min_length: p.min_length,
                             max_length: p.max_length,
                             new_only: p.new_only,
@@ -427,6 +441,14 @@ pub(crate) fn filtered<'a>(
             let n = w.expression.chars().filter(|c| !c.is_whitespace()).count();
             n >= state.min_length && state.max_length.is_none_or(|max| n <= max)
         })
+        .filter(|w| {
+            let distinct = !w.reading.trim().is_empty() && w.reading.trim() != w.expression.trim();
+            match state.reading_filter {
+                1 => distinct,
+                2 => !distinct,
+                _ => true,
+            }
+        })
         .filter(|w| script_keeps(state.script, &w.expression))
         .filter(|w| w.count >= state.min_count && state.max_count.is_none_or(|max| w.count <= max))
         .filter(|w| {
@@ -527,6 +549,13 @@ pub(crate) fn show(
 ) {
     presets(ui, query, labels, state);
     named_presets(ui, query, labels, state, out);
+    egui::CollapsingHeader::new(&labels.reading_labels[0])
+        .id_salt("vocabulary-reading-filters")
+        .show(ui, |ui| {
+            for (i, label) in labels.reading_labels[1..].iter().enumerate() {
+                ui.selectable_value(&mut state.reading_filter, i as u8, label);
+            }
+        });
     ui.horizontal_wrapped(|ui| {
         let orders = [
             WordOrder::Frequent,
@@ -902,6 +931,13 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        reading_labels: [
+                            "Reading filters",
+                            "Any reading",
+                            "Distinct reading",
+                            "No distinct reading",
+                        ]
+                        .map(String::from),
                         batch: [
                             "Study batches",
                             "Select next batch",
@@ -1458,5 +1494,34 @@ mod tests {
         let mut state = State::default();
         next_batch(&rows, &mut state);
         assert_eq!(state.ticked.len(), 20);
+    } // T-KNW-046: whitespace, absent/identical readings, presets and hidden selections.
+    #[test]
+    fn reading_filters_compose_and_restore_without_changing_ticks() {
+        let all = vec![
+            word("猫", " ねこ ", 2, WordStatus::Unknown),
+            word("犬", "  ", 1, WordStatus::Unknown),
+            word("かな", "かな", 3, WordStatus::Known),
+        ];
+        let mut state = State {
+            reading_filter: 1,
+            ..Default::default()
+        };
+        assert_eq!(filtered(&all, "", &state).len(), 1);
+        state.reading_filter = 2;
+        assert_eq!(filtered(&all, "", &state).len(), 2);
+        let preset = Preset::capture("", &state).unwrap();
+        state.reading_filter = 0;
+        preset.apply(&mut String::new(), &mut state);
+        assert_eq!(state.reading_filter, 2);
+        let mut h = harness();
+        h.run();
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.get_by_label("Reading filters").click();
+        h.run();
+        h.get_by_label("No distinct reading").click();
+        h.run();
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        assert!(h.query_all_by_label("が").count() > 0);
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
     }
 }
