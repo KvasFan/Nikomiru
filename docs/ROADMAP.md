@@ -916,7 +916,7 @@ without requiring a new request after each increment.
 | M30 | Browse and bulk-mark the words of an analysed series | done |
 | M31 | Export analysed media word lists for study elsewhere | done |
 | M32 | Inspect and clear historical word encounters, including sync | done |
-| M33 | Order/filter library material by comprehension | not started |
+| M33 | Order/filter library material by comprehension | done |
 | M34 | Bounded persistent analysis caches with source/dictionary invalidation | not started |
 
 ## M25 — Progressive graphic OCR
@@ -1015,6 +1015,18 @@ old device histories cannot resurrect deleted words; preserve other study data.
 
 **Exit criteria**: reset/reopen/new-encounter/old-device merge tests, bounded
 history projection and accessible inspect/search/clear controls; full CI.
+
+---
+
+## M33 — Choose by comprehension
+
+**Requirements**: KNW-024. Display Books and local series in original,
+most-known or least-known order, with stable ties and unscored items last.
+Filter completed scores by a minimum known-token percentage. Use only
+retained counts, keeping library order and playback unchanged.
+
+**Exit criteria**: ratio/tie/missing/threshold/rescore tests and accessible
+filter controls without automatic analysis; `cargo xtask ci`.
 
 ---
 

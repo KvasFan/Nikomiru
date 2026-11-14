@@ -33,6 +33,7 @@ pub(crate) struct State {
     /// The covers as textures, by series.
     textures: HashMap<u64, TextureHandle>,
     analysis: Option<u64>,
+    analysis_order: super::analysis_order::State,
     analysis_words: super::analysis_words::State,
     /// The name being typed for the series open.
     rename: Option<(u64, String)>,
@@ -720,7 +721,21 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     if home.series.is_empty() {
         ui.label(RichText::new(tr(s, "library-empty")).color(palette::current().details));
     }
-    rows(ui, NARROW, &home.series, |ui, summary| {
+    if s.colours {
+        state.analysis_order.controls(ui, s.tr);
+    }
+    let indices = if s.colours {
+        state.analysis_order.indices(home.series.len(), |i| {
+            match s.page.scores.get(home.series[i].id) {
+                Some(crate::series_scores::Status::Ready(summary)) => Some(summary.score),
+                _ => None,
+            }
+        })
+    } else {
+        (0..home.series.len()).collect()
+    };
+    let shown: Vec<_> = indices.into_iter().map(|i| &home.series[i]).collect();
+    rows(ui, NARROW, &shown, |ui, summary| {
         ui.vertical(|ui| {
             let clicked = card(
                 ui,
@@ -1346,7 +1361,6 @@ mod tests {
             home: Some(home()),
             ..Default::default()
         };
-        page.home.as_mut().unwrap().series.truncate(1);
         let words = crate::words::Words::default();
         page.scores.update(true, &words, &[], "", &[1]);
         let request = page.scores.request(1).unwrap();
@@ -1368,6 +1382,13 @@ mod tests {
         let mut h = harness(page);
         h.state_mut().colours = true;
         h.run();
+        // T-KNW-024: only completed/scorable series remain, no automatic work.
+        h.get_by_label("analysis-order");
+        assert!(h.query_all_by_label("Beta").count() > 0);
+        h.get_by_label("analysis-only-scored").click();
+        h.run_steps(2);
+        assert_eq!(h.query_all_by_label("Beta").count(), 0);
+        assert!(h.state().out.is_empty());
         h.get_by_label("analysis-words").click();
         h.run_steps(2);
         h.get_by_label("×3");

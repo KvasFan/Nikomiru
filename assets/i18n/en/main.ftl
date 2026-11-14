@@ -1044,3 +1044,10 @@ analysis-export-too-large = This vocabulary exceeds the 16 MiB export limit.
 encounter-history-open = Inspect history
 encounter-history-clear = Clear episode history
 encounter-history-coverage = Showing { $shown } of { $total } historical words (first encounter: Unix ms).
+
+analysis-order = Comprehension order
+analysis-order-original = Library order
+analysis-order-most = Most known first
+analysis-order-least = Least known first
+analysis-only-scored = Only scored
+analysis-minimum-known = Minimum known %

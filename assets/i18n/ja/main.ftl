@@ -1027,3 +1027,10 @@ analysis-export-too-large = 単語一覧が出力上限の16 MiBを超えてい�
 encounter-history-open = 履歴を見る
 encounter-history-clear = エピソードの履歴を消去
 encounter-history-coverage = 履歴の { $total } 語中 { $shown } 語を表示（初遭遇：Unixミリ秒）。
+
+analysis-order = 理解度の並び順
+analysis-order-original = ライブラリ順
+analysis-order-most = 既知の割合が高い順
+analysis-order-least = 既知の割合が低い順
+analysis-only-scored = 分析済みのみ
+analysis-minimum-known = 既知の割合の下限 %

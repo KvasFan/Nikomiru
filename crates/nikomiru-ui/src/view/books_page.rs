@@ -61,6 +61,7 @@ pub(crate) struct State {
     study_key: Option<(String, usize)>,
     words_open: bool,
     analysis: Option<String>,
+    analysis_order: super::analysis_order::State,
     analysis_words: super::analysis_words::State,
     word_query: String,
     words: super::word_list::State,
@@ -1114,6 +1115,9 @@ fn list(
         state.analysis = None;
         state.analysis_words = Default::default();
     }
+    if s.colours {
+        state.analysis_order.controls(ui, s.tr);
+    }
     if let Some((text, ok)) = &s.page.status {
         let shade: Color32 = if *ok {
             palette::current().good
@@ -1144,7 +1148,18 @@ fn list(
         .id_salt("books")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for (uid, record) in &s.page.list {
+            let indices = if s.colours {
+                state.analysis_order.indices(s.page.list.len(), |i| {
+                    match s.page.scores.get(&s.page.list[i].0) {
+                        Some(crate::book_scores::Status::Score(score)) => Some(*score),
+                        _ => None,
+                    }
+                })
+            } else {
+                (0..s.page.list.len()).collect()
+            };
+            for i in indices {
+                let (uid, record) = &s.page.list[i];
                 ui.horizontal(|ui| {
                     let name = if record.author.is_empty() {
                         record.title.clone()
@@ -1353,7 +1368,27 @@ mod tests {
         );
         page.scores
             .update(true, &page.list, &crate::words::Words::default());
+        page.list.push((
+            "book/b".into(),
+            nikomiru_library::books::BookRecord {
+                title: "Other book".into(),
+                path: "b.epub".into(),
+                ..Default::default()
+            },
+        ));
         let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        // T-KNW-024: filtering retained scores never starts an analysis.
+        h.get_by_label("analysis-order");
+        h.get_by_label("Other book");
+        h.get_by_label("analysis-only-scored").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("Other book").is_none());
+        assert!(h.state().out.is_empty());
+        h.state_mut().colours = false;
+        h.run();
+        h.get_by_label("Other book");
         h.state_mut().colours = true;
         h.run();
         h.get_by_label("analysis-words").click();

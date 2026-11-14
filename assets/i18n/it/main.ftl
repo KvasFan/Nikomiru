@@ -1044,3 +1044,10 @@ analysis-export-too-large = Il vocabolario supera il limite di esportazione di 1
 encounter-history-open = Esamina cronologia
 encounter-history-clear = Cancella cronologia episodio
 encounter-history-coverage = Visualizzate { $shown } di { $total } parole storiche (primo incontro: ms Unix).
+
+analysis-order = Ordine per comprensione
+analysis-order-original = Ordine della libreria
+analysis-order-most = Più conosciuti prima
+analysis-order-least = Meno conosciuti prima
+analysis-only-scored = Solo analizzati
+analysis-minimum-known = Minimo conosciuto %
