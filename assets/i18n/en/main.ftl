@@ -1267,3 +1267,8 @@ sub-context-exact = Exact examples only
 sub-context-one = One neighbouring line
 sub-context-two = Two neighbouring lines
 sub-context-hit = Exact word example
+
+action-study-previous = Previous matching subtitle
+action-study-next = Next matching subtitle
+action-study-reveal = Reveal current study line
+action-study-select = Toggle current study line selection

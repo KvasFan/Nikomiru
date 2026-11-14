@@ -76,6 +76,15 @@ pub enum Action {
     SubList,
     /// Search in the subtitle list (SUB-015).
     SubSearch,
+    /// Subtitle study action: study_previous.
+    StudyPrevious,
+    /// Subtitle study action: study_next.
+    StudyNext,
+    /// Subtitle study action: study_reveal.
+    StudyReveal,
+    /// Subtitle study action: study_select.
+    StudySelect,
+
     /// Blur the subtitle on/off (SUB-014).
     SubBlur,
     /// Hide the subtitle on/off (SUB-014).
@@ -113,7 +122,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 41] = [
+    pub const ALL: [Action; 45] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -139,6 +148,10 @@ impl Action {
         Action::ReplayPrevCue,
         Action::SubList,
         Action::SubSearch,
+        Action::StudyPrevious,
+        Action::StudyNext,
+        Action::StudyReveal,
+        Action::StudySelect,
         Action::SubBlur,
         Action::SubHide,
         Action::SubToggle,
@@ -185,6 +198,11 @@ impl Action {
             Action::ReplayPrevCue => "replay_prev_cue",
             Action::SubList => "sub_list",
             Action::SubSearch => "sub_search",
+            Action::StudyPrevious => "study_previous",
+            Action::StudyNext => "study_next",
+            Action::StudyReveal => "study_reveal",
+            Action::StudySelect => "study_select",
+
             Action::SubBlur => "sub_blur",
             Action::SubHide => "sub_hide",
             Action::SubToggle => "sub_toggle",
@@ -283,6 +301,11 @@ impl Action {
             Action::ReplayPrevCue => &["Shift+KeyR"],
             Action::SubList => &["KeyL"],
             Action::SubSearch => &["Ctrl+KeyF"],
+            Action::StudyPrevious => &["Alt+ArrowUp"],
+            Action::StudyNext => &["Alt+ArrowDown"],
+            Action::StudyReveal => &["Alt+KeyR"],
+            Action::StudySelect => &["Alt+KeyT"],
+
             Action::SubBlur => &["KeyB"],
             Action::SubHide => &["KeyH"],
             Action::SubToggle => &["KeyV"],
@@ -595,6 +618,16 @@ impl Bindings {
             .get(&(context, chord.to_string()))
             .or_else(|| self.by_chord.get(&(Context::Global, chord.to_string())))
             .copied()
+            .filter(|a| {
+                !text_focus
+                    || !matches!(
+                        a,
+                        Action::StudyPrevious
+                            | Action::StudyNext
+                            | Action::StudyReveal
+                            | Action::StudySelect
+                    )
+            })
     }
 }
 
@@ -617,6 +650,31 @@ mod tests {
     };
 
     // T-KEY-005
+    // T-SUB-054: configurable actions are unique, player-scoped and never consume typing keys.
+    #[test]
+    fn study_shortcuts_respect_focus_context_and_overrides() {
+        let b = Bindings::defaults();
+        for action in [
+            Action::StudyPrevious,
+            Action::StudyNext,
+            Action::StudyReveal,
+            Action::StudySelect,
+        ] {
+            let key = action.default_keys()[0];
+            assert_eq!(b.action(Context::Player, key, false), Some(action));
+            assert_eq!(b.action(Context::Player, key, true), None);
+            assert_eq!(b.action(Context::Global, key, false), None);
+            assert_eq!(Action::from_name(action.name()), Some(action));
+        }
+        let overrides =
+            std::collections::BTreeMap::from([("study_next".into(), vec!["Alt+KeyN".into()])]);
+        let b = Bindings::with_overrides(&overrides).unwrap();
+        assert_eq!(
+            b.action(Context::Player, "Alt+KeyN", false),
+            Some(Action::StudyNext)
+        );
+    }
+
     #[test]
     fn only_the_actions_that_step_repeat() {
         for once in [

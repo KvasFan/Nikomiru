@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Subtitle study keyboard actions (SUB-054, M80).
+
 - Context around word examples (SUB-053, M79).
 
 - Vocabulary HTML study sheets (KNW-048, M78).

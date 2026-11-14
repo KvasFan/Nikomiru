@@ -318,17 +318,89 @@ pub(crate) struct State {
     drawn: Vec<Drawn>,
 }
 
-#[cfg(feature = "test-harness")]
 impl State {
+    #[cfg(feature = "test-harness")]
     pub(crate) fn set_study_query(&mut self, query: String) {
         self.query = query;
     }
+    #[cfg(feature = "test-harness")]
     pub(crate) fn study_rows(&self) -> &[usize] {
         &self.rows.cues
     }
+    fn rendered_scope_current(&self, session: &Session) -> bool {
+        let Some((version, query, filter, revision, scope)) = self.rows.picked.as_ref() else {
+            return false;
+        };
+        let expected = if session.word_colors_on() {
+            self.filter
+        } else {
+            LineFilter::All
+        };
+        let marks = if expected == LineFilter::All {
+            0
+        } else {
+            session.words_revision()
+        };
+        !self.words_tab
+            && *version == session.sub_list_version
+            && query == &self.query
+            && *filter == expected
+            && *revision == marks
+            && *scope == self.scope()
+            && self.last_concordance
+                == session
+                    .subtitle_examples()
+                    .map(|c| (c.key.clone(), c.revision))
+    }
+    fn scope(&self) -> Scope {
+        Scope {
+            window: self.window,
+            speed: self.speed,
+            duration: self.duration,
+            text_length: self.text_length,
+            unique: self.unique,
+            shape: self.shape,
+            context: self.context,
+        }
+    }
+    pub(crate) fn study_action(
+        &mut self,
+        session: &Session,
+        action: crate::shortcuts::Action,
+    ) -> Option<Command> {
+        use crate::shortcuts::Action;
+        if !self.rendered_scope_current(session) {
+            return None;
+        }
+        if matches!(action, Action::StudyPrevious | Action::StudyNext) {
+            return self
+                .matching_target(session, action == Action::StudyNext)
+                .map(Command::ListTime);
+        }
+        let position = (session.view.time_pos * 1000.0).round() as i64;
+        let cue = session
+            .subs
+            .timeline()
+            .active(position)
+            .into_iter()
+            .find(|i| self.rows.cues.contains(i))?;
+        match action {
+            Action::StudyReveal if self.masked => {
+                self.revealed.insert(cue);
+            }
+            Action::StudySelect => {
+                if !self.selected.remove(&cue) {
+                    self.selected.insert(cue);
+                }
+                self.selection_anchor = Some(cue);
+                self.selection_revision = self.selection_revision.wrapping_add(1);
+            }
+            _ => {}
+        }
+        None
+    }
     pub(crate) fn matching_target(&self, session: &Session, forward: bool) -> Option<usize> {
-        let (version, query, _, _, _) = self.rows.picked.as_ref()?;
-        if *version != session.sub_list_version || query != &self.query {
+        if !self.rendered_scope_current(session) {
             return None;
         }
         crate::subtitle_study::Navigation::new(

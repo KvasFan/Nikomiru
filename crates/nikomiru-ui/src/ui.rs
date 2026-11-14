@@ -1162,6 +1162,20 @@ impl Ui {
         redraw
     }
 
+    fn effect(&mut self, effect: crate::session::UiEffect) {
+        if let crate::session::UiEffect::SubtitleStudy(action) = effect {
+            if self.view.sub_list_open
+                && !self.session.popups_covered
+                && !self.session.popups.is_open()
+                && let Some(command) = self.view.list.study_action(&self.session, action)
+            {
+                self.apply(command);
+            }
+        } else {
+            self.view.effect(effect);
+        }
+    }
+
     /// A key of the window (KEY-002). `text_focus`: a text field has the
     /// keyboard (KEY-004). Returns whether a shortcut took the key: then egui
     /// must not see it (it would move the focus with Tab or arrows, or press the
@@ -1172,7 +1186,7 @@ impl Ui {
             self.session
                 .key(key.evdev, key.mods, key.pressed, key.repeat, text_focus);
         if key.pressed {
-            self.view.effect(effect);
+            self.effect(effect);
         }
         self.pump();
         taken
@@ -1381,7 +1395,7 @@ impl Ui {
         match command {
             Command::Action(action) => {
                 let effect = s.action(action);
-                self.view.effect(effect);
+                self.effect(effect);
             }
             Command::SeekTo(seconds) => s.seek_to(seconds),
             Command::SetVolume(volume) => s.set_volume(volume),
@@ -1393,7 +1407,7 @@ impl Ui {
                     s.close_all_popups();
                 } else if s.view.loaded {
                     let effect = s.action(Action::PlayPause);
-                    self.view.effect(effect);
+                    self.effect(effect);
                 }
             }
             Command::SelectSubtitles(key) => s.select_subtitles(&key),

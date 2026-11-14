@@ -42,6 +42,8 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
+    /// A command for the current rendered subtitle study scope.
+    SubtitleStudy(Action),
     /// Open the settings on the tab shown last (SET-008).
     OpenSettings,
 }
@@ -5102,6 +5104,10 @@ impl Session {
             }
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
+            Action::StudyPrevious
+            | Action::StudyNext
+            | Action::StudyReveal
+            | Action::StudySelect => return UiEffect::SubtitleStudy(action),
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
             Action::Back if self.setup_page.open => {
                 self.setup_close();

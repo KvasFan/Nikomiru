@@ -381,7 +381,7 @@ impl View {
     /// What the session asks of the window (from a key or a button).
     pub fn effect(&mut self, effect: UiEffect) {
         match effect {
-            UiEffect::None => {}
+            UiEffect::None | UiEffect::SubtitleStudy(_) => {}
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)

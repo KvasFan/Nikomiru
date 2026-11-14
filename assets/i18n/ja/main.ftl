@@ -1250,3 +1250,8 @@ sub-context-exact = 一致する字幕だけ
 sub-context-one = 前後一字幕
 sub-context-two = 前後二字幕
 sub-context-hit = 単語が一致する字幕
+
+action-study-previous = 前の一致する字幕
+action-study-next = 次の一致する字幕
+action-study-reveal = 現在の学習字幕を表示
+action-study-select = 現在の学習字幕の選択を切り替え

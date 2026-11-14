@@ -1267,3 +1267,8 @@ sub-context-exact = Solo esempi esatti
 sub-context-one = Una battuta di contesto
 sub-context-two = Due battute di contesto
 sub-context-hit = Esempio esatto della parola
+
+action-study-previous = Sottotitolo corrispondente precedente
+action-study-next = Sottotitolo corrispondente successivo
+action-study-reveal = Mostra battuta di studio corrente
+action-study-select = Seleziona o deseleziona battuta corrente
