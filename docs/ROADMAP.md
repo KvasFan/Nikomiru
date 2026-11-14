@@ -1294,7 +1294,7 @@ M56…M61 extend it as follows. No new request is needed between increments.
 | M57 | Subtitle reading-speed filters | done |
 | M58 | Subtitle study statistics | done |
 | M59 | Bilingual SRT export | done |
-| M60 | Navigate matching subtitle lines | not started |
+| M60 | Navigate matching subtitle lines | done |
 | M61 | Reusable session study filters | not started |
 
 ## M56 — Exact vocabulary search

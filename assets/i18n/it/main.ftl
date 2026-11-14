@@ -1177,3 +1177,6 @@ sub-stats-dialogue = Dialogo
 
 sub-bilingual-srt-shown = Esporta SRT bilingue visibile…
 sub-bilingual-srt-selected = Esporta SRT bilingue selezionato…
+
+sub-previous-match = Riga corrispondente precedente
+sub-next-match = Riga corrispondente successiva

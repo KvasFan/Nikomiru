@@ -142,6 +142,8 @@ pub(crate) struct StudyLabels {
     stats_lines: String,
     stats_characters: String,
     stats_dialogue: String,
+    previous_match: String,
+    next_match: String,
 }
 
 impl StudyLabels {
@@ -177,6 +179,8 @@ impl StudyLabels {
             stats_lines: tr("sub-stats-lines", &[]),
             stats_characters: tr("sub-stats-characters", &[]),
             stats_dialogue: tr("sub-stats-dialogue", &[]),
+            previous_match: tr("sub-previous-match", &[]),
+            next_match: tr("sub-next-match", &[]),
         }
     }
 }
@@ -212,6 +216,7 @@ pub(crate) struct State {
     selected: BTreeSet<usize>,
     selection_revision: u64,
     metrics: Option<Metrics>,
+    navigation: Option<(MetricKey, Option<crate::subtitle_study::Navigation>)>,
     selection_version: Option<u64>,
     copied: Option<bool>,
     window: TimeWindow,
@@ -232,6 +237,28 @@ pub(crate) struct State {
     /// The rows drawn in the last frame.
     #[cfg(test)]
     drawn: Vec<Drawn>,
+}
+
+#[cfg(feature = "test-harness")]
+impl State {
+    pub(crate) fn set_study_query(&mut self, query: String) {
+        self.query = query;
+    }
+    pub(crate) fn study_rows(&self) -> &[usize] {
+        &self.rows.cues
+    }
+    pub(crate) fn matching_target(&self, session: &Session, forward: bool) -> Option<usize> {
+        let (version, query, _, _, _) = self.rows.picked.as_ref()?;
+        if *version != session.sub_list_version || query != &self.query {
+            return None;
+        }
+        crate::subtitle_study::Navigation::new(
+            session.subs.timeline().cues(),
+            &self.rows.cues,
+            session.subs.timeline().delay_ms,
+        )?
+        .neighbour((session.view.time_pos * 1000.0).round() as i64, forward)
+    }
 }
 
 #[cfg(test)]
@@ -668,8 +695,8 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
     )
 }
 
-fn study_statistics(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
-    let key = MetricKey {
+fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
+    MetricKey {
         version: scene.version,
         revision: scene.marks_version,
         delay: scene.timeline.delay_ms,
@@ -681,7 +708,49 @@ fn study_statistics(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
-    };
+    }
+}
+
+fn matching_navigation(
+    ui: &mut egui::Ui,
+    scene: &Scene<'_>,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let mut key = metric_key(scene, state);
+    key.selection = 0;
+    if state.navigation.as_ref().is_none_or(|(old, _)| old != &key) {
+        let indices = shown_indices(scene, state);
+        let navigation = crate::subtitle_study::Navigation::new(
+            scene.timeline.cues(),
+            &indices,
+            scene.timeline.delay_ms,
+        );
+        state.navigation = Some((key, navigation));
+    }
+    if let Some((_, nav)) = &state.navigation {
+        ui.horizontal_wrapped(|ui| {
+            for (forward, label) in [
+                (false, &scene.study.previous_match),
+                (true, &scene.study.next_match),
+            ] {
+                let target = nav
+                    .as_ref()
+                    .and_then(|n| n.neighbour(scene.pos_ms, forward));
+                if ui
+                    .add_enabled(target.is_some(), egui::Button::new(label))
+                    .clicked()
+                    && let Some(cue) = target
+                {
+                    out.push(Command::ListTime(cue));
+                }
+            }
+        });
+    }
+}
+
+fn study_statistics(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
+    let key = metric_key(scene, state);
     if state.metrics.as_ref().is_none_or(|m| m.key != key) {
         let shown = shown_indices(scene, state);
         let selected: Vec<_> = state.selected.iter().copied().collect();
@@ -733,6 +802,7 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
+            matching_navigation(ui, scene, state, out);
             egui::CollapsingHeader::new(&scene.study.statistics)
                 .id_salt("subtitle-study-statistics")
                 .show(ui, |ui| study_statistics(ui, scene, state));
@@ -1357,6 +1427,33 @@ mod tests {
         h.get_by_label("sub-bilingual-srt-shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format:crate::subtitle_export::ExportFormat::BilingualSrt, .. } if indices == &[0])));
+    }
+
+    // T-SUB-043: explicit navigation follows current filters and preserves hidden ticks.
+    #[test]
+    fn matching_navigation_uses_current_shown_scope() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "猫"), (3000, "犬"), (5000, "鳥")]),
+            2500,
+            false,
+        );
+        h.run();
+        h.get_by_label("sub-select-line 1").click();
+        h.run();
+        h.state_mut().state.query = "犬".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-next-match").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::ListTime(1)))
+        );
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

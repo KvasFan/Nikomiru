@@ -554,6 +554,7 @@ pub fn state() -> Result<Value, String> {
             Value::Null,
             |c| json!({"label":c.label,"indices":c.indices}),
         );
+        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows()});
         state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
         state["setup"] = json!({
@@ -632,6 +633,21 @@ pub fn lookup(text: &str) -> Result<(), String> {
         // as a click on the video's text, which the Library page covers
         ui.view.close_library_page();
         ui.session.look_up_text(&text);
+    })
+}
+
+/// Open the subtitle study list, set its query, or navigate its last rendered matching rows.
+pub fn subtitle_study(query: Option<String>, forward: Option<bool>) -> Result<(), String> {
+    call(move |ui| {
+        ui.view.sub_list_open = true;
+        if let Some(query) = query {
+            ui.view.list.set_study_query(query);
+        }
+        if let Some(forward) = forward
+            && let Some(cue) = ui.view.list.matching_target(&ui.session, forward)
+        {
+            ui.run(Command::ListTime(cue));
+        }
     })
 }
 

@@ -112,6 +112,11 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("subtitle-study") => harness::subtitle_study(
+            command["query"].as_str().map(str::to_string),
+            command["forward"].as_bool(),
+        )
+        .map(|()| Value::Null),
         Some("frequency-export") => {
             harness::frequency_export(text(command, "path")?).map(|()| Value::Null)
         }

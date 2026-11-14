@@ -1177,3 +1177,6 @@ sub-stats-dialogue = Dialogue
 
 sub-bilingual-srt-shown = Export shown bilingual SRT…
 sub-bilingual-srt-selected = Export selected bilingual SRT…
+
+sub-previous-match = Previous matching line
+sub-next-match = Next matching line

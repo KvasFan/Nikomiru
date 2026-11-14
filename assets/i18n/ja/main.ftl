@@ -1160,3 +1160,6 @@ sub-stats-dialogue = 発話時間
 
 sub-bilingual-srt-shown = 表示中の対訳を SRT で保存…
 sub-bilingual-srt-selected = 選択した対訳を SRT で保存…
+
+sub-previous-match = 前の一致行
+sub-next-match = 次の一致行

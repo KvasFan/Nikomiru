@@ -96,6 +96,18 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
         after["subtitles"]["version"]
     );
     assert_eq!(after["paused"], true);
+    // T-SUB-043: matching-row navigation seeks the actual player while retaining pause.
+    h.cmd(json!({"cmd":"subtitle-study","query":"犬"}));
+    h.state_until("one matching line", |s| {
+        s["subtitle_study"]["shown"] == json!([1])
+    });
+    h.cmd(json!({"cmd":"subtitle-study","forward":true}));
+    h.state_until("paused at the matching line", |s| {
+        s["paused"] == true
+            && s["time_pos"]
+                .as_f64()
+                .is_some_and(|t| (2.9..=3.2).contains(&t))
+    });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

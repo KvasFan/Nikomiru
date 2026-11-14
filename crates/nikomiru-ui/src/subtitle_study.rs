@@ -122,6 +122,41 @@ pub fn statistics(
     Ok(result)
 }
 
+/// A bounded index of effective starts for explicit matching-line navigation.
+#[derive(Debug, Clone)]
+pub struct Navigation {
+    entries: Vec<(i64, usize)>,
+}
+
+impl Navigation {
+    /// Capture a valid scope once; subsequent neighbour queries use binary search.
+    pub fn new(cues: &[nikomiru_subs::Cue], indices: &[usize], delay_ms: i64) -> Option<Self> {
+        if indices.len() > 100_000 {
+            return None;
+        }
+        let mut entries = Vec::with_capacity(indices.len());
+        for &i in indices {
+            entries.push((cues.get(i)?.start_ms.saturating_add(delay_ms).max(0), i));
+        }
+        entries.sort_unstable();
+        entries.dedup();
+        Some(Self { entries })
+    }
+
+    /// Nearest strict previous/next start, excluding a 20 ms equality margin; never wrap.
+    pub fn neighbour(&self, position_ms: i64, forward: bool) -> Option<usize> {
+        let at = if forward {
+            self.entries
+                .partition_point(|(start, _)| *start <= position_ms.saturating_add(20))
+        } else {
+            self.entries
+                .partition_point(|(start, _)| *start < position_ms.saturating_sub(20))
+                .checked_sub(1)?
+        };
+        self.entries.get(at).map(|row| row.1)
+    }
+}
+
 /// Exact headword/reading examples captured from one complete primary timeline.
 #[derive(Debug, Clone)]
 pub struct Concordance {
@@ -140,6 +175,26 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-043: nearest strict starts respect the filtered scope, offsets, equality margin and unavailable edges.
+    #[test]
+    fn navigation_uses_original_cues_without_wrapping_or_stale_indices() {
+        let cues = nikomiru_subs::parse(nikomiru_subs::Format::Srt, "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n\n3\n00:00:05,000 --> 00:00:06,000\n鳥\n").cues;
+        let nav = Navigation::new(&cues, &[2, 0, 2], 0).unwrap();
+        assert_eq!(nav.neighbour(3000, false), Some(0));
+        assert_eq!(nav.neighbour(3000, true), Some(2));
+        assert_eq!(nav.neighbour(5001, true), None);
+        assert_eq!(nav.neighbour(5001, false), Some(0));
+        assert_eq!(nav.neighbour(1000, false), None);
+        assert_eq!(
+            Navigation::new(&cues, &[0], 100)
+                .unwrap()
+                .neighbour(1000, true),
+            Some(0)
+        );
+        assert!(Navigation::new(&cues, &[0, 9], 0).is_none());
+        assert!(nav.neighbour(i64::MAX, true).is_none());
+    }
+
     // T-SUB-041: union duration avoids double-counting overlaps; scope identities and Unicode counts stay exact.
     #[test]
     fn study_statistics_merge_intervals_and_reject_partial_metrics() {
