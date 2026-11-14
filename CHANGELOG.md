@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.60.0] - 2026-11-14
+
+Support-tool installation and six consecutive subtitle/study milestones (M45–M51).
+
 ### Added
 
 - Filter shared study vocabulary by minimum/maximum occurrences without losing hidden selections (KNW-034, M51).
