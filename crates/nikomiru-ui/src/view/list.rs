@@ -24,7 +24,7 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
-use crate::subtitle_study::{ReadingSpeed, TimeWindow};
+use crate::subtitle_study::{DurationBounds, ReadingSpeed, TimeWindow};
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -90,6 +90,7 @@ impl LineFilter {
 struct Scope {
     window: TimeWindow,
     speed: ReadingSpeed,
+    duration: DurationBounds,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -132,6 +133,7 @@ pub(crate) struct StudyLabels {
     reset_window: String,
     examples: String,
     clear_examples: String,
+    duration_labels: [String; 4],
     speed: String,
     min_speed: String,
     max_speed: String,
@@ -150,6 +152,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            duration_labels: [
+                "sub-duration-tools",
+                "sub-duration-min",
+                "sub-duration-max",
+                "sub-duration-reset",
+            ]
+            .map(|k| tr(k, &[])),
             select_shown: tr("sub-select-shown", &[]),
             clear: tr("sub-selection-clear", &[]),
             export_selected: tr("sub-export-selected", &[]),
@@ -221,6 +230,7 @@ pub(crate) struct State {
     copied: Option<bool>,
     window: TimeWindow,
     speed: ReadingSpeed,
+    duration: DurationBounds,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -525,6 +535,7 @@ pub(crate) fn draw(
         state.copied = None;
         state.window = TimeWindow::default();
         state.speed = ReadingSpeed::default();
+        state.duration = DurationBounds::default();
         state.selection_version = Some(scene.version);
     }
     let key = scene.concordance.map(|c| (c.key.clone(), c.revision));
@@ -675,6 +686,7 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 .is_none_or(|c| c.indices.binary_search(i).is_ok())
                 && scope.window.keeps(cue, scene.timeline.delay_ms)
                 && scope.speed.keeps(cue)
+                && scope.duration.keeps(cue)
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
@@ -690,6 +702,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
         Scope {
             window: state.window,
             speed: state.speed,
+            duration: state.duration,
         },
     )
 }
@@ -704,6 +717,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
         scope: Scope {
             window: state.window,
             speed: state.speed,
+            duration: state.duration,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -802,6 +816,35 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
             matching_navigation(ui, scene, state, out);
+            egui::CollapsingHeader::new(&scene.study.duration_labels[0])
+                .id_salt("subtitle-duration-tools")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut min = state.duration.min.is_some();
+                        if ui
+                            .checkbox(&mut min, &scene.study.duration_labels[1])
+                            .changed()
+                        {
+                            state.duration.min = min.then_some(0);
+                        }
+                        if let Some(value) = &mut state.duration.min {
+                            ui.add(egui::DragValue::new(value).range(0..=86_400_000));
+                        }
+                        let mut max = state.duration.max.is_some();
+                        if ui
+                            .checkbox(&mut max, &scene.study.duration_labels[2])
+                            .changed()
+                        {
+                            state.duration.max = max.then_some(5000);
+                        }
+                        if let Some(value) = &mut state.duration.max {
+                            ui.add(egui::DragValue::new(value).range(0..=86_400_000));
+                        }
+                        if ui.button(&scene.study.duration_labels[3]).clicked() {
+                            state.duration = DurationBounds::default();
+                        }
+                    });
+                });
             egui::CollapsingHeader::new(&scene.study.statistics)
                 .id_salt("subtitle-study-statistics")
                 .show(ui, |ui| study_statistics(ui, scene, state));
@@ -1033,6 +1076,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 Scope {
                     window: state.window,
                     speed: state.speed,
+                    duration: state.duration,
                 },
                 width,
             );
@@ -1356,6 +1400,26 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-044: duration predicates update cached rows and the export snapshot scope.
+    #[test]
+    fn duration_scope_matches_shown_indices_and_resets() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(0);
+        h.state_mut().state.duration.max = Some(999);
+        h.run();
+        assert!(h.state().state.rows.cues.is_empty());
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-duration-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-duration-reset").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1]);
     }
 
     // T-SUB-040: speed scopes apply to visible rows and reset without affecting hidden ticks or playback.

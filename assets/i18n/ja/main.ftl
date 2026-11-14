@@ -1184,3 +1184,8 @@ vocabulary-script-latin = ラテン文字を含む
 vocabulary-length-min = 見出し語の最小文字数
 vocabulary-length-max = 見出し語の最大文字数
 vocabulary-length-reset = 文字数をリセット
+
+sub-duration-tools = 字幕の長さ
+sub-duration-min = 最短時間（ミリ秒）
+sub-duration-max = 最長時間（ミリ秒）
+sub-duration-reset = 時間条件をリセット

@@ -1201,3 +1201,8 @@ vocabulary-script-latin = Contains Latin letters
 vocabulary-length-min = Minimum headword length
 vocabulary-length-max = Maximum headword length
 vocabulary-length-reset = Reset length
+
+sub-duration-tools = Cue duration
+sub-duration-min = Minimum duration (ms)
+sub-duration-max = Maximum duration (ms)
+sub-duration-reset = Reset duration

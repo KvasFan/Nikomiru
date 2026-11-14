@@ -1201,3 +1201,8 @@ vocabulary-script-latin = Contiene lettere latine
 vocabulary-length-min = Lunghezza minima della parola
 vocabulary-length-max = Lunghezza massima della parola
 vocabulary-length-reset = Azzera lunghezza
+
+sub-duration-tools = Durata delle battute
+sub-duration-min = Durata minima (ms)
+sub-duration-max = Durata massima (ms)
+sub-duration-reset = Azzera durata

@@ -59,6 +59,27 @@ impl ReadingSpeed {
     }
 }
 
+/// Optional inclusive full cue duration bounds in milliseconds (SUB-044).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DurationBounds {
+    /// Missing means no minimum.
+    pub min: Option<u64>,
+    /// Missing means no maximum.
+    pub max: Option<u64>,
+}
+impl DurationBounds {
+    /// Use wide subtraction to reject malformed times without overflow.
+    pub fn keeps(self, cue: &nikomiru_subs::Cue) -> bool {
+        if self == Self::default() {
+            return true;
+        }
+        let duration = i128::from(cue.end_ms) - i128::from(cue.start_ms);
+        duration > 0
+            && self.min.is_none_or(|min| duration >= i128::from(min))
+            && self.max.is_none_or(|max| duration <= i128::from(max))
+    }
+}
+
 /// Metrics of a bounded subtitle study scope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Statistics {
@@ -175,6 +196,43 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-044: millisecond boundaries and extreme/invalid intervals are exact.
+    #[test]
+    fn duration_bounds_are_inclusive_and_do_not_overflow() {
+        let mut cue = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n",
+        )
+        .cues
+        .remove(0);
+        let bounds = DurationBounds {
+            min: Some(1000),
+            max: Some(1000),
+        };
+        assert!(bounds.keeps(&cue));
+        cue.end_ms += 1;
+        assert!(!bounds.keeps(&cue));
+        cue.end_ms = cue.start_ms;
+        assert!(!bounds.keeps(&cue));
+        assert!(DurationBounds::default().keeps(&cue));
+        cue.start_ms = i64::MIN;
+        cue.end_ms = i64::MAX;
+        assert!(
+            DurationBounds {
+                min: Some(u64::MAX),
+                max: Some(u64::MAX)
+            }
+            .keeps(&cue)
+        );
+        assert!(
+            !DurationBounds {
+                min: Some(2),
+                max: Some(1)
+            }
+            .keeps(&cue)
+        );
+    }
+
     // T-SUB-043: nearest strict starts respect the filtered scope, offsets, equality margin and unavailable edges.
     #[test]
     fn navigation_uses_original_cues_without_wrapping_or_stale_indices() {
