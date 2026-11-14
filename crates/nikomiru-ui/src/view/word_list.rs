@@ -37,6 +37,10 @@ pub(crate) struct Labels {
     pub cards: [String; 3],
     pub order: String,
     pub orders: [String; 4],
+    pub copy_shown: String,
+    pub copy_selected: String,
+    pub copied: String,
+    pub copy_limit: String,
     /// The four statuses, in the order of `STATUSES`.
     pub statuses: [String; 4],
 }
@@ -49,6 +53,10 @@ impl Labels {
             ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
             card: tr("subtitle-words-card", &[]),
             statuses: STATUSES.map(|s| tr(&format!("word-status-{}", s.name()), &[])),
+            copy_shown: tr("vocabulary-copy-shown", &[]),
+            copy_selected: tr("vocabulary-copy-selected", &[]),
+            copied: tr("vocabulary-copied", &[]),
+            copy_limit: tr("analysis-export-too-large", &[]),
             order: tr("vocabulary-order", &[]),
             orders: [
                 "vocabulary-frequency-desc",
@@ -103,6 +111,7 @@ pub(crate) struct State {
     pub status: Option<WordStatus>,
     pub card: CardFilter,
     pub order: WordOrder,
+    copied: Option<bool>,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
 }
@@ -255,6 +264,42 @@ pub(crate) fn show(
             }
         }
     });
+    ui.horizontal_wrapped(|ui| {
+        let mut copy = None;
+        if ui
+            .add_enabled(!shown.is_empty(), egui::Button::new(&labels.copy_shown))
+            .clicked()
+        {
+            copy = Some(shown.clone());
+        }
+        let selected = selected(all, state);
+        if ui
+            .add_enabled(
+                !selected.is_empty(),
+                egui::Button::new(&labels.copy_selected),
+            )
+            .clicked()
+        {
+            copy = Some(selected);
+        }
+        if let Some(rows) = copy {
+            let rows: Vec<_> = rows.into_iter().cloned().collect();
+            match crate::word_export::tsv(&rows) {
+                Ok(text) => {
+                    ui.ctx().copy_text(text);
+                    state.copied = Some(true);
+                }
+                Err(_) => state.copied = Some(false),
+            }
+        }
+        if let Some(ok) = state.copied {
+            ui.label(if ok {
+                &labels.copied
+            } else {
+                &labels.copy_limit
+            });
+        }
+    });
     // the words ticked, whether shown or not, get the status chosen
     if !state.ticked.is_empty() {
         ui.horizontal_wrapped(|ui| {
@@ -354,6 +399,10 @@ mod tests {
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
                         statuses: ["new", "learning", "known", "ignore"].map(String::from),
+                        copy_shown: "Copy shown".into(),
+                        copy_selected: "Copy selected".into(),
+                        copied: "Copied".into(),
+                        copy_limit: "Too large".into(),
                         order: "Order".into(),
                         orders: ["Frequent", "Rare", "Expression", "Reading"].map(String::from),
                         status_filter: "Status filter".into(),
@@ -374,6 +423,58 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-KNW-029: clipboard is explicit and scoped; hidden selections retain identity.
+    #[test]
+    fn copy_actions_emit_only_the_requested_rows_without_changing_selection() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("Copy selected").click();
+        h.step();
+        assert!(
+            !h.output()
+                .platform_output
+                .commands
+                .iter()
+                .any(|c| matches!(c, egui::OutputCommand::CopyText(_)))
+        );
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().query = "たべ".into();
+        h.run();
+        h.get_by_label("Copy shown").click();
+        h.step();
+        let copied = h
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                egui::OutputCommand::CopyText(text) => Some(text),
+                _ => None,
+            })
+            .expect("explicit clipboard output");
+        assert!(copied.contains("食べる\tたべる\tlearning\t2\tfalse"));
+        assert!(!copied.contains("猫"));
+        h.run();
+        h.get_by_label("Copy selected").click();
+        h.step();
+        let copied = h
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                egui::OutputCommand::CopyText(text) => Some(text),
+                _ => None,
+            })
+            .expect("selected clipboard output");
+        assert!(copied.contains("猫\tねこ\tunknown\t5\tfalse"));
+        assert!(!copied.contains("食べる"));
+        assert_eq!(h.state().state.ticked.len(), 1);
+        assert!(h.state().out.is_empty());
     }
 
     // T-KNW-028: ordering is deterministic and preserves hidden selected identities.

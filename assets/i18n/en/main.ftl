@@ -1066,3 +1066,7 @@ vocabulary-frequency-desc = Most frequent first
 vocabulary-frequency-asc = Least frequent first
 vocabulary-expression = Expression order
 vocabulary-reading = Reading order
+
+vocabulary-copy-shown = Copy shown
+vocabulary-copy-selected = Copy selected
+vocabulary-copied = Vocabulary copied.

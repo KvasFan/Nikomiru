@@ -245,3 +245,5 @@ Search in vocabulary, historical words and subtitle lists accepts kana-script an
 Vocabulary lists also offer exact status and card-presence filters. They combine with the search and Only words not known. Hidden ticked words stay selected for bulk actions or Export selected; Export shown follows all current filters.
 
 Vocabulary order offers most/least frequent, expression and reading order. Missing readings sort by expression; lexical order uses the original Unicode strings. Selected words stay selected when you change order, and exports follow the selected order.
+
+Copy shown and Copy selected put the same TSV vocabulary columns on the clipboard. All vocabulary views support this. Copy selected includes hidden ticked words, keeps the selection and follows your chosen order. The same 16 MiB and spreadsheet-safety rules apply.

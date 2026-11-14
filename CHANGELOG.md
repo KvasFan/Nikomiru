@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Copy shown or selected study vocabulary to the clipboard as bounded TSV (KNW-029, M38).
+
 - Order study vocabulary by frequency, expression or reading, including exported selections (KNW-028, M37).
 
 - Filter vocabulary by exact word status and card presence across study views (KNW-027, M36).

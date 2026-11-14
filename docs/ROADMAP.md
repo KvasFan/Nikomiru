@@ -1052,7 +1052,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M35 | Normalised kana/width/case search in study lists, history and subtitles | done |
 | M36 | Precise word-status and card filters in vocabulary lists | done |
 | M37 | Vocabulary ordering by frequency, expression and reading | done |
-| M38 | Copy shown/selected study vocabulary to the clipboard | not started |
+| M38 | Copy shown/selected study vocabulary to the clipboard | done |
 | M39 | Export per-episode historical encounters | not started |
 | M40 | Browse episode vocabulary before playback | not started |
 | M41 | Visible graphic OCR progress and explicit cancellation | not started |
@@ -1090,6 +1090,17 @@ chosen order for shown/selected exports, including hidden selections.
 
 **Exit criteria**: frequency/lexical/tie/fallback and filter/selection tests,
 accessible selector and export ordering; full CI.
+
+---
+
+## M38 — Copy vocabulary
+
+**Requirements**: KNW-029. Shared vocabulary lists copy shown or selected
+rows as bounded sanitised TSV only on an explicit click. Retain hidden ticks,
+chosen ordering and statuses; give copied/limit feedback.
+
+**Exit criteria**: actual egui clipboard output, scope/filter/selection and
+no-status-command checks; full CI.
 
 ---
 

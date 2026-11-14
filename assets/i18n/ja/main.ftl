@@ -1049,3 +1049,7 @@ vocabulary-frequency-desc = 頻度が高い順
 vocabulary-frequency-asc = 頻度が低い順
 vocabulary-expression = 表記順
 vocabulary-reading = 読み順
+
+vocabulary-copy-shown = 表示中の単語をコピー
+vocabulary-copy-selected = 選択した単語をコピー
+vocabulary-copied = 単語をコピーしました。
