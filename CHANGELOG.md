@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Show graphic subtitle OCR progress and offer explicit cancellation back to pictures/off (SUB-033, M41).
+
 - Browse and study a counted episode’s vocabulary before playback (KNW-031, M40).
 
 - Export an episode’s complete historical encounters, including original first-encounter times (KNW-030, M39).

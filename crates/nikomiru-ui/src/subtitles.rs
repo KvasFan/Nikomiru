@@ -217,6 +217,8 @@ pub struct Shown<'a> {
 pub struct Subtitles {
     /// The text is a partial OCR snapshot, not a complete track.
     pub incomplete: bool,
+    /// Processed/total graphic pictures, once the first OCR batch reports.
+    pub read_progress: Option<(usize, usize)>,
     timeline: Timeline,
     /// The video's position at the last update.
     pos_ms: i64,
@@ -265,6 +267,7 @@ impl Subtitles {
     /// Replaces the track; the offset is kept (SUB-011).
     pub fn set_track(&mut self, source: Source, loaded: Loaded) {
         self.incomplete = false;
+        self.read_progress = None;
         let delay = self.timeline.delay_ms;
         self.format = Some(loaded.track.format);
         self.styles = loaded.track.styles;
@@ -281,6 +284,7 @@ impl Subtitles {
     /// No text subtitles (none chosen, or a graphic track drawn by mpv).
     pub fn clear(&mut self, source: Option<Source>) {
         self.incomplete = false;
+        self.read_progress = None;
         self.timeline = Timeline::default();
         self.timeline.delay_ms = 0;
         self.format = None;

@@ -23,6 +23,7 @@ mod library_page;
 mod link;
 mod list;
 mod mining_dialog;
+mod ocr_progress;
 mod online_page;
 mod overlay;
 pub(crate) mod palette;

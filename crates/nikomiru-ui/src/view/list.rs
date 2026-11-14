@@ -148,6 +148,8 @@ pub(crate) struct Scene<'a> {
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
     pub score: Option<String>,
+    pub reading: Option<(String, Option<f32>)>,
+    pub reading_cancel: String,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
     /// the words once all lines are split.
     pub tabs: Option<(String, String)>,
@@ -328,6 +330,8 @@ pub(crate) fn show(
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         title: tr("subtitle-list"),
         score: score_line(s),
+        reading: s.graphic_read_status(),
+        reading_cancel: tr("sub-reading-cancel"),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
         filters: [
             tr("subtitle-lines-all"),
@@ -411,6 +415,9 @@ pub(crate) fn draw(
                         });
                     });
 
+                    if let Some((text, fraction)) = &scene.reading {
+                        super::ocr_progress::show(ui, text, *fraction, &scene.reading_cancel, out);
+                    }
                     if let Some(score) = &scene.score {
                         ui.label(RichText::new(score).small().color(TIME));
                     }
@@ -684,6 +691,8 @@ mod tests {
                         timeline: &t.timeline,
                         version: 1,
                         pos_ms: t.pos_ms,
+                        reading: None,
+                        reading_cancel: "Cancel reading".into(),
                         title: "Subtitle list".into(),
                         score: t.score.clone(),
                         tabs: t.tabs.then(|| ("Lines".into(), "Words".into())),

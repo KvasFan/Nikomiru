@@ -567,6 +567,8 @@ pub(crate) enum Command {
     SeriesAnalyse(u64),
     /// Browse one completed episode’s vocabulary, or return to episodes.
     EpisodeWords(Option<String>),
+    /// Cancel primary subtitle OCR and restore bitmap/off.
+    GraphicReadCancel,
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
     /// A book of the list.
@@ -1515,6 +1517,7 @@ impl Ui {
             Command::BookAnalysisCancel(uid) => s.book_analysis_cancel(&uid),
             Command::SeriesAnalysisCancel(id) => s.series_analysis_cancel(id),
             Command::BookAnalyse(uid) => s.book_analyse(&uid),
+            Command::GraphicReadCancel => s.graphic_read_cancel(),
             Command::EpisodeWords(uid) => s.episode_words(uid),
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),

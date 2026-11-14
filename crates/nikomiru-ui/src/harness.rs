@@ -453,6 +453,7 @@ pub fn state() -> Result<Value, String> {
             "subtitles": {
                 "source": s.subs.source.as_ref().map(|x| x.key()),
                 "incomplete": s.subs.incomplete,
+                "read_progress": s.subs.read_progress,
                 "menu": s.subtitle_menu(),
                 "encoding": s.subs.encoding,
                 "delay_ms": s.subs.timeline().delay_ms,
@@ -1260,4 +1261,9 @@ fn series_score_json(status: Option<&crate::series_scores::Status>) -> Value {
         Some(Status::TooLarge) => json!("too-large"),
         Some(Status::Failed(error)) => json!({ "error": error }),
     }
+}
+
+/// Explicit primary graphic OCR cancellation (SUB-033).
+pub fn graphic_read_cancel() -> Result<(), String> {
+    call(|ui| ui.run(Command::GraphicReadCancel))
 }

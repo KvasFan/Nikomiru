@@ -1075,3 +1075,7 @@ encounter-export = Esporta cronologia completa episodio
 encounter-export-saved = Cronologia dell’episodio salvata in { $path }.
 
 episode-words-title = Parole da studiare: { $title }
+
+sub-reading-preparing = Preparazione lettura sottotitoli…
+sub-reading-progress = Lette { $done } / { $total } immagini
+sub-reading-cancel = Annulla lettura

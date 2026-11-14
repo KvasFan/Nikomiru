@@ -251,3 +251,5 @@ Copy shown and Copy selected put the same TSV vocabulary columns on the clipboar
 Inspect history → Export full episode history writes every recorded word for that episode, beyond the 1,000 display limit, with its original first-encounter Unix milliseconds. The worker reads the selected episode at save time. The 16 MiB atomic TSV export leaves history and word statuses unchanged.
 
 In an open series, episodes with a completed score offer Study words before playback. The browser uses the retained subtitle count and all shared vocabulary controls; status changes update it immediately. Reopening sources or changing dictionaries/settings closes stale lists.
+
+While a graphic track is being read, the primary subtitle menu and subtitle list show preparation or processed/total pictures. Cancel reading stops that request and removes partial text: embedded tracks return to pictures, external pairs turn off. Playback continues. Cancelling reading does not cancel a separately requested model download.

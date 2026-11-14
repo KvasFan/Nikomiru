@@ -59,6 +59,9 @@ fn graphic_text_arrives_progressively_and_old_progress_cannot_replace_a_file() {
                 .as_u64()
                 .is_some_and(|n| n > 0 && n < 64)
     });
+    // T-SUB-033: cumulative picture progress is visible only while incomplete.
+    assert_eq!(s["subtitles"]["read_progress"][1], 64);
+    assert!(s["subtitles"]["read_progress"][0].as_u64().unwrap() > 0);
     assert!(s["subtitles"]["score"].is_null());
     h.cmd(json!({"cmd":"condense","format":"opus","folder":desk.path("not-exported")}));
     assert_eq!(h.state()["audio_export"]["running"], false);
@@ -69,6 +72,7 @@ fn graphic_text_arrives_progressively_and_old_progress_cannot_replace_a_file() {
     let s = h.state_until("full OCR retains its popup", |s| {
         s["subtitles"]["incomplete"] == false && s["subtitles"]["cues"] == 64
     });
+    assert!(s["subtitles"]["read_progress"].is_null());
     assert_eq!(s["popups"][0]["query"], "食べました");
     h.key("Escape");
     let another = desk.path("another.mkv");
@@ -80,6 +84,16 @@ fn graphic_text_arrives_progressively_and_old_progress_cannot_replace_a_file() {
             && s["subtitles"]["cues"]
                 .as_u64()
                 .is_some_and(|n| n > 0 && n < 64)
+    });
+    // T-SUB-033: explicit cancellation returns to bitmap and rejects late batches.
+    h.cmd(json!({"cmd":"graphic-cancel"}));
+    h.state_until("cancelled graphic reading restores pictures", |s| {
+        s["subtitles"]["incomplete"] == false
+            && s["subtitles"]["cues"] == 0
+            && s["subtitles"]["source"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("track:"))
+            && s["subtitles"]["read_progress"].is_null()
     });
     // A replacement source keeps its text when an older graphic request has
     // queued progress/completion. The existing cache makes this path fast too.

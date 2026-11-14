@@ -1058,3 +1058,7 @@ encounter-export = エピソードの全履歴を出力
 encounter-export-saved = エピソードの履歴を { $path } に保存しました。
 
 episode-words-title = 学習する単語：{ $title }
+
+sub-reading-preparing = 字幕の読み取りを準備中…
+sub-reading-progress = { $total } 枚中 { $done } 枚を読み取り
+sub-reading-cancel = 読み取りをキャンセル

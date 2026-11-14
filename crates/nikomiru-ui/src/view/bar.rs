@@ -115,6 +115,10 @@ fn source_label(source: &serde_json::Value) -> String {
 
 fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<Command>) {
     let tr = |id: &str| s.translator().tr(id, &[]);
+    if let Some((text, fraction)) = s.graphic_read_status() {
+        super::ocr_progress::show(ui, &text, fraction, &tr("sub-reading-cancel"), out);
+        ui.separator();
+    }
     let current = s.subs.source.as_ref().map(|x| x.key()).unwrap_or_default();
     if ui
         .selectable_label(current.is_empty(), tr("subtitles-off"))

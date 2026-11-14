@@ -1055,7 +1055,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M38 | Copy shown/selected study vocabulary to the clipboard | done |
 | M39 | Export per-episode historical encounters | done |
 | M40 | Browse episode vocabulary before playback | done |
-| M41 | Visible graphic OCR progress and explicit cancellation | not started |
+| M41 | Visible graphic OCR progress and explicit cancellation | done |
 | M42 | Export the current complete text subtitle track as SRT | not started |
 | M43 | Inspect and clear persistent analysis caches | not started |
 | M44 | Export comprehension summaries for analysed books and series | not started |
@@ -1123,6 +1123,17 @@ Never play a file; reject stale count epochs and unavailable/partial sources.
 
 **Exit criteria**: complete/epoch tests, accessible episode/browser actions,
 actual pre-playback status updates and no-history checks; full CI.
+
+---
+
+## M41 — Graphic OCR controls
+
+**Requirements**: SUB-033. Show preparation/processed pictures in the primary
+subtitle menu/list. Explicit cancellation restores embedded bitmaps or turns
+external pairs off, drops partial text and rejects late progress/cache output.
+
+**Exit criteria**: accessible controls and real delayed OCR progress/reset/
+cancellation checks; full CI.
 
 ---
 

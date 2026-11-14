@@ -5145,6 +5145,36 @@ impl Session {
             .load_progressive(request, reports, done);
     }
 
+    /// Primary graphic reading preparation/progress for the menu and subtitle list.
+    pub fn graphic_read_status(&self) -> Option<(String, Option<f32>)> {
+        if !self.subs.incomplete {
+            return None;
+        }
+        Some(match self.subs.read_progress {
+            Some((done, total)) if total > 0 => (
+                self.tr(
+                    "sub-reading-progress",
+                    &[("done", done.to_string()), ("total", total.to_string())],
+                ),
+                Some(done as f32 / total as f32),
+            ),
+            _ => (self.tr("sub-reading-preparing", &[]), None),
+        })
+    }
+
+    /// Stop the primary OCR request and restore a concrete non-reading choice.
+    pub fn graphic_read_cancel(&mut self) {
+        if !self.subs.incomplete {
+            return;
+        }
+        self.read_waiting = None;
+        let key = match self.subs.source.as_ref() {
+            Some(Source::Read { id, .. }) => format!("track:{id}"),
+            _ => "off".into(),
+        };
+        self.select_subtitles(&key);
+    }
+
     /// Partial text from the current graphic OCR; stale/finalised reports
     /// cannot replace a newer source or a complete track.
     pub fn subtitles_progress(
@@ -5159,9 +5189,20 @@ impl Session {
         {
             return;
         }
+        if progress.total == 0
+            || progress.done > progress.total
+            || self
+                .subs
+                .read_progress
+                .is_some_and(|(done, total)| total != progress.total || progress.done < done)
+        {
+            return;
+        }
+        let reading = (progress.done, progress.total);
         self.study.clear_credits();
         self.set_progress_track(source, progress.loaded);
         self.subs.incomplete = true;
+        self.subs.read_progress = Some(reading);
         self.subs.update((self.view.time_pos * 1000.0) as i64);
         self.progress_changed();
         self.update_graphic_bitmap();
