@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Remember and reuse vocabulary search/filter/order settings across views during the current session, preserving each view’s selections (KNW-040, M61).
+
 - Navigate to previous/next matching subtitle starts within the current study scope, preserving pause and selections (SUB-043, M60).
 
 - Export complete bilingual SRT files using the bounded independent-delay translation pairing (SUB-042, M59).

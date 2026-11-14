@@ -1180,3 +1180,10 @@ sub-bilingual-srt-selected = Esporta SRT bilingue selezionato…
 
 sub-previous-match = Riga corrispondente precedente
 sub-next-match = Riga corrispondente successiva
+
+vocabulary-presets = Filtri di studio riutilizzabili
+vocabulary-preset-save = Memorizza filtri
+vocabulary-preset-apply = Applica filtri memorizzati
+vocabulary-preset-clear = Dimentica filtri
+vocabulary-preset-hint = Memorizzati solo per questa sessione. Le selezioni restano proprie di ogni vista.
+vocabulary-preset-too-long = La ricerca è troppo lunga da memorizzare (limite di 4096 byte).

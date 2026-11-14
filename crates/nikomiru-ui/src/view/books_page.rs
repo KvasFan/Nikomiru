@@ -886,7 +886,7 @@ fn reader(
                 super::word_list::show(
                     ui,
                     words,
-                    &state.word_query,
+                    &mut state.word_query,
                     &labels,
                     &mut state.words,
                     out,

@@ -1180,3 +1180,10 @@ sub-bilingual-srt-selected = Export selected bilingual SRT…
 
 sub-previous-match = Previous matching line
 sub-next-match = Next matching line
+
+vocabulary-presets = Reusable study filters
+vocabulary-preset-save = Remember filters
+vocabulary-preset-apply = Apply remembered filters
+vocabulary-preset-clear = Forget remembered filters
+vocabulary-preset-hint = Remembered only for this session. Selections remain specific to each view.
+vocabulary-preset-too-long = The search is too long to remember (4096-byte limit).

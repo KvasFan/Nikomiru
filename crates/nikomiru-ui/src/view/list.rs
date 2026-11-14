@@ -614,11 +614,10 @@ pub(crate) fn draw(
                     open &= search(ui, state, search_focus, &scene.search_hint);
                     if scene.tabs.is_some() && state.words_tab {
                         if let Some(all) = scene.words {
-                            let query = state.query.clone();
                             super::word_list::show(
                                 ui,
                                 all,
-                                &query,
+                                &mut state.query,
                                 &scene.word_labels,
                                 &mut state.words,
                                 out,

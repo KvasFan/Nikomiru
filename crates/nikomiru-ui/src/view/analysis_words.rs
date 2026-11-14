@@ -67,7 +67,7 @@ pub(crate) fn show(
             out.push(Command::AnalysisWordsExport(selected));
         }
     });
-    word_list::show(ui, words, &state.query, &labels, &mut state.words, out);
+    word_list::show(ui, words, &mut state.query, &labels, &mut state.words, out);
     close
 }
 

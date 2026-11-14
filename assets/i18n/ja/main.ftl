@@ -1163,3 +1163,10 @@ sub-bilingual-srt-selected = 選択した対訳を SRT で保存…
 
 sub-previous-match = 前の一致行
 sub-next-match = 次の一致行
+
+vocabulary-presets = 再利用できる学習フィルター
+vocabulary-preset-save = フィルターを記憶
+vocabulary-preset-apply = 記憶したフィルターを適用
+vocabulary-preset-clear = フィルターを忘れる
+vocabulary-preset-hint = このセッション中のみ記憶します。語の選択は各画面に保持します。
+vocabulary-preset-too-long = 検索が長すぎます（4096 バイトまで）。

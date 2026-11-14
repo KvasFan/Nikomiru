@@ -26,6 +26,12 @@ pub(crate) struct Labels {
     /// "Only words not known".
     pub new_only: String,
     pub exact: String,
+    pub presets: String,
+    pub preset_save: String,
+    pub preset_apply: String,
+    pub preset_clear: String,
+    pub preset_hint: String,
+    pub preset_too_long: String,
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -62,6 +68,12 @@ impl Labels {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
             exact: tr("vocabulary-exact", &[]),
+            presets: tr("vocabulary-presets", &[]),
+            preset_save: tr("vocabulary-preset-save", &[]),
+            preset_apply: tr("vocabulary-preset-apply", &[]),
+            preset_clear: tr("vocabulary-preset-clear", &[]),
+            preset_hint: tr("vocabulary-preset-hint", &[]),
+            preset_too_long: tr("vocabulary-preset-too-long", &[]),
             all: tr("subtitle-words-all", &[]),
             ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
             card: tr("subtitle-words-card", &[]),
@@ -141,6 +153,82 @@ pub(crate) struct State {
     copied: Option<bool>,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
+}
+
+#[derive(Debug, Clone)]
+struct Preset {
+    query: String,
+    new_only: bool,
+    exact: bool,
+    status: Option<WordStatus>,
+    card: CardFilter,
+    order: WordOrder,
+    min_count: usize,
+    max_count: Option<usize>,
+}
+impl Preset {
+    fn capture(query: &str, state: &State) -> Option<Self> {
+        if query.len() > 4096 {
+            return None;
+        }
+        Some(Self {
+            query: query.to_string(),
+            new_only: state.new_only,
+            exact: state.exact,
+            status: state.status,
+            card: state.card,
+            order: state.order,
+            min_count: state.min_count,
+            max_count: state.max_count,
+        })
+    }
+    fn apply(&self, query: &mut String, state: &mut State) {
+        query.clone_from(&self.query);
+        state.new_only = self.new_only;
+        state.exact = self.exact;
+        state.status = self.status;
+        state.card = self.card;
+        state.order = self.order;
+        state.min_count = self.min_count;
+        state.max_count = self.max_count;
+    }
+}
+
+fn presets(ui: &mut egui::Ui, query: &mut String, labels: &Labels, state: &mut State) {
+    egui::CollapsingHeader::new(&labels.presets)
+        .id_salt("vocabulary-session-presets")
+        .show(ui, |ui| {
+            let id = egui::Id::unique("vocabulary-shared-study-filters");
+            let saved = ui.ctx().data(|d| d.get_temp::<Preset>(id));
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(query.len() <= 4096, egui::Button::new(&labels.preset_save))
+                    .clicked()
+                    && let Some(preset) = Preset::capture(query, state)
+                {
+                    ui.ctx().data_mut(|d| d.insert_temp(id, preset));
+                }
+                if ui
+                    .add_enabled(saved.is_some(), egui::Button::new(&labels.preset_apply))
+                    .clicked()
+                    && let Some(preset) = &saved
+                {
+                    preset.apply(query, state);
+                    ui.ctx().request_repaint();
+                }
+                if ui
+                    .add_enabled(saved.is_some(), egui::Button::new(&labels.preset_clear))
+                    .clicked()
+                {
+                    ui.ctx().data_mut(|d| d.remove::<Preset>(id));
+                }
+            });
+            ui.label(if query.len() <= 4096 {
+                &labels.preset_hint
+            } else {
+                &labels.preset_too_long
+            });
+        });
 }
 
 fn color(status: WordStatus) -> Color32 {
@@ -256,11 +344,12 @@ fn coverage(all: &[ListedWord], shown: &[&ListedWord], selected: &[&ListedWord])
 pub(crate) fn show(
     ui: &mut egui::Ui,
     all: &[ListedWord],
-    query: &str,
+    query: &mut String,
     labels: &Labels,
     state: &mut State,
     out: &mut Vec<Command>,
 ) {
+    presets(ui, query, labels, state);
     ui.horizontal_wrapped(|ui| {
         let orders = [
             WordOrder::Frequent,
@@ -571,6 +660,12 @@ mod tests {
                     let labels = Labels {
                         new_only: "Only new".into(),
                         exact: "Exact match".into(),
+                        presets: "Session presets".into(),
+                        preset_save: "Remember filters".into(),
+                        preset_apply: "Apply filters".into(),
+                        preset_clear: "Forget filters".into(),
+                        preset_hint: "Session only".into(),
+                        preset_too_long: "Query too long".into(),
                         all: "All".into(),
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
@@ -597,7 +692,14 @@ mod tests {
                         card_filter: "Card filter".into(),
                         cards: ["Any card", "With card", "Without card"].map(String::from),
                     };
-                    show(ui, &t.words, &t.query, &labels, &mut t.state, &mut t.out);
+                    show(
+                        ui,
+                        &t.words,
+                        &mut t.query,
+                        &labels,
+                        &mut t.state,
+                        &mut t.out,
+                    );
                 },
                 Test {
                     words: vec![
@@ -695,6 +797,68 @@ mod tests {
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
         );
+    }
+
+    // T-KNW-040: a preset crosses view state, includes all filters, and never restores source ticks or emits commands.
+    #[test]
+    fn session_presets_apply_across_views_and_preserve_target_ticks() {
+        let mut h = harness();
+        h.run();
+        h.state_mut().query = "たべる".into();
+        h.state_mut().state.exact = true;
+        h.state_mut().state.min_count = 2;
+        h.state_mut().state.max_count = Some(3);
+        h.state_mut().state.status = Some(WordStatus::Learning);
+        h.state_mut().state.order = WordOrder::Reading;
+        h.run();
+        h.get_by_label("食べる たべる").click();
+        h.run();
+        h.get_by_label("Session presets").click();
+        h.run_steps(3);
+        h.get_by_label("Remember filters").click();
+        h.run();
+        h.state_mut().state = State::default();
+        h.state_mut().query.clear();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.get_by_label("Apply filters").click();
+        h.run();
+        assert_eq!(h.state().query, "たべる");
+        assert!(h.state().state.exact);
+        assert_eq!(
+            (h.state().state.min_count, h.state().state.max_count),
+            (2, Some(3))
+        );
+        assert_eq!(h.state().state.status, Some(WordStatus::Learning));
+        assert_eq!(h.state().state.order, WordOrder::Reading);
+        assert_eq!(
+            h.state().state.ticked,
+            HashSet::from([word_key("猫", "ねこ")])
+        );
+        h.get_by_label("Forget filters").click();
+        h.run();
+        assert!(
+            h.ctx
+                .data(|d| d.get_temp::<Preset>(egui::Id::unique("vocabulary-shared-study-filters")))
+                .is_none()
+        );
+        assert!(h.state().out.is_empty());
+    }
+
+    // T-KNW-040: the session snapshot cannot retain an oversized query or selected identities.
+    #[test]
+    fn preset_capture_is_bounded_and_does_not_replace_selection() {
+        let mut state = State::default();
+        state.ticked.insert("source tick".into());
+        assert!(Preset::capture(&"x".repeat(4097), &state).is_none());
+        let preset = Preset::capture("猫", &state).unwrap();
+        let mut target = State::default();
+        target.ticked.insert("target tick".into());
+        let mut query = String::new();
+        preset.apply(&mut query, &mut target);
+        assert_eq!(query, "猫");
+        assert_eq!(target.ticked, HashSet::from(["target tick".to_string()]));
     }
 
     // T-KNW-039: the accessible exact toggle affects shown rows while retaining hidden selections.
