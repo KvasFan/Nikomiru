@@ -1290,3 +1290,20 @@ Decisions D-1…D-12 approved by the maintainer on 2026-10-19 (D-7…D-9 after t
 | SUB-048 | **Finite subtitle repetition** (M71, D-66): Repeat an explicitly chosen cue two, three or five times then pause; cancel on manual playback/source/delay actions and prevent gap-speed/auto-pause conflicts. |
 
 D-66 — The maintainer requested tag/push followed by ten further consecutive milestones on 2026-11-14. Verify published 2.70.0, implement M62–M71, run regression, and publish a new source tag and development branch. Existing stable binary packages remain separate.
+
+## Continuation M72–M81 (D-67)
+
+| ID | Requirement |
+| --- | --- |
+| SUB-049 | **Subtitle text-length bounds** (M72, D-67): Inclusive non-whitespace Unicode scalar bounds compose with all existing subtitle scopes, cached rows and shown exports; reset only their own limits. |
+| SUB-050 | **Unique subtitle captions** (M73, D-67): Optionally keep the first caption with identical whitespace-collapsed case-sensitive text within the already-filtered shown scope; preserve hidden ticks and original export indices. |
+| SUB-051 | **Single or multiline captions** (M74, D-67): Filter captions by one or multiple nonempty text lines; combine with search and all other scope controls without changing source text. |
+| KNW-046 | **Vocabulary reading filters** (M75, D-67): Filter headwords by a distinct nonempty reading or its absence; compose with other filters and include the choice in session and persistent presets. |
+| KNW-047 | **Vocabulary coverage targets** (M76, D-67): Optionally keep the most frequent currently matching words needed to reach an inclusive 1–100 percent occurrence target, including boundary ties; use exact wide arithmetic before applying display order and save the choice in presets. |
+| SUB-052 | **Persistent subtitle study presets** (M77, D-67): Save/apply/delete up to sixteen named bounded subtitle query and filter snapshots in configuration. Exclude selections, masking/reveals and source identities; preserve ticks, report persistence outcomes and support restart. |
+| KNW-048 | **Vocabulary HTML study sheets** (M78, D-67): Export complete shown/selected headword snapshots as bounded standalone escaped HTML, with readings behind details and occurrence/status/card fields; freeze before atomic native saving. |
+| SUB-053 | **Context around word examples** (M79, D-67): Expand exact subtitle concordances by zero, one or two neighbouring original cues on each side; identify exact hits, deduplicate overlaps, compose other filters and preserve source/revision invalidation. |
+| SUB-054 | **Subtitle study keyboard actions** (M80, D-67): Offer configurable shortcuts for previous/next matching line, current-line reveal and current-line selection. Respect typing focus and page coverage, preserve pause and use the same current rendered scope as buttons. |
+| SUB-055 | **Finite cue practice queues** (M81, D-67): Capture a bounded complete shown/selected queue of original cues, repeat each 2/3/5 times then pause after the final cue. Reject stale/invalid scopes without partial playback, show remaining cues and cancel on manual controls, primary source/timing changes or explicit stop. |
+
+D-67 — The maintainer requested Git tag/push and ten further consecutive subtitle/study milestones on 2026-11-14. Verify v2.80.0, complete M72–M81 and publish the verified source branch and tag. No new dependencies, speech/AI processing or platform ports are planned. Stable binary package pins remain separate.

@@ -1236,3 +1236,8 @@ sub-practice-remaining = Passes remaining: { $count }
 sub-practice-tools = Sentence repetition
 sub-vocabulary-tools = Vocabulary from these lines
 sub-html-tools = HTML study sheets
+
+sub-text-tools = Caption text filters
+sub-text-min = Minimum characters
+sub-text-max = Maximum characters
+sub-text-reset = Reset character bounds

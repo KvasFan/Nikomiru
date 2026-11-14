@@ -1219,3 +1219,8 @@ sub-practice-remaining = 残りの再生回数：{ $count }
 sub-practice-tools = 字幕の繰り返し練習
 sub-vocabulary-tools = この範囲の語彙
 sub-html-tools = HTML学習シート
+
+sub-text-tools = 字幕テキストの条件
+sub-text-min = 最小文字数
+sub-text-max = 最大文字数
+sub-text-reset = 文字数条件をリセット

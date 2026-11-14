@@ -1445,3 +1445,18 @@ The maintainer authorises ten consecutive subtitle/study milestones and final Gi
 | M71 | SUB-048 | Finite subtitle repetition | done |
 
 M62–M71 are complete. Full regression passed 997 workspace/integration tests and 102 actual GUI cases; final cancellation guards passed fast CI and the targeted real-app suite. See [source QA 2.80.0](qa/2.80.0.md).
+
+## Continuation M72–M81 after source tag 2.80.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M72 | SUB-049 | Subtitle text-length bounds | done |
+| M73 | SUB-050 | Unique subtitle captions | planned |
+| M74 | SUB-051 | Single or multiline captions | planned |
+| M75 | KNW-046 | Vocabulary reading filters | planned |
+| M76 | KNW-047 | Vocabulary coverage targets | planned |
+| M77 | SUB-052 | Persistent subtitle study presets | planned |
+| M78 | KNW-048 | Vocabulary HTML study sheets | planned |
+| M79 | SUB-053 | Context around word examples | planned |
+| M80 | SUB-054 | Subtitle study keyboard actions | planned |
+| M81 | SUB-055 | Finite cue practice queues | planned |

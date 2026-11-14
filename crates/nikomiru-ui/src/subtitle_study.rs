@@ -80,6 +80,22 @@ impl DurationBounds {
     }
 }
 
+/// Inclusive non-whitespace Unicode scalar bounds for subtitle text (SUB-049).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextLength {
+    /// Optional inclusive minimum.
+    pub min: Option<u32>,
+    /// Optional inclusive maximum.
+    pub max: Option<u32>,
+}
+impl TextLength {
+    /// Original text is counted without rewriting spacing or markup.
+    pub fn keeps(self, text: &str) -> bool {
+        let n = text.chars().filter(|c| !c.is_whitespace()).count();
+        self.min.is_none_or(|min| n >= min as usize) && self.max.is_none_or(|max| n <= max as usize)
+    }
+}
+
 /// Metrics of a bounded subtitle study scope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Statistics {
@@ -236,6 +252,27 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-049: scalar rather than byte/grapheme bounds, whitespace and reversed ranges.
+    #[test]
+    fn text_length_bounds_are_inclusive_and_unicode_aware() {
+        let b = TextLength {
+            min: Some(2),
+            max: Some(2),
+        };
+        assert!(b.keeps("猫 🐈\n"));
+        assert!(!b.keeps("猫"));
+        assert!(!b.keeps("猫🐈鳥"));
+        assert!(b.keeps("e\u{301}"));
+        assert!(TextLength::default().keeps("\t"));
+        assert!(
+            !TextLength {
+                min: Some(3),
+                max: Some(2)
+            }
+            .keeps("猫🐈")
+        );
+    }
+
     // T-SUB-048: finite passes ignore duplicate boundaries and cannot wrap after completion.
     #[test]
     fn repetition_consumes_each_observed_pass_once() {

@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Subtitle text-length bounds (SUB-049, M72).
+
 ## [2.80.0] - 2026-11-14
 
 Ten consecutive subtitle/study milestones (M62–M71) after source tag 2.70.0.

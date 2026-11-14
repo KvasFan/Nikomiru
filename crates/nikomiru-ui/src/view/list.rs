@@ -24,7 +24,7 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
-use crate::subtitle_study::{DurationBounds, ReadingSpeed, TimeWindow};
+use crate::subtitle_study::{DurationBounds, ReadingSpeed, TextLength, TimeWindow};
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -91,6 +91,7 @@ struct Scope {
     window: TimeWindow,
     speed: ReadingSpeed,
     duration: DurationBounds,
+    text_length: TextLength,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -139,6 +140,7 @@ pub(crate) struct StudyLabels {
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
+    text_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
     min_speed: String,
@@ -158,6 +160,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            text_labels: [
+                "sub-text-tools",
+                "sub-text-min",
+                "sub-text-max",
+                "sub-text-reset",
+            ]
+            .map(|k| tr(k, &[])),
             study_groups: [
                 "sub-practice-tools",
                 "sub-vocabulary-tools",
@@ -262,6 +271,7 @@ pub(crate) struct State {
     window: TimeWindow,
     speed: ReadingSpeed,
     duration: DurationBounds,
+    text_length: TextLength,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -577,6 +587,7 @@ pub(crate) fn draw(
         state.window = TimeWindow::default();
         state.speed = ReadingSpeed::default();
         state.duration = DurationBounds::default();
+        state.text_length = TextLength::default();
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -739,6 +750,7 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 && scope.window.keeps(cue, scene.timeline.delay_ms)
                 && scope.speed.keeps(cue)
                 && scope.duration.keeps(cue)
+                && scope.text_length.keeps(&cue.plain_text)
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
@@ -755,6 +767,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             window: state.window,
             speed: state.speed,
             duration: state.duration,
+            text_length: state.text_length,
         },
     )
 }
@@ -770,6 +783,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             window: state.window,
             speed: state.speed,
             duration: state.duration,
+            text_length: state.text_length,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -983,6 +997,29 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     state.revealed.clear();
                 }
             });
+            egui::CollapsingHeader::new(&scene.study.text_labels[0])
+                .id_salt("subtitle-text-filters")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut min = state.text_length.min.is_some();
+                        if ui.checkbox(&mut min, &scene.study.text_labels[1]).changed() {
+                            state.text_length.min = min.then_some(0);
+                        }
+                        if let Some(value) = &mut state.text_length.min {
+                            ui.add(egui::DragValue::new(value).range(0..=1_000_000));
+                        }
+                        let mut max = state.text_length.max.is_some();
+                        if ui.checkbox(&mut max, &scene.study.text_labels[2]).changed() {
+                            state.text_length.max = max.then_some(40);
+                        }
+                        if let Some(value) = &mut state.text_length.max {
+                            ui.add(egui::DragValue::new(value).range(0..=1_000_000));
+                        }
+                        if ui.button(&scene.study.text_labels[3]).clicked() {
+                            state.text_length = TextLength::default();
+                        }
+                    });
+                });
             egui::CollapsingHeader::new(&scene.study.duration_labels[0])
                 .id_salt("subtitle-duration-tools")
                 .show(ui, |ui| {
@@ -1280,6 +1317,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     window: state.window,
                     speed: state.speed,
                     duration: state.duration,
+                    text_length: state.text_length,
                 },
                 width,
             );
@@ -1617,6 +1655,33 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-049: cached list rows and captured shown exports share text bounds.
+    #[test]
+    fn caption_length_filters_keep_hidden_ticks_and_reset() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬 🐈")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(0);
+        h.state_mut().state.text_length.min = Some(2);
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vtt-shown").click();
+        h.run();
+        assert!(
+            h.state().out.iter().any(
+                |c| matches!(c, Command::SubtitleRowsExport { indices, .. } if indices == &[1])
+            )
+        );
+        h.get_by_label("sub-text-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-text-reset").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1]);
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
     }
 
     // T-SUB-048: repeat actions bind the active original cue and explicit finite count.

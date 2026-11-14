@@ -843,3 +843,18 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-SUB-047 | Subtitle range selection | Shift-select ranges in shown order and invert shown ticks, preserve hidden selections, clear range anchors on source changes. | L1, L3 |
 | T-KNW-045 | Vocabulary study batches | Select next N unticked shown words in chosen order (1–1000, default 20); clear/invert shown only and retain hidden ticks. | L1, L3 |
 | T-SUB-048 | Finite subtitle repetition | Repeat an explicitly chosen cue two, three or five times then pause; cancel on manual playback/source/delay actions and prevent gap-speed/auto-pause conflicts. | L1, L3 |
+
+## M72–M81 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-SUB-049 | Subtitle text-length bounds | Inclusive non-whitespace Unicode scalar bounds compose with all existing subtitle scopes, cached rows and shown exports; reset only their own limits. | L1, L3, L6 |
+| T-SUB-050 | Unique subtitle captions | Optionally keep the first caption with identical whitespace-collapsed case-sensitive text within the already-filtered shown scope; preserve hidden ticks and original export indices. | L1, L3, L6 |
+| T-SUB-051 | Single or multiline captions | Filter captions by one or multiple nonempty text lines; combine with search and all other scope controls without changing source text. | L1, L3, L6 |
+| T-KNW-046 | Vocabulary reading filters | Filter headwords by a distinct nonempty reading or its absence; compose with other filters and include the choice in session and persistent presets. | L1, L3, L6 |
+| T-KNW-047 | Vocabulary coverage targets | Optionally keep the most frequent currently matching words needed to reach an inclusive 1–100 percent occurrence target, including boundary ties; use exact wide arithmetic before applying display order and save the choice in presets. | L1, L3, L6 |
+| T-SUB-052 | Persistent subtitle study presets | Save/apply/delete up to sixteen named bounded subtitle query and filter snapshots in configuration. Exclude selections, masking/reveals and source identities; preserve ticks, report persistence outcomes and support restart. | L1, L3, L6 |
+| T-KNW-048 | Vocabulary HTML study sheets | Export complete shown/selected headword snapshots as bounded standalone escaped HTML, with readings behind details and occurrence/status/card fields; freeze before atomic native saving. | L1, L3, L6 |
+| T-SUB-053 | Context around word examples | Expand exact subtitle concordances by zero, one or two neighbouring original cues on each side; identify exact hits, deduplicate overlaps, compose other filters and preserve source/revision invalidation. | L1, L3, L6 |
+| T-SUB-054 | Subtitle study keyboard actions | Offer configurable shortcuts for previous/next matching line, current-line reveal and current-line selection. Respect typing focus and page coverage, preserve pause and use the same current rendered scope as buttons. | L1, L3, L6 |
+| T-SUB-055 | Finite cue practice queues | Capture a bounded complete shown/selected queue of original cues, repeat each 2/3/5 times then pause after the final cue. Reject stale/invalid scopes without partial playback, show remaining cues and cancel on manual controls, primary source/timing changes or explicit stop. | L1, L3, L6 |
