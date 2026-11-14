@@ -565,6 +565,8 @@ pub(crate) enum Command {
     SeriesAnalysisCancel(u64),
     /// Explicit comprehension analysis from a local series card.
     SeriesAnalyse(u64),
+    /// Browse one completed episode’s vocabulary, or return to episodes.
+    EpisodeWords(Option<String>),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
     /// A book of the list.
@@ -1513,6 +1515,7 @@ impl Ui {
             Command::BookAnalysisCancel(uid) => s.book_analysis_cancel(&uid),
             Command::SeriesAnalysisCancel(id) => s.series_analysis_cancel(id),
             Command::BookAnalyse(uid) => s.book_analyse(&uid),
+            Command::EpisodeWords(uid) => s.episode_words(uid),
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookPage(address) => s.book_page(&address),

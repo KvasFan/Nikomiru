@@ -1056,3 +1056,5 @@ vocabulary-copied = 単語をコピーしました。
 
 encounter-export = エピソードの全履歴を出力
 encounter-export-saved = エピソードの履歴を { $path } に保存しました。
+
+episode-words-title = 学習する単語：{ $title }

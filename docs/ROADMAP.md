@@ -1054,7 +1054,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M37 | Vocabulary ordering by frequency, expression and reading | done |
 | M38 | Copy shown/selected study vocabulary to the clipboard | done |
 | M39 | Export per-episode historical encounters | done |
-| M40 | Browse episode vocabulary before playback | not started |
+| M40 | Browse episode vocabulary before playback | done |
 | M41 | Visible graphic OCR progress and explicit cancellation | not started |
 | M42 | Export the current complete text subtitle track as SRT | not started |
 | M43 | Inspect and clear persistent analysis caches | not started |
@@ -1112,6 +1112,17 @@ encounter timestamps and bounded atomic TSV output.
 
 **Exit criteria**: full-history order/format/sanitisation, accessible action
 and actual worker file/status-preservation checks; full CI.
+
+---
+
+## M40 — Episode vocabulary before playback
+
+**Requirements**: KNW-031. Browse retained complete episode counts from an
+open series, with shared vocabulary controls and live status/card marks.
+Never play a file; reject stale count epochs and unavailable/partial sources.
+
+**Exit criteria**: complete/epoch tests, accessible episode/browser actions,
+actual pre-playback status updates and no-history checks; full CI.
 
 ---
 

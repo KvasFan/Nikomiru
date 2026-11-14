@@ -257,6 +257,14 @@ impl EpisodeScores {
         }
     }
 
+    /// A complete retained count for explicit pre-playback vocabulary browsing.
+    pub fn counted(&self, uid: &str) -> Option<Arc<Counted>> {
+        match self.entries.get(uid)? {
+            Entry::Counted { counted, .. } => Some(Arc::clone(counted)),
+            _ => None,
+        }
+    }
+
     /// What the episode list says of `uid`.
     pub fn get(&self, uid: &str) -> Option<EpisodeScore> {
         match self.entries.get(uid)? {
@@ -273,6 +281,22 @@ mod tests {
     use nikomiru_library::words::WordStatus;
 
     use super::*;
+
+    // T-KNW-031: only complete counts are browsable and source epochs discard them.
+    #[test]
+    fn vocabulary_access_requires_a_current_complete_count() {
+        let mut scores = EpisodeScores::default();
+        scores.reset_for(Some(1), 0, &[], "");
+        scores.counting("ep".into());
+        assert!(scores.counted("ep").is_none());
+        let old = scores.epoch();
+        let counted = Counted::from_lines([vec![("猫".into(), "ねこ".into()); 2]]);
+        scores.done(old, "ep".into(), Ok(Some(counted.clone())));
+        assert_eq!(*scores.counted("ep").unwrap(), counted);
+        scores.invalidate();
+        scores.done(old, "ep".into(), Ok(Some(counted)));
+        assert!(scores.counted("ep").is_none());
+    }
 
     fn external(path: &str, language: Option<&str>) -> External {
         External {

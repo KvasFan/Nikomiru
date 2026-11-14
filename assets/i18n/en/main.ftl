@@ -1073,3 +1073,5 @@ vocabulary-copied = Vocabulary copied.
 
 encounter-export = Export full episode history
 encounter-export-saved = Episode history saved to { $path }.
+
+episode-words-title = Study words: { $title }

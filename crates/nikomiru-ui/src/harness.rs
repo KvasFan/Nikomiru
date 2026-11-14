@@ -410,6 +410,8 @@ pub fn state() -> Result<Value, String> {
                 "covers": page.covers.keys().collect::<Vec<_>>(),
                 "series_info": series_info,
                 "identify": identify,
+                "episode_words": s.library_page.episode_words.as_ref().map(|study| json!({
+                    "uid": study.uid, "words": study.words.iter().map(|w| json!({"expression":w.expression,"reading":w.reading,"count":w.count,"status":w.status.name(),"card":w.card})).collect::<Vec<_>>() })),
                 "stats": page.stats.as_ref().map(|st| json!({
                     "encounter_words": st.encounter_words,
                     "encounters": st.encounters.iter().map(|(uid,title,count)| json!({"uid":uid,"title":title,"count":count})).collect::<Vec<_>>(),
@@ -1051,6 +1053,7 @@ pub fn library(
             "clear-encounters" => Command::LibraryEdit(LibraryEdit::ClearEncounters(
                 path()?.to_string_lossy().into_owned(),
             )),
+            "episode-words" => Command::EpisodeWords(title.clone()),
             "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"

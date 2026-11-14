@@ -85,11 +85,30 @@ fn a_series_card_counts_local_subtitles_and_keeps_source_coverage() {
             "{key}"
         );
     }
+    // T-KNW-031: a retained episode count is browsable before any playback.
+    let uid = s["library_page"]["open_series"]["episodes"][0]["uid"]
+        .as_str()
+        .unwrap();
+    h.cmd(json!({"cmd":"library", "action":"episode-words", "title":uid}));
+    let s = h.state_until("episode vocabulary without playing", |s| {
+        s["library_page"]["episode_words"]["words"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|w| w["expression"] == "食べる"))
+    });
+    assert_eq!(s["loaded"], false);
     let known = desk.path("known.csv");
     std::fs::write(&known, "word,reading,status\n食べる,たべる,known\n").unwrap();
     h.cmd(json!({"cmd":"words", "action":"import", "path":known}));
     h.state_until("retained series follows shared status", |s| {
         score(s)["known"] == 10
+    });
+    h.state_until("episode vocabulary follows shared status", |s| {
+        s["library_page"]["episode_words"]["words"]
+            .as_array()
+            .is_some_and(|rows| {
+                rows.iter()
+                    .any(|w| w["expression"] == "食べる" && w["status"] == "known")
+            })
     });
     std::fs::write(&sidecar, "1\n00:00:01,000 --> 00:00:02,000\n日本語\n").unwrap();
     h.cmd(json!({"cmd":"library", "action":"analyse-series", "id":id}));

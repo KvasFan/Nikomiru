@@ -249,3 +249,5 @@ Ordine del vocabolario offre frequenza crescente/decrescente, parola e lettura. 
 Copia visibili e Copia selezionate inseriscono negli appunti le stesse colonne TSV del vocabolario. Sono disponibili in tutte le viste delle parole. Copia selezionate include le parole spuntate nascoste, conserva la selezione e segue l’ordine scelto. Valgono gli stessi limiti di 16 MiB e le protezioni per i fogli di calcolo.
 
 Esamina cronologia → Esporta cronologia completa episodio scrive tutte le parole registrate per quell’episodio, oltre il limite di 1.000 righe visualizzate, con i millisecondi Unix del primo incontro originale. Il worker legge l’episodio scelto al momento del salvataggio. Il TSV atomico, limitato a 16 MiB, non modifica cronologia o stati delle parole.
+
+In una serie aperta, gli episodi con punteggio completato offrono Parole da studiare prima della riproduzione. La vista usa il conteggio dei sottotitoli già disponibile e tutti i controlli condivisi del vocabolario; cambiare stati la aggiorna subito. Riaprire le sorgenti o cambiare dizionari/impostazioni chiude gli elenchi superati.

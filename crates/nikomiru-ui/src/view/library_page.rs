@@ -35,6 +35,7 @@ pub(crate) struct State {
     analysis: Option<u64>,
     analysis_order: super::analysis_order::State,
     analysis_words: super::analysis_words::State,
+    episode_words: super::analysis_words::State,
     /// The name being typed for the series open.
     rename: Option<(u64, String)>,
     /// The series to merge the open one into.
@@ -1009,6 +1010,22 @@ fn series(
     episodes: Option<&[(String, VideoRecord)]>,
     out: &mut Vec<Command>,
 ) {
+    if s.colours
+        && let Some(study) = &s.page.episode_words
+    {
+        if super::analysis_words::show(
+            ui,
+            format!("episode/{}/{}", study.uid, study.epoch),
+            &study.title,
+            &study.words,
+            &mut state.episode_words,
+            s.tr,
+            out,
+        ) {
+            out.push(Command::EpisodeWords(None));
+        }
+        return;
+    }
     let home = s.page.home.as_ref();
     let title = home
         .and_then(|h| h.series_title(id))
@@ -1134,6 +1151,27 @@ fn series(
                             out,
                         );
                         episode_score(ui, s, uid);
+                        if s.colours
+                            && matches!(
+                                (s.episode_score)(uid),
+                                Some(crate::scores::EpisodeScore::Score(_))
+                            )
+                        {
+                            let button = ui.button(tr(s, "analysis-words"));
+                            button.widget_info(|| {
+                                WidgetInfo::labeled(
+                                    Role::Button,
+                                    true,
+                                    (s.tr)(
+                                        "episode-words-title",
+                                        &[("title", file_title(&v.path))],
+                                    ),
+                                )
+                            });
+                            if button.clicked() {
+                                out.push(Command::EpisodeWords(Some(uid.clone())));
+                            }
+                        }
                         if let Some(d) = v.duration_ms.filter(|_| v.last_position_ms > 0) {
                             ui.label(
                                 RichText::new(format!(
@@ -1352,6 +1390,71 @@ mod tests {
             folders: vec![("/v".into(), FolderRecord::default())],
             server_titles: Default::default(),
         }
+    }
+
+    // T-KNW-031: episode vocabulary never triggers playback and reuses shared controls.
+    #[test]
+    fn episode_words_action_and_browser_keep_playback_untouched() {
+        let page = LibraryPage {
+            home: Some(home()),
+            series: Some((
+                1,
+                Some(vec![("ep/a".into(), video("/v/Alpha - 01.mkv", 1, 1, 0))]),
+            )),
+            ..Default::default()
+        };
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.state_mut().scores.insert(
+            "ep/a".into(),
+            crate::scores::EpisodeScore::Score(crate::words::Score {
+                words: 2,
+                ..Default::default()
+            }),
+        );
+        h.run();
+        h.get_by_label("episode-words-title").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EpisodeWords(Some(uid)) if uid == "ep/a"))
+        );
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibraryPlay(_)))
+        );
+        h.state_mut().page.episode_words = Some(crate::catalog::EpisodeVocabulary {
+            uid: "ep/a".into(),
+            title: "Alpha - 01".into(),
+            epoch: 1,
+            revision: 0,
+            words: std::sync::Arc::new(vec![crate::words::ListedWord {
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                count: 2,
+                status: crate::words::WordStatus::Unknown,
+                card: false,
+            }]),
+        });
+        h.run_steps(2);
+        h.get_by_label("×2");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-known").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::WordsStatus(rows, crate::words::WordStatus::Known) if rows.len() == 1)));
+        h.get_by_label("analysis-words-back").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EpisodeWords(None)))
+        );
     }
 
     // T-KNW-021: vocabulary actions keep library navigation and playback untouched.

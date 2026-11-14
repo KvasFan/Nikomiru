@@ -290,11 +290,26 @@ pub enum LibraryReply {
 /// Episodes by uid, in order.
 pub type Episodes = Vec<(String, VideoRecord)>;
 
+/// A selected episode's complete vocabulary, rescored with shared word statuses.
+#[derive(Debug)]
+pub struct EpisodeVocabulary {
+    /// The media identity, separate from whichever episode may be playing.
+    pub uid: String,
+    /// Local episode title for the browser.
+    pub title: String,
+    /// Current vocabulary rows, not subtitle text.
+    pub words: std::sync::Arc<Vec<crate::words::ListedWord>>,
+    pub(crate) epoch: u64,
+    pub(crate) revision: u64,
+}
+
 /// The Library page in the session.
 #[derive(Debug, Default)]
 pub struct LibraryPage {
     /// Explicit series-card analyses (KNW-017).
     pub scores: crate::series_scores::Scores,
+    /// Selected pre-playback vocabulary from a complete episode count.
+    pub episode_words: Option<EpisodeVocabulary>,
     /// The home page, once read.
     pub home: Option<Home>,
     /// The series open, and its episodes once read.

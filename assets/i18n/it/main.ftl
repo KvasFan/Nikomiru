@@ -1073,3 +1073,5 @@ vocabulary-copied = Vocabolario copiato.
 
 encounter-export = Esporta cronologia completa episodio
 encounter-export-saved = Cronologia dell’episodio salvata in { $path }.
+
+episode-words-title = Parole da studiare: { $title }

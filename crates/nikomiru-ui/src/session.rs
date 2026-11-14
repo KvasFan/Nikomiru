@@ -6635,6 +6635,7 @@ impl Session {
         let words = &self.words;
         self.episode_scores
             .update(words.revision(), |e, r| words.status(e, r));
+        self.update_episode_words();
         out
     }
 
@@ -6744,6 +6745,55 @@ impl Session {
         result: Result<Option<nikomiru_library::words::Counted>, String>,
     ) {
         self.episode_scores.done(generation, uid, result);
+    }
+
+    /// Open/close a completed episode vocabulary without touching the player.
+    pub fn episode_words(&mut self, uid: Option<String>) {
+        self.library_page.episode_words = uid.and_then(|uid| {
+            if !self.services.config.subtitles.word_colors {
+                return None;
+            }
+            let (_, episodes) = self.library_page.series.as_ref()?;
+            let (_, video) = episodes.as_ref()?.iter().find(|(u, _)| u == &uid)?;
+            let counted = self.episode_scores.counted(&uid)?;
+            let title = PathBuf::from(&video.path)
+                .file_stem()?
+                .to_string_lossy()
+                .into_owned();
+            Some(crate::catalog::EpisodeVocabulary {
+                uid,
+                title,
+                words: std::sync::Arc::new(self.words.listed_counted(&counted)),
+                epoch: self.episode_scores.epoch(),
+                revision: self.words.revision(),
+            })
+        });
+    }
+
+    fn update_episode_words(&mut self) {
+        let Some(study) = &mut self.library_page.episode_words else {
+            return;
+        };
+        let current = self.services.config.subtitles.word_colors
+            && study.epoch == self.episode_scores.epoch()
+            && self
+                .library_page
+                .series
+                .as_ref()
+                .and_then(|(_, e)| e.as_ref())
+                .is_some_and(|episodes| episodes.iter().any(|(u, _)| u == &study.uid));
+        if !current {
+            self.library_page.episode_words = None;
+            return;
+        }
+        let Some(counted) = self.episode_scores.counted(&study.uid) else {
+            self.library_page.episode_words = None;
+            return;
+        };
+        if study.revision != self.words.revision() {
+            study.words = std::sync::Arc::new(self.words.listed_counted(&counted));
+            study.revision = self.words.revision();
+        }
     }
 
     /// What the episode list says of an episode's score (KNW-008).
