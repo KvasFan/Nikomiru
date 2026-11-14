@@ -942,6 +942,8 @@ pub struct PathsConfig {
     /// The yt-dlp executable, or its folder; empty selects NIKOMIRU_YT_DLP,
     /// then PATH. Looked up only for an explicit web-video open (PLY-023).
     pub yt_dlp: String,
+    /// Optional Deno executable/folder for yt-dlp bundled JavaScript challenges.
+    pub deno: String,
     /// The ffmpeg executable, or its folder; empty = `NIKOMIRU_FFMPEG`, then
     /// `PATH` (EXT-001). ffprobe is looked for next to it.
     pub ffmpeg: String,

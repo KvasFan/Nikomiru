@@ -164,7 +164,12 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("graphic-cancel") => harness::graphic_read_cancel().map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
         Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),
-        Some("setup") => harness::setup(text(command, "action")?).map(|()| Value::Null),
+        Some("setup") => harness::setup(
+            text(command, "action")?,
+            command["id"].as_str().map(str::to_string),
+            command["on"].as_bool().unwrap_or(true),
+        )
+        .map(|()| Value::Null),
         Some("mpv_property") => harness::mpv_property(text(command, "name")?)
             .map(|v| v.map_or(Value::Null, Value::String)),
         Some("mouse_moved") => harness::mouse_moved().map(|()| Value::Null),

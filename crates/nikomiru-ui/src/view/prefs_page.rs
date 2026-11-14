@@ -643,6 +643,11 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    form(ui, "settings-deno", |ui| {
+        row(ui, &tr("settings-deno"), |ui| {
+            ui.add(TextEdit::singleline(&mut draft.paths.deno).desired_width(360.0))
+        });
+    });
     hint(ui, &tr("settings-next-start"));
     section(ui, &tr("settings-folders"));
     form(ui, "settings-folders", |ui| {

@@ -26,6 +26,8 @@ fn setup(root: &Path, host: &FakeFiles) -> Request {
         generation: 1,
         page: host.url("/page"),
         executable: script.to_string_lossy().into(),
+        javascript: String::new(),
+        ffmpeg: String::new(),
         proxy: String::new(),
         languages: vec!["ja".into()],
         folder: root.join("subs"),
@@ -116,9 +118,22 @@ fn url_and_proxy_are_arguments_and_the_resolver_has_a_deadline() {
     let mut r = setup(dir.path(), &host);
     r.page = "https://example.org/watch?v=$(touch bad)&x=hello".into();
     r.proxy = "http://proxy.example:8080".into();
+    r.javascript = "/tools/with spaces/deno".into();
+    r.ffmpeg = "/tools/with spaces/ffmpeg".into();
     let job = job(Path::new("/usr/bin/yt-dlp"), &r);
     assert_eq!(job.args.last().unwrap(), r.page.as_str());
     assert_eq!(job.timeout, Duration::from_secs(120));
+    // T-INS-007: dependency paths remain single arguments, including spaces.
+    assert!(
+        job.args
+            .windows(2)
+            .any(|p| p[0] == "--ffmpeg-location" && p[1] == r.ffmpeg.as_str())
+    );
+    assert!(
+        job.args
+            .windows(2)
+            .any(|p| p[0] == "--js-runtimes" && p[1] == "deno:/tools/with spaces/deno")
+    );
     assert!(
         job.args
             .windows(2)

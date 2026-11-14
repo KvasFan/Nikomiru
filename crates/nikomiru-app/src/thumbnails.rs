@@ -22,6 +22,7 @@ type Wish = (PathBuf, i64, Done<Vec<u8>>);
 struct Slot {
     next: Option<Wish>,
     closing: bool,
+    ffmpeg: Option<String>,
 }
 
 /// The service.
@@ -46,8 +47,19 @@ impl ThumbnailWorker {
             .name("nikomiru-thumbnails".into())
             .spawn(move || {
                 let mut tools: Option<Tools> = None;
+                let mut ffmpeg = ffmpeg;
                 let mut n = 0u64;
                 while let Some((video, at_ms, done)) = next(&shared) {
+                    if let Some(path) = shared
+                        .0
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .ffmpeg
+                        .take()
+                    {
+                        ffmpeg = path;
+                        tools = None;
+                    }
                     if tools.is_none() {
                         tools = probe(&Search::from_env(&ffmpeg))
                             .inspect_err(|e| tracing::warn!("ffmpeg for thumbnails: {e}"))
@@ -101,6 +113,14 @@ fn frame(
 }
 
 impl ThumbnailService for ThumbnailWorker {
+    fn configure_ffmpeg(&self, path: String) {
+        self.slot
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ffmpeg = Some(path);
+    }
+
     fn frame(&self, video: PathBuf, at_ms: i64, done: Done<Vec<u8>>) {
         if self.worker.is_none() {
             done(Err("no thumbnail thread".into()));

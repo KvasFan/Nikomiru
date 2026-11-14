@@ -1059,6 +1059,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M42 | Export the current complete text subtitle track as SRT | done |
 | M43 | Inspect and clear persistent analysis caches | done |
 | M44 | Export comprehension summaries for analysed books and series | done |
+| M45 | Install selected platform-specific support tools in the setup assistant | done |
 
 ## M35 — Normalised study and subtitle search
 
@@ -1231,3 +1232,16 @@ Done outside the backlog on 2026-11-09, for 2.19.0: DVD graphic subtitles (VobSu
 - SemVer. Until 1.0, `0.MINOR.PATCH`: MINOR for each milestone, PATCH for fixes. From 1.0, MINOR for each milestone that adds features, PATCH for fixes, MAJOR for a change that drops what users relied on, and for M16, which makes Nikomiru a reader too (D-19).
 - The `library.redb` schema can only change with a migration (DAT-001), even before 1.0.
 - CHANGELOG in the *Keep a Changelog* format.
+
+## M45 — Selected support-tool installation
+
+**Requirements**: INS-007. Requested by the maintainer after 2.53.0: the setup
+assistant downloads/installs selected FFmpeg, yt-dlp and required support
+components for the platform. Include ffprobe, Deno and optional OCR model;
+reuse existing tools, verify pinned artifacts and apply paths to active workers.
+
+**Exit criteria**: safe installation/rollback/cancellation and platform tests,
+actual local-worker/UI checks, `cargo xtask ci`, refreshed license/vendor data.
+
+Status: done. `cargo xtask ci --full` passed 952 workspace tests and 97 GUI
+tests; real Linux x86_64 upstream downloads/probes passed. See [M45 QA](qa/m45.md).

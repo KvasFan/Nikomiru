@@ -50,6 +50,7 @@ pub mod portal;
 pub mod score_subtitles;
 pub mod servers;
 pub mod setup;
+pub mod setup_tools;
 pub mod shell;
 pub mod subtitles;
 pub mod sync;

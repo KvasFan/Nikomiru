@@ -24,6 +24,8 @@ const KEPT: usize = 120;
 
 /// Makes the frames, from the application.
 pub trait ThumbnailService: Send {
+    /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
+    fn configure_ffmpeg(&self, _path: String) {}
     /// The frame of `video` at `at_ms` as an image [`HEIGHT`] pixels high. A
     /// request not yet started is replaced by a newer one, whose `done` is
     /// then the only one called.

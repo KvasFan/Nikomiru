@@ -96,6 +96,7 @@ type LaterDone = Box<dyn FnOnce(LaterSent) + Send>;
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
 enum Job {
+    ConfigureFfmpeg(String),
     Check(CheckRequest, Checked),
     Mine(Box<MineRequest>, Option<PendingFrame>, MineDone),
     Browse(BrowseTarget, Browsed),
@@ -158,6 +159,10 @@ impl Anki {
                         Job::Browse(target, done) => done(worker.browse(&target)),
                         Job::Refresh(config, done) => done(worker.refresh(&config)),
                         Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
+                        Job::ConfigureFfmpeg(path) => {
+                            worker.parts.ffmpeg = path;
+                            worker.tools = None;
+                        }
                         Job::Configure(config) => worker.configure(*config),
                         Job::Later(done) => done(worker.later()),
                         Job::SendLater(done) => done(worker.send_later()),
@@ -200,7 +205,7 @@ impl Anki {
             Job::Browse(_, done) => done(Err(self.unavailable.clone())),
             Job::Refresh(_, done) => done(Err(self.unavailable.clone())),
             Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
-            Job::Configure(_) => {}
+            Job::Configure(_) | Job::ConfigureFfmpeg(_) => {}
             Job::Later(done) | Job::ForgetLater(_, done) => done(Vec::new()),
             Job::KnownWords(_, _, done) => done(Err(self.unavailable.clone())),
             Job::SendLater(done) => done(LaterSent {
@@ -212,6 +217,10 @@ impl Anki {
 }
 
 impl AnkiService for Anki {
+    fn configure_ffmpeg(&self, path: String) {
+        let _ = self.send(Job::ConfigureFfmpeg(path));
+    }
+
     fn check(&self, request: CheckRequest, done: Checked) {
         if let Some(job) = self.send(Job::Check(request, done)) {
             self.refuse(job);

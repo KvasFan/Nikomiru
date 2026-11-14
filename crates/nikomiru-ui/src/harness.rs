@@ -550,6 +550,11 @@ pub fn state() -> Result<Value, String> {
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
         // INS-001
         state["setup_open"] = json!(s.setup_page.open);
+        state["setup"] = json!({
+            "running": s.setup_page.running,
+            "items": s.setup_page.items.iter().map(|(id, state)| (id.clone(), format!("{state:?}"))).collect::<std::collections::BTreeMap<_, _>>(),
+            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
+        });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(uid, b)| {
@@ -1177,11 +1182,26 @@ pub fn move_subtitles() -> Result<(), String> {
     call(|ui| ui.run(Command::MoveSubtitles))
 }
 
-/// The setup assistant (INS-001): `open` or `close`.
-pub fn setup(action: &str) -> Result<(), String> {
+/// The setup assistant (INS-001, INS-007): open/close, tick/clear, install/stop/refresh.
+pub fn setup(action: &str, id: Option<String>, on: bool) -> Result<(), String> {
+    if action == "clear" {
+        return call(|ui| {
+            let ids = ui.session.setup_page.ticked.clone();
+            for id in ids {
+                ui.run(Command::SetupTick { id, on: false });
+            }
+        });
+    }
     let command = match action {
         "open" => Command::SetupOpen,
         "close" => Command::SetupClose,
+        "refresh" => Command::SetupInspect,
+        "install" => Command::SetupInstall,
+        "stop" => Command::SetupStop,
+        "tick" => Command::SetupTick {
+            id: id.ok_or("missing tool id")?,
+            on,
+        },
         other => return Err(format!("unknown setup action {other:?}")),
     };
     call(|ui| ui.run(command))

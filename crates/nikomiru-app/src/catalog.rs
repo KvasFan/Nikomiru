@@ -51,6 +51,7 @@ impl std::fmt::Debug for Parts {
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 enum Job {
+    ConfigureFfmpeg(String),
     Home(Done<Home>),
     Episodes(u64, Done<SeriesDetail>),
     Import(PathBuf, Grouping, Done<ImportReport>),
@@ -462,6 +463,10 @@ impl Catalog {
                             });
                             done(result);
                         }
+                        Job::ConfigureFfmpeg(path) => {
+                            worker.parts.ffmpeg = path;
+                            worker.tools = None;
+                        }
                         Job::Home(done) => done(worker.home()),
                         Job::Episodes(id, done) => done(worker.series(id)),
                         Job::Import(root, grouping, done) => done(worker.import(&root, grouping)),
@@ -501,6 +506,7 @@ impl Catalog {
         let no = self.unavailable.clone();
         match refused {
             Some(Job::Condense(_, done)) => done(Err(no)),
+            Some(Job::ConfigureFfmpeg(_)) => {}
             Some(Job::Home(done)) => done(Err(no)),
             Some(Job::Episodes(_, done)) => done(Err(no)),
             Some(Job::Import(_, _, done)) => done(Err(no)),
@@ -516,6 +522,10 @@ impl Catalog {
 }
 
 impl LibraryService for Catalog {
+    fn configure_ffmpeg(&self, path: String) {
+        self.send(Job::ConfigureFfmpeg(path));
+    }
+
     fn condense(
         &self,
         request: nikomiru_ui::condense::Request,

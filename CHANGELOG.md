@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- The setup assistant can install selected FFmpeg/ffprobe, yt-dlp and its Deno runtime, plus the local OCR model. Downloads are pinned and verified for Linux/Windows x86_64/ARM64, existing tools are reused, and configured paths take effect immediately (INS-007, M45).
+
 ## [2.53.0] - 2026-11-14
 
 Twenty consecutive subtitle and study milestones (M25–M44), following 2.33.0.

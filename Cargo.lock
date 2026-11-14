@@ -2351,6 +2351,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-rust2"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2551,6 +2560,7 @@ dependencies = [
  "glutin-winit",
  "image",
  "libc",
+ "lzma-rust2",
  "nikomiru-anki",
  "nikomiru-books",
  "nikomiru-core",
@@ -2567,6 +2577,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",

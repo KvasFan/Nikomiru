@@ -110,6 +110,9 @@ fn a_dictionary_and_a_library_are_installed() {
         proxy: String::new(),
         cache_dir: dir.path().join("cache"),
         audio_dir: dir.path().join("audio"),
+        tools_dir: dir.path().join("tools"),
+        model_dir: dir.path().join("model"),
+        tool_catalog: Vec::new(),
         manifest_urls: vec![manifest],
         translator: Translator::from_setting("en", |_| None),
         catalog: catalog(&host),
@@ -117,6 +120,8 @@ fn a_dictionary_and_a_library_are_installed() {
     let events = run(
         &setup,
         Plan {
+            tools: Vec::new(),
+            configured: Default::default(),
             dictionaries: vec!["mini".into()],
             audio: vec!["fushi-ja".into()],
         },
@@ -169,6 +174,9 @@ fn a_library_that_is_not_audio_is_refused() {
         proxy: String::new(),
         cache_dir: dir.path().join("cache"),
         audio_dir: dir.path().join("audio"),
+        tools_dir: dir.path().join("tools"),
+        model_dir: dir.path().join("model"),
+        tool_catalog: Vec::new(),
         manifest_urls: vec![manifest],
         translator: Translator::from_setting("en", |_| None),
         catalog: catalog(&host),
@@ -176,6 +184,8 @@ fn a_library_that_is_not_audio_is_refused() {
     let events = run(
         &setup,
         Plan {
+            tools: Vec::new(),
+            configured: Default::default(),
             dictionaries: Vec::new(),
             audio: vec!["fushi-ja".into(), "fushi-en".into()],
         },

@@ -32,6 +32,7 @@ type Done = Box<dyn FnOnce(Result<Loaded, String>) + Send>;
 type Aligned = Box<dyn FnOnce(Result<AlignResult, String>) + Send>;
 
 enum Task {
+    Configure(String),
     Load(Request, nikomiru_ui::subtitles::Reports, Done),
     Align(AlignRequest, Aligned),
 }
@@ -53,6 +54,7 @@ pub struct Loader {
 impl std::fmt::Debug for Job {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.task {
+            Task::Configure(path) => f.debug_tuple("Configure").field(path).finish(),
             Task::Load(request, _, _) => f.debug_tuple("Load").field(request).finish(),
             Task::Align(request, _) => f.debug_tuple("Align").field(&request.input).finish(),
         }
@@ -82,6 +84,10 @@ impl Loader {
                 };
                 for job in rx {
                     match job.task {
+                        Task::Configure(path) => {
+                            worker.search = Search::from_env(&path);
+                            worker.tools = None;
+                        }
                         Task::Load(request, reports, done) => {
                             done(worker.load(&request, &job.cancel, &reports))
                         }
@@ -112,6 +118,12 @@ impl Drop for Loader {
 }
 
 impl SubtitleSource for Loader {
+    fn configure_ffmpeg(&self, path: String) {
+        let _ = self.jobs.send(Job {
+            task: Task::Configure(path),
+            cancel: Cancel::new(),
+        });
+    }
     fn load(&self, request: Request, done: Done) {
         self.load_progressive(request, Box::new(|_| {}), done);
     }

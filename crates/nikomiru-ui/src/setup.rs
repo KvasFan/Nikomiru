@@ -17,11 +17,58 @@ pub struct Plan {
     pub dictionaries: Vec<String>,
     /// The audio libraries' ids.
     pub audio: Vec<String>,
+    /// Selected support tools, before dependency resolution.
+    pub tools: Vec<String>,
+    /// Current explicit executable paths.
+    pub configured: ToolPaths,
+}
+
+/// Current tool settings captured for offline discovery/installation.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ToolPaths {
+    /// Configured FFmpeg path.
+    pub ffmpeg: String,
+    /// Configured yt-dlp path.
+    pub yt_dlp: String,
+    /// Configured Deno path.
+    pub deno: String,
+}
+
+/// Offline discovery result for one optional component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolStatus {
+    /// Catalog id, or ocr-model.
+    pub id: String,
+    /// Validated working executable; model uses its installed directory.
+    pub path: Option<PathBuf>,
+    /// Validated local location, for discovery diagnostics.
+    pub detail: String,
+    /// An install artifact exists for this target.
+    pub supported: bool,
 }
 
 /// What the worker tells, for the item `id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupEvent {
+    /// Offline tool inventory, requested when the assistant opens/refreshes.
+    Inventory(Vec<ToolStatus>),
+    /// Executable validation/extraction is underway.
+    Checking {
+        /// The item.
+        id: String,
+    },
+    /// A complete executable bundle is validated and installed/reused.
+    Tool {
+        /// The item.
+        id: String,
+        /// Its validated executable.
+        path: PathBuf,
+    },
+    /// The existing OCR model is installed/reused.
+    Model {
+        /// The model item.
+        id: String,
+    },
     /// `done` of `total` bytes are there.
     Progress {
         /// The item.
@@ -58,6 +105,8 @@ pub enum SetupEvent {
 
 /// The downloads, away from the UI thread: the `setup` worker of the app.
 pub trait SetupService: Send {
+    /// Discover local components without making network requests.
+    fn inspect(&self, _paths: ToolPaths, _events: Box<dyn Fn(SetupEvent) + Send + Sync>) {}
     /// Downloads what `plan` names, telling `events` as it goes.
     fn install(&self, plan: Plan, events: Box<dyn Fn(SetupEvent) + Send + Sync>);
     /// Stops what is under way; what is downloaded so far stays for later.
@@ -70,7 +119,12 @@ pub struct NoSetup(pub String);
 
 impl SetupService for NoSetup {
     fn install(&self, plan: Plan, events: Box<dyn Fn(SetupEvent) + Send + Sync>) {
-        for id in plan.dictionaries.into_iter().chain(plan.audio) {
+        for id in plan
+            .dictionaries
+            .into_iter()
+            .chain(plan.audio)
+            .chain(plan.tools)
+        {
             events(SetupEvent::Failed {
                 id,
                 message: self.0.clone(),
@@ -97,6 +151,8 @@ pub enum ItemState {
         /// Its size.
         total: u64,
     },
+    /// Extracting and checking a downloaded executable.
+    Checking,
     /// Waiting for its import, or being imported.
     Importing,
     /// Installed.
@@ -112,6 +168,8 @@ pub enum SetupJob {
     Install(Plan),
     /// Stop.
     Stop,
+    /// Offline dependency detection.
+    Inspect(ToolPaths),
 }
 
 /// The page's state in the session.
@@ -121,6 +179,10 @@ pub struct SetupPage {
     pub open: bool,
     /// The catalogue.
     pub catalog: Catalog,
+    /// Optional executable catalog.
+    pub tools: Vec<nikomiru_online::setup::tools::Tool>,
+    /// Worker-discovered local component state.
+    pub inventory: BTreeMap<String, ToolStatus>,
     /// The items ticked, by id.
     pub ticked: BTreeSet<String>,
     /// Where each item is.
@@ -152,6 +214,8 @@ impl Default for SetupPage {
         Self {
             open: false,
             catalog,
+            tools: nikomiru_online::setup::tools::catalog(),
+            inventory: BTreeMap::new(),
             ticked,
             items: BTreeMap::new(),
             running: false,
@@ -180,7 +244,24 @@ impl SetupPage {
                 && !installed.contains(id)
                 && self.items.get(id) != Some(&ItemState::Done)
         };
+        let requested: Vec<_> = self
+            .tools
+            .iter()
+            .filter(|tool| {
+                self.ticked.contains(&tool.id) && self.items.get(&tool.id) != Some(&ItemState::Done)
+            })
+            .map(|tool| tool.id.clone())
+            .collect();
+        let mut tools =
+            nikomiru_online::setup::tools::resolve(&self.tools, &requested).unwrap_or(requested);
+        if self.ticked.contains("ocr-model")
+            && self.items.get("ocr-model") != Some(&ItemState::Done)
+        {
+            tools.push("ocr-model".into());
+        }
         Plan {
+            tools,
+            configured: ToolPaths::default(),
             dictionaries: self
                 .catalog
                 .dictionaries
@@ -203,6 +284,20 @@ impl SetupPage {
     /// An event of the worker.
     pub fn event(&mut self, event: &SetupEvent) {
         match event {
+            SetupEvent::Inventory(rows) => {
+                for row in rows {
+                    if row.path.is_none() && self.items.get(&row.id) == Some(&ItemState::Done) {
+                        self.items.remove(&row.id);
+                    }
+                }
+                self.inventory = rows.iter().map(|r| (r.id.clone(), r.clone())).collect();
+            }
+            SetupEvent::Checking { id } => {
+                self.items.insert(id.clone(), ItemState::Checking);
+            }
+            SetupEvent::Tool { id, .. } | SetupEvent::Model { id } => {
+                self.items.insert(id.clone(), ItemState::Done);
+            }
             SetupEvent::Progress { id, done, total } => {
                 self.items.insert(
                     id.clone(),
@@ -229,7 +324,10 @@ impl SetupPage {
 
     /// Something is under way: a download or an import.
     pub fn busy(&self) -> bool {
-        self.running || self.importing.is_some() || !self.imports.is_empty()
+        self.running
+            || self.importing.is_some()
+            || !self.imports.is_empty()
+            || self.items.values().any(|s| *s == ItemState::Checking)
     }
 }
 
@@ -271,5 +369,39 @@ mod tests {
                 .dictionaries
                 .contains(&"kanjium".to_string())
         );
+    }
+    // T-INS-007: selecting a root resolves required tools; inventory never starts a download.
+    #[test]
+    fn selected_tools_resolve_dependencies_and_can_reuse_inventory() {
+        let mut page = SetupPage::default();
+        page.ticked.clear();
+        assert!(page.plan(&BTreeSet::new()).tools.is_empty());
+        page.ticked.insert("yt-dlp".into());
+        page.event(&SetupEvent::Inventory(vec![ToolStatus {
+            id: "ffmpeg".into(),
+            path: Some("/system/ffmpeg".into()),
+            detail: String::new(),
+            supported: true,
+        }]));
+        // Keep available tools in the plan: install adopts and saves their validated paths.
+        assert_eq!(
+            page.plan(&BTreeSet::from(["ffmpeg".into()])).tools,
+            ["ffmpeg", "deno", "yt-dlp"]
+        );
+        page.ticked.remove("yt-dlp");
+        assert!(page.plan(&BTreeSet::new()).tools.is_empty());
+        page.ticked.insert("ocr-model".into());
+        assert_eq!(page.plan(&BTreeSet::new()).tools, ["ocr-model"]);
+        page.event(&SetupEvent::Model {
+            id: "ocr-model".into(),
+        });
+        assert!(page.plan(&BTreeSet::new()).tools.is_empty());
+        page.event(&SetupEvent::Inventory(vec![ToolStatus {
+            id: "ocr-model".into(),
+            path: None,
+            detail: String::new(),
+            supported: true,
+        }]));
+        assert_eq!(page.plan(&BTreeSet::new()).tools, ["ocr-model"]);
     }
 }

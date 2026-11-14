@@ -15,6 +15,10 @@ pub struct Request {
     pub page: String,
     /// Executable setting; empty selects the environment or PATH.
     pub executable: String,
+    /// Optional explicitly installed Deno runtime; empty uses yt-dlp discovery.
+    pub javascript: String,
+    /// FFmpeg executable/folder, including private assistant installations.
+    pub ffmpeg: String,
     /// The configured proxy (empty disables environment proxies).
     pub proxy: String,
     /// Preferred subtitle languages.

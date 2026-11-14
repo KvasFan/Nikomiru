@@ -426,6 +426,8 @@ pub type KnownWords =
 /// Mining, away from the UI thread: the `anki` worker of the app. `done`
 /// may run on any thread.
 pub trait AnkiService: Send {
+    /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
+    fn configure_ffmpeg(&self, _path: String) {}
     /// The words of the cards of `decks`, from their field `field`
     /// (KNW-005).
     fn known_words(

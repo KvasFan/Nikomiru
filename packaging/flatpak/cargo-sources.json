@@ -3082,6 +3082,19 @@
   },
   {
     "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/lzma-rust2-0.25.0",
+    "sha256": "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/lzma-rust2/lzma-rust2-0.25.0.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890\"}",
+    "dest": "cargo/vendor/lzma-rust2-0.25.0",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
     "dest": "cargo/vendor/maplit-1.0.2",
     "sha256": "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d",
     "type": "archive",

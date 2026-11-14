@@ -26,6 +26,8 @@ fn l7_real_web_video_has_japanese_text_audio_and_picture() {
         generation: 1,
         page,
         executable: program,
+        javascript: String::new(),
+        ffmpeg: String::new(),
         proxy: String::new(),
         languages: vec!["ja".into()],
         folder: dir.path().join("subs"),

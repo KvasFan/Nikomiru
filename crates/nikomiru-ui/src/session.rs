@@ -146,6 +146,8 @@ pub trait IdleInhibitor: Send {
 /// Loads subtitles away from the UI thread: decoding (SUB-005) and the
 /// extraction of embedded tracks (SUB-007). `done` may run on any thread.
 pub trait SubtitleSource: Send {
+    /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
+    fn configure_ffmpeg(&self, _path: String) {}
     /// Loads `request` and calls `done` with the result or a translated error.
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 
@@ -434,6 +436,8 @@ pub struct Session {
     config_save: Option<Config>,
     /// A write of the settings is running: the next one waits for it.
     config_saving: bool,
+    /// Tool paths awaiting a successful settings write (INS-007).
+    setup_saving: std::collections::BTreeSet<String>,
     /// The settings "Create Lapis deck" was asked with.
     lapis_request: Option<nikomiru_core::config::AnkiConfig>,
     /// The page's message stays when the settings it saved are written.
@@ -786,6 +790,7 @@ impl Session {
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
             config_saving: false,
+            setup_saving: Default::default(),
             lapis_request: None,
             keep_status: false,
             saving_page: SavingPage::default(),
@@ -882,6 +887,8 @@ impl Session {
             generation: self.web_generation,
             page: page.trim().to_string(),
             executable: self.services.config.paths.yt_dlp.clone(),
+            javascript: self.services.config.paths.deno.clone(),
+            ffmpeg: self.services.config.paths.ffmpeg.clone(),
             proxy: self.services.config.network.proxy.clone(),
             languages: self.services.config.subtitles.preferred_languages.clone(),
             folder: self.services.subtitles_dir.join("web").join(uid),
@@ -1767,6 +1774,25 @@ impl Session {
             // newer settings wait: their write tells how it went
             return;
         }
+        let setup_paths = std::mem::take(&mut self.setup_saving);
+        for id in &setup_paths {
+            self.setup_page.items.insert(
+                id.clone(),
+                match &result {
+                    Ok(()) => crate::setup::ItemState::Done,
+                    Err(message) => crate::setup::ItemState::Failed(message.clone()),
+                },
+            );
+        }
+        if !setup_paths.is_empty() {
+            match &result {
+                Ok(()) if !self.setup_page.busy() => {
+                    self.toasts.push(self.tr("setup-finished", &[]))
+                }
+                Err(message) => self.toasts.push(message.clone()),
+                _ => {}
+            }
+        }
         let status = match result {
             Ok(()) if std::mem::take(&mut self.keep_status) => return,
             Ok(()) => (self.tr("settings-saved", &[]), true),
@@ -2086,6 +2112,13 @@ impl Session {
                 for option in nikomiru_player::options::fit_options(&c.player.fit) {
                     self.apply_option_now(&option.key, &option.value);
                 }
+            }
+            Section::Advanced => {
+                let path = c.paths.ffmpeg.clone();
+                self.services.subtitle_source.configure_ffmpeg(path.clone());
+                self.services.anki.configure_ffmpeg(path.clone());
+                self.services.catalog.configure_ffmpeg(path.clone());
+                self.services.thumbnails.configure_ffmpeg(path);
             }
             Section::Subtitles => {
                 self.subs.mode = Obscure::from_config(&c.subtitles.obscure);
@@ -7514,6 +7547,7 @@ impl Session {
     /// noted, the dictionaries and Anki are read again.
     pub fn setup_open(&mut self) {
         self.setup_page.open = true;
+        self.setup_inspect();
         if !self.services.config.general.setup_offered {
             self.services.config.general.setup_offered = true;
             if self.services.config_writable {
@@ -7548,8 +7582,34 @@ impl Session {
 
     /// The catalogue's dictionaries installed already (INS-002).
     pub fn setup_installed(&self) -> std::collections::BTreeSet<String> {
-        self.setup_page
-            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()))
+        let mut installed = self
+            .setup_page
+            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()));
+        installed.extend(
+            self.setup_page
+                .inventory
+                .iter()
+                .filter(|(_, s)| s.path.is_some())
+                .map(|(id, _)| id.clone()),
+        );
+        installed
+    }
+
+    fn setup_tool_paths(&self) -> crate::setup::ToolPaths {
+        let p = &self.services.config.paths;
+        crate::setup::ToolPaths {
+            ffmpeg: p.ffmpeg.clone(),
+            yt_dlp: p.yt_dlp.clone(),
+            deno: p.deno.clone(),
+        }
+    }
+
+    /// Refresh the assistant's offline inventory, without starting a download.
+    pub fn setup_inspect(&mut self) {
+        if !self.setup_page.running {
+            self.setup_jobs
+                .push(crate::setup::SetupJob::Inspect(self.setup_tool_paths()));
+        }
     }
 
     /// "Install" (INS-001): what is ticked and not there yet.
@@ -7557,11 +7617,17 @@ impl Session {
         if self.setup_page.running {
             return;
         }
-        let plan = self.setup_page.plan(&self.setup_installed());
-        if plan.dictionaries.is_empty() && plan.audio.is_empty() {
+        let mut plan = self.setup_page.plan(&self.setup_installed());
+        plan.configured = self.setup_tool_paths();
+        if plan.dictionaries.is_empty() && plan.audio.is_empty() && plan.tools.is_empty() {
             return;
         }
-        for id in plan.dictionaries.iter().chain(&plan.audio) {
+        for id in plan
+            .dictionaries
+            .iter()
+            .chain(&plan.audio)
+            .chain(&plan.tools)
+        {
             self.setup_page.items.insert(id.clone(), ItemState::Waiting);
         }
         self.setup_page.running = true;
@@ -7588,6 +7654,32 @@ impl Session {
         use crate::setup::SetupEvent;
         self.setup_page.event(&event);
         match event {
+            SetupEvent::Tool { id, path } => {
+                let mut config = self.services.config.clone();
+                let path = path.to_string_lossy().into_owned();
+                match id.as_str() {
+                    "ffmpeg" => config.paths.ffmpeg = path,
+                    "yt-dlp" => config.paths.yt_dlp = path,
+                    "deno" => config.paths.deno = path,
+                    _ => return,
+                }
+                self.settings_save(nikomiru_core::config::Section::Advanced, &config);
+                if self.services.config_writable {
+                    self.setup_saving.insert(id.clone());
+                    self.setup_page
+                        .items
+                        .insert(id, crate::setup::ItemState::Checking);
+                } else {
+                    let message = self.tr("settings-not-saved", &[]);
+                    self.setup_page
+                        .items
+                        .insert(id, crate::setup::ItemState::Failed(message.clone()));
+                    self.toasts.push(message);
+                }
+            }
+            SetupEvent::Model { .. } => {
+                self.books_page.ocr.installed = self.services.ocr.installed();
+            }
             SetupEvent::Dictionary { .. } => self.setup_next_import(),
             SetupEvent::Audio { path, .. } => self.setup_audio(&path),
             SetupEvent::Finished if !self.setup_page.busy() => {

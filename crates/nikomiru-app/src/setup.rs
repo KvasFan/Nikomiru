@@ -29,6 +29,12 @@ pub struct Parts {
     pub cache_dir: PathBuf,
     /// Where audio libraries go (`$XDG_DATA_HOME/nikomiru/audio`).
     pub audio_dir: PathBuf,
+    /// Private executable bundles.
+    pub tools_dir: PathBuf,
+    /// Existing manga OCR model directory.
+    pub model_dir: PathBuf,
+    /// Pinned platform-specific executable catalog.
+    pub tool_catalog: Vec<nikomiru_online::setup::tools::Tool>,
     /// Where the pack's manifest is read, in order.
     pub manifest_urls: Vec<String>,
     /// The interface strings, for the messages.
@@ -61,9 +67,14 @@ const MAX_LABELS_DB: u64 = 32 << 20;
 
 type Events = Box<dyn Fn(SetupEvent) + Send + Sync>;
 
+enum Work {
+    Install(Plan, Events, Cancel),
+    Inspect(nikomiru_ui::setup::ToolPaths, Events),
+}
+
 /// The worker: one plan at a time, on a thread of its own.
 pub struct Setup {
-    jobs: Option<mpsc::Sender<(Plan, Events, Cancel)>>,
+    jobs: Option<mpsc::Sender<Work>>,
     running: Arc<Mutex<Cancel>>,
 }
 
@@ -76,13 +87,20 @@ impl std::fmt::Debug for Setup {
 impl Setup {
     /// Starts the worker.
     pub fn start(parts: Parts) -> Self {
-        let (jobs, rx) = mpsc::channel::<(Plan, Events, Cancel)>();
+        let (jobs, rx) = mpsc::channel::<Work>();
         let spawned = std::thread::Builder::new()
             .name("nikomiru-setup".into())
             .spawn(move || {
-                for (plan, events, cancel) in rx {
-                    run(&parts, &plan, &events, &cancel);
-                    events(SetupEvent::Finished);
+                for work in rx {
+                    match work {
+                        Work::Install(plan, events, cancel) => {
+                            run(&parts, &plan, &events, &cancel);
+                            events(SetupEvent::Finished);
+                        }
+                        Work::Inspect(paths, events) => events(SetupEvent::Inventory(
+                            crate::setup_tools::inventory(&parts, &paths, &Cancel::new()),
+                        )),
+                    }
                 }
             });
         let jobs = match spawned {
@@ -99,13 +117,27 @@ impl Setup {
     }
 }
 
+impl Drop for Setup {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 impl SetupService for Setup {
+    fn inspect(&self, paths: nikomiru_ui::setup::ToolPaths, events: Events) {
+        if let Some(jobs) = &self.jobs {
+            let _ = jobs.send(Work::Inspect(paths, events));
+        }
+    }
+
     fn install(&self, plan: Plan, events: Events) {
         let cancel = Cancel::new();
         *self.running.lock().unwrap_or_else(PoisonError::into_inner) = cancel.clone();
         match &self.jobs {
             Some(jobs) => {
-                if let Err(mpsc::SendError((_, events, _))) = jobs.send((plan, events, cancel)) {
+                if let Err(mpsc::SendError(Work::Install(_, events, _))) =
+                    jobs.send(Work::Install(plan, events, cancel))
+                {
                     events(SetupEvent::Finished);
                 }
             }
@@ -135,7 +167,12 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
         Ok(http) => http,
         Err(e) => {
             let text = message(parts, &e);
-            for id in plan.dictionaries.iter().chain(&plan.audio) {
+            for id in plan
+                .dictionaries
+                .iter()
+                .chain(&plan.audio)
+                .chain(&plan.tools)
+            {
                 events(SetupEvent::Failed {
                     id: id.clone(),
                     message: text.clone(),
@@ -144,6 +181,81 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
             return;
         }
     };
+    let mut completed = std::collections::BTreeSet::new();
+    let requested: Vec<_> = plan
+        .tools
+        .iter()
+        .filter(|id| id.as_str() != "ocr-model")
+        .cloned()
+        .collect();
+    if let Some(resolved) = nikomiru_online::setup::tools::resolve(&parts.tool_catalog, &requested)
+    {
+        let mut failed = std::collections::BTreeSet::new();
+        for id in resolved {
+            if cancel.is_cancelled() {
+                break;
+            }
+            let Some(tool) = parts.tool_catalog.iter().find(|t| t.id == id) else {
+                continue;
+            };
+            let result = if tool.dependencies.iter().any(|d| failed.contains(d)) {
+                Err("setup-tool-dependency".into())
+            } else {
+                crate::setup_tools::install(parts, &http, tool, &plan.configured, &**events, cancel)
+            };
+            match result {
+                Ok(path) => {
+                    completed.insert(id.clone());
+                    events(SetupEvent::Tool { id, path });
+                }
+                Err(error) => {
+                    failed.insert(id.clone());
+                    events(SetupEvent::Failed {
+                        id,
+                        message: tool_error(parts, error),
+                    });
+                }
+            }
+        }
+    } else {
+        for id in &requested {
+            events(SetupEvent::Failed {
+                id: id.clone(),
+                message: parts.translator.tr("setup-tool-invalid", &[]),
+            });
+        }
+    }
+    if plan.tools.iter().any(|s| s == "ocr-model") {
+        match crate::setup_tools::model(parts, &http, &**events, cancel) {
+            Ok(()) => {
+                completed.insert("ocr-model".to_string());
+                events(SetupEvent::Model {
+                    id: "ocr-model".into(),
+                });
+            }
+            Err(error) => events(SetupEvent::Failed {
+                id: "ocr-model".into(),
+                message: tool_error(parts, error),
+            }),
+        }
+    }
+    if cancel.is_cancelled() {
+        for id in plan
+            .tools
+            .iter()
+            .chain(&plan.dictionaries)
+            .chain(&plan.audio)
+        {
+            if completed.contains(id) {
+                continue;
+            }
+            events(SetupEvent::Failed {
+                id: id.clone(),
+                message: parts.translator.tr("setup-tool-cancelled", &[]),
+            });
+        }
+        return;
+    }
     for id in &plan.dictionaries {
         let Some(d) = parts.catalog.dictionaries.iter().find(|d| d.id == *id) else {
             continue;
@@ -183,6 +295,16 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
     }
     if !plan.audio.is_empty() {
         audio(parts, &http, plan, events, cancel);
+    }
+}
+
+fn tool_error(parts: &Parts, error: String) -> String {
+    if error.starts_with("setup-tool-") {
+        parts.translator.tr(&error, &[])
+    } else {
+        parts
+            .translator
+            .tr("setup-tool-failed", &[("reason", error)])
     }
 }
 

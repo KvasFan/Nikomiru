@@ -685,6 +685,8 @@ pub(crate) enum Command {
     SetupInstall,
     /// "Stop".
     SetupStop,
+    /// Refresh optional tool inventory offline.
+    SetupInspect,
     /// The main subtitle dropped at an edge and a distance from it, in
     /// pixels of a video 1080 px high (SUB-027).
     SubtitlesPlaced {
@@ -1416,6 +1418,7 @@ impl Ui {
             Command::SetupClose => s.setup_close(),
             Command::SetupTick { id, on } => s.setup_tick(&id, on),
             Command::SetupInstall => s.setup_install(),
+            Command::SetupInspect => s.setup_inspect(),
             Command::SetupStop => s.setup_stop(),
             Command::SubtitlesPlaced { top, margin } => s.subtitles_placed(top, margin),
             Command::SelectSecondary(key) => s.select_secondary(&key),
@@ -1706,6 +1709,13 @@ impl Ui {
                     let waker = self.waker.clone();
                     self.session.setup_service().install(
                         plan,
+                        Box::new(move |event| waker.wake(Inbound::Setup(event))),
+                    );
+                }
+                crate::setup::SetupJob::Inspect(paths) => {
+                    let waker = self.waker.clone();
+                    self.session.setup_service().inspect(
+                        paths,
                         Box::new(move |event| waker.wake(Inbound::Setup(event))),
                     );
                 }
