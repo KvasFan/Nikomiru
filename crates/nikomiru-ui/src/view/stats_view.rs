@@ -230,10 +230,10 @@ pub(crate) fn draw(
                 )));
                 state.history = None;
             }
-            let query = state.query.trim();
+            let query = nikomiru_text::search::Query::new(&state.query);
             let shown: Vec<_> = rows
                 .iter()
-                .filter(|(e, r, _)| query.is_empty() || e.contains(query) || r.contains(query))
+                .filter(|(e, r, _)| query.matches(&[e, r]))
                 .collect();
             egui::ScrollArea::vertical()
                 .id_salt("encounter-words")
@@ -587,7 +587,8 @@ mod tests {
         h.get_by_label("encounter-history-open").click();
         h.run_steps(2);
         h.get_by_label("猫 · ねこ · 42");
-        h.state_mut().state.query = "いぬ".into();
+        // T-KNW-026: history accepts half-width katakana readings.
+        h.state_mut().state.query = "ｲﾇ".into();
         h.run();
         assert!(h.query_by_label("猫 · ねこ · 42").is_none());
         h.get_by_label("犬 · いぬ · 30");

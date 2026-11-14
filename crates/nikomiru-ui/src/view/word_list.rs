@@ -72,10 +72,10 @@ pub(crate) fn filtered<'a>(
     query: &str,
     new_only: bool,
 ) -> Vec<&'a ListedWord> {
-    let query = query.trim();
+    let query = nikomiru_text::search::Query::new(query);
     all.iter()
         .filter(|w| !new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning))
-        .filter(|w| query.is_empty() || w.expression.contains(query) || w.reading.contains(query))
+        .filter(|w| query.matches(&[&w.expression, &w.reading]))
         .collect()
 }
 
@@ -216,6 +216,20 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-KNW-026: matching folds readings and combines terms without changing keys.
+    #[test]
+    fn vocabulary_search_accepts_kana_width_and_terms_across_fields() {
+        let mut h = harness();
+        h.state_mut().query = "猫 ﾈｺ".into();
+        h.run();
+        h.get_by_label("猫 ねこ");
+        assert!(h.query_by_label("食べる たべる").is_none());
+        h.state_mut().query = "タベル".into();
+        h.run();
+        h.get_by_label("食べる たべる");
+        assert!(h.query_by_label("猫 ねこ").is_none());
     }
 
     // T-KNW-009: the words listed, narrowed, ticked and marked at once

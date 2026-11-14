@@ -204,7 +204,14 @@ impl Rows {
             self.cues = if query.is_empty() {
                 (0..timeline.cues().len()).collect()
             } else {
-                timeline.search(query)
+                let query = nikomiru_text::search::Query::new(query);
+                timeline
+                    .cues()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cue)| query.matches(&[&cue.plain_text]))
+                    .map(|(index, _)| index)
+                    .collect()
             };
             if filter != LineFilter::All {
                 let cues = timeline.cues();
@@ -819,6 +826,21 @@ mod tests {
         h.state_mut().pos_ms = 2000;
         h.run();
         assert_eq!(drawn(&h), [(1, false), (2, false)]);
+    }
+
+    // T-KNW-026: filtering keeps original cue indices, timing and spelling.
+    #[test]
+    fn normalised_search_keeps_original_subtitle_targets() {
+        use egui_kittest::kittest::Queryable;
+        let t = timeline(&[(1000, "犬"), (3000, "ガッコウ ＡＢＣ"), (5000, "学校 abc")]);
+        let mut h = harness(t, 3500, false);
+        h.state_mut().state.query = "abc ｶﾞｯｺｳ".into();
+        h.run_steps(2);
+        assert_eq!(drawn(&h), [(1, true)]);
+        h.get_by_label("ガッコウ ＡＢＣ");
+        h.state_mut().state.query = "　 ".into();
+        h.run_steps(2);
+        assert_eq!(drawn(&h).len(), 3);
     }
 
     // T-SUB-023: bigger text, taller rows and a wider time column; a wider

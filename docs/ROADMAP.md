@@ -1042,6 +1042,35 @@ cache and eviction/cancellation tests, actual worker parity and full CI.
 
 ---
 
+## Ten more milestones — M35…M44 (2026-11-14)
+
+The maintainer asked during M34 to resume and continue with ten more milestones.
+The same subtitle/study priority applies; development proceeds in order.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M35 | Normalised kana/width/case search in study lists, history and subtitles | done |
+| M36 | Precise word-status and card filters in vocabulary lists | not started |
+| M37 | Vocabulary ordering by frequency, expression and reading | not started |
+| M38 | Copy shown/selected study vocabulary to the clipboard | not started |
+| M39 | Export per-episode historical encounters | not started |
+| M40 | Browse episode vocabulary before playback | not started |
+| M41 | Visible graphic OCR progress and explicit cancellation | not started |
+| M42 | Export the current complete text subtitle track as SRT | not started |
+| M43 | Inspect and clear persistent analysis caches | not started |
+| M44 | Export comprehension summaries for analysed books and series | not started |
+
+## M35 — Normalised study and subtitle search
+
+**Requirements**: KNW-026. Search NFKC width variants, basic kana scripts and
+case consistently without changing stored text or lookup offsets. Multiple
+space-separated terms all match, across expression/reading when available.
+
+**Exit criteria**: kana/width/dakuten/case/whitespace/multiple-term tests,
+shared vocabulary/history/subtitle integration and full CI.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
 These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:

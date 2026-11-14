@@ -239,3 +239,5 @@ Statistics → Inspect history shows the latest 1,000 historically encountered w
 With word colours enabled, Books and local series offer Comprehension order: original, most known or least known. Only scored can restrict the list to completed scores, with a minimum known-word percentage. Unscored items sort last; changing statuses updates the order. These controls do not start analyses or change the stored library order.
 
 Completed whole-book and episode/series analyses can reuse local count caches after restart. They validate source content and dictionary settings, then apply current word statuses. Counts are limited to 64 MiB combined (32 MiB each for books and episodes); corrupt, oversized or cancelled results are ignored. Analyses remain explicit.
+
+Search in vocabulary, historical words and subtitle lists accepts kana-script and width variants and ignores letter case. Separate terms with whitespace to require all of them; words can match either expression or reading. This changes filtering only, keeping the original spelling and lookup targets.
