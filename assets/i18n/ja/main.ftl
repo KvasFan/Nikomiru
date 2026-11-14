@@ -1150,3 +1150,10 @@ sub-speed-tools = 読速（文字/秒）
 sub-speed-min = 最小文字数/秒
 sub-speed-max = 最大文字数/秒
 sub-speed-reset = 読速の制限をリセット
+
+sub-stats-title = 範囲の統計
+sub-stats-shown = 表示中
+sub-stats-selected = 選択中
+sub-stats-lines = 行
+sub-stats-characters = 文字
+sub-stats-dialogue = 発話時間

@@ -134,6 +134,12 @@ pub(crate) struct StudyLabels {
     min_speed: String,
     max_speed: String,
     reset_speed: String,
+    statistics: String,
+    stats_shown: String,
+    stats_selected: String,
+    stats_lines: String,
+    stats_characters: String,
+    stats_dialogue: String,
 }
 
 impl StudyLabels {
@@ -161,8 +167,37 @@ impl StudyLabels {
             min_speed: tr("sub-speed-min", &[]),
             max_speed: tr("sub-speed-max", &[]),
             reset_speed: tr("sub-speed-reset", &[]),
+            statistics: tr("sub-stats-title", &[]),
+            stats_shown: tr("sub-stats-shown", &[]),
+            stats_selected: tr("sub-stats-selected", &[]),
+            stats_lines: tr("sub-stats-lines", &[]),
+            stats_characters: tr("sub-stats-characters", &[]),
+            stats_dialogue: tr("sub-stats-dialogue", &[]),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct MetricKey {
+    version: u64,
+    revision: u64,
+    delay: i64,
+    query: String,
+    filter: LineFilter,
+    scope: Scope,
+    concordance: Option<(String, u64)>,
+    selection: u64,
+}
+#[derive(Debug)]
+struct Metrics {
+    key: MetricKey,
+    data: Result<
+        (
+            crate::subtitle_study::Statistics,
+            crate::subtitle_study::Statistics,
+        ),
+        &'static str,
+    >,
 }
 
 /// What the list keeps between frames.
@@ -171,6 +206,8 @@ pub(crate) struct State {
     query: String,
     rows: Rows,
     selected: BTreeSet<usize>,
+    selection_revision: u64,
+    metrics: Option<Metrics>,
     selection_version: Option<u64>,
     copied: Option<bool>,
     window: TimeWindow,
@@ -453,6 +490,7 @@ pub(crate) fn draw(
 ) -> bool {
     if state.selection_version != Some(scene.version) {
         state.selected.clear();
+        state.selection_revision = state.selection_revision.wrapping_add(1);
         state.copied = None;
         state.window = TimeWindow::default();
         state.speed = ReadingSpeed::default();
@@ -626,10 +664,74 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
     )
 }
 
+fn study_statistics(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
+    let key = MetricKey {
+        version: scene.version,
+        revision: scene.marks_version,
+        delay: scene.timeline.delay_ms,
+        query: state.query.clone(),
+        filter: state.filter,
+        scope: Scope {
+            window: state.window,
+            speed: state.speed,
+        },
+        concordance: state.last_concordance.clone(),
+        selection: state.selection_revision,
+    };
+    if state.metrics.as_ref().is_none_or(|m| m.key != key) {
+        let shown = shown_indices(scene, state);
+        let selected: Vec<_> = state.selected.iter().copied().collect();
+        let data = crate::subtitle_study::statistics(
+            scene.timeline.cues(),
+            &shown,
+            scene.timeline.delay_ms,
+        )
+        .and_then(|a| {
+            crate::subtitle_study::statistics(
+                scene.timeline.cues(),
+                &selected,
+                scene.timeline.delay_ms,
+            )
+            .map(|b| (a, b))
+        });
+        state.metrics = Some(Metrics { key, data });
+    }
+    if let Some(metrics) = &state.metrics {
+        match metrics.data {
+            Ok((shown, selected)) => {
+                for (label, stats) in [
+                    (&scene.study.stats_shown, shown),
+                    (&scene.study.stats_selected, selected),
+                ] {
+                    let duration = format!(
+                        "{}.{:03}",
+                        clock(i64::try_from(stats.dialogue_ms).unwrap_or(i64::MAX)),
+                        stats.dialogue_ms % 1000
+                    );
+                    ui.label(format!(
+                        "{label}: {} {} · {} {} · {}: {duration}",
+                        stats.cues,
+                        scene.study.stats_lines,
+                        stats.characters,
+                        scene.study.stats_characters,
+                        scene.study.stats_dialogue
+                    ));
+                }
+            }
+            Err(_) => {
+                ui.label(&scene.study.copy_error);
+            }
+        }
+    }
+}
+
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
+            egui::CollapsingHeader::new(&scene.study.statistics)
+                .id_salt("subtitle-study-statistics")
+                .show(ui, |ui| study_statistics(ui, scene, state));
             egui::CollapsingHeader::new(&scene.study.speed)
                 .id_salt("subtitle-reading-speed")
                 .show(ui, |ui| {
@@ -685,6 +787,7 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
             ui.horizontal_wrapped(|ui| {
                 if ui.button(&scene.study.select_shown).clicked() {
                     state.selected.extend(shown_indices(scene, state));
+                    state.selection_revision = state.selection_revision.wrapping_add(1);
                 }
                 if ui
                     .add_enabled(
@@ -694,6 +797,7 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     .clicked()
                 {
                     state.selected.clear();
+                    state.selection_revision = state.selection_revision.wrapping_add(1);
                 }
                 let mut copy = None;
                 if ui
@@ -870,6 +974,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     )
                 });
                 if check.changed() {
+                    state.selection_revision = state.selection_revision.wrapping_add(1);
                     if selected {
                         state.selected.insert(cue);
                     } else {
@@ -1185,6 +1290,27 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::ListTime(_)))
         );
+    }
+
+    // T-SUB-041: accessible metrics use the shown filter and hidden selection, and refresh with the query.
+    #[test]
+    fn scope_statistics_refresh_and_include_hidden_selected_lines() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫猫"), (3000, "犬犬")]), 0, false);
+        h.run();
+        h.get_by_label("sub-select-line 2").click();
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-stats-title").click();
+        h.run_steps(3);
+        assert!(h.query_by_label("sub-stats-shown: 1 sub-stats-lines · 2 sub-stats-characters · sub-stats-dialogue: 0:01.000").is_some());
+        assert!(h.query_by_label("sub-stats-selected: 1 sub-stats-lines · 2 sub-stats-characters · sub-stats-dialogue: 0:01.000").is_some());
+        h.state_mut().state.query.clear();
+        h.run();
+        assert!(h.query_by_label("sub-stats-shown: 2 sub-stats-lines · 4 sub-stats-characters · sub-stats-dialogue: 0:02.000").is_some());
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

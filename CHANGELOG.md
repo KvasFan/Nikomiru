@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Inspect shown/selected subtitle statistics with Unicode character totals and overlap-merged dialogue duration (SUB-041, M58).
+
 - Filter subtitle study scopes by exact non-whitespace Unicode characters per second (SUB-040, M57).
 
 - Match exact normalised headwords/readings in shared vocabulary views, alongside contains search (KNW-039, M56).

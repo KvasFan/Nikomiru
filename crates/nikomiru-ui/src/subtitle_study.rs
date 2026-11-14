@@ -59,6 +59,69 @@ impl ReadingSpeed {
     }
 }
 
+/// Metrics of a bounded subtitle study scope.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Statistics {
+    /// Unique original cue indices in the scope.
+    pub cues: usize,
+    /// Non-whitespace Unicode scalar values.
+    pub characters: u64,
+    /// Union of positive effective dialogue intervals, clipped at time zero.
+    pub dialogue_ms: u64,
+}
+
+/// Count scope metrics without allocating or exporting sentence snapshots.
+pub fn statistics(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+) -> Result<Statistics, &'static str> {
+    if indices.len() > 100_000 {
+        return Err("sub-export-too-large");
+    }
+    let indices: std::collections::BTreeSet<_> = indices.iter().copied().collect();
+    let mut result = Statistics {
+        cues: indices.len(),
+        ..Default::default()
+    };
+    let mut bytes = 0usize;
+    let mut intervals = Vec::new();
+    for i in indices {
+        let cue = cues.get(i).ok_or("sub-export-unavailable")?;
+        bytes = bytes.saturating_add(cue.plain_text.len());
+        if bytes > 16 << 20 {
+            return Err("sub-export-too-large");
+        }
+        result.characters = result.characters.saturating_add(
+            cue.plain_text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .count() as u64,
+        );
+        let start = cue.start_ms.saturating_add(delay_ms).max(0);
+        let end = cue.end_ms.saturating_add(delay_ms);
+        if end > start {
+            intervals.push((start, end));
+        }
+    }
+    intervals.sort_unstable();
+    let mut merged: Option<(i64, i64)> = None;
+    for (start, end) in intervals {
+        match merged {
+            Some((from, until)) if start <= until => merged = Some((from, until.max(end))),
+            Some((from, until)) => {
+                result.dialogue_ms = result.dialogue_ms.saturating_add((until - from) as u64);
+                merged = Some((start, end));
+            }
+            None => merged = Some((start, end)),
+        }
+    }
+    if let Some((from, until)) = merged {
+        result.dialogue_ms = result.dialogue_ms.saturating_add((until - from) as u64);
+    }
+    Ok(result)
+}
+
 /// Exact headword/reading examples captured from one complete primary timeline.
 #[derive(Debug, Clone)]
 pub struct Concordance {
@@ -77,6 +140,28 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-041: union duration avoids double-counting overlaps; scope identities and Unicode counts stay exact.
+    #[test]
+    fn study_statistics_merge_intervals_and_reject_partial_metrics() {
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:03,000\n猫 🐈\n\n2\n00:00:02,000 --> 00:00:04,000\n犬\n",
+        )
+        .cues;
+        assert_eq!(
+            statistics(&cues, &[1, 0, 1], 0).unwrap(),
+            Statistics {
+                cues: 2,
+                characters: 3,
+                dialogue_ms: 3000
+            }
+        );
+        assert_eq!(statistics(&cues, &[0, 1], -2500).unwrap().dialogue_ms, 1500);
+        assert_eq!(statistics(&cues, &[], 0).unwrap(), Statistics::default());
+        assert!(statistics(&cues, &[0, 9], 0).is_err());
+        assert_eq!(statistics(&cues, &[0], i64::MAX).unwrap().dialogue_ms, 0);
+    }
+
     // T-SUB-040: Unicode characters, exact thresholds, invalid ranges and extreme times do not round or overflow.
     #[test]
     fn reading_speed_uses_exact_unicode_counts_and_full_durations() {

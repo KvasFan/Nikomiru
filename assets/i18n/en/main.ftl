@@ -1167,3 +1167,10 @@ sub-speed-tools = Reading speed (characters/s)
 sub-speed-min = Minimum characters/s
 sub-speed-max = Maximum characters/s
 sub-speed-reset = Reset reading speed
+
+sub-stats-title = Scope statistics
+sub-stats-shown = Shown
+sub-stats-selected = Selected
+sub-stats-lines = lines
+sub-stats-characters = characters
+sub-stats-dialogue = Dialogue

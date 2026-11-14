@@ -1167,3 +1167,10 @@ sub-speed-tools = Velocità di lettura (caratteri/s)
 sub-speed-min = Caratteri/s minimi
 sub-speed-max = Caratteri/s massimi
 sub-speed-reset = Azzera velocità di lettura
+
+sub-stats-title = Statistiche delle righe
+sub-stats-shown = Visibili
+sub-stats-selected = Selezionate
+sub-stats-lines = righe
+sub-stats-characters = caratteri
+sub-stats-dialogue = Dialogo
