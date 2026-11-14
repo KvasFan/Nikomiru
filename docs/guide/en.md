@@ -253,3 +253,5 @@ Inspect history → Export full episode history writes every recorded word for t
 In an open series, episodes with a completed score offer Study words before playback. The browser uses the retained subtitle count and all shared vocabulary controls; status changes update it immediately. Reopening sources or changing dictionaries/settings closes stale lists.
 
 While a graphic track is being read, the primary subtitle menu and subtitle list show preparation or processed/total pictures. Cancel reading stops that request and removes partial text: embedded tracks return to pictures, external pairs turn off. Playback continues. Cancelling reading does not cancel a separately requested model download.
+
+The primary subtitle menu and list offer Export current text as SRT after the whole text track is ready, including completed OCR. It freezes plain text and the current delay when clicked. Negative starts are clipped to zero; fully negative or empty intervals are omitted. Styles/fonts are not exported, and the destination is written atomically with a 16 MiB limit.

@@ -63,6 +63,10 @@ fn graphic_text_arrives_progressively_and_old_progress_cannot_replace_a_file() {
     assert_eq!(s["subtitles"]["read_progress"][1], 64);
     assert!(s["subtitles"]["read_progress"][0].as_u64().unwrap() > 0);
     assert!(s["subtitles"]["score"].is_null());
+    // T-SUB-034: partial OCR never exports an incomplete SRT.
+    let partial = desk.path("partial.srt");
+    h.cmd(json!({"cmd":"subtitle-export", "path":partial}));
+    assert!(!partial.exists());
     h.cmd(json!({"cmd":"condense","format":"opus","folder":desk.path("not-exported")}));
     assert_eq!(h.state()["audio_export"]["running"], false);
     h.cmd(json!({"cmd":"click_grapheme","layer":"main","cue_index":0,"grapheme_index":3}));
@@ -74,6 +78,12 @@ fn graphic_text_arrives_progressively_and_old_progress_cannot_replace_a_file() {
     });
     assert!(s["subtitles"]["read_progress"].is_null());
     assert_eq!(s["popups"][0]["query"], "食べました");
+    let exported = desk.path("complete.srt");
+    h.cmd(json!({"cmd":"subtitle-export", "path":exported}));
+    let text = std::fs::read_to_string(&exported).unwrap();
+    let parsed = nikomiru_subs::parse(nikomiru_subs::Format::Srt, &text);
+    assert_eq!(parsed.cues.len(), 64);
+    assert!(parsed.cues[0].plain_text.contains("食べました"));
     h.key("Escape");
     let another = desk.path("another.mkv");
     std::fs::copy(&video, &another).unwrap();

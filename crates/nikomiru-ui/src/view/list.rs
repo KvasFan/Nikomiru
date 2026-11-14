@@ -150,6 +150,8 @@ pub(crate) struct Scene<'a> {
     pub score: Option<String>,
     pub reading: Option<(String, Option<f32>)>,
     pub reading_cancel: String,
+    pub export_ready: bool,
+    pub export_label: String,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
     /// the words once all lines are split.
     pub tabs: Option<(String, String)>,
@@ -332,6 +334,8 @@ pub(crate) fn show(
         score: score_line(s),
         reading: s.graphic_read_status(),
         reading_cancel: tr("sub-reading-cancel"),
+        export_ready: s.subtitle_export_ready(),
+        export_label: tr("sub-export"),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
         filters: [
             tr("subtitle-lines-all"),
@@ -415,6 +419,12 @@ pub(crate) fn draw(
                         });
                     });
 
+                    if ui
+                        .add_enabled(scene.export_ready, egui::Button::new(&scene.export_label))
+                        .clicked()
+                    {
+                        out.push(Command::SubtitleExport);
+                    }
                     if let Some((text, fraction)) = &scene.reading {
                         super::ocr_progress::show(ui, text, *fraction, &scene.reading_cancel, out);
                     }
@@ -691,6 +701,8 @@ mod tests {
                         timeline: &t.timeline,
                         version: 1,
                         pos_ms: t.pos_ms,
+                        export_ready: !t.timeline.cues().is_empty(),
+                        export_label: "Export SRT".into(),
                         reading: None,
                         reading_cancel: "Cancel reading".into(),
                         title: "Subtitle list".into(),
@@ -829,6 +841,22 @@ mod tests {
         h.state_mut().pos_ms = 2000;
         h.run();
         assert_eq!(drawn(&h), [(1, false), (2, false)]);
+    }
+
+    // T-SUB-034: current complete text offers an accessible export action.
+    #[test]
+    fn complete_list_offers_srt_export() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫")]), 0, false);
+        h.run();
+        h.get_by_label("Export SRT").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SubtitleExport))
+        );
     }
 
     // T-KNW-026: filtering keeps original cue indices, timing and spelling.

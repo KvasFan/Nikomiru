@@ -1056,7 +1056,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M39 | Export per-episode historical encounters | done |
 | M40 | Browse episode vocabulary before playback | done |
 | M41 | Visible graphic OCR progress and explicit cancellation | done |
-| M42 | Export the current complete text subtitle track as SRT | not started |
+| M42 | Export the current complete text subtitle track as SRT | done |
 | M43 | Inspect and clear persistent analysis caches | not started |
 | M44 | Export comprehension summaries for analysed books and series | not started |
 
@@ -1134,6 +1134,17 @@ external pairs off, drops partial text and rejects late progress/cache output.
 
 **Exit criteria**: accessible controls and real delayed OCR progress/reset/
 cancellation checks; full CI.
+
+---
+
+## M42 — Export current text as SRT
+
+**Requirements**: SUB-034. Freeze complete primary text and its current delay,
+clip negative intervals safely and write portable bounded SRT atomically.
+Partial OCR and non-text timelines cannot export.
+
+**Exit criteria**: delay/negative/overflow/line/overlap/bound tests, accessible
+action and actual complete/partial OCR export checks; full CI.
 
 ---
 

@@ -89,6 +89,8 @@ pub enum Dialog {
     AnalysisWordsExport,
     /// Full per-episode encounter history.
     EncounterExport,
+    /// Current complete primary text subtitles as SRT.
+    SubtitleExport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -199,6 +201,10 @@ impl FileDialog {
                 tr("encounter-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
             ),
+            Dialog::SubtitleExport => (
+                tr("sub-export"),
+                vec![(tr("sub-export-filter"), vec!["*.srt"]), all],
+            ),
             Dialog::WordsExport => (
                 tr("words-export"),
                 vec![(tr("words-filter"), vec!["*.csv"]), all],
@@ -214,6 +220,7 @@ impl FileDialog {
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleExport => Some("nikomiru-subtitles.srt".into()),
                 Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),
                 _ => None,
             },

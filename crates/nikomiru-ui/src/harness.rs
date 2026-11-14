@@ -1267,3 +1267,16 @@ fn series_score_json(status: Option<&crate::series_scores::Status>) -> Value {
 pub fn graphic_read_cancel() -> Result<(), String> {
     call(|ui| ui.run(Command::GraphicReadCancel))
 }
+
+/// Native-save equivalent for current complete subtitle SRT (SUB-034).
+pub fn subtitle_export(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if ui.session.subtitle_export_prepare() {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::SubtitleExport,
+                path,
+            });
+        }
+    })
+}

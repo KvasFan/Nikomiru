@@ -54,3 +54,6 @@ pub use session::Services;
 pub use shortcuts::Modifiers;
 pub use ui::{Inbound, Key, Ui, Waker, Wheel, is_web_address};
 pub use view::{Dialog, FileDialog};
+
+/// Bounded plain SRT export of complete current subtitles.
+pub mod subtitle_export;

@@ -1079,3 +1079,11 @@ episode-words-title = Parole da studiare: { $title }
 sub-reading-preparing = Preparazione lettura sottotitoli…
 sub-reading-progress = Lette { $done } / { $total } immagini
 sub-reading-cancel = Annulla lettura
+
+sub-export = Esporta testo corrente come SRT…
+sub-export-filter = Sottotitoli SubRip
+sub-export-unavailable = Per esportare servono sottotitoli testuali completi e non vuoti.
+sub-export-too-large = La traccia supera il limite di esportazione di 16 MiB.
+sub-export-saved = Sottotitoli salvati in { $path }.
+
+sub-export-failed = Impossibile salvare i sottotitoli: { $reason }

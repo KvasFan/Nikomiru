@@ -1062,3 +1062,11 @@ episode-words-title = 学習する単語：{ $title }
 sub-reading-preparing = 字幕の読み取りを準備中…
 sub-reading-progress = { $total } 枚中 { $done } 枚を読み取り
 sub-reading-cancel = 読み取りをキャンセル
+
+sub-export = 現在の字幕をSRTで出力…
+sub-export-filter = SubRip字幕
+sub-export-unavailable = 出力には完全で空でないテキスト字幕が必要です。
+sub-export-too-large = 字幕が出力上限の16 MiBを超えています。
+sub-export-saved = 字幕を { $path } に保存しました。
+
+sub-export-failed = 字幕を保存できませんでした：{ $reason }

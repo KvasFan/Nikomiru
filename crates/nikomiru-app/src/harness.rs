@@ -154,6 +154,9 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("locate") => harness::locate(text(command, "path")?).map(|()| Value::Null),
         Some("anki") => harness::anki(text(command, "action")?, command["config"].as_str())
             .map(|()| Value::Null),
+        Some("subtitle-export") => {
+            harness::subtitle_export(text(command, "path")?).map(|()| Value::Null)
+        }
         Some("graphic-cancel") => harness::graphic_read_cancel().map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
         Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),

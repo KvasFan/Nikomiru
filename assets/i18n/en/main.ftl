@@ -1079,3 +1079,11 @@ episode-words-title = Study words: { $title }
 sub-reading-preparing = Preparing subtitle reading…
 sub-reading-progress = Read { $done } / { $total } pictures
 sub-reading-cancel = Cancel reading
+
+sub-export = Export current text as SRT…
+sub-export-filter = SubRip subtitles
+sub-export-unavailable = Complete nonempty text subtitles are required for export.
+sub-export-too-large = This subtitle track exceeds the 16 MiB export limit.
+sub-export-saved = Subtitles saved to { $path }.
+
+sub-export-failed = Subtitles could not be saved: { $reason }

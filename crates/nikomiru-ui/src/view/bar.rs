@@ -119,6 +119,16 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         super::ocr_progress::show(ui, &text, fraction, &tr("sub-reading-cancel"), out);
         ui.separator();
     }
+    if ui
+        .add_enabled(
+            s.subtitle_export_ready(),
+            egui::Button::new(tr("sub-export")),
+        )
+        .clicked()
+    {
+        out.push(Command::SubtitleExport);
+        ui.close();
+    }
     let current = s.subs.source.as_ref().map(|x| x.key()).unwrap_or_default();
     if ui
         .selectable_label(current.is_empty(), tr("subtitles-off"))

@@ -387,6 +387,7 @@ pub struct Session {
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     analysis_export: Option<String>,
     history_export: Option<String>,
+    subtitle_export: Option<String>,
     /// The words' revision the pause at the end of a line was last set
     /// for, when it stops only after new words (KNW-012).
     auto_pause_revision: u64,
@@ -762,6 +763,7 @@ impl Session {
             word_list: None,
             analysis_export: None,
             history_export: None,
+            subtitle_export: None,
             encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -7054,6 +7056,45 @@ impl Session {
     pub fn wait_writes(&self) {
         if let Some(w) = &self.writer {
             w.wait();
+        }
+    }
+
+    /// Only the complete current primary text timeline can be exported.
+    pub fn subtitle_export_ready(&self) -> bool {
+        !self.subs.incomplete && !self.subs.timeline().cues().is_empty()
+    }
+
+    /// Freeze plain text and delay before the native save dialog.
+    pub fn subtitle_export_prepare(&mut self) -> bool {
+        self.subtitle_export = None;
+        match crate::subtitle_export::srt(
+            self.subs.timeline().cues(),
+            self.subs.timeline().delay_ms,
+            !self.subs.incomplete,
+        ) {
+            Ok(text) => {
+                self.subtitle_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Write the frozen SRT atomically without changing the displayed source.
+    pub fn subtitle_export_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.subtitle_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self
+                .toasts
+                .push(self.tr("sub-export-saved", &[("path", path.display().to_string())])),
+            Err(error) => self
+                .toasts
+                .push(self.tr("sub-export-failed", &[("reason", error.to_string())])),
         }
     }
 
