@@ -1175,3 +1175,8 @@ vocabulary-named-presets = 学習プリセット
 vocabulary-preset-name = プリセット名
 vocabulary-preset-store = プリセットを保存
 vocabulary-preset-delete = プリセットを削除
+
+vocabulary-script-any = すべての文字種
+vocabulary-script-kanji = 漢字を含む
+vocabulary-script-kana = かなを含む
+vocabulary-script-latin = ラテン文字を含む

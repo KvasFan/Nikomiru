@@ -393,6 +393,8 @@ impl Default for SubtitlesConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StudyPreset {
+    /// Any script, kanji, kana or Latin presence.
+    pub script: u8,
     /// Unique display name.
     pub name: String,
     /// Normalised search input.
@@ -422,6 +424,7 @@ impl StudyPreset {
             && !self.name.chars().any(char::is_control)
             && self.query.len() <= 4096
             && self.status.is_none_or(|s| s < 4)
+            && self.script < 4
             && self.card < 3
             && self.order < 4
     }

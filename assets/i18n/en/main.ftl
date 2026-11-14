@@ -1192,3 +1192,8 @@ vocabulary-named-presets = Named study presets
 vocabulary-preset-name = Preset name
 vocabulary-preset-store = Save named preset
 vocabulary-preset-delete = Delete preset
+
+vocabulary-script-any = Any script
+vocabulary-script-kanji = Contains kanji
+vocabulary-script-kana = Contains kana
+vocabulary-script-latin = Contains Latin letters

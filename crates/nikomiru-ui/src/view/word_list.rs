@@ -33,6 +33,7 @@ pub(crate) struct Labels {
     pub preset_hint: String,
     pub preset_too_long: String,
     pub named: [String; 4],
+    pub scripts: [String; 4],
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -68,6 +69,13 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            scripts: [
+                "vocabulary-script-any",
+                "vocabulary-script-kanji",
+                "vocabulary-script-kana",
+                "vocabulary-script-latin",
+            ]
+            .map(|k| tr(k, &[])),
             exact: tr("vocabulary-exact", &[]),
             presets: tr("vocabulary-presets", &[]),
             preset_save: tr("vocabulary-preset-save", &[]),
@@ -152,6 +160,7 @@ pub(crate) const STATUSES: [WordStatus; 4] = [
 pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
+    pub script: u8,
     pub exact: bool,
     preset_name: String,
     pub status: Option<WordStatus>,
@@ -166,6 +175,7 @@ pub(crate) struct State {
 
 #[derive(Debug, Clone)]
 struct Preset {
+    script: u8,
     query: String,
     new_only: bool,
     exact: bool,
@@ -182,6 +192,7 @@ impl Preset {
         }
         Some(Self {
             query: query.to_string(),
+            script: state.script,
             new_only: state.new_only,
             exact: state.exact,
             status: state.status,
@@ -193,6 +204,7 @@ impl Preset {
     }
     fn apply(&self, query: &mut String, state: &mut State) {
         query.clone_from(&self.query);
+        state.script = self.script;
         state.new_only = self.new_only;
         state.exact = self.exact;
         state.status = self.status;
@@ -236,6 +248,7 @@ fn named_presets(
             )
             .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, &labels.named[1]));
             let snapshot = StudyPreset {
+                script: state.script,
                 name: state.preset_name.trim().to_string(),
                 query: query.clone(),
                 new_only: state.new_only,
@@ -273,6 +286,7 @@ fn named_presets(
                     if ui.button(&p.name).clicked() {
                         Preset {
                             query: p.query.clone(),
+                            script: p.script,
                             new_only: p.new_only,
                             exact: p.exact,
                             status: p.status.and_then(|i| STATUSES.get(usize::from(i)).copied()),
@@ -352,6 +366,16 @@ fn label(labels: &Labels, status: WordStatus) -> &str {
     &labels.statuses[i]
 }
 
+// Presence filters allow mixed-script headwords and keep original spelling.
+fn script_keeps(script: u8, text: &str) -> bool {
+    script == 0 || text.chars().any(|c| match script {
+        1 => matches!(c as u32, 0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af),
+        2 => matches!(c as u32, 0x3040..=0x30ff | 0x31f0..=0x31ff | 0xff66..=0xff9f | 0x1aff0..=0x1afff | 0x1b000..=0x1b16f),
+        3 => c.is_alphabetic() && matches!(c as u32, 0x41..=0x5a | 0x61..=0x7a | 0xc0..=0x24f | 0x1e00..=0x1eff | 0xff21..=0xff3a | 0xff41..=0xff5a),
+        _ => false,
+    })
+}
+
 /// Rows visible under the shared search and status filter.
 pub(crate) fn filtered<'a>(
     all: &'a [ListedWord],
@@ -370,6 +394,7 @@ pub(crate) fn filtered<'a>(
             CardFilter::With => w.card,
             CardFilter::Without => !w.card,
         })
+        .filter(|w| script_keeps(state.script, &w.expression))
         .filter(|w| w.count >= state.min_count && state.max_count.is_none_or(|max| w.count <= max))
         .filter(|w| {
             if state.exact {
@@ -538,6 +563,11 @@ pub(crate) fn show(
         {
             state.min_count = 0;
             state.max_count = None;
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        for (i, label) in labels.scripts.iter().enumerate() {
+            ui.selectable_value(&mut state.script, i as u8, label);
         }
     });
     let shown = filtered(all, query, state);
@@ -767,6 +797,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        scripts: ["Any script", "Kanji", "Kana", "Latin"].map(String::from),
                         exact: "Exact match".into(),
                         presets: "Session presets".into(),
                         preset_save: "Remember filters".into(),
@@ -1216,5 +1247,26 @@ mod tests {
         assert!(
             matches!(h.state().out.last(), Some(Command::StudyPresetDelete(name)) if name == "Cats")
         );
+    }
+    // T-KNW-042: mixed scripts, extended Han, half-width kana and accessible composition.
+    #[test]
+    fn script_filters_preserve_spelling_ticks_and_presets() {
+        assert!(script_keeps(1, "𠀀"));
+        assert!(script_keeps(2, "ﾈｺ"));
+        assert!(script_keeps(3, "ÉＡ"));
+        assert!(!script_keeps(3, "123猫"));
+        assert!(script_keeps(1, "食べる") && script_keeps(2, "食べる"));
+        let mut h = harness();
+        h.run();
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.get_by_label("Kana").click();
+        h.run();
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        h.get_by_label("食べる たべる");
+        let preset = Preset::capture("", &h.state().state).unwrap();
+        let mut state = State::default();
+        preset.apply(&mut String::new(), &mut state);
+        assert_eq!(state.script, 2);
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
     }
 }

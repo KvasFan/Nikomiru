@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Vocabulary script filters (KNW-042, M63).
+
 - Named persistent study presets (KNW-041, M62).
 
 ## [2.70.0] - 2026-11-14
