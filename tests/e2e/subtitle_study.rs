@@ -105,3 +105,44 @@ fn vocabulary_lookup_works_above_the_library_without_opening_media() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-KNW-037: real inflection matching, explicit clear and source invalidation without a seek.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config("[subtitles]\nword_colors = true\n");
+    let video = desk.path("examples.mkv");
+    std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
+    let text = desk.path("examples.ja.srt");
+    std::fs::write(&text, "1\n00:00:01,000 --> 00:00:02,000\n食べました\n\n2\n00:00:03,000 --> 00:00:04,000\n食べる\n\n3\n00:00:05,000 --> 00:00:06,000\n猫\n").unwrap();
+    let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
+    h.wait("first-frame");
+    h.state_until("complete vocabulary", |s| {
+        s["subtitles"]["words"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    });
+    if h.state()["paused"] == false {
+        h.key("Space");
+    }
+    h.state_until("paused", |s| s["paused"] == true);
+    let before = h.state()["time_pos"].as_f64().unwrap();
+    h.cmd(json!({"cmd":"vocabulary-examples","text":"食べる","reading":"たべる"}));
+    h.state_until("two exact examples", |s| {
+        s["concordance"]["indices"] == json!([0, 1])
+    });
+    assert!((h.state()["time_pos"].as_f64().unwrap() - before).abs() < 0.1);
+    h.cmd(json!({"cmd":"vocabulary-examples"}));
+    assert!(h.state()["concordance"].is_null());
+    h.cmd(json!({"cmd":"vocabulary-examples","text":"食べる","reading":"たべる"}));
+    let other = desk.path("other.srt");
+    std::fs::write(&other, "1\n00:00:01,000 --> 00:00:02,000\n猫\n").unwrap();
+    h.drop_files(&[other.to_str().unwrap()]);
+    h.state_until("old examples discarded", |s| {
+        s["concordance"].is_null() && s["subtitles"]["cues"] == 1
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

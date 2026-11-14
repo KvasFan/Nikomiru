@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Find current-subtitle word examples by exact segmented headword/reading, including inflected forms, with source/revision invalidation (KNW-037, M54).
+
 - Look up words directly from study lists, including above the library and before opening any media (KNW-036, M53).
 
 - Show distinct-word and occurrence coverage for shown and selected study vocabulary (KNW-035, M52).

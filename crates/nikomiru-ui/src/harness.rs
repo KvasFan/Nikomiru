@@ -550,6 +550,10 @@ pub fn state() -> Result<Value, String> {
         // SUB-027
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
         // INS-001
+        state["concordance"] = s.subtitle_examples().map_or(
+            Value::Null,
+            |c| json!({"label":c.label,"indices":c.indices}),
+        );
         state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
         state["setup"] = json!({
@@ -628,6 +632,19 @@ pub fn lookup(text: &str) -> Result<(), String> {
         // as a click on the video's text, which the Library page covers
         ui.view.close_library_page();
         ui.session.look_up_text(&text);
+    })
+}
+
+/// Exact primary-subtitle word examples, or clear the filter.
+pub fn vocabulary_examples(expression: Option<String>, reading: String) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(match expression {
+            Some(expression) => Command::VocabularyExamples {
+                expression,
+                reading,
+            },
+            None => Command::SubtitleExamplesClear,
+        })
     })
 }
 

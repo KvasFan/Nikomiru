@@ -1152,3 +1152,7 @@ vocabulary-selected-words = Parole selezionate
 vocabulary-occurrences = Occorrenze
 
 vocabulary-lookup = Cerca nel dizionario
+
+vocabulary-examples = Esempi nei sottotitoli
+vocabulary-examples-clear = Azzera esempi della parola
+vocabulary-examples-unavailable = Gli esempi richiedono l’analisi completa dei sottotitoli correnti.

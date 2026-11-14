@@ -1152,3 +1152,7 @@ vocabulary-selected-words = Selected words
 vocabulary-occurrences = Occurrences
 
 vocabulary-lookup = Look up in dictionary
+
+vocabulary-examples = Examples in subtitles
+vocabulary-examples-clear = Clear word examples
+vocabulary-examples-unavailable = Examples are unavailable until the complete current subtitle has been analysed.

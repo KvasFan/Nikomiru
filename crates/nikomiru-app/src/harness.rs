@@ -112,6 +112,11 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("vocabulary-examples") => harness::vocabulary_examples(
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+        )
+        .map(|()| Value::Null),
         Some("vocabulary-lookup") => {
             harness::vocabulary_lookup(text(command, "text")?).map(|()| Value::Null)
         }

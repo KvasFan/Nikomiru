@@ -387,6 +387,8 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
+    /// Captured exact word examples in the primary timeline.
+    subtitle_examples: Option<crate::subtitle_study::Concordance>,
     analysis_export: Option<String>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
@@ -768,6 +770,7 @@ impl Session {
             graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            subtitle_examples: None,
             analysis_export: None,
             history_export: None,
             subtitle_export: None,
@@ -6697,6 +6700,47 @@ impl Session {
     /// lines are split, while the words are coloured (KNW-009).
     pub fn word_list(&self) -> Option<std::sync::Arc<Vec<crate::words::ListedWord>>> {
         self.word_list.clone()
+    }
+
+    /// Filter current subtitle lines by a complete exact segmented word identity.
+    pub fn subtitle_examples_for(&mut self, expression: &str, reading: &str) {
+        if self.subs.incomplete || !self.word_colors_on() || self.word_list.is_none() {
+            self.toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[]));
+            return;
+        }
+        match self
+            .words
+            .examples(self.subs.timeline().cues(), expression, reading)
+        {
+            Ok(indices) if !indices.is_empty() => {
+                self.subtitle_examples = Some(crate::subtitle_study::Concordance {
+                    key: nikomiru_library::words::word_key(expression, reading),
+                    label: format!("{expression} {reading}"),
+                    indices,
+                    version: self.sub_list_version,
+                    revision: self.words.revision(),
+                })
+            }
+            _ => self
+                .toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[])),
+        }
+    }
+
+    /// Only expose examples whose source and segmentation/status revision are still current.
+    pub fn subtitle_examples(&self) -> Option<&crate::subtitle_study::Concordance> {
+        self.subtitle_examples.as_ref().filter(|c| {
+            c.version == self.sub_list_version
+                && c.revision == self.words.revision()
+                && self.word_colors_on()
+                && !self.subs.incomplete
+        })
+    }
+
+    /// Leave the examples filter without changing the primary text or playback.
+    pub fn subtitle_examples_clear(&mut self) {
+        self.subtitle_examples = None;
     }
 
     /// The score of the main subtitle, or how many of its lines are split

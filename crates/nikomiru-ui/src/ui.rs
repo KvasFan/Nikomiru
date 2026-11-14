@@ -396,6 +396,13 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// Exact current-subtitle word examples.
+    VocabularyExamples {
+        expression: String,
+        reading: String,
+    },
+    /// Leave the examples filter.
+    SubtitleExamplesClear,
     /// Dictionary lookup from a study vocabulary row, without a cue context.
     VocabularyLookup {
         text: String,
@@ -1379,6 +1386,14 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::VocabularyExamples {
+                expression,
+                reading,
+            } => {
+                s.subtitle_examples_for(&expression, &reading);
+                self.view.sub_list_open = true;
+            }
+            Command::SubtitleExamplesClear => s.subtitle_examples_clear(),
             Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),
             Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),

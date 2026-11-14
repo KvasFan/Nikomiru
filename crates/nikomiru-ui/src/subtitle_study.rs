@@ -25,6 +25,21 @@ impl TimeWindow {
     }
 }
 
+/// Exact headword/reading examples captured from one complete primary timeline.
+#[derive(Debug, Clone)]
+pub struct Concordance {
+    /// Original word identity.
+    pub key: String,
+    /// Original headword and reading for display.
+    pub label: String,
+    /// Chronological original cue indices.
+    pub indices: Vec<usize>,
+    /// Primary timeline generation.
+    pub version: u64,
+    /// Segmentation/status revision captured at the request.
+    pub revision: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

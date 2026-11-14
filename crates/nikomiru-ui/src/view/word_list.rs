@@ -36,6 +36,7 @@ pub(crate) struct Labels {
     pub card_filter: String,
     pub cards: [String; 3],
     pub lookup: String,
+    pub examples: Option<String>,
     pub shown_words: String,
     pub selected_words: String,
     pub occurrences: String,
@@ -65,6 +66,7 @@ impl Labels {
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
             lookup: tr("vocabulary-lookup", &[]),
+            examples: None,
             shown_words: tr("vocabulary-shown-words", &[]),
             selected_words: tr("vocabulary-selected-words", &[]),
             occurrences: tr("vocabulary-occurrences", &[]),
@@ -458,6 +460,22 @@ pub(crate) fn show(
                             },
                         });
                     }
+                    if let Some(label) = &labels.examples {
+                        let examples = ui.small_button("≡").on_hover_text(label);
+                        examples.widget_info(|| {
+                            WidgetInfo::labeled(
+                                Role::Button,
+                                true,
+                                format!("{label}: {} {}", w.expression, w.reading),
+                            )
+                        });
+                        if examples.clicked() {
+                            out.push(Command::VocabularyExamples {
+                                expression: w.expression.clone(),
+                                reading: w.reading.clone(),
+                            });
+                        }
+                    }
                     ui.label(RichText::new("●").color(color(w.status)))
                         .on_hover_text(label(labels, w.status));
                     ui.label(RichText::new(&w.expression).family(theme::bold()));
@@ -518,6 +536,7 @@ mod tests {
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
                         lookup: "Lookup".into(),
+                        examples: Some("Examples".into()),
                         shown_words: "Shown words".into(),
                         selected_words: "Selected words".into(),
                         occurrences: "Occurrences".into(),
@@ -628,6 +647,18 @@ mod tests {
         assert_eq!(
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
+        );
+    }
+
+    // T-KNW-037: example actions keep the exact headword and reading, without implicit playback.
+    #[test]
+    fn examples_dispatch_exact_word_identity() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("Examples: 食べる たべる").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(), [Command::VocabularyExamples { expression, reading }] if expression == "食べる" && reading == "たべる")
         );
     }
 

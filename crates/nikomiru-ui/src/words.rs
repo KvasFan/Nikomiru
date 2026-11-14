@@ -336,6 +336,40 @@ impl Words {
         self.split.get(text).map(|w| w.as_slice())
     }
 
+    /// Exact segmented headword/reading concordance; unavailable text never yields a partial result.
+    pub fn examples(
+        &self,
+        cues: &[nikomiru_subs::Cue],
+        expression: &str,
+        reading: &str,
+    ) -> Result<Vec<usize>, &'static str> {
+        if cues.len() > 100_000
+            || cues
+                .iter()
+                .fold(0usize, |n, c| n.saturating_add(c.plain_text.len()))
+                > 16 << 20
+        {
+            return Err("vocabulary-examples-unavailable");
+        }
+        let mut indices = Vec::new();
+        for (i, cue) in cues.iter().enumerate() {
+            if cue.plain_text.trim().is_empty() {
+                continue;
+            }
+            let words = self
+                .get(&cue.plain_text)
+                .ok_or("vocabulary-examples-unavailable")?;
+            if words.iter().any(|w| {
+                w.headword
+                    .as_ref()
+                    .is_some_and(|h| h.expression == expression && h.reading == reading)
+            }) {
+                indices.push(i);
+            }
+        }
+        Ok(indices)
+    }
+
     /// The headwords of the cards made (from the library).
     pub fn set_mined(&mut self, expressions: HashSet<String>) {
         self.revision += 1;
@@ -469,6 +503,37 @@ mod tests {
                 reading: r.into(),
             }),
         }
+    }
+
+    // T-KNW-037: inflections match headword identities; different readings and unsplit cues do not guess.
+    #[test]
+    fn examples_use_segmented_identities_and_reject_partial_segmentation() {
+        let mut words = Words::default();
+        let cues = nikomiru_subs::parse(nikomiru_subs::Format::Srt, "1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べる\n\n3\n00:00:05,000 --> 00:00:06,000\n猫\n").cues;
+        assert!(words.examples(&cues, "食べる", "たべる").is_err());
+        for cue in &cues {
+            let text = &cue.plain_text;
+            let head = if text == "猫" {
+                ("猫", "ねこ")
+            } else {
+                ("食べる", "たべる")
+            };
+            words.done(
+                0,
+                text.clone(),
+                Ok(vec![word(text, 0..text.len(), Some(head))]),
+            );
+        }
+        assert_eq!(words.examples(&cues, "食べる", "たべる").unwrap(), [0, 1]);
+        assert!(
+            words
+                .examples(&cues, "食べる", "other reading")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(words.examples(&cues, "食べ", "たべる").unwrap().is_empty());
+        words.forget();
+        assert!(words.examples(&cues, "食べる", "たべる").is_err());
     }
 
     /// `「猫が食べた」`, split as the dictionaries would.

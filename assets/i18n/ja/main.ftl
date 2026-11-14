@@ -1135,3 +1135,7 @@ vocabulary-selected-words = 選択した語数
 vocabulary-occurrences = 出現回数
 
 vocabulary-lookup = 辞書で調べる
+
+vocabulary-examples = 字幕内の用例
+vocabulary-examples-clear = 用例フィルターを解除
+vocabulary-examples-unavailable = 現在の字幕の解析が完了するまで用例は利用できません。

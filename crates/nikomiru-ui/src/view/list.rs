@@ -122,6 +122,8 @@ pub(crate) struct StudyLabels {
     from_here: String,
     to_here: String,
     reset_window: String,
+    examples: String,
+    clear_examples: String,
 }
 
 impl StudyLabels {
@@ -143,6 +145,8 @@ impl StudyLabels {
             from_here: tr("sub-window-from", &[]),
             to_here: tr("sub-window-to", &[]),
             reset_window: tr("sub-window-reset", &[]),
+            examples: tr("vocabulary-examples", &[]),
+            clear_examples: tr("vocabulary-examples-clear", &[]),
         }
     }
 }
@@ -156,6 +160,7 @@ pub(crate) struct State {
     selection_version: Option<u64>,
     copied: Option<bool>,
     window: TimeWindow,
+    last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
     /// The search field had the keyboard in the last frame.
@@ -201,6 +206,7 @@ pub(crate) struct Scene<'a> {
     pub reading_cancel: String,
     pub export_ready: bool,
     pub bilingual_ready: bool,
+    pub concordance: Option<&'a crate::subtitle_study::Concordance>,
     pub export_label: String,
     pub study: StudyLabels,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
@@ -362,9 +368,13 @@ pub(crate) fn show(
     let words = s.word_list();
     let coloured = s.word_colors_on();
     let ticked = state.words.ticked.len();
+    let mut word_labels =
+        super::word_list::Labels::translated(&|key, args| s.translator().tr(key, args), ticked);
+    word_labels.examples = Some(tr("vocabulary-examples"));
     let scene = Scene {
         timeline: s.subs.timeline(),
         version: s.sub_list_version,
+        concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         title: tr("subtitle-list"),
         score: score_line(s),
@@ -384,10 +394,7 @@ pub(crate) fn show(
         ],
         marks_version: s.words_revision(),
         words: words.as_deref().map(Vec::as_slice),
-        word_labels: super::word_list::Labels::translated(
-            &|key, args| s.translator().tr(key, args),
-            ticked,
-        ),
+        word_labels,
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         marks: &marks,
@@ -433,6 +440,15 @@ pub(crate) fn draw(
         state.copied = None;
         state.window = TimeWindow::default();
         state.selection_version = Some(scene.version);
+    }
+    let key = scene.concordance.map(|c| (c.key.clone(), c.revision));
+    if key != state.last_concordance {
+        if key.is_some() {
+            state.words_tab = false;
+            state.query.clear();
+        }
+        state.rows.picked = None;
+        state.last_concordance = key;
     }
     let screen = ctx.content_rect();
     let width = scene.width.min(0.6 * screen.width());
@@ -501,6 +517,14 @@ pub(crate) fn draw(
                             }
                         });
                     }
+                    if let Some(c) = scene.concordance {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("{}: {}", scene.study.examples, c.label));
+                            if ui.button(&scene.study.clear_examples).clicked() {
+                                out.push(Command::SubtitleExamplesClear);
+                            }
+                        });
+                    }
                     open &= search(ui, state, search_focus, &scene.search_hint);
                     if scene.tabs.is_some() && state.words_tab {
                         if let Some(all) = scene.words {
@@ -565,8 +589,11 @@ fn pick_indices(
         .cues()
         .iter()
         .enumerate()
-        .filter(|(_, cue)| {
-            window.keeps(cue, scene.timeline.delay_ms)
+        .filter(|(i, cue)| {
+            scene
+                .concordance
+                .is_none_or(|c| c.indices.binary_search(i).is_ok())
+                && window.keeps(cue, scene.timeline.delay_ms)
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
@@ -894,6 +921,7 @@ mod tests {
 
     struct Test {
         timeline: Timeline,
+        concordance: Option<crate::subtitle_study::Concordance>,
         pos_ms: i64,
         state: State,
         focus: bool,
@@ -1031,6 +1059,42 @@ mod tests {
         assert_eq!(h.state().state.window, TimeWindow::default());
     }
 
+    // T-KNW-037: entering examples switches tabs, clears the word query and scopes original rows.
+    #[test]
+    fn concordance_scopes_lines_and_can_be_cleared() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "猫"), (3000, "食べた"), (6000, "犬")]),
+            0,
+            false,
+        );
+        h.run();
+        h.state_mut().state.words_tab = true;
+        h.state_mut().state.query = "たべる".into();
+        h.state_mut().concordance = Some(crate::subtitle_study::Concordance {
+            key: "食べる\nたべる".into(),
+            label: "食べる".into(),
+            indices: vec![1],
+            version: 1,
+            revision: 7,
+        });
+        h.run();
+        assert!(!h.state().state.words_tab);
+        assert!(h.state().state.query.is_empty());
+        assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("vocabulary-examples-clear").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SubtitleExamplesClear))
+        );
+        h.state_mut().concordance = None;
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
         let srt: String = cues
             .iter()
@@ -1070,6 +1134,7 @@ mod tests {
                     let scene = Scene {
                         timeline: &t.timeline,
                         version: 1,
+                        concordance: t.concordance.as_ref(),
                         pos_ms: t.pos_ms,
                         export_ready: !t.timeline.cues().is_empty(),
                         bilingual_ready: !t.timeline.cues().is_empty(),
@@ -1119,6 +1184,7 @@ mod tests {
                 },
                 Test {
                     timeline,
+                    concordance: None,
                     pos_ms,
                     state: State::default(),
                     focus,
