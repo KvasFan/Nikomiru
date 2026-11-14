@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Select subtitle lines across filters and export the selected complete timeline as SRT with the current delay (SUB-035, M46).
+
 - The setup assistant can install selected FFmpeg/ffprobe, yt-dlp and its Deno runtime, plus the local OCR model. Downloads are pinned and verified for Linux/Windows x86_64/ARM64, existing tools are reused, and configured paths take effect immediately (INS-007, M45).
 
 ## [2.53.0] - 2026-11-14

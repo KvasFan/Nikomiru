@@ -1172,6 +1172,116 @@ and final batch regression.
 
 ---
 
+## Next ten milestones — M46…M55 (2026-11-14)
+
+The maintainer requested another consecutive batch after M45. Continue the
+subtitle/study priority (D-63), without a new request between milestones.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M46 | Selected subtitle SRT | done |
+| M47 | Copy subtitle transcripts | not started |
+| M48 | WebVTT subtitle export | not started |
+| M49 | Bilingual study transcript | not started |
+| M50 | Subtitle study time window | not started |
+| M51 | Vocabulary frequency ranges | not started |
+| M52 | Vocabulary coverage summary | not started |
+| M53 | Dictionary lookup from study vocabulary | not started |
+| M54 | Subtitle word concordance | not started |
+| M55 | Study frequency dictionary export | not started |
+
+## M46 — Selected subtitle SRT
+
+**Requirements**: SUB-035.
+
+The subtitle list offers explicit per-cue selection, Select shown and Clear selection. Selections survive search/filter changes and retain original cue indices, but reset on any primary timeline version change. Export selected as SRT captures the selection, primary delay and complete text before the save dialog; hidden selections are included in timeline order. Partial OCR, empty selections, stale versions and invalid indices cannot export. Reuse SUB-034 bounds and atomic save, without changing playback, cue text or lookup targets.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M47 — Copy subtitle transcripts
+
+**Requirements**: SUB-036.
+
+Copy shown and Copy selected in the subtitle list write a bounded UTF-8 TSV snapshot with start_ms, end_ms and plain text, applying the primary delay and spreadsheet/control-character neutralisation. Only explicit clicks copy; selection is preserved and hidden selected cues remain included. Invalid/empty/partial snapshots report a translated outcome and produce no clipboard output. No file, status or playback changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M48 — WebVTT subtitle export
+
+**Requirements**: SUB-037.
+
+The subtitle list can export shown or selected complete primary cues as portable WebVTT. Capture indices, delay and text at the click, clip negative intervals as SUB-034, escape markup and preserve Unicode, multiline text and overlaps; remove structural blank-line/cue injection. Native save defaults to .vtt and writes atomically under the shared 100,000-cue/16 MiB bounds.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M49 — Bilingual study transcript
+
+**Requirements**: SUB-038.
+
+The subtitle list exports shown or selected primary cues as UTF-8 TSV with effective start_ms/end_ms, primary and secondary text. Each complete primary cue is paired with all distinct secondary texts whose effective intervals overlap positively after each track’s independent delay. Retain unmatched primary rows with blank secondary text. Both timelines must be complete, secondary text must exist, and pairing/output work is bounded; snapshot before save, spreadsheet-safe atomic output, no source or playback changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M50 — Subtitle study time window
+
+**Requirements**: SUB-039.
+
+The subtitle list offers optional From and To playback-time bounds, populated from the current playback position, plus reset. Keep cues with positive overlap with the inclusive-start/exclusive-end window after the primary delay, alongside existing text/new-word filters. Invalid/empty windows show no cues; selections hidden by a window survive. New timeline versions reset the window and selection. Copy/export shown follows the same window; controls do not seek or change media.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M51 — Vocabulary frequency ranges
+
+**Requirements**: KNW-034.
+
+All shared study vocabulary views offer minimum and optional maximum occurrence counts, combined with search/status/card/order filters. Bounds apply to shown rows, Select shown and shown copy/export, while hidden ticks stay selected for explicit selected actions. Empty/inverted ranges show no rows; changing the range never changes counts, statuses or starts an analysis. Reset removes both bounds.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M52 — Vocabulary coverage summary
+
+**Requirements**: KNW-035.
+
+Every shared vocabulary view reports shown distinct words, shown occurrence tokens and their share of all analysed tokens, plus selected distinct words/tokens including hidden selections. Compute from original count values with overflow-safe arithmetic; empty denominators are explicitly unavailable. Update with every view/selection/status change and do not reinterpret distinct words as tokens or trigger analyses.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M53 — Dictionary lookup from study vocabulary
+
+**Requirements**: KNW-036.
+
+Every shared vocabulary row offers an explicitly labelled dictionary lookup. Open the existing root popup for that row’s expression, without an unrelated subtitle/book cue or automatic mining action; keep its study view, filters and ticks. Lookups run on the existing asynchronous dictionary service, retain normal popup privacy/pause behavior and work before any video or book is opened.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M54 — Subtitle word concordance
+
+**Requirements**: KNW-037.
+
+The current primary subtitle vocabulary offers Examples for a word. Match exact segmented headword/reading identities, including inflected surface forms, against the complete current primary timeline; do not use a substring guess. Show matching original cues in the Lines tab with ordinary seek and lookup, combined with existing filters and export/copy selection. The filter can be cleared, and source/dictionary/status-analysis invalidation rejects stale concordances. Unavailable segmentation is explicit; no implicit playback, status or encounter changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M55 — Study frequency dictionary export
+
+**Requirements**: KNW-038.
+
+Study vocabulary views export currently shown or explicitly selected rows as a complete Yomitan v3 frequency dictionary ZIP, index.json plus term_meta_bank_1.json. Counts use occurrence-based mode and preserve separate readings, Unicode and exact positive counts independently of display order; duplicates/invalid identities and oversized input/output fail closed. Title identifies the source study list, save is a frozen bounded snapshot and atomic, and export does not install the dictionary or change statuses. Reimport with the existing importer must preserve the exported frequencies.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
 These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:

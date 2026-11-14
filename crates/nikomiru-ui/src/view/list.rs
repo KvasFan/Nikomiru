@@ -8,6 +8,7 @@
 //! A film has a few thousand cues: their heights are measured once per list,
 //! query and width, and only the rows in view are laid out and drawn.
 
+use std::collections::BTreeSet;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -53,7 +54,7 @@ impl Sizes {
             text,
             time: 14.0 * k,
             time_width: 52.0 * k,
-            text_x: 52.0 * k + 10.0,
+            text_x: 52.0 * k + 32.0,
         }
     }
 }
@@ -102,11 +103,34 @@ struct Rows {
     tops: Vec<f32>,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct StudyLabels {
+    tools: String,
+    select_shown: String,
+    clear: String,
+    export_selected: String,
+    select_line: String,
+}
+
+impl StudyLabels {
+    fn translated(tr: &super::popups::Translate<'_>) -> Self {
+        Self {
+            tools: tr("sub-study-tools", &[]),
+            select_shown: tr("sub-select-shown", &[]),
+            clear: tr("sub-selection-clear", &[]),
+            export_selected: tr("sub-export-selected", &[]),
+            select_line: tr("sub-select-line", &[]),
+        }
+    }
+}
+
 /// What the list keeps between frames.
 #[derive(Debug, Default)]
 pub(crate) struct State {
     query: String,
     rows: Rows,
+    selected: BTreeSet<usize>,
+    selection_version: Option<u64>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
     /// The search field had the keyboard in the last frame.
@@ -152,6 +176,7 @@ pub(crate) struct Scene<'a> {
     pub reading_cancel: String,
     pub export_ready: bool,
     pub export_label: String,
+    pub study: StudyLabels,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
     /// the words once all lines are split.
     pub tabs: Option<(String, String)>,
@@ -336,6 +361,7 @@ pub(crate) fn show(
         reading_cancel: tr("sub-reading-cancel"),
         export_ready: s.subtitle_export_ready(),
         export_label: tr("sub-export"),
+        study: StudyLabels::translated(&|key, args| s.translator().tr(key, args)),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
         filters: [
             tr("subtitle-lines-all"),
@@ -388,6 +414,10 @@ pub(crate) fn draw(
     bar_height: f32,
     out: &mut Vec<Command>,
 ) -> bool {
+    if state.selection_version != Some(scene.version) {
+        state.selected.clear();
+        state.selection_version = Some(scene.version);
+    }
     let screen = ctx.content_rect();
     let width = scene.width.min(0.6 * screen.width());
     let height = (screen.height() - bar_height).max(0.0);
@@ -469,6 +499,7 @@ pub(crate) fn draw(
                             );
                         }
                     } else {
+                        study_tools(ui, scene, state, out);
                         rows(ui, scene, state, out);
                     }
                 });
@@ -504,6 +535,55 @@ fn search(ui: &mut egui::Ui, state: &mut State, focus: &mut bool, hint: &str) ->
     }
     state.search_focused = field.response.has_focus();
     open
+}
+
+fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
+    let query = nikomiru_text::search::Query::new(&state.query);
+    scene
+        .timeline
+        .cues()
+        .iter()
+        .enumerate()
+        .filter(|(_, cue)| {
+            query.matches(&[&cue.plain_text])
+                && (scene.tabs.is_none()
+                    || state.filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    egui::CollapsingHeader::new(&scene.study.tools)
+        .id_salt("subtitle-study-tools")
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(&scene.study.select_shown).clicked() {
+                    state.selected.extend(shown_indices(scene, state));
+                }
+                if ui
+                    .add_enabled(
+                        !state.selected.is_empty(),
+                        egui::Button::new(&scene.study.clear),
+                    )
+                    .clicked()
+                {
+                    state.selected.clear();
+                }
+                if ui
+                    .add_enabled(
+                        scene.export_ready && !state.selected.is_empty(),
+                        egui::Button::new(&scene.study.export_selected),
+                    )
+                    .clicked()
+                {
+                    out.push(Command::SubtitleRowsExport {
+                        version: scene.version,
+                        indices: state.selected.iter().copied().collect(),
+                    });
+                }
+            });
+        });
 }
 
 fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
@@ -546,10 +626,31 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 }
                 let id = Id::unique(("subtitle-list-row", cue));
 
+                let mut selected = state.selected.contains(&cue);
+                let check = ui.put(
+                    Rect::from_min_size(rect.min + vec2(PAD, PAD), vec2(18.0, 18.0)),
+                    egui::Checkbox::new(&mut selected, ""),
+                );
+                check.widget_info(|| {
+                    WidgetInfo::selected(
+                        Role::CheckBox,
+                        true,
+                        selected,
+                        format!("{} {}", scene.study.select_line, cue + 1),
+                    )
+                });
+                if check.changed() {
+                    if selected {
+                        state.selected.insert(cue);
+                    } else {
+                        state.selected.remove(&cue);
+                    }
+                }
+
                 let start = timeline.start_pos(cue);
                 let time: Arc<Galley> = painter.layout_job(time_job(start, sizes.time));
                 let time_rect = Rect::from_min_size(
-                    rect.min + vec2(PAD, PAD),
+                    rect.min + vec2(PAD + 22.0, PAD),
                     vec2(sizes.time_width, time.size().y),
                 );
                 painter.galley(time_rect.min, Arc::clone(&time), TIME);
@@ -661,6 +762,29 @@ mod tests {
         tabs: bool,
     }
 
+    // T-SUB-035: hidden selections keep original indices and exports are explicit.
+    #[test]
+    fn selected_rows_survive_search_and_export_original_indices() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.get_by_label("sub-select-line 2").click();
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-export-selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(
+            |c| matches!(c, Command::SubtitleRowsExport { version: 1, indices } if indices == &[1])
+        ));
+        h.get_by_label("sub-selection-clear").click();
+        h.run();
+        assert!(h.state().state.selected.is_empty());
+    }
+
     fn timeline(cues: &[(i64, &str)]) -> Timeline {
         let srt: String = cues
             .iter()
@@ -703,6 +827,7 @@ mod tests {
                         pos_ms: t.pos_ms,
                         export_ready: !t.timeline.cues().is_empty(),
                         export_label: "Export SRT".into(),
+                        study: StudyLabels::translated(&|key, _| key.to_string()),
                         reading: None,
                         reading_cancel: "Cancel reading".into(),
                         title: "Subtitle list".into(),

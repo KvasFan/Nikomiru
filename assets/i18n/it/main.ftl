@@ -1120,3 +1120,10 @@ setup-tool-space = Spazio libero insufficiente per l’installazione.
 setup-tool-dependency = Impossibile installare un componente richiesto.
 setup-tool-failed = Installazione non riuscita: { $reason }
 settings-deno = Eseguibile o cartella di Deno
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = Strumenti di studio
+sub-select-shown = Seleziona righe visibili
+sub-selection-clear = Svuota selezione righe
+sub-export-selected = Esporta righe selezionate come SRT…
+sub-select-line = Seleziona riga

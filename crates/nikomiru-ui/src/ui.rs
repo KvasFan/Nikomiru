@@ -571,6 +571,11 @@ pub(crate) enum Command {
     GraphicReadCancel,
     /// Export current complete text subtitles as SRT.
     SubtitleExport,
+    /// Export explicitly selected original subtitle cues.
+    SubtitleRowsExport {
+        version: u64,
+        indices: Vec<usize>,
+    },
     /// Export a captured completed-analysis summary.
     StudyReport(crate::study_report::Scope),
     /// "Open" with a web page's address on the Books page (WEB-001).
@@ -1529,6 +1534,11 @@ impl Ui {
             Command::StudyReport(scope) => {
                 if s.study_report_prepare(scope) {
                     self.view.dialog = Some(Dialog::StudyReport);
+                }
+            }
+            Command::SubtitleRowsExport { version, indices } => {
+                if s.subtitle_selected_prepare(version, &indices) {
+                    self.view.dialog = Some(Dialog::SubtitleExport);
                 }
             }
             Command::SubtitleExport => {

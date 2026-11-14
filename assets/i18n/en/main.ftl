@@ -1120,3 +1120,10 @@ setup-tool-space = Not enough free disk space for installation.
 setup-tool-dependency = A required component could not be installed.
 setup-tool-failed = Installation failed: { $reason }
 settings-deno = Deno executable or folder
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = Study tools
+sub-select-shown = Select shown lines
+sub-selection-clear = Clear line selection
+sub-export-selected = Export selected lines as SRT…
+sub-select-line = Select line

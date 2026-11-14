@@ -1103,3 +1103,10 @@ setup-tool-space = インストールに必要な空き容量がありません�
 setup-tool-dependency = 必要なコンポーネントをインストールできませんでした。
 setup-tool-failed = インストールに失敗しました: { $reason }
 settings-deno = Deno の実行ファイルまたはフォルダー
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = 学習ツール
+sub-select-shown = 表示中の行を選択
+sub-selection-clear = 行の選択を解除
+sub-export-selected = 選択した行を SRT で保存…
+sub-select-line = 行を選択

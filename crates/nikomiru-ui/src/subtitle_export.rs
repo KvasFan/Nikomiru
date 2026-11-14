@@ -38,9 +38,74 @@ pub fn srt(
     Ok(text)
 }
 
+/// Selected original cue indices, deduplicated and emitted in timeline order.
+pub fn selected_srt(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let selected = selected(cues, indices, complete)?;
+    srt(&selected, delay_ms, true)
+}
+
+/// A bounded selection snapshot; an invalid index rejects the whole request.
+pub fn selected(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    complete: bool,
+) -> Result<Vec<nikomiru_subs::Cue>, &'static str> {
+    if !complete || indices.is_empty() {
+        return Err("sub-export-unavailable");
+    }
+    if indices.len() > 100_000 {
+        return Err("sub-export-too-large");
+    }
+    let indices: std::collections::BTreeSet<_> = indices.iter().copied().collect();
+    let mut bytes = 0usize;
+    indices
+        .into_iter()
+        .map(|i| {
+            let cue = cues.get(i).ok_or("sub-export-unavailable")?;
+            bytes = bytes.saturating_add(cue.plain_text.len());
+            if bytes > 16 << 20 {
+                return Err("sub-export-too-large");
+            }
+            Ok(cue.clone())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-035: original indices retain chronology; stale/invalid/partial selections fail closed.
+    #[test]
+    fn selected_exports_keep_original_cues_and_reject_invalid_indices() {
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n",
+        )
+        .cues;
+        let text = selected_srt(&cues, &[1, 0, 1], 500, true).unwrap();
+        let parsed = nikomiru_subs::parse(nikomiru_subs::Format::Srt, &text);
+        assert_eq!(parsed.cues.len(), 2);
+        assert_eq!(parsed.cues[0].plain_text, "猫");
+        assert_eq!(parsed.cues[1].start_ms, 3500);
+        assert_eq!(
+            selected_srt(&cues, &[0, 9], 0, true),
+            Err("sub-export-unavailable")
+        );
+        assert_eq!(
+            selected_srt(&cues, &[0], 0, false),
+            Err("sub-export-unavailable")
+        );
+        assert_eq!(
+            selected_srt(&cues, &[], 0, true),
+            Err("sub-export-unavailable")
+        );
+    }
+
     // T-SUB-034: plain complete snapshots preserve overlaps/lines and apply captured delay.
     #[test]
     fn export_applies_delay_clips_negative_intervals_and_rejects_partial_tracks() {
