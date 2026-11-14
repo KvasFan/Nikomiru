@@ -1180,3 +1180,7 @@ vocabulary-script-any = すべての文字種
 vocabulary-script-kanji = 漢字を含む
 vocabulary-script-kana = かなを含む
 vocabulary-script-latin = ラテン文字を含む
+
+vocabulary-length-min = 見出し語の最小文字数
+vocabulary-length-max = 見出し語の最大文字数
+vocabulary-length-reset = 文字数をリセット

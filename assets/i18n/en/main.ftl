@@ -1197,3 +1197,7 @@ vocabulary-script-any = Any script
 vocabulary-script-kanji = Contains kanji
 vocabulary-script-kana = Contains kana
 vocabulary-script-latin = Contains Latin letters
+
+vocabulary-length-min = Minimum headword length
+vocabulary-length-max = Maximum headword length
+vocabulary-length-reset = Reset length

@@ -1197,3 +1197,7 @@ vocabulary-script-any = Tutte le scritture
 vocabulary-script-kanji = Contiene kanji
 vocabulary-script-kana = Contiene kana
 vocabulary-script-latin = Contiene lettere latine
+
+vocabulary-length-min = Lunghezza minima della parola
+vocabulary-length-max = Lunghezza massima della parola
+vocabulary-length-reset = Azzera lunghezza

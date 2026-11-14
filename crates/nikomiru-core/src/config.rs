@@ -393,6 +393,10 @@ impl Default for SubtitlesConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StudyPreset {
+    /// Inclusive non-whitespace scalar minimum length.
+    pub min_length: usize,
+    /// Optional inclusive scalar maximum length.
+    pub max_length: Option<usize>,
     /// Any script, kanji, kana or Latin presence.
     pub script: u8,
     /// Unique display name.

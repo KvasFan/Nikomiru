@@ -34,6 +34,7 @@ pub(crate) struct Labels {
     pub preset_too_long: String,
     pub named: [String; 4],
     pub scripts: [String; 4],
+    pub lengths: [String; 3],
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -69,6 +70,12 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            lengths: [
+                "vocabulary-length-min",
+                "vocabulary-length-max",
+                "vocabulary-length-reset",
+            ]
+            .map(|k| tr(k, &[])),
             scripts: [
                 "vocabulary-script-any",
                 "vocabulary-script-kanji",
@@ -160,6 +167,8 @@ pub(crate) const STATUSES: [WordStatus; 4] = [
 pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
+    pub min_length: usize,
+    pub max_length: Option<usize>,
     pub script: u8,
     pub exact: bool,
     preset_name: String,
@@ -175,6 +184,8 @@ pub(crate) struct State {
 
 #[derive(Debug, Clone)]
 struct Preset {
+    min_length: usize,
+    max_length: Option<usize>,
     script: u8,
     query: String,
     new_only: bool,
@@ -193,6 +204,8 @@ impl Preset {
         Some(Self {
             query: query.to_string(),
             script: state.script,
+            min_length: state.min_length,
+            max_length: state.max_length,
             new_only: state.new_only,
             exact: state.exact,
             status: state.status,
@@ -205,6 +218,8 @@ impl Preset {
     fn apply(&self, query: &mut String, state: &mut State) {
         query.clone_from(&self.query);
         state.script = self.script;
+        state.min_length = self.min_length;
+        state.max_length = self.max_length;
         state.new_only = self.new_only;
         state.exact = self.exact;
         state.status = self.status;
@@ -249,6 +264,8 @@ fn named_presets(
             .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, &labels.named[1]));
             let snapshot = StudyPreset {
                 script: state.script,
+                min_length: state.min_length,
+                max_length: state.max_length,
                 name: state.preset_name.trim().to_string(),
                 query: query.clone(),
                 new_only: state.new_only,
@@ -287,6 +304,8 @@ fn named_presets(
                         Preset {
                             query: p.query.clone(),
                             script: p.script,
+                            min_length: p.min_length,
+                            max_length: p.max_length,
                             new_only: p.new_only,
                             exact: p.exact,
                             status: p.status.and_then(|i| STATUSES.get(usize::from(i)).copied()),
@@ -393,6 +412,10 @@ pub(crate) fn filtered<'a>(
             CardFilter::Any => true,
             CardFilter::With => w.card,
             CardFilter::Without => !w.card,
+        })
+        .filter(|w| {
+            let n = w.expression.chars().filter(|c| !c.is_whitespace()).count();
+            n >= state.min_length && state.max_length.is_none_or(|max| n <= max)
         })
         .filter(|w| script_keeps(state.script, &w.expression))
         .filter(|w| w.count >= state.min_count && state.max_count.is_none_or(|max| w.count <= max))
@@ -570,6 +593,27 @@ pub(crate) fn show(
             ui.selectable_value(&mut state.script, i as u8, label);
         }
     });
+    egui::CollapsingHeader::new(&labels.lengths[0])
+        .id_salt("vocabulary-length-tools")
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let label = ui.label(&labels.lengths[0]);
+                ui.add(egui::DragValue::new(&mut state.min_length).range(0..=4096))
+                    .labelled_by(label.id);
+                let mut bounded = state.max_length.is_some();
+                if ui.checkbox(&mut bounded, &labels.lengths[1]).changed() {
+                    state.max_length = bounded.then_some(8);
+                }
+                if let Some(max) = &mut state.max_length {
+                    ui.add(egui::DragValue::new(max).range(0..=4096))
+                        .on_hover_text(&labels.lengths[1]);
+                }
+                if ui.button(&labels.lengths[2]).clicked() {
+                    state.min_length = 0;
+                    state.max_length = None;
+                }
+            });
+        });
     let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
     ui.horizontal_wrapped(|ui| {
@@ -797,6 +841,8 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        lengths: ["Minimum length", "Maximum length", "Reset length"]
+                            .map(String::from),
                         scripts: ["Any script", "Kanji", "Kana", "Latin"].map(String::from),
                         exact: "Exact match".into(),
                         presets: "Session presets".into(),
@@ -1268,5 +1314,35 @@ mod tests {
         preset.apply(&mut String::new(), &mut state);
         assert_eq!(state.script, 2);
         assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
+    }
+    // T-KNW-043: inclusive Unicode scalar bounds, whitespace and reversed ranges.
+    #[test]
+    fn length_filters_count_unicode_scalars_and_round_trip_presets() {
+        let words = vec![
+            word("𠀀 A", "", 1, WordStatus::Unknown),
+            word("猫", "ねこ", 2, WordStatus::Known),
+        ];
+        let mut state = State {
+            min_length: 2,
+            max_length: Some(2),
+            ..Default::default()
+        };
+        assert_eq!(filtered(&words, "", &state)[0].expression, "𠀀 A");
+        let preset = Preset::capture("", &state).unwrap();
+        state.min_length = 0;
+        state.max_length = None;
+        preset.apply(&mut String::new(), &mut state);
+        assert_eq!((state.min_length, state.max_length), (2, Some(2)));
+        state.max_length = Some(1);
+        assert!(filtered(&words, "", &state).is_empty());
+        let mut h = harness();
+        h.state_mut().state.min_length = 2;
+        h.run();
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        h.get_by_label("Minimum length").click();
+        h.run();
+        h.get_by_label("Reset length").click();
+        h.run();
+        h.get_by_label("猫 ねこ");
     }
 }
