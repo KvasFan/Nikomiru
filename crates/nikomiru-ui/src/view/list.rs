@@ -133,6 +133,7 @@ pub(crate) struct StudyLabels {
     reset_window: String,
     examples: String,
     clear_examples: String,
+    mask_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
     min_speed: String,
@@ -152,6 +153,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            mask_labels: [
+                "sub-mask-text",
+                "sub-reveal-shown",
+                "sub-mask-again",
+                "sub-reveal-line",
+            ]
+            .map(|k| tr(k, &[])),
             duration_labels: [
                 "sub-duration-tools",
                 "sub-duration-min",
@@ -223,6 +231,8 @@ pub(crate) struct State {
     query: String,
     rows: Rows,
     selected: BTreeSet<usize>,
+    masked: bool,
+    revealed: BTreeSet<usize>,
     selection_revision: u64,
     metrics: Option<Metrics>,
     navigation: Option<(MetricKey, Option<crate::subtitle_study::Navigation>)>,
@@ -531,6 +541,7 @@ pub(crate) fn draw(
 ) -> bool {
     if state.selection_version != Some(scene.version) {
         state.selected.clear();
+        state.revealed.clear();
         state.selection_revision = state.selection_revision.wrapping_add(1);
         state.copied = None;
         state.window = TimeWindow::default();
@@ -816,6 +827,29 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
             matching_navigation(ui, scene, state, out);
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .checkbox(&mut state.masked, &scene.study.mask_labels[0])
+                    .changed()
+                {
+                    state.revealed.clear();
+                }
+                if ui
+                    .add_enabled(state.masked, egui::Button::new(&scene.study.mask_labels[1]))
+                    .clicked()
+                {
+                    state.revealed.extend(shown_indices(scene, state));
+                }
+                if ui
+                    .add_enabled(
+                        state.masked && !state.revealed.is_empty(),
+                        egui::Button::new(&scene.study.mask_labels[2]),
+                    )
+                    .clicked()
+                {
+                    state.revealed.clear();
+                }
+            });
             egui::CollapsingHeader::new(&scene.study.duration_labels[0])
                 .id_salt("subtitle-duration-tools")
                 .show(ui, |ui| {
@@ -1142,12 +1176,18 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     out.push(Command::ListTime(cue));
                 }
 
-                let plain = &timeline.cues()[cue].plain_text;
+                let hidden = state.masked && !state.revealed.contains(&cue);
+                let reveal = format!("{} {}", scene.study.mask_labels[3], cue + 1);
+                let plain = if hidden {
+                    &reveal
+                } else {
+                    &timeline.cues()[cue].plain_text
+                };
                 let text: Arc<Galley> = painter.layout_job(text_job(plain, text_width, sizes.text));
                 let at = rect.min + vec2(sizes.text_x, PAD);
                 let text_rect = Rect::from_min_size(at, text.size());
                 painter.galley(at, Arc::clone(&text), Color32::WHITE);
-                let marks = (scene.marks)(plain).unwrap_or_default();
+                let marks = if hidden { None } else { (scene.marks)(plain) }.unwrap_or_default();
                 let underlines: Vec<(Rect, crate::words::Underline)> = marks
                     .underlines()
                     .flat_map(|(bytes, why)| {
@@ -1181,7 +1221,12 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     .interact(text_rect, id.with("text"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand);
                 clicked.widget_info(|| WidgetInfo::labeled(Role::Button, true, plain));
+                if clicked.clicked() && hidden {
+                    state.revealed.insert(cue);
+                    ui.ctx().request_repaint();
+                }
                 if clicked.clicked()
+                    && !hidden
                     && let Some(pointer) = clicked.interact_pointer_pos()
                     && let Some(pos) = char_at(&text, pointer - at)
                 {
@@ -1400,6 +1445,47 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-045: hidden text never enters accessible labels/painted galleys or lookup commands.
+    #[test]
+    fn listening_mask_reveals_explicitly_and_resets_on_source_change() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "秘密の猫"), (3000, "秘密の犬")]),
+            0,
+            false,
+        );
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-mask-text").click();
+        h.run();
+        assert!(h.query_by_label("秘密の猫").is_none());
+        assert!(
+            h.state()
+                .state
+                .drawn
+                .iter()
+                .all(|r| !r.galley.text().contains("秘密"))
+        );
+        h.get_by_label("sub-reveal-line 1").click();
+        h.run();
+        h.get_by_label("秘密の猫");
+        assert!(h.query_by_label("秘密の犬").is_none());
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::ListText { .. }))
+        );
+        h.get_by_label("sub-reveal-shown").click();
+        h.run();
+        h.get_by_label("秘密の犬");
+        h.state_mut().state.selection_version = Some(0);
+        h.run();
+        assert!(h.query_by_label("秘密の猫").is_none());
+        assert!(h.state().state.revealed.is_empty());
     }
 
     // T-SUB-044: duration predicates update cached rows and the export snapshot scope.

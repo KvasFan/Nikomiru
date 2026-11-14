@@ -1189,3 +1189,8 @@ sub-duration-tools = 字幕の長さ
 sub-duration-min = 最短時間（ミリ秒）
 sub-duration-max = 最長時間（ミリ秒）
 sub-duration-reset = 時間条件をリセット
+
+sub-mask-text = 聞き取り練習のため字幕を隠す
+sub-reveal-shown = 表示範囲の字幕を開く
+sub-mask-again = 字幕を再び隠す
+sub-reveal-line = 字幕を開く

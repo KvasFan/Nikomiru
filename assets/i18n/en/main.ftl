@@ -1206,3 +1206,8 @@ sub-duration-tools = Cue duration
 sub-duration-min = Minimum duration (ms)
 sub-duration-max = Maximum duration (ms)
 sub-duration-reset = Reset duration
+
+sub-mask-text = Hide subtitle text for listening
+sub-reveal-shown = Reveal shown lines
+sub-mask-again = Hide revealed lines again
+sub-reveal-line = Reveal line

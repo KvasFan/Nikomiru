@@ -1206,3 +1206,8 @@ sub-duration-tools = Durata delle battute
 sub-duration-min = Durata minima (ms)
 sub-duration-max = Durata massima (ms)
 sub-duration-reset = Azzera durata
+
+sub-mask-text = Nascondi il testo per esercitare l’ascolto
+sub-reveal-shown = Mostra righe visibili
+sub-mask-again = Nascondi di nuovo le righe
+sub-reveal-line = Mostra riga

@@ -1437,7 +1437,7 @@ The maintainer authorises ten consecutive subtitle/study milestones and final Gi
 | M63 | KNW-042 | Vocabulary script filters | done |
 | M64 | KNW-043 | Vocabulary expression length | done |
 | M65 | SUB-044 | Subtitle duration filters | done |
-| M66 | SUB-045 | Listening text masking | planned |
+| M66 | SUB-045 | Listening text masking | done |
 | M67 | KNW-044 | Vocabulary from subtitle study scopes | planned |
 | M68 | SUB-046 | Bilingual HTML study sheets | planned |
 | M69 | SUB-047 | Subtitle range selection | planned |
