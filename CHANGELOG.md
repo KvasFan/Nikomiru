@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.80.0] - 2026-11-14
+
+Ten consecutive subtitle/study milestones (M62–M71) after source tag 2.70.0.
+
+### Added
+
 - Finite subtitle repetition (SUB-048, M71).
 
 - Vocabulary study batches (KNW-045, M70).

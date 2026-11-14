@@ -69,7 +69,7 @@
 
 ## What works today
 
-Published Linux binary packages are version 2.53.0. Source version 2.80.0 includes the selected-tool installer and subtitle/study milestones M45…M71; build from source to use them. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Published Linux binary packages are version 2.53.0. Source tag [v2.80.0](https://github.com/KvasFan/Nikomiru/tree/v2.80.0) includes the selected-tool installer and subtitle/study milestones M45…M71; build from source to use them. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|

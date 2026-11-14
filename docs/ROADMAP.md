@@ -1443,3 +1443,5 @@ The maintainer authorises ten consecutive subtitle/study milestones and final Gi
 | M69 | SUB-047 | Subtitle range selection | done |
 | M70 | KNW-045 | Vocabulary study batches | done |
 | M71 | SUB-048 | Finite subtitle repetition | done |
+
+M62–M71 are complete. Full regression passed 997 workspace/integration tests and 102 actual GUI cases; final cancellation guards passed fast CI and the targeted real-app suite. See [source QA 2.80.0](qa/2.80.0.md).

@@ -282,6 +282,15 @@ fn finite_cue_repetition_stops_and_cancels_in_the_real_player() {
     h.state_until("explicit stop pauses", |s| {
         s["subtitle_study"]["practice_remaining"].is_null() && s["paused"] == true
     });
+    // T-SUB-048: held speed takes a separate shortcut path and also cancels practice.
+    h.cmd(json!({"cmd":"practice","cue":0,"passes":5}));
+    h.state_until("practice before held speed", |s| {
+        s["subtitle_study"]["practice_remaining"].is_u64()
+    });
+    h.key("KeyE");
+    h.state_until("held speed cancels", |s| {
+        s["subtitle_study"]["practice_remaining"].is_null()
+    });
     h.cmd(json!({"cmd":"practice","cue":0,"passes":5}));
     h.state_until("practice before timing change", |s| {
         s["subtitle_study"]["practice_remaining"].is_u64()

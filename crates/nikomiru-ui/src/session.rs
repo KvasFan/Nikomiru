@@ -336,7 +336,7 @@ struct LinkClip {
     load: Option<u64>,
 }
 
-/// The playback session.
+/// Retained counts and current row scores from a captured primary-cue scope.
 #[derive(Debug)]
 struct VocabularyScope {
     version: u64,
@@ -4827,6 +4827,9 @@ impl Session {
             return (UiEffect::None, true);
         }
         if action == Action::HoldSpeed {
+            if self.practice.is_some() {
+                self.end_replay();
+            }
             let normal = self.gap_speed.normal(self.view.speed);
             if let Some(speed) = self.hold.key_down(normal, auto_repeat) {
                 self.restore_gap_speed();
@@ -5137,6 +5140,9 @@ impl Session {
     /// close, since they looked up words of the cues that were (and replay or
     /// go to them).
     fn cues_changed(&mut self) {
+        if self.practice.is_some() {
+            self.end_replay();
+        }
         self.restore_gap_speed();
         self.sub_list_version += 1;
         self.update_auto_pause();
@@ -5472,6 +5478,9 @@ impl Session {
     }
 
     fn progress_changed(&mut self) {
+        if self.practice.is_some() {
+            self.end_replay();
+        }
         self.restore_gap_speed();
         self.sub_list_version += 1;
         self.update_auto_pause();
