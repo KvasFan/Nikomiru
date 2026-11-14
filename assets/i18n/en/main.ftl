@@ -1243,3 +1243,7 @@ sub-text-max = Maximum characters
 sub-text-reset = Reset character bounds
 
 sub-unique-captions = First occurrence of each caption only
+
+sub-shape-any = Any line structure
+sub-shape-single = Single-line captions
+sub-shape-multiple = Multiline captions

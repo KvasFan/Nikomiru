@@ -24,7 +24,7 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
-use crate::subtitle_study::{DurationBounds, ReadingSpeed, TextLength, TimeWindow};
+use crate::subtitle_study::{DurationBounds, LineShape, ReadingSpeed, TextLength, TimeWindow};
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -93,6 +93,7 @@ struct Scope {
     duration: DurationBounds,
     text_length: TextLength,
     unique: bool,
+    shape: LineShape,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -141,6 +142,7 @@ pub(crate) struct StudyLabels {
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
+    shapes: [String; 3],
     unique_label: String,
     text_labels: [String; 4],
     duration_labels: [String; 4],
@@ -162,6 +164,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            shapes: ["sub-shape-any", "sub-shape-single", "sub-shape-multiple"].map(|k| tr(k, &[])),
             unique_label: tr("sub-unique-captions", &[]),
             text_labels: [
                 "sub-text-tools",
@@ -276,6 +279,7 @@ pub(crate) struct State {
     duration: DurationBounds,
     text_length: TextLength,
     unique: bool,
+    shape: LineShape,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -593,6 +597,7 @@ pub(crate) fn draw(
         state.duration = DurationBounds::default();
         state.text_length = TextLength::default();
         state.unique = false;
+        state.shape = LineShape::default();
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -757,6 +762,7 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 && scope.speed.keeps(cue)
                 && scope.duration.keeps(cue)
                 && scope.text_length.keeps(&cue.plain_text)
+                && scope.shape.keeps(&cue.plain_text)
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
@@ -784,6 +790,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             duration: state.duration,
             text_length: state.text_length,
             unique: state.unique,
+            shape: state.shape,
         },
     )
 }
@@ -801,6 +808,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             duration: state.duration,
             text_length: state.text_length,
             unique: state.unique,
+            shape: state.shape,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -1018,6 +1026,15 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                 .id_salt("subtitle-text-filters")
                 .show(ui, |ui| {
                     ui.checkbox(&mut state.unique, &scene.study.unique_label);
+                    ui.horizontal_wrapped(|ui| {
+                        for (shape, label) in
+                            [LineShape::Any, LineShape::Single, LineShape::Multiple]
+                                .into_iter()
+                                .zip(&scene.study.shapes)
+                        {
+                            ui.selectable_value(&mut state.shape, shape, label);
+                        }
+                    });
                     ui.horizontal_wrapped(|ui| {
                         let mut min = state.text_length.min.is_some();
                         if ui.checkbox(&mut min, &scene.study.text_labels[1]).changed() {
@@ -1337,6 +1354,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     duration: state.duration,
                     text_length: state.text_length,
                     unique: state.unique,
+                    shape: state.shape,
                 },
                 width,
             );
@@ -1674,6 +1692,26 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-051: shape changes invalidate rows and keep hidden selections.
+    #[test]
+    fn multiline_scope_composes_with_other_filters() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "猫\n犬")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(0);
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-text-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-shape-multiple").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        h.state_mut().state.query = "鳥".into();
+        h.run();
+        assert!(h.state().state.rows.cues.is_empty());
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
     }
 
     // T-SUB-050: first occurrence is chosen after other filters, without rewriting original text/indices.

@@ -96,6 +96,33 @@ impl TextLength {
     }
 }
 
+/// Caption structure filter; whitespace-only lines do not count (SUB-051).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LineShape {
+    /// Keep every caption, including empty text.
+    #[default]
+    Any,
+    /// Exactly one nonempty text line.
+    Single,
+    /// At least two nonempty text lines.
+    Multiple,
+}
+impl LineShape {
+    /// Count only as far as the second nonempty line.
+    pub fn keeps(self, text: &str) -> bool {
+        let n = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .take(2)
+            .count();
+        match self {
+            Self::Any => true,
+            Self::Single => n == 1,
+            Self::Multiple => n == 2,
+        }
+    }
+}
+
 /// Metrics of a bounded subtitle study scope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Statistics {
@@ -252,6 +279,16 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-051: single/multiline structure ignores blank CRLF/Unicode whitespace lines.
+    #[test]
+    fn caption_structure_counts_nonempty_lines_only() {
+        assert!(LineShape::Any.keeps(""));
+        assert!(!LineShape::Single.keeps("\n　"));
+        assert!(LineShape::Single.keeps("\n猫\r\n\t"));
+        assert!(LineShape::Multiple.keeps("猫\r\n\n犬"));
+        assert!(!LineShape::Multiple.keeps("猫 犬"));
+    }
+
     // T-SUB-049: scalar rather than byte/grapheme bounds, whitespace and reversed ranges.
     #[test]
     fn text_length_bounds_are_inclusive_and_unicode_aware() {

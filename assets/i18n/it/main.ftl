@@ -1243,3 +1243,7 @@ sub-text-max = Caratteri massimi
 sub-text-reset = Azzera limiti di caratteri
 
 sub-unique-captions = Solo la prima occorrenza di ogni battuta
+
+sub-shape-any = Qualsiasi struttura
+sub-shape-single = Battute su una riga
+sub-shape-multiple = Battute su più righe

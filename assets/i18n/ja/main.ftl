@@ -1226,3 +1226,7 @@ sub-text-max = 最大文字数
 sub-text-reset = 文字数条件をリセット
 
 sub-unique-captions = 同じ字幕は最初の出現だけ表示
+
+sub-shape-any = 行数の指定なし
+sub-shape-single = 一行の字幕
+sub-shape-multiple = 複数行の字幕
