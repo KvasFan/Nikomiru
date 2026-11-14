@@ -91,6 +91,8 @@ pub enum Dialog {
     EncounterExport,
     /// Current complete primary text subtitles as SRT.
     SubtitleExport,
+    /// Complete selected primary text in WebVTT format.
+    SubtitleVtt,
     /// Completed comprehension summaries for a library view.
     StudyReport,
 }
@@ -203,6 +205,10 @@ impl FileDialog {
                 tr("encounter-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
             ),
+            Dialog::SubtitleVtt => (
+                tr("sub-vtt-shown"),
+                vec![(tr("sub-vtt-filter"), vec!["*.vtt"]), all],
+            ),
             Dialog::SubtitleExport => (
                 tr("sub-export"),
                 vec![(tr("sub-export-filter"), vec!["*.srt"]), all],
@@ -226,6 +232,7 @@ impl FileDialog {
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleVtt => Some("nikomiru-subtitles.vtt".into()),
                 Dialog::SubtitleExport => Some("nikomiru-subtitles.srt".into()),
                 Dialog::StudyReport => Some("nikomiru-comprehension.tsv".into()),
                 Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),

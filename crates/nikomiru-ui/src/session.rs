@@ -7204,16 +7204,22 @@ impl Session {
     }
 
     /// Freeze an explicitly selected complete timeline, rejecting old list commands.
-    pub fn subtitle_selected_prepare(&mut self, version: u64, indices: &[usize]) -> bool {
+    pub fn subtitle_selected_prepare(
+        &mut self,
+        version: u64,
+        indices: &[usize],
+        format: crate::subtitle_export::ExportFormat,
+    ) -> bool {
         self.subtitle_export = None;
         if version != self.sub_list_version {
             return false;
         }
-        match crate::subtitle_export::selected_srt(
+        match crate::subtitle_export::render(
             self.subs.timeline().cues(),
             indices,
             self.subs.timeline().delay_ms,
             !self.subs.incomplete,
+            format,
         ) {
             Ok(text) => {
                 self.subtitle_export = Some(text);

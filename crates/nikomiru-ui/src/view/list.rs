@@ -109,6 +109,8 @@ pub(crate) struct StudyLabels {
     select_shown: String,
     clear: String,
     export_selected: String,
+    vtt_shown: String,
+    vtt_selected: String,
     select_line: String,
     copy_shown: String,
     copy_selected: String,
@@ -123,6 +125,8 @@ impl StudyLabels {
             select_shown: tr("sub-select-shown", &[]),
             clear: tr("sub-selection-clear", &[]),
             export_selected: tr("sub-export-selected", &[]),
+            vtt_shown: tr("sub-vtt-shown", &[]),
+            vtt_selected: tr("sub-vtt-selected", &[]),
             select_line: tr("sub-select-line", &[]),
             copy_shown: tr("sub-copy-shown", &[]),
             copy_selected: tr("sub-copy-selected", &[]),
@@ -623,7 +627,35 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     out.push(Command::SubtitleRowsExport {
                         version: scene.version,
                         indices: state.selected.iter().copied().collect(),
+                        format: crate::subtitle_export::ExportFormat::Srt,
                     });
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for selected in [false, true] {
+                    let label = if selected {
+                        &scene.study.vtt_selected
+                    } else {
+                        &scene.study.vtt_shown
+                    };
+                    if ui
+                        .add_enabled(
+                            scene.export_ready && (!selected || !state.selected.is_empty()),
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        let indices = if selected {
+                            state.selected.iter().copied().collect()
+                        } else {
+                            shown_indices(scene, state)
+                        };
+                        out.push(Command::SubtitleRowsExport {
+                            version: scene.version,
+                            indices,
+                            format: crate::subtitle_export::ExportFormat::Vtt,
+                        });
+                    }
                 }
             });
             if let Some(ok) = state.copied {
@@ -828,7 +860,7 @@ mod tests {
         h.get_by_label("sub-export-selected").click();
         h.run();
         assert!(h.state().out.iter().any(
-            |c| matches!(c, Command::SubtitleRowsExport { version: 1, indices } if indices == &[1])
+            |c| matches!(c, Command::SubtitleRowsExport { version: 1, indices, .. } if indices == &[1])
         ));
         h.get_by_label("sub-selection-clear").click();
         h.run();
@@ -855,6 +887,26 @@ mod tests {
         h.step();
         assert!(h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(text) if text.contains("犬") && !text.contains("猫"))));
         assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+    }
+
+    // T-SUB-037: chosen WebVTT scopes carry original indices and the active timeline version.
+    #[test]
+    fn webvtt_actions_capture_the_requested_scope() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.get_by_label("sub-select-line 2").click();
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vtt-shown").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Vtt, .. } if indices == &[0])));
+        h.get_by_label("sub-vtt-selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Vtt, .. } if indices == &[1])));
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

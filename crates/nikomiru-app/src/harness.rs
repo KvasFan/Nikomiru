@@ -158,9 +158,17 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::study_report(text(command, "scope")?, text(command, "path")?)
                 .map(|()| Value::Null)
         }
-        Some("subtitle-export") => {
-            harness::subtitle_export(text(command, "path")?).map(|()| Value::Null)
-        }
+        Some("subtitle-export") => harness::subtitle_export(
+            text(command, "path")?,
+            command["indices"].as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().and_then(|n| usize::try_from(n).ok()))
+                    .collect()
+            }),
+            command["format"].as_str().unwrap_or("srt"),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
         Some("graphic-cancel") => harness::graphic_read_cancel().map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
         Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),

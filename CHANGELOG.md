@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Export shown or selected complete subtitle lines as escaped, portable WebVTT (SUB-037, M48).
+
 - Copy shown or selected subtitle transcripts as safe, timed TSV snapshots (SUB-036, M47).
 
 - Select subtitle lines across filters and export the selected complete timeline as SRT with the current delay (SUB-035, M46).

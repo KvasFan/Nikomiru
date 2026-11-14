@@ -575,6 +575,7 @@ pub(crate) enum Command {
     SubtitleRowsExport {
         version: u64,
         indices: Vec<usize>,
+        format: crate::subtitle_export::ExportFormat,
     },
     /// Export a captured completed-analysis summary.
     StudyReport(crate::study_report::Scope),
@@ -1021,7 +1022,9 @@ impl Ui {
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
                     Dialog::StudyReport => self.session.study_report_to(&path),
-                    Dialog::SubtitleExport => self.session.subtitle_export_to(&path),
+                    Dialog::SubtitleExport | Dialog::SubtitleVtt => {
+                        self.session.subtitle_export_to(&path)
+                    }
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
@@ -1536,9 +1539,16 @@ impl Ui {
                     self.view.dialog = Some(Dialog::StudyReport);
                 }
             }
-            Command::SubtitleRowsExport { version, indices } => {
-                if s.subtitle_selected_prepare(version, &indices) {
-                    self.view.dialog = Some(Dialog::SubtitleExport);
+            Command::SubtitleRowsExport {
+                version,
+                indices,
+                format,
+            } => {
+                if s.subtitle_selected_prepare(version, &indices, format) {
+                    self.view.dialog = Some(match format {
+                        crate::subtitle_export::ExportFormat::Srt => Dialog::SubtitleExport,
+                        crate::subtitle_export::ExportFormat::Vtt => Dialog::SubtitleVtt,
+                    });
                 }
             }
             Command::SubtitleExport => {

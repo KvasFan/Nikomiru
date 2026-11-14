@@ -1131,3 +1131,7 @@ sub-select-line = Select line
 sub-copy-shown = Copy shown transcript
 sub-copy-selected = Copy selected transcript
 sub-transcript-copied = Transcript copied
+
+sub-vtt-shown = Export shown as WebVTT…
+sub-vtt-selected = Export selected as WebVTT…
+sub-vtt-filter = WebVTT subtitles

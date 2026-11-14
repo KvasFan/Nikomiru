@@ -1181,7 +1181,7 @@ subtitle/study priority (D-63), without a new request between milestones.
 |---|---|---|
 | M46 | Selected subtitle SRT | done |
 | M47 | Copy subtitle transcripts | done |
-| M48 | WebVTT subtitle export | not started |
+| M48 | WebVTT subtitle export | done |
 | M49 | Bilingual study transcript | not started |
 | M50 | Subtitle study time window | not started |
 | M51 | Vocabulary frequency ranges | not started |

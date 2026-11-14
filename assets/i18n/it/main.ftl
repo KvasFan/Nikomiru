@@ -1131,3 +1131,7 @@ sub-select-line = Seleziona riga
 sub-copy-shown = Copia trascrizione visibile
 sub-copy-selected = Copia trascrizione selezionata
 sub-transcript-copied = Trascrizione copiata
+
+sub-vtt-shown = Esporta visibili come WebVTT…
+sub-vtt-selected = Esporta selezionate come WebVTT…
+sub-vtt-filter = Sottotitoli WebVTT

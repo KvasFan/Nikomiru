@@ -2,6 +2,81 @@
 
 //! Portable current-timeline snapshots (SUB-034).
 
+/// Portable text subtitle snapshot format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// SubRip.
+    Srt,
+    /// Web Video Text Tracks.
+    Vtt,
+}
+
+/// Render a selected snapshot with an explicitly chosen format.
+pub fn render(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    complete: bool,
+    format: ExportFormat,
+) -> Result<String, &'static str> {
+    match format {
+        ExportFormat::Srt => selected_srt(cues, indices, delay_ms, complete),
+        ExportFormat::Vtt => vtt(cues, indices, delay_ms, complete),
+    }
+}
+
+/// Escaped plain-text WebVTT, with structural blank lines removed from payloads.
+pub fn vtt(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let selected = selected(cues, indices, complete)?;
+    let mut out = String::from("WEBVTT\n\n");
+    let mut written = 0;
+    let clock = |ms: i64| {
+        format!(
+            "{:02}:{:02}:{:02}.{:03}",
+            ms / 3_600_000,
+            ms / 60_000 % 60,
+            ms / 1000 % 60,
+            ms % 1000
+        )
+    };
+    for cue in selected {
+        let start = cue.start_ms.saturating_add(delay_ms).max(0);
+        let end = cue.end_ms.saturating_add(delay_ms);
+        if end <= start || cue.plain_text.trim().is_empty() {
+            continue;
+        }
+        out.push_str(&format!("{} --> {}\n", clock(start), clock(end)));
+        for line in cue.plain_text.lines().filter(|l| !l.trim().is_empty()) {
+            for c in line.chars() {
+                match c {
+                    '&' => out.push_str("&amp;"),
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    _ => out.push(c),
+                }
+                if out.len() > 16 << 20 {
+                    return Err("sub-export-too-large");
+                }
+            }
+            out.push('\n');
+        }
+        out.push('\n');
+        written += 1;
+        if out.len() > 16 << 20 {
+            return Err("sub-export-too-large");
+        }
+    }
+    if written == 0 {
+        return Err("sub-export-unavailable");
+    }
+    Ok(out)
+}
+
 /// Plain SRT with the captured delay; no output for a partial/empty timeline.
 pub fn srt(
     cues: &[nikomiru_subs::Cue],
@@ -111,6 +186,29 @@ pub fn transcript(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-037: VTT round trips escaped Unicode/markup/overlaps without cue injection.
+    #[test]
+    fn webvtt_snapshots_are_portable_bounded_and_not_partial() {
+        let mut cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:03,000\n猫\n\n2\n00:00:02,000 --> 00:00:04,000\n犬\n",
+        )
+        .cues;
+        cues[0].plain_text = "<猫> & text\n\n00:00:09.000 --> 00:00:10.000\ninjected".into();
+        let text = vtt(&cues, &[1, 0, 1], -1500, true).unwrap();
+        let parsed = nikomiru_subs::parse(nikomiru_subs::Format::Vtt, &text);
+        assert_eq!(parsed.cues.len(), 2);
+        assert_eq!((parsed.cues[0].start_ms, parsed.cues[1].start_ms), (0, 500));
+        assert!(
+            parsed.cues[0]
+                .plain_text
+                .starts_with("<猫> & text\n00:00:09.000")
+        );
+        assert_eq!(vtt(&cues, &[0], 0, false), Err("sub-export-unavailable"));
+        cues[0].plain_text = "&".repeat(4 << 20);
+        assert_eq!(vtt(&cues, &[0], 0, true), Err("sub-export-too-large"));
+    }
+
     // T-SUB-036: one safe row per selected original cue, with effective times and all-or-nothing bounds.
     #[test]
     fn transcript_snapshot_preserves_timing_and_neutralises_fields() {

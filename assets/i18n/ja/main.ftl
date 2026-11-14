@@ -1114,3 +1114,7 @@ sub-select-line = 行を選択
 sub-copy-shown = 表示中の書き起こしをコピー
 sub-copy-selected = 選択した書き起こしをコピー
 sub-transcript-copied = 書き起こしをコピーしました
+
+sub-vtt-shown = 表示中の行を WebVTT で保存…
+sub-vtt-selected = 選択した行を WebVTT で保存…
+sub-vtt-filter = WebVTT 字幕

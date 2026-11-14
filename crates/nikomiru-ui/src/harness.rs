@@ -452,6 +452,7 @@ pub fn state() -> Result<Value, String> {
             "controls_visible": s.controls_visible(),
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
+                "version": s.sub_list_version,
                 "source": s.subs.source.as_ref().map(|x| x.key()),
                 "incomplete": s.subs.incomplete,
                 "read_progress": s.subs.read_progress,
@@ -1291,14 +1292,31 @@ pub fn graphic_read_cancel() -> Result<(), String> {
 }
 
 /// Native-save equivalent for current complete subtitle SRT (SUB-034).
-pub fn subtitle_export(path: &str) -> Result<(), String> {
+pub fn subtitle_export(
+    path: &str,
+    indices: Option<Vec<usize>>,
+    format: &str,
+    version: Option<u64>,
+) -> Result<(), String> {
     let path = PathBuf::from(path);
+    let format = match format {
+        "srt" => crate::subtitle_export::ExportFormat::Srt,
+        "vtt" => crate::subtitle_export::ExportFormat::Vtt,
+        _ => return Err("unknown subtitle format".into()),
+    };
     call(move |ui| {
-        if ui.session.subtitle_export_prepare() {
-            ui.handle(Inbound::Chosen {
-                dialog: crate::view::Dialog::SubtitleExport,
-                path,
-            });
+        let indices =
+            indices.unwrap_or_else(|| (0..ui.session.subs.timeline().cues().len()).collect());
+        let version = version.unwrap_or(ui.session.sub_list_version);
+        if ui
+            .session
+            .subtitle_selected_prepare(version, &indices, format)
+        {
+            let dialog = match format {
+                crate::subtitle_export::ExportFormat::Srt => crate::view::Dialog::SubtitleExport,
+                crate::subtitle_export::ExportFormat::Vtt => crate::view::Dialog::SubtitleVtt,
+            };
+            ui.handle(Inbound::Chosen { dialog, path });
         }
     })
 }
