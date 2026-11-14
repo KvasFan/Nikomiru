@@ -1203,3 +1203,5 @@ sub-html-shown = 表示範囲をHTML学習シートに出力
 sub-html-selected = 選択範囲をHTML学習シートに出力
 sub-html-translation = 翻訳を表示
 sub-html-filter = HTML学習シート
+
+sub-invert-shown = 表示範囲の選択を反転

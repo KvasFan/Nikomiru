@@ -1220,3 +1220,5 @@ sub-html-shown = Esporta righe visibili come scheda HTML
 sub-html-selected = Esporta selezione come scheda HTML
 sub-html-translation = Mostra traduzione
 sub-html-filter = Scheda di studio HTML
+
+sub-invert-shown = Inverti selezione delle righe visibili

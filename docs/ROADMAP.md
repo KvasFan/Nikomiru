@@ -1440,6 +1440,6 @@ The maintainer authorises ten consecutive subtitle/study milestones and final Gi
 | M66 | SUB-045 | Listening text masking | done |
 | M67 | KNW-044 | Vocabulary from subtitle study scopes | done |
 | M68 | SUB-046 | Bilingual HTML study sheets | done |
-| M69 | SUB-047 | Subtitle range selection | planned |
+| M69 | SUB-047 | Subtitle range selection | done |
 | M70 | KNW-045 | Vocabulary study batches | planned |
 | M71 | SUB-048 | Finite subtitle repetition | planned |

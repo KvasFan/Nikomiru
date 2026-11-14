@@ -114,6 +114,7 @@ struct Rows {
 #[derive(Debug, Default)]
 pub(crate) struct StudyLabels {
     tools: String,
+    invert_shown: String,
     select_shown: String,
     clear: String,
     export_selected: String,
@@ -177,6 +178,7 @@ impl StudyLabels {
             ]
             .map(|k| tr(k, &[])),
             select_shown: tr("sub-select-shown", &[]),
+            invert_shown: tr("sub-invert-shown", &[]),
             clear: tr("sub-selection-clear", &[]),
             export_selected: tr("sub-export-selected", &[]),
             vtt_shown: tr("sub-vtt-shown", &[]),
@@ -240,6 +242,7 @@ pub(crate) struct State {
     query: String,
     rows: Rows,
     selected: BTreeSet<usize>,
+    selection_anchor: Option<usize>,
     masked: bool,
     revealed: BTreeSet<usize>,
     selection_revision: u64,
@@ -553,6 +556,7 @@ pub(crate) fn draw(
 ) -> bool {
     if state.selection_version != Some(scene.version) {
         state.selected.clear();
+        state.selection_anchor = None;
         state.revealed.clear();
         state.selection_revision = state.selection_revision.wrapping_add(1);
         state.copied = None;
@@ -845,6 +849,37 @@ fn study_statistics(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
     }
 }
 
+// Range endpoints are original indices, but membership follows the shown order.
+fn select_range(
+    selected: &mut BTreeSet<usize>,
+    shown: &[usize],
+    anchor: &mut Option<usize>,
+    cue: usize,
+    checked: bool,
+    shift: bool,
+) {
+    let clicked = shown.iter().position(|i| *i == cue);
+    let previous = anchor.and_then(|a| shown.iter().position(|i| *i == a));
+    let range = match (shift, previous, clicked) {
+        (true, Some(a), Some(b)) => &shown[a.min(b)..=a.max(b)],
+        (_, _, Some(b)) => {
+            *anchor = Some(cue);
+            &shown[b..=b]
+        }
+        _ => {
+            *anchor = None;
+            return;
+        }
+    };
+    for &i in range {
+        if checked {
+            selected.insert(i);
+        } else {
+            selected.remove(&i);
+        }
+    }
+}
+
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
@@ -1004,6 +1039,15 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                 }
             });
             ui.horizontal_wrapped(|ui| {
+                if ui.button(&scene.study.invert_shown).clicked() {
+                    for i in shown_indices(scene, state) {
+                        if !state.selected.remove(&i) {
+                            state.selected.insert(i);
+                        }
+                    }
+                    state.selection_anchor = None;
+                    state.selection_revision = state.selection_revision.wrapping_add(1);
+                }
                 if ui.button(&scene.study.select_shown).clicked() {
                     state.selected.extend(shown_indices(scene, state));
                     state.selection_revision = state.selection_revision.wrapping_add(1);
@@ -1222,11 +1266,14 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 });
                 if check.changed() {
                     state.selection_revision = state.selection_revision.wrapping_add(1);
-                    if selected {
-                        state.selected.insert(cue);
-                    } else {
-                        state.selected.remove(&cue);
-                    }
+                    select_range(
+                        &mut state.selected,
+                        &rows.cues,
+                        &mut state.selection_anchor,
+                        cue,
+                        selected,
+                        ui.input(|i| i.modifiers.shift),
+                    );
                 }
 
                 let start = timeline.start_pos(cue);
@@ -1514,6 +1561,38 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-047: range order follows shown identities, retains hidden ticks and resets missing anchors.
+    #[test]
+    fn range_selection_uses_shown_order_and_inversion_preserves_hidden_ticks() {
+        use egui_kittest::kittest::Queryable;
+        let mut selected = BTreeSet::from([99]);
+        let mut anchor = Some(7);
+        select_range(&mut selected, &[7, 2, 9, 1], &mut anchor, 9, true, true);
+        assert_eq!(selected, BTreeSet::from([7, 2, 9, 99]));
+        select_range(&mut selected, &[7, 2, 9, 1], &mut anchor, 2, false, true);
+        assert_eq!(selected, BTreeSet::from([9, 99]));
+        select_range(&mut selected, &[4, 5], &mut anchor, 5, true, true);
+        assert_eq!(anchor, Some(5));
+        assert_eq!(selected, BTreeSet::from([5, 9, 99]));
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(1);
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-invert-shown").click();
+        h.run();
+        assert_eq!(h.state().state.selected, BTreeSet::from([0, 1]));
+        h.get_by_label("sub-invert-shown").click();
+        h.run();
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+        h.state_mut().state.selection_anchor = Some(1);
+        h.state_mut().state.selection_version = Some(0);
+        h.run();
+        assert_eq!(h.state().state.selection_anchor, None);
     }
 
     // T-KNW-044: scope requests freeze original filtered/selected indices without changing cue ticks.

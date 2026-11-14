@@ -1220,3 +1220,5 @@ sub-html-shown = Export shown as HTML study sheet
 sub-html-selected = Export selected as HTML study sheet
 sub-html-translation = Reveal translation
 sub-html-filter = HTML study sheet
+
+sub-invert-shown = Invert shown line selection
