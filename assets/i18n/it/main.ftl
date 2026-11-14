@@ -1262,3 +1262,8 @@ vocabulary-html-tools = Schede HTML del vocabolario
 vocabulary-html-shown = Esporta parole visibili in HTML
 vocabulary-html-selected = Esporta parole selezionate in HTML
 vocabulary-html-reading = Mostra lettura
+
+sub-context-exact = Solo esempi esatti
+sub-context-one = Una battuta di contesto
+sub-context-two = Due battute di contesto
+sub-context-hit = Esempio esatto della parola

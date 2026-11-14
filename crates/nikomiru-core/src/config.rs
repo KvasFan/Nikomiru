@@ -216,6 +216,8 @@ pub struct PlayerConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitleStudyPreset {
+    /// Neighbouring cues around exact examples, zero through two.
+    pub context: u8,
     /// Unique display name, at most 64 bytes.
     pub name: String,
     /// Search input, at most 4096 bytes.
@@ -251,6 +253,7 @@ impl SubtitleStudyPreset {
             && self.name.len() <= 64
             && !self.name.chars().any(char::is_control)
             && self.query.len() <= 4096
+            && self.context <= 2
             && self.filter < 3
             && self.shape < 3
     }

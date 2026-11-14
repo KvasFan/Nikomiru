@@ -94,6 +94,7 @@ struct Scope {
     text_length: TextLength,
     unique: bool,
     shape: LineShape,
+    context: u8,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -142,6 +143,7 @@ pub(crate) struct StudyLabels {
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
+    context_labels: [String; 4],
     shapes: [String; 3],
     unique_label: String,
     preset_labels: [String; 4],
@@ -165,6 +167,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            context_labels: [
+                "sub-context-exact",
+                "sub-context-one",
+                "sub-context-two",
+                "sub-context-hit",
+            ]
+            .map(|k| tr(k, &[])),
             preset_labels: [
                 "sub-presets",
                 "vocabulary-preset-name",
@@ -289,6 +298,7 @@ pub(crate) struct State {
     text_length: TextLength,
     unique: bool,
     shape: LineShape,
+    context: u8,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -607,6 +617,7 @@ pub(crate) fn draw(
         state.text_length = TextLength::default();
         state.unique = false;
         state.shape = LineShape::default();
+        state.context = 0;
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -694,6 +705,11 @@ pub(crate) fn draw(
                     if let Some(c) = scene.concordance {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(format!("{}: {}", scene.study.examples, c.label));
+                            for (radius, label) in
+                                scene.study.context_labels[..3].iter().enumerate()
+                            {
+                                ui.selectable_value(&mut state.context, radius as u8, label);
+                            }
                             if ui.button(&scene.study.clear_examples).clicked() {
                                 out.push(Command::SubtitleExamplesClear);
                             }
@@ -758,16 +774,24 @@ fn search(ui: &mut egui::Ui, state: &mut State, focus: &mut bool, hint: &str) ->
 fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope) -> Vec<usize> {
     let query = nikomiru_text::search::Query::new(query);
     let mut seen = std::collections::HashSet::new();
+    let context = scene.concordance.and_then(|c| {
+        crate::subtitle_study::context_indices(
+            scene.timeline.cues().len(),
+            &c.indices,
+            scope.context,
+        )
+    });
     scene
         .timeline
         .cues()
         .iter()
         .enumerate()
         .filter(|(i, cue)| {
-            scene
-                .concordance
-                .is_none_or(|c| c.indices.binary_search(i).is_ok())
-                && scope.window.keeps(cue, scene.timeline.delay_ms)
+            scene.concordance.is_none_or(|_| {
+                context
+                    .as_ref()
+                    .is_some_and(|indices| indices.binary_search(i).is_ok())
+            }) && scope.window.keeps(cue, scene.timeline.delay_ms)
                 && scope.speed.keeps(cue)
                 && scope.duration.keeps(cue)
                 && scope.text_length.keeps(&cue.plain_text)
@@ -800,6 +824,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             text_length: state.text_length,
             unique: state.unique,
             shape: state.shape,
+            context: state.context,
         },
     )
 }
@@ -818,6 +843,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             text_length: state.text_length,
             unique: state.unique,
             shape: state.shape,
+            context: state.context,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -952,6 +978,7 @@ pub(super) fn sync_study_presets(
 impl State {
     fn capture_preset(&self) -> nikomiru_core::config::SubtitleStudyPreset {
         nikomiru_core::config::SubtitleStudyPreset {
+            context: self.context,
             name: self.preset_name.trim().to_string(),
             query: self.query.clone(),
             filter: match self.filter {
@@ -980,6 +1007,7 @@ impl State {
             return;
         }
         self.query.clone_from(&p.query);
+        self.context = p.context;
         self.filter =
             [LineFilter::All, LineFilter::New, LineFilter::PlusOne][usize::from(p.filter)];
         self.window = TimeWindow {
@@ -1477,6 +1505,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     text_length: state.text_length,
                     unique: state.unique,
                     shape: state.shape,
+                    context: state.context,
                 },
                 width,
             );
@@ -1589,7 +1618,23 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 let clicked = ui
                     .interact(text_rect, id.with("text"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand);
-                clicked.widget_info(|| WidgetInfo::labeled(Role::Button, true, plain));
+                let exact_hit = scene
+                    .concordance
+                    .is_some_and(|c| c.indices.binary_search(&cue).is_ok());
+                let accessible = if exact_hit {
+                    format!("{}: {plain}", scene.study.context_labels[3])
+                } else {
+                    plain.to_string()
+                };
+                if exact_hit && state.context > 0 {
+                    painter.rect_stroke(
+                        rect,
+                        4.0,
+                        egui::Stroke::new(1.0, TIME),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                clicked.widget_info(|| WidgetInfo::labeled(Role::Button, true, &accessible));
                 if clicked.clicked() && hidden {
                     state.revealed.insert(cue);
                     ui.ctx().request_repaint();
@@ -1814,6 +1859,35 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-053: context scopes preserve exact hit identity and compose later text filters.
+    #[test]
+    fn word_examples_offer_neighbours_and_identify_exact_hits() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "前"), (3000, "猫"), (5000, "後")]),
+            0,
+            false,
+        );
+        h.run();
+        h.state_mut().concordance = Some(crate::subtitle_study::Concordance {
+            key: "猫\nねこ".into(),
+            label: "猫".into(),
+            indices: vec![1],
+            version: 1,
+            revision: 1,
+        });
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-context-one").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+        h.get_by_label("sub-context-hit: 猫");
+        h.state_mut().state.query = "後".into();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [2]);
+        assert_eq!(h.state().state.capture_preset().context, 1);
     }
 
     // T-SUB-052: explicit preset application restores scopes without selection/reveal identities.

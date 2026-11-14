@@ -261,6 +261,24 @@ impl Repetition {
     }
 }
 
+/// Expand exact original indices by a small bounded context radius (SUB-053).
+pub fn context_indices(cue_count: usize, exact: &[usize], radius: u8) -> Option<Vec<usize>> {
+    if cue_count > 100_000 || exact.len() > 100_000 || radius > 2 {
+        return None;
+    }
+    let mut indices = std::collections::BTreeSet::new();
+    for &i in exact {
+        if i >= cue_count {
+            return None;
+        }
+        indices.extend(
+            i.saturating_sub(usize::from(radius))
+                ..=i.saturating_add(usize::from(radius)).min(cue_count - 1),
+        );
+    }
+    Some(indices.into_iter().collect())
+}
+
 /// Exact headword/reading examples captured from one complete primary timeline.
 #[derive(Debug, Clone)]
 pub struct Concordance {
@@ -279,6 +297,17 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-053: bounded overlapping context keeps original order and rejects stale indices.
+    #[test]
+    fn concordance_context_merges_overlaps_and_clips_edges() {
+        assert_eq!(context_indices(5, &[0, 2, 2], 1), Some(vec![0, 1, 2, 3]));
+        assert_eq!(context_indices(5, &[4], 2), Some(vec![2, 3, 4]));
+        assert_eq!(context_indices(5, &[2], 0), Some(vec![2]));
+        assert_eq!(context_indices(0, &[], 1), Some(vec![]));
+        assert_eq!(context_indices(5, &[5], 1), None);
+        assert_eq!(context_indices(5, &[1], 3), None);
+    }
+
     // T-SUB-051: single/multiline structure ignores blank CRLF/Unicode whitespace lines.
     #[test]
     fn caption_structure_counts_nonempty_lines_only() {

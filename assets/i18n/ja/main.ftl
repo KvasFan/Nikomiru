@@ -1245,3 +1245,8 @@ vocabulary-html-tools = 語彙のHTML学習シート
 vocabulary-html-shown = 表示中の語彙をHTMLに出力
 vocabulary-html-selected = 選択した語彙をHTMLに出力
 vocabulary-html-reading = 読みを表示
+
+sub-context-exact = 一致する字幕だけ
+sub-context-one = 前後一字幕
+sub-context-two = 前後二字幕
+sub-context-hit = 単語が一致する字幕

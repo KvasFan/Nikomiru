@@ -1262,3 +1262,8 @@ vocabulary-html-tools = Vocabulary HTML study sheets
 vocabulary-html-shown = Export shown vocabulary as HTML
 vocabulary-html-selected = Export selected vocabulary as HTML
 vocabulary-html-reading = Reveal reading
+
+sub-context-exact = Exact examples only
+sub-context-one = One neighbouring line
+sub-context-two = Two neighbouring lines
+sub-context-hit = Exact word example
