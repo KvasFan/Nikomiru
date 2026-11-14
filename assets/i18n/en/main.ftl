@@ -1142,3 +1142,7 @@ sub-bilingual-selected = Export selected bilingual transcript…
 sub-window-from = From current time
 sub-window-to = Until current time
 sub-window-reset = Reset time window
+
+vocabulary-min-count = Minimum occurrences
+vocabulary-max-count = Maximum occurrences
+vocabulary-reset-counts = Reset occurrence limits

@@ -1125,3 +1125,7 @@ sub-bilingual-selected = 選択した対訳を書き出す…
 sub-window-from = 現在位置から
 sub-window-to = 現在位置まで
 sub-window-reset = 時間範囲をリセット
+
+vocabulary-min-count = 最小出現回数
+vocabulary-max-count = 最大出現回数
+vocabulary-reset-counts = 出現回数の制限をリセット

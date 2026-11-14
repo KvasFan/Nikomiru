@@ -35,6 +35,9 @@ pub(crate) struct Labels {
     pub all_statuses: String,
     pub card_filter: String,
     pub cards: [String; 3],
+    pub min_count: String,
+    pub max_count: String,
+    pub reset_counts: String,
     pub order: String,
     pub orders: [String; 4],
     pub copy_shown: String,
@@ -57,6 +60,9 @@ impl Labels {
             copy_selected: tr("vocabulary-copy-selected", &[]),
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
+            min_count: tr("vocabulary-min-count", &[]),
+            max_count: tr("vocabulary-max-count", &[]),
+            reset_counts: tr("vocabulary-reset-counts", &[]),
             order: tr("vocabulary-order", &[]),
             orders: [
                 "vocabulary-frequency-desc",
@@ -111,6 +117,8 @@ pub(crate) struct State {
     pub status: Option<WordStatus>,
     pub card: CardFilter,
     pub order: WordOrder,
+    pub min_count: usize,
+    pub max_count: Option<usize>,
     copied: Option<bool>,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
@@ -148,6 +156,7 @@ pub(crate) fn filtered<'a>(
             CardFilter::With => w.card,
             CardFilter::Without => !w.card,
         })
+        .filter(|w| w.count >= state.min_count && state.max_count.is_none_or(|max| w.count <= max))
         .filter(|w| query.matches(&[&w.expression, &w.reading]))
         .collect();
     sort(&mut rows, state.order);
@@ -248,6 +257,33 @@ pub(crate) fn show(
         response
             .response
             .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.card_filter));
+    });
+    ui.horizontal_wrapped(|ui| {
+        let min = ui.label(&labels.min_count);
+        ui.add(
+            egui::DragValue::new(&mut state.min_count)
+                .range(0..=usize::MAX)
+                .speed(1.0),
+        )
+        .labelled_by(min.id);
+        let mut limited = state.max_count.is_some();
+        if ui.checkbox(&mut limited, &labels.max_count).changed() {
+            state.max_count = limited.then(|| all.iter().map(|w| w.count).max().unwrap_or(0));
+        }
+        if let Some(max) = &mut state.max_count {
+            ui.add(egui::DragValue::new(max).range(0..=usize::MAX).speed(1.0))
+                .on_hover_text(&labels.max_count);
+        }
+        if ui
+            .add_enabled(
+                state.min_count != 0 || state.max_count.is_some(),
+                egui::Button::new(&labels.reset_counts),
+            )
+            .clicked()
+        {
+            state.min_count = 0;
+            state.max_count = None;
+        }
     });
     let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
@@ -403,6 +439,9 @@ mod tests {
                         copy_selected: "Copy selected".into(),
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
+                        min_count: "Min occurrences".into(),
+                        max_count: "Max occurrences".into(),
+                        reset_counts: "Reset occurrences".into(),
                         order: "Order".into(),
                         orders: ["Frequent", "Rare", "Expression", "Reading"].map(String::from),
                         status_filter: "Status filter".into(),
@@ -508,6 +547,33 @@ mod tests {
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
         );
+    }
+
+    // T-KNW-034: range intersections affect shown actions while hidden selected identities survive.
+    #[test]
+    fn occurrence_ranges_filter_rows_and_reset_without_changing_selections() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().state.min_count = 2;
+        h.state_mut().state.max_count = Some(3);
+        h.run();
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        assert!(h.query_by_label("食べる たべる").is_some());
+        assert_eq!(
+            selected(&h.state().words, &h.state().state)[0].expression,
+            "猫"
+        );
+        h.state_mut().state.min_count = 4;
+        h.run();
+        assert!(filtered(&h.state().words, "", &h.state().state).is_empty());
+        h.get_by_label("Reset occurrences").click();
+        h.run();
+        assert_eq!(h.state().state.min_count, 0);
+        assert!(h.state().state.max_count.is_none());
+        assert!(h.query_by_label("猫 ねこ").is_some());
+        assert!(h.state().out.is_empty());
     }
 
     // T-KNW-027: exact filters intersect; hidden ticks remain explicit bulk targets.
