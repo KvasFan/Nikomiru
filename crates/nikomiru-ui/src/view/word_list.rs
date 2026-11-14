@@ -35,6 +35,9 @@ pub(crate) struct Labels {
     pub all_statuses: String,
     pub card_filter: String,
     pub cards: [String; 3],
+    pub shown_words: String,
+    pub selected_words: String,
+    pub occurrences: String,
     pub min_count: String,
     pub max_count: String,
     pub reset_counts: String,
@@ -60,6 +63,9 @@ impl Labels {
             copy_selected: tr("vocabulary-copy-selected", &[]),
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
+            shown_words: tr("vocabulary-shown-words", &[]),
+            selected_words: tr("vocabulary-selected-words", &[]),
+            occurrences: tr("vocabulary-occurrences", &[]),
             min_count: tr("vocabulary-min-count", &[]),
             max_count: tr("vocabulary-max-count", &[]),
             reset_counts: tr("vocabulary-reset-counts", &[]),
@@ -192,6 +198,39 @@ pub(crate) fn selected<'a>(all: &'a [ListedWord], state: &State) -> Vec<&'a List
         .collect();
     sort(&mut rows, state.order);
     rows
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Coverage {
+    all_words: usize,
+    shown_words: usize,
+    selected_words: usize,
+    all_tokens: u128,
+    shown_tokens: u128,
+    selected_tokens: u128,
+    percent: Option<u128>,
+}
+
+fn coverage(all: &[ListedWord], shown: &[&ListedWord], selected: &[&ListedWord]) -> Coverage {
+    let sum = |rows: &[&ListedWord]| {
+        rows.iter()
+            .fold(0u128, |n, w| n.saturating_add(w.count as u128))
+    };
+    let all_tokens = all
+        .iter()
+        .fold(0u128, |n, w| n.saturating_add(w.count as u128));
+    let shown_tokens = sum(shown);
+    Coverage {
+        all_words: all.len(),
+        shown_words: shown.len(),
+        selected_words: selected.len(),
+        all_tokens,
+        shown_tokens,
+        selected_tokens: sum(selected),
+        percent: shown_tokens
+            .checked_mul(100)
+            .and_then(|n| n.checked_div(all_tokens)),
+    }
 }
 
 /// Draws the words of `all` that the query and the filter let through.
@@ -357,6 +396,23 @@ pub(crate) fn show(
             }
         });
     }
+    let counts = coverage(all, &shown, &selected(all, state));
+    let percent = counts
+        .percent
+        .map_or_else(|| "–".to_string(), |p| format!("{p}%"));
+    ui.label(format!(
+        "{}: {} / {} · {}: {} / {} ({percent})",
+        labels.shown_words,
+        counts.shown_words,
+        counts.all_words,
+        labels.occurrences,
+        counts.shown_tokens,
+        counts.all_tokens
+    ));
+    ui.label(format!(
+        "{}: {} · {}: {}",
+        labels.selected_words, counts.selected_words, labels.occurrences, counts.selected_tokens
+    ));
     ScrollArea::vertical()
         .id_salt("subtitle-list-words")
         .auto_shrink([false, false])
@@ -439,6 +495,9 @@ mod tests {
                         copy_selected: "Copy selected".into(),
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
+                        shown_words: "Shown words".into(),
+                        selected_words: "Selected words".into(),
+                        occurrences: "Occurrences".into(),
                         min_count: "Min occurrences".into(),
                         max_count: "Max occurrences".into(),
                         reset_counts: "Reset occurrences".into(),
@@ -546,6 +605,34 @@ mod tests {
         assert_eq!(
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
+        );
+    }
+
+    // T-KNW-035: token coverage differs from distinct counts; hidden ticks and wide sums remain accurate.
+    #[test]
+    fn vocabulary_coverage_uses_tokens_and_handles_empty_and_large_counts() {
+        let rows = vec![
+            word("a", "", usize::MAX, WordStatus::Unknown),
+            word("b", "", usize::MAX, WordStatus::Known),
+        ];
+        let c = coverage(&rows, &[&rows[0]], &[&rows[1]]);
+        assert_eq!(c.all_tokens, 2 * usize::MAX as u128);
+        assert_eq!(c.percent, Some(50));
+        assert_eq!(c.shown_words, 1);
+        assert_eq!(coverage(&[], &[], &[]).percent, None);
+        let mut h = harness();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().query = "たべ".into();
+        h.run();
+        assert!(
+            h.query_by_label("Shown words: 1 / 3 · Occurrences: 2 / 11 (18%)")
+                .is_some()
+        );
+        assert!(
+            h.query_by_label("Selected words: 1 · Occurrences: 5")
+                .is_some()
         );
     }
 

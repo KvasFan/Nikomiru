@@ -1129,3 +1129,7 @@ sub-window-reset = 時間範囲をリセット
 vocabulary-min-count = 最小出現回数
 vocabulary-max-count = 最大出現回数
 vocabulary-reset-counts = 出現回数の制限をリセット
+
+vocabulary-shown-words = 表示中の語数
+vocabulary-selected-words = 選択した語数
+vocabulary-occurrences = 出現回数

@@ -1146,3 +1146,7 @@ sub-window-reset = Azzera intervallo temporale
 vocabulary-min-count = Occorrenze minime
 vocabulary-max-count = Occorrenze massime
 vocabulary-reset-counts = Azzera limiti di occorrenze
+
+vocabulary-shown-words = Parole visibili
+vocabulary-selected-words = Parole selezionate
+vocabulary-occurrences = Occorrenze

@@ -1146,3 +1146,7 @@ sub-window-reset = Reset time window
 vocabulary-min-count = Minimum occurrences
 vocabulary-max-count = Maximum occurrences
 vocabulary-reset-counts = Reset occurrence limits
+
+vocabulary-shown-words = Shown words
+vocabulary-selected-words = Selected words
+vocabulary-occurrences = Occurrences

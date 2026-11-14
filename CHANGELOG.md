@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Show distinct-word and occurrence coverage for shown and selected study vocabulary (KNW-035, M52).
+
 ## [2.60.0] - 2026-11-14
 
 Support-tool installation and six consecutive subtitle/study milestones (M45–M51).

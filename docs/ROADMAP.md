@@ -1185,7 +1185,7 @@ subtitle/study priority (D-63), without a new request between milestones.
 | M49 | Bilingual study transcript | done |
 | M50 | Subtitle study time window | done |
 | M51 | Vocabulary frequency ranges | done |
-| M52 | Vocabulary coverage summary | not started |
+| M52 | Vocabulary coverage summary | done |
 | M53 | Dictionary lookup from study vocabulary | not started |
 | M54 | Subtitle word concordance | not started |
 | M55 | Study frequency dictionary export | not started |
@@ -1279,6 +1279,77 @@ Study vocabulary views export currently shown or explicitly selected rows as a c
 
 **Exit criteria**: marked logic and accessible-control tests, relevant actual
 worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+---
+
+## Continuation after the Git tag — M52…M61 (2026-11-14)
+
+The maintainer requested a tag/push at the interrupted M51 and ten more
+milestones (D-64). `v2.60.0` captures M45…M51. M52…M55 keep the plan above;
+M56…M61 extend it as follows. No new request is needed between increments.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M56 | Exact vocabulary search | not started |
+| M57 | Subtitle reading-speed filters | not started |
+| M58 | Subtitle study statistics | not started |
+| M59 | Bilingual SRT export | not started |
+| M60 | Navigate matching subtitle lines | not started |
+| M61 | Reusable session study filters | not started |
+
+## M56 — Exact vocabulary search
+
+**Requirements**: KNW-039.
+
+Shared vocabulary views offer normalised exact headword/reading matching alongside the default contains search. Exact means the whole query matches one whole display field after the existing width/kana/case folding; combine with all existing filters and preserve hidden selections. Empty queries show all eligible rows and the mode affects shown selection/copy/export only.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M57 — Subtitle reading-speed filters
+
+**Requirements**: SUB-040.
+
+Study tools optionally filter cues by minimum and maximum reading speed in Unicode non-whitespace characters per second. Compute using the full positive cue duration, with overflow-safe integer comparisons and no rounding at thresholds. Combine with text/word/time/concordance filters and shown actions; invalid ranges show no cues. Reset on source version changes; no media or timing edits.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M58 — Subtitle study statistics
+
+**Requirements**: SUB-041.
+
+Study tools show the current shown and selected cue counts, non-whitespace character totals and total effective dialogue time using the union of overlapping clipped intervals. Hidden selected cues are included in selected metrics. Empty scopes show zero; invalid indices and oversized requests are unavailable, not partial totals. Metrics are view-only, use the same filters and captured delay, and reset with the timeline.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M59 — Bilingual SRT export
+
+**Requirements**: SUB-042.
+
+Shown or selected complete primary cues can export as SRT with primary text followed by the overlapping distinct secondary translations. Reuse the bounded independently delayed overlap pairing, negative clipping and plain-text SRT escaping. Retain untranslated primary cues and reject missing/partial secondary tracks. Freeze before native save and write atomically without modifying either track.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M60 — Navigate matching subtitle lines
+
+**Requirements**: SUB-043.
+
+Study tools offer Previous matching line and Next matching line using the current shown original cue indices after all filters. Choose the nearest strict earlier/later effective start with a small equality margin, no wrapping. Preserve playback pause, ticks and filters; unavailable directions are disabled. User actions alone seek; changing filters or navigation controls does not start playback or record encounters while paused.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M61 — Reusable session study filters
+
+**Requirements**: KNW-040.
+
+Shared vocabulary views can explicitly remember the current search, exact/contains mode, status/card/occurrence/order filters and apply or forget that one preset in another view during the same application session. Selection identities are excluded. Applying updates the visible query and filters while preserving current ticks and analysis identity; preset text is bounded. This is session-only and writes no configuration or library data.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
 
 ---
 

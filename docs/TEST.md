@@ -650,6 +650,12 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-KNW-036 | Dictionary lookup from study vocabulary | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M53) | L1, L3, L6 |
 | T-KNW-037 | Subtitle word concordance | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M54) | L1, L3, L6 |
 | T-KNW-038 | Study frequency dictionary export | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M55) | L1, L3, L6 |
+| T-KNW-039 | Exact vocabulary search | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M56) | L1, L3, L6 |
+| T-SUB-040 | Subtitle reading-speed filters | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M57) | L1, L3, L6 |
+| T-SUB-041 | Subtitle study statistics | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M58) | L1, L3, L6 |
+| T-SUB-042 | Bilingual SRT export | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M59) | L1, L3, L6 |
+| T-SUB-043 | Navigate matching subtitle lines | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M60) | L1, L3, L6 |
+| T-KNW-040 | Reusable session study filters | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M61) | L1, L3, L6 |
 | T-KNW-001 | Word statuses | Kept by headword and reading, the last one set, no migration; the newer mark wins, ties alike everywhere; synced to another device, set back to unknown later (L1); a card makes a word learning; the four statuses in a popup entry, a click sends the new one, the one it has sends nothing (L3); marked known from the popup and still known after a restart (L6) | L1/L3/L6 |
 | T-KNW-002 | Words coloured by status | Unknown and learning words marked, known and ignored not, the colours in the place of the mined underline (L1); underlines drawn in the overlay and both reader writing directions (L3); a word not known underlined in real subtitles, EPUB and web-page text, learning then known updates the marks; off leaves reader analysis empty (L6) | L1/L3/L6 |
 | T-KNW-003 | Lines with one new word | One word not known makes the line i+1, two do not (L1); `+1` in the subtitle list (L3); a real line with one new word (L6) | L1/L3/L6 |
