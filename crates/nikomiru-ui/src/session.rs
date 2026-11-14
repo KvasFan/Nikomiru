@@ -337,6 +337,16 @@ struct LinkClip {
 }
 
 /// The playback session.
+#[derive(Debug)]
+struct VocabularyScope {
+    version: u64,
+    generation: u64,
+    revision: u64,
+    counted: crate::words::Counted,
+    rows: std::sync::Arc<Vec<crate::words::ListedWord>>,
+}
+
+/// The active application session and its asynchronous work.
 pub struct Session {
     services: Services,
     bindings: Bindings,
@@ -388,6 +398,8 @@ pub struct Session {
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     /// Captured exact word examples in the primary timeline.
+    vocabulary_scope: Option<VocabularyScope>,
+    vocabulary_scope_id: u64,
     subtitle_examples: Option<crate::subtitle_study::Concordance>,
     analysis_export: Option<String>,
     /// Frozen importable frequency dictionary.
@@ -773,6 +785,8 @@ impl Session {
             graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            vocabulary_scope: None,
+            vocabulary_scope_id: 0,
             subtitle_examples: None,
             analysis_export: None,
             frequency_export: None,
@@ -6698,6 +6712,20 @@ impl Session {
     /// they or the statuses change (KNW-007). The words' cache holds a long
     /// film's lines; beyond, there is no score.
     fn count_score(&mut self) {
+        if self.vocabulary_scope.as_ref().is_some_and(|v| {
+            v.version != self.sub_list_version
+                || v.generation != self.words.generation()
+                || !self.word_colors_on()
+                || self.subs.incomplete
+        }) {
+            self.vocabulary_scope = None;
+        }
+        if let Some(scope) = &mut self.vocabulary_scope
+            && scope.revision != self.words.revision()
+        {
+            scope.rows = std::sync::Arc::new(self.words.listed_counted(&scope.counted));
+            scope.revision = self.words.revision();
+        }
         if !self.services.config.subtitles.word_colors || self.subs.incomplete {
             self.score = None;
             self.word_list = None;
@@ -6742,7 +6770,58 @@ impl Session {
     /// The words of the main subtitle by how often they come, once all its
     /// lines are split, while the words are coloured (KNW-009).
     pub fn word_list(&self) -> Option<std::sync::Arc<Vec<crate::words::ListedWord>>> {
-        self.word_list.clone()
+        self.active_vocabulary_scope()
+            .map(|v| v.rows.clone())
+            .or_else(|| self.word_list.clone())
+    }
+
+    fn active_vocabulary_scope(&self) -> Option<&VocabularyScope> {
+        self.vocabulary_scope.as_ref().filter(|v| {
+            v.version == self.sub_list_version
+                && v.generation == self.words.generation()
+                && self.word_colors_on()
+                && !self.subs.incomplete
+        })
+    }
+
+    /// Current captured vocabulary identity, independent of word-status revisions.
+    pub fn vocabulary_scope_id(&self) -> Option<u64> {
+        self.active_vocabulary_scope()
+            .map(|_| self.vocabulary_scope_id)
+    }
+
+    /// Explicitly capture vocabulary from the requested primary cue scope.
+    pub fn vocabulary_scope_capture(&mut self, version: u64, indices: &[usize]) {
+        if version != self.sub_list_version
+            || !self.subtitle_export_ready()
+            || !self.word_colors_on()
+        {
+            self.toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[]));
+            return;
+        }
+        match self
+            .words
+            .counted_cues(self.subs.timeline().cues(), indices)
+        {
+            Ok(counted) => {
+                let rows = std::sync::Arc::new(self.words.listed_counted(&counted));
+                self.vocabulary_scope_id = self.vocabulary_scope_id.wrapping_add(1);
+                self.vocabulary_scope = Some(VocabularyScope {
+                    version,
+                    generation: self.words.generation(),
+                    revision: self.words.revision(),
+                    counted,
+                    rows,
+                });
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Return to the full primary-track vocabulary.
+    pub fn vocabulary_scope_clear(&mut self) {
+        self.vocabulary_scope = None;
     }
 
     /// Filter current subtitle lines by a complete exact segmented word identity.

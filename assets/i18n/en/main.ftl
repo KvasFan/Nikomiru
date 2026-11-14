@@ -1211,3 +1211,7 @@ sub-mask-text = Hide subtitle text for listening
 sub-reveal-shown = Reveal shown lines
 sub-mask-again = Hide revealed lines again
 sub-reveal-line = Reveal line
+
+sub-vocabulary-shown = Study vocabulary of shown lines
+sub-vocabulary-selected = Study vocabulary of selected lines
+sub-vocabulary-all = Return to full subtitle vocabulary

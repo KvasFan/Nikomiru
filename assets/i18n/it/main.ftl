@@ -1211,3 +1211,7 @@ sub-mask-text = Nascondi il testo per esercitare l’ascolto
 sub-reveal-shown = Mostra righe visibili
 sub-mask-again = Nascondi di nuovo le righe
 sub-reveal-line = Mostra riga
+
+sub-vocabulary-shown = Studia parole delle righe visibili
+sub-vocabulary-selected = Studia parole delle righe selezionate
+sub-vocabulary-all = Torna al vocabolario completo

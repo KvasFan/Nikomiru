@@ -287,6 +287,29 @@ impl Words {
         Some(Counted::from_lines(lines))
     }
 
+    /// Capture unique original cue rows only when every selected line is segmented.
+    pub fn counted_cues(
+        &self,
+        cues: &[nikomiru_subs::Cue],
+        indices: &[usize],
+    ) -> Result<Counted, &'static str> {
+        if indices.is_empty() || indices.len() > 100_000 {
+            return Err("vocabulary-examples-unavailable");
+        }
+        let unique: std::collections::BTreeSet<_> = indices.iter().copied().collect();
+        let mut texts = Vec::with_capacity(unique.len());
+        let mut bytes = 0usize;
+        for i in unique {
+            let cue = cues.get(i).ok_or("vocabulary-examples-unavailable")?;
+            bytes = bytes.saturating_add(cue.plain_text.len());
+            if bytes > 16 << 20 {
+                return Err("sub-export-too-large");
+            }
+            texts.push(cue.plain_text.as_str());
+        }
+        self.counted(texts).ok_or("vocabulary-examples-unavailable")
+    }
+
     /// No text is being split nor waits to be.
     pub fn idle(&self) -> bool {
         self.asked.is_empty() && self.queue.is_empty()
@@ -503,6 +526,31 @@ mod tests {
                 reading: r.into(),
             }),
         }
+    }
+
+    // T-KNW-044: subset counts retain headwords, deduplicate rows and reject partial captures.
+    #[test]
+    fn scoped_vocabulary_is_complete_and_rescores_retained_counts() {
+        let mut words = Words::default();
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n猫\n",
+        )
+        .cues;
+        words.done(
+            0,
+            "食べた".into(),
+            Ok(vec![word("食べた", 0..9, Some(("食べる", "たべる")))]),
+        );
+        let counted = words.counted_cues(&cues, &[0, 0]).unwrap();
+        assert_eq!(words.listed_counted(&counted)[0].count, 1);
+        assert_eq!(words.listed_counted(&counted)[0].expression, "食べる");
+        assert!(words.counted_cues(&cues, &[0, 1]).is_err());
+        assert!(words.counted_cues(&cues, &[9]).is_err());
+        assert!(words.counted_cues(&cues, &[]).is_err());
+        words.forget();
+        assert!(words.counted_cues(&cues, &[0]).is_err());
+        assert_eq!(counted.occurrences(), [1]);
     }
 
     // T-KNW-037: inflections match headword identities; different readings and unsplit cues do not guess.

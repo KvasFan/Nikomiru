@@ -397,6 +397,11 @@ pub(crate) enum Command {
     },
     ListTime(usize),
     /// Exact current-subtitle word examples.
+    VocabularyScope {
+        version: u64,
+        indices: Vec<usize>,
+    },
+    VocabularyScopeClear,
     StudyPresetSave(nikomiru_core::config::StudyPreset),
     StudyPresetDelete(String),
     VocabularyExamples {
@@ -1403,6 +1408,10 @@ impl Ui {
                 self.view.sub_list_open = true;
             }
             Command::SubtitleExamplesClear => s.subtitle_examples_clear(),
+            Command::VocabularyScope { version, indices } => {
+                s.vocabulary_scope_capture(version, &indices)
+            }
+            Command::VocabularyScopeClear => s.vocabulary_scope_clear(),
             Command::StudyPresetSave(preset) => s.study_preset_change(Some(preset), None),
             Command::StudyPresetDelete(name) => s.study_preset_change(None, Some(name)),
             Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),

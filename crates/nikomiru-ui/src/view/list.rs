@@ -133,6 +133,7 @@ pub(crate) struct StudyLabels {
     reset_window: String,
     examples: String,
     clear_examples: String,
+    vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
@@ -153,6 +154,12 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            vocabulary_labels: [
+                "sub-vocabulary-shown",
+                "sub-vocabulary-selected",
+                "sub-vocabulary-all",
+            ]
+            .map(|k| tr(k, &[])),
             mask_labels: [
                 "sub-mask-text",
                 "sub-reveal-shown",
@@ -250,6 +257,7 @@ pub(crate) struct State {
     asked: Vec<usize>,
     /// The Words tab is shown (KNW-009).
     words_tab: bool,
+    word_scope: Option<u64>,
     /// The lines shown (KNW-013).
     filter: LineFilter,
     /// What it keeps.
@@ -319,6 +327,7 @@ pub(crate) struct Scene<'a> {
     /// (KNW-013), and the words' revision, which changes their marks.
     pub filters: [String; 3],
     pub marks_version: u64,
+    pub word_scope: Option<u64>,
     pub words: Option<&'a [crate::words::ListedWord]>,
     pub word_labels: super::word_list::Labels,
     pub search_hint: String,
@@ -497,6 +506,7 @@ pub(crate) fn show(
             tr("subtitle-lines-plus-one"),
         ],
         marks_version: s.words_revision(),
+        word_scope: s.vocabulary_scope_id(),
         words: words.as_deref().map(Vec::as_slice),
         word_labels,
         search_hint: tr("subtitle-search"),
@@ -548,6 +558,12 @@ pub(crate) fn draw(
         state.speed = ReadingSpeed::default();
         state.duration = DurationBounds::default();
         state.selection_version = Some(scene.version);
+    }
+    if state.word_scope != scene.word_scope {
+        state.word_scope = scene.word_scope;
+        state.words = Default::default();
+        state.query.clear();
+        state.words_tab = scene.word_scope.is_some();
     }
     let key = scene.concordance.map(|c| (c.key.clone(), c.revision));
     if key != state.last_concordance {
@@ -632,6 +648,11 @@ pub(crate) fn draw(
                                 out.push(Command::SubtitleExamplesClear);
                             }
                         });
+                    }
+                    if scene.word_scope.is_some()
+                        && ui.button(&scene.study.vocabulary_labels[2]).clicked()
+                    {
+                        out.push(Command::VocabularyScopeClear);
                     }
                     open &= search(ui, state, search_focus, &scene.search_hint);
                     if scene.tabs.is_some() && state.words_tab {
@@ -827,6 +848,29 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
             matching_navigation(ui, scene, state, out);
+            ui.horizontal_wrapped(|ui| {
+                let shown = shown_indices(scene, state);
+                for (label, indices) in [
+                    (&scene.study.vocabulary_labels[0], shown),
+                    (
+                        &scene.study.vocabulary_labels[1],
+                        state.selected.iter().copied().collect(),
+                    ),
+                ] {
+                    if ui
+                        .add_enabled(
+                            scene.tabs.is_some() && scene.export_ready && !indices.is_empty(),
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::VocabularyScope {
+                            version: scene.version,
+                            indices,
+                        });
+                    }
+                }
+            });
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .checkbox(&mut state.masked, &scene.study.mask_labels[0])
@@ -1447,6 +1491,34 @@ mod tests {
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
     }
 
+    // T-KNW-044: scope requests freeze original filtered/selected indices without changing cue ticks.
+    #[test]
+    fn vocabulary_scope_actions_capture_hidden_selected_rows() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, true);
+        h.state_mut().tabs = true;
+        h.run();
+        h.state_mut().state.selected.insert(1);
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vocabulary-selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(
+            |c| matches!(c, Command::VocabularyScope { version: 1, indices } if indices == &[1])
+        ));
+        h.get_by_label("sub-vocabulary-shown").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::VocabularyScope { indices, .. } if indices == &[0]))
+        );
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+    }
+
     // T-SUB-045: hidden text never enters accessible labels/painted galleys or lookup commands.
     #[test]
     fn listening_mask_reveals_explicitly_and_resets_on_source_change() {
@@ -1657,6 +1729,7 @@ mod tests {
                         tabs: t.tabs.then(|| ("Lines".into(), "Words".into())),
                         filters: ["All", "New", "+1"].map(String::from),
                         marks_version: 0,
+                        word_scope: None,
                         words: None,
                         word_labels: Default::default(),
                         search_hint: "Search".into(),

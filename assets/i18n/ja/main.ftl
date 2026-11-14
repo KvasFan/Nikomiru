@@ -1194,3 +1194,7 @@ sub-mask-text = 聞き取り練習のため字幕を隠す
 sub-reveal-shown = 表示範囲の字幕を開く
 sub-mask-again = 字幕を再び隠す
 sub-reveal-line = 字幕を開く
+
+sub-vocabulary-shown = 表示中の字幕の語彙を学習
+sub-vocabulary-selected = 選択した字幕の語彙を学習
+sub-vocabulary-all = 字幕全体の語彙に戻る

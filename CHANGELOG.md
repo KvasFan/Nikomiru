@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Vocabulary from subtitle study scopes (KNW-044, M67).
+
 - Listening text masking (SUB-045, M66).
 
 - Subtitle duration filters (SUB-044, M65).
