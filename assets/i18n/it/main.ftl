@@ -1053,3 +1053,10 @@ analysis-only-scored = Solo analizzati
 analysis-minimum-known = Minimo conosciuto %
 
 analysis-source-changed = La sorgente o i dizionari sono cambiati durante l’analisi. Aggiorna il conteggio.
+
+vocabulary-status-filter = Filtro stato parole
+vocabulary-all-statuses = Tutti gli stati
+vocabulary-card-filter = Filtro schede
+vocabulary-any-card = Qualsiasi scheda
+vocabulary-with-card = Con scheda
+vocabulary-without-card = Senza scheda

@@ -31,8 +31,41 @@ pub(crate) struct Labels {
     pub ticked: String,
     /// "A card was made of it".
     pub card: String,
+    pub status_filter: String,
+    pub all_statuses: String,
+    pub card_filter: String,
+    pub cards: [String; 3],
     /// The four statuses, in the order of `STATUSES`.
     pub statuses: [String; 4],
+}
+
+impl Labels {
+    pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
+        Self {
+            new_only: tr("subtitle-words-new-only", &[]),
+            all: tr("subtitle-words-all", &[]),
+            ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
+            card: tr("subtitle-words-card", &[]),
+            statuses: STATUSES.map(|s| tr(&format!("word-status-{}", s.name()), &[])),
+            status_filter: tr("vocabulary-status-filter", &[]),
+            all_statuses: tr("vocabulary-all-statuses", &[]),
+            card_filter: tr("vocabulary-card-filter", &[]),
+            cards: [
+                "vocabulary-any-card",
+                "vocabulary-with-card",
+                "vocabulary-without-card",
+            ]
+            .map(|k| tr(k, &[])),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CardFilter {
+    #[default]
+    Any,
+    With,
+    Without,
 }
 
 /// The statuses offered, in order.
@@ -48,6 +81,8 @@ pub(crate) const STATUSES: [WordStatus; 4] = [
 pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
+    pub status: Option<WordStatus>,
+    pub card: CardFilter,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
 }
@@ -70,11 +105,19 @@ fn label(labels: &Labels, status: WordStatus) -> &str {
 pub(crate) fn filtered<'a>(
     all: &'a [ListedWord],
     query: &str,
-    new_only: bool,
+    state: &State,
 ) -> Vec<&'a ListedWord> {
     let query = nikomiru_text::search::Query::new(query);
     all.iter()
-        .filter(|w| !new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning))
+        .filter(|w| {
+            !state.new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning)
+        })
+        .filter(|w| state.status.is_none_or(|status| status == w.status))
+        .filter(|w| match state.card {
+            CardFilter::Any => true,
+            CardFilter::With => w.card,
+            CardFilter::Without => !w.card,
+        })
         .filter(|w| query.matches(&[&w.expression, &w.reading]))
         .collect()
 }
@@ -88,7 +131,42 @@ pub(crate) fn show(
     state: &mut State,
     out: &mut Vec<Command>,
 ) {
-    let shown = filtered(all, query, state.new_only);
+    ui.horizontal_wrapped(|ui| {
+        let response = egui::ComboBox::from_id_salt("vocabulary-status-filter")
+            .selected_text(
+                state
+                    .status
+                    .map_or(labels.all_statuses.as_str(), |s| label(labels, s)),
+            )
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.status, None, &labels.all_statuses);
+                for status in STATUSES {
+                    ui.selectable_value(&mut state.status, Some(status), label(labels, status));
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.status_filter));
+        let card_index = match state.card {
+            CardFilter::Any => 0,
+            CardFilter::With => 1,
+            CardFilter::Without => 2,
+        };
+        let response = egui::ComboBox::from_id_salt("vocabulary-card-filter")
+            .selected_text(&labels.cards[card_index])
+            .show_ui(ui, |ui| {
+                for (filter, label) in [CardFilter::Any, CardFilter::With, CardFilter::Without]
+                    .into_iter()
+                    .zip(&labels.cards)
+                {
+                    ui.selectable_value(&mut state.card, filter, label);
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.card_filter));
+    });
+    let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.new_only, &labels.new_only);
@@ -202,6 +280,10 @@ mod tests {
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
                         statuses: ["new", "learning", "known", "ignore"].map(String::from),
+                        status_filter: "Status filter".into(),
+                        all_statuses: "All statuses".into(),
+                        card_filter: "Card filter".into(),
+                        cards: ["Any card", "With card", "Without card"].map(String::from),
                     };
                     show(ui, &t.words, &t.query, &labels, &mut t.state, &mut t.out);
                 },
@@ -216,6 +298,42 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-KNW-027: exact filters intersect; hidden ticks remain explicit bulk targets.
+    #[test]
+    fn status_and_card_filters_keep_hidden_selections() {
+        let mut h = harness();
+        h.state_mut().words[0].card = true;
+        h.run();
+        h.get_by_label("Status filter").click();
+        h.run();
+        h.get_by_label("known").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        assert!(h.query_all_by_label("が").count() > 0);
+        h.get_by_label("Card filter").click();
+        h.run();
+        h.get_by_label("With card").click();
+        h.run_steps(2);
+        assert_eq!(h.query_all_by_label("が").count(), 0);
+        h.get_by_label("Status filter").click();
+        h.run();
+        h.get_by_label("All statuses").click();
+        h.run_steps(2);
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.get_by_label("Card filter").click();
+        h.run();
+        h.get_by_label("Without card").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        h.get_by_label("known").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(), [Command::WordsStatus(rows, WordStatus::Known)]
+            if rows == &[("猫".into(), "ねこ".into())])
+        );
     }
 
     // T-KNW-026: matching folds readings and combines terms without changing keys.

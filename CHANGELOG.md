@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Filter vocabulary by exact word status and card presence across study views (KNW-027, M36).
+
 - Search vocabulary, encounter history and subtitle lists consistently across kana, width and case variants (KNW-026, M35).
 
 - Reuse complete book and episode/series analysis counts across restarts in bounded, source/dictionary-validated private caches (KNW-025, M34).

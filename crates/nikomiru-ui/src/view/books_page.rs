@@ -880,17 +880,7 @@ fn reader(
             ui.add(egui::TextEdit::singleline(&mut state.word_query).desired_width(320.0))
                 .labelled_by(label.id);
             if let Some(words) = &s.page.study.words {
-                let labels = super::word_list::Labels {
-                    new_only: tr(s, "subtitle-words-new-only"),
-                    all: tr(s, "subtitle-words-all"),
-                    ticked: (s.tr)(
-                        "subtitle-words-ticked",
-                        &[("count", state.words.ticked.len().to_string())],
-                    ),
-                    card: tr(s, "subtitle-words-card"),
-                    statuses: super::word_list::STATUSES
-                        .map(|st| tr(s, &format!("word-status-{}", st.name()))),
-                };
+                let labels = super::word_list::Labels::translated(s.tr, state.words.ticked.len());
                 super::word_list::show(
                     ui,
                     words,

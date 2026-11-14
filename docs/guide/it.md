@@ -241,3 +241,5 @@ Con i colori delle parole attivi, Libri e serie locali offrono Ordine per compre
 Le analisi completate di libri interi ed episodi/serie possono riusare conteggi locali dopo il riavvio. Verificano contenuto della sorgente e impostazioni dei dizionari, poi applicano gli stati correnti delle parole. Le cache dei conteggi sono limitate complessivamente a 64 MiB (32 MiB per libri e 32 MiB per episodi); risultati danneggiati, eccessivi o annullati vengono ignorati. Le analisi restano esplicite.
 
 La ricerca in vocabolario, parole storiche e lista sottotitoli accetta varianti kana e di larghezza e ignora maiuscole/minuscole. Separa i termini con spazi per richiederli tutti; le parole possono corrispondere alla forma o alla lettura. Cambia solo il filtro, mantenendo grafia originale e bersagli del dizionario.
+
+Gli elenchi di vocabolario offrono anche filtri per stato esatto e presenza di una scheda. Si combinano con ricerca e Solo parole non conosciute. Le parole spuntate nascoste restano selezionate per azioni in blocco o Esporta selezionate; Esporta visibili segue tutti i filtri correnti.

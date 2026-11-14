@@ -1036,3 +1036,10 @@ analysis-only-scored = 分析済みのみ
 analysis-minimum-known = 既知の割合の下限 %
 
 analysis-source-changed = 分析中にソースまたは辞書が変更されました。再分析してください。
+
+vocabulary-status-filter = 単語の状態フィルター
+vocabulary-all-statuses = すべての状態
+vocabulary-card-filter = カードフィルター
+vocabulary-any-card = カードの有無を問わない
+vocabulary-with-card = カードあり
+vocabulary-without-card = カードなし

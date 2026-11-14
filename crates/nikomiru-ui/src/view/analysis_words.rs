@@ -37,18 +37,10 @@ pub(crate) fn show(
     let label = ui.label(tr("books-words-search", &[]));
     ui.add(egui::TextEdit::singleline(&mut state.query).desired_width(320.0))
         .labelled_by(label.id);
-    let labels = word_list::Labels {
-        new_only: tr("subtitle-words-new-only", &[]),
-        all: tr("subtitle-words-all", &[]),
-        ticked: tr(
-            "subtitle-words-ticked",
-            &[("count", state.words.ticked.len().to_string())],
-        ),
-        card: tr("subtitle-words-card", &[]),
-        statuses: word_list::STATUSES.map(|st| tr(&format!("word-status-{}", st.name()), &[])),
-    };
+    let labels = word_list::Labels::translated(tr, state.words.ticked.len());
+
     ui.horizontal(|ui| {
-        let shown = word_list::filtered(words, &state.query, state.words.new_only);
+        let shown = word_list::filtered(words, &state.query, &state.words);
         if ui
             .add_enabled(
                 !shown.is_empty(),
@@ -161,6 +153,18 @@ mod tests {
         assert!(
             matches!(&h.state().out[2], Command::AnalysisWordsExport(rows)
             if rows.len() == 1 && rows[0].expression == "猫")
+        );
+        // T-KNW-027: the shown snapshot follows exact status/card filters.
+        h.state_mut().rows[1].card = true;
+        h.state_mut().state.words.new_only = false;
+        h.state_mut().state.words.status = Some(WordStatus::Known);
+        h.state_mut().state.words.card = word_list::CardFilter::With;
+        h.run();
+        h.get_by_label("analysis-export-shown").click();
+        h.run();
+        assert!(
+            matches!(&h.state().out[3], Command::AnalysisWordsExport(rows)
+            if rows.len() == 1 && rows[0].expression == "犬" && rows[0].card)
         );
         h.state_mut().key = "b/2".into();
         h.run();

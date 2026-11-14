@@ -336,16 +336,10 @@ pub(crate) fn show(
         ],
         marks_version: s.words_revision(),
         words: words.as_deref().map(Vec::as_slice),
-        word_labels: super::word_list::Labels {
-            new_only: tr("subtitle-words-new-only"),
-            all: tr("subtitle-words-all"),
-            ticked: s
-                .translator()
-                .tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
-            card: tr("subtitle-words-card"),
-            statuses: super::word_list::STATUSES
-                .map(|st| tr(&format!("word-status-{}", st.name()))),
-        },
+        word_labels: super::word_list::Labels::translated(
+            &|key, args| s.translator().tr(key, args),
+            ticked,
+        ),
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         marks: &marks,

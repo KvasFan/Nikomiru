@@ -241,3 +241,5 @@ With word colours enabled, Books and local series offer Comprehension order: ori
 Completed whole-book and episode/series analyses can reuse local count caches after restart. They validate source content and dictionary settings, then apply current word statuses. Counts are limited to 64 MiB combined (32 MiB each for books and episodes); corrupt, oversized or cancelled results are ignored. Analyses remain explicit.
 
 Search in vocabulary, historical words and subtitle lists accepts kana-script and width variants and ignores letter case. Separate terms with whitespace to require all of them; words can match either expression or reading. This changes filtering only, keeping the original spelling and lookup targets.
+
+Vocabulary lists also offer exact status and card-presence filters. They combine with the search and Only words not known. Hidden ticked words stay selected for bulk actions or Export selected; Export shown follows all current filters.

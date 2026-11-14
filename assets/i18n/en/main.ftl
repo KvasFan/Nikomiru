@@ -1053,3 +1053,10 @@ analysis-only-scored = Only scored
 analysis-minimum-known = Minimum known %
 
 analysis-source-changed = The source or dictionaries changed during analysis. Please refresh.
+
+vocabulary-status-filter = Word status filter
+vocabulary-all-statuses = All statuses
+vocabulary-card-filter = Card filter
+vocabulary-any-card = Any card
+vocabulary-with-card = With card
+vocabulary-without-card = Without card

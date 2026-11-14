@@ -1050,7 +1050,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M35 | Normalised kana/width/case search in study lists, history and subtitles | done |
-| M36 | Precise word-status and card filters in vocabulary lists | not started |
+| M36 | Precise word-status and card filters in vocabulary lists | done |
 | M37 | Vocabulary ordering by frequency, expression and reading | not started |
 | M38 | Copy shown/selected study vocabulary to the clipboard | not started |
 | M39 | Export per-episode historical encounters | not started |
@@ -1068,6 +1068,17 @@ space-separated terms all match, across expression/reading when available.
 
 **Exit criteria**: kana/width/dakuten/case/whitespace/multiple-term tests,
 shared vocabulary/history/subtitle integration and full CI.
+
+---
+
+## M36 — Vocabulary status/card filters
+
+**Requirements**: KNW-027. Combine status and card-presence filters with
+normalised search and the existing new/learning toggle. Preserve hidden ticks
+for explicit selected actions and apply filters to shown exports.
+
+**Exit criteria**: filter intersection, hidden selections, accessible controls
+and export-snapshot checks; `cargo xtask ci`.
 
 ---
 
