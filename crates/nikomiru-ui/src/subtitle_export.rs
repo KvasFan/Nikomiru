@@ -13,6 +13,8 @@ pub enum ExportFormat {
     Bilingual,
     /// Combined primary/secondary plain-text SRT.
     BilingualSrt,
+    /// Standalone bilingual study sheet with hidden translations.
+    Html,
 }
 
 /// Render a selected snapshot with an explicitly chosen format.
@@ -23,13 +25,24 @@ pub fn render(
     complete: bool,
     format: ExportFormat,
     secondary: Option<(&[nikomiru_subs::Cue], i64, bool)>,
+    translation_label: &str,
 ) -> Result<String, &'static str> {
     match format {
         ExportFormat::Srt => selected_srt(cues, indices, delay_ms, complete),
         ExportFormat::Vtt => vtt(cues, indices, delay_ms, complete),
-        ExportFormat::Bilingual | ExportFormat::BilingualSrt => {
+        ExportFormat::Bilingual | ExportFormat::BilingualSrt | ExportFormat::Html => {
             let (other, delay, ready) = secondary.ok_or("sub-export-unavailable")?;
-            if format == ExportFormat::BilingualSrt {
+            if format == ExportFormat::Html {
+                html_sheet(
+                    cues,
+                    indices,
+                    delay_ms,
+                    other,
+                    delay,
+                    complete && ready,
+                    translation_label,
+                )
+            } else if format == ExportFormat::BilingualSrt {
                 bilingual_srt(cues, indices, delay_ms, other, delay, complete && ready)
             } else {
                 bilingual(cues, indices, delay_ms, other, delay, complete && ready)
@@ -162,6 +175,68 @@ pub fn bilingual_srt(
     if out.len() > 16 << 20 {
         return Err("sub-export-too-large");
     }
+    Ok(out)
+}
+
+/// Bounded UTF-8 HTML with no network resources, scripts or unescaped caption markup.
+pub fn html_sheet(
+    primary: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    secondary: &[nikomiru_subs::Cue],
+    secondary_delay: i64,
+    complete: bool,
+    translation_label: &str,
+) -> Result<String, &'static str> {
+    let rows = paired(
+        primary,
+        indices,
+        delay_ms,
+        secondary,
+        secondary_delay,
+        complete,
+    )?;
+    let mut out = String::from(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Nikomiru</title><style>body{max-width:52rem;margin:2rem auto;padding:1rem;font:1.1rem system-ui}article{border-bottom:1px solid #aaa;padding:1rem 0}p{white-space:pre-wrap}summary{cursor:pointer}small{font-variant-numeric:tabular-nums}</style></head><body><h1>Nikomiru</h1>\n",
+    );
+    fn escaped(out: &mut String, text: &str) -> Result<(), &'static str> {
+        for c in text.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '"' => out.push_str("&quot;"),
+                '\'' => out.push_str("&#39;"),
+                _ => out.push(c),
+            }
+            if out.len() > 16 << 20 {
+                return Err("sub-export-too-large");
+            }
+        }
+        Ok(())
+    }
+    for (n, row) in rows.iter().enumerate() {
+        out.push_str(&format!(
+            "<article><small>{} · {} – {}</small><p>",
+            n + 1,
+            crate::subtitles::clock(row.start),
+            crate::subtitles::clock(row.end)
+        ));
+        escaped(&mut out, &row.primary)?;
+        out.push_str("</p>");
+        if !row.secondary.is_empty() {
+            out.push_str("<details><summary>");
+            escaped(&mut out, translation_label)?;
+            out.push_str("</summary><p>");
+            escaped(&mut out, &row.secondary)?;
+            out.push_str("</p></details>");
+        }
+        out.push_str("</article>\n");
+        if out.len() > (16 << 20) - 32 {
+            return Err("sub-export-too-large");
+        }
+    }
+    out.push_str("</body></html>\n");
     Ok(out)
 }
 
@@ -515,5 +590,31 @@ mod tests {
         let mut large = cues;
         large[0].plain_text = "a".repeat((16 << 20) + 1);
         assert_eq!(srt(&large, 0, true), Err("sub-export-too-large"));
+    }
+    // T-SUB-046: escaped bilingual HTML is standalone, scoped, complete and output bounded.
+    #[test]
+    fn html_sheet_escapes_every_text_field_and_hides_translation() {
+        let a = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n",
+        )
+        .cues;
+        let mut b = a.clone();
+        b[0].plain_text = "<script>&\"'".into();
+        let mut a = a;
+        a[0].plain_text = "<img src=x> & 猫".into();
+        let html = html_sheet(&a, &[0, 0], 0, &b, 0, true, "<Reveal>").unwrap();
+        assert_eq!(html.matches("<article>").count(), 1);
+        assert!(html.contains("&lt;img src=x&gt; &amp; 猫"));
+        assert!(html.contains("<details><summary>&lt;Reveal&gt;</summary>"));
+        assert!(html.contains("&lt;script&gt;&amp;&quot;&#39;"));
+        assert!(!html.contains("<script>") && !html.contains("<script "));
+        assert!(html_sheet(&a, &[0], 0, &b, 0, false, "Reveal").is_err());
+        assert!(html_sheet(&a, &[9], 0, &b, 0, true, "Reveal").is_err());
+        a[0].plain_text = "&".repeat(4 << 20);
+        assert_eq!(
+            html_sheet(&a, &[0], 0, &b, 0, true, "Reveal"),
+            Err("sub-export-too-large")
+        );
     }
 }

@@ -1215,3 +1215,8 @@ sub-reveal-line = Mostra riga
 sub-vocabulary-shown = Studia parole delle righe visibili
 sub-vocabulary-selected = Studia parole delle righe selezionate
 sub-vocabulary-all = Torna al vocabolario completo
+
+sub-html-shown = Esporta righe visibili come scheda HTML
+sub-html-selected = Esporta selezione come scheda HTML
+sub-html-translation = Mostra traduzione
+sub-html-filter = Scheda di studio HTML

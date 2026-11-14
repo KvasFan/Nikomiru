@@ -99,6 +99,8 @@ pub enum Dialog {
     SubtitleBilingual,
     /// Combined primary/secondary plain SRT.
     SubtitleBilingualSrt,
+    /// Bilingual standalone HTML study sheet.
+    SubtitleHtml,
     /// Completed comprehension summaries for a library view.
     StudyReport,
 }
@@ -215,6 +217,10 @@ impl FileDialog {
                 tr("encounter-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
             ),
+            Dialog::SubtitleHtml => (
+                tr("sub-html-shown"),
+                vec![(tr("sub-html-filter"), vec!["*.html"]), all],
+            ),
             Dialog::SubtitleBilingualSrt => (
                 tr("sub-bilingual-srt-shown"),
                 vec![(tr("sub-export-filter"), vec!["*.srt"]), all],
@@ -251,6 +257,7 @@ impl FileDialog {
                 Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleHtml => Some("nikomiru-study.html".into()),
                 Dialog::SubtitleBilingualSrt => Some("nikomiru-bilingual.srt".into()),
                 Dialog::SubtitleBilingual => Some("nikomiru-bilingual.tsv".into()),
                 Dialog::SubtitleVtt => Some("nikomiru-subtitles.vtt".into()),

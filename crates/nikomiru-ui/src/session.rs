@@ -7422,6 +7422,7 @@ impl Session {
                 self.secondary.timeline().delay_ms,
                 !self.secondary.incomplete,
             )),
+            &self.tr("sub-html-translation", &[]),
         ) {
             Ok(text) => {
                 self.subtitle_export = Some(text);

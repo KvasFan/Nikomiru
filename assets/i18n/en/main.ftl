@@ -1215,3 +1215,8 @@ sub-reveal-line = Reveal line
 sub-vocabulary-shown = Study vocabulary of shown lines
 sub-vocabulary-selected = Study vocabulary of selected lines
 sub-vocabulary-all = Return to full subtitle vocabulary
+
+sub-html-shown = Export shown as HTML study sheet
+sub-html-selected = Export selected as HTML study sheet
+sub-html-translation = Reveal translation
+sub-html-filter = HTML study sheet

@@ -121,6 +121,7 @@ pub(crate) struct StudyLabels {
     vtt_selected: String,
     bilingual_shown: String,
     bilingual_selected: String,
+    html_labels: [String; 2],
     bilingual_srt_shown: String,
     bilingual_srt_selected: String,
     select_line: String,
@@ -154,6 +155,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            html_labels: ["sub-html-shown", "sub-html-selected"].map(|k| tr(k, &[])),
             vocabulary_labels: [
                 "sub-vocabulary-shown",
                 "sub-vocabulary-selected",
@@ -976,6 +978,29 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     .clicked()
                 {
                     state.window = TimeWindow::default();
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for (label, indices) in [
+                    (&scene.study.html_labels[0], shown_indices(scene, state)),
+                    (
+                        &scene.study.html_labels[1],
+                        state.selected.iter().copied().collect(),
+                    ),
+                ] {
+                    if ui
+                        .add_enabled(
+                            scene.bilingual_ready && !indices.is_empty(),
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::SubtitleRowsExport {
+                            version: scene.version,
+                            indices,
+                            format: crate::subtitle_export::ExportFormat::Html,
+                        });
+                    }
                 }
             });
             ui.horizontal_wrapped(|ui| {

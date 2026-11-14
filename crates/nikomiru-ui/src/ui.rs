@@ -1049,7 +1049,8 @@ impl Ui {
                     Dialog::SubtitleExport
                     | Dialog::SubtitleVtt
                     | Dialog::SubtitleBilingual
-                    | Dialog::SubtitleBilingualSrt => self.session.subtitle_export_to(&path),
+                    | Dialog::SubtitleBilingualSrt
+                    | Dialog::SubtitleHtml => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
@@ -1592,6 +1593,9 @@ impl Ui {
             } => {
                 if s.subtitle_selected_prepare(version, &indices, format) {
                     self.view.dialog = Some(match format {
+                        crate::subtitle_export::ExportFormat::Html => {
+                            crate::view::Dialog::SubtitleHtml
+                        }
                         crate::subtitle_export::ExportFormat::BilingualSrt => {
                             Dialog::SubtitleBilingualSrt
                         }

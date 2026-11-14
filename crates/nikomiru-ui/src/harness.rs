@@ -1365,6 +1365,7 @@ pub fn subtitle_export(
         "vtt" => crate::subtitle_export::ExportFormat::Vtt,
         "bilingual" => crate::subtitle_export::ExportFormat::Bilingual,
         "bilingual-srt" => crate::subtitle_export::ExportFormat::BilingualSrt,
+        "html" => crate::subtitle_export::ExportFormat::Html,
         _ => return Err("unknown subtitle format".into()),
     };
     call(move |ui| {
@@ -1376,6 +1377,7 @@ pub fn subtitle_export(
             .subtitle_selected_prepare(version, &indices, format)
         {
             let dialog = match format {
+                crate::subtitle_export::ExportFormat::Html => crate::view::Dialog::SubtitleHtml,
                 crate::subtitle_export::ExportFormat::BilingualSrt => {
                     crate::view::Dialog::SubtitleBilingualSrt
                 }

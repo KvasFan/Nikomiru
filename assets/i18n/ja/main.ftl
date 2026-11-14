@@ -1198,3 +1198,8 @@ sub-reveal-line = 字幕を開く
 sub-vocabulary-shown = 表示中の字幕の語彙を学習
 sub-vocabulary-selected = 選択した字幕の語彙を学習
 sub-vocabulary-all = 字幕全体の語彙に戻る
+
+sub-html-shown = 表示範囲をHTML学習シートに出力
+sub-html-selected = 選択範囲をHTML学習シートに出力
+sub-html-translation = 翻訳を表示
+sub-html-filter = HTML学習シート
