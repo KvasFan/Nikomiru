@@ -1255,3 +1255,5 @@ vocabulary-reading-same = No distinct reading
 
 vocabulary-coverage-target = Keep top words covering this occurrence percentage
 vocabulary-coverage-reset = Reset coverage target
+
+sub-presets = Saved subtitle study presets

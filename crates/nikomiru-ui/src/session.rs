@@ -2248,6 +2248,37 @@ impl Session {
         self.config_save = Some(self.services.config.clone());
     }
 
+    /// Explicit persistent preset mutation, using the serial configuration writer.
+    pub fn subtitle_study_preset_change(
+        &mut self,
+        preset: Option<nikomiru_core::config::SubtitleStudyPreset>,
+        delete: Option<String>,
+    ) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let saved = &mut self.services.config.subtitles.study_presets;
+        if let Some(p) = preset {
+            if !p.valid() {
+                return;
+            }
+            if let Some(old) = saved.iter_mut().find(|old| old.name == p.name) {
+                *old = p;
+            } else if saved.len() < 16 {
+                saved.push(p);
+            } else {
+                return;
+            }
+        } else if let Some(name) = delete {
+            saved.retain(|p| p.name != name);
+        } else {
+            return;
+        }
+        self.preset_saving = true;
+        self.config_save = Some(self.services.config.clone());
+    }
+
     /// Apply and queue the selected settings section for persistence.
     pub fn settings_save(&mut self, section: nikomiru_core::config::Section, draft: &Config) {
         use nikomiru_core::config::Section;

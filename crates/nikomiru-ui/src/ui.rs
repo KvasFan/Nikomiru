@@ -408,6 +408,8 @@ pub(crate) enum Command {
         indices: Vec<usize>,
     },
     VocabularyScopeClear,
+    SubtitleStudyPresetSave(nikomiru_core::config::SubtitleStudyPreset),
+    SubtitleStudyPresetDelete(String),
     StudyPresetSave(nikomiru_core::config::StudyPreset),
     StudyPresetDelete(String),
     VocabularyExamples {
@@ -1425,6 +1427,12 @@ impl Ui {
                 s.vocabulary_scope_capture(version, &indices)
             }
             Command::VocabularyScopeClear => s.vocabulary_scope_clear(),
+            Command::SubtitleStudyPresetSave(preset) => {
+                s.subtitle_study_preset_change(Some(preset), None)
+            }
+            Command::SubtitleStudyPresetDelete(name) => {
+                s.subtitle_study_preset_change(None, Some(name))
+            }
             Command::StudyPresetSave(preset) => s.study_preset_change(Some(preset), None),
             Command::StudyPresetDelete(name) => s.study_preset_change(None, Some(name)),
             Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),

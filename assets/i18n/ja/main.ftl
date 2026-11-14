@@ -1238,3 +1238,5 @@ vocabulary-reading-same = 異なる読みがない語
 
 vocabulary-coverage-target = 出現回数の指定割合をカバーする頻出語
 vocabulary-coverage-reset = カバー率の条件をリセット
+
+sub-presets = 保存した字幕学習プリセット

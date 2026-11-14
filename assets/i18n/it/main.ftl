@@ -1255,3 +1255,5 @@ vocabulary-reading-same = Senza lettura distinta
 
 vocabulary-coverage-target = Parole più frequenti che coprono questa percentuale di occorrenze
 vocabulary-coverage-reset = Azzera obiettivo di copertura
+
+sub-presets = Preset salvati per lo studio dei sottotitoli

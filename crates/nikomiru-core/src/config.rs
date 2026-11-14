@@ -212,11 +212,57 @@ pub struct PlayerConfig {
     pub other: toml::Table,
 }
 
+/// Persistent subtitle study filters without source/selection identities (SUB-052).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SubtitleStudyPreset {
+    /// Unique display name, at most 64 bytes.
+    pub name: String,
+    /// Search input, at most 4096 bytes.
+    pub query: String,
+    /// All, new-word or plus-one line choice.
+    pub filter: u8,
+    /// Optional effective start bound.
+    pub from: Option<i64>,
+    /// Optional effective end bound.
+    pub to: Option<i64>,
+    /// Minimum characters per second.
+    pub min_speed: Option<u32>,
+    /// Maximum characters per second.
+    pub max_speed: Option<u32>,
+    /// Minimum milliseconds.
+    pub min_duration: Option<u64>,
+    /// Maximum milliseconds.
+    pub max_duration: Option<u64>,
+    /// Minimum non-whitespace scalars.
+    pub min_text: Option<u32>,
+    /// Maximum non-whitespace scalars.
+    pub max_text: Option<u32>,
+    /// Keep the first repeated caption only.
+    pub unique: bool,
+    /// Any, single-line or multiline captions.
+    pub shape: u8,
+}
+impl SubtitleStudyPreset {
+    /// Reject invalid names, queries and choice indices.
+    pub fn valid(&self) -> bool {
+        !self.name.trim().is_empty()
+            && self.name == self.name.trim()
+            && self.name.len() <= 64
+            && !self.name.chars().any(char::is_control)
+            && self.query.len() <= 4096
+            && self.filter < 3
+            && self.shape < 3
+    }
+}
+
 /// `[subtitles]` (SUB-008, SUB-010, SUB-014, SUB-021…023, LKP-051, LKP-052,
 /// LKP-061, KNW-002, KNW-004).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitlesConfig {
+    /// Explicit named subtitle study snapshots, at most sixteen.
+    pub study_presets: Vec<SubtitleStudyPreset>,
     /// Languages of the subtitles chosen automatically, in order (SUB-008).
     pub preferred_languages: Vec<String>,
     /// Font size in pixels for a video 1080 px high (SUB-010).
@@ -309,6 +355,11 @@ impl SubtitlesConfig {
     fn bounded(self) -> Self {
         let d = Self::default();
         let mut c = self;
+        let mut names = std::collections::HashSet::new();
+        c.study_presets
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        c.study_presets.truncate(16);
+
         if !(8.0..=200.0).contains(&c.font_size) {
             c.font_size = d.font_size;
         }
@@ -354,6 +405,7 @@ impl SubtitlesConfig {
 impl Default for SubtitlesConfig {
     fn default() -> Self {
         Self {
+            study_presets: Vec::new(),
             preferred_languages: vec!["ja".into(), "jpn".into()],
             font_size: 36.0,
             font: String::new(),
@@ -2207,6 +2259,62 @@ mod study_preset_tests {
             Config::from_toml(&toml::to_string(&c).unwrap())
                 .unwrap()
                 .lookup
+                .study_presets
+                .len(),
+            16
+        );
+    }
+}
+
+#[cfg(test)]
+mod subtitle_preset_tests {
+    use super::*;
+    // T-SUB-052: configuration restart, choice validation and bounded deduplication.
+    #[test]
+    fn subtitle_study_presets_round_trip_and_bound() {
+        let p = SubtitleStudyPreset {
+            name: "Listening".into(),
+            query: "猫".into(),
+            unique: true,
+            min_text: Some(2),
+            from: Some(1234),
+            shape: 2,
+            ..Default::default()
+        };
+        let mut c = Config::default();
+        c.subtitles.study_presets = vec![p.clone(), p.clone(), SubtitleStudyPreset::default()];
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .subtitles
+                .study_presets
+                .as_slice(),
+            std::slice::from_ref(&p)
+        );
+        assert!(
+            !SubtitleStudyPreset {
+                shape: 3,
+                ..p.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !SubtitleStudyPreset {
+                query: "x".repeat(4097),
+                ..p.clone()
+            }
+            .valid()
+        );
+        c.subtitles.study_presets = (0..20)
+            .map(|i| SubtitleStudyPreset {
+                name: i.to_string(),
+                ..p.clone()
+            })
+            .collect();
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .subtitles
                 .study_presets
                 .len(),
             16

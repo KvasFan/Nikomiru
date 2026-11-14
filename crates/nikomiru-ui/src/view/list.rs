@@ -144,6 +144,7 @@ pub(crate) struct StudyLabels {
     mask_labels: [String; 4],
     shapes: [String; 3],
     unique_label: String,
+    preset_labels: [String; 4],
     text_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
@@ -164,6 +165,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            preset_labels: [
+                "sub-presets",
+                "vocabulary-preset-name",
+                "vocabulary-preset-store",
+                "vocabulary-preset-delete",
+            ]
+            .map(|k| tr(k, &[])),
             shapes: ["sub-shape-any", "sub-shape-single", "sub-shape-multiple"].map(|k| tr(k, &[])),
             unique_label: tr("sub-unique-captions", &[]),
             text_labels: [
@@ -264,6 +272,7 @@ struct Metrics {
 #[derive(Debug, Default)]
 pub(crate) struct State {
     query: String,
+    preset_name: String,
     rows: Rows,
     selected: BTreeSet<usize>,
     selection_anchor: Option<usize>,
@@ -933,10 +942,123 @@ fn select_range(
     }
 }
 
+pub(super) fn sync_study_presets(
+    ctx: &egui::Context,
+    saved: &[nikomiru_core::config::SubtitleStudyPreset],
+) {
+    ctx.data_mut(|d| d.insert_temp(Id::unique("subtitle-named-presets"), saved.to_vec()));
+}
+
+impl State {
+    fn capture_preset(&self) -> nikomiru_core::config::SubtitleStudyPreset {
+        nikomiru_core::config::SubtitleStudyPreset {
+            name: self.preset_name.trim().to_string(),
+            query: self.query.clone(),
+            filter: match self.filter {
+                LineFilter::All => 0,
+                LineFilter::New => 1,
+                LineFilter::PlusOne => 2,
+            },
+            from: self.window.from,
+            to: self.window.to,
+            min_speed: self.speed.min,
+            max_speed: self.speed.max,
+            min_duration: self.duration.min,
+            max_duration: self.duration.max,
+            min_text: self.text_length.min,
+            max_text: self.text_length.max,
+            unique: self.unique,
+            shape: match self.shape {
+                LineShape::Any => 0,
+                LineShape::Single => 1,
+                LineShape::Multiple => 2,
+            },
+        }
+    }
+    fn apply_preset(&mut self, p: &nikomiru_core::config::SubtitleStudyPreset) {
+        if !p.valid() {
+            return;
+        }
+        self.query.clone_from(&p.query);
+        self.filter =
+            [LineFilter::All, LineFilter::New, LineFilter::PlusOne][usize::from(p.filter)];
+        self.window = TimeWindow {
+            from: p.from,
+            to: p.to,
+        };
+        self.speed = ReadingSpeed {
+            min: p.min_speed,
+            max: p.max_speed,
+        };
+        self.duration = DurationBounds {
+            min: p.min_duration,
+            max: p.max_duration,
+        };
+        self.text_length = TextLength {
+            min: p.min_text,
+            max: p.max_text,
+        };
+        self.unique = p.unique;
+        self.shape = [LineShape::Any, LineShape::Single, LineShape::Multiple][usize::from(p.shape)];
+        self.rows.picked = None;
+    }
+}
+
+fn study_presets(
+    ui: &mut egui::Ui,
+    state: &mut State,
+    labels: &StudyLabels,
+    out: &mut Vec<Command>,
+) {
+    egui::CollapsingHeader::new(&labels.preset_labels[0])
+        .id_salt("subtitle-persistent-presets")
+        .show(ui, |ui| {
+            let saved = ui
+                .ctx()
+                .data(|d| {
+                    d.get_temp::<Vec<nikomiru_core::config::SubtitleStudyPreset>>(Id::unique(
+                        "subtitle-named-presets",
+                    ))
+                })
+                .unwrap_or_default();
+            ui.add(
+                egui::TextEdit::singleline(&mut state.preset_name)
+                    .char_limit(64)
+                    .hint_text(&labels.preset_labels[1]),
+            )
+            .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, &labels.preset_labels[1]));
+            let p = state.capture_preset();
+            if ui
+                .add_enabled(
+                    p.valid() && (saved.len() < 16 || saved.iter().any(|old| old.name == p.name)),
+                    egui::Button::new(&labels.preset_labels[2]),
+                )
+                .clicked()
+            {
+                out.push(Command::SubtitleStudyPresetSave(p));
+            }
+            for p in saved {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(&p.name).clicked() {
+                        state.apply_preset(&p);
+                        ui.ctx().request_repaint();
+                    }
+                    if ui
+                        .button(format!("{}: {}", labels.preset_labels[3], p.name))
+                        .clicked()
+                    {
+                        out.push(Command::SubtitleStudyPresetDelete(p.name.clone()));
+                    }
+                });
+            }
+        });
+}
+
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
+            study_presets(ui, state, &scene.study, out);
             matching_navigation(ui, scene, state, out);
             egui::CollapsingHeader::new(&scene.study.study_groups[0])
                 .id_salt("subtitle-study-group-0")
@@ -1692,6 +1814,45 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-052: explicit preset application restores scopes without selection/reveal identities.
+    #[test]
+    fn subtitle_presets_restore_filters_and_preserve_current_ticks() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬\n猫")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(0);
+        h.state_mut().state.masked = true;
+        h.state_mut().state.revealed.insert(0);
+        sync_study_presets(
+            &h.ctx,
+            &[nikomiru_core::config::SubtitleStudyPreset {
+                name: "Two lines".into(),
+                shape: 2,
+                query: "猫".into(),
+                ..Default::default()
+            }],
+        );
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-presets").click();
+        h.run_steps(3);
+        h.get_by_label("Two lines").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        assert!(h.state().state.masked && h.state().state.revealed.contains(&0));
+        let captured = h.state().state.capture_preset();
+        assert_eq!(captured.shape, 2);
+        h.get_by_label("vocabulary-preset-delete: Two lines")
+            .click();
+        h.run();
+        assert!(
+            h.state().out.iter().any(
+                |c| matches!(c,Command::SubtitleStudyPresetDelete(name) if name == "Two lines")
+            )
+        );
     }
 
     // T-SUB-051: shape changes invalidate rows and keep hidden selections.

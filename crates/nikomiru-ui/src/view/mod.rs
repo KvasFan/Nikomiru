@@ -594,6 +594,7 @@ impl View {
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
         word_list::sync_presets(ui.ctx(), &s.config().lookup.study_presets);
+        list::sync_study_presets(ui.ctx(), &s.config().subtitles.study_presets);
         // a file opened, from the page or anywhere else: the video shows
         if s.opened() != self.opened {
             self.opened = s.opened();
