@@ -43,6 +43,12 @@ pub enum Source {
 }
 
 impl Source {
+    /// A local model reads this embedded or explicit paired-file source.
+    pub fn is_graphic_read(&self) -> bool {
+        matches!(self, Self::Read { .. })
+            || matches!(self, Self::File(path) if path.extension().is_some_and(|s| matches!(s.to_string_lossy().to_ascii_lowercase().as_str(), "idx" | "sub")))
+    }
+
     /// Identifier used by the menu.
     pub fn key(&self) -> String {
         match self {
@@ -56,6 +62,10 @@ impl Source {
 /// What the background loader is asked to do.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
+    /// Captured playback position, without subtitle delay, for OCR priority.
+    pub position_ms: i64,
+    /// Language priority for external VobSub tracks.
+    pub preferred_languages: Vec<String>,
     /// The video.
     pub video: PathBuf,
     /// The subtitles to load (a file or an embedded text track).
@@ -91,6 +101,20 @@ pub struct Loaded {
     /// The fonts attached to the video, for an ASS track (SUB-025).
     pub fonts: Vec<std::path::PathBuf>,
 }
+
+/// Cumulative text from a bounded graphic OCR batch (SUB-030).
+#[derive(Debug, Clone)]
+pub struct Progress {
+    /// Recognised text in timeline order.
+    pub loaded: Loaded,
+    /// Pictures processed, including unreadable ones.
+    pub done: usize,
+    /// Pictures in the whole track.
+    pub total: usize,
+}
+
+/// Progressive OCR reports; never a final cache or complete score.
+pub type Reports = Box<dyn Fn(Progress) + Send + Sync>;
 
 /// Obscuring of the main subtitle (SUB-014).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -191,6 +215,10 @@ pub struct Shown<'a> {
 /// The subtitles of the current file.
 #[derive(Debug, Default)]
 pub struct Subtitles {
+    /// The text is a partial OCR snapshot, not a complete track.
+    pub incomplete: bool,
+    /// Processed/total graphic pictures, once the first OCR batch reports.
+    pub read_progress: Option<(usize, usize)>,
     timeline: Timeline,
     /// The video's position at the last update.
     pos_ms: i64,
@@ -238,6 +266,8 @@ impl Subtitles {
 
     /// Replaces the track; the offset is kept (SUB-011).
     pub fn set_track(&mut self, source: Source, loaded: Loaded) {
+        self.incomplete = false;
+        self.read_progress = None;
         let delay = self.timeline.delay_ms;
         self.format = Some(loaded.track.format);
         self.styles = loaded.track.styles;
@@ -253,6 +283,8 @@ impl Subtitles {
 
     /// No text subtitles (none chosen, or a graphic track drawn by mpv).
     pub fn clear(&mut self, source: Option<Source>) {
+        self.incomplete = false;
+        self.read_progress = None;
         self.timeline = Timeline::default();
         self.timeline.delay_ms = 0;
         self.format = None;
@@ -363,6 +395,25 @@ pub fn char_to_byte(text: &str, pos: usize) -> usize {
     text.char_indices()
         .nth(pos)
         .map_or(text.len(), |(byte, _)| byte)
+}
+
+/// Map existing OCR cues into an expanded/joined snapshot. A cue remains
+/// identifiable by its text and a containing time span, even when earlier
+/// pictures are inserted or neighbouring identical text joins it.
+pub(crate) fn progress_cues(old: &[Cue], new: &[Cue]) -> Vec<Option<usize>> {
+    let index: std::collections::BTreeMap<_, _> = new
+        .iter()
+        .enumerate()
+        .map(|(i, cue)| ((cue.plain_text.as_str(), cue.start_ms), (i, cue.end_ms)))
+        .collect();
+    old.iter()
+        .map(|cue| {
+            let ((text, _), (i, end)) = index
+                .range(..=(cue.plain_text.as_str(), cue.start_ms))
+                .next_back()?;
+            (*text == cue.plain_text && *end >= cue.end_ms).then_some(*i)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -551,5 +602,22 @@ mod tests {
         assert_eq!(char_to_byte(text, 2), 5);
         assert_eq!(char_to_byte(text, 3), 8);
         assert_eq!(char_to_byte(text, 99), text.len());
+    }
+}
+
+#[cfg(test)]
+mod progressive_tests {
+    use super::*;
+    // T-SUB-030: inserted earlier cues and joined spans retain popup identity.
+    #[test]
+    fn cumulative_text_maps_cues_by_text_and_time() {
+        let read = |text: &str| nikomiru_subs::parse(Format::Srt, text).cues;
+        let old =
+            read("1\n00:00:05,000 --> 00:00:06,000\n猫\n\n2\n00:00:09,000 --> 00:00:10,000\n犬\n");
+        let new = read(
+            "1\n00:00:01,000 --> 00:00:02,000\n本\n\n2\n00:00:04,000 --> 00:00:07,000\n猫\n\n3\n00:00:09,000 --> 00:00:10,000\n犬\n",
+        );
+        assert_eq!(progress_cues(&old, &new), [Some(1), Some(2)]);
+        assert_eq!(progress_cues(&new, &old), [None, None, Some(1)]);
     }
 }

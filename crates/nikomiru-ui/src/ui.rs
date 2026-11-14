@@ -21,6 +21,15 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// Cumulative graphic OCR text, stamped against source changes.
+    SubtitleProgress {
+        /// Load generation.
+        generation: u64,
+        /// Graphic source.
+        source: Source,
+        /// Partial text and work counts.
+        progress: crate::subtitles::Progress,
+    },
     /// One episode counted for a series-card analysis.
     SeriesWordCount {
         /// Stamped series analysis.
@@ -274,6 +283,7 @@ impl std::fmt::Debug for Inbound {
         let name = match self {
             Inbound::Player(e) => return write!(f, "Player({:?})", e.value),
             Inbound::Subtitles { .. } => "Subtitles",
+            Inbound::SubtitleProgress { .. } => "SubtitleProgress",
             Inbound::Lookup { .. } => "Lookup",
             Inbound::Words { .. } => "Words",
             Inbound::WordCount { .. } => "WordCount",
@@ -431,6 +441,10 @@ pub(crate) enum Command {
     /// "Import a word list…" and "Export the words…" (KNW-006).
     WordsImport,
     WordsExport,
+    /// Export a complete analysed vocabulary snapshot.
+    AnalysisWordsExport(Vec<crate::words::ListedWord>),
+    /// Save the full historical set of one episode.
+    EncounterExport(String),
     /// A status chosen for the words ticked in the word list (KNW-009).
     WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
@@ -545,8 +559,20 @@ pub(crate) enum Command {
     /// The Books page opened.
     BooksOpen,
     BookAnalyse(String),
+    /// Cancel a whole-book analysis.
+    BookAnalysisCancel(String),
+    /// Cancel a series analysis.
+    SeriesAnalysisCancel(u64),
     /// Explicit comprehension analysis from a local series card.
     SeriesAnalyse(u64),
+    /// Browse one completed episode’s vocabulary, or return to episodes.
+    EpisodeWords(Option<String>),
+    /// Cancel primary subtitle OCR and restore bitmap/off.
+    GraphicReadCancel,
+    /// Export current complete text subtitles as SRT.
+    SubtitleExport,
+    /// Export a captured completed-analysis summary.
+    StudyReport(crate::study_report::Scope),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
     /// A book of the list.
@@ -787,6 +813,15 @@ impl Ui {
     pub fn handle(&mut self, message: Inbound) -> bool {
         let redraw = match message {
             Inbound::Player(event) => self.session.on_event(event),
+            Inbound::SubtitleProgress {
+                generation,
+                source,
+                progress,
+            } => {
+                self.session
+                    .subtitles_progress(generation, source, progress);
+                true
+            }
             Inbound::Subtitles {
                 generation,
                 source,
@@ -978,6 +1013,10 @@ impl Ui {
                     Dialog::BackupSave => self.session.backup_to(path),
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
+                    Dialog::StudyReport => self.session.study_report_to(&path),
+                    Dialog::SubtitleExport => self.session.subtitle_export_to(&path),
+                    Dialog::EncounterExport => self.session.history_export_to(path),
+                    Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
                 }
                 true
@@ -1168,7 +1207,9 @@ impl Ui {
                 }
                 self.session.dict_choose(path.to_path_buf());
             }
-            Some("srt" | "ass" | "ssa" | "vtt" | "lrc") if self.session.view.loaded => {
+            Some("srt" | "ass" | "ssa" | "vtt" | "lrc" | "idx" | "sub")
+                if self.session.view.loaded =>
+            {
                 self.session.open_subtitle_file(path);
             }
             _ => self.session.open(path),
@@ -1429,6 +1470,16 @@ impl Ui {
             // KNW-005, KNW-006
             Command::KnownFromAnki => s.known_from_anki(true),
             Command::WordsImport => self.view.dialog = Some(Dialog::WordsImport),
+            Command::EncounterExport(uid) => {
+                if s.history_export_prepare(&uid) {
+                    self.view.dialog = Some(Dialog::EncounterExport);
+                }
+            }
+            Command::AnalysisWordsExport(rows) => {
+                if s.analysis_export_prepare(&rows) {
+                    self.view.dialog = Some(Dialog::AnalysisWordsExport);
+                }
+            }
             Command::WordsExport => self.view.dialog = Some(Dialog::WordsExport),
             Command::StatsLoad => s.stats_load(),
             Command::Review(job) => s.review(job),
@@ -1469,7 +1520,21 @@ impl Ui {
                 }
             }
             Command::BooksOpen => s.books_open(),
+            Command::BookAnalysisCancel(uid) => s.book_analysis_cancel(&uid),
+            Command::SeriesAnalysisCancel(id) => s.series_analysis_cancel(id),
             Command::BookAnalyse(uid) => s.book_analyse(&uid),
+            Command::StudyReport(scope) => {
+                if s.study_report_prepare(scope) {
+                    self.view.dialog = Some(Dialog::StudyReport);
+                }
+            }
+            Command::SubtitleExport => {
+                if s.subtitle_export_prepare() {
+                    self.view.dialog = Some(Dialog::SubtitleExport);
+                }
+            }
+            Command::GraphicReadCancel => s.graphic_read_cancel(),
+            Command::EpisodeWords(uid) => s.episode_words(uid),
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookPage(address) => s.book_page(&address),
@@ -1546,8 +1611,19 @@ impl Ui {
             let waker = self.waker.clone();
             let source = request.source.clone();
             let secondary = request.secondary;
+            let progress_waker = self.waker.clone();
+            let progress_source = source.clone();
             self.session.start_subtitle_load(
                 request,
+                Box::new(move |progress| {
+                    if !secondary {
+                        progress_waker.wake(Inbound::SubtitleProgress {
+                            generation,
+                            source: progress_source.clone(),
+                            progress,
+                        });
+                    }
+                }),
                 Box::new(move |result| {
                     waker.wake(Inbound::Subtitles {
                         generation,
@@ -1725,7 +1801,16 @@ impl Ui {
                     // writes queued before are done first, as for an export
                     self.session.wait_writes();
                     let catalog = self.session.catalog();
-                    catalog.stats(Box::new(move |r| reply(LibraryReply::Stats(r))))
+                    catalog.stats(Box::new(move |r| {
+                        reply(LibraryReply::Stats(r.map(Box::new)))
+                    }))
+                }
+                LibraryJob::ExportEncounters(uid, path) => {
+                    catalog.export_encounters(
+                        uid,
+                        path,
+                        Box::new(move |r| reply(LibraryReply::HistoryExported(r))),
+                    );
                 }
                 LibraryJob::ExportCsv(path) => {
                     catalog.export_csv(path, Box::new(move |r| reply(LibraryReply::Exported(r))));
@@ -2091,7 +2176,8 @@ impl Ui {
         }
         if let Some((analysis, uid, request)) = self.session.take_series_word_count() {
             let waker = self.waker.clone();
-            self.session.start_word_count(
+            self.session.start_series_word_count(
+                analysis,
                 request,
                 Box::new(move |result| {
                     waker.wake(Inbound::SeriesWordCount {

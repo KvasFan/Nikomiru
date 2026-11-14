@@ -58,6 +58,7 @@ enum Job {
     Cover(u64, Done<Cover>),
     Stats(Done<Stats>),
     ExportCsv(PathBuf, Done<PathBuf>),
+    ExportEncounters(String, PathBuf, Done<PathBuf>),
     Review(ReviewJob, Settings, Done<Review>),
     Condense(
         Box<nikomiru_ui::condense::Request>,
@@ -163,7 +164,14 @@ impl Worker {
 
     fn edit(&self, edit: LibraryEdit) -> Result<(), String> {
         let lib = &self.parts.library;
+        if matches!(edit, LibraryEdit::ClearAnalysisCache) {
+            return crate::analysis_cache::clear(
+                &self.parts.cache_dir.join("episode-scores/counts-v1"),
+            )
+            .map_err(|e| e.to_string());
+        }
         let result = match edit {
+            LibraryEdit::ClearAnalysisCache => unreachable!("handled before library edits"),
             LibraryEdit::Rename(id, title) => lib.rename_series(id, &title),
             LibraryEdit::Delete(id) => lib.delete_series(id),
             LibraryEdit::Merge { from, into } => lib.merge_series(from, into),
@@ -172,6 +180,7 @@ impl Worker {
                 lib.split_series(&uids, &title, self.now()).map(drop)
             }
             LibraryEdit::Remove(uids) => uids.iter().try_for_each(|u| lib.remove_video(u)),
+            LibraryEdit::ClearEncounters(uid) => lib.clear_encounters(&uid, self.now()),
             LibraryEdit::DeleteSession(id) => lib.delete_segment(id),
             LibraryEdit::Identify { id, info, cover } => {
                 if let Some(bytes) = cover {
@@ -220,7 +229,7 @@ impl Worker {
             || review.days.iter().any(|n| *n > 0);
         let today = nikomiru_library::review::day_of(self.now(), offset);
         let words = lib.word_stats(today, offset).map_err(e)?;
-        let encounters = lib
+        let encounters: Vec<_> = lib
             .encounter_stats(SESSIONS_SHOWN)
             .map_err(e)?
             .into_iter()
@@ -232,7 +241,20 @@ impl Worker {
                 (uid, title, count)
             })
             .collect();
+        let history = lib.word_encounters().map_err(e)?;
+        let encounter_words = encounters
+            .iter()
+            .filter_map(|(uid, _, _)| {
+                let words = history.get(uid)?;
+                Some((uid.clone(), crate::encounter_details::rows(words)))
+            })
+            .collect();
         Ok(Stats {
+            analysis_cache: crate::analysis_cache::usage(
+                &self.parts.cache_dir.join("episode-scores/counts-v1"),
+            )
+            .ok(),
+            encounter_words,
             encounters,
             days: lib.day_totals().map_err(e)?,
             series: lib.series_totals().map_err(e)?,
@@ -240,6 +262,21 @@ impl Worker {
             review: used.then_some(review),
             words: words.any().then_some(words),
         })
+    }
+
+    fn export_encounters(&self, uid: &str, path: &Path) -> Result<PathBuf, String> {
+        let words = self
+            .parts
+            .library
+            .encounters_for(uid)
+            .map_err(|e| self.message(&e))?;
+        let text = nikomiru_ui::word_export::encounters_tsv(&words)
+            .map_err(|key| self.parts.translator.tr(key, &[]))?;
+        if self.cancel.is_cancelled() {
+            return Err("cancelled".into());
+        }
+        nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600).map_err(|e| e.to_string())?;
+        Ok(path.into())
     }
 
     /// STA-005: the sessions as CSV, at `path`.
@@ -431,6 +468,9 @@ impl Catalog {
                         Job::Edit(edit, done) => done(worker.edit(edit)),
                         Job::Cover(id, done) => done(worker.cover(id)),
                         Job::Stats(done) => done(worker.stats()),
+                        Job::ExportEncounters(uid, path, done) => {
+                            done(worker.export_encounters(&uid, &path))
+                        }
                         Job::ExportCsv(path, done) => done(worker.export_csv(&path)),
                         Job::Review(job, settings, done) => done(worker.review(job, &settings)),
                     }
@@ -467,6 +507,7 @@ impl Catalog {
             Some(Job::Edit(_, done)) => done(Err(no)),
             Some(Job::Cover(_, done)) => done(Err(no)),
             Some(Job::Stats(done)) => done(Err(no)),
+            Some(Job::ExportEncounters(_, _, done)) => done(Err(no)),
             Some(Job::ExportCsv(_, done)) => done(Err(no)),
             Some(Job::Review(_, _, done)) => done(Err(no)),
             None => {}
@@ -508,6 +549,10 @@ impl LibraryService for Catalog {
 
     fn stats(&self, done: Done<Stats>) {
         self.send(Job::Stats(done));
+    }
+
+    fn export_encounters(&self, uid: String, path: PathBuf, done: Done<PathBuf>) {
+        self.send(Job::ExportEncounters(uid, path, done));
     }
 
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>) {

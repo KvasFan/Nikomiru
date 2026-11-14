@@ -133,6 +133,10 @@ impl Resolver {
         if cancel.is_cancelled() {
             return Err("closing".into());
         }
+        if matches!(&request.saved, Some(nikomiru_library::SubtitleChoice::File(path)) if std::path::Path::new(path).extension().is_some_and(|s| matches!(s.to_string_lossy().to_ascii_lowercase().as_str(), "idx" | "sub")))
+        {
+            return Ok(None);
+        }
         let video = &request.video;
         if !video.is_file()
             || request.saved == Some(SubtitleChoice::Off)

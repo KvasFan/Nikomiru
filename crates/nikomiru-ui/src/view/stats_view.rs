@@ -35,6 +35,8 @@ pub(crate) const RANGES: [i64; 3] = [7, 30, 365];
 pub(crate) struct State {
     /// The chart's range, an index of [`RANGES`].
     range: usize,
+    history: Option<String>,
+    query: String,
 }
 
 /// `1 h 20 min`, `23 min`, `< 1 min`.
@@ -204,6 +206,79 @@ pub(crate) fn draw(
         ui.spinner();
         return;
     };
+    if let Some(uid) = state.history.clone() {
+        if let Some((_, title, total)) = stats.encounters.iter().find(|(u, _, _)| u == &uid)
+            && let Some(rows) = stats.encounter_words.get(&uid)
+        {
+            if ui.button(tr("analysis-words-back", &[])).clicked() {
+                state.history = None;
+            }
+            ui.heading(title);
+            ui.label(tr(
+                "encounter-history-coverage",
+                &[
+                    ("shown", rows.len().to_string()),
+                    ("total", total.to_string()),
+                ],
+            ));
+            let label = ui.label(tr("books-words-search", &[]));
+            ui.add(egui::TextEdit::singleline(&mut state.query))
+                .labelled_by(label.id);
+            if ui.button(tr("encounter-export", &[])).clicked() {
+                out.push(Command::EncounterExport(uid.clone()));
+            }
+            if ui.button(tr("encounter-history-clear", &[])).clicked() {
+                out.push(Command::LibraryEdit(LibraryEdit::ClearEncounters(
+                    uid.clone(),
+                )));
+                state.history = None;
+            }
+            let query = nikomiru_text::search::Query::new(&state.query);
+            let shown: Vec<_> = rows
+                .iter()
+                .filter(|(e, r, _)| query.matches(&[e, r]))
+                .collect();
+            egui::ScrollArea::vertical()
+                .id_salt("encounter-words")
+                .show_rows(ui, 26.0, shown.len(), |ui, range| {
+                    for (expression, reading, at) in &shown[range] {
+                        ui.label(format!("{expression} · {reading} · {at}"));
+                    }
+                });
+            return;
+        }
+        state.history = None;
+    }
+    section(ui, &tr("analysis-cache-title", &[]));
+    match stats.analysis_cache {
+        Some(usage) => {
+            ui.label(tr(
+                "analysis-cache-usage",
+                &[
+                    ("files", usage.files.to_string()),
+                    ("bytes", usage.bytes.to_string()),
+                ],
+            ));
+        }
+        None => {
+            ui.label(tr("analysis-cache-unavailable", &[]));
+        }
+    }
+    ui.horizontal(|ui| {
+        if ui.button(tr("analysis-cache-refresh", &[])).clicked() {
+            out.push(Command::StatsLoad);
+        }
+        if ui
+            .add_enabled(
+                stats.analysis_cache.is_some_and(|u| u.files > 0),
+                Button::new(tr("analysis-cache-clear", &[])),
+            )
+            .clicked()
+        {
+            out.push(Command::LibraryEdit(LibraryEdit::ClearAnalysisCache));
+        }
+    });
+    ui.label(tr("analysis-cache-detail", &[]));
     let days: BTreeMap<i64, &DayTotal> = stats
         .days
         .iter()
@@ -229,11 +304,19 @@ pub(crate) fn draw(
         ui.label(
             RichText::new(tr("stats-encounters-detail", &[])).color(palette::current().details),
         );
-        for (_, title, count) in &stats.encounters {
-            ui.label(tr(
-                "stats-encounters-episode",
-                &[("title", title.clone()), ("count", count.to_string())],
-            ));
+        for (uid, title, count) in &stats.encounters {
+            ui.push_id(uid, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr(
+                        "stats-encounters-episode",
+                        &[("title", title.clone()), ("count", count.to_string())],
+                    ));
+                    if ui.button(tr("encounter-history-open", &[])).clicked() {
+                        state.history = Some(uid.clone());
+                        state.query.clear();
+                    }
+                });
+            });
         }
     }
 
@@ -445,6 +528,17 @@ mod tests {
         };
         let stats = Stats {
             encounters: vec![("video/show-01".into(), "Show - 01".into(), 7)],
+            analysis_cache: Some(crate::catalog::AnalysisCacheUsage {
+                files: 2,
+                bytes: 4096,
+            }),
+            encounter_words: BTreeMap::from([(
+                "video/show-01".into(),
+                vec![
+                    ("猫".into(), "ねこ".into(), 42),
+                    ("犬".into(), "いぬ".into(), 30),
+                ],
+            )]),
             days: vec![
                 day("2026-10-20", 600_000, 100),
                 day("2026-10-25", 1_500_000, 400),
@@ -526,6 +620,48 @@ mod tests {
             h.state().out.as_slice(),
             [Command::LibraryEdit(LibraryEdit::DeleteSession(7))]
         ));
+        // T-KNW-023: inspect historical words, search a reading and clear only this uid.
+        h.get_by_label("encounter-history-open").click();
+        h.run_steps(2);
+        h.get_by_label("猫 · ねこ · 42");
+        // T-KNW-026: history accepts half-width katakana readings.
+        h.state_mut().state.query = "ｲﾇ".into();
+        h.run();
+        assert!(h.query_by_label("猫 · ねこ · 42").is_none());
+        h.get_by_label("犬 · いぬ · 30");
+        // T-KNW-032 controls are tested after returning from history below.
+        // T-KNW-030: export identifies the media, independent of the display query.
+        h.get_by_label("encounter-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EncounterExport(uid) if uid == "video/show-01"))
+        );
+        h.get_by_label("encounter-history-clear").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::LibraryEdit(LibraryEdit::ClearEncounters(uid)) if uid == "video/show-01")));
+        // T-KNW-032: metrics and explicit refresh/clear use the catalogue worker.
+        h.run_steps(2);
+        h.get_by_label("analysis-cache-usage 2 4096");
+        h.get_by_label("analysis-cache-refresh").click();
+        h.run();
+        h.get_by_label("analysis-cache-clear").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StatsLoad))
+        );
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibraryEdit(LibraryEdit::ClearAnalysisCache)))
+        );
         assert_eq!(
             duration(5_400_000, &|id, a| format!("{id}{a:?}")),
             "stats-hours[(\"h\", \"1\"), (\"m\", \"30\")]"

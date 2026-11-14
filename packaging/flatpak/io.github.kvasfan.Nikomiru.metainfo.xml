@@ -48,6 +48,7 @@
     <binary>nikomiru</binary>
   </provides>
   <releases>
+    <release version="2.53.0" date="2026-11-14"/>
     <release version="2.33.0" date="2026-11-13"/>
     <release version="2.32.0" date="2026-11-13"/>
     <release version="2.31.0" date="2026-11-13"/>

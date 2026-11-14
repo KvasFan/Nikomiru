@@ -112,3 +112,75 @@ fn new_words_are_recorded_only_during_playback_and_survive_a_restart() {
         1
     );
 }
+
+// T-KNW-023: real catalogue details and clear edit, persisted reset rejects old files.
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn encounter_history_can_be_inspected_and_cleared_without_losing_word_statuses() {
+    let mut desk = Desktop::start();
+    // T-KNW-032: a recognised count plus unrelated cache content.
+    let counts = desk.path("cache/nikomiru/episode-scores/counts-v1/books");
+    let store = nikomiru_app::analysis_cache::Store::new(counts.clone());
+    store.put(
+        "book",
+        &nikomiru_library::words::Counted::from_lines([vec![("猫".into(), "ねこ".into())]]),
+        &nikomiru_core::Cancel::new(),
+    );
+    std::fs::write(counts.join("readme.json"), "unrelated").unwrap();
+    let path = desk.data_file("library.redb");
+    let old = {
+        let lib = Library::open(&path).unwrap();
+        lib.record_encounters("video/history", &[("猫".into(), "ねこ".into())], 42)
+            .unwrap();
+        lib.set_word_status(
+            "猫",
+            "ねこ",
+            nikomiru_library::words::WordMark {
+                status: nikomiru_library::words::WordStatus::Known,
+                changed_at: 50,
+            },
+        )
+        .unwrap();
+        lib.export_state(100).unwrap()
+    };
+    let (mut app, mut h) = desk.launch();
+    h.cmd(json!({"cmd":"library", "action":"open"}));
+    h.cmd(json!({"cmd":"library", "action":"statistics"}));
+    h.state_until("historical detail projection", |s| {
+        s["library_page"]["stats"]["encounter_words"]["video/history"][0]
+            == json!(["猫", "ねこ", 42])
+    });
+    let s = h.state();
+    assert_eq!(s["library_page"]["stats"]["analysis_cache"]["files"], 1);
+    h.cmd(json!({"cmd":"library", "action":"clear-analysis-cache"}));
+    let s = h.state_until("owned count cache cleared", |s| {
+        s["library_page"]["stats"]["analysis_cache"]["files"] == 0
+    });
+    assert_eq!(history(&s)[0]["count"], 1);
+    assert_eq!(
+        std::fs::read_to_string(counts.join("readme.json")).unwrap(),
+        "unrelated"
+    );
+    // T-KNW-030: actual worker writes original history without changing known status.
+    let exported = desk.path("history.tsv");
+    h.cmd(json!({"cmd":"library", "action":"export-encounters", "title":"video/history", "path":exported}));
+    h.state_until("full history export", |_| exported.exists());
+    assert_eq!(
+        std::fs::read_to_string(&exported).unwrap(),
+        "expression\treading\tfirst_encounter_ms\n猫\tねこ\t42\n"
+    );
+    h.cmd(json!({"cmd":"library", "action":"clear-encounters", "path":"video/history"}));
+    h.state_until("history cleared", |s| {
+        history(s).as_array().is_some_and(Vec::is_empty)
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let lib = Library::open(&path).unwrap();
+    lib.apply_state(&old).unwrap();
+    assert!(lib.encounter_stats(200).unwrap().is_empty());
+    assert_eq!(
+        lib.word_statuses().unwrap()["猫\nねこ"].status,
+        nikomiru_library::words::WordStatus::Known
+    );
+    assert!(lib.export_state(100).unwrap().encounter_resets["video/history"] > 0);
+}

@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use crate::catalog::Episodes;
-use crate::words::{Counted, Score, Words};
+use crate::words::{Counted, ListedWord, Score, Words};
 use nikomiru_library::VideoRecord;
 
 /// Series results retained in memory, including pending/error entries.
@@ -67,11 +67,13 @@ pub enum Status {
 
 #[derive(Debug)]
 struct Entry {
+    cancel: nikomiru_core::Cancel,
     request: Request,
     status: Status,
     queue: VecDeque<(String, VideoRecord)>,
     inflight: Option<String>,
     counts: Vec<Arc<Counted>>,
+    words: Option<Arc<Vec<ListedWord>>>,
     failed: usize,
     revision: Option<u64>,
 }
@@ -81,6 +83,12 @@ struct Key {
     generation: u64,
     preferred: Vec<String>,
     ffmpeg: String,
+}
+
+impl Drop for Entry {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 
 /// Ephemeral series analyses, separate from the currently open episode list.
@@ -143,6 +151,9 @@ impl Scores {
                     total,
                     failed: entry.failed,
                 });
+                entry.words = Some(Arc::new(
+                    words.listed_many(entry.counts.iter().map(Arc::as_ref)),
+                ));
                 entry.revision = Some(words.revision());
             }
         }
@@ -178,11 +189,13 @@ impl Scores {
         self.entries.insert(
             series,
             Entry {
+                cancel: nikomiru_core::Cancel::new(),
                 request,
                 status: Status::Loading,
                 queue: VecDeque::new(),
                 inflight: None,
                 counts: Vec::new(),
+                words: None,
                 failed: 0,
                 revision: None,
             },
@@ -254,6 +267,25 @@ impl Scores {
         }
     }
 
+    /// Discard a requested analysis and stop its worker before accepting new work.
+    pub fn cancel(&mut self, series: u64) {
+        self.entries.remove(&series);
+    }
+
+    /// Cancellation identity of the current request only.
+    pub fn token(&self, request: Request) -> Option<nikomiru_core::Cancel> {
+        self.entries
+            .get(&request.series)
+            .filter(|e| e.request == request)
+            .map(|e| e.cancel.clone())
+    }
+
+    /// Vocabulary from all counted episodes of a completed request only.
+    pub fn words(&self, series: u64) -> Option<(u64, &Arc<Vec<ListedWord>>)> {
+        let entry = self.entries.get(&series)?;
+        Some((entry.request.serial, entry.words.as_ref()?))
+    }
+
     /// A card's current analysis state.
     pub fn get(&self, series: u64) -> Option<&Status> {
         self.entries.get(&series).map(|e| &e.status)
@@ -264,6 +296,72 @@ impl Scores {
 mod tests {
     use super::*;
     use crate::words::WordStatus;
+
+    // T-KNW-019: stop metadata or episode work, discard queue and late results.
+    #[test]
+    fn cancelled_series_stops_inflight_and_never_dispatches_remaining_episodes() {
+        let mut scores = Scores::default();
+        let old = scores.request(1).unwrap();
+        let loading = scores.token(old).unwrap();
+        scores.cancel(1);
+        assert!(loading.is_cancelled());
+        scores.loaded(old, Ok(episodes(2)));
+        assert!(scores.next_episode().is_none());
+        let request = scores.request(1).unwrap();
+        scores.loaded(request, Ok(episodes(2)));
+        let (_, uid, _) = scores.next_episode().unwrap();
+        let active = scores.token(request).unwrap();
+        scores.cancel(1);
+        assert!(active.is_cancelled());
+        assert!(scores.next_episode().is_none());
+        let new = scores.request(1).unwrap();
+        scores.done(request, &uid, Ok(Some(count(1, "猫"))));
+        assert_eq!(scores.get(1), Some(&Status::Loading));
+        assert!(!scores.token(new).unwrap().is_cancelled());
+    }
+
+    // T-KNW-021: repeated words sum across sources, distinct readings stay separate.
+    #[test]
+    fn complete_series_vocabulary_sums_sources_and_tracks_shared_statuses() {
+        let mut scores = Scores::default();
+        let mut words = Words::default();
+        update(&mut scores, &words);
+        let request = scores.request(1).unwrap();
+        scores.loaded(request, Ok(episodes(3)));
+        finish(
+            &mut scores,
+            Ok(Some(Counted::from_lines([vec![
+                ("猫".into(), "ねこ".into()),
+                ("猫".into(), "びょう".into()),
+            ]]))),
+        );
+        assert!(scores.words(1).is_none());
+        finish(
+            &mut scores,
+            Ok(Some(Counted::from_lines([vec![
+                (
+                    "猫".into(),
+                    "ねこ".into()
+                );
+                2
+            ]]))),
+        );
+        finish(&mut scores, Err("source unavailable".into()));
+        update(&mut scores, &words);
+        let (_, rows) = scores.words(1).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!((&*rows[0].reading, rows[0].count), ("ねこ", 3));
+        assert_eq!((&*rows[1].reading, rows[1].count), ("びょう", 1));
+        let Some(Status::Ready(summary)) = scores.get(1) else {
+            panic!()
+        };
+        assert_eq!((summary.scored, summary.total, summary.failed), (2, 3, 1));
+        words.set_status("猫", "ねこ", WordStatus::Known);
+        update(&mut scores, &words);
+        assert_eq!(scores.words(1).unwrap().1[0].status, WordStatus::Known);
+        scores.request(1).unwrap();
+        assert!(scores.words(1).is_none());
+    }
 
     fn episodes(n: usize) -> Episodes {
         (0..n)

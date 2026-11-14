@@ -1009,3 +1009,76 @@ library-score-too-large = エピソード数が分析上限を超えています
 stats-encounters = エピソードで出会った新しい単語
 stats-encounters-detail = 再生中に出会った時点で新しかった単語の異なり数です。後で状態を変えても、この履歴は残ります。
 stats-encounters-episode = { $title }：新しい単語 { $count } 語
+
+condense-reading = 字幕の読み取りが終わってから音声をまとめて書き出してください。
+
+error-subtitle-vobsub-index = VobSub のインデックスが破損しているか、読み取れる言語トラックがありません。
+
+analysis-cancel = 解析をキャンセル
+
+analysis-words = 学習する単語
+analysis-words-back = 一覧に戻る
+
+analysis-export-shown = 表示中の単語を出力
+analysis-export-selected = 選択した単語を出力
+analysis-export-saved = { $path } に単語を保存しました。
+analysis-export-too-large = 単語一覧が出力上限の16 MiBを超えています。
+
+encounter-history-open = 履歴を見る
+encounter-history-clear = エピソードの履歴を消去
+encounter-history-coverage = 履歴の { $total } 語中 { $shown } 語を表示（初遭遇：Unixミリ秒）。
+
+analysis-order = 理解度の並び順
+analysis-order-original = ライブラリ順
+analysis-order-most = 既知の割合が高い順
+analysis-order-least = 既知の割合が低い順
+analysis-only-scored = 分析済みのみ
+analysis-minimum-known = 既知の割合の下限 %
+
+analysis-source-changed = 分析中にソースまたは辞書が変更されました。再分析してください。
+
+vocabulary-status-filter = 単語の状態フィルター
+vocabulary-all-statuses = すべての状態
+vocabulary-card-filter = カードフィルター
+vocabulary-any-card = カードの有無を問わない
+vocabulary-with-card = カードあり
+vocabulary-without-card = カードなし
+
+vocabulary-order = 単語の並び順
+vocabulary-frequency-desc = 頻度が高い順
+vocabulary-frequency-asc = 頻度が低い順
+vocabulary-expression = 表記順
+vocabulary-reading = 読み順
+
+vocabulary-copy-shown = 表示中の単語をコピー
+vocabulary-copy-selected = 選択した単語をコピー
+vocabulary-copied = 単語をコピーしました。
+
+encounter-export = エピソードの全履歴を出力
+encounter-export-saved = エピソードの履歴を { $path } に保存しました。
+
+episode-words-title = 学習する単語：{ $title }
+
+sub-reading-preparing = 字幕の読み取りを準備中…
+sub-reading-progress = { $total } 枚中 { $done } 枚を読み取り
+sub-reading-cancel = 読み取りをキャンセル
+
+sub-export = 現在の字幕をSRTで出力…
+sub-export-filter = SubRip字幕
+sub-export-unavailable = 出力には完全で空でないテキスト字幕が必要です。
+sub-export-too-large = 字幕が出力上限の16 MiBを超えています。
+sub-export-saved = 字幕を { $path } に保存しました。
+
+sub-export-failed = 字幕を保存できませんでした：{ $reason }
+
+analysis-cache-title = 分析カウントのキャッシュ
+analysis-cache-usage = { $files } ファイル · { $bytes } バイト
+analysis-cache-unavailable = キャッシュ使用量を取得できません。
+analysis-cache-refresh = 使用量を更新
+analysis-cache-clear = カウントキャッシュを消去
+analysis-cache-detail = 本・エピソードの派生カウントは最大64 MiBです。現在の分析は維持され、完了した処理によりキャッシュが再作成されることがあります。
+
+study-report-export = 分析済みの概要を出力…
+study-report-empty = このレポートに使える完了済みの分析がありません。
+study-report-saved = 理解度レポートを { $path } に保存しました。
+study-report-failed = レポートを保存できませんでした：{ $reason }

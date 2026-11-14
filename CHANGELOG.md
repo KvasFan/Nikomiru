@@ -4,6 +4,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.53.0] - 2026-11-14
+
+Twenty consecutive subtitle and study milestones (M25–M44), following 2.33.0.
+Intermediate minor versions were not published.
+
+### Added
+
+- Export completed book and series comprehension summaries with current totals and source coverage (KNW-033, M44).
+- Inspect and clear persisted count caches from Statistics, preserving current analyses and unrelated data (KNW-032, M43).
+- Export the complete current primary text subtitle track as SRT with the captured delay (SUB-034, M42).
+- Show graphic subtitle OCR progress and offer explicit cancellation back to pictures/off (SUB-033, M41).
+- Browse and study a counted episode’s vocabulary before playback (KNW-031, M40).
+- Export an episode’s complete historical encounters, including original first-encounter times (KNW-030, M39).
+- Copy shown or selected study vocabulary to the clipboard as bounded TSV (KNW-029, M38).
+- Order study vocabulary by frequency, expression or reading, including exported selections (KNW-028, M37).
+- Filter vocabulary by exact word status and card presence across study views (KNW-027, M36).
+- Search vocabulary, encounter history and subtitle lists consistently across kana, width and case variants (KNW-026, M35).
+- Reuse complete book and episode/series analysis counts across restarts in bounded, source/dictionary-validated private caches (KNW-025, M34).
+- Order books and series by comprehension and filter scored material by a minimum known-word percentage (KNW-024, M33).
+- Inspect and clear per-episode encounter history, with persistent sync resets preventing old-device resurrection (KNW-023, M32).
+- Export shown or selected study vocabulary as a local UTF-8 TSV snapshot (KNW-022, M31).
+- Study the combined vocabulary of an analysed series with episode coverage and shared bulk statuses (KNW-021, M30).
+- Browse and bulk-mark vocabulary from completed whole-book analyses (KNW-020, M29).
+- Cancel whole-book and series comprehension analyses, stopping their own workers and discarding stale replies (KNW-019, M28).
+
+
+- DVB bitmap subtitle OCR (SUB-032, M27): Read as text uses the same local model and progressive pipeline as Blu-ray/DVD subtitles. FFmpeg converts the bitmap stream with an explicit matching palette, preserving the source images until text is ready. Teletext is excluded.
+- External VobSub pairs (SUB-031, M26): open or drop `.idx` or `.sub` on the current video. The local model reads the preferred language with the index palette and timestamps; both source signatures invalidate the cache. Missing/damaged companions fail without caching a partial result.
+- Progressive graphic subtitle OCR (SUB-030, M25): nearby pictures are read first in bounded batches. Their text becomes clickable while later pictures are still being read; unread lines keep their pictures. Lookups survive expanded timelines, and only completed text is cached or offered as a full comprehension/audio-export source. Disabling/replacing subtitles cancels the old work.
+
 ## [2.33.0] - 2026-11-13
 
 The new words met while watching.

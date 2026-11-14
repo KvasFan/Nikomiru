@@ -47,9 +47,16 @@ mod ui;
 pub mod view;
 pub mod web_video;
 pub mod word_audio;
+pub mod word_export;
 pub mod words;
 
 pub use session::Services;
 pub use shortcuts::Modifiers;
 pub use ui::{Inbound, Key, Ui, Waker, Wheel, is_web_address};
 pub use view::{Dialog, FileDialog};
+
+/// Bounded plain SRT export of complete current subtitles.
+pub mod subtitle_export;
+
+/// Local snapshots of completed comprehension summaries.
+pub mod study_report;

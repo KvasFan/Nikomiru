@@ -148,6 +148,10 @@ pub(crate) struct Scene<'a> {
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
     pub score: Option<String>,
+    pub reading: Option<(String, Option<f32>)>,
+    pub reading_cancel: String,
+    pub export_ready: bool,
+    pub export_label: String,
     /// The Lines and Words tabs, while the words are coloured (KNW-009);
     /// the words once all lines are split.
     pub tabs: Option<(String, String)>,
@@ -204,7 +208,14 @@ impl Rows {
             self.cues = if query.is_empty() {
                 (0..timeline.cues().len()).collect()
             } else {
-                timeline.search(query)
+                let query = nikomiru_text::search::Query::new(query);
+                timeline
+                    .cues()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cue)| query.matches(&[&cue.plain_text]))
+                    .map(|(index, _)| index)
+                    .collect()
             };
             if filter != LineFilter::All {
                 let cues = timeline.cues();
@@ -321,6 +332,10 @@ pub(crate) fn show(
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         title: tr("subtitle-list"),
         score: score_line(s),
+        reading: s.graphic_read_status(),
+        reading_cancel: tr("sub-reading-cancel"),
+        export_ready: s.subtitle_export_ready(),
+        export_label: tr("sub-export"),
         tabs: coloured.then(|| (tr("subtitle-list-lines"), tr("subtitle-list-words"))),
         filters: [
             tr("subtitle-lines-all"),
@@ -329,16 +344,10 @@ pub(crate) fn show(
         ],
         marks_version: s.words_revision(),
         words: words.as_deref().map(Vec::as_slice),
-        word_labels: super::word_list::Labels {
-            new_only: tr("subtitle-words-new-only"),
-            all: tr("subtitle-words-all"),
-            ticked: s
-                .translator()
-                .tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
-            card: tr("subtitle-words-card"),
-            statuses: super::word_list::STATUSES
-                .map(|st| tr(&format!("word-status-{}", st.name()))),
-        },
+        word_labels: super::word_list::Labels::translated(
+            &|key, args| s.translator().tr(key, args),
+            ticked,
+        ),
         search_hint: tr("subtitle-search"),
         close: tr("subtitle-list-close"),
         marks: &marks,
@@ -410,6 +419,15 @@ pub(crate) fn draw(
                         });
                     });
 
+                    if ui
+                        .add_enabled(scene.export_ready, egui::Button::new(&scene.export_label))
+                        .clicked()
+                    {
+                        out.push(Command::SubtitleExport);
+                    }
+                    if let Some((text, fraction)) = &scene.reading {
+                        super::ocr_progress::show(ui, text, *fraction, &scene.reading_cancel, out);
+                    }
                     if let Some(score) = &scene.score {
                         ui.label(RichText::new(score).small().color(TIME));
                     }
@@ -683,6 +701,10 @@ mod tests {
                         timeline: &t.timeline,
                         version: 1,
                         pos_ms: t.pos_ms,
+                        export_ready: !t.timeline.cues().is_empty(),
+                        export_label: "Export SRT".into(),
+                        reading: None,
+                        reading_cancel: "Cancel reading".into(),
                         title: "Subtitle list".into(),
                         score: t.score.clone(),
                         tabs: t.tabs.then(|| ("Lines".into(), "Words".into())),
@@ -819,6 +841,37 @@ mod tests {
         h.state_mut().pos_ms = 2000;
         h.run();
         assert_eq!(drawn(&h), [(1, false), (2, false)]);
+    }
+
+    // T-SUB-034: current complete text offers an accessible export action.
+    #[test]
+    fn complete_list_offers_srt_export() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫")]), 0, false);
+        h.run();
+        h.get_by_label("Export SRT").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SubtitleExport))
+        );
+    }
+
+    // T-KNW-026: filtering keeps original cue indices, timing and spelling.
+    #[test]
+    fn normalised_search_keeps_original_subtitle_targets() {
+        use egui_kittest::kittest::Queryable;
+        let t = timeline(&[(1000, "犬"), (3000, "ガッコウ ＡＢＣ"), (5000, "学校 abc")]);
+        let mut h = harness(t, 3500, false);
+        h.state_mut().state.query = "abc ｶﾞｯｺｳ".into();
+        h.run_steps(2);
+        assert_eq!(drawn(&h), [(1, true)]);
+        h.get_by_label("ガッコウ ＡＢＣ");
+        h.state_mut().state.query = "　 ".into();
+        h.run_steps(2);
+        assert_eq!(drawn(&h).len(), 3);
     }
 
     // T-SUB-023: bigger text, taller rows and a wider time column; a wider

@@ -181,7 +181,7 @@ impl Score {
 
 /// The words of a subtitle's lines, counted once so that its score can be
 /// worked out again whenever the statuses change (KNW-008).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Counted {
     /// Each word met, by headword and reading, once.
     pub words: Vec<(String, String)>,

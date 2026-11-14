@@ -155,6 +155,53 @@ pub fn parse(stream: &[u8], palette: Option<Palette>) -> Vec<VobCue> {
     cues
 }
 
+/// Read one indexed external language. The index supplies packet offsets
+/// and authoritative times; another private stream is never substituted.
+/// Any bad offset or incomplete indexed picture rejects the whole pair.
+pub fn parse_indexed(
+    stream: &[u8],
+    index: &crate::vobsub_index::Index,
+    track: &crate::vobsub_index::Track,
+) -> Option<Vec<VobCue>> {
+    if track.index >= 32 || track.entries.len() > crate::vobsub_index::MAX_CUES {
+        return None;
+    }
+    let mut out: Vec<VobCue> = Vec::new();
+    for (i, entry) in track.entries.iter().enumerate() {
+        if !(0..36_000_000_000).contains(&entry.time_ms) {
+            return None;
+        }
+        let end = track
+            .entries
+            .get(i + 1)
+            .map_or(stream.len(), |next| next.file_pos);
+        let bytes = stream.get(entry.file_pos..end)?;
+        let (_, spu) = sub_pictures_selected(bytes, Some(0x20 + track.index))
+            .into_iter()
+            .next()?;
+        let control = control(&spu)?;
+        if control.start.is_none() && control.stop.is_some() {
+            continue;
+        }
+        let start_ms = entry.time_ms.checked_add(control.start.unwrap_or(0))?;
+        if let Some(last) = out.last_mut() {
+            last.end_ms = last.end_ms.min(start_ms).max(last.start_ms + 1);
+        }
+        let end_ms = match control.stop {
+            Some(stop) => entry.time_ms.checked_add(stop)?,
+            None => start_ms.saturating_add(OPEN_CUE_MS),
+        };
+        out.push(VobCue {
+            start_ms,
+            end_ms: end_ms.max(start_ms + 1),
+            spu: spu.into(),
+            control,
+            palette: index.palette,
+        });
+    }
+    Some(out)
+}
+
 fn u16_at(d: &[u8], o: usize) -> Option<usize> {
     Some(usize::from(*d.get(o)?) << 8 | usize::from(*d.get(o + 1)?))
 }
@@ -303,8 +350,12 @@ fn decode(spu: &[u8], c: &Control, width: usize, height: usize) -> Option<Vec<u8
 /// stream, each with its time stamp in 90 kHz ticks, put back together
 /// from their packets.
 fn sub_pictures(ps: &[u8]) -> Vec<(i64, Vec<u8>)> {
+    sub_pictures_selected(ps, None)
+}
+
+fn sub_pictures_selected(ps: &[u8], selected: Option<u8>) -> Vec<(i64, Vec<u8>)> {
     let mut out = Vec::new();
-    let mut stream: Option<u8> = None;
+    let mut stream: Option<u8> = selected;
     let mut open: Option<(i64, usize, Vec<u8>)> = None;
     let mut i = 0;
     while i + 4 <= ps.len() {
@@ -521,6 +572,15 @@ pub mod testing {
     /// of at most `chunk` bytes, as a `.sub` file has them; with where each
     /// starts, for its `.idx`.
     pub fn program_stream(spus: &[(u32, Vec<u8>)], chunk: usize) -> (Vec<u8>, Vec<usize>) {
+        program_stream_track(spus, chunk, 0)
+    }
+
+    /// A selected private substream, for external multilingual pair tests.
+    pub fn program_stream_track(
+        spus: &[(u32, Vec<u8>)],
+        chunk: usize,
+        stream: u8,
+    ) -> (Vec<u8>, Vec<usize>) {
         let mut out = Vec::new();
         let mut starts = Vec::new();
         for (ms, spu) in spus {
@@ -537,7 +597,7 @@ pub mod testing {
                 out.extend((len as u16).to_be_bytes());
                 out.extend([0x81, if n == 0 { 0x80 } else { 0 }, header.len() as u8]);
                 out.extend(header);
-                out.push(0x20);
+                out.push(0x20 + stream.min(31));
                 out.extend(piece);
             }
         }

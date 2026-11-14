@@ -67,6 +67,13 @@ fn an_epub_is_scored_before_opening_and_keeps_its_reading_place() {
     std::fs::write(&known, "word,reading,status\n食べる,たべる,known\n").unwrap();
     h.cmd(json!({"cmd":"words","action":"import","path":known}));
     h.state_until("both chapters rescored", |s| score(s)["known"] == 2);
+    // T-KNW-033: book reports capture current shared statuses without opening the reader.
+    let report = desk.path("books.tsv");
+    h.cmd(json!({"cmd":"study-report", "scope":"books", "path":report}));
+    let text = std::fs::read_to_string(&report).unwrap();
+    let row: Vec<_> = text.lines().nth(1).unwrap().split('\t').collect();
+    assert_eq!((row[0], row[2], row[4]), ("book", uid.as_str(), "2"));
+    assert_eq!(row.len(), 12);
     h.cmd(json!({"cmd":"books","action":"add","path":path}));
     let s = h.state_until("the saved chapter open", |s| {
         s["books"]["chapter"] == 1 && s["books"]["score"]["known"] == 1
@@ -81,7 +88,16 @@ fn an_epub_is_scored_before_opening_and_keeps_its_reading_place() {
         s["books"]["open"].is_null() && score(s)["known"] == 2
     });
     h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success()); // T-KNW-025: restart reuses persisted counts, rescoring current statuses.
+    let (mut app, mut h) = desk.launch_with(&["--debug"]);
+    h.cmd(json!({"cmd":"books", "action":"open"}));
+    h.cmd(json!({"cmd":"books", "action":"analyse", "path":uid}));
+    h.state_until("persistent book count with current statuses", |s| {
+        score(s)["known"] == 2
+    });
+    h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    assert!(desk.log().contains("book count cache hit"));
 }
 
 // T-KNW-016: explicit refresh, no partial scores, no network or study writes.

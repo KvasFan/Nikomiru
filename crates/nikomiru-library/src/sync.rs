@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::books::{BOOKS, BookRecord};
 use crate::cards::{MINED_CARDS, MinedCard};
 use crate::db::{Library, LibraryError, VIDEOS, VideoRecord, db_err};
-use crate::encounters::{ENCOUNTERS, Encounters};
+use crate::encounters::{ENCOUNTERS, Encounters, RESETS};
 use crate::review::{REVIEW_CARDS, ReviewCard};
 use crate::review_log::{Answer, REVIEW_LOG};
 use crate::stats::{COVERAGE, CREDIT, Coverage, CueCredit, SEGMENTS, Segment};
@@ -117,6 +117,9 @@ pub struct DeviceState {
     /// Historical new headwords per media uid (KNW-018); older files have none.
     #[serde(default)]
     pub encounters: BTreeMap<String, Encounters>,
+    /// Persistent per-media reset epochs; absent in older device files (KNW-023).
+    #[serde(default)]
+    pub encounter_resets: BTreeMap<String, u64>,
 }
 
 /// Which of two versions of a review card wins (REV-006): the one answered
@@ -234,9 +237,23 @@ impl DeviceState {
                 }
             }
         }
-        for (uid, encounters) in &other.encounters {
-            crate::encounters::merge(self.encounters.entry(uid.clone()).or_default(), encounters);
+        let uids: std::collections::BTreeSet<_> = other
+            .encounters
+            .keys()
+            .chain(other.encounter_resets.keys())
+            .collect();
+        for uid in uids {
+            let epoch = self.encounter_resets.entry(uid.clone()).or_default();
+            let empty = Encounters::new();
+            crate::encounters::merge_epoch(
+                self.encounters.entry(uid.clone()).or_default(),
+                epoch,
+                other.encounters.get(uid).unwrap_or(&empty),
+                *other.encounter_resets.get(uid).unwrap_or(&0),
+            );
         }
+        // Missing and explicit zero epochs represent the same old format.
+        self.encounter_resets.retain(|_, epoch| *epoch != 0);
         // KNW-001: the newer mark of a word
         for (key, mark) in &other.words {
             match self.words.get_mut(key) {
@@ -382,6 +399,9 @@ impl Library {
             collect::<_, Answer>(tx, REVIEW_LOG, |key: u128, a| {
                 state.review_log.insert(format!("{key:032x}"), a);
             })?;
+            collect::<_, u64>(tx, RESETS, |uid: &str, epoch| {
+                state.encounter_resets.insert(uid.to_string(), epoch);
+            })?;
             collect::<_, Encounters>(tx, ENCOUNTERS, |uid: &str, words| {
                 state.encounters.insert(uid.to_string(), words);
             })?;
@@ -487,8 +507,32 @@ impl Library {
                 db_err!(review.insert(*id, postcard::to_stdvec(c)?.as_slice()))?;
             }
             let mut encounters = db_err!(tx.open_table(ENCOUNTERS))?;
-            for (uid, words) in &state.encounters {
-                db_err!(encounters.insert(uid.as_str(), postcard::to_stdvec(words)?.as_slice()))?;
+            let mut resets = db_err!(tx.open_table(RESETS))?;
+            let uids: std::collections::BTreeSet<_> = state
+                .encounters
+                .keys()
+                .chain(state.encounter_resets.keys())
+                .collect();
+            for uid in uids {
+                let mut epoch: u64 = match db_err!(resets.get(uid.as_str()))? {
+                    Some(value) => postcard::from_bytes(value.value())?,
+                    None => 0,
+                };
+                let mut ours: Encounters = match db_err!(encounters.get(uid.as_str()))? {
+                    Some(value) => postcard::from_bytes(value.value())?,
+                    None => Encounters::new(),
+                };
+                let empty = Encounters::new();
+                crate::encounters::merge_epoch(
+                    &mut ours,
+                    &mut epoch,
+                    state.encounters.get(uid).unwrap_or(&empty),
+                    *state.encounter_resets.get(uid).unwrap_or(&0),
+                );
+                db_err!(encounters.insert(uid.as_str(), postcard::to_stdvec(&ours)?.as_slice()))?;
+                if epoch != 0 {
+                    db_err!(resets.insert(uid.as_str(), postcard::to_stdvec(&epoch)?.as_slice()))?;
+                }
             }
             let mut words = db_err!(tx.open_table(WORD_STATUS))?;
             for (key, mark) in &state.words {
@@ -653,6 +697,7 @@ mod tests {
                         WordStatus::Ignored,
                     ];
                     DeviceState {
+                        encounter_resets: BTreeMap::new(),
                         encounters,
                         words: words
                             .into_iter()
@@ -1016,6 +1061,55 @@ mod tests {
 #[cfg(test)]
 mod encounter_tests {
     use super::*;
+
+    // T-KNW-023: cleared epochs dominate old files; new encounters persist/reopen.
+    #[test]
+    fn cleared_history_stays_cleared_across_old_sync_and_accepts_new_encounters() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.redb");
+        let a = Library::open(&path).unwrap();
+        let cat = ("猫".into(), "ねこ".into());
+        a.record_encounters("ep", std::slice::from_ref(&cat), 10)
+            .unwrap();
+        let stale = a.export_state(20).unwrap();
+        a.clear_encounters("ep", 30).unwrap();
+        let reset = a.export_state(30).unwrap();
+        assert!(reset.encounters["ep"].is_empty());
+        assert_eq!(reset.encounter_resets["ep"], 30);
+        let mut ab = reset.clone();
+        ab.merge(&stale);
+        let mut ba = stale.clone();
+        ba.merge(&reset);
+        assert_eq!(ab, ba);
+        ba.merge(&ab);
+        assert_eq!(ba, ab);
+        a.apply_state(&stale).unwrap();
+        assert!(a.word_encounters().unwrap()["ep"].is_empty());
+        a.record_encounters("ep", std::slice::from_ref(&cat), 40)
+            .unwrap();
+        let fresh = a.export_state(40).unwrap();
+        let mut left = reset.clone();
+        left.merge(&stale);
+        left.merge(&fresh);
+        let mut right = stale;
+        right.merge(&fresh);
+        let mut grouped = reset;
+        grouped.merge(&right);
+        assert_eq!(left, grouped);
+        assert_eq!(left.encounters["ep"]["猫\nねこ"], 40);
+        a.clear_encounters("ep", 1).unwrap();
+        assert_eq!(a.export_state(50).unwrap().encounter_resets["ep"], 31);
+        a.apply_state(&fresh).unwrap();
+        assert!(a.word_encounters().unwrap()["ep"].is_empty());
+        drop(a);
+        let a = Library::open(&path).unwrap();
+        assert!(a.encounter_stats(200).unwrap().is_empty());
+        assert_eq!(a.export_state(50).unwrap().encounter_resets["ep"], 31);
+        let mut old = serde_json::to_value(DeviceState::default()).unwrap();
+        old.as_object_mut().unwrap().remove("encounter_resets");
+        let old: DeviceState = serde_json::from_value(old).unwrap();
+        assert!(old.encounter_resets.is_empty());
+    }
 
     // T-KNW-018: actual libraries export/merge/apply encounter sets, with
     // old default-empty JSON and the same compressed state round trip.

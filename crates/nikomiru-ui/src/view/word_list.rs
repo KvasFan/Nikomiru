@@ -31,8 +31,68 @@ pub(crate) struct Labels {
     pub ticked: String,
     /// "A card was made of it".
     pub card: String,
+    pub status_filter: String,
+    pub all_statuses: String,
+    pub card_filter: String,
+    pub cards: [String; 3],
+    pub order: String,
+    pub orders: [String; 4],
+    pub copy_shown: String,
+    pub copy_selected: String,
+    pub copied: String,
+    pub copy_limit: String,
     /// The four statuses, in the order of `STATUSES`.
     pub statuses: [String; 4],
+}
+
+impl Labels {
+    pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
+        Self {
+            new_only: tr("subtitle-words-new-only", &[]),
+            all: tr("subtitle-words-all", &[]),
+            ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
+            card: tr("subtitle-words-card", &[]),
+            statuses: STATUSES.map(|s| tr(&format!("word-status-{}", s.name()), &[])),
+            copy_shown: tr("vocabulary-copy-shown", &[]),
+            copy_selected: tr("vocabulary-copy-selected", &[]),
+            copied: tr("vocabulary-copied", &[]),
+            copy_limit: tr("analysis-export-too-large", &[]),
+            order: tr("vocabulary-order", &[]),
+            orders: [
+                "vocabulary-frequency-desc",
+                "vocabulary-frequency-asc",
+                "vocabulary-expression",
+                "vocabulary-reading",
+            ]
+            .map(|k| tr(k, &[])),
+            status_filter: tr("vocabulary-status-filter", &[]),
+            all_statuses: tr("vocabulary-all-statuses", &[]),
+            card_filter: tr("vocabulary-card-filter", &[]),
+            cards: [
+                "vocabulary-any-card",
+                "vocabulary-with-card",
+                "vocabulary-without-card",
+            ]
+            .map(|k| tr(k, &[])),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CardFilter {
+    #[default]
+    Any,
+    With,
+    Without,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WordOrder {
+    #[default]
+    Frequent,
+    Rare,
+    Expression,
+    Reading,
 }
 
 /// The statuses offered, in order.
@@ -48,6 +108,10 @@ pub(crate) const STATUSES: [WordStatus; 4] = [
 pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
+    pub status: Option<WordStatus>,
+    pub card: CardFilter,
+    pub order: WordOrder,
+    copied: Option<bool>,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
 }
@@ -66,6 +130,61 @@ fn label(labels: &Labels, status: WordStatus) -> &str {
     &labels.statuses[i]
 }
 
+/// Rows visible under the shared search and status filter.
+pub(crate) fn filtered<'a>(
+    all: &'a [ListedWord],
+    query: &str,
+    state: &State,
+) -> Vec<&'a ListedWord> {
+    let query = nikomiru_text::search::Query::new(query);
+    let mut rows: Vec<_> = all
+        .iter()
+        .filter(|w| {
+            !state.new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning)
+        })
+        .filter(|w| state.status.is_none_or(|status| status == w.status))
+        .filter(|w| match state.card {
+            CardFilter::Any => true,
+            CardFilter::With => w.card,
+            CardFilter::Without => !w.card,
+        })
+        .filter(|w| query.matches(&[&w.expression, &w.reading]))
+        .collect();
+    sort(&mut rows, state.order);
+    rows
+}
+
+fn sort(rows: &mut [&ListedWord], order: WordOrder) {
+    let lexical = |a: &ListedWord, b: &ListedWord| {
+        a.expression
+            .cmp(&b.expression)
+            .then_with(|| a.reading.cmp(&b.reading))
+    };
+    fn reading(w: &ListedWord) -> &str {
+        if w.reading.is_empty() {
+            &w.expression
+        } else {
+            &w.reading
+        }
+    }
+    rows.sort_by(|a, b| match order {
+        WordOrder::Frequent => b.count.cmp(&a.count).then_with(|| lexical(a, b)),
+        WordOrder::Rare => a.count.cmp(&b.count).then_with(|| lexical(a, b)),
+        WordOrder::Expression => lexical(a, b),
+        WordOrder::Reading => reading(a).cmp(reading(b)).then_with(|| lexical(a, b)),
+    });
+}
+
+/// Selected identities, including hidden rows, in the user's chosen order.
+pub(crate) fn selected<'a>(all: &'a [ListedWord], state: &State) -> Vec<&'a ListedWord> {
+    let mut rows: Vec<_> = all
+        .iter()
+        .filter(|w| state.ticked.contains(&word_key(&w.expression, &w.reading)))
+        .collect();
+    sort(&mut rows, state.order);
+    rows
+}
+
 /// Draws the words of `all` that the query and the filter let through.
 pub(crate) fn show(
     ui: &mut egui::Ui,
@@ -75,14 +194,62 @@ pub(crate) fn show(
     state: &mut State,
     out: &mut Vec<Command>,
 ) {
-    let query = query.trim();
-    let shown: Vec<&ListedWord> = all
-        .iter()
-        .filter(|w| {
-            !state.new_only || matches!(w.status, WordStatus::Unknown | WordStatus::Learning)
-        })
-        .filter(|w| query.is_empty() || w.expression.contains(query) || w.reading.contains(query))
-        .collect();
+    ui.horizontal_wrapped(|ui| {
+        let orders = [
+            WordOrder::Frequent,
+            WordOrder::Rare,
+            WordOrder::Expression,
+            WordOrder::Reading,
+        ];
+        let index = orders
+            .iter()
+            .position(|order| order == &state.order)
+            .unwrap_or(0);
+        let response = egui::ComboBox::from_id_salt("vocabulary-order")
+            .selected_text(&labels.orders[index])
+            .show_ui(ui, |ui| {
+                for (order, text) in orders.into_iter().zip(&labels.orders) {
+                    ui.selectable_value(&mut state.order, order, text);
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.order));
+        let response = egui::ComboBox::from_id_salt("vocabulary-status-filter")
+            .selected_text(
+                state
+                    .status
+                    .map_or(labels.all_statuses.as_str(), |s| label(labels, s)),
+            )
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.status, None, &labels.all_statuses);
+                for status in STATUSES {
+                    ui.selectable_value(&mut state.status, Some(status), label(labels, status));
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.status_filter));
+        let card_index = match state.card {
+            CardFilter::Any => 0,
+            CardFilter::With => 1,
+            CardFilter::Without => 2,
+        };
+        let response = egui::ComboBox::from_id_salt("vocabulary-card-filter")
+            .selected_text(&labels.cards[card_index])
+            .show_ui(ui, |ui| {
+                for (filter, label) in [CardFilter::Any, CardFilter::With, CardFilter::Without]
+                    .into_iter()
+                    .zip(&labels.cards)
+                {
+                    ui.selectable_value(&mut state.card, filter, label);
+                }
+            });
+        response
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.card_filter));
+    });
+    let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.new_only, &labels.new_only);
@@ -95,6 +262,42 @@ pub(crate) fn show(
                     state.ticked.remove(&key(w));
                 }
             }
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        let mut copy = None;
+        if ui
+            .add_enabled(!shown.is_empty(), egui::Button::new(&labels.copy_shown))
+            .clicked()
+        {
+            copy = Some(shown.clone());
+        }
+        let selected = selected(all, state);
+        if ui
+            .add_enabled(
+                !selected.is_empty(),
+                egui::Button::new(&labels.copy_selected),
+            )
+            .clicked()
+        {
+            copy = Some(selected);
+        }
+        if let Some(rows) = copy {
+            let rows: Vec<_> = rows.into_iter().cloned().collect();
+            match crate::word_export::tsv(&rows) {
+                Ok(text) => {
+                    ui.ctx().copy_text(text);
+                    state.copied = Some(true);
+                }
+                Err(_) => state.copied = Some(false),
+            }
+        }
+        if let Some(ok) = state.copied {
+            ui.label(if ok {
+                &labels.copied
+            } else {
+                &labels.copy_limit
+            });
         }
     });
     // the words ticked, whether shown or not, get the status chosen
@@ -196,6 +399,16 @@ mod tests {
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
                         statuses: ["new", "learning", "known", "ignore"].map(String::from),
+                        copy_shown: "Copy shown".into(),
+                        copy_selected: "Copy selected".into(),
+                        copied: "Copied".into(),
+                        copy_limit: "Too large".into(),
+                        order: "Order".into(),
+                        orders: ["Frequent", "Rare", "Expression", "Reading"].map(String::from),
+                        status_filter: "Status filter".into(),
+                        all_statuses: "All statuses".into(),
+                        card_filter: "Card filter".into(),
+                        cards: ["Any card", "With card", "Without card"].map(String::from),
                     };
                     show(ui, &t.words, &t.query, &labels, &mut t.state, &mut t.out);
                 },
@@ -210,6 +423,141 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-KNW-029: clipboard is explicit and scoped; hidden selections retain identity.
+    #[test]
+    fn copy_actions_emit_only_the_requested_rows_without_changing_selection() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("Copy selected").click();
+        h.step();
+        assert!(
+            !h.output()
+                .platform_output
+                .commands
+                .iter()
+                .any(|c| matches!(c, egui::OutputCommand::CopyText(_)))
+        );
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().query = "たべ".into();
+        h.run();
+        h.get_by_label("Copy shown").click();
+        h.step();
+        let copied = h
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                egui::OutputCommand::CopyText(text) => Some(text),
+                _ => None,
+            })
+            .expect("explicit clipboard output");
+        assert!(copied.contains("食べる\tたべる\tlearning\t2\tfalse"));
+        assert!(!copied.contains("猫"));
+        h.run();
+        h.get_by_label("Copy selected").click();
+        h.step();
+        let copied = h
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                egui::OutputCommand::CopyText(text) => Some(text),
+                _ => None,
+            })
+            .expect("selected clipboard output");
+        assert!(copied.contains("猫\tねこ\tunknown\t5\tfalse"));
+        assert!(!copied.contains("食べる"));
+        assert_eq!(h.state().state.ticked.len(), 1);
+        assert!(h.state().out.is_empty());
+    }
+
+    // T-KNW-028: ordering is deterministic and preserves hidden selected identities.
+    #[test]
+    fn frequency_expression_and_reading_orders_combine_with_filters() {
+        let rows = vec![
+            word("b", "a", 2, WordStatus::Unknown),
+            word("a", "z", 5, WordStatus::Known),
+            word("c", "", 2, WordStatus::Learning),
+        ];
+        let mut state = State::default();
+        let names = |rows: Vec<&ListedWord>| {
+            rows.into_iter()
+                .map(|w| w.expression.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(filtered(&rows, "", &state)), ["a", "b", "c"]);
+        state.order = WordOrder::Rare;
+        assert_eq!(names(filtered(&rows, "", &state)), ["b", "c", "a"]);
+        state.order = WordOrder::Expression;
+        assert_eq!(names(filtered(&rows, "", &state)), ["a", "b", "c"]);
+        state.order = WordOrder::Reading;
+        assert_eq!(names(filtered(&rows, "", &state)), ["b", "c", "a"]);
+        state
+            .ticked
+            .extend([word_key("b", "a"), word_key("a", "z")]);
+        state.status = Some(WordStatus::Known);
+        assert_eq!(names(filtered(&rows, "", &state)), ["a"]);
+        assert_eq!(names(selected(&rows, &state)), ["b", "a"]);
+        assert_eq!(
+            names(filtered(&rows, "missing", &state)),
+            Vec::<String>::new()
+        );
+    }
+
+    // T-KNW-027: exact filters intersect; hidden ticks remain explicit bulk targets.
+    #[test]
+    fn status_and_card_filters_keep_hidden_selections() {
+        let mut h = harness();
+        h.state_mut().words[0].card = true;
+        h.run();
+        h.get_by_label("Status filter").click();
+        h.run();
+        h.get_by_label("known").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        assert!(h.query_all_by_label("が").count() > 0);
+        h.get_by_label("Card filter").click();
+        h.run();
+        h.get_by_label("With card").click();
+        h.run_steps(2);
+        assert_eq!(h.query_all_by_label("が").count(), 0);
+        h.get_by_label("Status filter").click();
+        h.run();
+        h.get_by_label("All statuses").click();
+        h.run_steps(2);
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.get_by_label("Card filter").click();
+        h.run();
+        h.get_by_label("Without card").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        h.get_by_label("known").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(), [Command::WordsStatus(rows, WordStatus::Known)]
+            if rows == &[("猫".into(), "ねこ".into())])
+        );
+    }
+
+    // T-KNW-026: matching folds readings and combines terms without changing keys.
+    #[test]
+    fn vocabulary_search_accepts_kana_width_and_terms_across_fields() {
+        let mut h = harness();
+        h.state_mut().query = "猫 ﾈｺ".into();
+        h.run();
+        h.get_by_label("猫 ねこ");
+        assert!(h.query_by_label("食べる たべる").is_none());
+        h.state_mut().query = "タベル".into();
+        h.run();
+        h.get_by_label("食べる たべる");
+        assert!(h.query_by_label("猫 ねこ").is_none());
     }
 
     // T-KNW-009: the words listed, narrowed, ticked and marked at once

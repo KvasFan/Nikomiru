@@ -32,6 +32,10 @@ const NARROW: f32 = 184.0;
 pub(crate) struct State {
     /// The covers as textures, by series.
     textures: HashMap<u64, TextureHandle>,
+    analysis: Option<u64>,
+    analysis_order: super::analysis_order::State,
+    analysis_words: super::analysis_words::State,
+    episode_words: super::analysis_words::State,
     /// The name being typed for the series open.
     rename: Option<(u64, String)>,
     /// The series to merge the open one into.
@@ -645,6 +649,36 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         ui.spinner();
         return;
     };
+    if let Some(id) = state.analysis {
+        if s.colours
+            && let Some((serial, words)) = s.page.scores.words(id)
+            && let Some(series) = home.series.iter().find(|s| s.id == id)
+            && let Some(crate::series_scores::Status::Ready(summary)) = s.page.scores.get(id)
+        {
+            ui.label((s.tr)(
+                "library-score-coverage",
+                &[
+                    ("scored", summary.scored.to_string()),
+                    ("total", summary.total.to_string()),
+                    ("failed", summary.failed.to_string()),
+                ],
+            ));
+            if super::analysis_words::show(
+                ui,
+                format!("series/{id}/{serial}"),
+                &series.record.title,
+                words,
+                &mut state.analysis_words,
+                s.tr,
+                out,
+            ) {
+                state.analysis = None;
+            }
+            return;
+        }
+        state.analysis = None;
+        state.analysis_words = Default::default();
+    }
     if let Some(steps) = s.first_steps {
         first_steps(ui, s, steps, state, out);
     }
@@ -688,7 +722,33 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     if home.series.is_empty() {
         ui.label(RichText::new(tr(s, "library-empty")).color(palette::current().details));
     }
-    rows(ui, NARROW, &home.series, |ui, summary| {
+    if s.colours {
+        state.analysis_order.controls(ui, s.tr);
+        let ready = home.series.iter().any(|series| {
+            matches!(
+                s.page.scores.get(series.id),
+                Some(crate::series_scores::Status::Ready(_))
+            )
+        });
+        if ui
+            .add_enabled(ready, Button::new(tr(s, "study-report-export")))
+            .clicked()
+        {
+            out.push(Command::StudyReport(crate::study_report::Scope::Series));
+        }
+    }
+    let indices = if s.colours {
+        state.analysis_order.indices(home.series.len(), |i| {
+            match s.page.scores.get(home.series[i].id) {
+                Some(crate::series_scores::Status::Ready(summary)) => Some(summary.score),
+                _ => None,
+            }
+        })
+    } else {
+        (0..home.series.len()).collect()
+    };
+    let shown: Vec<_> = indices.into_iter().map(|i| &home.series[i]).collect();
+    rows(ui, NARROW, &shown, |ui, summary| {
         ui.vertical(|ui| {
             let clicked = card(
                 ui,
@@ -721,7 +781,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
             if s.colours {
                 ui.set_width(NARROW + 16.0);
                 ui.push_id(("series-score", summary.id), |ui| {
-                    series_score(ui, s, summary.id, &summary.record.title, out);
+                    series_score(ui, s, summary.id, &summary.record.title, state, out);
                 });
             }
         });
@@ -761,7 +821,14 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     }
 }
 
-fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<Command>) {
+fn series_score(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    id: u64,
+    title: &str,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
     use crate::series_scores::Status;
     let status = s.page.scores.get(id);
     match status {
@@ -807,6 +874,14 @@ fn series_score(ui: &mut Ui, s: &Scene<'_>, id: u64, title: &str, out: &mut Vec<
                 .on_hover_text(error);
         }
         None => {}
+    }
+    if matches!(status, Some(Status::Loading | Status::Counting { .. }))
+        && ui.button(tr(s, "analysis-cancel")).clicked()
+    {
+        out.push(Command::SeriesAnalysisCancel(id));
+    }
+    if s.page.scores.words(id).is_some() && ui.button(tr(s, "analysis-words")).clicked() {
+        state.analysis = Some(id);
     }
     let button = ui.add_enabled(
         !s.page.busy && !s.page.scores.busy(),
@@ -947,6 +1022,22 @@ fn series(
     episodes: Option<&[(String, VideoRecord)]>,
     out: &mut Vec<Command>,
 ) {
+    if s.colours
+        && let Some(study) = &s.page.episode_words
+    {
+        if super::analysis_words::show(
+            ui,
+            format!("episode/{}/{}", study.uid, study.epoch),
+            &study.title,
+            &study.words,
+            &mut state.episode_words,
+            s.tr,
+            out,
+        ) {
+            out.push(Command::EpisodeWords(None));
+        }
+        return;
+    }
     let home = s.page.home.as_ref();
     let title = home
         .and_then(|h| h.series_title(id))
@@ -1072,6 +1163,27 @@ fn series(
                             out,
                         );
                         episode_score(ui, s, uid);
+                        if s.colours
+                            && matches!(
+                                (s.episode_score)(uid),
+                                Some(crate::scores::EpisodeScore::Score(_))
+                            )
+                        {
+                            let button = ui.button(tr(s, "analysis-words"));
+                            button.widget_info(|| {
+                                WidgetInfo::labeled(
+                                    Role::Button,
+                                    true,
+                                    (s.tr)(
+                                        "episode-words-title",
+                                        &[("title", file_title(&v.path))],
+                                    ),
+                                )
+                            });
+                            if button.clicked() {
+                                out.push(Command::EpisodeWords(Some(uid.clone())));
+                            }
+                        }
                         if let Some(d) = v.duration_ms.filter(|_| v.last_position_ms > 0) {
                             ui.label(
                                 RichText::new(format!(
@@ -1292,6 +1404,137 @@ mod tests {
         }
     }
 
+    // T-KNW-031: episode vocabulary never triggers playback and reuses shared controls.
+    #[test]
+    fn episode_words_action_and_browser_keep_playback_untouched() {
+        let page = LibraryPage {
+            home: Some(home()),
+            series: Some((
+                1,
+                Some(vec![("ep/a".into(), video("/v/Alpha - 01.mkv", 1, 1, 0))]),
+            )),
+            ..Default::default()
+        };
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.state_mut().scores.insert(
+            "ep/a".into(),
+            crate::scores::EpisodeScore::Score(crate::words::Score {
+                words: 2,
+                ..Default::default()
+            }),
+        );
+        h.run();
+        h.get_by_label("episode-words-title").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EpisodeWords(Some(uid)) if uid == "ep/a"))
+        );
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibraryPlay(_)))
+        );
+        h.state_mut().page.episode_words = Some(crate::catalog::EpisodeVocabulary {
+            uid: "ep/a".into(),
+            title: "Alpha - 01".into(),
+            epoch: 1,
+            revision: 0,
+            words: std::sync::Arc::new(vec![crate::words::ListedWord {
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                count: 2,
+                status: crate::words::WordStatus::Unknown,
+                card: false,
+            }]),
+        });
+        h.run_steps(2);
+        h.get_by_label("×2");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-known").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c, Command::WordsStatus(rows, crate::words::WordStatus::Known) if rows.len() == 1)));
+        h.get_by_label("analysis-words-back").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::EpisodeWords(None)))
+        );
+    }
+
+    // T-KNW-021: vocabulary actions keep library navigation and playback untouched.
+    #[test]
+    fn series_vocabulary_shows_frequency_and_bulk_status_controls() {
+        let mut page = LibraryPage {
+            home: Some(home()),
+            ..Default::default()
+        };
+        let words = crate::words::Words::default();
+        page.scores.update(true, &words, &[], "", &[1]);
+        let request = page.scores.request(1).unwrap();
+        page.scores
+            .loaded(request, Ok(vec![("ep/a".into(), VideoRecord::default())]));
+        let (_, uid, _) = page.scores.next_episode().unwrap();
+        page.scores.done(
+            request,
+            &uid,
+            Ok(Some(crate::words::Counted::from_lines([vec![
+                (
+                    "猫".into(),
+                    "ねこ".into()
+                );
+                3
+            ]]))),
+        );
+        page.scores.update(true, &words, &[], "", &[1]);
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        // T-KNW-024: only completed/scorable series remain, no automatic work.
+        h.get_by_label("analysis-order");
+        assert!(h.query_all_by_label("Beta").count() > 0);
+        h.get_by_label("analysis-only-scored").click();
+        h.run_steps(2);
+        assert_eq!(h.query_all_by_label("Beta").count(), 0);
+        assert!(h.state().out.is_empty());
+        // T-KNW-033: export all completed series summaries without opening them.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(crate::study_report::Scope::Series)))
+        );
+        h.state_mut().out.clear();
+
+        h.get_by_label("analysis-words").click();
+        h.run_steps(2);
+        h.get_by_label("×3");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-learning").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::WordsStatus(words, crate::words::WordStatus::Learning) if words.len() == 1)));
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LibrarySeries(_) | Command::LibraryPlay(_)))
+        );
+        h.state_mut().page.scores.clear();
+        h.run_steps(2);
+        assert!(h.query_by_label("analysis-words-back").is_none());
+    }
+
     // T-KNW-017: the explicit card action is separate from opening the
     // series and is hidden/disabled with colours off/another analysis.
     #[test]
@@ -1307,6 +1550,15 @@ mod tests {
         h.state_mut().colours = true;
         h.run();
         h.state_mut().out.clear();
+        // T-KNW-033: no completed result means the report action cannot emit a command.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(_)))
+        );
         h.get_by_label("library-score-analyse-title").click();
         h.run();
         assert!(
@@ -1331,6 +1583,15 @@ mod tests {
                 .out
                 .iter()
                 .any(|c| matches!(c, Command::SeriesAnalyse(_)))
+        );
+        // T-KNW-019: accessible action is available during active analysis.
+        h.get_by_label("analysis-cancel").click();
+        h.run_steps(2);
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::SeriesAnalysisCancel(1)))
         );
     }
 

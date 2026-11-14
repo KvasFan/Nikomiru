@@ -8,6 +8,8 @@
 //! subtitles, the subtitle list, the control bar, the dictionary popups, the
 //! dictionaries page, the toast.
 
+mod analysis_order;
+mod analysis_words;
 mod anki_page;
 mod audio_page;
 mod backup_page;
@@ -21,6 +23,7 @@ mod library_page;
 mod link;
 mod list;
 mod mining_dialog;
+mod ocr_progress;
 mod online_page;
 mod overlay;
 pub(crate) mod palette;
@@ -82,6 +85,14 @@ pub enum Dialog {
     WordsImport,
     /// Where to write the words' statuses (KNW-006).
     WordsExport,
+    /// A completed media vocabulary snapshot (KNW-022).
+    AnalysisWordsExport,
+    /// Full per-episode encounter history.
+    EncounterExport,
+    /// Current complete primary text subtitles as SRT.
+    SubtitleExport,
+    /// Completed comprehension summaries for a library view.
+    StudyReport,
 }
 
 /// A file dialog to open: title and filters already translated.
@@ -105,7 +116,9 @@ pub(crate) const VIDEO_PATTERNS: [&str; 14] = [
     "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.m4v", "*.ts", "*.m2ts", "*.mts", "*.flv",
     "*.wmv", "*.mpg", "*.mpeg", "*.ogv",
 ];
-const SUBTITLE_PATTERNS: [&str; 5] = ["*.srt", "*.ass", "*.ssa", "*.vtt", "*.lrc"];
+const SUBTITLE_PATTERNS: [&str; 7] = [
+    "*.srt", "*.ass", "*.ssa", "*.vtt", "*.lrc", "*.idx", "*.sub",
+];
 const AUDIO_PATTERNS: [&str; 9] = [
     "*.m4b", "*.m4a", "*.mp3", "*.aac", "*.flac", "*.ogg", "*.opus", "*.wav", "*.wma",
 ];
@@ -182,6 +195,22 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::AnalysisWordsExport => (
+                tr("analysis-export-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::EncounterExport => (
+                tr("encounter-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::SubtitleExport => (
+                tr("sub-export"),
+                vec![(tr("sub-export-filter"), vec!["*.srt"]), all],
+            ),
+            Dialog::StudyReport => (
+                tr("study-report-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::WordsExport => (
                 tr("words-export"),
                 vec![(tr("words-filter"), vec!["*.csv"]), all],
@@ -195,6 +224,10 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
+                Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleExport => Some("nikomiru-subtitles.srt".into()),
+                Dialog::StudyReport => Some("nikomiru-comprehension.tsv".into()),
                 Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),
                 _ => None,
             },

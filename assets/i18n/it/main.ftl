@@ -1026,3 +1026,76 @@ library-score-too-large = Troppi episodi per l'analisi della serie
 stats-encounters = Parole nuove incontrate per episodio
 stats-encounters-detail = Parole distinte che erano nuove quando le hai incontrate durante la riproduzione. I cambi di stato successivi conservano questo storico.
 stats-encounters-episode = { $title }: { $count } parole nuove incontrate
+
+condense-reading = Attendi il completamento della lettura dei sottotitoli prima di esportare l’audio condensato.
+
+error-subtitle-vobsub-index = L’indice VobSub è danneggiato o non identifica una traccia di lingua leggibile.
+
+analysis-cancel = Annulla analisi
+
+analysis-words = Parole da studiare
+analysis-words-back = Torna all’elenco
+
+analysis-export-shown = Esporta visibili
+analysis-export-selected = Esporta selezionate
+analysis-export-saved = Vocabolario salvato in { $path }.
+analysis-export-too-large = Il vocabolario supera il limite di esportazione di 16 MiB.
+
+encounter-history-open = Esamina cronologia
+encounter-history-clear = Cancella cronologia episodio
+encounter-history-coverage = Visualizzate { $shown } di { $total } parole storiche (primo incontro: ms Unix).
+
+analysis-order = Ordine per comprensione
+analysis-order-original = Ordine della libreria
+analysis-order-most = Più conosciuti prima
+analysis-order-least = Meno conosciuti prima
+analysis-only-scored = Solo analizzati
+analysis-minimum-known = Minimo conosciuto %
+
+analysis-source-changed = La sorgente o i dizionari sono cambiati durante l’analisi. Aggiorna il conteggio.
+
+vocabulary-status-filter = Filtro stato parole
+vocabulary-all-statuses = Tutti gli stati
+vocabulary-card-filter = Filtro schede
+vocabulary-any-card = Qualsiasi scheda
+vocabulary-with-card = Con scheda
+vocabulary-without-card = Senza scheda
+
+vocabulary-order = Ordine del vocabolario
+vocabulary-frequency-desc = Più frequenti prima
+vocabulary-frequency-asc = Meno frequenti prima
+vocabulary-expression = Ordine per parola
+vocabulary-reading = Ordine per lettura
+
+vocabulary-copy-shown = Copia visibili
+vocabulary-copy-selected = Copia selezionate
+vocabulary-copied = Vocabolario copiato.
+
+encounter-export = Esporta cronologia completa episodio
+encounter-export-saved = Cronologia dell’episodio salvata in { $path }.
+
+episode-words-title = Parole da studiare: { $title }
+
+sub-reading-preparing = Preparazione lettura sottotitoli…
+sub-reading-progress = Lette { $done } / { $total } immagini
+sub-reading-cancel = Annulla lettura
+
+sub-export = Esporta testo corrente come SRT…
+sub-export-filter = Sottotitoli SubRip
+sub-export-unavailable = Per esportare servono sottotitoli testuali completi e non vuoti.
+sub-export-too-large = La traccia supera il limite di esportazione di 16 MiB.
+sub-export-saved = Sottotitoli salvati in { $path }.
+
+sub-export-failed = Impossibile salvare i sottotitoli: { $reason }
+
+analysis-cache-title = Cache dei conteggi di analisi
+analysis-cache-usage = { $files } file · { $bytes } byte
+analysis-cache-unavailable = Utilizzo della cache non disponibile.
+analysis-cache-refresh = Aggiorna utilizzo cache
+analysis-cache-clear = Svuota cache conteggi
+analysis-cache-detail = Fino a 64 MiB di conteggi derivati di libri/episodi. Le analisi correnti restano aperte; il lavoro completato può riempire di nuovo la cache.
+
+study-report-export = Esporta riepiloghi analizzati…
+study-report-empty = Non ci sono analisi completate disponibili per questo riepilogo.
+study-report-saved = Riepilogo di comprensione salvato in { $path }.
+study-report-failed = Impossibile salvare il riepilogo: { $reason }

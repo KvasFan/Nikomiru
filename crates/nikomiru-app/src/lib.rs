@@ -12,6 +12,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod analysis_cache;
 pub mod anki;
 #[cfg(target_os = "linux")]
 pub mod appearance;
@@ -53,7 +54,11 @@ pub mod shell;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
+pub mod vobsub_pair;
 pub mod web_video;
 #[allow(unsafe_code)]
 pub mod window;
 pub mod word_audio;
+
+/// Bounded encounter-history projections for Statistics.
+pub mod encounter_details;

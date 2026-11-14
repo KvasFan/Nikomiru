@@ -410,7 +410,11 @@ pub fn state() -> Result<Value, String> {
                 "covers": page.covers.keys().collect::<Vec<_>>(),
                 "series_info": series_info,
                 "identify": identify,
+                "episode_words": s.library_page.episode_words.as_ref().map(|study| json!({
+                    "uid": study.uid, "words": study.words.iter().map(|w| json!({"expression":w.expression,"reading":w.reading,"count":w.count,"status":w.status.name(),"card":w.card})).collect::<Vec<_>>() })),
                 "stats": page.stats.as_ref().map(|st| json!({
+                    "analysis_cache": st.analysis_cache,
+                    "encounter_words": st.encounter_words,
                     "encounters": st.encounters.iter().map(|(uid,title,count)| json!({"uid":uid,"title":title,"count":count})).collect::<Vec<_>>(),
                     "days": st.days.iter().map(|d| json!({
                         "date": d.date, "ms": d.duration_ms, "chars": d.chars,
@@ -449,6 +453,8 @@ pub fn state() -> Result<Value, String> {
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
                 "source": s.subs.source.as_ref().map(|x| x.key()),
+                "incomplete": s.subs.incomplete,
+                "read_progress": s.subs.read_progress,
                 "menu": s.subtitle_menu(),
                 "encoding": s.subs.encoding,
                 "delay_ms": s.subs.timeline().delay_ms,
@@ -876,7 +882,7 @@ pub fn books(
             "add" => ui
                 .session
                 .book_add(PathBuf::from(path.clone().unwrap_or_default())),
-            "analyse" => {
+            "analyse" | "cancel-analysis" => {
                 let uid = ui
                     .session
                     .books_page
@@ -885,7 +891,11 @@ pub fn books(
                     .find(|(uid, b)| path.as_ref().is_some_and(|p| p == uid || p == &b.path))
                     .map(|(uid, _)| uid.clone())
                     .ok_or("book to analyse not found")?;
-                out.push(Command::BookAnalyse(uid));
+                out.push(if action == "analyse" {
+                    Command::BookAnalyse(uid)
+                } else {
+                    Command::BookAnalysisCancel(uid)
+                });
             }
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
@@ -1030,6 +1040,23 @@ pub fn library(
                 Command::LibraryScan(path()?, grouping)
             }
             "series" => Command::LibrarySeries(id().ok()),
+            "cancel-analysis" => Command::SeriesAnalysisCancel(id()?),
+            "export-encounters" => {
+                let uid = title.as_deref().ok_or("missing history uid in title")?;
+                if !ui.session.history_export_prepare(uid) {
+                    return Err("history not loaded".into());
+                }
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::EncounterExport,
+                    path: path()?,
+                });
+                return Ok(());
+            }
+            "clear-analysis-cache" => Command::LibraryEdit(LibraryEdit::ClearAnalysisCache),
+            "clear-encounters" => Command::LibraryEdit(LibraryEdit::ClearEncounters(
+                path()?.to_string_lossy().into_owned(),
+            )),
+            "episode-words" => Command::EpisodeWords(title.clone()),
             "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"
@@ -1236,4 +1263,40 @@ fn series_score_json(status: Option<&crate::series_scores::Status>) -> Value {
         Some(Status::TooLarge) => json!("too-large"),
         Some(Status::Failed(error)) => json!({ "error": error }),
     }
+}
+
+/// Explicit primary graphic OCR cancellation (SUB-033).
+pub fn graphic_read_cancel() -> Result<(), String> {
+    call(|ui| ui.run(Command::GraphicReadCancel))
+}
+
+/// Native-save equivalent for current complete subtitle SRT (SUB-034).
+pub fn subtitle_export(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if ui.session.subtitle_export_prepare() {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::SubtitleExport,
+                path,
+            });
+        }
+    })
+}
+
+/// Native-save equivalent for a completed-analysis report (KNW-033).
+pub fn study_report(scope: &str, path: &str) -> Result<(), String> {
+    let scope = match scope {
+        "books" => crate::study_report::Scope::Books,
+        "series" => crate::study_report::Scope::Series,
+        _ => return Err("unknown report scope".into()),
+    };
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if ui.session.study_report_prepare(scope) {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::StudyReport,
+                path,
+            });
+        }
+    })
 }

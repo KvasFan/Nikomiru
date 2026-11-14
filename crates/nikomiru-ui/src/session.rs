@@ -149,6 +149,19 @@ pub trait SubtitleSource: Send {
     /// Loads `request` and calls `done` with the result or a translated error.
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 
+    /// Read with cumulative graphic OCR reports; ordinary sources use load.
+    fn load_progressive(
+        &self,
+        request: Request,
+        _reports: crate::subtitles::Reports,
+        done: Box<dyn FnOnce(Result<Loaded, String>) + Send>,
+    ) {
+        self.load(request, done);
+    }
+
+    /// Cancel pending/running loads when subtitles are disabled or replaced.
+    fn cancel(&self, _secondary: bool) {}
+
     /// Aligns cues with the audio (SUB-018); a new load cancels it.
     fn align(
         &self,
@@ -372,11 +385,17 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
+    analysis_export: Option<String>,
+    history_export: Option<String>,
+    subtitle_export: Option<String>,
+    study_report: Option<String>,
     /// The words' revision the pause at the end of a line was last set
     /// for, when it stops only after new words (KNW-012).
     auto_pause_revision: u64,
     /// The scores of the episodes of the series open (KNW-008).
     episode_scores: crate::scores::EpisodeScores,
+    /// Last mpv picture visibility during progressive OCR.
+    graphic_bitmap: Option<bool>,
     /// The thumbnails of the progress bar (PLY-014).
     thumbnails: crate::thumbnails::Thumbnails,
     /// A dictionary is installed, and a card was made: two of the first
@@ -740,8 +759,13 @@ impl Session {
             sub_list_version: 0,
             score: None,
             episode_scores: Default::default(),
+            graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            analysis_export: None,
+            history_export: None,
+            subtitle_export: None,
+            study_report: None,
             encounters: Default::default(),
             popups: Popups::new(popup_size),
             lookups: Vec::new(),
@@ -1301,6 +1325,10 @@ impl Session {
     }
 
     fn update_gap_speed(&mut self) {
+        if self.subs.incomplete {
+            self.restore_gap_speed();
+            return;
+        }
         // Hold-to-speed owns mpv's speed until its key is released. Its
         // original speed was captured before the gap override was removed.
         if self.hold.active() {
@@ -2308,7 +2336,15 @@ impl Session {
 
     /// An edit of the library (LIB-011, LIB-012).
     pub fn library_edit(&mut self, edit: crate::catalog::LibraryEdit) {
-        self.library_page.scores.clear();
+        if matches!(
+            edit,
+            crate::catalog::LibraryEdit::ClearEncounters(_)
+                | crate::catalog::LibraryEdit::ClearAnalysisCache
+        ) {
+            self.wait_writes();
+        } else {
+            self.library_page.scores.clear();
+        }
         self.library_page.busy = true;
         self.library_jobs
             .push(crate::catalog::LibraryJob::Edit(edit));
@@ -2324,6 +2360,10 @@ impl Session {
             return false;
         }
         let current = if target == crate::condense::Target::Current {
+            if self.subs.incomplete {
+                self.toasts.push(self.tr("condense-reading", &[]));
+                return false;
+            }
             let Some(video) = self.current_path() else {
                 return false;
             };
@@ -2479,7 +2519,13 @@ impl Session {
             LibraryReply::Cover(id, Ok(cover)) => {
                 page.covers.insert(id, cover);
             }
-            LibraryReply::Stats(Ok(stats)) => page.stats = Some(stats),
+            LibraryReply::Stats(Ok(stats)) => page.stats = Some(*stats),
+            LibraryReply::HistoryExported(Ok(path)) => {
+                self.toasts.push(self.tr(
+                    "encounter-export-saved",
+                    &[("path", path.display().to_string())],
+                ));
+            }
             LibraryReply::Exported(Ok(path)) => {
                 let text = self.tr("stats-exported", &[("path", path.display().to_string())]);
                 self.library_page.status = Some((text, true));
@@ -2489,6 +2535,7 @@ impl Session {
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
             | LibraryReply::Stats(Err(e))
+            | LibraryReply::HistoryExported(Err(e))
             | LibraryReply::Exported(Err(e))
             | LibraryReply::Episodes(_, Err(e))
             | LibraryReply::Imported(Err(e))
@@ -4878,6 +4925,8 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.services.subtitle_source.cancel(false);
+        self.services.subtitle_source.cancel(true);
         self.secondary.clear(None);
         self.secondary_generation += 1;
         self.subs.clear(None);
@@ -4964,25 +5013,39 @@ impl Session {
             .iter()
             .find_map(|lang| select::choose(saved.as_ref(), &externals, &embedded, lang))
             .filter(|_| !off);
-        let source = match choice {
-            Some(Choice::External(p)) => Some(Source::File(p)),
-            Some(Choice::Embedded(id)) => {
-                // SUB-028, SUB-029: a graphic track read when the model is there
-                let read =
-                    self.services.config.subtitles.read_graphic && self.services.ocr.installed();
-                let track = self.sub_sources.iter().find(
+        let saved_pair = match self.prefs.subtitle.as_ref() {
+            Some(SubtitleChoice::File(path)) => {
+                let source = Source::File(PathBuf::from(path));
+                (source.is_graphic_read() && Path::new(path).is_file()).then_some(source)
+            }
+            _ => None,
+        };
+        let source = if let Some(pair) = saved_pair {
+            if !self.sub_sources.contains(&pair) {
+                self.sub_sources.push(pair.clone());
+            }
+            Some(pair)
+        } else {
+            match choice {
+                Some(Choice::External(p)) => Some(Source::File(p)),
+                Some(Choice::Embedded(id)) => {
+                    // SUB-028, SUB-029: a graphic track read when the model is there
+                    let read = self.services.config.subtitles.read_graphic
+                        && self.services.ocr.installed();
+                    let track = self.sub_sources.iter().find(
                     |s| matches!(s, Source::Embedded { id: i, .. } | Source::Bitmap(i) if *i == id),
                 );
-                let as_text = self
-                    .sub_sources
-                    .iter()
-                    .find(|s| matches!(s, Source::Read { id: i, .. } if *i == id));
-                match (track, as_text) {
-                    (Some(Source::Bitmap(_)), Some(text)) if read => Some(text.clone()),
-                    _ => track.cloned(),
+                    let as_text = self
+                        .sub_sources
+                        .iter()
+                        .find(|s| matches!(s, Source::Read { id: i, .. } if *i == id));
+                    match (track, as_text) {
+                        (Some(Source::Bitmap(_)), Some(text)) if read => Some(text.clone()),
+                        _ => track.cloned(),
+                    }
                 }
+                None => None,
             }
-            None => None,
         };
         // no text subtitles in the preferred language: online ones (MET-007)
         // (a graphic track read as text is text: SUB-028)
@@ -5008,6 +5071,8 @@ impl Session {
     /// Shows `source`: mpv draws graphic tracks; text ones are loaded in the
     /// background and drawn by the overlay.
     fn use_subtitles(&mut self, source: Source) {
+        self.services.subtitle_source.cancel(false);
+        self.graphic_bitmap = None;
         // a choice made: the automatic one must not come after and replace it,
         // as it did for a file dropped before mpv listed its tracks (SUB-008)
         self.sub_auto_done = true;
@@ -5020,10 +5085,16 @@ impl Session {
                 self.cues_changed();
             }
             // SUB-028: mpv draws the pictures until their text is ready
-            Source::Read { id, .. } => {
-                let _ = self.services.player.show_bitmap_subtitles(Some(*id));
+            graphic if graphic.is_graphic_read() => {
+                let id = match graphic {
+                    Source::Read { id, .. } => Some(*id),
+                    _ => None,
+                };
+                let _ = self.services.player.show_bitmap_subtitles(id);
                 let name = source_name(&source);
                 self.subs.clear(Some(source.clone()));
+                self.subs.incomplete = true;
+                self.graphic_bitmap = Some(id.is_some());
                 self.cues_changed();
                 if self.services.ocr.installed() {
                     self.toasts
@@ -5039,7 +5110,7 @@ impl Session {
                     self.ocr_fetch();
                 }
             }
-            Source::File(_) | Source::Embedded { .. } => {
+            Source::File(_) | Source::Embedded { .. } | Source::Read { .. } => {
                 let _ = self.services.player.show_bitmap_subtitles(None);
                 self.load_main(source);
             }
@@ -5054,6 +5125,8 @@ impl Session {
         self.sub_loads.push((
             self.sub_generation,
             Request {
+                preferred_languages: self.services.config.subtitles.preferred_languages.clone(),
+                position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
                 encoding: self.subs.forced_encoding.clone(),
@@ -5072,9 +5145,132 @@ impl Session {
     pub fn start_subtitle_load(
         &self,
         request: Request,
+        reports: crate::subtitles::Reports,
         done: Box<dyn FnOnce(Result<Loaded, String>) + Send>,
     ) {
-        self.services.subtitle_source.load(request, done);
+        self.services
+            .subtitle_source
+            .load_progressive(request, reports, done);
+    }
+
+    /// Primary graphic reading preparation/progress for the menu and subtitle list.
+    pub fn graphic_read_status(&self) -> Option<(String, Option<f32>)> {
+        if !self.subs.incomplete {
+            return None;
+        }
+        Some(match self.subs.read_progress {
+            Some((done, total)) if total > 0 => (
+                self.tr(
+                    "sub-reading-progress",
+                    &[("done", done.to_string()), ("total", total.to_string())],
+                ),
+                Some(done as f32 / total as f32),
+            ),
+            _ => (self.tr("sub-reading-preparing", &[]), None),
+        })
+    }
+
+    /// Stop the primary OCR request and restore a concrete non-reading choice.
+    pub fn graphic_read_cancel(&mut self) {
+        if !self.subs.incomplete {
+            return;
+        }
+        self.read_waiting = None;
+        let key = match self.subs.source.as_ref() {
+            Some(Source::Read { id, .. }) => format!("track:{id}"),
+            _ => "off".into(),
+        };
+        self.select_subtitles(&key);
+    }
+
+    /// Partial text from the current graphic OCR; stale/finalised reports
+    /// cannot replace a newer source or a complete track.
+    pub fn subtitles_progress(
+        &mut self,
+        generation: u64,
+        source: Source,
+        progress: crate::subtitles::Progress,
+    ) {
+        if generation != self.sub_generation
+            || !self.subs.incomplete
+            || self.subs.source.as_ref() != Some(&source)
+        {
+            return;
+        }
+        if progress.total == 0
+            || progress.done > progress.total
+            || self
+                .subs
+                .read_progress
+                .is_some_and(|(done, total)| total != progress.total || progress.done < done)
+        {
+            return;
+        }
+        let reading = (progress.done, progress.total);
+        self.study.clear_credits();
+        self.set_progress_track(source, progress.loaded);
+        self.subs.incomplete = true;
+        self.subs.read_progress = Some(reading);
+        self.subs.update((self.view.time_pos * 1000.0) as i64);
+        self.progress_changed();
+        self.update_graphic_bitmap();
+    }
+
+    fn set_progress_track(&mut self, source: Source, loaded: Loaded) {
+        let remap =
+            crate::subtitles::progress_cues(self.subs.timeline().cues(), &loaded.track.cues);
+        let mapped = |i: usize| remap.get(i).copied().flatten();
+        let selection = self
+            .subs
+            .selection
+            .and_then(|(i, byte)| Some((mapped(i)?, byte)));
+        let highlight = self
+            .subs
+            .highlight
+            .take()
+            .and_then(|(i, bytes)| Some((mapped(i)?, bytes)));
+        let mut orphan = false;
+        for popup in self.popups.stack_mut() {
+            if let Origin::Subtitle { cue, .. } = &mut popup.origin {
+                if let Some(index) = mapped(*cue) {
+                    *cue = index;
+                } else {
+                    orphan = true;
+                }
+            }
+        }
+        self.keyboard_lookup = self
+            .keyboard_lookup
+            .and_then(|(i, byte)| Some((mapped(i)?, byte)));
+        self.subs.set_track(source, loaded);
+        self.subs.selection = selection;
+        self.subs.highlight = highlight;
+        if orphan {
+            self.close_all_popups();
+        }
+    }
+
+    fn progress_changed(&mut self) {
+        self.restore_gap_speed();
+        self.sub_list_version += 1;
+        self.update_auto_pause();
+    }
+
+    fn update_graphic_bitmap(&mut self) {
+        if !self.subs.incomplete {
+            return;
+        }
+        let Some(Source::Read { id, .. }) = self.subs.source.as_ref() else {
+            return;
+        };
+        let show = self.subs.active().is_empty() && !self.subs.disabled;
+        if self.graphic_bitmap != Some(show) {
+            let _ = self
+                .services
+                .player
+                .show_bitmap_subtitles(show.then_some(*id));
+            self.graphic_bitmap = Some(show);
+        }
     }
 
     /// A load finished. A result for an older request is dropped.
@@ -5104,14 +5300,24 @@ impl Session {
                 let name = source_name(&source);
                 let encoding = loaded.encoding.as_deref().map(|e| self.encoding_label(e));
                 // SUB-028: the text in place of the pictures
-                if matches!(source, Source::Read { .. }) {
+                if source.is_graphic_read() {
                     let _ = self.services.player.show_bitmap_subtitles(None);
+                    self.graphic_bitmap = Some(false);
                 }
                 // SUB-025: before its cues are laid out
                 crate::view::theme::register_fonts(&loaded.fonts);
-                self.subs.set_track(source, loaded);
+                let progressive = self.subs.incomplete;
+                if progressive {
+                    self.set_progress_track(source, loaded);
+                } else {
+                    self.subs.set_track(source, loaded);
+                }
                 self.subs.update((self.view.time_pos * 1000.0) as i64);
-                self.cues_changed();
+                if progressive {
+                    self.progress_changed();
+                } else {
+                    self.cues_changed();
+                }
                 if let Some(link) = link {
                     self.go_to_link_cue(link);
                 }
@@ -5131,7 +5337,11 @@ impl Session {
                 tracing::warn!("subtitles: {reason}");
                 // SUB-028: the pictures stay, drawn by mpv
                 let pictures = match source {
-                    Source::Read { id, .. } => Some(Source::Bitmap(id)),
+                    Source::Read { id, .. } => {
+                        let _ = self.services.player.show_bitmap_subtitles(Some(id));
+                        self.graphic_bitmap = None;
+                        Some(Source::Bitmap(id))
+                    }
                     _ => None,
                 };
                 self.subs.clear(pictures);
@@ -5203,6 +5413,7 @@ impl Session {
         };
         self.remember(Remember::Subtitle(remembered));
         if key == "off" {
+            self.services.subtitle_source.cancel(false);
             self.sub_generation += 1;
             let _ = self.services.player.show_bitmap_subtitles(None);
             self.subs.clear(None);
@@ -5258,6 +5469,8 @@ impl Session {
         self.sub_loads.push((
             self.secondary_generation,
             Request {
+                preferred_languages: self.services.config.subtitles.preferred_languages.clone(),
+                position_ms: (self.view.time_pos * 1000.0) as i64 - self.subs.timeline().delay_ms,
                 video,
                 source,
                 encoding: None,
@@ -5550,7 +5763,11 @@ impl Session {
         request: crate::book_scores::Request,
         done: crate::dictionaries::Done<crate::book_scores::Outcome>,
     ) {
-        self.services.dictionaries.count_book(request, done);
+        if let Some(cancel) = self.books_page.scores.token(&request) {
+            self.services
+                .dictionaries
+                .count_book_cancellable(request, cancel, done);
+        }
     }
 
     /// An analysis result; stale ids/paths/generations are ignored.
@@ -5866,7 +6083,7 @@ impl Session {
                 ocr.installed = true;
                 // SUB-028: the graphic track that waited for it
                 if self.read_waiting.take() == Some(self.sub_generation)
-                    && let Some(source @ Source::Read { .. }) = self.subs.source.clone()
+                    && let Some(source) = self.subs.source.clone().filter(Source::is_graphic_read)
                 {
                     let name = source_name(&source);
                     self.toasts
@@ -5877,9 +6094,13 @@ impl Session {
             OcrEvent::Failed(e) => {
                 ocr.fetched = None;
                 if self.read_waiting.take() == Some(self.sub_generation)
-                    && let Some(Source::Read { id, .. }) = self.subs.source
+                    && let Some(source) = self.subs.source.clone().filter(Source::is_graphic_read)
                 {
-                    self.subs.clear(Some(Source::Bitmap(id)));
+                    let pictures = match source {
+                        Source::Read { id, .. } => Some(Source::Bitmap(id)),
+                        _ => None,
+                    };
+                    self.subs.clear(pictures);
                     self.cues_changed();
                     self.toasts
                         .push(self.tr("error-subtitles", &[("reason", e.clone())]));
@@ -6294,6 +6515,7 @@ impl Session {
                 self.words.ask(&cue.plain_text);
             }
         }
+        self.update_graphic_bitmap();
         self.count_score();
         // KNW-002: reader text in view first; the whole chapter follows
         // the player's pending subtitle work (KNW-014/015).
@@ -6366,7 +6588,7 @@ impl Session {
     /// they or the statuses change (KNW-007). The words' cache holds a long
     /// film's lines; beyond, there is no score.
     fn count_score(&mut self) {
-        if !self.services.config.subtitles.word_colors {
+        if !self.services.config.subtitles.word_colors || self.subs.incomplete {
             self.score = None;
             self.word_list = None;
             return;
@@ -6462,6 +6684,7 @@ impl Session {
         let words = &self.words;
         self.episode_scores
             .update(words.revision(), |e, r| words.status(e, r));
+        self.update_episode_words();
         out
     }
 
@@ -6530,6 +6753,30 @@ impl Session {
         Some((analysis, uid, request))
     }
 
+    /// Stop one book analysis and release the slot immediately.
+    pub fn book_analysis_cancel(&mut self, uid: &str) {
+        self.books_page.scores.cancel(uid);
+    }
+
+    /// Stop one series analysis, including its queued episodes.
+    pub fn series_analysis_cancel(&mut self, id: u64) {
+        self.library_page.scores.cancel(id);
+    }
+
+    /// Start a series job with the parent analysis cancellation identity.
+    pub fn start_series_word_count(
+        &self,
+        analysis: crate::series_scores::Request,
+        request: crate::scores::CountRequest,
+        done: crate::dictionaries::Done<Option<nikomiru_library::words::Counted>>,
+    ) {
+        if let Some(cancel) = self.library_page.scores.token(analysis) {
+            self.services
+                .dictionaries
+                .count_words_cancellable(request, cancel, done);
+        }
+    }
+
     /// Counts an episode's words on the dictionary service.
     pub fn start_word_count(
         &self,
@@ -6547,6 +6794,55 @@ impl Session {
         result: Result<Option<nikomiru_library::words::Counted>, String>,
     ) {
         self.episode_scores.done(generation, uid, result);
+    }
+
+    /// Open/close a completed episode vocabulary without touching the player.
+    pub fn episode_words(&mut self, uid: Option<String>) {
+        self.library_page.episode_words = uid.and_then(|uid| {
+            if !self.services.config.subtitles.word_colors {
+                return None;
+            }
+            let (_, episodes) = self.library_page.series.as_ref()?;
+            let (_, video) = episodes.as_ref()?.iter().find(|(u, _)| u == &uid)?;
+            let counted = self.episode_scores.counted(&uid)?;
+            let title = PathBuf::from(&video.path)
+                .file_stem()?
+                .to_string_lossy()
+                .into_owned();
+            Some(crate::catalog::EpisodeVocabulary {
+                uid,
+                title,
+                words: std::sync::Arc::new(self.words.listed_counted(&counted)),
+                epoch: self.episode_scores.epoch(),
+                revision: self.words.revision(),
+            })
+        });
+    }
+
+    fn update_episode_words(&mut self) {
+        let Some(study) = &mut self.library_page.episode_words else {
+            return;
+        };
+        let current = self.services.config.subtitles.word_colors
+            && study.epoch == self.episode_scores.epoch()
+            && self
+                .library_page
+                .series
+                .as_ref()
+                .and_then(|(_, e)| e.as_ref())
+                .is_some_and(|episodes| episodes.iter().any(|(u, _)| u == &study.uid));
+        if !current {
+            self.library_page.episode_words = None;
+            return;
+        }
+        let Some(counted) = self.episode_scores.counted(&study.uid) else {
+            self.library_page.episode_words = None;
+            return;
+        };
+        if study.revision != self.words.revision() {
+            study.words = std::sync::Arc::new(self.words.listed_counted(&counted));
+            study.revision = self.words.revision();
+        }
     }
 
     /// What the episode list says of an episode's score (KNW-008).
@@ -6766,6 +7062,178 @@ impl Session {
     pub fn wait_writes(&self) {
         if let Some(w) = &self.writer {
             w.wait();
+        }
+    }
+
+    /// Capture every retained complete analysis of the chosen view with current statuses.
+    pub fn study_report_prepare(&mut self, scope: crate::study_report::Scope) -> bool {
+        use crate::study_report::{Row, Scope};
+        self.study_report = None;
+        self.books_page.scores.update(
+            self.services.config.subtitles.word_colors,
+            &self.books_page.list,
+            &self.words,
+        );
+        self.update_series_scores();
+        let rows = match scope {
+            Scope::Books => self
+                .books_page
+                .list
+                .iter()
+                .filter_map(|(uid, book)| {
+                    let crate::book_scores::Status::Score(score) =
+                        self.books_page.scores.get(uid)?
+                    else {
+                        return None;
+                    };
+                    Some(Row {
+                        uid: uid.clone(),
+                        title: book.title.clone(),
+                        score: *score,
+                        coverage: None,
+                    })
+                })
+                .collect(),
+            Scope::Series => self
+                .library_page
+                .home
+                .as_ref()
+                .map(|home| {
+                    home.series
+                        .iter()
+                        .filter_map(|series| {
+                            let crate::series_scores::Status::Ready(summary) =
+                                self.library_page.scores.get(series.id)?
+                            else {
+                                return None;
+                            };
+                            Some(Row {
+                                uid: series.id.to_string(),
+                                title: series.record.title.clone(),
+                                score: summary.score,
+                                coverage: Some((summary.scored, summary.total, summary.failed)),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        match crate::study_report::tsv(scope, rows) {
+            Ok(text) => {
+                self.study_report = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the previously captured comprehension report.
+    pub fn study_report_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.study_report.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "study-report-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self
+                .toasts
+                .push(self.tr("study-report-failed", &[("reason", error.to_string())])),
+        }
+    }
+
+    /// Only the complete current primary text timeline can be exported.
+    pub fn subtitle_export_ready(&self) -> bool {
+        !self.subs.incomplete && !self.subs.timeline().cues().is_empty()
+    }
+
+    /// Freeze plain text and delay before the native save dialog.
+    pub fn subtitle_export_prepare(&mut self) -> bool {
+        self.subtitle_export = None;
+        match crate::subtitle_export::srt(
+            self.subs.timeline().cues(),
+            self.subs.timeline().delay_ms,
+            !self.subs.incomplete,
+        ) {
+            Ok(text) => {
+                self.subtitle_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Write the frozen SRT atomically without changing the displayed source.
+    pub fn subtitle_export_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.subtitle_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self
+                .toasts
+                .push(self.tr("sub-export-saved", &[("path", path.display().to_string())])),
+            Err(error) => self
+                .toasts
+                .push(self.tr("sub-export-failed", &[("reason", error.to_string())])),
+        }
+    }
+
+    /// Capture the episode identity before the save dialog, not a truncated display list.
+    pub fn history_export_prepare(&mut self, uid: &str) -> bool {
+        self.history_export = self
+            .library_page
+            .stats
+            .as_ref()
+            .filter(|s| s.encounters.iter().any(|(u, _, _)| u == uid))
+            .map(|_| uid.to_string());
+        self.history_export.is_some()
+    }
+
+    /// Queue a full history export on the library worker.
+    pub fn history_export_to(&mut self, path: PathBuf) {
+        if let Some(uid) = self.history_export.take() {
+            self.wait_writes();
+            self.library_jobs
+                .push(crate::catalog::LibraryJob::ExportEncounters(uid, path));
+        }
+    }
+
+    /// Freeze the list at the click, before the native save dialog opens.
+    pub fn analysis_export_prepare(&mut self, rows: &[crate::words::ListedWord]) -> bool {
+        self.analysis_export = None;
+        match crate::word_export::tsv(rows) {
+            Ok(text) => {
+                self.analysis_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the frozen local vocabulary, without status/history changes.
+    pub fn analysis_export_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.analysis_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self.toasts.push(self.tr(
+                "toast-words-export-failed",
+                &[("reason", error.to_string())],
+            )),
         }
     }
 

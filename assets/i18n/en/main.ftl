@@ -1026,3 +1026,76 @@ library-score-too-large = Too many episodes for series analysis
 stats-encounters = New words met by episode
 stats-encounters-detail = Distinct words that were new when encountered during playback. Later status changes keep this history.
 stats-encounters-episode = { $title }: { $count } new words met
+
+condense-reading = Wait for subtitle reading to finish before exporting condensed audio.
+
+error-subtitle-vobsub-index = The VobSub index is damaged or does not identify a readable language track.
+
+analysis-cancel = Cancel analysis
+
+analysis-words = Study words
+analysis-words-back = Back to list
+
+analysis-export-shown = Export shown
+analysis-export-selected = Export selected
+analysis-export-saved = Vocabulary saved to { $path }.
+analysis-export-too-large = This vocabulary exceeds the 16 MiB export limit.
+
+encounter-history-open = Inspect history
+encounter-history-clear = Clear episode history
+encounter-history-coverage = Showing { $shown } of { $total } historical words (first encounter: Unix ms).
+
+analysis-order = Comprehension order
+analysis-order-original = Library order
+analysis-order-most = Most known first
+analysis-order-least = Least known first
+analysis-only-scored = Only scored
+analysis-minimum-known = Minimum known %
+
+analysis-source-changed = The source or dictionaries changed during analysis. Please refresh.
+
+vocabulary-status-filter = Word status filter
+vocabulary-all-statuses = All statuses
+vocabulary-card-filter = Card filter
+vocabulary-any-card = Any card
+vocabulary-with-card = With card
+vocabulary-without-card = Without card
+
+vocabulary-order = Vocabulary order
+vocabulary-frequency-desc = Most frequent first
+vocabulary-frequency-asc = Least frequent first
+vocabulary-expression = Expression order
+vocabulary-reading = Reading order
+
+vocabulary-copy-shown = Copy shown
+vocabulary-copy-selected = Copy selected
+vocabulary-copied = Vocabulary copied.
+
+encounter-export = Export full episode history
+encounter-export-saved = Episode history saved to { $path }.
+
+episode-words-title = Study words: { $title }
+
+sub-reading-preparing = Preparing subtitle reading…
+sub-reading-progress = Read { $done } / { $total } pictures
+sub-reading-cancel = Cancel reading
+
+sub-export = Export current text as SRT…
+sub-export-filter = SubRip subtitles
+sub-export-unavailable = Complete nonempty text subtitles are required for export.
+sub-export-too-large = This subtitle track exceeds the 16 MiB export limit.
+sub-export-saved = Subtitles saved to { $path }.
+
+sub-export-failed = Subtitles could not be saved: { $reason }
+
+analysis-cache-title = Analysis count cache
+analysis-cache-usage = { $files } files · { $bytes } bytes
+analysis-cache-unavailable = Cache usage is unavailable.
+analysis-cache-refresh = Refresh cache usage
+analysis-cache-clear = Clear count cache
+analysis-cache-detail = Up to 64 MiB of derived book/episode counts. Current analyses stay open; completed work may refill the cache.
+
+study-report-export = Export analysed summaries…
+study-report-empty = No completed analyses are available for this report.
+study-report-saved = Comprehension report saved to { $path }.
+study-report-failed = The report could not be saved: { $reason }

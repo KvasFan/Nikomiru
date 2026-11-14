@@ -37,11 +37,24 @@ impl Home {
     }
 }
 
+/// A snapshot of owned persistent analysis-cache disk usage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+pub struct AnalysisCacheUsage {
+    /// Complete files and interrupted write temporaries owned by count caches.
+    pub files: usize,
+    /// Actual file lengths; excludes unrelated cache material.
+    pub bytes: u64,
+}
+
 /// What the statistics page shows (STA-005).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Stats {
     /// Historical distinct unknown words, by media uid/title (KNW-018).
     pub encounters: Vec<(String, String, usize)>,
+    /// Count-cache usage, or unavailable metrics without hiding other statistics.
+    pub analysis_cache: Option<AnalysisCacheUsage>,
+    /// At most 1,000 latest historical words per listed episode (KNW-023).
+    pub encounter_words: std::collections::BTreeMap<String, Vec<(String, String, i64)>>,
     /// The totals of each day studied, by day.
     pub days: Vec<DayTotal>,
     /// Time and characters by series (or file), the most studied first.
@@ -119,6 +132,10 @@ pub enum LibraryEdit {
     Remove(Vec<String>),
     /// A study session deleted (STA-005).
     DeleteSession(u128),
+    /// Clear one episode’s historical encounters, retaining its sync reset.
+    ClearEncounters(String),
+    /// Delete owned persisted analysis counts, keeping current in-memory analyses.
+    ClearAnalysisCache,
     /// What was found online of a series (MET-001), or `None` to forget it;
     /// its cover, already downloaded, becomes the series' own.
     Identify {
@@ -174,6 +191,11 @@ pub trait LibraryService: Send {
     fn stats(&self, done: Done<Stats>);
     /// The sessions as CSV, written to `path` (STA-005).
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>);
+    /// Export the full historical word set of one episode on the library worker.
+    fn export_encounters(&self, uid: String, path: PathBuf, done: Done<PathBuf>) {
+        let _ = (uid, path);
+        done(Err("library unavailable".into()));
+    }
     /// Does `job` in the review, then reads it again (REV-004).
     fn review(
         &self,
@@ -245,6 +267,8 @@ pub enum LibraryJob {
     Stats,
     /// Write the sessions as CSV.
     ExportCsv(PathBuf),
+    /// Export one episode’s full historical encounters.
+    ExportEncounters(String, PathBuf),
     /// A job of the review (REV-004).
     Review(crate::review::ReviewJob, Settings),
 }
@@ -267,7 +291,9 @@ pub enum LibraryReply {
     /// The cover of a series.
     Cover(u64, Result<Cover, String>),
     /// The statistics.
-    Stats(Result<Stats, String>),
+    Stats(Result<Box<Stats>, String>),
+    /// Full history written, or its failure.
+    HistoryExported(Result<PathBuf, String>),
     /// The CSV written, or not.
     Exported(Result<PathBuf, String>),
     /// The review after a job.
@@ -277,11 +303,26 @@ pub enum LibraryReply {
 /// Episodes by uid, in order.
 pub type Episodes = Vec<(String, VideoRecord)>;
 
+/// A selected episode's complete vocabulary, rescored with shared word statuses.
+#[derive(Debug)]
+pub struct EpisodeVocabulary {
+    /// The media identity, separate from whichever episode may be playing.
+    pub uid: String,
+    /// Local episode title for the browser.
+    pub title: String,
+    /// Current vocabulary rows, not subtitle text.
+    pub words: std::sync::Arc<Vec<crate::words::ListedWord>>,
+    pub(crate) epoch: u64,
+    pub(crate) revision: u64,
+}
+
 /// The Library page in the session.
 #[derive(Debug, Default)]
 pub struct LibraryPage {
     /// Explicit series-card analyses (KNW-017).
     pub scores: crate::series_scores::Scores,
+    /// Selected pre-playback vocabulary from a complete episode count.
+    pub episode_words: Option<EpisodeVocabulary>,
     /// The home page, once read.
     pub home: Option<Home>,
     /// The series open, and its episodes once read.

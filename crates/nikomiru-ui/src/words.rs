@@ -105,6 +105,38 @@ impl Words {
         Some(self.listed_counted(&counted))
     }
 
+    /// Combine retained analyses without joining/copying all token lines.
+    pub fn listed_many<'a>(
+        &self,
+        counts: impl IntoIterator<Item = &'a Counted>,
+    ) -> Vec<ListedWord> {
+        let mut totals: HashMap<(String, String), usize> = HashMap::new();
+        for counted in counts {
+            for ((expression, reading), count) in counted.words.iter().zip(counted.occurrences()) {
+                *totals
+                    .entry((expression.clone(), reading.clone()))
+                    .or_default() += count;
+            }
+        }
+        let mut rows: Vec<_> = totals
+            .into_iter()
+            .map(|((expression, reading), count)| ListedWord {
+                status: self.status(&expression, &reading),
+                card: self.is_mined(&expression),
+                expression,
+                reading,
+                count,
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b.count
+                .cmp(&a.count)
+                .then_with(|| a.expression.cmp(&b.expression))
+                .then_with(|| a.reading.cmp(&b.reading))
+        });
+        rows
+    }
+
     /// A retained count with current statuses and card marks (KNW-015).
     pub fn listed_counted(&self, counted: &Counted) -> Vec<ListedWord> {
         let counts = counted.occurrences();

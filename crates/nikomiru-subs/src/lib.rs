@@ -22,6 +22,7 @@ pub mod srt;
 mod time;
 pub mod timeline;
 pub mod vobsub;
+pub mod vobsub_index;
 pub mod vtt;
 
 pub use cue::{

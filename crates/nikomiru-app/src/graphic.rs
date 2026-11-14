@@ -123,6 +123,58 @@ fn join(cues: impl Iterator<Item = ReadCue>) -> Vec<ReadCue> {
     out
 }
 
+/// Pictures per progressive OCR batch (SUB-030).
+pub const BATCH: usize = 16;
+
+/// Read current/future pictures before earlier ones, publishing cumulative
+/// ordered text after each bounded batch. Cancellation returns no final track;
+/// callers must commit their cache only after a complete result.
+pub fn read_progressive<C: Graphic>(
+    cues: &[C],
+    position_ms: i64,
+    threads: usize,
+    cancel: &Cancel,
+    read_line: &ReadLine<'_>,
+    progress: &dyn Fn(&[ReadCue], usize, usize),
+) -> Result<Option<Vec<ReadCue>>, String> {
+    let at = cues
+        .iter()
+        .position(|c| c.end_ms() > position_ms)
+        .unwrap_or(cues.len());
+    let mut output = Vec::new();
+    let mut done = 0;
+    let mut failure = None;
+    for region in [&cues[at..], &cues[..at]] {
+        for batch in region.chunks(BATCH) {
+            if cancel.is_cancelled() {
+                return Ok(None);
+            }
+            match read(batch, threads, cancel, read_line) {
+                Ok(Some(read)) => output.extend(read),
+                Ok(None) => return Ok(None),
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+            done += batch.len();
+            output.sort_by_key(|c| (c.0, c.1));
+            output = join(output.into_iter());
+            if !output.is_empty() && !cancel.is_cancelled() {
+                progress(&output, done, cues.len());
+            }
+        }
+    }
+    if cancel.is_cancelled() {
+        return Ok(None);
+    }
+    if output.is_empty()
+        && let Some(error) = failure
+    {
+        return Err(error);
+    }
+    Ok(Some(output))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,5 +263,91 @@ mod tests {
         };
         let read = read(&stream(), 1, &Cancel::new(), &some).unwrap().unwrap();
         assert_eq!(read.last().map(|c| c.2.as_str()), Some("下"));
+    }
+}
+
+#[cfg(test)]
+mod progressive_tests {
+    use super::*;
+    use nikomiru_subs::pgs::{parse, testing};
+
+    fn cues() -> Vec<nikomiru_subs::pgs::PgsCue> {
+        let mut bytes = Vec::new();
+        for i in 0..40 {
+            testing::display_set(
+                &mut bytes,
+                i * 2000,
+                &[(100, 900, testing::block(80 + i as usize, 20))],
+                255,
+            );
+            testing::display_set(&mut bytes, i * 2000 + 1000, &[], 255);
+        }
+        parse(&bytes)
+    }
+
+    // T-SUB-030: nearby/future pictures first, bounded cumulative progress,
+    // with a final track identical to the former whole-track algorithm.
+    #[test]
+    fn progressive_batches_prioritise_the_playback_position_and_finish_whole() {
+        let cues = cues();
+        let snapshots = Mutex::new(Vec::new());
+        let reader = |p: &Picture| Ok(p.width.to_string());
+        let output = read_progressive(
+            &cues,
+            20_500,
+            1,
+            &Cancel::new(),
+            &reader,
+            &|text, done, total| {
+                snapshots.lock().unwrap().push((text.to_vec(), done, total));
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            output,
+            read(&cues, 1, &Cancel::new(), &reader).unwrap().unwrap()
+        );
+        let snapshots = snapshots.into_inner().unwrap();
+        assert_eq!(snapshots[0].0[0].0, 20_000);
+        assert_eq!(snapshots[0].1, BATCH);
+        assert!(snapshots.iter().all(|(_, _, total)| *total == 40));
+        assert_eq!(snapshots.last().unwrap().1, 40);
+        assert!(snapshots.windows(2).all(|w| w[1].1 - w[0].1 <= BATCH));
+        assert!(
+            snapshots
+                .iter()
+                .all(|(text, _, _)| text.windows(2).all(|w| w[0].0 <= w[1].0))
+        );
+    }
+
+    // T-SUB-030: no final result after cancellation from the first progress
+    // callback; a failed batch need not discard later readable pictures.
+    #[test]
+    fn cancellation_and_failed_batches_never_return_a_partial_success() {
+        let cues = cues();
+        let cancel = Cancel::new();
+        let reader = |p: &Picture| Ok(p.width.to_string());
+        assert_eq!(
+            read_progressive(&cues, 0, 1, &cancel, &reader, &|_, _, _| cancel.cancel()).unwrap(),
+            None
+        );
+        let threshold = lines(&cues[BATCH - 1].picture().unwrap())[0][0].width;
+        let broken = |p: &Picture| {
+            if p.width <= threshold {
+                Err("bad picture".into())
+            } else {
+                reader(p)
+            }
+        };
+        let output = read_progressive(&cues, 0, 1, &Cancel::new(), &broken, &|_, _, _| {})
+            .unwrap()
+            .unwrap();
+        assert_eq!(output.len(), 24);
+        let failure = |_: &Picture| Err("no model".into());
+        assert_eq!(
+            read_progressive(&cues, 0, 1, &Cancel::new(), &failure, &|_, _, _| {}),
+            Err("no model".into())
+        );
     }
 }

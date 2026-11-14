@@ -10,14 +10,17 @@
 mod book_scores;
 mod condense;
 mod drag;
+mod dvb_subtitles;
 mod encounters;
 mod episode_scores;
 mod gaps;
 mod perf;
+mod progressive_ocr;
 mod reader_words;
 mod series_scores;
 mod servers;
 mod support;
+mod vobsub_pairs;
 mod web_video;
 
 use std::time::Duration;

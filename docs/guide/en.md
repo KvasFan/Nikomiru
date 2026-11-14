@@ -58,6 +58,12 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 
 Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL (`.dsl`, `.dsl.dz`) and MDict (`.mdx`) dictionaries. Their definitions show as plain text, without pictures. An MDict locked to a user cannot be read.
 
+Graphic subtitles read as text now appear progressively: OCR starts near the current playback position, and unread lines keep their pictures. Text already read can be looked up while work continues. Whole-track comprehension, gap acceleration and condensed-audio export wait for completion; changing or disabling subtitles cancels the earlier reading.
+
+To read an external VobSub pair, open or drop its `.idx` or `.sub` file while a video is loaded. Keep the same-stem companion beside it; extension case does not matter. The preferred language is read with the local model and index timestamps. Reopening the video restores this explicit choice. External pairs have no picture fallback while text is pending; missing or damaged companions report an error.
+
+Embedded DVB bitmap subtitles also offer Read as text. FFmpeg converts their pictures locally for the installed model; teletext is excluded.
+
 ## 4. Looking words up
 
 - **Click** a character of a subtitle: the popup shows the longest word that starts there, its readings, meanings, pitch accent and frequencies.
@@ -219,3 +225,37 @@ The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, En
 - If the settings cannot be saved, check that `~/.config/nikomiru` belongs to you. If it was created with `sudo`, give it back with `sudo chown -R $USER: ~/.config/nikomiru`.
 - If a setting in `config.toml` has a value of the wrong kind, Nikomiru uses the default for it and names it in a notice at startup.
 - Problems and ideas: <https://github.com/KvasFan/nikomiru/issues>.
+
+While a whole-book or series analysis is running, Cancel analysis stops it and discards its incomplete result. You can immediately analyse another item; playback and episode-list scores continue.
+
+After a whole-book analysis finishes, Study words opens the vocabulary of every chapter. Search by word or reading, filter unknown/learning words, select rows or All shown, and choose a status for them together. The whole-book score follows those shared changes. Refreshing the analysis closes the old list.
+
+Series cards also offer Study words after analysis. Frequencies sum across the counted episodes. Coverage remains visible: excluded or failed episodes do not contribute words. Changing a status updates the series score and other study views.
+
+In either analysis vocabulary list, Export shown saves the current search/filter results; Export selected saves all ticked words, even hidden ones. The local UTF-8 TSV includes expression, reading, status, count and card. The export is a snapshot taken when clicked, limited to 16 MiB; it does not change your word statuses.
+
+Statistics → Inspect history shows the latest 1,000 historically encountered words for an episode, with their first encounter time in Unix milliseconds. Search a word or reading. Clear episode history removes that episode’s history and syncs a persistent reset, so old device files cannot bring it back. Word statuses and progress are kept. Words already deduplicated in the current playback visit remain suppressed until a new visit.
+
+With word colours enabled, Books and local series offer Comprehension order: original, most known or least known. Only scored can restrict the list to completed scores, with a minimum known-word percentage. Unscored items sort last; changing statuses updates the order. These controls do not start analyses or change the stored library order.
+
+Completed whole-book and episode/series analyses can reuse local count caches after restart. They validate source content and dictionary settings, then apply current word statuses. Counts are limited to 64 MiB combined (32 MiB each for books and episodes); corrupt, oversized or cancelled results are ignored. Analyses remain explicit.
+
+Search in vocabulary, historical words and subtitle lists accepts kana-script and width variants and ignores letter case. Separate terms with whitespace to require all of them; words can match either expression or reading. This changes filtering only, keeping the original spelling and lookup targets.
+
+Vocabulary lists also offer exact status and card-presence filters. They combine with the search and Only words not known. Hidden ticked words stay selected for bulk actions or Export selected; Export shown follows all current filters.
+
+Vocabulary order offers most/least frequent, expression and reading order. Missing readings sort by expression; lexical order uses the original Unicode strings. Selected words stay selected when you change order, and exports follow the selected order.
+
+Copy shown and Copy selected put the same TSV vocabulary columns on the clipboard. All vocabulary views support this. Copy selected includes hidden ticked words, keeps the selection and follows your chosen order. The same 16 MiB and spreadsheet-safety rules apply.
+
+Inspect history → Export full episode history writes every recorded word for that episode, beyond the 1,000 display limit, with its original first-encounter Unix milliseconds. The worker reads the selected episode at save time. The 16 MiB atomic TSV export leaves history and word statuses unchanged.
+
+In an open series, episodes with a completed score offer Study words before playback. The browser uses the retained subtitle count and all shared vocabulary controls; status changes update it immediately. Reopening sources or changing dictionaries/settings closes stale lists.
+
+While a graphic track is being read, the primary subtitle menu and subtitle list show preparation or processed/total pictures. Cancel reading stops that request and removes partial text: embedded tracks return to pictures, external pairs turn off. Playback continues. Cancelling reading does not cancel a separately requested model download.
+
+The primary subtitle menu and list offer Export current text as SRT after the whole text track is ready, including completed OCR. It freezes plain text and the current delay when clicked. Negative starts are clipped to zero; fully negative or empty intervals are omitted. Styles/fonts are not exported, and the destination is written atomically with a 16 MiB limit.
+
+Statistics shows the file count and byte usage of persisted analysis counts. Refresh cache usage reads a new snapshot; Clear count cache removes recognised book/episode count files and interrupted write temporaries. Current analyses, history, dictionaries and subtitle/OCR caches remain available. Work completed afterwards can refill the cache.
+
+Books and local series offer Export analysed summaries for their retained completed analyses. The TSV captures current token/text-unit totals and percentages, plus series analysed/total/failed coverage. It includes all completed analyses of that view, independently of visible filters; undefined percentages and book coverage fields stay blank. Later status changes do not rewrite the saved snapshot.

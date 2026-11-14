@@ -58,6 +58,12 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 
 Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.ifo`), DSL (`.dsl`, `.dsl.dz`) e MDict (`.mdx`). Le definizioni appaiono come testo semplice, senza immagini. Un MDict legato a un utente non si può leggere.
 
+I sottotitoli a immagini letti come testo ora compaiono progressivamente: la lettura parte vicino alla posizione corrente e le righe non ancora lette mantengono le immagini. Puoi cercare le parole del testo già pronto mentre il lavoro continua. Comprensione dell’intera traccia, accelerazione delle pause ed esportazione dell’audio condensato attendono il completamento; cambiare o disattivare i sottotitoli annulla la lettura precedente.
+
+Per leggere una coppia VobSub esterna, apri o trascina il file `.idx` o `.sub` mentre è caricato un video. Mantieni accanto il file compagno con lo stesso nome; le maiuscole delle estensioni non contano. Il modello locale legge la lingua preferita con i timestamp dell’indice. Riaprire il video ripristina questa scelta esplicita. Le coppie esterne non mostrano immagini mentre il testo è in preparazione; file compagni mancanti o danneggiati producono un errore.
+
+Anche i sottotitoli bitmap DVB incorporati offrono Leggi come testo. FFmpeg converte le immagini in locale per il modello installato; il televideo è escluso.
+
 ## 4. Cercare le parole
 
 - **Clic** su un carattere di un sottotitolo: il popup mostra la parola più lunga che comincia lì, con letture, significati, accento tonale e frequenze.
@@ -219,3 +225,37 @@ Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio 
 - Se le impostazioni non si salvano, controlla che `~/.config/nikomiru` sia tua. Se è stata creata con `sudo`, riprendila con `sudo chown -R $USER: ~/.config/nikomiru`.
 - Se un'impostazione in `config.toml` ha un valore del tipo sbagliato, Nikomiru usa quello predefinito e la nomina in un avviso all'avvio.
 - Problemi e idee: <https://github.com/KvasFan/nikomiru/issues>.
+
+Durante l’analisi di un libro intero o di una serie, Annulla analisi interrompe il lavoro e scarta il risultato incompleto. Puoi analizzare subito un altro elemento; riproduzione e punteggi degli episodi continuano.
+
+Dopo l’analisi dell’intero libro, Parole da studiare apre il vocabolario di tutti i capitoli. Cerca una parola o lettura, filtra le parole nuove/in apprendimento, seleziona righe o tutte quelle visibili e assegna loro uno stato insieme. Il punteggio del libro segue questi cambiamenti condivisi. Aggiornare l’analisi chiude il vecchio elenco.
+
+Anche le schede delle serie offrono Parole da studiare dopo l’analisi. Le frequenze sommano gli episodi conteggiati. La copertura resta visibile: gli episodi esclusi o falliti non contribuiscono parole. Cambiare uno stato aggiorna il punteggio della serie e le altre viste di studio.
+
+Negli elenchi delle analisi, Esporta visibili salva i risultati di ricerca/filtro; Esporta selezionate salva tutte le parole spuntate, anche quelle nascoste. Il TSV UTF-8 locale include parola, lettura, stato, occorrenze e presenza di una scheda. L’esportazione fotografa l’elenco al clic, con un limite di 16 MiB; non modifica gli stati delle parole.
+
+Statistiche → Esamina cronologia mostra le ultime 1.000 parole incontrate storicamente in un episodio, con il primo incontro in millisecondi Unix. Cerca parola o lettura. Cancella cronologia episodio rimuove quella cronologia e sincronizza un reset persistente, così i vecchi file dei dispositivi non la ripristinano. Stati delle parole e progressi restano conservati. Le parole già deduplicate nella visita di riproduzione corrente restano escluse fino a una nuova visita.
+
+Con i colori delle parole attivi, Libri e serie locali offrono Ordine per comprensione: originale, più conosciuti o meno conosciuti. Solo analizzati limita l’elenco ai punteggi completati, con una percentuale minima di parole conosciute. Gli elementi senza punteggio vanno in fondo; cambiare stati aggiorna l’ordine. Questi controlli non avviano analisi e non modificano l’ordine salvato nella libreria.
+
+Le analisi completate di libri interi ed episodi/serie possono riusare conteggi locali dopo il riavvio. Verificano contenuto della sorgente e impostazioni dei dizionari, poi applicano gli stati correnti delle parole. Le cache dei conteggi sono limitate complessivamente a 64 MiB (32 MiB per libri e 32 MiB per episodi); risultati danneggiati, eccessivi o annullati vengono ignorati. Le analisi restano esplicite.
+
+La ricerca in vocabolario, parole storiche e lista sottotitoli accetta varianti kana e di larghezza e ignora maiuscole/minuscole. Separa i termini con spazi per richiederli tutti; le parole possono corrispondere alla forma o alla lettura. Cambia solo il filtro, mantenendo grafia originale e bersagli del dizionario.
+
+Gli elenchi di vocabolario offrono anche filtri per stato esatto e presenza di una scheda. Si combinano con ricerca e Solo parole non conosciute. Le parole spuntate nascoste restano selezionate per azioni in blocco o Esporta selezionate; Esporta visibili segue tutti i filtri correnti.
+
+Ordine del vocabolario offre frequenza crescente/decrescente, parola e lettura. Le letture mancanti usano la parola; l’ordine lessicale confronta le stringhe Unicode originali. Le parole selezionate restano tali cambiando ordine e le esportazioni seguono l’ordine scelto.
+
+Copia visibili e Copia selezionate inseriscono negli appunti le stesse colonne TSV del vocabolario. Sono disponibili in tutte le viste delle parole. Copia selezionate include le parole spuntate nascoste, conserva la selezione e segue l’ordine scelto. Valgono gli stessi limiti di 16 MiB e le protezioni per i fogli di calcolo.
+
+Esamina cronologia → Esporta cronologia completa episodio scrive tutte le parole registrate per quell’episodio, oltre il limite di 1.000 righe visualizzate, con i millisecondi Unix del primo incontro originale. Il worker legge l’episodio scelto al momento del salvataggio. Il TSV atomico, limitato a 16 MiB, non modifica cronologia o stati delle parole.
+
+In una serie aperta, gli episodi con punteggio completato offrono Parole da studiare prima della riproduzione. La vista usa il conteggio dei sottotitoli già disponibile e tutti i controlli condivisi del vocabolario; cambiare stati la aggiorna subito. Riaprire le sorgenti o cambiare dizionari/impostazioni chiude gli elenchi superati.
+
+Durante la lettura di una traccia grafica, il menu dei sottotitoli principali e la lista mostrano preparazione o immagini elaborate/totali. Annulla lettura interrompe quella richiesta e rimuove il testo parziale: le tracce incorporate tornano alle immagini, le coppie esterne vengono disattivate. La riproduzione continua. Annullare la lettura non annulla un download del modello richiesto separatamente.
+
+Il menu principale e la lista sottotitoli offrono Esporta testo corrente come SRT quando l’intera traccia testuale è pronta, compreso l’OCR completato. Il clic acquisisce testo semplice e offset corrente. Gli inizi negativi vengono portati a zero; intervalli interamente negativi o vuoti vengono omessi. Stili e font non vengono esportati; la destinazione viene scritta atomicamente con un limite di 16 MiB.
+
+Statistiche mostra numero di file e byte dei conteggi di analisi persistenti. Aggiorna utilizzo cache legge una nuova fotografia; Svuota cache conteggi rimuove i file riconosciuti di libri/episodi e i temporanei di scritture interrotte. Analisi correnti, cronologia, dizionari e cache sottotitoli/OCR restano disponibili. Il lavoro completato in seguito può riempire di nuovo la cache.
+
+Libri e serie locali offrono Esporta riepiloghi analizzati per le analisi completate conservate. Il TSV acquisisce totali e percentuali correnti di parole/unità testuali, più copertura analizzati/totali/falliti delle serie. Include tutte le analisi completate di quella vista, indipendentemente dai filtri visibili; percentuali non definite e copertura dei libri restano vuote. Cambiamenti successivi agli stati non riscrivono la fotografia salvata.

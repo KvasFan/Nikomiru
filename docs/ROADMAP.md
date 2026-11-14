@@ -898,6 +898,279 @@ Reuses the scene links already assigned to M4 (ANK-050).
 
 ---
 
+## Next ten milestones — M25…M34 (2026-11-14)
+
+The maintainer asked for ten consecutive milestones, prioritising subtitles
+and study tools. AI/speech services and ports are outside this batch. Each
+milestone gets its requirement and automated checks before implementation;
+manual checks remain explicit. Development continues to the next milestone
+without requiring a new request after each increment.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M25 | Graphic subtitle OCR progressively from the playback position | done |
+| M26 | External VobSub `.idx`/`.sub` pairs read as text | done |
+| M27 | Embedded DVB subtitles read as text | done |
+| M28 | Cancel book and series comprehension analyses | done |
+| M29 | Browse and bulk-mark the words of a whole analysed book | done |
+| M30 | Browse and bulk-mark the words of an analysed series | done |
+| M31 | Export analysed media word lists for study elsewhere | done |
+| M32 | Inspect and clear historical word encounters, including sync | done |
+| M33 | Order/filter library material by comprehension | done |
+| M34 | Bounded persistent analysis caches with source/dictionary invalidation | done |
+
+## M25 — Progressive graphic OCR
+
+**Requirements**: SUB-030. **Goal**: use nearby recognised subtitle text while
+later pictures are still being read. Prioritise cues at/after the captured
+playback position, deliver bounded batches, reject stale generations and
+write the cache only when the whole track completes. Partial text supports
+lookup/mining, but is not presented as a complete comprehension/export source.
+
+**Exit criteria**: priority/batching/cancellation/error tests, actual loader
+and GUI progress checks, unchanged whole-track cache behavior, `cargo xtask ci`.
+
+---
+
+## M26 — External VobSub pairs
+
+**Requirements**: SUB-031. Open/drop either member of a local `.idx`/`.sub`
+pair on the current video and read its selected language as text. The index
+supplies palette, stream id, packet positions and authoritative timestamps.
+OCR is progressive as M25; the cache includes signatures of both files and
+the selected stream. This increment is explicit opening, not automatic sidecar
+selection or background comprehension/OCR. Pending external text has no mpv
+picture fallback. Missing/damaged/oversized pairs fail without a partial cache.
+
+**Exit criteria**: multi-stream/index/timestamp/bounds and companion/cache
+tests; actual paired-file GUI lookup, replacement and changed-source refresh;
+`cargo xtask ci`.
+
+---
+
+## M27 — Embedded DVB subtitles read as text
+
+**Requirements**: SUB-032. Reuse FFmpeg's bitmap codecs to convert embedded
+DVB subtitles into a bounded DVD bitmap stream with an explicit grayscale
+palette, then the existing progressive local OCR pipeline. Pictures remain
+available until text is ready; extraction and shutdown share cancellation.
+The conversion cache is separate from copied DVD streams. Teletext is not
+DVB bitmap and remains outside this increment.
+
+**Exit criteria**: extraction arguments/cache/cancellation tests, real
+DVB→DVD conversion and decoded pictures/timing, GUI text/lookup, full CI.
+
+---
+
+## M28 — Cancel comprehension analysis
+
+**Requirements**: KNW-019. Explicit cancellation stops the selected book or
+series work, drops pending episodes and rejects stale responses. Child
+processes observe the same request token as segmentation. Playback and
+ordinary episode-list scoring keep independent cancellation identities.
+
+**Exit criteria**: linked token isolation, cancellation/restart and stale
+metadata/count tests, accessible UI actions and `cargo xtask ci`.
+
+---
+
+## M29 — Whole-book vocabulary
+
+**Requirements**: KNW-020. Browse complete retained whole-book counts with
+frequency, shared statuses, search and bulk marking. Reuse the word-list
+controls; keep the reader closed and clear stale selections on refresh.
+
+**Exit criteria**: whole-book occurrence/status/invalidation and accessible
+browser/bulk-mark tests; `cargo xtask ci`.
+
+---
+
+## M30 — Series vocabulary
+
+**Requirements**: KNW-021. Combine the completed episode vocabulary, retaining
+separate readings and summed frequencies. Show coverage, search/filter and
+shared bulk statuses without playing or opening a series.
+
+**Exit criteria**: aggregation/coverage/partial/invalidation and accessible
+browser/bulk-mark tests; `cargo xtask ci`.
+
+---
+
+## M31 — Export study vocabulary
+
+**Requirements**: KNW-022. Export shown/selected analysis rows through the
+native save dialog as a bounded atomic UTF-8 TSV snapshot. Retain frequency,
+status and card columns, neutralise control characters/formula fields.
+
+**Exit criteria**: format/size/sanitisation tests and filtered/selected UI
+snapshot commands; `cargo xtask ci`.
+
+---
+
+## M32 — Encounter history management
+
+**Requirements**: KNW-023. Inspect bounded per-episode historical word lists,
+search word/readings and clear an episode. Persist and sync reset epochs so
+old device histories cannot resurrect deleted words; preserve other study data.
+
+**Exit criteria**: reset/reopen/new-encounter/old-device merge tests, bounded
+history projection and accessible inspect/search/clear controls; full CI.
+
+---
+
+## M33 — Choose by comprehension
+
+**Requirements**: KNW-024. Display Books and local series in original,
+most-known or least-known order, with stable ties and unscored items last.
+Filter completed scores by a minimum known-token percentage. Use only
+retained counts, keeping library order and playback unchanged.
+
+**Exit criteria**: ratio/tie/missing/threshold/rescore tests and accessible
+filter controls without automatic analysis; `cargo xtask ci`.
+
+---
+
+## M34 — Persistent analysis counts
+
+**Requirements**: KNW-025. Reuse complete local counts across restarts on the
+existing workers, with stable source/content/dictionary fingerprints. Bound
+entries and total disk bytes, reject corrupt/partial/cancelled data, and
+rescore current statuses instead of persisting stale percentages.
+
+**Exit criteria**: restart/source/dictionary invalidation, corrupt/oversized
+cache and eviction/cancellation tests, actual worker parity and full CI.
+
+---
+
+## Ten more milestones — M35…M44 (2026-11-14)
+
+The maintainer asked during M34 to resume and continue with ten more milestones.
+The same subtitle/study priority applies; development proceeds in order.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M35 | Normalised kana/width/case search in study lists, history and subtitles | done |
+| M36 | Precise word-status and card filters in vocabulary lists | done |
+| M37 | Vocabulary ordering by frequency, expression and reading | done |
+| M38 | Copy shown/selected study vocabulary to the clipboard | done |
+| M39 | Export per-episode historical encounters | done |
+| M40 | Browse episode vocabulary before playback | done |
+| M41 | Visible graphic OCR progress and explicit cancellation | done |
+| M42 | Export the current complete text subtitle track as SRT | done |
+| M43 | Inspect and clear persistent analysis caches | done |
+| M44 | Export comprehension summaries for analysed books and series | done |
+
+## M35 — Normalised study and subtitle search
+
+**Requirements**: KNW-026. Search NFKC width variants, basic kana scripts and
+case consistently without changing stored text or lookup offsets. Multiple
+space-separated terms all match, across expression/reading when available.
+
+**Exit criteria**: kana/width/dakuten/case/whitespace/multiple-term tests,
+shared vocabulary/history/subtitle integration and full CI.
+
+---
+
+## M36 — Vocabulary status/card filters
+
+**Requirements**: KNW-027. Combine status and card-presence filters with
+normalised search and the existing new/learning toggle. Preserve hidden ticks
+for explicit selected actions and apply filters to shown exports.
+
+**Exit criteria**: filter intersection, hidden selections, accessible controls
+and export-snapshot checks; `cargo xtask ci`.
+
+---
+
+## M37 — Vocabulary ordering
+
+**Requirements**: KNW-028. Shared vocabulary views offer both frequency
+directions, expression and reading order. Preserve selections and use the
+chosen order for shown/selected exports, including hidden selections.
+
+**Exit criteria**: frequency/lexical/tie/fallback and filter/selection tests,
+accessible selector and export ordering; full CI.
+
+---
+
+## M38 — Copy vocabulary
+
+**Requirements**: KNW-029. Shared vocabulary lists copy shown or selected
+rows as bounded sanitised TSV only on an explicit click. Retain hidden ticks,
+chosen ordering and statuses; give copied/limit feedback.
+
+**Exit criteria**: actual egui clipboard output, scope/filter/selection and
+no-status-command checks; full CI.
+
+---
+
+## M39 — Export historical encounters
+
+**Requirements**: KNW-030. Export the complete episode history on the library
+worker, not the bounded/query-filtered display projection, with original first
+encounter timestamps and bounded atomic TSV output.
+
+**Exit criteria**: full-history order/format/sanitisation, accessible action
+and actual worker file/status-preservation checks; full CI.
+
+---
+
+## M40 — Episode vocabulary before playback
+
+**Requirements**: KNW-031. Browse retained complete episode counts from an
+open series, with shared vocabulary controls and live status/card marks.
+Never play a file; reject stale count epochs and unavailable/partial sources.
+
+**Exit criteria**: complete/epoch tests, accessible episode/browser actions,
+actual pre-playback status updates and no-history checks; full CI.
+
+---
+
+## M41 — Graphic OCR controls
+
+**Requirements**: SUB-033. Show preparation/processed pictures in the primary
+subtitle menu/list. Explicit cancellation restores embedded bitmaps or turns
+external pairs off, drops partial text and rejects late progress/cache output.
+
+**Exit criteria**: accessible controls and real delayed OCR progress/reset/
+cancellation checks; full CI.
+
+---
+
+## M42 — Export current text as SRT
+
+**Requirements**: SUB-034. Freeze complete primary text and its current delay,
+clip negative intervals safely and write portable bounded SRT atomically.
+Partial OCR and non-text timelines cannot export.
+
+**Exit criteria**: delay/negative/overflow/line/overlap/bound tests, accessible
+action and actual complete/partial OCR export checks; full CI.
+
+---
+
+## M43 — Manage count caches
+
+**Requirements**: KNW-032. Statistics reads cache file/byte usage on its worker
+and clears recognised count files/temporaries only. Preserve current analyses
+and unrelated data; serialise cache writes/clear and clean interrupted writes.
+
+**Exit criteria**: ownership/usage/temporary/clear/repopulate boundary tests,
+accessible controls and actual worker/history-preservation case; full CI.
+
+---
+
+## M44 — Export comprehension summaries
+
+**Requirements**: KNW-033. Export retained completed book or series summaries
+with current shared statuses, weighted counts, defined percentages and explicit
+series coverage, as bounded atomic TSV independent of view filters.
+
+**Exit criteria**: deterministic safe totals/coverage/blank-ratio tests,
+accessible scoped actions and actual report snapshots/status parity; full CI
+and final batch regression.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
 These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:
@@ -909,11 +1182,7 @@ These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthes
 | Text to speech for words without a recording | Piper (MIT) with its voices, or the system's speech-dispatcher | Voices of 20–100 MB each, some with licences that need checking |
 | Subtitles made from the speech of a video without any | whisper.cpp (MIT) with OpenAI's Whisper models (MIT), fetched on request as the manga model is (MNG-004) | Models of 75 MB to 3 GB; slow without a GPU |
 
-Also still open from earlier releases:
-
-- graphic subtitles read progressively from where the video is, so a first reading does not wait for the whole track;
-- external `.idx`/`.sub` pairs;
-- DVB subtitles.
+Completed in M25–M27: progressive graphic OCR, explicit external VobSub pairs and embedded DVB bitmap subtitles. Real-source manual comparisons remain open.
 
 ---
 

@@ -19,3 +19,6 @@ mod kanji_variants;
 pub mod scan;
 pub mod sentence;
 pub mod variants;
+
+/// Search folding that preserves original text and byte offsets.
+pub mod search;

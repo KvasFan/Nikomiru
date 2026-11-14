@@ -60,6 +60,9 @@ pub(crate) struct State {
     pub(crate) drawn_marks: DrawnMarks,
     study_key: Option<(String, usize)>,
     words_open: bool,
+    analysis: Option<String>,
+    analysis_order: super::analysis_order::State,
+    analysis_words: super::analysis_words::State,
     word_query: String,
     words: super::word_list::State,
     /// The chapter laid out: its book, its number, the rows and the columns
@@ -877,17 +880,7 @@ fn reader(
             ui.add(egui::TextEdit::singleline(&mut state.word_query).desired_width(320.0))
                 .labelled_by(label.id);
             if let Some(words) = &s.page.study.words {
-                let labels = super::word_list::Labels {
-                    new_only: tr(s, "subtitle-words-new-only"),
-                    all: tr(s, "subtitle-words-all"),
-                    ticked: (s.tr)(
-                        "subtitle-words-ticked",
-                        &[("count", state.words.ticked.len().to_string())],
-                    ),
-                    card: tr(s, "subtitle-words-card"),
-                    statuses: super::word_list::STATUSES
-                        .map(|st| tr(s, &format!("word-status-{}", st.name()))),
-                };
+                let labels = super::word_list::Labels::translated(s.tr, state.words.ticked.len());
                 super::word_list::show(
                     ui,
                     words,
@@ -988,7 +981,14 @@ fn reader(
     close
 }
 
-fn whole_book_score(ui: &mut Ui, s: &Scene<'_>, uid: &str, title: &str, out: &mut Vec<Command>) {
+fn whole_book_score(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    uid: &str,
+    title: &str,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
     use crate::book_scores::Status;
     let status = s.page.scores.get(uid);
     match status {
@@ -1016,6 +1016,12 @@ fn whole_book_score(ui: &mut Ui, s: &Scene<'_>, uid: &str, title: &str, out: &mu
             ui.label(tr(s, "books-score-failed")).on_hover_text(error);
         }
         None => {}
+    }
+    if matches!(status, Some(Status::Counting)) && ui.button(tr(s, "analysis-cancel")).clicked() {
+        out.push(Command::BookAnalysisCancel(uid.into()));
+    }
+    if s.page.scores.words(uid).is_some() && ui.button(tr(s, "analysis-words")).clicked() {
+        state.analysis = Some(uid.into());
     }
     let button = ui.add_enabled(
         !s.page.scores.busy(),
@@ -1078,6 +1084,42 @@ fn list(
             }
         });
     });
+    if let Some(uid) = state.analysis.clone() {
+        if s.colours
+            && let Some((serial, words)) = s.page.scores.words(&uid)
+            && let Some((_, book)) = s.page.list.iter().find(|(u, _)| u == &uid)
+        {
+            if super::analysis_words::show(
+                ui,
+                format!("{uid}/{serial}"),
+                &book.title,
+                words,
+                &mut state.analysis_words,
+                s.tr,
+                out,
+            ) {
+                state.analysis = None;
+            }
+            return;
+        }
+        state.analysis = None;
+        state.analysis_words = Default::default();
+    }
+    if s.colours {
+        state.analysis_order.controls(ui, s.tr);
+        let ready = s.page.list.iter().any(|(uid, _)| {
+            matches!(
+                s.page.scores.get(uid),
+                Some(crate::book_scores::Status::Score(_))
+            )
+        });
+        if ui
+            .add_enabled(ready, Button::new(tr(s, "study-report-export")))
+            .clicked()
+        {
+            out.push(Command::StudyReport(crate::study_report::Scope::Books));
+        }
+    }
     if let Some((text, ok)) = &s.page.status {
         let shade: Color32 = if *ok {
             palette::current().good
@@ -1108,7 +1150,18 @@ fn list(
         .id_salt("books")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for (uid, record) in &s.page.list {
+            let indices = if s.colours {
+                state.analysis_order.indices(s.page.list.len(), |i| {
+                    match s.page.scores.get(&s.page.list[i].0) {
+                        Some(crate::book_scores::Status::Score(score)) => Some(*score),
+                        _ => None,
+                    }
+                })
+            } else {
+                (0..s.page.list.len()).collect()
+            };
+            for i in indices {
+                let (uid, record) = &s.page.list[i];
                 ui.horizontal(|ui| {
                     let name = if record.author.is_empty() {
                         record.title.clone()
@@ -1124,7 +1177,7 @@ fn list(
                     );
                     if s.colours {
                         ui.push_id(("book-score", uid), |ui| {
-                            whole_book_score(ui, s, uid, &record.title, out)
+                            whole_book_score(ui, s, uid, &record.title, state, out)
                         });
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1256,6 +1309,15 @@ mod tests {
         assert!(h.query_by_label("books-score-analyse-title").is_none());
         h.state_mut().colours = true;
         h.run();
+        // T-KNW-033: no completed result means the report action cannot emit a command.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(_)))
+        );
         h.get_by_label("books-score-analyse-title").click();
         h.run();
         assert!(
@@ -1279,6 +1341,95 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::BookAnalyse(_)))
         );
+        // T-KNW-019: accessible action is available during active analysis.
+        h.get_by_label("analysis-cancel").click();
+        h.run_steps(2);
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookAnalysisCancel(uid) if uid == "book/a"))
+        );
+    }
+
+    // T-KNW-020: whole-book vocabulary is reached without opening the reader.
+    #[test]
+    fn whole_book_words_use_the_shared_bulk_status_controls() {
+        let mut page = BooksPage {
+            list: vec![(
+                "book/a".into(),
+                nikomiru_library::books::BookRecord {
+                    path: "a.epub".into(),
+                    title: "Book".into(),
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        page.scores.request("book/a".into(), "a.epub".into(), 0);
+        let request = page.scores.take().pop().unwrap();
+        page.scores.done(
+            &request,
+            Ok(crate::book_scores::Outcome::Counted(
+                crate::words::Counted::from_lines([
+                    vec![("猫".into(), "ねこ".into()); 2],
+                    vec![("読む".into(), "よむ".into())],
+                ]),
+            )),
+        );
+        page.scores
+            .update(true, &page.list, &crate::words::Words::default());
+        page.list.push((
+            "book/b".into(),
+            nikomiru_library::books::BookRecord {
+                title: "Other book".into(),
+                path: "b.epub".into(),
+                ..Default::default()
+            },
+        ));
+        let mut h = harness(page);
+        h.state_mut().colours = true;
+        h.run();
+        // T-KNW-024: filtering retained scores never starts an analysis.
+        h.get_by_label("analysis-order");
+        h.get_by_label("Other book");
+        h.get_by_label("analysis-only-scored").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("Other book").is_none());
+        assert!(h.state().out.is_empty());
+        // T-KNW-033: the completed book view exposes a scoped report action.
+        h.get_by_label("study-report-export").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::StudyReport(crate::study_report::Scope::Books)))
+        );
+        h.state_mut().out.clear();
+
+        h.state_mut().colours = false;
+        h.run();
+        h.get_by_label("Other book");
+        h.state_mut().colours = true;
+        h.run();
+        h.get_by_label("analysis-words").click();
+        h.run_steps(2);
+        h.get_by_label("×2");
+        h.get_by_label("subtitle-words-all").click();
+        h.run();
+        h.get_by_label("word-status-known").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::WordsStatus(words, crate::words::WordStatus::Known) if words.len() == 2)));
+        assert!(h.state().page.open.is_none());
+        h.state_mut()
+            .page
+            .scores
+            .request("book/a".into(), "a.epub".into(), 0);
+        h.run_steps(2);
+        assert!(h.query_by_label("analysis-words-back").is_none());
+        assert!(h.state().state.analysis.is_none());
     }
 
     fn open() -> OpenBook {

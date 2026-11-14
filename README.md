@@ -69,7 +69,7 @@
 
 ## What works today
 
-Version 2.33.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Version 2.53.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|
@@ -94,6 +94,8 @@ Version 2.33.0 is for Linux. The status of each area follows the [ROADMAP](docs/
 | Moving pictures: a card's picture as the animated sentence (WebP, AVIF), thumbnails over the progress bar | Works against a simulated AnkiConnect; to check in Anki and AnkiDroid (M10) |
 | Web pages read as books: an address typed on the Books page, or an HTML file, with lookups and cards | Works with pages made by the tests; real sites still to check (M18) |
 | Review in Nikomiru: cards kept without Anki, brought back with FSRS on the Library page, synced with their media, with statistics | Works; the sync of the review against the simulated WebDAV only (M17) |
+| Progressive graphic subtitle OCR: PGS, embedded DVD/DVB and explicit external VobSub pairs | Works with generated media; real broadcast/DVD comparisons remain manual (M25–M27, M41) |
+| Book/series/episode vocabulary, comprehension filtering, exports and encounter history management | Automated worker/GUI checks; real book/series and two-device reset comparisons remain manual (M28–M40, M42–M44) |
 | Packages (AUR, Flatpak) | Built and checked; publishing on the AUR and Flathub follows (M8) |
 
 Condensed episode audio can be exported to Opus or MP3, with chapters for the subtitle lines, from the subtitle menu or the library's episode and series menus. Settings → General → Playback can also speed through long gaps between lines.
