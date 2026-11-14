@@ -35,6 +35,9 @@ pub(crate) struct Labels {
     pub all_statuses: String,
     pub card_filter: String,
     pub cards: [String; 3],
+    pub source: String,
+    pub frequency_shown: String,
+    pub frequency_selected: String,
     pub lookup: String,
     pub examples: Option<String>,
     pub shown_words: String,
@@ -65,6 +68,9 @@ impl Labels {
             copy_selected: tr("vocabulary-copy-selected", &[]),
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
+            source: String::new(),
+            frequency_shown: tr("frequency-export-shown", &[]),
+            frequency_selected: tr("frequency-export-selected", &[]),
             lookup: tr("vocabulary-lookup", &[]),
             examples: None,
             shown_words: tr("vocabulary-shown-words", &[]),
@@ -400,6 +406,33 @@ pub(crate) fn show(
             }
         });
     }
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .add_enabled(
+                !shown.is_empty(),
+                egui::Button::new(&labels.frequency_shown),
+            )
+            .clicked()
+        {
+            out.push(Command::FrequencyExport {
+                source: labels.source.clone(),
+                rows: shown.iter().map(|w| (*w).clone()).collect(),
+            });
+        }
+        let rows = selected(all, state);
+        if ui
+            .add_enabled(
+                !rows.is_empty(),
+                egui::Button::new(&labels.frequency_selected),
+            )
+            .clicked()
+        {
+            out.push(Command::FrequencyExport {
+                source: labels.source.clone(),
+                rows: rows.into_iter().cloned().collect(),
+            });
+        }
+    });
     let counts = coverage(all, &shown, &selected(all, state));
     let percent = counts
         .percent
@@ -535,6 +568,9 @@ mod tests {
                         copy_selected: "Copy selected".into(),
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
+                        source: "Test source".into(),
+                        frequency_shown: "Export frequency shown".into(),
+                        frequency_selected: "Export frequency selected".into(),
                         lookup: "Lookup".into(),
                         examples: Some("Examples".into()),
                         shown_words: "Shown words".into(),
@@ -647,6 +683,27 @@ mod tests {
         assert_eq!(
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
+        );
+    }
+
+    // T-KNW-038: dictionary export captures the source title and explicit shown/hidden-selected scope.
+    #[test]
+    fn frequency_export_preserves_the_requested_scope() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().query = "たべ".into();
+        h.run();
+        h.get_by_label("Export frequency shown").click();
+        h.run();
+        assert!(
+            matches!(&h.state().out[0], Command::FrequencyExport { source, rows } if source == "Test source" && rows.len() == 1 && rows[0].expression == "食べる")
+        );
+        h.get_by_label("Export frequency selected").click();
+        h.run();
+        assert!(
+            matches!(&h.state().out[1], Command::FrequencyExport { rows, .. } if rows.len() == 1 && rows[0].expression == "猫")
         );
     }
 

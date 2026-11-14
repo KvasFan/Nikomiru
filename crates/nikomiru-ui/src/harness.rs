@@ -635,6 +635,22 @@ pub fn lookup(text: &str) -> Result<(), String> {
     })
 }
 
+/// Save the complete current vocabulary as a frequency dictionary through the native-save handler.
+pub fn frequency_export(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(rows) = ui.session.word_list() {
+            let source = ui.session.view.title.clone();
+            if ui.session.frequency_export_prepare(&source, &rows) {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::FrequencyExport,
+                    path,
+                });
+            }
+        }
+    })
+}
+
 /// Exact primary-subtitle word examples, or clear the filter.
 pub fn vocabulary_examples(expression: Option<String>, reading: String) -> Result<(), String> {
     call(move |ui| {

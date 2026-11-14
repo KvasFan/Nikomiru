@@ -371,6 +371,7 @@ pub(crate) fn show(
     let mut word_labels =
         super::word_list::Labels::translated(&|key, args| s.translator().tr(key, args), ticked);
     word_labels.examples = Some(tr("vocabulary-examples"));
+    word_labels.source = s.view.title.clone();
     let scene = Scene {
         timeline: s.subs.timeline(),
         version: s.sub_list_version,

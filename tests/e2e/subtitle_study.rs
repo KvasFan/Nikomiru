@@ -128,6 +128,19 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
         h.key("Space");
     }
     h.state_until("paused", |s| s["paused"] == true);
+    // T-KNW-038: a native-saved real analysis dictionary can be imported without installing it in the app.
+    let frequency = desk.path("frequency.zip");
+    h.cmd(json!({"cmd":"frequency-export", "path":frequency}));
+    let imported = nikomiru_dict::import::import(
+        &frequency,
+        &desk.path("frequency-import"),
+        &nikomiru_core::Cancel::new(),
+        |_| {},
+    )
+    .unwrap();
+    use nikomiru_dict::store::{DictStore, RedbStore};
+    let store = RedbStore::open(&imported.dir.join("dict.redb")).unwrap();
+    assert!(store.term_meta("食べる").unwrap().iter().any(|m| matches!(m, nikomiru_dict::yomitan::Meta::Frequency(f) if f.value == 2 && f.reading.as_deref() == Some("たべる"))));
     let before = h.state()["time_pos"].as_f64().unwrap();
     h.cmd(json!({"cmd":"vocabulary-examples","text":"食べる","reading":"たべる"}));
     h.state_until("two exact examples", |s| {

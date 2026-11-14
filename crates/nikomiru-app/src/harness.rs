@@ -112,6 +112,9 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("frequency-export") => {
+            harness::frequency_export(text(command, "path")?).map(|()| Value::Null)
+        }
         Some("vocabulary-examples") => harness::vocabulary_examples(
             command["text"].as_str().map(str::to_string),
             command["reading"].as_str().unwrap_or_default().to_string(),

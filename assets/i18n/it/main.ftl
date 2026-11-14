@@ -1156,3 +1156,7 @@ vocabulary-lookup = Cerca nel dizionario
 vocabulary-examples = Esempi nei sottotitoli
 vocabulary-examples-clear = Azzera esempi della parola
 vocabulary-examples-unavailable = Gli esempi richiedono l’analisi completa dei sottotitoli correnti.
+
+frequency-export-shown = Esporta dizionario frequenze visibile…
+frequency-export-selected = Esporta dizionario frequenze selezionato…
+frequency-export-invalid = L’esportazione richiede parole uniche non vuote e conteggi positivi supportati.

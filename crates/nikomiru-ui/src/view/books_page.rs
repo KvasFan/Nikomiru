@@ -880,7 +880,9 @@ fn reader(
             ui.add(egui::TextEdit::singleline(&mut state.word_query).desired_width(320.0))
                 .labelled_by(label.id);
             if let Some(words) = &s.page.study.words {
-                let labels = super::word_list::Labels::translated(s.tr, state.words.ticked.len());
+                let mut labels =
+                    super::word_list::Labels::translated(s.tr, state.words.ticked.len());
+                labels.source = open.book.title.clone();
                 super::word_list::show(
                     ui,
                     words,

@@ -1139,3 +1139,7 @@ vocabulary-lookup = 辞書で調べる
 vocabulary-examples = 字幕内の用例
 vocabulary-examples-clear = 用例フィルターを解除
 vocabulary-examples-unavailable = 現在の字幕の解析が完了するまで用例は利用できません。
+
+frequency-export-shown = 表示中の頻度辞書を書き出す…
+frequency-export-selected = 選択した頻度辞書を書き出す…
+frequency-export-invalid = 空でない一意の語と対応する正の出現回数が必要です。

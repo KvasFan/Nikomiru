@@ -455,6 +455,11 @@ pub(crate) enum Command {
     WordsExport,
     /// Export a complete analysed vocabulary snapshot.
     AnalysisWordsExport(Vec<crate::words::ListedWord>),
+    /// Save selected/shown study counts as an importable frequency dictionary.
+    FrequencyExport {
+        source: String,
+        rows: Vec<crate::words::ListedWord>,
+    },
     /// Save the full historical set of one episode.
     EncounterExport(String),
     /// A status chosen for the words ticked in the word list (KNW-009).
@@ -1039,6 +1044,7 @@ impl Ui {
                     }
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
+                    Dialog::FrequencyExport => self.session.frequency_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
                 }
                 true
@@ -1505,6 +1511,11 @@ impl Ui {
             Command::EncounterExport(uid) => {
                 if s.history_export_prepare(&uid) {
                     self.view.dialog = Some(Dialog::EncounterExport);
+                }
+            }
+            Command::FrequencyExport { source, rows } => {
+                if s.frequency_export_prepare(&source, &rows) {
+                    self.view.dialog = Some(Dialog::FrequencyExport);
                 }
             }
             Command::AnalysisWordsExport(rows) => {

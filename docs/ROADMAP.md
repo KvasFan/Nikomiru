@@ -1188,7 +1188,7 @@ subtitle/study priority (D-63), without a new request between milestones.
 | M52 | Vocabulary coverage summary | done |
 | M53 | Dictionary lookup from study vocabulary | done |
 | M54 | Subtitle word concordance | done |
-| M55 | Study frequency dictionary export | not started |
+| M55 | Study frequency dictionary export | done |
 
 ## M46 — Selected subtitle SRT
 

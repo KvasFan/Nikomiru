@@ -390,6 +390,8 @@ pub struct Session {
     /// Captured exact word examples in the primary timeline.
     subtitle_examples: Option<crate::subtitle_study::Concordance>,
     analysis_export: Option<String>,
+    /// Frozen importable frequency dictionary.
+    frequency_export: Option<Vec<u8>>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
     study_report: Option<String>,
@@ -772,6 +774,7 @@ impl Session {
             word_list: None,
             subtitle_examples: None,
             analysis_export: None,
+            frequency_export: None,
             history_export: None,
             subtitle_export: None,
             study_report: None,
@@ -7344,6 +7347,41 @@ impl Session {
             self.wait_writes();
             self.library_jobs
                 .push(crate::catalog::LibraryJob::ExportEncounters(uid, path));
+        }
+    }
+
+    /// Freeze an importable frequency dictionary before native save.
+    pub fn frequency_export_prepare(
+        &mut self,
+        source: &str,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.frequency_export = None;
+        match crate::word_export::frequency_zip(source, rows) {
+            Ok(bytes) => {
+                self.frequency_export = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically save the frozen dictionary without installing it.
+    pub fn frequency_export_to(&mut self, path: &std::path::Path) {
+        let Some(bytes) = self.frequency_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
         }
     }
 

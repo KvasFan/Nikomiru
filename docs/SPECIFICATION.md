@@ -215,6 +215,9 @@ would require installing the tools needed to bootstrap the installer; the
 chosen safe Rust decoder avoids that dependency on Windows and minimal Linux.
 `tar` 0.4.46 and `zip` 9 (MIT/Apache-2.0, already in Cargo.lock) are direct
 archive readers; only allowlisted regular executable members are copied.
+The UI also uses the existing `zip` dependency directly for bounded, stored
+Yomitan frequency ZIP output (KNW-038): a complete importable archive rather
+than a loose frequency JSON file. This introduces no new crate or license.
 Upstream catalog references: https://github.com/yt-dlp/FFmpeg-Builds,
 https://github.com/yt-dlp/yt-dlp, https://github.com/denoland/deno.
 

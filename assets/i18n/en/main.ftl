@@ -1156,3 +1156,7 @@ vocabulary-lookup = Look up in dictionary
 vocabulary-examples = Examples in subtitles
 vocabulary-examples-clear = Clear word examples
 vocabulary-examples-unavailable = Examples are unavailable until the complete current subtitle has been analysed.
+
+frequency-export-shown = Export shown frequency dictionary…
+frequency-export-selected = Export selected frequency dictionary…
+frequency-export-invalid = The frequency export needs unique nonempty words and positive supported counts.

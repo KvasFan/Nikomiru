@@ -87,6 +87,8 @@ pub enum Dialog {
     WordsExport,
     /// A completed media vocabulary snapshot (KNW-022).
     AnalysisWordsExport,
+    /// Complete Yomitan frequency dictionary ZIP.
+    FrequencyExport,
     /// Full per-episode encounter history.
     EncounterExport,
     /// Current complete primary text subtitles as SRT.
@@ -199,6 +201,10 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::FrequencyExport => (
+                tr("frequency-export-shown"),
+                vec![(tr("dict-import-filter"), vec!["*.zip"]), all],
+            ),
             Dialog::AnalysisWordsExport => (
                 tr("analysis-export-shown"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
@@ -236,6 +242,7 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
                 Dialog::SubtitleBilingual => Some("nikomiru-bilingual.tsv".into()),

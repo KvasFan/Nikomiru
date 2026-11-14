@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Export shown/selected study counts as complete importable Yomitan frequency dictionaries, with readings and exact occurrence counts (KNW-038, M55).
+
 - Find current-subtitle word examples by exact segmented headword/reading, including inflected forms, with source/revision invalidation (KNW-037, M54).
 
 - Look up words directly from study lists, including above the library and before opening any media (KNW-036, M53).
