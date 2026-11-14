@@ -84,3 +84,24 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-KNW-036: lookup renders above the library before opening any media, with no cue context.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn vocabulary_lookup_works_above_the_library_without_opening_media() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let (mut app, mut h) = desk.launch();
+    h.cmd(json!({"cmd":"library", "action":"open"}));
+    h.cmd(json!({"cmd":"vocabulary-lookup", "text":"猫"}));
+    h.wait("popup-rendered");
+    let s = h.state();
+    assert_eq!(s["study_popup"]["open"], true);
+    assert!(s["study_popup"]["cue"].is_null());
+    assert_eq!(s["popups"][0]["query"], "猫");
+    assert!(s["popups"][0]["entries"].as_u64().unwrap() > 0);
+    h.key("Escape");
+    h.state_until("study popup closed", |s| s["study_popup"]["open"] == false);
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

@@ -35,6 +35,7 @@ pub(crate) struct Labels {
     pub all_statuses: String,
     pub card_filter: String,
     pub cards: [String; 3],
+    pub lookup: String,
     pub shown_words: String,
     pub selected_words: String,
     pub occurrences: String,
@@ -63,6 +64,7 @@ impl Labels {
             copy_selected: tr("vocabulary-copy-selected", &[]),
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
+            lookup: tr("vocabulary-lookup", &[]),
             shown_words: tr("vocabulary-shown-words", &[]),
             selected_words: tr("vocabulary-selected-words", &[]),
             occurrences: tr("vocabulary-occurrences", &[]),
@@ -436,6 +438,26 @@ pub(crate) fn show(
                             state.ticked.remove(&k);
                         }
                     }
+                    let lookup = ui.small_button("⌕").on_hover_text(&labels.lookup);
+                    lookup.widget_info(|| {
+                        WidgetInfo::labeled(
+                            Role::Button,
+                            true,
+                            format!("{}: {} {}", labels.lookup, w.expression, w.reading),
+                        )
+                    });
+                    if lookup.clicked() {
+                        let r = lookup.rect;
+                        out.push(Command::VocabularyLookup {
+                            text: w.expression.clone(),
+                            anchor: crate::popup::Rect {
+                                x: f64::from(r.min.x),
+                                y: f64::from(r.min.y),
+                                w: f64::from(r.width()),
+                                h: f64::from(r.height()),
+                            },
+                        });
+                    }
                     ui.label(RichText::new("●").color(color(w.status)))
                         .on_hover_text(label(labels, w.status));
                     ui.label(RichText::new(&w.expression).family(theme::bold()));
@@ -495,6 +517,7 @@ mod tests {
                         copy_selected: "Copy selected".into(),
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
+                        lookup: "Lookup".into(),
                         shown_words: "Shown words".into(),
                         selected_words: "Selected words".into(),
                         occurrences: "Occurrences".into(),
@@ -606,6 +629,21 @@ mod tests {
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
         );
+    }
+
+    // T-KNW-036: dictionary actions carry an expression/anchor, with no implicit status or media command.
+    #[test]
+    fn study_lookup_preserves_ticks_and_dispatches_only_the_requested_word() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.get_by_label("Lookup: 食べる たべる").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(), [Command::VocabularyLookup { text, .. }] if text == "食べる")
+        );
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
     }
 
     // T-KNW-035: token coverage differs from distinct counts; hidden ticks and wide sums remain accurate.

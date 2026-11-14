@@ -418,6 +418,8 @@ pub struct Session {
     /// so): the popups wait under it, and the keys go to its controls but
     /// the global shortcuts' (POP-014, NFR-A11Y-01).
     pub popups_covered: bool,
+    /// Root generation explicitly opened from a study word list.
+    study_popup_generation: Option<u64>,
     /// A lookup asked from the keyboard (NFR-A11Y-01): the cue and the byte
     /// offset of its grapheme; the overlay, which knows where the cue is,
     /// opens it as a click would.
@@ -783,6 +785,7 @@ impl Session {
             last_card: None,
             missing_link: None,
             popups_covered: false,
+            study_popup_generation: None,
             keyboard_lookup: None,
             link_clip: None,
             start_at: None,
@@ -6335,6 +6338,34 @@ impl Session {
             self.popups
                 .open_from_subtitle(playing, query, Origin::Glossary, Rect::default());
         self.run_popup_commands(commands);
+    }
+
+    /// Explicit text-only study lookup, never attached to a media cue.
+    pub fn vocabulary_lookup(&mut self, text: &str, anchor: Rect) {
+        if text.len() > 4096 {
+            return;
+        }
+        let query = nikomiru_text::scan::normalize(text);
+        if query.is_empty() {
+            return;
+        }
+        self.hover.reset();
+        let playing = self.view.loaded && !self.view.paused;
+        let commands = self
+            .popups
+            .open_from_subtitle(playing, query, Origin::Glossary, anchor);
+        self.run_popup_commands(commands);
+        self.study_popup_generation = self.popups.stack().first().map(|p| p.generation);
+    }
+
+    /// This root belongs above the current study view, including library word lists.
+    pub fn study_popup_open(&self) -> bool {
+        self.study_popup_generation.is_some_and(|g| {
+            self.popups
+                .stack()
+                .first()
+                .is_some_and(|p| p.generation == g)
+        })
     }
 
     fn run_popup_commands(&mut self, commands: Vec<Command>) {

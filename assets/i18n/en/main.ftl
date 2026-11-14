@@ -1150,3 +1150,5 @@ vocabulary-reset-counts = Reset occurrence limits
 vocabulary-shown-words = Shown words
 vocabulary-selected-words = Selected words
 vocabulary-occurrences = Occurrences
+
+vocabulary-lookup = Look up in dictionary

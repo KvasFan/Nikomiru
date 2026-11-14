@@ -112,6 +112,9 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("vocabulary-lookup") => {
+            harness::vocabulary_lookup(text(command, "text")?).map(|()| Value::Null)
+        }
         Some("lookup") => harness::lookup(text(command, "text")?).map(|()| Value::Null),
         Some("popup_content") => {
             let level = command["level"]

@@ -1150,3 +1150,5 @@ vocabulary-reset-counts = Azzera limiti di occorrenze
 vocabulary-shown-words = Parole visibili
 vocabulary-selected-words = Parole selezionate
 vocabulary-occurrences = Occorrenze
+
+vocabulary-lookup = Cerca nel dizionario

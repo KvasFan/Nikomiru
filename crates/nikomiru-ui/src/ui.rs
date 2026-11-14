@@ -396,6 +396,11 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// Dictionary lookup from a study vocabulary row, without a cue context.
+    VocabularyLookup {
+        text: String,
+        anchor: Rect,
+    },
     /// The pointer is over this step of the progress bar (PLY-014).
     BarHover(i64),
     /// The rows of the subtitle list in view changed: their words are
@@ -1331,7 +1336,7 @@ impl Ui {
             || self.view.services_page_open
             || self.view.audio_page_open
             || self.view.prefs_open.is_some()
-            || self.view.library_page_open
+            || (self.view.library_page_open && !self.session.study_popup_open())
             || self.session.advanced_card().is_some();
     }
 
@@ -1374,6 +1379,7 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),
             Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),
             Command::BookRows(uid, chapter, paragraphs) => s.book_rows(&uid, chapter, &paragraphs),

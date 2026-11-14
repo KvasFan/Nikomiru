@@ -550,6 +550,7 @@ pub fn state() -> Result<Value, String> {
         // SUB-027
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
         // INS-001
+        state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
         state["setup"] = json!({
             "running": s.setup_page.running,
@@ -627,6 +628,17 @@ pub fn lookup(text: &str) -> Result<(), String> {
         // as a click on the video's text, which the Library page covers
         ui.view.close_library_page();
         ui.session.look_up_text(&text);
+    })
+}
+
+/// Study lookup, preserving an open library/analysis view.
+pub fn vocabulary_lookup(text: &str) -> Result<(), String> {
+    let text = text.to_string();
+    call(move |ui| {
+        ui.run(Command::VocabularyLookup {
+            text,
+            anchor: crate::popup::Rect::default(),
+        })
     })
 }
 

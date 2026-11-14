@@ -643,7 +643,8 @@ impl View {
             bar::show(&ctx, s, self, opacity, &mut out);
         }
         // the settings pages cover the popups: they wait under them
-        let drawn = if self.dict_page_open
+        let study_popup = s.study_popup_open();
+        let covered = self.dict_page_open
             || self.anki_page_open
             || self.online_page_open
             || self.player_page_open
@@ -652,9 +653,9 @@ impl View {
             || self.backup_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
-            || self.library_page_open
-            || s.advanced_card().is_some()
-        {
+            || (self.library_page_open && !study_popup)
+            || s.advanced_card().is_some();
+        let drawn = if covered || study_popup {
             self.popups.rects.clear();
             Vec::new()
         } else {
@@ -702,6 +703,10 @@ impl View {
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
+        }
+        if study_popup && !covered {
+            let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);
+            self.mark_presented(s, &drawn);
         }
         if s.setup_page.open {
             setup_page::show(&ctx, s, &mut out);
