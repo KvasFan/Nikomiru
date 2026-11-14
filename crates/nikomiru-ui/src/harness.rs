@@ -411,6 +411,7 @@ pub fn state() -> Result<Value, String> {
                 "series_info": series_info,
                 "identify": identify,
                 "stats": page.stats.as_ref().map(|st| json!({
+                    "encounter_words": st.encounter_words,
                     "encounters": st.encounters.iter().map(|(uid,title,count)| json!({"uid":uid,"title":title,"count":count})).collect::<Vec<_>>(),
                     "days": st.days.iter().map(|d| json!({
                         "date": d.date, "ms": d.duration_ms, "chars": d.chars,
@@ -1036,6 +1037,9 @@ pub fn library(
             }
             "series" => Command::LibrarySeries(id().ok()),
             "cancel-analysis" => Command::SeriesAnalysisCancel(id()?),
+            "clear-encounters" => Command::LibraryEdit(LibraryEdit::ClearEncounters(
+                path()?.to_string_lossy().into_owned(),
+            )),
             "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"

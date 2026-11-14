@@ -35,6 +35,8 @@ pub(crate) const RANGES: [i64; 3] = [7, 30, 365];
 pub(crate) struct State {
     /// The chart's range, an index of [`RANGES`].
     range: usize,
+    history: Option<String>,
+    query: String,
 }
 
 /// `1 h 20 min`, `23 min`, `< 1 min`.
@@ -204,6 +206,46 @@ pub(crate) fn draw(
         ui.spinner();
         return;
     };
+    if let Some(uid) = state.history.clone() {
+        if let Some((_, title, total)) = stats.encounters.iter().find(|(u, _, _)| u == &uid)
+            && let Some(rows) = stats.encounter_words.get(&uid)
+        {
+            if ui.button(tr("analysis-words-back", &[])).clicked() {
+                state.history = None;
+            }
+            ui.heading(title);
+            ui.label(tr(
+                "encounter-history-coverage",
+                &[
+                    ("shown", rows.len().to_string()),
+                    ("total", total.to_string()),
+                ],
+            ));
+            let label = ui.label(tr("books-words-search", &[]));
+            ui.add(egui::TextEdit::singleline(&mut state.query))
+                .labelled_by(label.id);
+            if ui.button(tr("encounter-history-clear", &[])).clicked() {
+                out.push(Command::LibraryEdit(LibraryEdit::ClearEncounters(
+                    uid.clone(),
+                )));
+                state.history = None;
+            }
+            let query = state.query.trim();
+            let shown: Vec<_> = rows
+                .iter()
+                .filter(|(e, r, _)| query.is_empty() || e.contains(query) || r.contains(query))
+                .collect();
+            egui::ScrollArea::vertical()
+                .id_salt("encounter-words")
+                .show_rows(ui, 26.0, shown.len(), |ui, range| {
+                    for (expression, reading, at) in &shown[range] {
+                        ui.label(format!("{expression} · {reading} · {at}"));
+                    }
+                });
+            return;
+        }
+        state.history = None;
+    }
     let days: BTreeMap<i64, &DayTotal> = stats
         .days
         .iter()
@@ -229,11 +271,19 @@ pub(crate) fn draw(
         ui.label(
             RichText::new(tr("stats-encounters-detail", &[])).color(palette::current().details),
         );
-        for (_, title, count) in &stats.encounters {
-            ui.label(tr(
-                "stats-encounters-episode",
-                &[("title", title.clone()), ("count", count.to_string())],
-            ));
+        for (uid, title, count) in &stats.encounters {
+            ui.push_id(uid, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr(
+                        "stats-encounters-episode",
+                        &[("title", title.clone()), ("count", count.to_string())],
+                    ));
+                    if ui.button(tr("encounter-history-open", &[])).clicked() {
+                        state.history = Some(uid.clone());
+                        state.query.clear();
+                    }
+                });
+            });
         }
     }
 
@@ -445,6 +495,13 @@ mod tests {
         };
         let stats = Stats {
             encounters: vec![("video/show-01".into(), "Show - 01".into(), 7)],
+            encounter_words: BTreeMap::from([(
+                "video/show-01".into(),
+                vec![
+                    ("猫".into(), "ねこ".into(), 42),
+                    ("犬".into(), "いぬ".into(), 30),
+                ],
+            )]),
             days: vec![
                 day("2026-10-20", 600_000, 100),
                 day("2026-10-25", 1_500_000, 400),
@@ -526,6 +583,18 @@ mod tests {
             h.state().out.as_slice(),
             [Command::LibraryEdit(LibraryEdit::DeleteSession(7))]
         ));
+        // T-KNW-023: inspect historical words, search a reading and clear only this uid.
+        h.get_by_label("encounter-history-open").click();
+        h.run_steps(2);
+        h.get_by_label("猫 · ねこ · 42");
+        h.state_mut().state.query = "いぬ".into();
+        h.run();
+        assert!(h.query_by_label("猫 · ねこ · 42").is_none());
+        h.get_by_label("犬 · いぬ · 30");
+        h.get_by_label("encounter-history-clear").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,
+            Command::LibraryEdit(LibraryEdit::ClearEncounters(uid)) if uid == "video/show-01")));
         assert_eq!(
             duration(5_400_000, &|id, a| format!("{id}{a:?}")),
             "stats-hours[(\"h\", \"1\"), (\"m\", \"30\")]"

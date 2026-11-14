@@ -1040,3 +1040,7 @@ analysis-export-shown = Esporta visibili
 analysis-export-selected = Esporta selezionate
 analysis-export-saved = Vocabolario salvato in { $path }.
 analysis-export-too-large = Il vocabolario supera il limite di esportazione di 16 MiB.
+
+encounter-history-open = Esamina cronologia
+encounter-history-clear = Cancella cronologia episodio
+encounter-history-coverage = Visualizzate { $shown } di { $total } parole storiche (primo incontro: ms Unix).

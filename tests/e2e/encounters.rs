@@ -112,3 +112,47 @@ fn new_words_are_recorded_only_during_playback_and_survive_a_restart() {
         1
     );
 }
+
+// T-KNW-023: real catalogue details and clear edit, persisted reset rejects old files.
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn encounter_history_can_be_inspected_and_cleared_without_losing_word_statuses() {
+    let mut desk = Desktop::start();
+    let path = desk.data_file("library.redb");
+    let old = {
+        let lib = Library::open(&path).unwrap();
+        lib.record_encounters("video/history", &[("猫".into(), "ねこ".into())], 42)
+            .unwrap();
+        lib.set_word_status(
+            "猫",
+            "ねこ",
+            nikomiru_library::words::WordMark {
+                status: nikomiru_library::words::WordStatus::Known,
+                changed_at: 50,
+            },
+        )
+        .unwrap();
+        lib.export_state(100).unwrap()
+    };
+    let (mut app, mut h) = desk.launch();
+    h.cmd(json!({"cmd":"library", "action":"open"}));
+    h.cmd(json!({"cmd":"library", "action":"statistics"}));
+    h.state_until("historical detail projection", |s| {
+        s["library_page"]["stats"]["encounter_words"]["video/history"][0]
+            == json!(["猫", "ねこ", 42])
+    });
+    h.cmd(json!({"cmd":"library", "action":"clear-encounters", "path":"video/history"}));
+    h.state_until("history cleared", |s| {
+        history(s).as_array().is_some_and(Vec::is_empty)
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let lib = Library::open(&path).unwrap();
+    lib.apply_state(&old).unwrap();
+    assert!(lib.encounter_stats(200).unwrap().is_empty());
+    assert_eq!(
+        lib.word_statuses().unwrap()["猫\nねこ"].status,
+        nikomiru_library::words::WordStatus::Known
+    );
+    assert!(lib.export_state(100).unwrap().encounter_resets["video/history"] > 0);
+}

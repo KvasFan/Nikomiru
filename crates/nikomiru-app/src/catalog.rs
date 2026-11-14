@@ -172,6 +172,7 @@ impl Worker {
                 lib.split_series(&uids, &title, self.now()).map(drop)
             }
             LibraryEdit::Remove(uids) => uids.iter().try_for_each(|u| lib.remove_video(u)),
+            LibraryEdit::ClearEncounters(uid) => lib.clear_encounters(&uid, self.now()),
             LibraryEdit::DeleteSession(id) => lib.delete_segment(id),
             LibraryEdit::Identify { id, info, cover } => {
                 if let Some(bytes) = cover {
@@ -220,7 +221,7 @@ impl Worker {
             || review.days.iter().any(|n| *n > 0);
         let today = nikomiru_library::review::day_of(self.now(), offset);
         let words = lib.word_stats(today, offset).map_err(e)?;
-        let encounters = lib
+        let encounters: Vec<_> = lib
             .encounter_stats(SESSIONS_SHOWN)
             .map_err(e)?
             .into_iter()
@@ -232,7 +233,16 @@ impl Worker {
                 (uid, title, count)
             })
             .collect();
+        let history = lib.word_encounters().map_err(e)?;
+        let encounter_words = encounters
+            .iter()
+            .filter_map(|(uid, _, _)| {
+                let words = history.get(uid)?;
+                Some((uid.clone(), crate::encounter_details::rows(words)))
+            })
+            .collect();
         Ok(Stats {
+            encounter_words,
             encounters,
             days: lib.day_totals().map_err(e)?,
             series: lib.series_totals().map_err(e)?,

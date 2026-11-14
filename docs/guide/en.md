@@ -233,3 +233,5 @@ After a whole-book analysis finishes, Study words opens the vocabulary of every 
 Series cards also offer Study words after analysis. Frequencies sum across the counted episodes. Coverage remains visible: excluded or failed episodes do not contribute words. Changing a status updates the series score and other study views.
 
 In either analysis vocabulary list, Export shown saves the current search/filter results; Export selected saves all ticked words, even hidden ones. The local UTF-8 TSV includes expression, reading, status, count and card. The export is a snapshot taken when clicked, limited to 16 MiB; it does not change your word statuses.
+
+Statistics → Inspect history shows the latest 1,000 historically encountered words for an episode, with their first encounter time in Unix milliseconds. Search a word or reading. Clear episode history removes that episode’s history and syncs a persistent reset, so old device files cannot bring it back. Word statuses and progress are kept. Words already deduplicated in the current playback visit remain suppressed until a new visit.

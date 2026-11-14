@@ -915,7 +915,7 @@ without requiring a new request after each increment.
 | M29 | Browse and bulk-mark the words of a whole analysed book | done |
 | M30 | Browse and bulk-mark the words of an analysed series | done |
 | M31 | Export analysed media word lists for study elsewhere | done |
-| M32 | Inspect and clear historical word encounters, including sync | not started |
+| M32 | Inspect and clear historical word encounters, including sync | done |
 | M33 | Order/filter library material by comprehension | not started |
 | M34 | Bounded persistent analysis caches with source/dictionary invalidation | not started |
 
@@ -1004,6 +1004,17 @@ status and card columns, neutralise control characters/formula fields.
 
 **Exit criteria**: format/size/sanitisation tests and filtered/selected UI
 snapshot commands; `cargo xtask ci`.
+
+---
+
+## M32 — Encounter history management
+
+**Requirements**: KNW-023. Inspect bounded per-episode historical word lists,
+search word/readings and clear an episode. Persist and sync reset epochs so
+old device histories cannot resurrect deleted words; preserve other study data.
+
+**Exit criteria**: reset/reopen/new-encounter/old-device merge tests, bounded
+history projection and accessible inspect/search/clear controls; full CI.
 
 ---
 

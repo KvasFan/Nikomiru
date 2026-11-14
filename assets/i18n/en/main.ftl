@@ -1040,3 +1040,7 @@ analysis-export-shown = Export shown
 analysis-export-selected = Export selected
 analysis-export-saved = Vocabulary saved to { $path }.
 analysis-export-too-large = This vocabulary exceeds the 16 MiB export limit.
+
+encounter-history-open = Inspect history
+encounter-history-clear = Clear episode history
+encounter-history-coverage = Showing { $shown } of { $total } historical words (first encounter: Unix ms).

@@ -42,6 +42,8 @@ impl Home {
 pub struct Stats {
     /// Historical distinct unknown words, by media uid/title (KNW-018).
     pub encounters: Vec<(String, String, usize)>,
+    /// At most 1,000 latest historical words per listed episode (KNW-023).
+    pub encounter_words: std::collections::BTreeMap<String, Vec<(String, String, i64)>>,
     /// The totals of each day studied, by day.
     pub days: Vec<DayTotal>,
     /// Time and characters by series (or file), the most studied first.
@@ -119,6 +121,8 @@ pub enum LibraryEdit {
     Remove(Vec<String>),
     /// A study session deleted (STA-005).
     DeleteSession(u128),
+    /// Clear one episode’s historical encounters, retaining its sync reset.
+    ClearEncounters(String),
     /// What was found online of a series (MET-001), or `None` to forget it;
     /// its cover, already downloaded, becomes the series' own.
     Identify {

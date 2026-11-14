@@ -58,3 +58,6 @@ pub mod web_video;
 #[allow(unsafe_code)]
 pub mod window;
 pub mod word_audio;
+
+/// Bounded encounter-history projections for Statistics.
+pub mod encounter_details;

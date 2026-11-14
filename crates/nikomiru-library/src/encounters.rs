@@ -13,6 +13,9 @@ use std::collections::BTreeMap;
 /// First encounter time (Unix ms), by headword/reading key.
 pub type Encounters = BTreeMap<String, i64>;
 
+pub(crate) const RESETS: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("word_encounter_resets");
+
 pub(crate) const ENCOUNTERS: TableDefinition<&str, &[u8]> = TableDefinition::new("word_encounters");
 
 /// Union a media's encounter history, keeping the earliest timestamp.
@@ -24,7 +27,37 @@ pub fn merge(into: &mut Encounters, from: &Encounters) {
     }
 }
 
+/// Merge one media history using its reset epoch; older history never resurrects.
+pub fn merge_epoch(into: &mut Encounters, epoch: &mut u64, from: &Encounters, other: u64) {
+    match other.cmp(epoch) {
+        std::cmp::Ordering::Greater => {
+            *epoch = other;
+            *into = from.clone();
+        }
+        std::cmp::Ordering::Equal => merge(into, from),
+        std::cmp::Ordering::Less => {}
+    }
+}
+
 impl Library {
+    /// Clear one episode, retaining a monotonic sync reset even for an empty history.
+    pub fn clear_encounters(&self, uid: &str, at_ms: i64) -> Result<(), LibraryError> {
+        let tx = self.write()?;
+        {
+            let mut resets = db_err!(tx.open_table(RESETS))?;
+            let previous: u64 = match db_err!(resets.get(uid))? {
+                Some(value) => postcard::from_bytes(value.value())?,
+                None => 0,
+            };
+            let epoch = previous.saturating_add(1).max(at_ms.max(1) as u64);
+            db_err!(resets.insert(uid, postcard::to_stdvec(&epoch)?.as_slice()))?;
+            let mut words = db_err!(tx.open_table(ENCOUNTERS))?;
+            db_err!(words.insert(uid, postcard::to_stdvec(&Encounters::new())?.as_slice()))?;
+        }
+        db_err!(tx.commit())?;
+        Ok(())
+    }
+
     /// Record words that were unknown when actively encountered, atomically.
     /// Repeated visits and asynchronous writes preserve the earliest time.
     pub fn record_encounters(

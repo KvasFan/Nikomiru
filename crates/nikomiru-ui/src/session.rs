@@ -2330,7 +2330,11 @@ impl Session {
 
     /// An edit of the library (LIB-011, LIB-012).
     pub fn library_edit(&mut self, edit: crate::catalog::LibraryEdit) {
-        self.library_page.scores.clear();
+        if matches!(edit, crate::catalog::LibraryEdit::ClearEncounters(_)) {
+            self.wait_writes();
+        } else {
+            self.library_page.scores.clear();
+        }
         self.library_page.busy = true;
         self.library_jobs
             .push(crate::catalog::LibraryJob::Edit(edit));

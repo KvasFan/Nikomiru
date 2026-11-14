@@ -1023,3 +1023,7 @@ analysis-export-shown = 表示中の単語を出力
 analysis-export-selected = 選択した単語を出力
 analysis-export-saved = { $path } に単語を保存しました。
 analysis-export-too-large = 単語一覧が出力上限の16 MiBを超えています。
+
+encounter-history-open = 履歴を見る
+encounter-history-clear = エピソードの履歴を消去
+encounter-history-coverage = 履歴の { $total } 語中 { $shown } 語を表示（初遭遇：Unixミリ秒）。

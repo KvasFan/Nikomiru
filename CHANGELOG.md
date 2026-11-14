@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Inspect and clear per-episode encounter history, with persistent sync resets preventing old-device resurrection (KNW-023, M32).
+
 - Export shown or selected study vocabulary as a local UTF-8 TSV snapshot (KNW-022, M31).
 
 - Study the combined vocabulary of an analysed series with episode coverage and shared bulk statuses (KNW-021, M30).
