@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.70.0] - 2026-11-14
+
+Ten consecutive subtitle/study milestones (M52–M61) after source tag 2.60.0.
+
 ### Added
 
 - Remember and reuse vocabulary search/filter/order settings across views during the current session, preserving each view’s selections (KNW-040, M61).

@@ -69,7 +69,7 @@
 
 ## What works today
 
-Version 2.53.0 is for Linux. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Published Linux binary packages are version 2.53.0. Source version 2.70.0 includes the selected-tool installer and subtitle/study milestones M45…M61; build from source to use them. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 | Area | Status |
 |---|---|

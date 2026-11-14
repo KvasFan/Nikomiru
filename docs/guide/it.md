@@ -261,3 +261,36 @@ Statistiche mostra numero di file e byte dei conteggi di analisi persistenti. Ag
 Libri e serie locali offrono Esporta riepiloghi analizzati per le analisi completate conservate. Il TSV acquisisce totali e percentuali correnti di parole/unità testuali, più copertura analizzati/totali/falliti delle serie. Include tutte le analisi completate di quella vista, indipendentemente dai filtri visibili; percentuali non definite e copertura dei libri restano vuote. Cambiamenti successivi agli stati non riscrivono la fotografia salvata.
 
 Nell’assistente di configurazione seleziona **Strumenti di supporto** per installare FFmpeg/ffprobe, yt-dlp (con la dipendenza Deno) o il modello OCR locale. Gli strumenti locali funzionanti vengono riutilizzati. L’assistente sceglie il pacchetto Linux/Windows x86_64 o ARM64, verifica lo SHA-256 e salva i percorsi, subito utilizzabili. I download iniziano solo dopo **Installa**, usano il proxy configurato e possono essere interrotti. Gli strumenti risiedono nella cartella dati privata di Nikomiru e non richiedono privilegi di amministratore. Le librerie di riproduzione e grafica sono fornite dal pacchetto o dal sistema operativo.
+
+## Strumenti di studio dei sottotitoli e vocabolario
+
+Nella lista dei sottotitoli spunta le singole righe o usa Seleziona righe visibili.
+Le spunte nascoste restano selezionate cambiando ricerca e filtri temporali,
+lessicali o di velocità; una nuova versione della traccia primaria le azzera.
+Gli strumenti di studio copiano trascrizioni TSV con i tempi ed esportano SRT
+selezionati, WebVTT visibili/selezionati, trascrizioni bilingui o SRT bilingui.
+L’uscita bilingue richiede due tracce complete: abbina le sovrapposizioni positive
+considerando i due offset e conserva le righe primarie senza traduzione. Il
+salvataggio usa la fotografia di testo e tempi acquisita al clic. L’OCR parziale
+non può esportare un file di sottotitoli completo.
+
+Dal/Fino al tempo corrente restringono lo studio senza spostare la riproduzione.
+I limiti opzionali di lettura contano i caratteri Unicode non bianchi al secondo.
+Le statistiche contano righe/caratteri e uniscono il tempo di dialogo sovrapposto
+senza contarlo due volte. Riga corrispondente precedente/successiva navigano
+fra le righe filtrate conservando la pausa. Ogni azzeramento rimuove solo il
+proprio limite.
+
+Le viste del vocabolario combinano ricerca esatta/parziale per parola o lettura,
+stato, presenza di scheda e limiti di occorrenze. La copertura distingue parole
+diverse da occorrenze; i totali selezionati includono le spunte nascoste. Il
+pulsante del dizionario apre una ricerca senza associarla a una frase estranea.
+Nella scheda Parole dei sottotitoli, Esempi cerca le identità lessicali segmentate,
+comprese le flessioni, e mostra le righe originali. Azzera il filtro degli esempi
+per tornare alla lista intera; sorgenti o analisi sostituite invalidano gli esempi.
+
+Esporta il dizionario di frequenza visibile/selezionato per ottenere uno ZIP
+Yomitan importabile, con conteggi esatti e letture distinte. L’importazione resta
+esplicita. I filtri riutilizzabili memorizzano/applicano/dimenticano una sola
+combinazione di ricerca e filtri fra viste nella sessione corrente: non includono
+le selezioni e non sopravvivono al riavvio.

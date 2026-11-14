@@ -261,3 +261,35 @@ Statistics shows the file count and byte usage of persisted analysis counts. Ref
 Books and local series offer Export analysed summaries for their retained completed analyses. The TSV captures current token/text-unit totals and percentages, plus series analysed/total/failed coverage. It includes all completed analyses of that view, independently of visible filters; undefined percentages and book coverage fields stay blank. Later status changes do not rewrite the saved snapshot.
 
 Select **Support tools** in the setup assistant to install FFmpeg/ffprobe, yt-dlp (including its Deno dependency), or the local OCR model. Working local tools are reused. The assistant chooses the Linux/Windows x86_64 or ARM64 package, checks its SHA-256, and saves paths for immediate use. Downloads only begin after **Install**, use the configured proxy, and can be stopped. Tools live in Nikomiru’s private data directory; administrator access is not required. Playback/graphics libraries remain part of the application package or operating system.
+
+## Subtitle study tools and vocabulary
+
+In the subtitle list, tick individual lines or use Select shown. Hidden ticks
+remain selected across search, time-window, reading-speed and word filters;
+loading/replacing the primary timeline clears them. Study tools can copy timed
+TSV transcripts, export selected SRT or shown/selected WebVTT, and export paired
+primary/secondary transcripts or bilingual SRT. Both tracks must be complete for
+bilingual output; pairing uses positive time overlap with each track’s delay and
+retains untranslated primary lines. Save snapshots keep their captured text and
+times. Incomplete OCR cannot export a complete subtitle file.
+
+From/Until current time restrict the study window without seeking. Optional
+reading-speed bounds use non-whitespace Unicode characters per second. Scope
+statistics count lines/characters and merge overlapping dialogue time rather
+than counting it twice. Previous/Next matching line seek within these filters
+while preserving pause. Reset controls remove only their own bounds.
+
+Vocabulary views combine exact/contains headword/reading search with status,
+card and occurrence-count limits. Coverage distinguishes unique words from
+occurrence tokens; selected totals include hidden ticks. The dictionary button
+opens a text-only lookup without changing the study view. In the current
+subtitle Words tab, Examples finds segmented headword/reading occurrences,
+including inflections, and opens their original lines; clear the examples
+filter to return to the full list. Replacing sources or analyses invalidates
+old examples.
+
+Export a frequency dictionary from shown/selected vocabulary for an importable
+Yomitan ZIP with exact occurrence counts and separate readings. Import it
+explicitly if desired; export never installs it. Reusable study filters can
+remember/apply/forget one bounded filter preset across views for the current
+application session. Presets retain no selections and do not survive restart.
