@@ -25,6 +25,7 @@ const READING: Color32 = Color32::from_rgb(0x9a, 0xb8, 0xff);
 pub(crate) struct Labels {
     /// "Only words not known".
     pub new_only: String,
+    pub exact: String,
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -60,6 +61,7 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            exact: tr("vocabulary-exact", &[]),
             all: tr("subtitle-words-all", &[]),
             ticked: tr("subtitle-words-ticked", &[("count", ticked.to_string())]),
             card: tr("subtitle-words-card", &[]),
@@ -130,6 +132,7 @@ pub(crate) const STATUSES: [WordStatus; 4] = [
 pub(crate) struct State {
     /// Only the words not known are shown.
     pub new_only: bool,
+    pub exact: bool,
     pub status: Option<WordStatus>,
     pub card: CardFilter,
     pub order: WordOrder,
@@ -173,7 +176,13 @@ pub(crate) fn filtered<'a>(
             CardFilter::Without => !w.card,
         })
         .filter(|w| w.count >= state.min_count && state.max_count.is_none_or(|max| w.count <= max))
-        .filter(|w| query.matches(&[&w.expression, &w.reading]))
+        .filter(|w| {
+            if state.exact {
+                query.matches_exact(&[&w.expression, &w.reading])
+            } else {
+                query.matches(&[&w.expression, &w.reading])
+            }
+        })
         .collect();
     sort(&mut rows, state.order);
     rows
@@ -338,6 +347,7 @@ pub(crate) fn show(
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.new_only, &labels.new_only);
+        ui.checkbox(&mut state.exact, &labels.exact);
         let mut every = !shown.is_empty() && shown.iter().all(|w| state.ticked.contains(&key(w)));
         if ui.checkbox(&mut every, &labels.all).changed() {
             for w in &shown {
@@ -560,6 +570,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        exact: "Exact match".into(),
                         all: "All".into(),
                         ticked: "Ticked:".into(),
                         card: "Card".into(),
@@ -684,6 +695,26 @@ mod tests {
             names(filtered(&rows, "missing", &state)),
             Vec::<String>::new()
         );
+    }
+
+    // T-KNW-039: the accessible exact toggle affects shown rows while retaining hidden selections.
+    #[test]
+    fn exact_mode_intersects_filters_and_preserves_hidden_ticks() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("猫 ねこ").click();
+        h.run();
+        h.state_mut().query = "たべ".into();
+        h.run();
+        assert!(h.query_by_label("食べる たべる").is_some());
+        h.get_by_label("Exact match").click();
+        h.run();
+        assert!(filtered(&h.state().words, "たべ", &h.state().state).is_empty());
+        h.state_mut().query = "ﾀﾍﾞﾙ".into();
+        h.run();
+        assert!(h.query_by_label("食べる たべる").is_some());
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
+        assert!(h.state().out.is_empty());
     }
 
     // T-KNW-038: dictionary export captures the source title and explicit shown/hidden-selected scope.
