@@ -1222,3 +1222,9 @@ sub-html-translation = Reveal translation
 sub-html-filter = HTML study sheet
 
 sub-invert-shown = Invert shown line selection
+
+vocabulary-batch-tools = Vocabulary study batches
+vocabulary-batch-next = Select next batch
+vocabulary-batch-clear = Clear shown selection
+vocabulary-batch-invert = Invert shown selection
+vocabulary-batch-size = Words per batch

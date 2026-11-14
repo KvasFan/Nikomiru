@@ -1205,3 +1205,9 @@ sub-html-translation = 翻訳を表示
 sub-html-filter = HTML学習シート
 
 sub-invert-shown = 表示範囲の選択を反転
+
+vocabulary-batch-tools = 語彙学習グループ
+vocabulary-batch-next = 次のグループを選択
+vocabulary-batch-clear = 表示範囲の選択を解除
+vocabulary-batch-invert = 表示範囲の選択を反転
+vocabulary-batch-size = グループの語数

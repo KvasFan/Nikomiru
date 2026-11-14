@@ -35,6 +35,7 @@ pub(crate) struct Labels {
     pub named: [String; 4],
     pub scripts: [String; 4],
     pub lengths: [String; 3],
+    pub batch: [String; 5],
     /// "All shown": ticks them.
     pub all: String,
     /// "{n} ticked:", given the number.
@@ -70,6 +71,14 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            batch: [
+                "vocabulary-batch-tools",
+                "vocabulary-batch-next",
+                "vocabulary-batch-clear",
+                "vocabulary-batch-invert",
+                "vocabulary-batch-size",
+            ]
+            .map(|k| tr(k, &[])),
             lengths: [
                 "vocabulary-length-min",
                 "vocabulary-length-max",
@@ -177,6 +186,7 @@ pub(crate) struct State {
     pub order: WordOrder,
     pub min_count: usize,
     pub max_count: Option<usize>,
+    batch_size: Option<usize>,
     copied: Option<bool>,
     /// The words ticked, by headword and reading.
     pub ticked: HashSet<String>,
@@ -495,6 +505,17 @@ fn coverage(all: &[ListedWord], shown: &[&ListedWord], selected: &[&ListedWord])
     }
 }
 
+fn next_batch(shown: &[&ListedWord], state: &mut State) {
+    let count = state.batch_size.unwrap_or(20).clamp(1, 1000);
+    let fresh: Vec<_> = shown
+        .iter()
+        .map(|w| word_key(&w.expression, &w.reading))
+        .filter(|key| !state.ticked.contains(key))
+        .take(count)
+        .collect();
+    state.ticked.extend(fresh);
+}
+
 /// Draws the words of `all` that the query and the filter let through.
 pub(crate) fn show(
     ui: &mut egui::Ui,
@@ -616,6 +637,46 @@ pub(crate) fn show(
         });
     let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
+    egui::CollapsingHeader::new(&labels.batch[0])
+        .id_salt("vocabulary-study-batches")
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let label = ui.label(&labels.batch[4]);
+                ui.add(egui::DragValue::new(state.batch_size.get_or_insert(20)).range(1..=1000))
+                    .labelled_by(label.id);
+                if ui
+                    .add_enabled(
+                        shown.iter().any(|w| !state.ticked.contains(&key(w))),
+                        egui::Button::new(&labels.batch[1]),
+                    )
+                    .clicked()
+                {
+                    next_batch(&shown, state);
+                }
+                if ui
+                    .add_enabled(
+                        shown.iter().any(|w| state.ticked.contains(&key(w))),
+                        egui::Button::new(&labels.batch[2]),
+                    )
+                    .clicked()
+                {
+                    for w in &shown {
+                        state.ticked.remove(&key(w));
+                    }
+                }
+                if ui
+                    .add_enabled(!shown.is_empty(), egui::Button::new(&labels.batch[3]))
+                    .clicked()
+                {
+                    for w in &shown {
+                        let id = key(w);
+                        if !state.ticked.remove(&id) {
+                            state.ticked.insert(id);
+                        }
+                    }
+                }
+            });
+        });
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.new_only, &labels.new_only);
         ui.checkbox(&mut state.exact, &labels.exact);
@@ -841,6 +902,14 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        batch: [
+                            "Study batches",
+                            "Select next batch",
+                            "Clear shown ticks",
+                            "Invert shown ticks",
+                            "Batch size",
+                        ]
+                        .map(String::from),
                         lengths: ["Minimum length", "Maximum length", "Reset length"]
                             .map(String::from),
                         scripts: ["Any script", "Kanji", "Kana", "Latin"].map(String::from),
@@ -1344,5 +1413,50 @@ mod tests {
         h.get_by_label("Reset length").click();
         h.run();
         h.get_by_label("猫 ねこ");
+    }
+    // T-KNW-045: bounded additive batches follow current order and retain hidden ticks.
+    #[test]
+    fn vocabulary_batches_continue_without_reselecting_or_clearing_hidden_rows() {
+        let mut h = harness();
+        h.state_mut().state.batch_size = Some(1);
+        h.state_mut().state.order = WordOrder::Rare;
+        h.state_mut().state.ticked.insert(word_key("hidden", ""));
+        h.run();
+        h.get_by_label("Study batches").click();
+        h.run();
+        h.get_by_label("Select next batch").click();
+        h.run();
+        assert!(
+            h.state()
+                .state
+                .ticked
+                .contains(&word_key("食べる", "たべる"))
+        );
+        h.get_by_label("Select next batch").click();
+        h.run();
+        assert!(h.state().state.ticked.contains(&word_key("が", "が")));
+        h.state_mut().query = "猫".into();
+        h.run();
+        h.get_by_label("Invert shown ticks").click();
+        h.run();
+        assert_eq!(h.state().state.ticked.len(), 4);
+        h.get_by_label("Clear shown ticks").click();
+        h.run();
+        assert_eq!(h.state().state.ticked.len(), 3);
+        let all = (0..1100)
+            .map(|i| word(&i.to_string(), "", 1, WordStatus::Unknown))
+            .collect::<Vec<_>>();
+        let rows = all.iter().collect::<Vec<_>>();
+        let mut state = State {
+            batch_size: Some(usize::MAX),
+            ..Default::default()
+        };
+        next_batch(&rows, &mut state);
+        assert_eq!(state.ticked.len(), 1000);
+        next_batch(&rows, &mut state);
+        assert_eq!(state.ticked.len(), 1100);
+        let mut state = State::default();
+        next_batch(&rows, &mut state);
+        assert_eq!(state.ticked.len(), 20);
     }
 }

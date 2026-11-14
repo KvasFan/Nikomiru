@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Vocabulary study batches (KNW-045, M70).
+
 - Subtitle range selection (SUB-047, M69).
 
 - Bilingual HTML study sheets (SUB-046, M68).

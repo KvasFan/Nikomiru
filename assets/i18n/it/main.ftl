@@ -1222,3 +1222,9 @@ sub-html-translation = Mostra traduzione
 sub-html-filter = Scheda di studio HTML
 
 sub-invert-shown = Inverti selezione delle righe visibili
+
+vocabulary-batch-tools = Gruppi di parole da studiare
+vocabulary-batch-next = Seleziona prossimo gruppo
+vocabulary-batch-clear = Deseleziona parole visibili
+vocabulary-batch-invert = Inverti selezione visibile
+vocabulary-batch-size = Parole per gruppo
