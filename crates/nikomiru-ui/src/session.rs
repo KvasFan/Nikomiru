@@ -404,6 +404,7 @@ pub struct Session {
     analysis_export: Option<String>,
     /// Frozen importable frequency dictionary.
     frequency_export: Option<Vec<u8>>,
+    vocabulary_html: Option<String>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
     study_report: Option<String>,
@@ -791,6 +792,7 @@ impl Session {
             subtitle_examples: None,
             analysis_export: None,
             frequency_export: None,
+            vocabulary_html: None,
             history_export: None,
             subtitle_export: None,
             study_report: None,
@@ -7671,6 +7673,52 @@ impl Session {
             Err(e) => self
                 .toasts
                 .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+        }
+    }
+
+    /// Freeze the list at the click, before the native save dialog opens.
+    pub fn vocabulary_html_prepare(
+        &mut self,
+        source: &str,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.vocabulary_html = None;
+        let labels = [
+            "vocabulary-html-reading",
+            "word-status-unknown",
+            "word-status-learning",
+            "word-status-known",
+            "word-status-ignored",
+            "vocabulary-occurrences",
+            "subtitle-words-card",
+        ]
+        .map(|k| self.tr(k, &[]));
+        match crate::word_export::html_sheet(source, rows, &labels) {
+            Ok(text) => {
+                self.vocabulary_html = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the frozen local vocabulary, without status/history changes.
+    pub fn vocabulary_html_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.vocabulary_html.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self.toasts.push(self.tr(
+                "toast-words-export-failed",
+                &[("reason", error.to_string())],
+            )),
         }
     }
 

@@ -34,6 +34,7 @@ pub(crate) struct Labels {
     pub preset_too_long: String,
     pub named: [String; 4],
     pub scripts: [String; 4],
+    pub html_labels: [String; 3],
     pub coverage_labels: [String; 2],
     pub reading_labels: [String; 4],
     pub lengths: [String; 3],
@@ -73,6 +74,12 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            html_labels: [
+                "vocabulary-html-tools",
+                "vocabulary-html-shown",
+                "vocabulary-html-selected",
+            ]
+            .map(|k| tr(k, &[])),
             coverage_labels: ["vocabulary-coverage-target", "vocabulary-coverage-reset"]
                 .map(|k| tr(k, &[])),
             reading_labels: [
@@ -720,6 +727,25 @@ pub(crate) fn show(
         });
     let shown = filtered(all, query, state);
     let key = |w: &ListedWord| word_key(&w.expression, &w.reading);
+    egui::CollapsingHeader::new(&labels.html_labels[0])
+        .id_salt("vocabulary-html-sheet")
+        .show(ui, |ui| {
+            for (label, rows) in [
+                (&labels.html_labels[1], shown.clone()),
+                (&labels.html_labels[2], selected(all, state)),
+            ] {
+                if ui
+                    .add_enabled(!rows.is_empty(), egui::Button::new(label))
+                    .clicked()
+                {
+                    out.push(Command::VocabularyHtml {
+                        source: labels.source.clone(),
+                        rows: rows.into_iter().cloned().collect(),
+                    });
+                }
+            }
+        });
+
     egui::CollapsingHeader::new(&labels.batch[0])
         .id_salt("vocabulary-study-batches")
         .show(ui, |ui| {
@@ -985,6 +1011,8 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        html_labels: ["HTML vocabulary", "HTML shown", "HTML selected"]
+                            .map(String::from),
                         coverage_labels: ["Coverage target", "Reset coverage"].map(String::from),
                         reading_labels: [
                             "Reading filters",
@@ -1625,5 +1653,20 @@ mod tests {
         h.get_by_label("Reset coverage").click();
         h.run();
         assert_eq!(h.state().state.coverage_target, None);
+    } // T-KNW-048: selected HTML captures hidden identities independently of shown filters.
+    #[test]
+    fn vocabulary_html_actions_capture_frozen_shown_and_selected_rows() {
+        let mut h = harness();
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.state_mut().query = "が".into();
+        h.run();
+        h.get_by_label("HTML vocabulary").click();
+        h.run();
+        h.get_by_label("HTML selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,Command::VocabularyHtml { rows, .. } if rows.len()==1 && rows[0].expression == "猫")));
+        h.get_by_label("HTML shown").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(c,Command::VocabularyHtml { rows, .. } if rows.len()==1 && rows[0].expression == "が")));
     }
 }

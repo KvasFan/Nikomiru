@@ -1257,3 +1257,8 @@ vocabulary-coverage-target = Parole più frequenti che coprono questa percentual
 vocabulary-coverage-reset = Azzera obiettivo di copertura
 
 sub-presets = Preset salvati per lo studio dei sottotitoli
+
+vocabulary-html-tools = Schede HTML del vocabolario
+vocabulary-html-shown = Esporta parole visibili in HTML
+vocabulary-html-selected = Esporta parole selezionate in HTML
+vocabulary-html-reading = Mostra lettura

@@ -34,6 +34,70 @@ pub fn tsv(rows: &[ListedWord]) -> Result<String, &'static str> {
     Ok(out)
 }
 
+/// Standalone bounded vocabulary practice sheet; readings are revealed explicitly (KNW-048).
+pub fn html_sheet(
+    source: &str,
+    rows: &[ListedWord],
+    labels: &[String; 7],
+) -> Result<String, &'static str> {
+    use std::fmt::Write;
+    if rows.is_empty() || rows.len() > 100_000 {
+        return Err("analysis-export-too-large");
+    }
+    fn escaped(out: &mut String, text: &str) -> Result<(), &'static str> {
+        for c in text.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '"' => out.push_str("&quot;"),
+                '\'' => out.push_str("&#39;"),
+                _ => out.push(c),
+            }
+            if out.len() > 16 << 20 {
+                return Err("analysis-export-too-large");
+            }
+        }
+        Ok(())
+    }
+    let mut out = String::from(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Nikomiru</title><style>body{max-width:52rem;margin:2rem auto;padding:1rem;font:1.1rem system-ui}article{border-bottom:1px solid #aaa;padding:1rem 0}p{white-space:pre-wrap}summary{cursor:pointer}</style></head><body><h1>",
+    );
+    escaped(&mut out, source)?;
+    out.push_str("</h1>\n");
+    for row in rows {
+        out.push_str("<article><p>");
+        escaped(&mut out, &row.expression)?;
+        out.push_str("</p>");
+        if !row.reading.trim().is_empty() && row.reading != row.expression {
+            out.push_str("<details><summary>");
+            escaped(&mut out, &labels[0])?;
+            out.push_str("</summary><p>");
+            escaped(&mut out, &row.reading)?;
+            out.push_str("</p></details>");
+        }
+        let status = match row.status {
+            crate::words::WordStatus::Unknown => 1,
+            crate::words::WordStatus::Learning => 2,
+            crate::words::WordStatus::Known => 3,
+            crate::words::WordStatus::Ignored => 4,
+        };
+        out.push_str("<small>");
+        escaped(&mut out, &labels[status])?;
+        out.push_str(" · ");
+        escaped(&mut out, &labels[5])?;
+        let _ = write!(out, ": {} · ", row.count);
+        escaped(&mut out, &labels[6])?;
+        out.push_str(if row.card { ": ✓" } else { ": —" });
+        out.push_str("</small></article>\n");
+        if out.len() > (16 << 20) - 64 {
+            return Err("analysis-export-too-large");
+        }
+    }
+    out.push_str("</body></html>\n");
+    Ok(out)
+}
+
 /// All historical words for one media, newest first, independent of display caps.
 pub fn encounters_tsv(
     words: &nikomiru_library::encounters::Encounters,
@@ -283,5 +347,31 @@ mod tests {
         );
         rows[0].expression = "a".repeat(nikomiru_library::words::MAX_LIST_BYTES as usize);
         assert_eq!(tsv(&rows), Err("analysis-export-too-large"));
+    } // T-KNW-048: all user text/labels escape, readings stay hidden, and output expansion is bounded.
+    #[test]
+    fn vocabulary_html_is_complete_escaped_and_bounded() {
+        let mut row = ListedWord {
+            expression: "<猫>&".into(),
+            reading: "ねこ\"".into(),
+            count: usize::MAX,
+            status: crate::words::WordStatus::Known,
+            card: true,
+        };
+        let labels = [
+            "<Reveal>", "new", "learning", "known", "ignored", "Count", "Card",
+        ]
+        .map(String::from);
+        let html = html_sheet("<Source>", &[row.clone()], &labels).unwrap();
+        assert!(html.contains("&lt;Source&gt;") && html.contains("&lt;猫&gt;&amp;"));
+        assert!(
+            html.contains("<details><summary>&lt;Reveal&gt;</summary><p>ねこ&quot;</p></details>")
+        );
+        assert!(html.contains(&usize::MAX.to_string()) && html.contains("known"));
+        row.expression = "&".repeat(4 << 20);
+        assert_eq!(
+            html_sheet("", &[row], &labels),
+            Err("analysis-export-too-large")
+        );
+        assert!(html_sheet("", &[], &labels).is_err());
     }
 }

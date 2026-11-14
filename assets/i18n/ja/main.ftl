@@ -1240,3 +1240,8 @@ vocabulary-coverage-target = 出現回数の指定割合をカバーする頻出
 vocabulary-coverage-reset = カバー率の条件をリセット
 
 sub-presets = 保存した字幕学習プリセット
+
+vocabulary-html-tools = 語彙のHTML学習シート
+vocabulary-html-shown = 表示中の語彙をHTMLに出力
+vocabulary-html-selected = 選択した語彙をHTMLに出力
+vocabulary-html-reading = 読みを表示
