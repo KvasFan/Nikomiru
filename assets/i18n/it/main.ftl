@@ -1127,3 +1127,7 @@ sub-select-shown = Seleziona righe visibili
 sub-selection-clear = Svuota selezione righe
 sub-export-selected = Esporta righe selezionate come SRT…
 sub-select-line = Seleziona riga
+
+sub-copy-shown = Copia trascrizione visibile
+sub-copy-selected = Copia trascrizione selezionata
+sub-transcript-copied = Trascrizione copiata

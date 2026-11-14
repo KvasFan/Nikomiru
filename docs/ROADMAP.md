@@ -1180,7 +1180,7 @@ subtitle/study priority (D-63), without a new request between milestones.
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M46 | Selected subtitle SRT | done |
-| M47 | Copy subtitle transcripts | not started |
+| M47 | Copy subtitle transcripts | done |
 | M48 | WebVTT subtitle export | not started |
 | M49 | Bilingual study transcript | not started |
 | M50 | Subtitle study time window | not started |

@@ -110,6 +110,10 @@ pub(crate) struct StudyLabels {
     clear: String,
     export_selected: String,
     select_line: String,
+    copy_shown: String,
+    copy_selected: String,
+    copied: String,
+    copy_error: String,
 }
 
 impl StudyLabels {
@@ -120,6 +124,10 @@ impl StudyLabels {
             clear: tr("sub-selection-clear", &[]),
             export_selected: tr("sub-export-selected", &[]),
             select_line: tr("sub-select-line", &[]),
+            copy_shown: tr("sub-copy-shown", &[]),
+            copy_selected: tr("sub-copy-selected", &[]),
+            copied: tr("sub-transcript-copied", &[]),
+            copy_error: tr("sub-export-unavailable", &[]),
         }
     }
 }
@@ -131,6 +139,7 @@ pub(crate) struct State {
     rows: Rows,
     selected: BTreeSet<usize>,
     selection_version: Option<u64>,
+    copied: Option<bool>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
     /// The search field had the keyboard in the last frame.
@@ -416,6 +425,7 @@ pub(crate) fn draw(
 ) -> bool {
     if state.selection_version != Some(scene.version) {
         state.selected.clear();
+        state.copied = None;
         state.selection_version = Some(scene.version);
     }
     let screen = ctx.content_rect();
@@ -570,6 +580,39 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                 {
                     state.selected.clear();
                 }
+                let mut copy = None;
+                if ui
+                    .add_enabled(
+                        scene.export_ready,
+                        egui::Button::new(&scene.study.copy_shown),
+                    )
+                    .clicked()
+                {
+                    copy = Some(shown_indices(scene, state));
+                }
+                if ui
+                    .add_enabled(
+                        scene.export_ready && !state.selected.is_empty(),
+                        egui::Button::new(&scene.study.copy_selected),
+                    )
+                    .clicked()
+                {
+                    copy = Some(state.selected.iter().copied().collect());
+                }
+                if let Some(indices) = copy {
+                    match crate::subtitle_export::transcript(
+                        scene.timeline.cues(),
+                        &indices,
+                        scene.timeline.delay_ms,
+                        scene.export_ready,
+                    ) {
+                        Ok(text) => {
+                            ui.ctx().copy_text(text);
+                            state.copied = Some(true);
+                        }
+                        Err(_) => state.copied = Some(false),
+                    }
+                }
                 if ui
                     .add_enabled(
                         scene.export_ready && !state.selected.is_empty(),
@@ -583,6 +626,13 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     });
                 }
             });
+            if let Some(ok) = state.copied {
+                ui.label(if ok {
+                    &scene.study.copied
+                } else {
+                    &scene.study.copy_error
+                });
+            }
         });
 }
 
@@ -783,6 +833,28 @@ mod tests {
         h.get_by_label("sub-selection-clear").click();
         h.run();
         assert!(h.state().state.selected.is_empty());
+    }
+
+    // T-SUB-036: copy shown follows search; copy selected includes hidden ticks without changing playback.
+    #[test]
+    fn copying_a_transcript_is_explicit_and_preserves_hidden_selection() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.get_by_label("sub-select-line 2").click();
+        h.run();
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-copy-shown").click();
+        h.step();
+        assert!(h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(text) if text.contains("猫") && !text.contains("犬"))));
+        h.run();
+        h.get_by_label("sub-copy-selected").click();
+        h.step();
+        assert!(h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(text) if text.contains("犬") && !text.contains("猫"))));
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

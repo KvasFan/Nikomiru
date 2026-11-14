@@ -1127,3 +1127,7 @@ sub-select-shown = Select shown lines
 sub-selection-clear = Clear line selection
 sub-export-selected = Export selected lines as SRT…
 sub-select-line = Select line
+
+sub-copy-shown = Copy shown transcript
+sub-copy-selected = Copy selected transcript
+sub-transcript-copied = Transcript copied

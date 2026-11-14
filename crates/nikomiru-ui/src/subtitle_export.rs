@@ -76,9 +76,63 @@ pub fn selected(
         .collect()
 }
 
+/// Copyable transcript of an explicitly captured complete cue selection.
+pub fn transcript(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay_ms: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let selected = selected(cues, indices, complete)?;
+    let mut out = String::from("start_ms\tend_ms\ttext\n");
+    let mut written = 0;
+    for cue in selected {
+        let start = cue.start_ms.saturating_add(delay_ms).max(0);
+        let end = cue.end_ms.saturating_add(delay_ms);
+        if end <= start || cue.plain_text.trim().is_empty() {
+            continue;
+        }
+        let row = format!(
+            "{start}\t{end}\t{}\n",
+            crate::word_export::field(&cue.plain_text)
+        );
+        if out.len().saturating_add(row.len()) > 16 << 20 {
+            return Err("sub-export-too-large");
+        }
+        out.push_str(&row);
+        written += 1;
+    }
+    if written == 0 {
+        return Err("sub-export-unavailable");
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-036: one safe row per selected original cue, with effective times and all-or-nothing bounds.
+    #[test]
+    fn transcript_snapshot_preserves_timing_and_neutralises_fields() {
+        let mut cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n",
+        )
+        .cues;
+        cues[1].plain_text = "=formula\nother\ttext".into();
+        assert_eq!(
+            transcript(&cues, &[1, 0], -1500, true).unwrap(),
+            "start_ms\tend_ms\ttext\n0\t500\t猫\n1500\t2500\t'=formula other text\n"
+        );
+        assert!(transcript(&cues, &[0], -3000, true).is_err());
+        assert!(transcript(&cues, &[0], 0, false).is_err());
+        cues[0].plain_text = "x".repeat(16 << 20);
+        assert_eq!(
+            transcript(&cues, &[0], 0, true),
+            Err("sub-export-too-large")
+        );
+    }
+
     // T-SUB-035: original indices retain chronology; stale/invalid/partial selections fail closed.
     #[test]
     fn selected_exports_keep_original_cues_and_reject_invalid_indices() {
