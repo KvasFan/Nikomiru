@@ -1162,3 +1162,8 @@ frequency-export-selected = Export selected frequency dictionary…
 frequency-export-invalid = The frequency export needs unique nonempty words and positive supported counts.
 
 vocabulary-exact = Exact word or reading
+
+sub-speed-tools = Reading speed (characters/s)
+sub-speed-min = Minimum characters/s
+sub-speed-max = Maximum characters/s
+sub-speed-reset = Reset reading speed

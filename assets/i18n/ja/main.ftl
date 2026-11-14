@@ -1145,3 +1145,8 @@ frequency-export-selected = 選択した頻度辞書を書き出す…
 frequency-export-invalid = 空でない一意の語と対応する正の出現回数が必要です。
 
 vocabulary-exact = 表記・読みの完全一致
+
+sub-speed-tools = 読速（文字/秒）
+sub-speed-min = 最小文字数/秒
+sub-speed-max = 最大文字数/秒
+sub-speed-reset = 読速の制限をリセット

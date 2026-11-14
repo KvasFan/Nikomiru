@@ -24,7 +24,7 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
-use crate::subtitle_study::TimeWindow;
+use crate::subtitle_study::{ReadingSpeed, TimeWindow};
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -86,12 +86,18 @@ impl LineFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Scope {
+    window: TimeWindow,
+    speed: ReadingSpeed,
+}
+
 /// The rows on show: their cues and where each one starts.
 #[derive(Debug, Default)]
 struct Rows {
     /// The list version, the query, the filter and, with a filter, the
     /// words' revision the rows were picked for.
-    picked: Option<(u64, String, LineFilter, u64, TimeWindow)>,
+    picked: Option<(u64, String, LineFilter, u64, Scope)>,
     /// Changes whenever other rows are picked.
     generation: u64,
     /// The width the heights were measured at.
@@ -124,6 +130,10 @@ pub(crate) struct StudyLabels {
     reset_window: String,
     examples: String,
     clear_examples: String,
+    speed: String,
+    min_speed: String,
+    max_speed: String,
+    reset_speed: String,
 }
 
 impl StudyLabels {
@@ -147,6 +157,10 @@ impl StudyLabels {
             reset_window: tr("sub-window-reset", &[]),
             examples: tr("vocabulary-examples", &[]),
             clear_examples: tr("vocabulary-examples-clear", &[]),
+            speed: tr("sub-speed-tools", &[]),
+            min_speed: tr("sub-speed-min", &[]),
+            max_speed: tr("sub-speed-max", &[]),
+            reset_speed: tr("sub-speed-reset", &[]),
         }
     }
 }
@@ -160,6 +174,7 @@ pub(crate) struct State {
     selection_version: Option<u64>,
     copied: Option<bool>,
     window: TimeWindow,
+    speed: ReadingSpeed,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -250,7 +265,7 @@ impl Rows {
         scene: &Scene<'_>,
         query: &str,
         filter: LineFilter,
-        window: TimeWindow,
+        scope: Scope,
         width: f32,
     ) {
         let timeline = scene.timeline;
@@ -260,11 +275,11 @@ impl Rows {
             scene.marks_version
         };
         let fresh = self.picked.as_ref().is_none_or(|(v, q, f, r, w)| {
-            *v != scene.version || q != query || *f != filter || *r != revision || *w != window
+            *v != scene.version || q != query || *f != filter || *r != revision || *w != scope
         });
         if fresh {
-            self.cues = pick_indices(scene, query, filter, window);
-            self.picked = Some((scene.version, query.to_string(), filter, revision, window));
+            self.cues = pick_indices(scene, query, filter, scope);
+            self.picked = Some((scene.version, query.to_string(), filter, revision, scope));
             self.generation += 1;
         } else if self.width == width && self.size == scene.text_size {
             return;
@@ -440,6 +455,7 @@ pub(crate) fn draw(
         state.selected.clear();
         state.copied = None;
         state.window = TimeWindow::default();
+        state.speed = ReadingSpeed::default();
         state.selection_version = Some(scene.version);
     }
     let key = scene.concordance.map(|c| (c.key.clone(), c.revision));
@@ -578,12 +594,7 @@ fn search(ui: &mut egui::Ui, state: &mut State, focus: &mut bool, hint: &str) ->
     open
 }
 
-fn pick_indices(
-    scene: &Scene<'_>,
-    query: &str,
-    filter: LineFilter,
-    window: TimeWindow,
-) -> Vec<usize> {
+fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope) -> Vec<usize> {
     let query = nikomiru_text::search::Query::new(query);
     scene
         .timeline
@@ -594,7 +605,8 @@ fn pick_indices(
             scene
                 .concordance
                 .is_none_or(|c| c.indices.binary_search(i).is_ok())
-                && window.keeps(cue, scene.timeline.delay_ms)
+                && scope.window.keeps(cue, scene.timeline.delay_ms)
+                && scope.speed.keeps(cue)
                 && query.matches(&[&cue.plain_text])
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
@@ -603,13 +615,50 @@ fn pick_indices(
 }
 
 fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
-    pick_indices(scene, &state.query, state.filter, state.window)
+    pick_indices(
+        scene,
+        &state.query,
+        state.filter,
+        Scope {
+            window: state.window,
+            speed: state.speed,
+        },
+    )
 }
 
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
+            egui::CollapsingHeader::new(&scene.study.speed)
+                .id_salt("subtitle-reading-speed")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut min = state.speed.min.is_some();
+                        if ui.checkbox(&mut min, &scene.study.min_speed).changed() {
+                            state.speed.min = min.then_some(0);
+                        }
+                        if let Some(value) = &mut state.speed.min {
+                            ui.add(egui::DragValue::new(value).range(0..=500));
+                        }
+                        let mut max = state.speed.max.is_some();
+                        if ui.checkbox(&mut max, &scene.study.max_speed).changed() {
+                            state.speed.max = max.then_some(20);
+                        }
+                        if let Some(value) = &mut state.speed.max {
+                            ui.add(egui::DragValue::new(value).range(0..=500));
+                        }
+                        if ui
+                            .add_enabled(
+                                state.speed != ReadingSpeed::default(),
+                                egui::Button::new(&scene.study.reset_speed),
+                            )
+                            .clicked()
+                        {
+                            state.speed = ReadingSpeed::default();
+                        }
+                    });
+                });
             ui.horizontal_wrapped(|ui| {
                 if ui.button(&scene.study.from_here).clicked() {
                     state.window.from = Some(scene.pos_ms.max(0));
@@ -772,9 +821,17 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
             } else {
                 LineFilter::All
             };
-            state
-                .rows
-                .update(&ctx, scene, &state.query, filter, state.window, width);
+            state.rows.update(
+                &ctx,
+                scene,
+                &state.query,
+                filter,
+                Scope {
+                    window: state.window,
+                    speed: state.speed,
+                },
+                width,
+            );
             let rows = &state.rows;
             ui.set_height(rows.tops.last().copied().unwrap_or(0.0));
             let origin = ui.max_rect().min;
@@ -1094,6 +1151,40 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-040: speed scopes apply to visible rows and reset without affecting hidden ticks or playback.
+    #[test]
+    fn reading_speed_filters_rows_and_resets_explicitly() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "猫"), (3000, "犬犬"), (6000, "鳥鳥鳥鳥")]),
+            0,
+            false,
+        );
+        h.run();
+        h.get_by_label("sub-select-line 1").click();
+        h.run();
+        h.state_mut().state.speed = ReadingSpeed {
+            min: Some(2),
+            max: Some(3),
+        };
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-speed-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-speed-reset").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::ListTime(_)))
+        );
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

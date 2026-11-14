@@ -1162,3 +1162,8 @@ frequency-export-selected = Esporta dizionario frequenze selezionato…
 frequency-export-invalid = L’esportazione richiede parole uniche non vuote e conteggi positivi supportati.
 
 vocabulary-exact = Parola o lettura esatta
+
+sub-speed-tools = Velocità di lettura (caratteri/s)
+sub-speed-min = Caratteri/s minimi
+sub-speed-max = Caratteri/s massimi
+sub-speed-reset = Azzera velocità di lettura

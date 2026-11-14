@@ -1291,7 +1291,7 @@ M56…M61 extend it as follows. No new request is needed between increments.
 | Milestone | Deliverable | Status |
 |---|---|---|
 | M56 | Exact vocabulary search | done |
-| M57 | Subtitle reading-speed filters | not started |
+| M57 | Subtitle reading-speed filters | done |
 | M58 | Subtitle study statistics | not started |
 | M59 | Bilingual SRT export | not started |
 | M60 | Navigate matching subtitle lines | not started |
