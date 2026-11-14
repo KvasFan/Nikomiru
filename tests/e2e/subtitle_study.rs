@@ -90,6 +90,13 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
             .collect::<Vec<_>>(),
         ["猫\ncat", "犬\ndog", "鳥"]
     );
+    // T-SUB-046: actual native saving writes a complete standalone bilingual HTML scope.
+    let html = desk.path("study.html");
+    h.cmd(json!({"cmd":"subtitle-export","path":html,"indices":[1],"format":"html"}));
+    let html = std::fs::read_to_string(html).unwrap();
+    assert!(html.contains("<details><summary>"));
+    assert!(html.contains("犬") && html.contains("dog") && !html.contains("cat"));
+    assert_eq!(html.matches("<article>").count(), 1);
     let after = h.state();
     assert_eq!(
         before["subtitles"]["version"],
@@ -168,6 +175,22 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
     use nikomiru_dict::store::{DictStore, RedbStore};
     let store = RedbStore::open(&imported.dir.join("dict.redb")).unwrap();
     assert!(store.term_meta("食べる").unwrap().iter().any(|m| matches!(m, nikomiru_dict::yomitan::Meta::Frequency(f) if f.value == 2 && f.reading.as_deref() == Some("たべる"))));
+    // T-KNW-044: real segmented subset retains one inflected headword occurrence.
+    h.cmd(json!({"cmd":"vocabulary-scope","indices":[0]}));
+    h.state_until("captured vocabulary", |s| {
+        s["subtitle_study"]["vocabulary_scope"].is_u64()
+    });
+    let scoped = h.state()["subtitles"]["words"].as_array().unwrap().clone();
+    assert!(
+        scoped
+            .iter()
+            .any(|w| w["expression"] == "食べる" && w["count"] == 1)
+    );
+    assert!(!scoped.iter().any(|w| w["expression"] == "猫"));
+    h.cmd(json!({"cmd":"vocabulary-scope"}));
+    h.state_until("full vocabulary restored", |s| {
+        s["subtitle_study"]["vocabulary_scope"].is_null()
+    });
     let before = h.state()["time_pos"].as_f64().unwrap();
     h.cmd(json!({"cmd":"vocabulary-examples","text":"食べる","reading":"たべる"}));
     h.state_until("two exact examples", |s| {
@@ -182,6 +205,97 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
     h.drop_files(&[other.to_str().unwrap()]);
     h.state_until("old examples discarded", |s| {
         s["concordance"].is_null() && s["subtitles"]["cues"] == 1
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-KNW-041: presets survive actual process restart through the normal configuration writer.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn named_study_presets_survive_restart_and_delete() {
+    let mut desk = Desktop::start();
+    let (mut app, mut h) = desk.launch();
+    h.cmd(json!({"cmd":"study-preset","name":"Cats","query":"猫"}));
+    h.state_until("preset saved", |s| s["study_presets"][0]["name"] == "Cats");
+    super::support::until(Duration::from_secs(10), "preset on disk", || {
+        let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
+        config.contains("Cats").then_some(())
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    let s = h.state();
+    assert_eq!(s["study_presets"][0]["query"], "猫");
+    h.cmd(json!({"cmd":"study-preset","name":"Cats"}));
+    super::support::until(Duration::from_secs(10), "preset removed on disk", || {
+        let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
+        (!config.contains("Cats")).then_some(())
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    assert_eq!(h.state()["study_presets"], json!([]));
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-048: real mpv seeks each pass, stops after the finite count and cancels manual control.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn finite_cue_repetition_stops_and_cancels_in_the_real_player() {
+    let mut desk = Desktop::start();
+    desk.write_config("[subtitles]\nauto_pause = true\n[player]\ngap_speed = 4\n");
+    let video = desk.path("repeat.mkv");
+    std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
+    let subtitles = desk.path("repeat.ja.srt");
+    std::fs::write(
+        &subtitles,
+        "1\n00:00:01,000 --> 00:00:01,700\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
+    h.wait("first-frame");
+    h.state_until("repeat cues ready", |s| s["subtitles"]["cues"] == 2);
+    h.cmd(json!({"cmd":"practice","cue":0,"passes":3}));
+    h.state_until("finite repetition completed", |s| {
+        s["subtitle_study"]["practice_remaining"] == 0 && s["paused"] == true
+    });
+    let s = h.state();
+    assert!(s["next_up"].is_null());
+    assert!((1.5..=1.85).contains(&s["time_pos"].as_f64().unwrap()));
+    h.cmd(json!({"cmd":"practice","cue":1,"passes":5}));
+    h.state_until("repeating second cue", |s| {
+        s["subtitle_study"]["practice_remaining"]
+            .as_u64()
+            .is_some_and(|n| n > 0)
+    });
+    h.key("Space");
+    h.state_until("manual pause cancels", |s| {
+        s["subtitle_study"]["practice_remaining"].is_null()
+    });
+    h.cmd(json!({"cmd":"practice","cue":0,"passes":2}));
+    h.state_until("two passes started", |s| {
+        s["subtitle_study"]["practice_remaining"] == 2
+    });
+    h.cmd(json!({"cmd":"practice"}));
+    h.state_until("explicit stop pauses", |s| {
+        s["subtitle_study"]["practice_remaining"].is_null() && s["paused"] == true
+    });
+    h.cmd(json!({"cmd":"practice","cue":0,"passes":5}));
+    h.state_until("practice before timing change", |s| {
+        s["subtitle_study"]["practice_remaining"].is_u64()
+    });
+    h.key("KeyX");
+    h.state_until("timing change cancels", |s| {
+        s["subtitle_study"]["practice_remaining"].is_null()
+    });
+    h.cmd(json!({"cmd":"practice","cue":0,"passes":5}));
+    let other = desk.path("replacement.srt");
+    std::fs::write(&other, "1\n00:00:01,000 --> 00:00:02,000\n鳥\n").unwrap();
+    h.drop_files(&[other.to_str().unwrap()]);
+    h.state_until("source replacement cancels", |s| {
+        s["subtitles"]["cues"] == 1 && s["subtitle_study"]["practice_remaining"].is_null()
     });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());

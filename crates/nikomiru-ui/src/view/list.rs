@@ -135,6 +135,8 @@ pub(crate) struct StudyLabels {
     reset_window: String,
     examples: String,
     clear_examples: String,
+    study_groups: [String; 3],
+    practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
     duration_labels: [String; 4],
@@ -156,6 +158,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            study_groups: [
+                "sub-practice-tools",
+                "sub-vocabulary-tools",
+                "sub-html-tools",
+            ]
+            .map(|k| tr(k, &[])),
+            practice_labels: ["sub-practice-current", "sub-practice-stop"].map(|k| tr(k, &[])),
             html_labels: ["sub-html-shown", "sub-html-selected"].map(|k| tr(k, &[])),
             vocabulary_labels: [
                 "sub-vocabulary-shown",
@@ -314,6 +323,7 @@ pub(crate) struct Scene<'a> {
     pub version: u64,
     /// The playback position.
     pub pos_ms: i64,
+    pub practice_status: Option<String>,
     pub title: String,
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
@@ -494,6 +504,10 @@ pub(crate) fn show(
         version: s.sub_list_version,
         concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
+        practice_status: s.practice_remaining().map(|n| {
+            s.translator()
+                .tr("sub-practice-remaining", &[("count", n.to_string())])
+        }),
         title: tr("subtitle-list"),
         score: score_line(s),
         reading: s.graphic_read_status(),
@@ -885,29 +899,67 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
             matching_navigation(ui, scene, state, out);
-            ui.horizontal_wrapped(|ui| {
-                let shown = shown_indices(scene, state);
-                for (label, indices) in [
-                    (&scene.study.vocabulary_labels[0], shown),
-                    (
-                        &scene.study.vocabulary_labels[1],
-                        state.selected.iter().copied().collect(),
-                    ),
-                ] {
-                    if ui
-                        .add_enabled(
-                            scene.tabs.is_some() && scene.export_ready && !indices.is_empty(),
-                            egui::Button::new(label),
-                        )
-                        .clicked()
-                    {
-                        out.push(Command::VocabularyScope {
-                            version: scene.version,
-                            indices,
-                        });
-                    }
-                }
-            });
+            egui::CollapsingHeader::new(&scene.study.study_groups[0])
+                .id_salt("subtitle-study-group-0")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let target = scene.timeline.active(scene.pos_ms).first().copied();
+                        for passes in [2, 3, 5] {
+                            if ui
+                                .add_enabled(
+                                    scene.export_ready && target.is_some(),
+                                    egui::Button::new(format!(
+                                        "{} ×{passes}",
+                                        scene.study.practice_labels[0]
+                                    )),
+                                )
+                                .clicked()
+                                && let Some(cue) = target
+                            {
+                                out.push(Command::Practice {
+                                    version: scene.version,
+                                    cue,
+                                    passes,
+                                });
+                            }
+                        }
+                        if let Some(status) = &scene.practice_status {
+                            ui.label(status);
+                            if ui.button(&scene.study.practice_labels[1]).clicked() {
+                                out.push(Command::PracticeCancel);
+                            }
+                        }
+                    });
+                });
+            egui::CollapsingHeader::new(&scene.study.study_groups[1])
+                .id_salt("subtitle-study-group-1")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let shown = shown_indices(scene, state);
+                        for (label, indices) in [
+                            (&scene.study.vocabulary_labels[0], shown),
+                            (
+                                &scene.study.vocabulary_labels[1],
+                                state.selected.iter().copied().collect(),
+                            ),
+                        ] {
+                            if ui
+                                .add_enabled(
+                                    scene.tabs.is_some()
+                                        && scene.export_ready
+                                        && !indices.is_empty(),
+                                    egui::Button::new(label),
+                                )
+                                .clicked()
+                            {
+                                out.push(Command::VocabularyScope {
+                                    version: scene.version,
+                                    indices,
+                                });
+                            }
+                        }
+                    });
+                });
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .checkbox(&mut state.masked, &scene.study.mask_labels[0])
@@ -1015,29 +1067,33 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     state.window = TimeWindow::default();
                 }
             });
-            ui.horizontal_wrapped(|ui| {
-                for (label, indices) in [
-                    (&scene.study.html_labels[0], shown_indices(scene, state)),
-                    (
-                        &scene.study.html_labels[1],
-                        state.selected.iter().copied().collect(),
-                    ),
-                ] {
-                    if ui
-                        .add_enabled(
-                            scene.bilingual_ready && !indices.is_empty(),
-                            egui::Button::new(label),
-                        )
-                        .clicked()
-                    {
-                        out.push(Command::SubtitleRowsExport {
-                            version: scene.version,
-                            indices,
-                            format: crate::subtitle_export::ExportFormat::Html,
-                        });
-                    }
-                }
-            });
+            egui::CollapsingHeader::new(&scene.study.study_groups[2])
+                .id_salt("subtitle-study-group-2")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (label, indices) in [
+                            (&scene.study.html_labels[0], shown_indices(scene, state)),
+                            (
+                                &scene.study.html_labels[1],
+                                state.selected.iter().copied().collect(),
+                            ),
+                        ] {
+                            if ui
+                                .add_enabled(
+                                    scene.bilingual_ready && !indices.is_empty(),
+                                    egui::Button::new(label),
+                                )
+                                .clicked()
+                            {
+                                out.push(Command::SubtitleRowsExport {
+                                    version: scene.version,
+                                    indices,
+                                    format: crate::subtitle_export::ExportFormat::Html,
+                                });
+                            }
+                        }
+                    });
+                });
             ui.horizontal_wrapped(|ui| {
                 if ui.button(&scene.study.invert_shown).clicked() {
                     for i in shown_indices(scene, state) {
@@ -1563,6 +1619,28 @@ mod tests {
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
     }
 
+    // T-SUB-048: repeat actions bind the active original cue and explicit finite count.
+    #[test]
+    fn repeat_current_line_captures_version_and_original_index() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 3500, false);
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-practice-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-practice-current ×3").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c| matches!(
+            c,
+            Command::Practice {
+                version: 1,
+                cue: 1,
+                passes: 3
+            }
+        )));
+    }
+
     // T-SUB-047: range order follows shown identities, retains hidden ticks and resets missing anchors.
     #[test]
     fn range_selection_uses_shown_order_and_inversion_preserves_hidden_ticks() {
@@ -1606,6 +1684,8 @@ mod tests {
         h.state_mut().state.query = "猫".into();
         h.run();
         h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vocabulary-tools").click();
         h.run_steps(3);
         h.get_by_label("sub-vocabulary-selected").click();
         h.run();
@@ -1834,6 +1914,7 @@ mod tests {
                         filters: ["All", "New", "+1"].map(String::from),
                         marks_version: 0,
                         word_scope: None,
+                        practice_status: None,
                         words: None,
                         word_labels: Default::default(),
                         search_hint: "Search".into(),

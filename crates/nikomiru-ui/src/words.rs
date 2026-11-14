@@ -545,6 +545,8 @@ mod tests {
         let counted = words.counted_cues(&cues, &[0, 0]).unwrap();
         assert_eq!(words.listed_counted(&counted)[0].count, 1);
         assert_eq!(words.listed_counted(&counted)[0].expression, "食べる");
+        words.set_status("食べる", "たべる", WordStatus::Known);
+        assert_eq!(words.listed_counted(&counted)[0].status, WordStatus::Known);
         assert!(words.counted_cues(&cues, &[0, 1]).is_err());
         assert!(words.counted_cues(&cues, &[9]).is_err());
         assert!(words.counted_cues(&cues, &[]).is_err());

@@ -1211,3 +1211,11 @@ vocabulary-batch-next = 次のグループを選択
 vocabulary-batch-clear = 表示範囲の選択を解除
 vocabulary-batch-invert = 表示範囲の選択を反転
 vocabulary-batch-size = グループの語数
+
+sub-practice-current = 現在の字幕を繰り返す
+sub-practice-stop = 繰り返しを停止
+sub-practice-remaining = 残りの再生回数：{ $count }
+
+sub-practice-tools = 字幕の繰り返し練習
+sub-vocabulary-tools = この範囲の語彙
+sub-html-tools = HTML学習シート

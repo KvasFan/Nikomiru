@@ -1228,3 +1228,11 @@ vocabulary-batch-next = Select next batch
 vocabulary-batch-clear = Clear shown selection
 vocabulary-batch-invert = Invert shown selection
 vocabulary-batch-size = Words per batch
+
+sub-practice-current = Repeat current line
+sub-practice-stop = Stop repetition
+sub-practice-remaining = Passes remaining: { $count }
+
+sub-practice-tools = Sentence repetition
+sub-vocabulary-tools = Vocabulary from these lines
+sub-html-tools = HTML study sheets

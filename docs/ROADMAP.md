@@ -1442,4 +1442,4 @@ The maintainer authorises ten consecutive subtitle/study milestones and final Gi
 | M68 | SUB-046 | Bilingual HTML study sheets | done |
 | M69 | SUB-047 | Subtitle range selection | done |
 | M70 | KNW-045 | Vocabulary study batches | done |
-| M71 | SUB-048 | Finite subtitle repetition | planned |
+| M71 | SUB-048 | Finite subtitle repetition | done |

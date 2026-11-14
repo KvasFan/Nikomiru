@@ -112,6 +112,27 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("practice") => harness::practice(
+            command["cue"].as_u64().map(|i| i as usize),
+            command["passes"]
+                .as_u64()
+                .and_then(|n| u8::try_from(n).ok())
+                .unwrap_or(0),
+        )
+        .map(|()| Value::Null),
+        Some("vocabulary-scope") => {
+            harness::vocabulary_scope(command["indices"].as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().map(|i| i as usize))
+                    .collect()
+            }))
+            .map(|()| Value::Null)
+        }
+        Some("study-preset") => harness::study_preset(
+            text(command, "name")?.to_string(),
+            command["query"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
         Some("subtitle-study") => harness::subtitle_study(
             command["query"].as_str().map(str::to_string),
             command["forward"].as_bool(),

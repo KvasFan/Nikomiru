@@ -554,7 +554,8 @@ pub fn state() -> Result<Value, String> {
             Value::Null,
             |c| json!({"label":c.label,"indices":c.indices}),
         );
-        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows()});
+        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining()});
+        state["study_presets"] = json!(s.config().lookup.study_presets);
         state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
         state["setup"] = json!({
@@ -647,6 +648,53 @@ pub fn subtitle_study(query: Option<String>, forward: Option<bool>) -> Result<()
             && let Some(cue) = ui.view.list.matching_target(&ui.session, forward)
         {
             ui.run(Command::ListTime(cue));
+        }
+    })
+}
+
+/// Exercise the same explicit finite-repetition commands as the study buttons.
+pub fn practice(cue: Option<usize>, passes: u8) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(cue) = cue {
+            ui.run(Command::Practice {
+                version: ui.session.sub_list_version,
+                cue,
+                passes,
+            });
+        } else {
+            ui.run(Command::PracticeCancel);
+        }
+    })
+}
+
+/// Capture explicit subtitle vocabulary, or return to the full track.
+pub fn vocabulary_scope(indices: Option<Vec<usize>>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(indices) = indices {
+            ui.run(Command::VocabularyScope {
+                version: ui.session.sub_list_version,
+                indices,
+            });
+        } else {
+            ui.run(Command::VocabularyScopeClear);
+        }
+    })
+}
+
+/// Save/delete a real named preset through the configuration writer.
+pub fn study_preset(name: String, query: Option<String>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(query) = query {
+            ui.run(Command::StudyPresetSave(
+                nikomiru_core::config::StudyPreset {
+                    name,
+                    query,
+                    exact: true,
+                    ..Default::default()
+                },
+            ));
+        } else {
+            ui.run(Command::StudyPresetDelete(name));
         }
     })
 }

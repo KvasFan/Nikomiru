@@ -178,6 +178,46 @@ impl Navigation {
     }
 }
 
+/// Finite cue repetition; one boundary is consumed only after observing that pass.
+#[derive(Debug, Clone)]
+pub struct Repetition {
+    /// Effective start clipped at time zero.
+    pub start_ms: i64,
+    /// Effective exclusive end.
+    pub end_ms: i64,
+    /// Passes remaining, including the current pass; zero means finished and paused.
+    pub left: u8,
+    armed: bool,
+}
+impl Repetition {
+    /// Only the explicit finite choices are accepted.
+    pub fn new(cue: &nikomiru_subs::Cue, delay: i64, passes: u8) -> Option<Self> {
+        let start_ms = cue.start_ms.saturating_add(delay).max(0);
+        let end_ms = cue.end_ms.saturating_add(delay);
+        (matches!(passes, 2 | 3 | 5) && end_ms > start_ms).then_some(Self {
+            start_ms,
+            end_ms,
+            left: passes,
+            armed: false,
+        })
+    }
+    /// Arm after actual playback returns inside the captured cue, ignoring late end events.
+    pub fn position(&mut self, position_ms: i64) {
+        if self.left > 0 && (self.start_ms..self.end_ms).contains(&position_ms) {
+            self.armed = true;
+        }
+    }
+    /// Consume a real end pause once. Some(true) seeks again; Some(false) stays paused.
+    pub fn stopped(&mut self, position_ms: i64) -> Option<bool> {
+        if !self.armed || self.left == 0 || position_ms < self.end_ms.saturating_sub(100) {
+            return None;
+        }
+        self.armed = false;
+        self.left -= 1;
+        Some(self.left > 0)
+    }
+}
+
 /// Exact headword/reading examples captured from one complete primary timeline.
 #[derive(Debug, Clone)]
 pub struct Concordance {
@@ -196,6 +236,35 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-048: finite passes ignore duplicate boundaries and cannot wrap after completion.
+    #[test]
+    fn repetition_consumes_each_observed_pass_once() {
+        let mut cue = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n",
+        )
+        .cues
+        .remove(0);
+        assert!(Repetition::new(&cue, 0, 0).is_none());
+        assert!(Repetition::new(&cue, 0, 255).is_none());
+        for passes in [2, 3, 5] {
+            let mut r = Repetition::new(&cue, -1500, passes).unwrap();
+            assert_eq!((r.start_ms, r.end_ms), (0, 500));
+            assert_eq!(r.stopped(500), None);
+            for n in (0..passes).rev() {
+                r.position(0);
+                assert_eq!(r.stopped(200), None);
+                assert_eq!(r.stopped(500), Some(n > 0));
+                assert_eq!(r.left, n);
+                assert_eq!(r.stopped(500), None);
+            }
+            r.position(0);
+            assert_eq!(r.stopped(500), None);
+        }
+        cue.end_ms = cue.start_ms;
+        assert!(Repetition::new(&cue, 0, 2).is_none());
+    }
+
     // T-SUB-044: millisecond boundaries and extreme/invalid intervals are exact.
     #[test]
     fn duration_bounds_are_inclusive_and_do_not_overflow() {

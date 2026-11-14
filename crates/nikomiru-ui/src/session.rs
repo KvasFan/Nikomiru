@@ -570,6 +570,7 @@ pub struct Session {
     /// The pointer is over a popup.
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
+    practice: Option<(u64, crate::subtitle_study::Repetition)>,
     replaying: bool,
     /// Where mpv stops for the pause at the end of each line, in player
     /// milliseconds (SUB-026).
@@ -872,6 +873,7 @@ impl Session {
             writer,
             hover: Hover::default(),
             popup_hovered: false,
+            practice: None,
             replaying: false,
             auto_pause_end: None,
             moving_subtitles: false,
@@ -1248,6 +1250,9 @@ impl Session {
                     self.events.push(UiEvent::FirstFrame);
                 }
                 self.view.time_pos = t;
+                if let Some((_, practice)) = &mut self.practice {
+                    practice.position((t * 1000.0).round() as i64);
+                }
                 let pos_ms = (t * 1000.0).round() as i64;
                 for index in self.subs.update(pos_ms) {
                     self.events.push(UiEvent::CueShown {
@@ -1278,6 +1283,9 @@ impl Session {
                 // STA-001: what played up to the pause counts, the pause does not
                 self.study_sample(!p);
                 self.view.paused = p;
+                if p {
+                    self.practice_boundary();
+                }
                 self.controls.set_playing(!p, now);
                 // stopped at a line's end: on to the next one
                 self.update_auto_pause();
@@ -1309,7 +1317,13 @@ impl Session {
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c,
             // LIB-009: the episode ended (`keep-open` holds its last frame)
-            PlayerEvent::EofReached(true) => self.episode_ended(now),
+            PlayerEvent::EofReached(true) => {
+                if self.practice.is_some() {
+                    self.practice_boundary();
+                } else if !self.replaying {
+                    self.episode_ended(now);
+                }
+            }
             PlayerEvent::EofReached(false) => self.cancel_next(),
             PlayerEvent::EndFile(EndFile::Error(e)) => {
                 tracing::warn!("playback error: {e}");
@@ -1331,6 +1345,13 @@ impl Session {
     /// Periodic update (from the UI's timer): the screensaver policy, and a
     /// hover popup the pointer left (POP-003).
     pub fn tick(&mut self) {
+        if self
+            .practice
+            .as_ref()
+            .is_some_and(|(v, _)| *v != self.sub_list_version)
+        {
+            self.end_replay();
+        }
         self.update_gap_speed();
         self.update_screensaver();
         let now = self.services.clock.monotonic();
@@ -1389,6 +1410,7 @@ impl Session {
     /// The end set by a replay from the popup no longer applies: the user
     /// took control, a popup closed or another file opened.
     fn end_replay(&mut self) {
+        self.practice = None;
         if std::mem::take(&mut self.replaying) {
             let p = &self.services.player;
             let _ = p.stop_at(None);
@@ -1398,6 +1420,81 @@ impl Session {
                 let _ = p.seek_absolute(self.view.time_pos);
             }
         }
+    }
+
+    /// Explicit finite repetition of one complete primary cue.
+    pub fn practice_start(&mut self, version: u64, cue: usize, passes: u8) {
+        if version != self.sub_list_version || !self.view.loaded || self.subs.incomplete {
+            return;
+        }
+        let Some(cue) = self.subs.timeline().cues().get(cue) else {
+            return;
+        };
+        let Some(practice) =
+            crate::subtitle_study::Repetition::new(cue, self.subs.timeline().delay_ms, passes)
+        else {
+            return;
+        };
+        if self.view.duration > 0.0 && practice.end_ms as f64 > self.view.duration * 1000.0 {
+            return;
+        }
+        self.end_replay();
+        self.cancel_next();
+        self.restore_gap_speed();
+        self.popups.playback_changed_by_user();
+        let p = &self.services.player;
+        let result = p
+            .stop_at(Some(practice.end_ms as f64 / 1000.0))
+            .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
+            .and_then(|()| p.set_pause(false));
+        if result.is_ok() {
+            self.replaying = true;
+            self.practice = Some((version, practice));
+        } else {
+            let _ = p.stop_at(None);
+        }
+    }
+
+    fn practice_boundary(&mut self) {
+        if self
+            .practice
+            .as_ref()
+            .is_some_and(|(v, _)| *v != self.sub_list_version)
+        {
+            self.end_replay();
+            return;
+        }
+        let Some((_, practice)) = &mut self.practice else {
+            return;
+        };
+        if let Some(again) = practice.stopped((self.view.time_pos * 1000.0).round() as i64) {
+            if again {
+                let p = &self.services.player;
+                let result = p
+                    .stop_at(Some(practice.end_ms as f64 / 1000.0))
+                    .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
+                    .and_then(|()| p.set_pause(false));
+                if result.is_err() {
+                    self.practice_cancel();
+                }
+            } else {
+                let _ = self.services.player.set_pause(true);
+            }
+        }
+    }
+
+    /// Remaining finite passes; zero retains the finished pause until explicit user control.
+    pub fn practice_remaining(&self) -> Option<u8> {
+        self.practice
+            .as_ref()
+            .filter(|(v, _)| *v == self.sub_list_version)
+            .map(|(_, r)| r.left)
+    }
+
+    /// Stop repetition and leave playback paused at the current position.
+    pub fn practice_cancel(&mut self) {
+        self.end_replay();
+        let _ = self.services.player.set_pause(true);
     }
 
     /// The pause at the end of each line (SUB-026): mpv stops (`end`, as the
@@ -1513,6 +1610,7 @@ impl Session {
     /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
     /// pausing at its end.
     pub fn popup_replay(&mut self) {
+        self.end_replay();
         let Some(cue) = self.popups.root_cue() else {
             return;
         };
@@ -4753,6 +4851,32 @@ impl Session {
 
     /// Runs an action (from a key or a button).
     pub fn action(&mut self, action: Action) -> UiEffect {
+        if self.practice.is_some()
+            && matches!(
+                action,
+                Action::PlayPause
+                    | Action::SeekBack
+                    | Action::SeekForward
+                    | Action::FramePrev
+                    | Action::FrameNext
+                    | Action::ChapterPrev
+                    | Action::ChapterNext
+                    | Action::SubPrev
+                    | Action::SubNext
+                    | Action::ReplayCue
+                    | Action::ReplayPrevCue
+                    | Action::SubDelayMinus
+                    | Action::SubDelayPlus
+                    | Action::SubAlignPrev
+                    | Action::SubAlignNext
+                    | Action::SpeedUp
+                    | Action::SpeedDown
+                    | Action::SpeedReset
+                    | Action::HoldSpeed
+            )
+        {
+            self.end_replay();
+        }
         let p = &self.services.player;
         let step = control::seek_step(self.services.config.player.seek_seconds);
         let result = match action {
@@ -4976,7 +5100,8 @@ impl Session {
     }
 
     /// Absolute seek from the progress bar.
-    pub fn seek_to(&self, seconds: f64) {
+    pub fn seek_to(&mut self, seconds: f64) {
+        self.end_replay();
         let _ = self.services.player.seek_absolute(seconds);
     }
 
@@ -5674,6 +5799,7 @@ impl Session {
     }
 
     fn after_delay_change(&mut self, delay_ms: i64) {
+        self.end_replay();
         self.remember(nikomiru_library::policy::Remember::Delay(delay_ms));
         self.subs.update((self.view.time_pos * 1000.0) as i64);
         self.update_secondary();
@@ -6432,6 +6558,9 @@ impl Session {
         for c in commands {
             match c {
                 Command::Pause => {
+                    if self.practice.is_some() {
+                        self.end_replay();
+                    }
                     let _ = self.services.player.set_pause(true);
                 }
                 Command::Resume => {
@@ -8106,7 +8235,8 @@ impl Session {
     }
 
     /// A click on the time of a list row: playback goes to the cue.
-    pub fn seek_to_cue(&self, cue: usize) {
+    pub fn seek_to_cue(&mut self, cue: usize) {
+        self.end_replay();
         if cue < self.subs.timeline().cues().len() {
             let ms = self.subs.timeline().start_pos(cue);
             let _ = self.services.player.seek_absolute(ms as f64 / 1000.0);

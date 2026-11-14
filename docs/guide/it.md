@@ -294,3 +294,15 @@ Yomitan importabile, con conteggi esatti e letture distinte. L’importazione re
 esplicita. I filtri riutilizzabili memorizzano/applicano/dimenticano una sola
 combinazione di ricerca e filtri fra viste nella sessione corrente: non includono
 le selezioni e non sopravvivono al riavvio.
+
+## Altri strumenti di studio (sorgenti 2.80.0)
+
+I preset salvati conservano ricerca, corrispondenza esatta, scrittura, lunghezza della parola, stato, schede, occorrenze e ordine del vocabolario. Apri Preset di studio salvati, inserisci un nome e salva. Premi un nome per applicarlo oppure elimina il preset. Puoi salvarne sedici; le selezioni restano nella vista corrente. Attendi l’esito del salvataggio prima di chiudere. Sono ancora disponibili anche i preset della sola sessione.
+
+Gli strumenti dei sottotitoli aggiungono limiti di durata in millisecondi. La modalità di ascolto nasconde il testo finché riveli una riga o quelle visibili. Cambiando sorgente il testo viene nascosto nuovamente. Copia ed esportazione contengono comunque il testo originale. Maiusc-clic sulla casella seleziona o deseleziona un intervallo nell’ordine delle righe visibili; l’inversione conserva le selezioni nascoste.
+
+Vocabolario di queste righe raccoglie le parole delle righe visibili o selezionate dopo l’analisi completa, comprese le forme flesse ricondotte al dizionario. Aggiorna stati e schede senza modificare il punteggio dei sottotitoli. Puoi tornare al vocabolario completo; cambiare sorgente o dizionari annulla la cattura. I gruppi di studio selezionano le prossime parole non ancora spuntate nell’ordine corrente: venti per impostazione iniziale, da una a mille. Deselezionare o invertire le parole visibili conserva le selezioni nascoste.
+
+Con una traccia secondaria completa puoi esportare una scheda HTML bilingue autonoma tramite la finestra di salvataggio. Aprila localmente e rivela ogni traduzione quando desideri. L’esportazione rispetta i filtri e le righe scelte.
+
+La ripetizione riproduce la battuta corrente due, tre o cinque volte e poi resta in pausa, sospendendo pausa automatica e accelerazione degli intervalli. Ferma ripetizione, i controlli manuali di riproduzione, posizione, tempi o velocità e il cambio della sorgente principale annullano l’esercizio. La sezione mostra le ripetizioni rimanenti.

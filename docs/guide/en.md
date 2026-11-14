@@ -293,3 +293,15 @@ Yomitan ZIP with exact occurrence counts and separate readings. Import it
 explicitly if desired; export never installs it. Reusable study filters can
 remember/apply/forget one bounded filter preset across views for the current
 application session. Presets retain no selections and do not survive restart.
+
+## More subtitle and vocabulary practice (2.80.0 source)
+
+Named study presets persist the shared vocabulary search, exact mode, script, Unicode headword length, status, card, occurrence and ordering filters. Open Named study presets, enter a name and save; click a saved name to apply or delete it explicitly. There are at most sixteen presets. Selections stay in each view. Session presets remain available separately. Wait for the save result before closing the app.
+
+Subtitle Study tools add inclusive duration bounds in milliseconds. Listening mode hides caption text until you reveal a line or the shown scope; source changes hide revealed text again. Copy/export actions still contain the original text. Shift-click a row checkbox to select/deselect a range in the currently shown order; invert shown selection preserves hidden ticks.
+
+Vocabulary from these lines captures shown or selected cue vocabulary, including inflected dictionary headwords, once segmentation is complete. It updates word statuses and card marks without changing the subtitle score. Return to full subtitle vocabulary clears the capture; changing the source or dictionaries invalidates it. Vocabulary study batches select the next unticked words in the current order (twenty by default, from one to one thousand); clear/invert shown keeps hidden selections.
+
+With a complete secondary track, HTML study sheets export a standalone bilingual document through the native save dialog. Open it locally and expand each translation when ready. Current filters and selected original cue indices determine the snapshot.
+
+Sentence repetition plays the active current cue two, three or five times, then stays paused. It suspends automatic line pausing and gap speed while active. Use Stop repetition or manual playback, seek, timing or speed controls to cancel; changing the primary source also cancels it. Remaining passes are shown in the section.

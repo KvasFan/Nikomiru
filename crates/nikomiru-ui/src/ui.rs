@@ -397,6 +397,12 @@ pub(crate) enum Command {
     },
     ListTime(usize),
     /// Exact current-subtitle word examples.
+    Practice {
+        version: u64,
+        cue: usize,
+        passes: u8,
+    },
+    PracticeCancel,
     VocabularyScope {
         version: u64,
         indices: Vec<usize>,
@@ -1409,6 +1415,12 @@ impl Ui {
                 self.view.sub_list_open = true;
             }
             Command::SubtitleExamplesClear => s.subtitle_examples_clear(),
+            Command::Practice {
+                version,
+                cue,
+                passes,
+            } => s.practice_start(version, cue, passes),
+            Command::PracticeCancel => s.practice_cancel(),
             Command::VocabularyScope { version, indices } => {
                 s.vocabulary_scope_capture(version, &indices)
             }

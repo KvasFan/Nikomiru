@@ -1228,3 +1228,11 @@ vocabulary-batch-next = Seleziona prossimo gruppo
 vocabulary-batch-clear = Deseleziona parole visibili
 vocabulary-batch-invert = Inverti selezione visibile
 vocabulary-batch-size = Parole per gruppo
+
+sub-practice-current = Ripeti battuta corrente
+sub-practice-stop = Ferma ripetizione
+sub-practice-remaining = Ripetizioni rimanenti: { $count }
+
+sub-practice-tools = Ripetizione delle battute
+sub-vocabulary-tools = Vocabolario di queste righe
+sub-html-tools = Schede di studio HTML
