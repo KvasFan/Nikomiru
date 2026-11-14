@@ -1138,3 +1138,7 @@ sub-vtt-filter = WebVTT subtitles
 
 sub-bilingual-shown = Export shown bilingual transcript…
 sub-bilingual-selected = Export selected bilingual transcript…
+
+sub-window-from = From current time
+sub-window-to = Until current time
+sub-window-reset = Reset time window

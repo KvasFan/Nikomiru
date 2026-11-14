@@ -1138,3 +1138,7 @@ sub-vtt-filter = Sottotitoli WebVTT
 
 sub-bilingual-shown = Esporta trascrizione bilingue visibile…
 sub-bilingual-selected = Esporta trascrizione bilingue selezionata…
+
+sub-window-from = Dal tempo corrente
+sub-window-to = Fino al tempo corrente
+sub-window-reset = Azzera intervallo temporale

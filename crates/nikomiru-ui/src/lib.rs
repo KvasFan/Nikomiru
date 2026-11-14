@@ -57,6 +57,7 @@ pub use view::{Dialog, FileDialog};
 
 /// Bounded plain SRT export of complete current subtitles.
 pub mod subtitle_export;
+pub mod subtitle_study;
 
 /// Local snapshots of completed comprehension summaries.
 pub mod study_report;

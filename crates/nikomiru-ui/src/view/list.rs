@@ -24,6 +24,7 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
+use crate::subtitle_study::TimeWindow;
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -90,7 +91,7 @@ impl LineFilter {
 struct Rows {
     /// The list version, the query, the filter and, with a filter, the
     /// words' revision the rows were picked for.
-    picked: Option<(u64, String, LineFilter, u64)>,
+    picked: Option<(u64, String, LineFilter, u64, TimeWindow)>,
     /// Changes whenever other rows are picked.
     generation: u64,
     /// The width the heights were measured at.
@@ -118,6 +119,9 @@ pub(crate) struct StudyLabels {
     copy_selected: String,
     copied: String,
     copy_error: String,
+    from_here: String,
+    to_here: String,
+    reset_window: String,
 }
 
 impl StudyLabels {
@@ -136,6 +140,9 @@ impl StudyLabels {
             copy_selected: tr("sub-copy-selected", &[]),
             copied: tr("sub-transcript-copied", &[]),
             copy_error: tr("sub-export-unavailable", &[]),
+            from_here: tr("sub-window-from", &[]),
+            to_here: tr("sub-window-to", &[]),
+            reset_window: tr("sub-window-reset", &[]),
         }
     }
 }
@@ -148,6 +155,7 @@ pub(crate) struct State {
     selected: BTreeSet<usize>,
     selection_version: Option<u64>,
     copied: Option<bool>,
+    window: TimeWindow,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
     /// The search field had the keyboard in the last frame.
@@ -236,6 +244,7 @@ impl Rows {
         scene: &Scene<'_>,
         query: &str,
         filter: LineFilter,
+        window: TimeWindow,
         width: f32,
     ) {
         let timeline = scene.timeline;
@@ -244,28 +253,12 @@ impl Rows {
         } else {
             scene.marks_version
         };
-        let fresh = self.picked.as_ref().is_none_or(|(v, q, f, r)| {
-            *v != scene.version || q != query || *f != filter || *r != revision
+        let fresh = self.picked.as_ref().is_none_or(|(v, q, f, r, w)| {
+            *v != scene.version || q != query || *f != filter || *r != revision || *w != window
         });
         if fresh {
-            self.cues = if query.is_empty() {
-                (0..timeline.cues().len()).collect()
-            } else {
-                let query = nikomiru_text::search::Query::new(query);
-                timeline
-                    .cues()
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, cue)| query.matches(&[&cue.plain_text]))
-                    .map(|(index, _)| index)
-                    .collect()
-            };
-            if filter != LineFilter::All {
-                let cues = timeline.cues();
-                self.cues
-                    .retain(|&i| filter.keeps((scene.marks)(&cues[i].plain_text).as_ref()));
-            }
-            self.picked = Some((scene.version, query.to_string(), filter, revision));
+            self.cues = pick_indices(scene, query, filter, window);
+            self.picked = Some((scene.version, query.to_string(), filter, revision, window));
             self.generation += 1;
         } else if self.width == width && self.size == scene.text_size {
             return;
@@ -438,6 +431,7 @@ pub(crate) fn draw(
     if state.selection_version != Some(scene.version) {
         state.selected.clear();
         state.copied = None;
+        state.window = TimeWindow::default();
         state.selection_version = Some(scene.version);
     }
     let screen = ctx.content_rect();
@@ -559,26 +553,58 @@ fn search(ui: &mut egui::Ui, state: &mut State, focus: &mut bool, hint: &str) ->
     open
 }
 
-fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
-    let query = nikomiru_text::search::Query::new(&state.query);
+fn pick_indices(
+    scene: &Scene<'_>,
+    query: &str,
+    filter: LineFilter,
+    window: TimeWindow,
+) -> Vec<usize> {
+    let query = nikomiru_text::search::Query::new(query);
     scene
         .timeline
         .cues()
         .iter()
         .enumerate()
         .filter(|(_, cue)| {
-            query.matches(&[&cue.plain_text])
-                && (scene.tabs.is_none()
-                    || state.filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
+            window.keeps(cue, scene.timeline.delay_ms)
+                && query.matches(&[&cue.plain_text])
+                && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
         .map(|(i, _)| i)
         .collect()
+}
+
+fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
+    pick_indices(scene, &state.query, state.filter, state.window)
 }
 
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(&scene.study.from_here).clicked() {
+                    state.window.from = Some(scene.pos_ms.max(0));
+                }
+                if let Some(from) = state.window.from {
+                    ui.label(clock(from));
+                }
+                if ui.button(&scene.study.to_here).clicked() {
+                    state.window.to = Some(scene.pos_ms.max(0));
+                }
+                if let Some(to) = state.window.to {
+                    ui.label(clock(to));
+                }
+                if ui
+                    .add_enabled(
+                        state.window != TimeWindow::default(),
+                        egui::Button::new(&scene.study.reset_window),
+                    )
+                    .clicked()
+                {
+                    state.window = TimeWindow::default();
+                }
+            });
             ui.horizontal_wrapped(|ui| {
                 if ui.button(&scene.study.select_shown).clicked() {
                     state.selected.extend(shown_indices(scene, state));
@@ -718,7 +744,9 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
             } else {
                 LineFilter::All
             };
-            state.rows.update(&ctx, scene, &state.query, filter, width);
+            state
+                .rows
+                .update(&ctx, scene, &state.query, filter, state.window, width);
             let rows = &state.rows;
             ui.set_height(rows.tops.last().copied().unwrap_or(0.0));
             let origin = ui.max_rect().min;
@@ -957,6 +985,50 @@ mod tests {
         h.get_by_label("sub-bilingual-shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Bilingual, .. } if indices == &[0])));
+    }
+
+    // T-SUB-039: view and shown exports share a time window; hidden ticks survive until source changes.
+    #[test]
+    fn study_time_controls_filter_rows_without_seeking() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(
+            timeline(&[(1000, "猫"), (3000, "犬"), (6000, "鳥")]),
+            2500,
+            false,
+        );
+        h.run();
+        h.get_by_label("sub-select-line 1").click();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-window-from").click();
+        h.run();
+        h.state_mut().pos_ms = 5000;
+        h.get_by_label("sub-window-to").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        h.get_by_label("sub-vtt-shown").click();
+        h.run();
+        assert!(
+            h.state().out.iter().any(
+                |c| matches!(c, Command::SubtitleRowsExport { indices, .. } if indices == &[1])
+            )
+        );
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::ListTime(_)))
+        );
+        h.get_by_label("sub-window-reset").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+        h.state_mut().state.window.from = Some(1000);
+        h.state_mut().state.selection_version = Some(0);
+        h.run();
+        assert!(h.state().state.selected.is_empty());
+        assert_eq!(h.state().state.window, TimeWindow::default());
     }
 
     fn timeline(cues: &[(i64, &str)]) -> Timeline {

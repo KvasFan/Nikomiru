@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Restrict subtitle study, shown copies and exports to a playback-time window without seeking or losing hidden selections (SUB-039, M50).
+
 - Export overlap-aligned bilingual study transcripts with independent primary/secondary delays (SUB-038, M49).
 
 - Export shown or selected complete subtitle lines as escaped, portable WebVTT (SUB-037, M48).

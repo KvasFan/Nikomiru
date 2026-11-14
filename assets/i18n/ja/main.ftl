@@ -1121,3 +1121,7 @@ sub-vtt-filter = WebVTT 字幕
 
 sub-bilingual-shown = 表示中の対訳を書き出す…
 sub-bilingual-selected = 選択した対訳を書き出す…
+
+sub-window-from = 現在位置から
+sub-window-to = 現在位置まで
+sub-window-reset = 時間範囲をリセット
