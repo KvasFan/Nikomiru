@@ -916,3 +916,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-PHR-001 | Phrase records | Validation, duplicate refusal, isolated status/update/delete, bounds and restart persistence in real redb. | L1, L6 |
 | T-PHR-002 | Phrase notebook | Explicit draft submission, typing focus, search/edit/delete/source reopening and frozen formula-neutralised TSV; readonly/errors. | L1, L3, L6 |
 | T-PHR-003 | Isolation | Reader/caption capture snapshots, global word statuses unchanged, source positions, restart and backup retention; no unintended seek. | L1, L6 |
+
+## M105 cloze
+
+| Test | Requirements | Evidence | Level |
+|---|---|---|---|
+| T-CLO-001 | CLO-001, CLO-002 | Literal masks, repeated/composed Unicode, distinct scripts/readings, duplicates/bounds and safe distractors; accessible concealed UI and explicit answer. | L1, L3 |
+| T-CLO-002 | CLO-003 | Finite progress/summary, explicit submit/advance/skip/cancel and undo; typing focus and unchanged phrases/words/schedules in the actual app. | L1, L6 |
+| T-CLO-003 | CLO-004 | Real redb enrol/rating/stale comparison/undo, existing FSRS outputs, due queues and persistence/backup; actual-app scheduled restart. | L1, L6 |
