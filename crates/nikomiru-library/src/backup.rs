@@ -453,7 +453,21 @@ mod tests {
         f.library
             .record_encounters("video/ep", &[("猫".into(), "ねこ".into())], 10)
             .unwrap();
+        // T-PHR-003: additive phrase tables are part of the ordinary database snapshot.
+        let phrase = crate::phrases::Phrase {
+            id: "00000000-0000-4000-8000-000000000001".into(),
+            language: "ja".into(),
+            text: "猫が好き".into(),
+            definition: "like cats".into(),
+            context: "猫が好きです。".into(),
+            status: crate::words::WordStatus::Known,
+            source: None,
+            created_ms: 1,
+            changed_ms: 1,
+        };
+        assert!(f.library.put_phrase(&phrase).unwrap());
         let out = backup(&f, false);
+        assert!(f.library.remove_phrase(&phrase.id).unwrap());
         f.library
             .record_encounters("video/ep", &[("犬".into(), "いぬ".into())], 20)
             .unwrap();
@@ -494,6 +508,7 @@ mod tests {
             library.video("video/ep").unwrap().unwrap().last_position_ms,
             1234
         );
+        assert_eq!(library.phrases().unwrap(), vec![phrase]);
         let encounters = library.word_encounters().unwrap();
         assert_eq!(encounters["video/ep"].len(), 1);
         assert_eq!(encounters["video/ep"]["猫\nねこ"], 10);

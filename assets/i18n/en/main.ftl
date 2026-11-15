@@ -1392,3 +1392,24 @@ error-book-mokuro = This Mokuro volume is unsupported or has invalid local image
 mokuro-ready = Text is already available. Select a text region on the page.
 mokuro-empty-page = This page has no imported text regions.
 mokuro-region = Read region { $number } on page { $page }
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = Phrase notebook
+phrases-new = New phrase
+phrases-capture = Capture current source
+phrases-text = Phrase
+phrases-definition = Meaning / definition
+phrases-context = Original sentence
+phrases-language = Study language
+phrases-save = Save phrase
+phrases-cancel = Cancel
+phrases-search = Search phrases
+phrases-export = Export shown phrases
+phrases-edit = Edit phrase
+phrases-delete = Delete phrase
+phrases-source = Open source
+phrases-readonly = The library is read-only or unavailable.
+phrases-error = Cannot save: invalid phrase, duplicate, or notebook limit reached.
+phrases-invalid = Enter a phrase contained literally in its context (or leave context empty). Maximum: 4 KiB phrase/definition, 16 KiB context.
+phrases-source-missing = The original source is unavailable.
+phrases-status = Phrase status

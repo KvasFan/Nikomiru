@@ -363,3 +363,9 @@ Lookup, word status marks, vocabulary/comprehension and card creation use the sa
 ## Mokuro manga (M103 development)
 
 Books → Add accepts maintained `.mokuro` 0.2.x JSON with local images in a same-stem folder beside it (or alongside the manifest if there is no volume folder). Select a text region on the page: its original text becomes clickable and its exact JPEG crop is available for cards, without OCR or model installation. Original page order and progress are retained. Missing images, unsafe paths and invalid coordinates reject the import before replacing a book. Modest OCR edge overruns are clipped. Executable legacy HTML viewers and remote image URLs are not used.
+
+### Phrase notebook
+
+Open **Phrase notebook** from Library or Books. **Capture current source** creates an editable draft from the reader selection (or current paragraph) or current primary caption. Enter an exact phrase contained in the original sentence, add its meaning and choose its own learning status, then click **Save phrase**. **New phrase** also works without a source. Drafts are not saved automatically; duplicates and failed writes keep the draft available for correction.
+
+Search matches phrase, meaning, sentence and source title. Edit or delete a record explicitly; **Open source** returns to its original reader paragraph or paused video scene if still available. **Export shown phrases** freezes the displayed records as UTF-8 TSV and neutralises spreadsheet formulas. Phrase statuses do not change the word colours, comprehension counts or review schedule. Local phrases are retained in ordinary backups; this notebook is not merged through WebDAV yet.

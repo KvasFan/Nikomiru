@@ -572,6 +572,7 @@ pub fn state() -> Result<Value, String> {
             "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(uid, b)| {
                 let whole_score = match s.books_page.scores.get(uid) {
@@ -1707,4 +1708,70 @@ pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), Str
             },
         }))
     })
+}
+
+/// Phrase notebook through production commands; editing changes a draft, never a saved record.
+pub fn phrases(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "open" => ui.run(Command::PhrasesOpen),
+            "capture" => ui.run(Command::PhraseNew(true)),
+            "new" => ui.run(Command::PhraseNew(false)),
+            "edit" => {
+                let mut p = if let Some(id) = args["id"].as_str() {
+                    ui.session
+                        .phrases
+                        .items
+                        .iter()
+                        .find(|p| p.id == id)
+                        .cloned()
+                } else {
+                    ui.session.phrases.editor.clone()
+                }
+                .ok_or("phrase draft missing")?;
+                if let Some(text) = args["text"].as_str() {
+                    p.text = text.into();
+                }
+                if let Some(text) = args["definition"].as_str() {
+                    p.definition = text.into();
+                }
+                if let Some(text) = args["context"].as_str() {
+                    p.context = text.into();
+                }
+                if let Some(text) = args["status"].as_str() {
+                    p.status = crate::words::WordStatus::from_name(text).ok_or("invalid status")?;
+                }
+                ui.run(Command::PhraseEdit(Some(p)));
+            }
+            "save" => ui.run(Command::PhraseSave),
+            "cancel" => ui.run(Command::PhraseEdit(None)),
+            "delete" => ui.run(Command::PhraseDelete(
+                args["id"].as_str().ok_or("missing id")?.into(),
+            )),
+            "source" => ui.run(Command::PhraseSource(
+                args["id"].as_str().ok_or("missing id")?.into(),
+            )),
+            "export" => {
+                let query = args["query"].as_str().unwrap_or_default();
+                let ids = ui
+                    .session
+                    .phrases
+                    .items
+                    .iter()
+                    .filter(|p| crate::phrases::matches(p, query))
+                    .map(|p| p.id.clone())
+                    .collect();
+                ui.run(Command::PhraseExport(ids));
+                if let Some(path) = args["path"].as_str() {
+                    ui.view.dialog = None;
+                    ui.handle(Inbound::Chosen {
+                        dialog: crate::view::Dialog::PhrasesExport,
+                        path: PathBuf::from(path),
+                    });
+                }
+            }
+            _ => return Err("unknown phrase action".into()),
+        }
+        Ok(())
+    })?
 }

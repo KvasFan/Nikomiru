@@ -1392,3 +1392,24 @@ error-book-mokuro = Questo volume Mokuro non è supportato oppure contiene immag
 mokuro-ready = Il testo è già disponibile. Seleziona un riquadro nella pagina.
 mokuro-empty-page = Questa pagina non contiene riquadri di testo importati.
 mokuro-region = Leggi riquadro { $number } della pagina { $page }
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = Quaderno delle frasi
+phrases-new = Nuova frase
+phrases-capture = Cattura fonte attuale
+phrases-text = Frase
+phrases-definition = Significato / definizione
+phrases-context = Frase originale
+phrases-language = Lingua di studio
+phrases-save = Salva frase
+phrases-cancel = Annulla
+phrases-search = Cerca frasi
+phrases-export = Esporta frasi mostrate
+phrases-edit = Modifica frase
+phrases-delete = Elimina frase
+phrases-source = Apri fonte
+phrases-readonly = La libreria è in sola lettura o non disponibile.
+phrases-error = Salvataggio impossibile: frase non valida, duplicato o limite del quaderno raggiunto.
+phrases-invalid = Inserisci una frase presente nel contesto (oppure lascia vuoto il contesto). Massimo: 4 KiB per frase/definizione, 16 KiB per contesto.
+phrases-source-missing = La fonte originale non è disponibile.
+phrases-status = Stato della frase

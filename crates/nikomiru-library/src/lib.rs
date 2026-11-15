@@ -17,6 +17,8 @@ pub mod encounters;
 pub mod grouping;
 pub mod home;
 pub mod import;
+/// Independent local phrase vocabulary.
+pub mod phrases;
 pub mod policy;
 pub mod progress;
 pub mod review;

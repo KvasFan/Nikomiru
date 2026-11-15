@@ -1375,3 +1375,24 @@ error-book-mokuro = 未対応の Mokuro ファイル、無効なローカル画�
 mokuro-ready = テキストは処理済みです。ページ上のテキスト領域を選択してください。
 mokuro-empty-page = このページにはテキスト領域がありません。
 mokuro-region = { $page } ページの領域 { $number } を読む
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = フレーズノート
+phrases-new = 新しいフレーズ
+phrases-capture = 現在の文章を取り込む
+phrases-text = フレーズ
+phrases-definition = 意味・定義
+phrases-context = 元の文
+phrases-language = 学習言語
+phrases-save = フレーズを保存
+phrases-cancel = キャンセル
+phrases-search = フレーズを検索
+phrases-export = 表示中のフレーズを書き出す
+phrases-edit = フレーズを編集
+phrases-delete = フレーズを削除
+phrases-source = 出典を開く
+phrases-readonly = ライブラリは読み取り専用、または利用できません。
+phrases-error = 保存できません。入力の不備、重複、またはノートの上限を確認してください。
+phrases-invalid = 文中と同じフレーズを入力してください（文は空欄でも可）。フレーズ・意味は各4 KiB、文は16 KiBまでです。
+phrases-source-missing = 元の出典を利用できません。
+phrases-status = フレーズの状態

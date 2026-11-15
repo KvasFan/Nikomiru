@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102 implemented in development, candidate scopes M103–M119 |
+| Status | Living roadmap; M102–M104 implemented in development, M105–M119 accepted for execution |
 | Last updated | 2026-11-15 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-The roadmap splits the work into **milestones** (implemented continuations through M102, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (implemented continuations through M104, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
 
 Latest published source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
 
@@ -1526,13 +1526,13 @@ Requested by the maintainer after publishing source v2.110.0. This comparison us
 
 ### Candidate milestones after M101
 
-Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M103 are **done in development**; candidates M104–M119 are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M104 are **done in development**; M105–M119 are accepted for implementation under the whole-roadmap request. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
 
 | Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
 |---|---|---|---|---|
 | M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | done |
 | M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | done |
-| M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | not started |
+| M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | done |
 | M105 | P1 / L | **Typed and multiple-choice cloze.** Explicitly turn captured sentences into masked-word exercises with Unicode-aware answer rules and distractors. Offer finite practice and a separate opt-in scheduled mode using the existing review engine. Check answer concealment, ambiguous readings, undo and single ownership of schedules. No Japanese bank is presumed available. | [Lector practice][src-lector-practice], [language limitations][src-lector-languages] | not started |
 | M106 | P1 / L | **Sentence bank and cross-media examples.** Index/import user-owned sentence/context references across books and subtitle sources, retaining original offsets and source links. Add optional external example providers only after defining provenance, licenses and request behavior. Check exact word identities, stale sources, offline results and bounded queries. Current concordance only covers the current primary subtitle. | [jidoujisho examples][src-jidoujisho], [Lector sentence packs][src-lector-languages] | not started |
 | M107 | P1 / L | **Previewed batch card generation.** Select words/cues, choose contexts and inspect cards before starting bounded sequential media extraction/export. Show per-card outcomes, duplicate checks, cancellation and safe retries after an unknown Anki outcome. Preserve pending-card export and advanced single-card composition; neither already generates a new study batch. | [Migaku][src-migaku] | not started |
@@ -1618,3 +1618,12 @@ The maintainer requested development of the whole planned roadmap after M102. Ex
 Implement maintained `.mokuro` JSON and local page images, explicit scaled region targets and off-thread exact-text/crop selection. Preserve existing manga lookup, cards and progress; reject invalid volumes atomically without executing legacy viewers. See SPECIFICATION/TEST for bounds and supported formats.
 
 **Exit criteria**: parser/path/coordinate checks, accessible region controls and actual import/lookup/mining/restart cases; fast CI and integration regression.
+
+
+## M104 — Phrase vocabulary
+
+**Requirements**: PHR-001…PHR-003.
+
+Implement bounded independent phrase records and explicit reader/caption capture, editing, source navigation and shown TSV export through a translated notebook. Retain local records in database backups; no word-status, review-schedule or WebDAV merge changes are implied.
+
+**Exit criteria**: real redb validation/restart/isolation checks, accessible explicit draft controls, actual-app source capture/edit/export/restart tests and fast CI.

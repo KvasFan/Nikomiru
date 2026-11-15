@@ -555,6 +555,11 @@ pub struct Session {
     own_audio: bool,
     /// The library jobs to start.
     library_jobs: Vec<crate::catalog::LibraryJob>,
+    /// Independent local phrase notebook.
+    pub phrases: crate::phrases::State,
+    phrase_job: Option<crate::phrases::Job>,
+    phrase_place: Option<nikomiru_library::phrases::Source>,
+    phrase_export: Option<String>,
     /// The word audio jobs to start.
     word_audio_jobs: Vec<crate::word_audio::WordAudioJob>,
     /// Videos opened so far: an online answer for another one is dropped.
@@ -888,6 +893,10 @@ impl Session {
             prefs: Default::default(),
             own_audio: false,
             library_jobs: Vec::new(),
+            phrases: Default::default(),
+            phrase_job: None,
+            phrase_place: None,
+            phrase_export: None,
             word_audio_jobs: Vec::new(),
             online_generation: 0,
             auto_online: None,
@@ -6640,6 +6649,7 @@ impl Session {
             Ok(book) => book,
             Err(e) => {
                 self.books_page.status = Some((e, false));
+                self.phrase_place = None;
                 return;
             }
         };
@@ -6667,7 +6677,16 @@ impl Session {
         {
             tracing::warn!("library: {e}");
         }
+        if let Some(place) = self.phrase_place.take().filter(|p| p.uid == uid) {
+            record.chapter = place.chapter;
+            record.paragraph = place.paragraph;
+        }
         let chapter = (record.chapter as usize).min(book.chapters.len().saturating_sub(1));
+        record.paragraph = record.paragraph.min(
+            book.chapters
+                .get(chapter)
+                .map_or(0, |c| c.paragraphs.len().saturating_sub(1)) as u32,
+        );
         self.books_page.study.clear();
         self.books_page.open = Some(crate::books::OpenBook {
             uid,
@@ -9142,3 +9161,6 @@ mod tests {
         );
     }
 }
+
+#[path = "session_phrases.rs"]
+mod phrase_session;

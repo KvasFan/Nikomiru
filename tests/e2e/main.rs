@@ -16,6 +16,7 @@ mod episode_scores;
 mod gaps;
 mod mokuro;
 mod perf;
+mod phrases;
 mod progressive_ocr;
 mod reader_words;
 mod recall;

@@ -27,6 +27,7 @@ mod ocr_progress;
 mod online_page;
 mod overlay;
 pub(crate) mod palette;
+mod phrases;
 mod player_page;
 mod popups;
 mod prefs_page;
@@ -52,6 +53,8 @@ use crate::ui::Command;
 /// The file dialogs of the interface, opened by the app through the XDG portal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialog {
+    /// Frozen shown phrase notebook TSV.
+    PhrasesExport,
     /// A video to play (LIB-001).
     Video,
     /// A subtitle file for the open video (SUB-006).
@@ -249,6 +252,10 @@ impl FileDialog {
                 tr("study-presets-export"),
                 vec![(tr("study-presets-filter"), vec!["*.json"]), all],
             ),
+            Dialog::PhrasesExport => (
+                tr("phrases-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::ConcordanceExport => (
                 tr("vocabulary-examples-export-shown"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
@@ -309,6 +316,7 @@ impl FileDialog {
                 Dialog::RecallResults => Some("nikomiru-recall-results.tsv".into()),
                 Dialog::RecallSave => Some("nikomiru-recall.json".into()),
                 Dialog::StudyPresetsExport => Some("nikomiru-study-presets.json".into()),
+                Dialog::PhrasesExport => Some("nikomiru-phrases.tsv".into()),
                 Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
                 Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
@@ -338,6 +346,8 @@ impl FileDialog {
 /// What the view keeps between frames.
 #[derive(Debug, Default)]
 pub(crate) struct View {
+    pub phrases_open: bool,
+    pub phrase_query: String,
     pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
@@ -436,7 +446,9 @@ impl View {
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)
-                if self.recall_history_open {
+                if self.phrases_open {
+                    self.phrases_open = false;
+                } else if self.recall_history_open {
                     self.recall_history_open = false;
                 } else if self.online_page_open {
                     self.close_online_page();
@@ -652,7 +664,8 @@ impl View {
     }
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
-        self.recall_history_open
+        self.phrases_open
+            || self.recall_history_open
             || self.dict_page_open
             || self.anki_page_open
             || self.online_page_open
@@ -744,7 +757,8 @@ impl View {
         }
         // the settings pages cover the popups: they wait under them
         let study_popup = s.study_popup_open();
-        let covered = self.dict_page_open
+        let covered = (self.phrases_open && !study_popup)
+            || self.dict_page_open
             || self.anki_page_open
             || self.online_page_open
             || self.player_page_open
@@ -811,6 +825,9 @@ impl View {
             labels.hints_ready = s.recall_hints_ready();
             labels.can_record = s.recall_can_record();
             recall::show(&ctx, round, &labels, &mut out);
+        }
+        if self.phrases_open {
+            phrases::show(&ctx, s, self, &mut out);
         }
         if self.recall_history_open {
             self.recall_history_open = recall::history(

@@ -26,6 +26,7 @@ pub mod i18n;
 pub mod mining;
 pub mod ocr;
 pub mod online;
+pub mod phrases;
 pub mod player_settings;
 pub mod popup;
 pub mod popup_view;

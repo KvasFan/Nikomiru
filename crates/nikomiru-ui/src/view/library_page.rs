@@ -339,6 +339,9 @@ pub(crate) fn draw(
             if ui.button(tr(s, "recall-history")).clicked() {
                 out.push(Command::RecallHistoryOpen);
             }
+            if ui.button(tr(s, "phrases-title")).clicked() {
+                out.push(Command::PhrasesOpen);
+            }
             if ui.button(tr(s, "recall-load")).clicked() {
                 out.push(Command::RecallLoad);
             }

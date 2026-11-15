@@ -907,3 +907,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-MNG-007 | Mokuro import | Maintained fixture shape, page/region order, source identity, normal page progress, empty art pages and fail-atomic missing images; bounded nested sequences. | L1, L6 |
 | T-MNG-008 | Imported region selection | Actual scaled targets, exact stored text and JPEG crop without OCR, paired-page identity, lookup/mining and stale-result isolation. | L1, L3, L6 |
 | T-MNG-009 | Untrusted local volume | Traversal/absolute/network/duplicate/symlink image paths; versions, metadata/dimension mismatch, decoded size and clipped/invalid boxes; HTML stays data. | L1, L6 |
+
+
+## M104 phrases
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-PHR-001 | Phrase records | Validation, duplicate refusal, isolated status/update/delete, bounds and restart persistence in real redb. | L1, L6 |
+| T-PHR-002 | Phrase notebook | Explicit draft submission, typing focus, search/edit/delete/source reopening and frozen formula-neutralised TSV; readonly/errors. | L1, L3, L6 |
+| T-PHR-003 | Isolation | Reader/caption capture snapshots, global word statuses unchanged, source positions, restart and backup retention; no unintended seek. | L1, L6 |

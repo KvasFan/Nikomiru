@@ -21,6 +21,8 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// An ordered local phrase operation completed.
+    Phrases(crate::phrases::Answer),
     /// Cumulative graphic OCR text, stamped against source changes.
     SubtitleProgress {
         /// Load generation.
@@ -330,6 +332,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::OcrRead(_) => "OcrRead",
             Inbound::BookRead { .. } => "BookRead",
             Inbound::BookPasted(_) => "BookPasted",
+            Inbound::Phrases(_) => "Phrases",
             Inbound::BookCount { .. } => "BookCount",
             Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
@@ -364,6 +367,13 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    PhrasesOpen,
+    PhraseNew(bool),
+    PhraseSave,
+    PhraseEdit(Option<nikomiru_library::phrases::Phrase>),
+    PhraseDelete(String),
+    PhraseSource(String),
+    PhraseExport(Vec<String>),
     WebOpenDialog,
     WebOpen(String),
     Condense(crate::condense::Target, nikomiru_media::condense::Format),
@@ -1118,6 +1128,7 @@ impl Ui {
                     Dialog::StudyPresetsImport => self.session.preset_import_from(&path),
                     Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
+                    Dialog::PhrasesExport => self.session.phrases_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
@@ -1183,6 +1194,10 @@ impl Ui {
             }
             Inbound::BookCount { request, result } => {
                 self.session.book_count_done(&request, result);
+                true
+            }
+            Inbound::Phrases(answer) => {
+                self.session.phrases_done(answer);
                 true
             }
             Inbound::BookPasted(result) => {
@@ -1441,7 +1456,8 @@ impl Ui {
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
-        self.session.popups_covered = self.view.recall_history_open
+        self.session.popups_covered = (self.view.phrases_open && !self.session.study_popup_open())
+            || self.view.recall_history_open
             || self.view.web_url_open
             || self.view.dict_page_open
             || self.view.anki_page_open
@@ -1458,6 +1474,33 @@ impl Ui {
         self.cover_popups();
         let s = &mut self.session;
         match command {
+            Command::PhrasesOpen => {
+                self.view.phrases_open = true;
+                s.phrases_request(crate::phrases::Job::List);
+            }
+            Command::PhraseNew(capture) => s.phrase_new(capture),
+            Command::PhraseEdit(p) => s.phrases.editor = p,
+            Command::PhraseSave => {
+                if let Some(mut p) = s.phrases.editor.clone() {
+                    p.changed_ms = s.phrase_now().max(p.created_ms);
+                    s.phrases_request(crate::phrases::Job::Save(p));
+                }
+            }
+            Command::PhraseDelete(id) => s.phrases_request(crate::phrases::Job::Delete(id)),
+            Command::PhraseSource(id) => {
+                if let Some(book) = s.phrase_source(&id) {
+                    self.view.phrases_open = false;
+                    if book {
+                        self.view.close_library_page();
+                        self.view.books_page_open = true;
+                    }
+                }
+            }
+            Command::PhraseExport(ids) => {
+                if s.phrases_export_prepare(&ids) {
+                    self.view.dialog = Some(Dialog::PhrasesExport);
+                }
+            }
             Command::Action(action) => {
                 let effect = s.action(action);
                 self.effect(effect);
@@ -1843,6 +1886,13 @@ impl Ui {
     /// Starts the jobs the session queued, with replies that come back as
     /// [`Inbound`] messages, and hands on its toasts and milestones.
     fn pump(&mut self) {
+        if let Some(job) = self.session.take_phrase_job() {
+            let waker = self.waker.clone();
+            self.session.start_phrase_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Phrases(answer))),
+            );
+        }
         for (generation, request) in self.session.take_subtitle_loads() {
             let waker = self.waker.clone();
             let source = request.source.clone();

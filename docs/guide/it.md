@@ -364,3 +364,9 @@ Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte 
 ## Manga Mokuro (sviluppo M103)
 
 Libri → Aggiungi accetta file JSON `.mokuro` 0.2.x con immagini locali in una cartella omonima accanto al file, oppure accanto al manifest se la cartella non esiste. Seleziona un riquadro nella pagina: il testo originale diventa cliccabile e il ritaglio JPEG esatto è disponibile per le carte, senza OCR o installazione del modello. Ordine e posizione delle pagine sono conservati. Immagini mancanti, percorsi non sicuri e coordinate non valide rifiutano l’importazione prima di sostituire un libro. Piccoli sconfinamenti dei riquadri OCR vengono ritagliati. I lettori HTML eseguibili precedenti e gli URL di immagini remote non vengono usati.
+
+### Quaderno delle frasi
+
+Apri **Quaderno delle frasi** dalla Libreria o dai Libri. **Cattura fonte attuale** prepara una bozza dalla selezione del lettore (o dal paragrafo attuale), oppure dal sottotitolo primario attuale. Inserisci una frase presente nel contesto originale, aggiungi il significato e scegli il suo stato, poi premi **Salva frase**. **Nuova frase** funziona anche senza fonte. Il salvataggio è esplicito; duplicati ed errori lasciano disponibile la bozza.
+
+La ricerca comprende frase, significato, contesto e titolo della fonte. Puoi modificare o eliminare una voce; **Apri fonte** torna al paragrafo originale o alla scena video in pausa, se ancora disponibili. **Esporta frasi mostrate** conserva le voci visualizzate in TSV UTF-8, neutralizzando le formule dei fogli di calcolo. Lo stato di una frase non modifica colori, conteggi di comprensione o ripassi delle parole. Le frasi locali sono incluse nei backup ordinari; il quaderno non viene ancora unito tramite WebDAV.

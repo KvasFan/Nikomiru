@@ -836,6 +836,11 @@ fn reader(
         state.book.clone_from(&open.uid);
         state.textures.clear();
     }
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(tr(s, "phrases-title")).clicked() {
+            out.push(Command::PhrasesOpen);
+        }
+    });
     let manga = open.book.manga;
     let (next, previous) = if manga {
         ("books-next-page", "books-previous-page")
@@ -1199,6 +1204,9 @@ fn list(
         .clicked()
     {
         state.paste_open = true;
+    }
+    if ui.button(tr(s, "phrases-title")).clicked() {
+        out.push(Command::PhrasesOpen);
     }
     // WEB-001: a web page, read as a book
     ui.horizontal(|ui| {
