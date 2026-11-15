@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Pauses between practice passes (SUB-060, M88).
+
 - Undo word-status changes (KNW-050, M87).
 
 - Practice vocabulary from readings (KNW-049, M86).

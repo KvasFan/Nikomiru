@@ -1307,3 +1307,6 @@ vocabulary-practice-select = Seleziona parola di studio
 
 vocabulary-undo-status = Annulla stato parole
 vocabulary-undo-unavailable = La modifica precedente non può più essere annullata.
+
+sub-practice-pause = Pausa tra ripetizioni (ms)
+sub-practice-wait = Attesa: { $count } ms

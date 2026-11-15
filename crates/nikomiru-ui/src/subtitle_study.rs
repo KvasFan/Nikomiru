@@ -342,6 +342,45 @@ impl Navigation {
     }
 }
 
+/// A cancellable monotonic wait between finite practice passes (SUB-060).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PracticeWait {
+    deadline: Option<std::time::Duration>,
+}
+impl PracticeWait {
+    /// Schedule at most ten seconds; zero leaves no pending resume.
+    pub fn schedule(&mut self, now: std::time::Duration, milliseconds: u16) -> bool {
+        self.deadline = (milliseconds > 0).then(|| {
+            now.saturating_add(std::time::Duration::from_millis(u64::from(
+                milliseconds.min(10_000),
+            )))
+        });
+        self.deadline.is_some()
+    }
+    /// A pending deadline has not yet been consumed or cancelled.
+    pub fn pending(self) -> bool {
+        self.deadline.is_some()
+    }
+    /// Consume one due deadline; repeated ticks cannot resume twice.
+    pub fn take_due(&mut self, now: std::time::Duration) -> bool {
+        if self.deadline.is_some_and(|d| now >= d) {
+            self.deadline = None;
+            true
+        } else {
+            false
+        }
+    }
+    /// Remove a delayed resume when the user takes control.
+    pub fn cancel(&mut self) {
+        self.deadline = None;
+    }
+    /// Monotonic remaining milliseconds, for display only.
+    pub fn remaining(self, now: std::time::Duration) -> Option<u64> {
+        self.deadline
+            .map(|d| u64::try_from(d.saturating_sub(now).as_millis()).unwrap_or(u64::MAX))
+    }
+}
+
 /// Finite cue repetition; one boundary is consumed only after observing that pass.
 #[derive(Debug, Clone)]
 pub struct Repetition {
@@ -501,6 +540,23 @@ mod tests {
         let mut invalid = vec![0, 9];
         assert!(!order_indices(&cues, &mut invalid, StudyOrder::Source));
         assert_eq!(invalid, [0, 9]);
+    }
+
+    // T-SUB-060: bounded monotonic deadlines fire once and cancellation prevents later resume.
+    #[test]
+    fn practice_wait_is_nonblocking_bounded_and_cancellable() {
+        use std::time::Duration as D;
+        let mut w = PracticeWait::default();
+        assert!(!w.schedule(D::ZERO, 0));
+        assert!(w.schedule(D::from_millis(500), 1000));
+        assert_eq!(w.remaining(D::from_millis(750)), Some(750));
+        assert!(!w.take_due(D::from_millis(1499)));
+        assert!(w.take_due(D::from_millis(1500)));
+        assert!(!w.take_due(D::from_millis(1501)));
+        w.schedule(D::ZERO, u16::MAX);
+        assert_eq!(w.remaining(D::ZERO), Some(10_000));
+        w.cancel();
+        assert!(!w.take_due(D::MAX));
     }
 
     // T-SUB-055: queues are ordered/deduplicated and invalid requests never return a partial plan.

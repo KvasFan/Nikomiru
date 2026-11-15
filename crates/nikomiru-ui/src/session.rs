@@ -574,6 +574,8 @@ pub struct Session {
     /// The pointer is over a popup.
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
+    practice_pause_ms: u16,
+    practice_wait: crate::subtitle_study::PracticeWait,
     practice_queue: std::collections::VecDeque<crate::subtitle_study::Repetition>,
     practice: Option<(u64, crate::subtitle_study::Repetition)>,
     replaying: bool,
@@ -880,6 +882,8 @@ impl Session {
             writer,
             hover: Hover::default(),
             popup_hovered: false,
+            practice_pause_ms: 0,
+            practice_wait: Default::default(),
             practice_queue: Default::default(),
             practice: None,
             replaying: false,
@@ -1258,7 +1262,9 @@ impl Session {
                     self.events.push(UiEvent::FirstFrame);
                 }
                 self.view.time_pos = t;
-                if let Some((_, practice)) = &mut self.practice {
+                if !self.practice_wait.pending()
+                    && let Some((_, practice)) = &mut self.practice
+                {
                     practice.position((t * 1000.0).round() as i64);
                 }
                 let pos_ms = (t * 1000.0).round() as i64;
@@ -1363,6 +1369,15 @@ impl Session {
         self.update_gap_speed();
         self.update_screensaver();
         let now = self.services.clock.monotonic();
+        if self.practice_wait.take_due(now)
+            && self
+                .practice
+                .as_ref()
+                .is_some_and(|(_, r)| !self.start_practice_pass(r))
+        {
+            self.practice_cancel();
+        }
+
         // STA-004: the session saved every minute
         if let Some(save) = self.study.due_save(now.as_millis() as i64) {
             self.write_study(save);
@@ -1420,6 +1435,7 @@ impl Session {
     fn end_replay(&mut self) {
         self.practice = None;
         self.practice_queue.clear();
+        self.practice_wait.cancel();
         if std::mem::take(&mut self.replaying) {
             let p = &self.services.player;
             let _ = p.stop_at(None);
@@ -1484,6 +1500,9 @@ impl Session {
     }
 
     fn practice_boundary(&mut self) {
+        if self.practice_wait.pending() {
+            return;
+        }
         if self
             .practice
             .as_ref()
@@ -1497,28 +1516,46 @@ impl Session {
             .as_mut()
             .and_then(|(_, r)| r.stopped((self.view.time_pos * 1000.0).round() as i64));
         match step {
-            Some(true) => {
-                if self
-                    .practice
-                    .as_ref()
-                    .is_some_and(|(_, r)| !self.start_practice_pass(r))
-                {
-                    self.practice_cancel();
-                }
-            }
+            Some(true) => self.next_practice_pass(),
             Some(false) => {
                 if let Some(next) = self.practice_queue.pop_front() {
-                    if self.start_practice_pass(&next) {
-                        self.practice = Some((self.sub_list_version, next));
-                    } else {
-                        self.practice_cancel();
-                    }
+                    self.practice = Some((self.sub_list_version, next));
+                    self.next_practice_pass();
                 } else {
                     let _ = self.services.player.set_pause(true);
                 }
             }
             None => {}
         }
+    }
+
+    fn next_practice_pass(&mut self) {
+        if self
+            .practice_wait
+            .schedule(self.services.clock.monotonic(), self.practice_pause_ms)
+        {
+            let _ = self.services.player.set_pause(true);
+        } else if self
+            .practice
+            .as_ref()
+            .is_some_and(|(_, r)| !self.start_practice_pass(r))
+        {
+            self.practice_cancel();
+        }
+    }
+
+    /// Session-only pause between subsequent finite passes/cues, in milliseconds.
+    pub fn practice_pause_ms(&self) -> u16 {
+        self.practice_pause_ms
+    }
+    /// Set the next inter-pass pause, bounded to ten seconds; running waits keep their deadline.
+    pub fn set_practice_pause_ms(&mut self, milliseconds: u16) {
+        self.practice_pause_ms = milliseconds.min(10_000);
+    }
+    /// Remaining time for a pending practice resume; cancellation removes it immediately.
+    pub fn practice_wait_ms(&self) -> Option<u64> {
+        self.practice_wait
+            .remaining(self.services.clock.monotonic())
     }
 
     /// Captured cues still to finish, including the current cue; zero means finished.

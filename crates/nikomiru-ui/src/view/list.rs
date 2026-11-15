@@ -147,6 +147,7 @@ pub(crate) struct StudyLabels {
     examples: String,
     clear_examples: String,
     study_groups: [String; 3],
+    pause_label: String,
     queue_labels: [String; 3],
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
@@ -178,6 +179,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            pause_label: tr("sub-practice-pause", &[]),
             translation_labels: ["sub-preview-title", "sub-preview-show", "sub-preview-empty"]
                 .map(|k| tr(k, &[])),
             time_labels: [
@@ -519,6 +521,7 @@ pub(crate) struct Scene<'a> {
     /// The playback position.
     pub pos_ms: i64,
     pub practice_status: Option<String>,
+    pub practice_pause_ms: u16,
     pub title: String,
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
@@ -722,9 +725,10 @@ pub(crate) fn show(
         version: s.sub_list_version,
         concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
+        practice_pause_ms: s.practice_pause_ms(),
         practice_status: s.practice_remaining().map(|n| {
             format!(
-                "{} · {}",
+                "{} · {}{}",
                 s.translator()
                     .tr("sub-practice-remaining", &[("count", n.to_string())]),
                 s.translator().tr(
@@ -733,7 +737,14 @@ pub(crate) fn show(
                         "count",
                         s.practice_cues_remaining().unwrap_or(0).to_string()
                     )]
-                )
+                ),
+                s.practice_wait_ms()
+                    .map(|ms| format!(
+                        " · {}",
+                        s.translator()
+                            .tr("sub-practice-wait", &[("count", ms.to_string())])
+                    ))
+                    .unwrap_or_default()
             )
         }),
         title: tr("subtitle-list"),
@@ -1398,6 +1409,21 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                     egui::CollapsingHeader::new(&scene.study.study_groups[0])
                         .id_salt("subtitle-study-group-0")
                         .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                let label = ui.label(&scene.study.pause_label);
+                                let mut pause = scene.practice_pause_ms;
+                                let r = ui
+                                    .add(
+                                        egui::DragValue::new(&mut pause)
+                                            .range(0..=10_000)
+                                            .speed(250.0),
+                                    )
+                                    .labelled_by(label.id);
+                                if r.changed() {
+                                    out.push(Command::PracticePause(pause));
+                                }
+                            });
+
                             if !matches!(state.practice_passes, 2 | 3 | 5) {
                                 state.practice_passes = 2;
                             }
@@ -3063,6 +3089,7 @@ mod tests {
                         marks_version: 0,
                         word_scope: None,
                         practice_status: None,
+                        practice_pause_ms: 0,
                         words: None,
                         word_labels: Default::default(),
                         search_hint: "Search".into(),

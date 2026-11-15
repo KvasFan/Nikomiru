@@ -1290,3 +1290,6 @@ vocabulary-practice-select = 学習する単語を選択
 
 vocabulary-undo-status = 単語の状態を元に戻す
 vocabulary-undo-unavailable = 前の状態変更は元に戻せません。
+
+sub-practice-pause = 繰り返しの間の休止（ミリ秒）
+sub-practice-wait = 待機中：{ $count } ミリ秒

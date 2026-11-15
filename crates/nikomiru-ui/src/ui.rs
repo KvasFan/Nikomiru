@@ -403,6 +403,7 @@ pub(crate) enum Command {
         passes: u8,
     },
     PracticeCancel,
+    PracticePause(u16),
     PracticeQueue {
         version: u64,
         indices: Vec<usize>,
@@ -1458,6 +1459,7 @@ impl Ui {
                 indices,
                 passes,
             } => s.practice_queue_start(version, &indices, passes),
+            Command::PracticePause(ms) => s.set_practice_pause_ms(ms),
             Command::PracticeCancel => s.practice_cancel(),
             Command::VocabularyScope { version, indices } => {
                 s.vocabulary_scope_capture(version, &indices)
