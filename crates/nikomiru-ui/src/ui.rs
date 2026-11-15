@@ -479,6 +479,10 @@ pub(crate) enum Command {
     /// Export a complete analysed vocabulary snapshot.
     AnalysisWordsExport(Vec<crate::words::ListedWord>),
     /// Save selected/shown study counts as an importable frequency dictionary.
+    ConcordanceExport {
+        version: u64,
+        rows: Vec<crate::words::ListedWord>,
+    },
     VocabularyHtml {
         source: String,
         rows: Vec<crate::words::ListedWord>,
@@ -1074,6 +1078,7 @@ impl Ui {
                     | Dialog::SubtitleHtml => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
+                    Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
@@ -1589,6 +1594,11 @@ impl Ui {
             Command::EncounterExport(uid) => {
                 if s.history_export_prepare(&uid) {
                     self.view.dialog = Some(Dialog::EncounterExport);
+                }
+            }
+            Command::ConcordanceExport { version, rows } => {
+                if s.concordance_export_prepare(version, &rows) {
+                    self.view.dialog = Some(Dialog::ConcordanceExport);
                 }
             }
             Command::VocabularyHtml { source, rows } => {

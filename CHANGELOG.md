@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Vocabulary sentence concordance export (KNW-051, M90).
+
 - Skip and restart practice cues (SUB-061, M89).
 
 - Pauses between practice passes (SUB-060, M88).

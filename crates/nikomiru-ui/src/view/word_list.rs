@@ -52,6 +52,8 @@ pub(crate) struct Labels {
     pub card_filter: String,
     pub cards: [String; 3],
     pub source: String,
+    pub source_version: Option<u64>,
+    pub sentence_labels: [String; 2],
     pub frequency_shown: String,
     pub frequency_selected: String,
     pub lookup: String,
@@ -144,6 +146,12 @@ impl Labels {
             copied: tr("vocabulary-copied", &[]),
             copy_limit: tr("analysis-export-too-large", &[]),
             source: String::new(),
+            source_version: None,
+            sentence_labels: [
+                "vocabulary-examples-export-shown",
+                "vocabulary-examples-export-selected",
+            ]
+            .map(|k| tr(k, &[])),
             frequency_shown: tr("frequency-export-shown", &[]),
             frequency_selected: tr("frequency-export-selected", &[]),
             lookup: tr("vocabulary-lookup", &[]),
@@ -799,6 +807,26 @@ pub(crate) fn show(
     egui::CollapsingHeader::new(&labels.html_labels[0])
         .id_salt("vocabulary-html-sheet")
         .show(ui, |ui| {
+            if let Some(version) = labels.source_version {
+                for (label, rows) in [
+                    (&labels.sentence_labels[0], shown.clone()),
+                    (&labels.sentence_labels[1], selected(all, state)),
+                ] {
+                    if ui
+                        .add_enabled(
+                            !rows.is_empty() && rows.len() <= 1000,
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::ConcordanceExport {
+                            version,
+                            rows: rows.into_iter().cloned().collect(),
+                        });
+                    }
+                }
+            }
+
             for (label, rows) in [
                 (&labels.html_labels[1], shown.clone()),
                 (&labels.html_labels[2], selected(all, state)),
@@ -1166,6 +1194,8 @@ mod tests {
                         copied: "Copied".into(),
                         copy_limit: "Too large".into(),
                         source: "Test source".into(),
+                        source_version: Some(1),
+                        sentence_labels: ["Examples shown", "Examples selected"].map(String::from),
                         frequency_shown: "Export frequency shown".into(),
                         frequency_selected: "Export frequency selected".into(),
                         lookup: "Lookup".into(),
@@ -1818,5 +1848,17 @@ mod tests {
             Some(Command::UndoWordStatuses)
         ));
         assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
+    } // T-KNW-051: sentence-report actions retain the source version and hidden selected identities.
+    #[test]
+    fn word_sentence_export_keeps_hidden_selections_and_source_version() {
+        let mut h = harness();
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.state_mut().query = "が".into();
+        h.run();
+        h.get_by_label("HTML vocabulary").click();
+        h.run();
+        h.get_by_label("Examples selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c|matches!(c,Command::ConcordanceExport { version:1,rows } if rows.len()==1&&rows[0].expression=="猫")));
     }
 }

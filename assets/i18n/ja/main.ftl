@@ -1296,3 +1296,6 @@ sub-practice-wait = 待機中：{ $count } ミリ秒
 
 sub-practice-skip = 現在の字幕をスキップ
 sub-practice-restart = 現在の字幕を最初から繰り返す
+
+vocabulary-examples-export-shown = 表示中の単語の例文を出力
+vocabulary-examples-export-selected = 選択した単語の例文を出力

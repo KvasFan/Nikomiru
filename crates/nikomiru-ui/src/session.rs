@@ -408,6 +408,7 @@ pub struct Session {
     /// Frozen importable frequency dictionary.
     frequency_export: Option<Vec<u8>>,
     vocabulary_html: Option<String>,
+    concordance_export: Option<String>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
     study_report: Option<String>,
@@ -800,6 +801,7 @@ impl Session {
             analysis_export: None,
             frequency_export: None,
             vocabulary_html: None,
+            concordance_export: None,
             history_export: None,
             subtitle_export: None,
             study_report: None,
@@ -7795,6 +7797,48 @@ impl Session {
             return;
         };
         match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+        }
+    }
+
+    /// Freeze exact sentence examples for a bounded set of primary vocabulary identities.
+    pub fn concordance_export_prepare(
+        &mut self,
+        version: u64,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.concordance_export = None;
+        if version != self.sub_list_version || self.subs.incomplete || !self.word_colors_on() {
+            return false;
+        }
+        match crate::word_export::concordance_tsv(
+            &self.words,
+            self.subs.timeline().cues(),
+            rows,
+            self.subs.timeline().delay_ms,
+        ) {
+            Ok(text) => {
+                self.concordance_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the captured sentence report without re-reading source cues.
+    pub fn concordance_export_to(&mut self, path: &Path) {
+        let Some(text) = self.concordance_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
             Ok(()) => self.toasts.push(self.tr(
                 "analysis-export-saved",
                 &[("path", path.display().to_string())],

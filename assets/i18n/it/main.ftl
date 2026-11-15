@@ -1313,3 +1313,6 @@ sub-practice-wait = Attesa: { $count } ms
 
 sub-practice-skip = Salta battuta corrente
 sub-practice-restart = Ricomincia battuta corrente
+
+vocabulary-examples-export-shown = Esporta esempi delle parole visibili
+vocabulary-examples-export-selected = Esporta esempi delle parole selezionate

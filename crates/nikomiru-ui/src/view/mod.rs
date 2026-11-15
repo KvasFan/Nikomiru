@@ -91,6 +91,8 @@ pub enum Dialog {
     FrequencyExport,
     /// Standalone vocabulary HTML practice sheet.
     VocabularyHtml,
+    /// Exact primary word example TSV.
+    ConcordanceExport,
     /// Full per-episode encounter history.
     EncounterExport,
     /// Current complete primary text subtitles as SRT.
@@ -207,6 +209,10 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::ConcordanceExport => (
+                tr("vocabulary-examples-export-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::VocabularyHtml => (
                 tr("vocabulary-html-shown"),
                 vec![(tr("sub-html-filter"), vec!["*.html"]), all],
@@ -260,6 +266,7 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
                 Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),

@@ -98,6 +98,90 @@ pub fn html_sheet(
     Ok(out)
 }
 
+/// Exact current-track headword examples, indexed once and emitted as a frozen bounded TSV (KNW-051).
+pub fn concordance_tsv(
+    words: &crate::words::Words,
+    cues: &[nikomiru_subs::Cue],
+    rows: &[ListedWord],
+    delay: i64,
+) -> Result<String, &'static str> {
+    use std::collections::{HashMap, HashSet};
+    if rows.is_empty() || rows.len() > 1000 || cues.len() > 100_000 {
+        return Err("vocabulary-examples-unavailable");
+    }
+    let mut wanted = HashMap::new();
+    let mut bytes = 0usize;
+    for (i, w) in rows.iter().enumerate() {
+        bytes = bytes
+            .saturating_add(w.expression.len())
+            .saturating_add(w.reading.len());
+        if bytes > 8 << 20
+            || wanted
+                .insert((w.expression.as_str(), w.reading.as_str()), i)
+                .is_some()
+        {
+            return Err("analysis-export-too-large");
+        }
+    }
+    let mut hits = vec![Vec::new(); rows.len()];
+    let mut matches = 0usize;
+    let mut source_bytes = 0usize;
+    for (cue_index, cue) in cues.iter().enumerate() {
+        source_bytes = source_bytes.saturating_add(cue.plain_text.len());
+        if source_bytes > 16 << 20 {
+            return Err("analysis-export-too-large");
+        }
+        if cue.plain_text.trim().is_empty() {
+            continue;
+        }
+        let split = words
+            .get(&cue.plain_text)
+            .ok_or("vocabulary-examples-unavailable")?;
+        let mut seen = HashSet::new();
+        for head in split.iter().filter_map(|w| w.headword.as_ref()) {
+            if let Some(&row) = wanted.get(&(head.expression.as_str(), head.reading.as_str()))
+                && seen.insert(row)
+            {
+                matches += 1;
+                if matches > 100_000 {
+                    return Err("analysis-export-too-large");
+                }
+                hits[row].push(cue_index);
+            }
+        }
+    }
+    if hits.iter().any(Vec::is_empty) {
+        return Err("vocabulary-examples-unavailable");
+    }
+    let mut out = String::from("expression\treading\tstart_ms\tend_ms\ttext\n");
+    let mut written = 0;
+    for (word, indices) in rows.iter().zip(hits) {
+        for i in indices {
+            let cue = &cues[i];
+            let start = cue.start_ms.saturating_add(delay).max(0);
+            let end = cue.end_ms.saturating_add(delay);
+            if end <= start {
+                continue;
+            }
+            let line = format!(
+                "{}\t{}\t{start}\t{end}\t{}\n",
+                field(&word.expression),
+                field(&word.reading),
+                field(&cue.plain_text)
+            );
+            if out.len().saturating_add(line.len()) > 16 << 20 {
+                return Err("analysis-export-too-large");
+            }
+            out.push_str(&line);
+            written += 1;
+        }
+    }
+    if written == 0 {
+        return Err("vocabulary-examples-unavailable");
+    }
+    Ok(out)
+}
+
 /// All historical words for one media, newest first, independent of display caps.
 pub fn encounters_tsv(
     words: &nikomiru_library::encounters::Encounters,

@@ -577,6 +577,35 @@ mod tests {
         }
     }
 
+    // T-KNW-051: reports use inflected identities, deduplicate repeated tokens and reject partial caches/readings.
+    #[test]
+    fn concordance_report_uses_complete_segmentation_and_original_timings() {
+        let mut words = Words::default();
+        let cues=nikomiru_subs::parse(nikomiru_subs::Format::Srt,"1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べる\n").cues;
+        let mut row = ListedWord {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            count: 2,
+            status: WordStatus::Unknown,
+            card: false,
+        };
+        assert!(crate::word_export::concordance_tsv(&words, &cues, &[row.clone()], 250).is_err());
+        for cue in &cues {
+            let text = &cue.plain_text;
+            let token = word(text, 0..text.len(), Some(("食べる", "たべる")));
+            words.done(0, text.clone(), Ok(vec![token.clone(), token]));
+        }
+        let report =
+            crate::word_export::concordance_tsv(&words, &cues, std::slice::from_ref(&row), 250)
+                .unwrap();
+        assert_eq!(
+            report,
+            "expression\treading\tstart_ms\tend_ms\ttext\n食べる\tたべる\t1250\t2250\t食べた\n食べる\tたべる\t3250\t4250\t食べる\n"
+        );
+        row.reading = "other".into();
+        assert!(crate::word_export::concordance_tsv(&words, &cues, &[row], 0).is_err());
+    }
+
     // T-KNW-050: undo guards all rows before returning a restore plan, never a partial restoration.
     #[test]
     fn status_undo_checks_expected_values_and_dictionary_generation() {

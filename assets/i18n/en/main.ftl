@@ -1313,3 +1313,6 @@ sub-practice-wait = Waiting: { $count } ms
 
 sub-practice-skip = Skip current line
 sub-practice-restart = Restart current line
+
+vocabulary-examples-export-shown = Export examples of shown words
+vocabulary-examples-export-selected = Export examples of selected words
