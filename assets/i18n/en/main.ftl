@@ -1369,3 +1369,13 @@ recall-results-export = Export recall results…
 recall-followup-difficult = Start difficult-word round
 recall-followup-skipped = Start skipped-word round
 recall-followup-unavailable = Finish the round first and choose a category containing words.
+
+recall-history = Recall summary history
+recall-history-record = Record this summary
+recall-history-clear = Clear saved summaries
+recall-history-remove = Remove summary
+recall-history-empty = No recall summaries saved.
+recall-history-words = Words
+recall-history-error = Could not save recall history: { $reason }
+recall-history-unsaved = The latest history changes have not been saved.
+recall-history-retry = Retry saving

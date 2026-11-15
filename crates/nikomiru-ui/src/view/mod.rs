@@ -329,6 +329,7 @@ impl FileDialog {
 /// What the view keeps between frames.
 #[derive(Debug, Default)]
 pub(crate) struct View {
+    pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
     /// The dictionaries page is shown.
@@ -426,7 +427,9 @@ impl View {
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)
-                if self.online_page_open {
+                if self.recall_history_open {
+                    self.recall_history_open = false;
+                } else if self.online_page_open {
                     self.close_online_page();
                 } else if self.hooker_page_open {
                     self.hooker_closing = true;
@@ -640,7 +643,8 @@ impl View {
     }
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
-        self.dict_page_open
+        self.recall_history_open
+            || self.dict_page_open
             || self.anki_page_open
             || self.online_page_open
             || self.player_page_open
@@ -796,7 +800,18 @@ impl View {
         {
             let mut labels = recall::Labels::translated(&|key, args| s.translator().tr(key, args));
             labels.hints_ready = s.recall_hints_ready();
+            labels.can_record = s.recall_can_record();
             recall::show(&ctx, round, &labels, &mut out);
+        }
+        if self.recall_history_open {
+            self.recall_history_open = recall::history(
+                &ctx,
+                &s.config().lookup.recall_history,
+                s.recall_history_writable(),
+                s.recall_history_failed(),
+                &|key, args| s.translator().tr(key, args),
+                &mut out,
+            );
         }
         if study_popup && !covered {
             let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);

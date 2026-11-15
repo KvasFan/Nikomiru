@@ -1369,3 +1369,13 @@ recall-results-export = Esporta risultati del ripasso…
 recall-followup-difficult = Avvia ripasso delle parole difficili
 recall-followup-skipped = Avvia ripasso delle parole saltate
 recall-followup-unavailable = Completa prima la sessione e scegli una categoria che contiene parole.
+
+recall-history = Cronologia dei ripassi
+recall-history-record = Registra questo riepilogo
+recall-history-clear = Cancella riepiloghi salvati
+recall-history-remove = Rimuovi riepilogo
+recall-history-empty = Nessun riepilogo di ripasso salvato.
+recall-history-words = Parole
+recall-history-error = Impossibile salvare la cronologia: { $reason }
+recall-history-unsaved = Le ultime modifiche alla cronologia non sono state salvate.
+recall-history-retry = Riprova salvataggio

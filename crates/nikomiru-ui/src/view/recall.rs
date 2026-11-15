@@ -4,6 +4,9 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub history: String,
+    pub record: String,
+    pub can_record: bool,
     pub focused: [String; 2],
     pub results: String,
     pub file_labels: [String; 2],
@@ -24,6 +27,9 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            history: tr("recall-history", &[]),
+            record: tr("recall-history-record", &[]),
+            can_record: false,
             focused: ["recall-followup-difficult", "recall-followup-skipped"].map(|k| tr(k, &[])),
             results: tr("recall-results-export", &[]),
             file_labels: ["recall-save", "recall-load"].map(|k| tr(k, &[])),
@@ -63,6 +69,9 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                 .max_height(ctx.content_rect().height() * 0.7)
                 .show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
+                        if ui.button(&labels.history).clicked() {
+                            out.push(Command::RecallHistoryOpen);
+                        }
                         if ui.button(&labels.results).clicked() {
                             out.push(Command::RecallResults);
                         }
@@ -157,6 +166,16 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                         });
                     } else if recall.done() {
                         ui.heading(&labels.complete);
+                        if ui
+                            .add_enabled(labels.can_record, egui::Button::new(&labels.record))
+                            .clicked()
+                        {
+                            out.push(Command::RecallHistoryChange {
+                                record: true,
+                                delete: None,
+                            });
+                        }
+
                         for (skipped, label) in [false, true].into_iter().zip(&labels.focused) {
                             let count = recall.focused_count(skipped);
                             if ui
@@ -186,6 +205,80 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
         out.push(Command::RecallClose);
     }
 }
+pub(super) fn history(
+    ctx: &egui::Context,
+    rows: &[nikomiru_core::config::RecallSummary],
+    writable: bool,
+    failed: bool,
+    tr: &super::popups::Translate<'_>,
+    out: &mut Vec<Command>,
+) -> bool {
+    let mut open = true;
+    egui::Window::new(tr("recall-history", &[]))
+        .id(egui::Id::unique("recall-history-window"))
+        .open(&mut open)
+        .default_width(520.0)
+        .show(ctx, |ui| {
+            if failed {
+                ui.label(tr("recall-history-unsaved", &[]));
+                if ui
+                    .add_enabled(writable, egui::Button::new(tr("recall-history-retry", &[])))
+                    .clicked()
+                {
+                    out.push(Command::RecallHistoryRetry);
+                }
+            }
+            if ui
+                .add_enabled(
+                    writable && !rows.is_empty(),
+                    egui::Button::new(tr("recall-history-clear", &[])),
+                )
+                .clicked()
+            {
+                out.push(Command::RecallHistoryChange {
+                    record: false,
+                    delete: None,
+                });
+            }
+            egui::ScrollArea::vertical()
+                .max_height(ctx.content_rect().height() * 0.65)
+                .show(ui, |ui| {
+                    if rows.is_empty() {
+                        ui.label(tr("recall-history-empty", &[]));
+                    }
+                    for row in rows.iter().rev() {
+                        ui.push_id(&row.id, |ui| {
+                            ui.group(|ui| {
+                                ui.label(format!("{} · {}", row.recorded, row.source));
+                                for (key, n) in [
+                                    ("recall-history-words", row.cards),
+                                    ("recall-good-total", row.good),
+                                    ("recall-again-total", row.again),
+                                    ("recall-skipped-total", row.skipped),
+                                    ("recall-attempts-total", row.attempts),
+                                ] {
+                                    ui.label(format!("{}: {n}", tr(key, &[])));
+                                }
+                                if ui
+                                    .add_enabled(
+                                        writable,
+                                        egui::Button::new(tr("recall-history-remove", &[])),
+                                    )
+                                    .clicked()
+                                {
+                                    out.push(Command::RecallHistoryChange {
+                                        record: false,
+                                        delete: Some(row.id.clone()),
+                                    });
+                                }
+                            });
+                        });
+                    }
+                });
+        });
+    open
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,5 +502,59 @@ mod tests {
             .restart(crate::recall::Order::Shuffle, 1);
         h.run();
         assert!(h.query_by_label("猫").is_none());
+    }
+    // T-KNW-062: history actions are explicit, read-only profiles cannot delete, and failed writes expose retry.
+    #[test]
+    fn history_controls_respect_read_only_profiles_and_offer_retry() {
+        struct State {
+            writable: bool,
+            out: Vec<Command>,
+        }
+        let rows = vec![nikomiru_core::config::RecallSummary {
+            id: "00000000-0000-0000-0000-000000000001".into(),
+            source: "Study".into(),
+            recorded: "2026-11-15 10:30".into(),
+            cards: 2,
+            good: 1,
+            again: 1,
+            skipped: 1,
+            attempts: 2,
+        }];
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(700.0, 600.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                move |ui, t: &mut State| {
+                    history(
+                        ui.ctx(),
+                        &rows,
+                        t.writable,
+                        true,
+                        &|key, _| key.into(),
+                        &mut t.out,
+                    );
+                },
+                State {
+                    writable: false,
+                    out: Vec::new(),
+                },
+            );
+        h.run();
+        h.get_by_label("recall-history-remove").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.state_mut().writable = true;
+        h.run();
+        h.get_by_label("recall-history-retry").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::RecallHistoryRetry)
+        ));
+        h.get_by_label("recall-history-remove").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.last(),Some(Command::RecallHistoryChange {record:false,delete:Some(id)}) if id.ends_with("000000000001"))
+        );
     }
 }

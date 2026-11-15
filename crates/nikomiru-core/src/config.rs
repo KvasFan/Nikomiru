@@ -500,10 +500,65 @@ impl StudyPreset {
     }
 }
 
+/// Explicit aggregate recall summary; contains no captured words (KNW-062).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecallSummary {
+    /// Canonical unique round identity, retained by portable resume files.
+    pub id: String,
+    /// Bounded display title.
+    pub source: String,
+    /// Local recording date and time, YYYY-MM-DD HH:MM.
+    pub recorded: String,
+    /// Number of unique captured words.
+    pub cards: usize,
+    /// Cards last rated Good.
+    pub good: usize,
+    /// Total Again votes.
+    pub again: usize,
+    /// Cards last skipped.
+    pub skipped: usize,
+    /// Total self-rated attempts.
+    pub attempts: usize,
+}
+impl RecallSummary {
+    /// Validate aggregate bounds before accepting a local history item.
+    pub fn valid(&self) -> bool {
+        let id = self.id.as_bytes();
+        let uuid = id.len() == 36
+            && id.iter().enumerate().all(|(i, c)| {
+                if [8, 13, 18, 23].contains(&i) {
+                    *c == b'-'
+                } else {
+                    c.is_ascii_digit() || (b'a'..=b'f').contains(c)
+                }
+            });
+        let date = self.recorded.as_bytes();
+        let date_valid = date.len() == 16
+            && date.iter().enumerate().all(|(i, c)| match i {
+                4 | 7 => *c == b'-',
+                10 => *c == b' ',
+                13 => *c == b':',
+                _ => c.is_ascii_digit(),
+            });
+        uuid && date_valid
+            && self.source.chars().count() <= 256
+            && !self.source.chars().any(char::is_control)
+            && (1..=1000).contains(&self.cards)
+            && self.good <= self.cards
+            && self.skipped <= self.cards - self.good
+            && self.attempts <= self.cards * 3
+            && self.again <= self.attempts
+            && self.good <= self.attempts
+    }
+}
+
 /// `[lookup]` (LKP-035, POP-003).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LookupConfig {
+    /// Latest one hundred explicitly recorded recall summaries.
+    pub recall_history: Vec<RecallSummary>,
     /// Explicit named study filters, at most sixteen.
     pub study_presets: Vec<StudyPreset>,
     /// Headword groups in a popup (LKP-035), 1–50.
@@ -522,6 +577,7 @@ impl Default for LookupConfig {
     fn default() -> Self {
         Self {
             max_results: 10,
+            recall_history: Vec::new(),
             study_presets: Vec::new(),
             hover_without_modifier: false,
             resume_on_leave: true,
@@ -1201,6 +1257,13 @@ impl Config {
             .study_presets
             .retain(|p| p.valid() && names.insert(p.name.clone()));
         c.lookup.study_presets.truncate(16);
+        let mut ids = std::collections::HashSet::new();
+        c.lookup.recall_history.reverse();
+        c.lookup
+            .recall_history
+            .retain(|p| p.valid() && ids.insert(p.id.clone()));
+        c.lookup.recall_history.truncate(100);
+        c.lookup.recall_history.reverse();
         c.subtitles = c.subtitles.bounded();
         if !PlayerConfig::FITS.contains(&c.player.fit.as_str()) {
             c.player.fit = PlayerConfig::default().fit;
@@ -2326,6 +2389,74 @@ mod subtitle_preset_tests {
                 .study_presets
                 .len(),
             16
+        );
+    }
+}
+
+#[cfg(test)]
+mod recall_history_tests {
+    use super::*;
+    // T-KNW-062: local summaries round-trip, retain the latest hundred and deduplicate stable round identities.
+    #[test]
+    fn recall_history_keeps_only_valid_recent_unique_aggregates() {
+        let row = RecallSummary {
+            id: "00000000-0000-0000-0000-000000000001".into(),
+            source: "Study".into(),
+            recorded: "2026-11-15 10:30".into(),
+            cards: 2,
+            good: 1,
+            again: 1,
+            skipped: 1,
+            attempts: 2,
+        };
+        assert!(row.valid());
+        let mut c = Config::default();
+        c.lookup.recall_history = vec![row.clone(), row.clone(), RecallSummary::default()];
+        let read = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(read.lookup.recall_history, vec![row.clone()]);
+        c.lookup.recall_history = (0..105)
+            .map(|i| RecallSummary {
+                id: format!("00000000-0000-0000-0000-{i:012x}"),
+                ..row.clone()
+            })
+            .collect();
+        let read = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(read.lookup.recall_history.len(), 100);
+        assert!(read.lookup.recall_history[0].id.ends_with("000000000005"));
+        assert!(
+            !RecallSummary {
+                cards: 1001,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                attempts: 7,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                skipped: 2,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                source: "x\n".into(),
+                ..row
+            }
+            .valid()
+        );
+        assert!(
+            Config::from_toml("[lookup]\nmax_results=10")
+                .unwrap()
+                .lookup
+                .recall_history
+                .is_empty()
         );
     }
 }

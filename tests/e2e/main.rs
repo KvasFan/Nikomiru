@@ -17,6 +17,7 @@ mod gaps;
 mod perf;
 mod progressive_ocr;
 mod reader_words;
+mod recall;
 mod series_scores;
 mod servers;
 mod subtitle_study;

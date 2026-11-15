@@ -1493,4 +1493,4 @@ M82–M91 are complete. Full regression passed 1,029 workspace/integration tests
 | M98 | KNW-059 | Portable recall resume files | done |
 | M99 | KNW-060 | Recall results export | done |
 | M100 | KNW-061 | Focused recall follow-up rounds | done |
-| M101 | KNW-062 | Local recall summary history | planned |
+| M101 | KNW-062 | Local recall summary history | done |

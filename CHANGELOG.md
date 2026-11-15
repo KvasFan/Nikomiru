@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Local recall summary history (KNW-062, M101).
+
 - Focused recall follow-up rounds (KNW-061, M100).
 
 - Recall results export (KNW-060, M99).

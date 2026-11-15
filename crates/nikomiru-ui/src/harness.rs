@@ -555,6 +555,12 @@ pub fn state() -> Result<Value, String> {
             |c| json!({"label":c.label,"indices":c.indices}),
         );
         state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining(), "practice_cues":s.practice_cues_remaining(), "practice_wait_ms":s.practice_wait_ms(), "selected":ui.view.list.study_selection(), "revealed":ui.view.list.study_reveals()});
+        state["recall"]=s.recall().map_or(Value::Null,|r| {
+            let summary=r.summary();json!({"id":r.id,"source":r.source,"cards":r.cards,"order":r.order,"pending":r.pending,"history":r.history,"revealed":r.revealed,"hint_revealed":r.hint_revealed,"hint_source":r.hint_source,"current":r.current().map(|c|&c.expression),"done":r.done(),"summary":{"good":summary.good,"again":summary.again,"skipped":summary.skipped,"attempts":summary.attempts},"covered":s.recall_covered})
+        });
+        state["recall_history"] = json!(s.config().lookup.recall_history);
+        state["recall_history_failed"] = json!(s.recall_history_failed());
+        state["recall_history_open"] = json!(ui.view.recall_history_open);
         state["word_status_undo"] = json!(s.word_status_undo_available());
         state["study_presets"] = json!(s.config().lookup.study_presets);
         state["subtitle_presets"] = json!(s.config().subtitles.study_presets);
@@ -1591,5 +1597,86 @@ pub fn study_report(scope: &str, path: &str) -> Result<(), String> {
                 path,
             });
         }
+    })
+}
+
+/// Exercise finite recall through normal UI commands and native selected-file handlers.
+pub fn recall(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| match action.as_str() {
+        "start" => {
+            let rows = if let Some(rows) = args["words"].as_array() {
+                rows.iter()
+                    .map(|w| crate::words::ListedWord {
+                        expression: w["expression"].as_str().unwrap_or_default().into(),
+                        reading: w["reading"].as_str().unwrap_or_default().into(),
+                        count: w["count"].as_u64().unwrap_or(1) as usize,
+                        status: crate::words::WordStatus::Unknown,
+                        card: false,
+                    })
+                    .collect()
+            } else {
+                ui.session
+                    .word_list()
+                    .map(|words| {
+                        words
+                            .iter()
+                            .filter(|w| args["text"].as_str().is_none_or(|t| w.expression == t))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            ui.run(Command::RecallStart {
+                source: args["source"].as_str().unwrap_or("Recall test").into(),
+                rows,
+            });
+        }
+        "reveal" => ui.run(Command::RecallReveal),
+        "again" => ui.run(Command::RecallRate(false)),
+        "good" => ui.run(Command::RecallRate(true)),
+        "skip" => ui.run(Command::RecallSkip),
+        "close" => ui.run(Command::RecallClose),
+        "hints" => ui.run(Command::RecallCaptureHints),
+        "hint" => ui.run(Command::RecallRevealHint),
+        "lookup" => ui.run(Command::RecallLookup(Rect {
+            x: 300.0,
+            y: 300.0,
+            w: 80.0,
+            h: 30.0,
+        })),
+        "restart" => {
+            ui.session.recall_restart(
+                args["order"].as_u64().unwrap_or(0) as u8,
+                args["seed"].as_u64(),
+            );
+        }
+        "focused" => ui.run(Command::RecallFocused(
+            args["skipped"].as_bool().unwrap_or(false),
+        )),
+        "record" => ui.run(Command::RecallHistoryChange {
+            record: true,
+            delete: None,
+        }),
+        "delete" => ui.run(Command::RecallHistoryChange {
+            record: false,
+            delete: args["id"].as_str().map(str::to_string),
+        }),
+        "retry" => ui.run(Command::RecallHistoryRetry),
+        "history" => ui.run(Command::RecallHistoryOpen),
+        "save" | "load" | "results" => {
+            let path = PathBuf::from(args["path"].as_str().unwrap_or_default());
+            let dialog = match action.as_str() {
+                "save" if ui.session.recall_save_prepare() => Some(crate::view::Dialog::RecallSave),
+                "results" if ui.session.recall_results_prepare() => {
+                    Some(crate::view::Dialog::RecallResults)
+                }
+                "load" => Some(crate::view::Dialog::RecallLoad),
+                _ => None,
+            };
+            if let Some(dialog) = dialog {
+                ui.handle(Inbound::Chosen { dialog, path });
+            }
+        }
+        _ => {}
     })
 }

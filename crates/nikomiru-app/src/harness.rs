@@ -146,6 +146,11 @@ fn run(command: &Value) -> Result<Value, String> {
             command["export"].as_bool().unwrap_or(false),
         )
         .map(|()| Value::Null),
+        Some("recall") => harness::recall(
+            command["action"].as_str().unwrap_or("start").to_string(),
+            command.clone(),
+        )
+        .map(|()| Value::Null),
         Some("practice-queue") => harness::practice_queue(
             command["indices"]
                 .as_array()

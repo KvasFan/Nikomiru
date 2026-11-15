@@ -504,6 +504,12 @@ pub(crate) enum Command {
     RecallSkip,
     RecallRate(bool),
     RecallClose,
+    RecallHistoryOpen,
+    RecallHistoryChange {
+        record: bool,
+        delete: Option<String>,
+    },
+    RecallHistoryRetry,
     RecallFocused(bool),
     RecallSave,
     RecallResults,
@@ -1421,7 +1427,8 @@ impl Ui {
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
-        self.session.popups_covered = self.view.web_url_open
+        self.session.popups_covered = self.view.recall_history_open
+            || self.view.web_url_open
             || self.view.dict_page_open
             || self.view.anki_page_open
             || self.view.online_page_open
@@ -1568,6 +1575,11 @@ impl Ui {
             }
             Command::RecallLoad => self.view.dialog = Some(Dialog::RecallLoad),
             Command::RecallFocused(skipped) => s.recall_focused(skipped),
+            Command::RecallHistoryOpen => self.view.recall_history_open = true,
+            Command::RecallHistoryChange { record, delete } => {
+                s.recall_history_change(record, delete)
+            }
+            Command::RecallHistoryRetry => s.recall_history_retry(),
             Command::RecallClose => s.recall_close(),
             Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),

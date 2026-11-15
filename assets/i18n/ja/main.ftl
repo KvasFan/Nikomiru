@@ -1352,3 +1352,13 @@ recall-results-export = 想起練習の結果を書き出す…
 recall-followup-difficult = 難しかった単語で新しい練習
 recall-followup-skipped = スキップした単語で新しい練習
 recall-followup-unavailable = ラウンドを完了して、単語がある分類を選んでください。
+
+recall-history = 想起練習の履歴
+recall-history-record = この集計を記録
+recall-history-clear = 保存した集計をすべて削除
+recall-history-remove = 集計を削除
+recall-history-empty = 保存された集計はありません。
+recall-history-words = 単語数
+recall-history-error = 履歴を保存できません：{ $reason }
+recall-history-unsaved = 履歴の最新の変更は保存されていません。
+recall-history-retry = 保存を再試行

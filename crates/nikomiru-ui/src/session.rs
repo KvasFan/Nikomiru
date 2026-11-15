@@ -465,6 +465,8 @@ pub struct Session {
     /// A write of the settings is running: the next one waits for it.
     config_saving: bool,
     /// Tool paths awaiting a successful settings write (INS-007).
+    recall_history_saving: bool,
+    recall_history_failed: bool,
     preset_saving: bool,
     setup_saving: std::collections::BTreeSet<String>,
     /// The settings "Create Lapis deck" was asked with.
@@ -836,6 +838,8 @@ impl Session {
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
             config_saving: false,
+            recall_history_saving: false,
+            recall_history_failed: false,
             preset_saving: false,
             setup_saving: Default::default(),
             lapis_request: None,
@@ -1688,6 +1692,85 @@ impl Session {
         }
     }
 
+    /// Whether the completed round can be explicitly recorded once in local history.
+    pub(crate) fn recall_can_record(&self) -> bool {
+        self.services.config_writable
+            && self.recall.as_ref().is_some_and(|r| {
+                r.done()
+                    && !self
+                        .services
+                        .config
+                        .lookup
+                        .recall_history
+                        .iter()
+                        .any(|entry| entry.id == r.id)
+            })
+    }
+    /// Whether local history changes can be persisted.
+    pub(crate) fn recall_history_writable(&self) -> bool {
+        self.services.config_writable
+    }
+    /// A failed asynchronous history write can be retried explicitly.
+    pub(crate) fn recall_history_failed(&self) -> bool {
+        self.recall_history_failed
+    }
+    /// Record a completed aggregate once, or remove one/all summaries; no learning statistics are changed.
+    pub fn recall_history_change(&mut self, record: bool, delete: Option<String>) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        if record {
+            if !self.recall_can_record() {
+                return;
+            }
+            let Some(r) = &self.recall else {
+                return;
+            };
+            let stats = r.summary();
+            let at = self.moment();
+            let (date, hour) = nikomiru_library::stats::local_day_hour(at.unix_ms, at.offset_s);
+            let minute =
+                (at.unix_ms.div_euclid(1000) + i64::from(at.offset_s)).rem_euclid(3600) / 60;
+            let summary = nikomiru_core::config::RecallSummary {
+                id: r.id.clone(),
+                source: r.source.clone(),
+                recorded: format!("{date} {hour:02}:{minute:02}"),
+                cards: r.cards.len(),
+                good: stats.good,
+                again: stats.again,
+                skipped: stats.skipped,
+                attempts: stats.attempts,
+            };
+            if !summary.valid() {
+                return;
+            }
+            let history = &mut self.services.config.lookup.recall_history;
+            history.push(summary);
+            if history.len() > 100 {
+                history.drain(..history.len() - 100);
+            }
+        } else if let Some(id) = delete {
+            self.services
+                .config
+                .lookup
+                .recall_history
+                .retain(|r| r.id != id);
+        } else {
+            self.services.config.lookup.recall_history.clear();
+        }
+        self.recall_history_retry();
+    }
+    /// Retry the current aggregate history through the existing serial atomic configuration writer.
+    pub fn recall_history_retry(&mut self) {
+        if !self.services.config_writable {
+            return;
+        }
+        self.recall_history_saving = true;
+        self.recall_history_failed = false;
+        self.config_save = Some(self.services.config.clone());
+    }
+
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall_clear_lookup();
@@ -2265,6 +2348,13 @@ impl Session {
         if self.config_save.is_some() {
             // newer settings wait: their write tells how it went
             return;
+        }
+        if std::mem::take(&mut self.recall_history_saving) {
+            self.recall_history_failed = result.is_err();
+            self.toasts.push(match &result {
+                Ok(()) => self.tr("settings-saved", &[]),
+                Err(reason) => self.tr("recall-history-error", &[("reason", reason.clone())]),
+            });
         }
         if std::mem::take(&mut self.preset_saving) {
             self.toasts.push(match &result {
