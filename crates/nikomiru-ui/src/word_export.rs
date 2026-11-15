@@ -98,32 +98,27 @@ pub fn html_sheet(
     Ok(out)
 }
 
-/// Exact current-track headword examples, indexed once and emitted as a frozen bounded TSV (KNW-051).
-pub fn concordance_tsv(
+/// Complete bounded exact-identity cue index shared by reports and recall hints.
+pub(crate) fn concordance_indices(
     words: &crate::words::Words,
     cues: &[nikomiru_subs::Cue],
-    rows: &[ListedWord],
-    delay: i64,
-) -> Result<String, &'static str> {
+    identities: &[(&str, &str)],
+) -> Result<Vec<Vec<usize>>, &'static str> {
     use std::collections::{HashMap, HashSet};
-    if rows.is_empty() || rows.len() > 1000 || cues.len() > 100_000 {
+    if identities.is_empty() || identities.len() > 1000 || cues.len() > 100_000 {
         return Err("vocabulary-examples-unavailable");
     }
     let mut wanted = HashMap::new();
     let mut bytes = 0usize;
-    for (i, w) in rows.iter().enumerate() {
+    for (i, (expression, reading)) in identities.iter().enumerate() {
         bytes = bytes
-            .saturating_add(w.expression.len())
-            .saturating_add(w.reading.len());
-        if bytes > 8 << 20
-            || wanted
-                .insert((w.expression.as_str(), w.reading.as_str()), i)
-                .is_some()
-        {
+            .saturating_add(expression.len())
+            .saturating_add(reading.len());
+        if bytes > 8 << 20 || wanted.insert((*expression, *reading), i).is_some() {
             return Err("analysis-export-too-large");
         }
     }
-    let mut hits = vec![Vec::new(); rows.len()];
+    let mut hits = vec![Vec::new(); identities.len()];
     let mut matches = 0usize;
     let mut source_bytes = 0usize;
     for (cue_index, cue) in cues.iter().enumerate() {
@@ -150,6 +145,21 @@ pub fn concordance_tsv(
             }
         }
     }
+    Ok(hits)
+}
+
+/// Exact current-track headword examples, indexed once and emitted as a frozen bounded TSV (KNW-051).
+pub fn concordance_tsv(
+    words: &crate::words::Words,
+    cues: &[nikomiru_subs::Cue],
+    rows: &[ListedWord],
+    delay: i64,
+) -> Result<String, &'static str> {
+    let identities = rows
+        .iter()
+        .map(|w| (w.expression.as_str(), w.reading.as_str()))
+        .collect::<Vec<_>>();
+    let hits = concordance_indices(words, cues, &identities)?;
     if hits.iter().any(Vec::is_empty) {
         return Err("vocabulary-examples-unavailable");
     }

@@ -1330,3 +1330,7 @@ action-recall-again = 想起練習：もう一度
 action-recall-good = 想起練習：できた
 
 shortcuts-recall = 語彙の想起練習
+
+recall-hints-capture = 現在の字幕から例文を取得
+recall-hints-reveal = 例文のヒントを表示
+recall-hints-unavailable = 解析済みの主字幕と、上限内の例文が必要です。

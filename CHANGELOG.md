@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Sentence hints for recall (KNW-057, M96).
+
 - Dictionary lookup from recall (KNW-056, M95).
 
 - Recall keyboard controls (KNW-055, M94).

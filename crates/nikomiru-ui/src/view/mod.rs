@@ -774,12 +774,9 @@ impl View {
         if !self.recall_covered(s)
             && let Some(round) = s.recall()
         {
-            recall::show(
-                &ctx,
-                round,
-                &recall::Labels::translated(&|key, args| s.translator().tr(key, args)),
-                &mut out,
-            );
+            let mut labels = recall::Labels::translated(&|key, args| s.translator().tr(key, args));
+            labels.hints_ready = s.recall_hints_ready();
+            recall::show(&ctx, round, &labels, &mut out);
         }
         if study_popup && !covered {
             let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);

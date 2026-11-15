@@ -1347,3 +1347,7 @@ action-recall-again = Ripasso: Ancora
 action-recall-good = Ripasso: Bene
 
 shortcuts-recall = Richiamo del vocabolario
+
+recall-hints-capture = Acquisisci esempi dai sottotitoli correnti
+recall-hints-reveal = Mostra indizi dalle frasi
+recall-hints-unavailable = Servono sottotitoli principali analizzati completamente e indizi entro i limiti previsti.

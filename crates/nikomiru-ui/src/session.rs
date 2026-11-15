@@ -1500,6 +1500,48 @@ impl Session {
             self.vocabulary_lookup(&text, anchor);
         }
     }
+    pub(crate) fn recall_hints_ready(&self) -> bool {
+        self.word_colors_on() && !self.subs.incomplete && self.word_list.is_some()
+    }
+    /// Capture complete exact subtitle hints before replacing the round's previous context.
+    pub fn recall_capture_hints(&mut self) {
+        let Some(round) = &self.recall else {
+            return;
+        };
+        if !self.recall_hints_ready() {
+            self.toasts.push(self.tr("recall-hints-unavailable", &[]));
+            return;
+        }
+        match crate::recall::sentence_hints(&self.words, self.subs.timeline().cues(), &round.cards)
+        {
+            Ok(hints) => {
+                if let Some(r) = &mut self.recall {
+                    for (card, hints) in r.cards.iter_mut().zip(hints) {
+                        card.hints = hints;
+                    }
+                    r.hint_source = Some(
+                        self.view
+                            .title
+                            .chars()
+                            .filter(|c| !c.is_control())
+                            .take(256)
+                            .collect(),
+                    );
+                    r.hint_revealed = false;
+                }
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+    /// Reveal only the current card's captured context, leaving its answer state unchanged.
+    pub fn recall_reveal_hint(&mut self) {
+        if let Some(r) = &mut self.recall
+            && r.current().is_some_and(|c| !c.hints.is_empty())
+        {
+            r.hint_revealed = true;
+        }
+    }
+
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall = None;

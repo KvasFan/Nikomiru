@@ -4,6 +4,8 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub hints_ready: bool,
+    pub hint_labels: [String; 2],
     pub lookup: String,
     pub grades: [String; 2],
     pub summary_labels: [String; 4],
@@ -18,6 +20,8 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            hints_ready: false,
+            hint_labels: ["recall-hints-capture", "recall-hints-reveal"].map(|k| tr(k, &[])),
             lookup: tr("vocabulary-lookup", &[]),
             grades: ["recall-again", "recall-good"].map(|k| tr(k, &[])),
             summary_labels: [
@@ -51,7 +55,34 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                         recall.remaining(),
                         recall.order.len()
                     ));
+                    if ui
+                        .add_enabled(
+                            labels.hints_ready,
+                            egui::Button::new(&labels.hint_labels[0]),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::RecallCaptureHints);
+                    }
                     if let Some(card) = recall.current() {
+                        if ui
+                            .add_enabled(
+                                !card.hints.is_empty() && !recall.hint_revealed,
+                                egui::Button::new(&labels.hint_labels[1]),
+                            )
+                            .clicked()
+                        {
+                            out.push(Command::RecallRevealHint);
+                        }
+                        if recall.hint_revealed {
+                            if let Some(source) = &recall.hint_source {
+                                ui.label(source);
+                            }
+                            for hint in &card.hints {
+                                ui.label(hint);
+                            }
+                        }
+
                         ui.label(format!("×{}", card.count));
                         if !card.reading.trim().is_empty() && card.reading != card.expression {
                             ui.heading(&card.reading);
@@ -245,5 +276,50 @@ mod tests {
             Some(Command::RecallLookup(_))
         ));
         assert_eq!(h.state().recall.remaining(), 1);
+    } // T-KNW-057: captured context appears only after its own reveal, without changing answer concealment.
+    #[test]
+    fn recall_sentence_hints_have_separate_explicit_reveal() {
+        let mut round = Recall::start(
+            "Study",
+            &[ListedWord {
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                count: 1,
+                status: WordStatus::Unknown,
+                card: false,
+            }],
+        )
+        .unwrap();
+        round.cards[0].hints = vec!["猫がいる".into()];
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(700.0, 600.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, t: &mut Test| {
+                    show(
+                        ui.ctx(),
+                        &t.recall,
+                        &Labels::translated(&|key, _| key.to_string()),
+                        &mut t.out,
+                    )
+                },
+                Test {
+                    recall: round,
+                    out: Vec::new(),
+                },
+            );
+        h.run();
+        assert!(h.query_by_label("猫がいる").is_none());
+        h.get_by_label("recall-hints-reveal").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::RecallRevealHint)
+        ));
+        h.state_mut().recall.hint_revealed = true;
+        h.run();
+        h.get_by_label("猫がいる");
+        assert!(h.query_by_label("猫").is_none());
+        assert!(!h.state().recall.revealed);
     }
 }

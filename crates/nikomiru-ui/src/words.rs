@@ -577,6 +577,34 @@ mod tests {
         }
     }
 
+    // T-KNW-057: hints require complete segmentation, preserve exact inflected identities and deduplicate text.
+    #[test]
+    fn recall_hints_are_complete_exact_and_bounded_per_word() {
+        let mut words = Words::default();
+        let cues=nikomiru_subs::parse(nikomiru_subs::Format::Srt,"1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べた\n").cues;
+        let cards = vec![crate::recall::Card {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            count: 2,
+            hints: Vec::new(),
+        }];
+        assert!(crate::recall::sentence_hints(&words, &cues, &cards).is_err());
+        words.done(
+            0,
+            "食べた".into(),
+            Ok(vec![word("食べた", 0..9, Some(("食べる", "たべる")))]),
+        );
+        assert_eq!(
+            crate::recall::sentence_hints(&words, &cues, &cards).unwrap(),
+            [vec!["食べた".to_string()]]
+        );
+        let mut other = cards;
+        other[0].reading = "other".into();
+        assert!(crate::recall::sentence_hints(&words, &cues, &other).unwrap()[0].is_empty());
+        words.forget();
+        assert!(crate::recall::sentence_hints(&words, &cues, &other).is_err());
+    }
+
     // T-KNW-051: reports use inflected identities, deduplicate repeated tokens and reject partial caches/readings.
     #[test]
     fn concordance_report_uses_complete_segmentation_and_original_timings() {
