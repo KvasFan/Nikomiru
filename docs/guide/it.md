@@ -306,3 +306,19 @@ Vocabolario di queste righe raccoglie le parole delle righe visibili o seleziona
 Con una traccia secondaria completa puoi esportare una scheda HTML bilingue autonoma tramite la finestra di salvataggio. Aprila localmente e rivela ogni traduzione quando desideri. L’esportazione rispetta i filtri e le righe scelte.
 
 La ripetizione riproduce la battuta corrente due, tre o cinque volte e poi resta in pausa, sospendendo pausa automatica e accelerazione degli intervalli. Ferma ripetizione, i controlli manuali di riproduzione, posizione, tempi o velocità e il cambio della sorgente principale annullano l’esercizio. La sezione mostra le ripetizioni rimanenti.
+
+## Filtri estesi e code di studio (sorgenti 2.90.0)
+
+I filtri sul testo combinano limiti inclusivi di caratteri Unicode, escludendo gli spazi, battute su una o più righe e Solo la prima occorrenza. Le righe vuote non contano nella struttura. Le ripetizioni vengono riconosciute uniformando gli spazi, conservando maiuscole e punteggiatura: resta la prima battuta originale dopo gli altri filtri. Le selezioni nascoste restano spuntate. Esportazioni visibili, statistiche e navigazione condividono lo stesso ambito.
+
+I filtri di lettura distinguono parole con una lettura separata non vuota da quelle senza. L’obiettivo di copertura conserva le parole più frequenti necessarie per raggiungere dall’1 al 100 per cento delle occorrenze attualmente filtrate. Le parole a pari frequenza sul limite sono tutte incluse: il risultato può superare la percentuale richiesta. L’ordine di visualizzazione viene applicato dopo. Entrambi i tipi di preset del vocabolario conservano queste scelte.
+
+I preset dei sottotitoli salvano ricerca, limiti temporali, velocità di lettura, durata, caratteri, struttura, ripetizioni e contesto. Premi un nome per applicarlo oppure eliminalo esplicitamente. Puoi salvarne sedici e riutilizzarli dopo il riavvio, attendendo l’esito del salvataggio. Selezioni, testo nascosto, righe rivelate, parola degli esempi e identità della sorgente restano esclusi.
+
+Le schede HTML del vocabolario esportano parole visibili o selezionate tramite la finestra di salvataggio. Mostra lettura rivela la pronuncia; occorrenze, stati e presenza di schede restano visibili. Sono documenti autonomi consultabili senza rete e senza risorse esterne. L’esportazione delle selezionate include anche le parole nascoste dai filtri.
+
+Gli esempi di una parola possono mostrare una o due battute originali precedenti e successive. Le corrispondenze esatte hanno un contorno e un nome accessibile; gli altri filtri si applicano comunque al contesto ampliato. La parola cercata rimane la stessa.
+
+Con la lista aperta, Alt+Su/Giù naviga fra le battute corrispondenti, Alt+R rivela quella corrente nella modalità di ascolto e Alt+T ne cambia la selezione. Puoi configurare i tasti nelle scorciatoie. Digitazione, pagine sovrapposte, lista chiusa o ambiti scaduti impediscono queste azioni. La navigazione conserva la pausa.
+
+La ripetizione può acquisire una coda delle battute visibili o selezionate, fino a mille battute uniche nell’ordine della sorgente. Scegli due, tre o cinque passaggi per battuta: al termine resta in pausa. Tutti gli intervalli devono essere completi, validi e compresi nella durata del video prima dell’avvio. Sono mostrati passaggi e battute rimanenti. Cambiare i filtri non riscrive la coda acquisita; controlli manuali, cambio dei tempi o della sorgente principale e Ferma ripetizione annullano l’intera coda.

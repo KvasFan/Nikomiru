@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.90.0] - 2026-11-15
+
+Ten consecutive subtitle/study milestones (M72–M81) after source tag 2.80.0.
+
+### Added
+
 - Finite cue practice queues (SUB-055, M81).
 
 - Subtitle study keyboard actions (SUB-054, M80).

@@ -1460,3 +1460,5 @@ M62–M71 are complete. Full regression passed 997 workspace/integration tests a
 | M79 | SUB-053 | Context around word examples | done |
 | M80 | SUB-054 | Subtitle study keyboard actions | done |
 | M81 | SUB-055 | Finite cue practice queues | done |
+
+M72–M81 are complete. Full regression passed 1,013 workspace/integration tests and 103 actual GUI cases. See [source QA 2.90.0](qa/2.90.0.md).

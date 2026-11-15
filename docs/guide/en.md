@@ -305,3 +305,19 @@ Vocabulary from these lines captures shown or selected cue vocabulary, including
 With a complete secondary track, HTML study sheets export a standalone bilingual document through the native save dialog. Open it locally and expand each translation when ready. Current filters and selected original cue indices determine the snapshot.
 
 Sentence repetition plays the active current cue two, three or five times, then stays paused. It suspends automatic line pausing and gap speed while active. Use Stop repetition or manual playback, seek, timing or speed controls to cancel; changing the primary source also cancels it. Remaining passes are shown in the section.
+
+## Extended study scopes and queues (2.90.0 source)
+
+Caption text filters combine inclusive non-whitespace Unicode character bounds with single/multiline structure and First occurrence only. Empty lines do not count toward multiline structure. Duplicate matching collapses whitespace but preserves case and punctuation, keeping the first original cue after other filters. Hidden ticks remain selected. Shown exports, statistics and matching navigation share this scope.
+
+Vocabulary reading filters distinguish words with a separate nonempty reading from words without one. An optional occurrence coverage target keeps the most frequent currently matching words required to reach 1–100 percent of tokens. Boundary frequency ties are included, so the result can exceed the requested percentage. The chosen display order applies afterwards. Session and persistent vocabulary presets include these options.
+
+Saved subtitle study presets store search, time/speed/duration/text limits, structure, duplicate and context choices. Apply a name or explicitly delete it. Up to sixteen presets persist through restart, with asynchronous save results. Selections, hidden-text/reveal state, exact word identities and source identities stay outside the preset.
+
+Vocabulary HTML study sheets save shown or selected words through the native dialog. Readings stay behind a Reveal reading control; occurrence counts, current statuses and card marks remain visible. These are standalone offline snapshots with escaped text and no external assets. Hidden selected words remain included in selected exports.
+
+Word examples can include one or two original neighbouring cues on each side. Exact hits keep an outline and an accessible label, while other filters still apply to the expanded scope. Context never changes the captured word identity.
+
+With the subtitle list open, Alt+Up/Down navigates matching starts, Alt+R reveals the current shown line in listening mode, and Alt+T toggles its selection. Configure these in Shortcuts. Typing focus, covering pages, closed lists and stale scopes prevent study actions. Navigation preserves pause.
+
+Sentence repetition can capture shown or selected cues as a finite queue of up to one thousand unique original cues. Choose two, three or five passes per line; the queue follows source order and pauses after the last line. All intervals must be complete, valid and within the media duration before playback begins. Remaining passes and lines are shown. Filter changes do not rewrite a running snapshot; manual controls, primary timing/source changes and Stop repetition cancel the whole queue.
