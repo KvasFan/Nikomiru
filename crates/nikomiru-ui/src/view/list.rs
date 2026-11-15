@@ -140,6 +140,7 @@ pub(crate) struct StudyLabels {
     examples: String,
     clear_examples: String,
     study_groups: [String; 3],
+    queue_labels: [String; 3],
     practice_labels: [String; 2],
     vocabulary_labels: [String; 3],
     mask_labels: [String; 4],
@@ -167,6 +168,12 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            queue_labels: [
+                "sub-practice-shown",
+                "sub-practice-selected",
+                "sub-practice-passes",
+            ]
+            .map(|k| tr(k, &[])),
             context_labels: [
                 "sub-context-exact",
                 "sub-context-one",
@@ -282,6 +289,7 @@ struct Metrics {
 pub(crate) struct State {
     query: String,
     preset_name: String,
+    practice_passes: u8,
     rows: Rows,
     selected: BTreeSet<usize>,
     selection_anchor: Option<usize>,
@@ -319,6 +327,26 @@ pub(crate) struct State {
 }
 
 impl State {
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn set_study_filters(
+        &mut self,
+        preset: &nikomiru_core::config::SubtitleStudyPreset,
+    ) {
+        self.apply_preset(preset);
+    }
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn study_mask(&mut self, enabled: bool) {
+        self.masked = enabled;
+        self.revealed.clear();
+    }
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn study_selection(&self) -> Vec<usize> {
+        self.selected.iter().copied().collect()
+    }
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn study_reveals(&self) -> Vec<usize> {
+        self.revealed.iter().copied().collect()
+    }
     #[cfg(feature = "test-harness")]
     pub(crate) fn set_study_query(&mut self, query: String) {
         self.query = query;
@@ -614,8 +642,18 @@ pub(crate) fn show(
         concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         practice_status: s.practice_remaining().map(|n| {
-            s.translator()
-                .tr("sub-practice-remaining", &[("count", n.to_string())])
+            format!(
+                "{} · {}",
+                s.translator()
+                    .tr("sub-practice-remaining", &[("count", n.to_string())]),
+                s.translator().tr(
+                    "sub-practice-cues",
+                    &[(
+                        "count",
+                        s.practice_cues_remaining().unwrap_or(0).to_string()
+                    )]
+                )
+            )
         }),
         title: tr("subtitle-list"),
         score: score_line(s),
@@ -1163,6 +1201,45 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
             egui::CollapsingHeader::new(&scene.study.study_groups[0])
                 .id_salt("subtitle-study-group-0")
                 .show(ui, |ui| {
+                    if !matches!(state.practice_passes, 2 | 3 | 5) {
+                        state.practice_passes = 2;
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(&scene.study.queue_labels[2]);
+                        for passes in [2, 3, 5] {
+                            ui.selectable_value(
+                                &mut state.practice_passes,
+                                passes,
+                                passes.to_string(),
+                            );
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        for (label, indices) in [
+                            (&scene.study.queue_labels[0], shown_indices(scene, state)),
+                            (
+                                &scene.study.queue_labels[1],
+                                state.selected.iter().copied().collect::<Vec<_>>(),
+                            ),
+                        ] {
+                            if ui
+                                .add_enabled(
+                                    scene.export_ready
+                                        && !indices.is_empty()
+                                        && indices.len() <= 1000,
+                                    egui::Button::new(label),
+                                )
+                                .clicked()
+                            {
+                                out.push(Command::PracticeQueue {
+                                    version: scene.version,
+                                    indices,
+                                    passes: state.practice_passes,
+                                });
+                            }
+                        }
+                    });
+
                     ui.horizontal_wrapped(|ui| {
                         let target = scene.timeline.active(scene.pos_ms).first().copied();
                         for passes in [2, 3, 5] {
@@ -1931,6 +2008,35 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-055: queue buttons capture filtered original indices and preserve hidden-selected order.
+    #[test]
+    fn practice_queue_actions_capture_the_requested_scope() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(1);
+        h.state_mut().state.query = "猫".into();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-practice-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-practice-selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(
+            |c| matches!(c,Command::PracticeQueue { version:1,indices,passes:2 } if indices == &[1])
+        ));
+        h.get_by_label("sub-practice-shown").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c,Command::PracticeQueue { indices, .. } if indices == &[0]))
+        );
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
     }
 
     // T-SUB-053: context scopes preserve exact hit identity and compose later text filters.

@@ -1459,4 +1459,4 @@ M62–M71 are complete. Full regression passed 997 workspace/integration tests a
 | M78 | KNW-048 | Vocabulary HTML study sheets | done |
 | M79 | SUB-053 | Context around word examples | done |
 | M80 | SUB-054 | Subtitle study keyboard actions | done |
-| M81 | SUB-055 | Finite cue practice queues | planned |
+| M81 | SUB-055 | Finite cue practice queues | done |

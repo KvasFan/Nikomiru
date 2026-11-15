@@ -1255,3 +1255,9 @@ action-study-previous = 前の一致する字幕
 action-study-next = 次の一致する字幕
 action-study-reveal = 現在の学習字幕を表示
 action-study-select = 現在の学習字幕の選択を切り替え
+
+sub-practice-shown = 表示中の字幕を繰り返す
+sub-practice-selected = 選択した字幕を繰り返す
+sub-practice-passes = 字幕ごとの再生回数
+sub-practice-cues = 残りの字幕数：{ $count }
+sub-practice-unavailable = 動画の範囲内にある有効な字幕を1～1000件選んでください。

@@ -1272,3 +1272,9 @@ action-study-previous = Previous matching subtitle
 action-study-next = Next matching subtitle
 action-study-reveal = Reveal current study line
 action-study-select = Toggle current study line selection
+
+sub-practice-shown = Repeat shown lines
+sub-practice-selected = Repeat selected lines
+sub-practice-passes = Passes per line
+sub-practice-cues = Lines remaining: { $count }
+sub-practice-unavailable = A complete queue of 1–1000 valid subtitle lines within the media is required.

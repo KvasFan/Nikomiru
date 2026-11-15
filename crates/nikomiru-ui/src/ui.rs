@@ -403,6 +403,11 @@ pub(crate) enum Command {
         passes: u8,
     },
     PracticeCancel,
+    PracticeQueue {
+        version: u64,
+        indices: Vec<usize>,
+        passes: u8,
+    },
     VocabularyScope {
         version: u64,
         indices: Vec<usize>,
@@ -1165,6 +1170,12 @@ impl Ui {
     fn effect(&mut self, effect: crate::session::UiEffect) {
         if let crate::session::UiEffect::SubtitleStudy(action) = effect {
             if self.view.sub_list_open
+                && !self.view.library_page_open
+                && !self.view.books_page_open
+                && !self.view.hooker_page_open
+                && !self.view.servers_page_open
+                && !self.view.backup_page_open
+                && !self.session.setup_page.open
                 && !self.session.popups_covered
                 && !self.session.popups.is_open()
                 && let Some(command) = self.view.list.study_action(&self.session, action)
@@ -1441,6 +1452,11 @@ impl Ui {
                 cue,
                 passes,
             } => s.practice_start(version, cue, passes),
+            Command::PracticeQueue {
+                version,
+                indices,
+                passes,
+            } => s.practice_queue_start(version, &indices, passes),
             Command::PracticeCancel => s.practice_cancel(),
             Command::VocabularyScope { version, indices } => {
                 s.vocabulary_scope_capture(version, &indices)

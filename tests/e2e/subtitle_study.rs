@@ -115,6 +115,42 @@ fn selected_subtitle_snapshots_keep_timing_and_reject_stale_requests() {
                 .as_f64()
                 .is_some_and(|t| (2.9..=3.2).contains(&t))
     });
+    // T-SUB-054: real shortcuts reuse current rendered matches, preserve pause and select/reveal only current shown cues.
+    h.key("ArrowLeft");
+    h.state_until("before matching cue", |s| {
+        s["time_pos"].as_f64().is_some_and(|t| t < 1.0)
+    });
+    h.cmd(json!({"cmd":"key","code":"ArrowDown","mods":["Alt"]}));
+    h.state_until("keyboard matching navigation", |s| {
+        s["paused"] == true
+            && s["time_pos"]
+                .as_f64()
+                .is_some_and(|t| (2.95..=3.2).contains(&t))
+    });
+    h.cmd(json!({"cmd":"subtitle-study","mask":true}));
+    h.cmd(json!({"cmd":"key","code":"KeyT","mods":["Alt"]}));
+    h.state_until("keyboard selected current line", |s| {
+        s["subtitle_study"]["selected"] == json!([1])
+    });
+    h.cmd(json!({"cmd":"key","code":"KeyR","mods":["Alt"]}));
+    h.state_until("keyboard revealed current line", |s| {
+        s["subtitle_study"]["revealed"] == json!([1])
+    });
+    h.cmd(json!({"cmd":"key","code":"KeyF","mods":["Ctrl"]}));
+    h.cmd(json!({"cmd":"key","code":"KeyT","mods":["Alt"],"text_focus":true}));
+    assert_eq!(
+        h.state()["subtitle_study"]["selected"],
+        json!([1]),
+        "typing focus blocks study selection"
+    );
+    h.cmd(json!({"cmd":"library","action":"open"}));
+    let selected = h.state()["subtitle_study"]["selected"].clone();
+    h.cmd(json!({"cmd":"key","code":"KeyT","mods":["Alt"]}));
+    assert_eq!(
+        h.state()["subtitle_study"]["selected"],
+        selected,
+        "covered pages block study selection"
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -187,6 +223,12 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
             .any(|w| w["expression"] == "食べる" && w["count"] == 1)
     );
     assert!(!scoped.iter().any(|w| w["expression"] == "猫"));
+    // T-KNW-048: native HTML saves the frozen scoped vocabulary with readings hidden.
+    let html = desk.path("vocabulary.html");
+    h.cmd(json!({"cmd":"vocabulary-html","path":html}));
+    let html = std::fs::read_to_string(html).unwrap();
+    assert!(html.contains("食べる") && html.contains("<details><summary>"));
+    assert!(html.contains("たべる") && !html.contains("猫"));
     h.cmd(json!({"cmd":"vocabulary-scope"}));
     h.state_until("full vocabulary restored", |s| {
         s["subtitle_study"]["vocabulary_scope"].is_null()
@@ -196,6 +238,12 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
     h.state_until("two exact examples", |s| {
         s["concordance"]["indices"] == json!([0, 1])
     });
+    // T-SUB-053: neighbours expand the displayed scope while exact-hit identities stay unchanged.
+    h.cmd(json!({"cmd":"subtitle-study","filters":{"name":"Runtime","context":1}}));
+    h.state_until("word examples with context", |s| {
+        s["subtitle_study"]["shown"] == json!([0, 1, 2])
+    });
+    assert_eq!(h.state()["concordance"]["indices"], json!([0, 1]));
     assert!((h.state()["time_pos"].as_f64().unwrap() - before).abs() < 0.1);
     h.cmd(json!({"cmd":"vocabulary-examples"}));
     assert!(h.state()["concordance"].is_null());
@@ -217,25 +265,30 @@ fn named_study_presets_survive_restart_and_delete() {
     let mut desk = Desktop::start();
     let (mut app, mut h) = desk.launch();
     h.cmd(json!({"cmd":"study-preset","name":"Cats","query":"猫"}));
+    // T-SUB-052: subtitle presets use the same serial persistent writer and survive restart.
+    h.cmd(json!({"cmd":"subtitle-preset","name":"Study lines","preset":{"query":"猫","min_text":2,"shape":2}}));
     h.state_until("preset saved", |s| s["study_presets"][0]["name"] == "Cats");
     super::support::until(Duration::from_secs(10), "preset on disk", || {
         let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
-        config.contains("Cats").then_some(())
+        (config.contains("Cats") && config.contains("Study lines")).then_some(())
     });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     let (mut app, mut h) = desk.launch();
     let s = h.state();
     assert_eq!(s["study_presets"][0]["query"], "猫");
+    assert_eq!(s["subtitle_presets"][0]["min_text"], 2);
+    h.cmd(json!({"cmd":"subtitle-preset","name":"Study lines"}));
     h.cmd(json!({"cmd":"study-preset","name":"Cats"}));
     super::support::until(Duration::from_secs(10), "preset removed on disk", || {
         let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
-        (!config.contains("Cats")).then_some(())
+        (!config.contains("Cats") && !config.contains("Study lines")).then_some(())
     });
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     let (mut app, mut h) = desk.launch();
     assert_eq!(h.state()["study_presets"], json!([]));
+    assert_eq!(h.state()["subtitle_presets"], json!([]));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -257,6 +310,20 @@ fn finite_cue_repetition_stops_and_cancels_in_the_real_player() {
     let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
     h.wait("first-frame");
     h.state_until("repeat cues ready", |s| s["subtitles"]["cues"] == 2);
+    // T-SUB-055: ordered/deduplicated queue repeats each cue, then pauses at the last end.
+    h.cmd(json!({"cmd":"practice-queue","indices":[1,0,1],"passes":2}));
+    h.state_until("practice queue complete", |s| {
+        s["subtitle_study"]["practice_cues"] == 0 && s["paused"] == true
+    });
+    assert!(
+        h.state()["time_pos"]
+            .as_f64()
+            .is_some_and(|t| (3.8..=4.2).contains(&t))
+    );
+    h.cmd(json!({"cmd":"practice-queue","indices":[0,99],"passes":2}));
+    assert_eq!(h.state()["subtitle_study"]["practice_cues"], 0);
+    h.cmd(json!({"cmd":"practice-queue","indices":[0],"passes":2,"version":u64::MAX}));
+    assert_eq!(h.state()["subtitle_study"]["practice_cues"], 0);
     h.cmd(json!({"cmd":"practice","cue":0,"passes":3}));
     h.state_until("finite repetition completed", |s| {
         s["subtitle_study"]["practice_remaining"] == 0 && s["paused"] == true
@@ -306,6 +373,42 @@ fn finite_cue_repetition_stops_and_cancels_in_the_real_player() {
     h.state_until("source replacement cancels", |s| {
         s["subtitles"]["cues"] == 1 && s["subtitle_study"]["practice_remaining"].is_null()
     });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-049, T-SUB-050, T-SUB-051: real shown snapshots share text/structure/duplicate predicates.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn subtitle_text_filter_scopes_export_original_cues() {
+    let mut desk = Desktop::start();
+    let video = desk.path("filters.mkv");
+    std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
+    std::fs::write(desk.path("filters.ja.srt"),"1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n猫 犬\n\n3\n00:00:05,000 --> 00:00:06,000\n猫  犬\n\n4\n00:00:07,000 --> 00:00:08,000\n猫\n犬\n").unwrap();
+    let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
+    h.wait("first-frame");
+    h.state_until("four captions", |s| s["subtitles"]["cues"] == 4);
+    h.cmd(json!({"cmd":"subtitle-study"}));
+    h.state_until("list ready", |s| {
+        s["subtitle_study"]["shown"] == json!([0, 1, 2, 3])
+    });
+    h.cmd(json!({"cmd":"subtitle-study","filters":{"name":"Runtime","min_text":2,"unique":true}}));
+    h.state_until("unique long captions", |s| {
+        s["subtitle_study"]["shown"] == json!([1])
+    });
+    h.cmd(json!({"cmd":"subtitle-study","filters":{"name":"Runtime","min_text":2,"shape":2}}));
+    h.state_until("multiline caption", |s| {
+        s["subtitle_study"]["shown"] == json!([3])
+    });
+    let path = desk.path("multiline.srt");
+    h.cmd(json!({"cmd":"subtitle-export","path":path,"indices":[3]}));
+    let out = nikomiru_subs::parse(
+        nikomiru_subs::Format::Srt,
+        &std::fs::read_to_string(path).unwrap(),
+    );
+    assert_eq!(out.cues.len(), 1);
+    assert_eq!(out.cues[0].start_ms, 7000);
+    assert_eq!(out.cues[0].plain_text, "猫\n犬");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

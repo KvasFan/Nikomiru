@@ -136,7 +136,7 @@ pub fn drop(paths: &[String]) -> Result<(), String> {
 
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
 /// (`Ctrl`, `Shift`, `Alt`), through the window's key handler.
-pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
+pub fn key(code: &str, mods: &[String], repeats: u64, text_focus: bool) -> Result<(), String> {
     let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
     let mut held = Modifiers::default();
     for m in mods {
@@ -155,12 +155,12 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             pressed,
             repeat,
         };
-        let taken = ui.key(key(true, false), false);
+        let taken = ui.key(key(true, false), text_focus);
         // held: the auto-repeats of the window system
         for _ in 0..repeats {
-            ui.key(key(true, true), false);
+            ui.key(key(true, true), text_focus);
         }
-        ui.key(key(false, false), false);
+        ui.key(key(false, false), text_focus);
         // what the window gives egui: a key no shortcut took, on a page
         if !taken && (ui.page_open() || held.ctrl) {
             let short = name
@@ -554,8 +554,9 @@ pub fn state() -> Result<Value, String> {
             Value::Null,
             |c| json!({"label":c.label,"indices":c.indices}),
         );
-        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining()});
+        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining(), "practice_cues":s.practice_cues_remaining(), "selected":ui.view.list.study_selection(), "revealed":ui.view.list.study_reveals()});
         state["study_presets"] = json!(s.config().lookup.study_presets);
+        state["subtitle_presets"] = json!(s.config().subtitles.study_presets);
         state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
         state["setup"] = json!({
@@ -638,9 +639,20 @@ pub fn lookup(text: &str) -> Result<(), String> {
 }
 
 /// Open the subtitle study list, set its query, or navigate its last rendered matching rows.
-pub fn subtitle_study(query: Option<String>, forward: Option<bool>) -> Result<(), String> {
+pub fn subtitle_study(
+    query: Option<String>,
+    forward: Option<bool>,
+    filters: Option<nikomiru_core::config::SubtitleStudyPreset>,
+    mask: Option<bool>,
+) -> Result<(), String> {
     call(move |ui| {
         ui.view.sub_list_open = true;
+        if let Some(preset) = filters {
+            ui.view.list.set_study_filters(&preset);
+        }
+        if let Some(enabled) = mask {
+            ui.view.list.study_mask(enabled);
+        }
         if let Some(query) = query {
             ui.view.list.set_study_query(query);
         }
@@ -649,6 +661,49 @@ pub fn subtitle_study(query: Option<String>, forward: Option<bool>) -> Result<()
         {
             ui.run(Command::ListTime(cue));
         }
+    })
+}
+
+/// Native-save vocabulary practice sheet from the active captured/full vocabulary.
+pub fn vocabulary_html(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(rows) = ui.session.word_list()
+            && ui
+                .session
+                .vocabulary_html_prepare(&ui.session.view.title.clone(), &rows)
+        {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::VocabularyHtml,
+                path,
+            });
+        }
+    })
+}
+
+/// Save/delete subtitle presets through the normal configuration writer.
+pub fn subtitle_preset(
+    name: String,
+    preset: Option<nikomiru_core::config::SubtitleStudyPreset>,
+) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(mut preset) = preset {
+            preset.name = name;
+            ui.run(Command::SubtitleStudyPresetSave(preset));
+        } else {
+            ui.run(Command::SubtitleStudyPresetDelete(name));
+        }
+    })
+}
+
+/// Capture the same finite queue as the study scope buttons.
+pub fn practice_queue(indices: Vec<usize>, passes: u8, version: Option<u64>) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::PracticeQueue {
+            version: version.unwrap_or(ui.session.sub_list_version),
+            indices,
+            passes,
+        })
     })
 }
 

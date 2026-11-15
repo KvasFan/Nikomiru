@@ -87,7 +87,13 @@ fn run(command: &Value) -> Result<Value, String> {
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
             let repeats = command["repeat"].as_u64().unwrap_or(0);
-            harness::key(text(command, "code")?, &mods, repeats).map(|()| Value::Null)
+            harness::key(
+                text(command, "code")?,
+                &mods,
+                repeats,
+                command["text_focus"].as_bool().unwrap_or(false),
+            )
+            .map(|()| Value::Null)
         }
         Some("drop") => {
             let paths: Vec<String> = command["paths"]
@@ -112,6 +118,32 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("practice-queue") => harness::practice_queue(
+            command["indices"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| n.as_u64().map(|i| i as usize))
+                .collect(),
+            command["passes"]
+                .as_u64()
+                .and_then(|n| u8::try_from(n).ok())
+                .unwrap_or(2),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
+        Some("vocabulary-html") => {
+            harness::vocabulary_html(text(command, "path")?).map(|()| Value::Null)
+        }
+        Some("subtitle-preset") => harness::subtitle_preset(
+            text(command, "name")?.to_string(),
+            if command["preset"].is_null() {
+                None
+            } else {
+                Some(serde_json::from_value(command["preset"].clone()).map_err(|e| e.to_string())?)
+            },
+        )
+        .map(|()| Value::Null),
         Some("practice") => harness::practice(
             command["cue"].as_u64().map(|i| i as usize),
             command["passes"]
@@ -136,6 +168,15 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("subtitle-study") => harness::subtitle_study(
             command["query"].as_str().map(str::to_string),
             command["forward"].as_bool(),
+            if command["filters"].is_null() {
+                None
+            } else {
+                Some(
+                    serde_json::from_value(command["filters"].clone())
+                        .map_err(|e| e.to_string())?,
+                )
+            },
+            command["mask"].as_bool(),
         )
         .map(|()| Value::Null),
         Some("frequency-export") => {

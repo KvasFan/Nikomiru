@@ -261,6 +261,33 @@ impl Repetition {
     }
 }
 
+/// Freeze a complete bounded finite-practice queue before issuing any player command (SUB-055).
+pub fn repetition_queue(
+    cues: &[nikomiru_subs::Cue],
+    indices: &[usize],
+    delay: i64,
+    passes: u8,
+    duration_ms: Option<i64>,
+) -> Result<std::collections::VecDeque<Repetition>, &'static str> {
+    if indices.is_empty() || indices.len() > 1000 {
+        return Err("sub-practice-unavailable");
+    }
+    let mut queue = std::collections::VecDeque::new();
+    for i in indices
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        let cue = cues.get(i).ok_or("sub-practice-unavailable")?;
+        let repetition = Repetition::new(cue, delay, passes).ok_or("sub-practice-unavailable")?;
+        if duration_ms.is_some_and(|end| repetition.end_ms > end) {
+            return Err("sub-practice-unavailable");
+        }
+        queue.push_back(repetition);
+    }
+    Ok(queue)
+}
+
 /// Expand exact original indices by a small bounded context radius (SUB-053).
 pub fn context_indices(cue_count: usize, exact: &[usize], radius: u8) -> Option<Vec<usize>> {
     if cue_count > 100_000 || exact.len() > 100_000 || radius > 2 {
@@ -297,6 +324,28 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-055: queues are ordered/deduplicated and invalid requests never return a partial plan.
+    #[test]
+    fn finite_practice_queue_validates_every_captured_interval() {
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n",
+        )
+        .cues;
+        let q = repetition_queue(&cues, &[1, 0, 1], -500, 2, Some(4000)).unwrap();
+        assert_eq!(
+            q.iter()
+                .map(|r| (r.start_ms, r.end_ms, r.left))
+                .collect::<Vec<_>>(),
+            [(500, 1500, 2), (2500, 3500, 2)]
+        );
+        assert!(repetition_queue(&cues, &[0, 9], 0, 2, None).is_err());
+        assert!(repetition_queue(&cues, &[0, 1], 0, 2, Some(3000)).is_err());
+        assert!(repetition_queue(&cues, &[], 0, 2, None).is_err());
+        assert!(repetition_queue(&cues, &vec![0; 1001], 0, 2, None).is_err());
+        assert!(repetition_queue(&cues, &[0], 0, 4, None).is_err());
+    }
+
     // T-SUB-053: bounded overlapping context keeps original order and rejects stale indices.
     #[test]
     fn concordance_context_merges_overlaps_and_clips_edges() {

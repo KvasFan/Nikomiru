@@ -1272,3 +1272,9 @@ action-study-previous = Sottotitolo corrispondente precedente
 action-study-next = Sottotitolo corrispondente successivo
 action-study-reveal = Mostra battuta di studio corrente
 action-study-select = Seleziona o deseleziona battuta corrente
+
+sub-practice-shown = Ripeti battute visibili
+sub-practice-selected = Ripeti battute selezionate
+sub-practice-passes = Ripetizioni per battuta
+sub-practice-cues = Battute rimanenti: { $count }
+sub-practice-unavailable = Serve una selezione completa di 1–1000 battute valide comprese nella durata del video.

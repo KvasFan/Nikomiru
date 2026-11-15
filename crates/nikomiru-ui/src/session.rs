@@ -573,6 +573,7 @@ pub struct Session {
     /// The pointer is over a popup.
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
+    practice_queue: std::collections::VecDeque<crate::subtitle_study::Repetition>,
     practice: Option<(u64, crate::subtitle_study::Repetition)>,
     replaying: bool,
     /// Where mpv stops for the pause at the end of each line, in player
@@ -877,6 +878,7 @@ impl Session {
             writer,
             hover: Hover::default(),
             popup_hovered: false,
+            practice_queue: Default::default(),
             practice: None,
             replaying: false,
             auto_pause_end: None,
@@ -1415,6 +1417,7 @@ impl Session {
     /// took control, a popup closed or another file opened.
     fn end_replay(&mut self) {
         self.practice = None;
+        self.practice_queue.clear();
         if std::mem::take(&mut self.replaying) {
             let p = &self.services.player;
             let _ = p.stop_at(None);
@@ -1428,35 +1431,49 @@ impl Session {
 
     /// Explicit finite repetition of one complete primary cue.
     pub fn practice_start(&mut self, version: u64, cue: usize, passes: u8) {
-        if version != self.sub_list_version || !self.view.loaded || self.subs.incomplete {
-            return;
-        }
-        let Some(cue) = self.subs.timeline().cues().get(cue) else {
+        self.practice_queue_start(version, &[cue], passes);
+    }
+
+    /// Capture and start a finite ordered queue from original shown/selected cue identities.
+    pub fn practice_queue_start(&mut self, version: u64, indices: &[usize], passes: u8) {
+        let queue = if version == self.sub_list_version && self.view.loaded && !self.subs.incomplete
+        {
+            crate::subtitle_study::repetition_queue(
+                self.subs.timeline().cues(),
+                indices,
+                self.subs.timeline().delay_ms,
+                passes,
+                (self.view.duration > 0.0).then_some((self.view.duration * 1000.0).round() as i64),
+            )
+        } else {
+            Err("sub-practice-unavailable")
+        };
+        let Ok(mut queue) = queue else {
+            self.toasts.push(self.tr("sub-practice-unavailable", &[]));
             return;
         };
-        let Some(practice) =
-            crate::subtitle_study::Repetition::new(cue, self.subs.timeline().delay_ms, passes)
-        else {
+        let Some(first) = queue.pop_front() else {
             return;
         };
-        if self.view.duration > 0.0 && practice.end_ms as f64 > self.view.duration * 1000.0 {
-            return;
-        }
         self.end_replay();
         self.cancel_next();
         self.restore_gap_speed();
         self.popups.playback_changed_by_user();
-        let p = &self.services.player;
-        let result = p
-            .stop_at(Some(practice.end_ms as f64 / 1000.0))
-            .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
-            .and_then(|()| p.set_pause(false));
-        if result.is_ok() {
+        if self.start_practice_pass(&first) {
             self.replaying = true;
-            self.practice = Some((version, practice));
+            self.practice = Some((version, first));
+            self.practice_queue = queue;
         } else {
-            let _ = p.stop_at(None);
+            let _ = self.services.player.stop_at(None);
         }
+    }
+
+    fn start_practice_pass(&self, practice: &crate::subtitle_study::Repetition) -> bool {
+        let p = &self.services.player;
+        p.stop_at(Some(practice.end_ms as f64 / 1000.0))
+            .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
+            .and_then(|()| p.set_pause(false))
+            .is_ok()
     }
 
     fn practice_boundary(&mut self) {
@@ -1468,23 +1485,39 @@ impl Session {
             self.end_replay();
             return;
         }
-        let Some((_, practice)) = &mut self.practice else {
-            return;
-        };
-        if let Some(again) = practice.stopped((self.view.time_pos * 1000.0).round() as i64) {
-            if again {
-                let p = &self.services.player;
-                let result = p
-                    .stop_at(Some(practice.end_ms as f64 / 1000.0))
-                    .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
-                    .and_then(|()| p.set_pause(false));
-                if result.is_err() {
+        let step = self
+            .practice
+            .as_mut()
+            .and_then(|(_, r)| r.stopped((self.view.time_pos * 1000.0).round() as i64));
+        match step {
+            Some(true) => {
+                if self
+                    .practice
+                    .as_ref()
+                    .is_some_and(|(_, r)| !self.start_practice_pass(r))
+                {
                     self.practice_cancel();
                 }
-            } else {
-                let _ = self.services.player.set_pause(true);
             }
+            Some(false) => {
+                if let Some(next) = self.practice_queue.pop_front() {
+                    if self.start_practice_pass(&next) {
+                        self.practice = Some((self.sub_list_version, next));
+                    } else {
+                        self.practice_cancel();
+                    }
+                } else {
+                    let _ = self.services.player.set_pause(true);
+                }
+            }
+            None => {}
         }
+    }
+
+    /// Captured cues still to finish, including the current cue; zero means finished.
+    pub fn practice_cues_remaining(&self) -> Option<usize> {
+        self.practice_remaining()
+            .map(|left| self.practice_queue.len() + usize::from(left > 0))
     }
 
     /// Remaining finite passes; zero retains the finished pause until explicit user control.
