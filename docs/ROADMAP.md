@@ -1494,3 +1494,5 @@ M82–M91 are complete. Full regression passed 1,029 workspace/integration tests
 | M99 | KNW-060 | Recall results export | done |
 | M100 | KNW-061 | Focused recall follow-up rounds | done |
 | M101 | KNW-062 | Local recall summary history | done |
+
+M92–M101 are complete. Full regression passed 1,046 workspace/integration tests and 107 actual GUI cases. See [source QA 2.110.0](qa/2.110.0.md).

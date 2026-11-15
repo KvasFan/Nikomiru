@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.110.0] - 2026-11-15
+
+Ten consecutive vocabulary recall milestones (M92–M101) after source tag 2.100.0.
+
+### Added
+
 - Local recall summary history (KNW-062, M101).
 
 - Focused recall follow-up rounds (KNW-061, M100).
