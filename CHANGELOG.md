@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Index owned book, primary-track and JSON-pack sentences into an offline bank with exact dictionary expression/reading examples, original byte ranges, verified source reopening, shown TSV and ordinary backup retention (M106, SEN-001…SEN-003).
+
 - Create previewed cloze exercises from owned phrases, with concealed NFC-aware typed/choice rounds, finite undo and independently opt-in single-owner FSRS schedules retained across restart/backup (M105, CLO-001…CLO-004).
 
 - Keep independent local phrase vocabulary with explicit reader/caption capture, editable meanings/statuses, source navigation, shown TSV export and database backup persistence (M104, PHR-001…PHR-003).

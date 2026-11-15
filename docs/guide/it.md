@@ -378,3 +378,17 @@ Nel quaderno delle frasi scegli **Anteprima cloze**, controlla il contesto masch
 Apri **Esercizi cloze**, filtra le voci e pratica i primi 100 esercizi mostrati, con risposte scritte o scelte. La scrittura usa Unicode NFC e ignora gli spazi esterni; maiuscole, punteggiatura e letture giapponesi restano distinti. Le scelte richiedono un'altra risposta distinta nella stessa lingua. Risposte e significati appaiono dopo l'invio; avanzamento, salto e annullamento dell'ultimo esercizio sono espliciti. Le pagine sorgente restano nascoste durante l'esercizio.
 
 La pratica finita non cambia calendari o stati di frasi e parole. **Attiva ripasso programmato** iscrive esplicitamente il singolo esercizio a FSRS. **Ripassa esercizi in scadenza** usa le impostazioni del ripasso esistente, con quattro valutazioni esplicite dopo il controllo e annullamento dell'ultima valutazione. Esercizi, fonti e calendari persistono dopo riavvio e backup. Eliminare un esercizio elimina anche il suo calendario, lasciando intatta la frase nel quaderno.
+
+### Banco delle frasi ed esempi esatti
+
+Apri **Banco delle frasi** dal quaderno, oppure **Esempi fra le fonti** da una voce del dizionario. Indicizza esplicitamente il libro attuale o il testo completo dei sottotitoli primari. Il banco conserva frasi, posizioni originali e intervalli video, usando i dizionari installati per identificare espressioni e letture. Una nuova indicizzazione sostituisce in modo atomico la copia precedente della stessa fonte. Puoi annullare la preparazione; il salvataggio atomico finale non ha un pulsante di annullamento.
+
+Cerca espressione e lettura esatte, ad esempio `食べる` / `たべる`: anche la forma flessa `食べました。` può comparire fra gli esempi. Il banco mostra fino a 50 frasi salvate, evidenzia le parti originali e indica la provenienza. Gli esempi restano disponibili offline. **Apri fonte** verifica il contesto originale prima di spostare il lettore; un file modificato o mancante non elimina l’esempio. L’esportazione TSV comprende solo i risultati mostrati e neutralizza le formule. Eliminare una copia della fonte elimina il suo indice, lasciando intatti libro, sottotitoli e stati di apprendimento. Il banco è incluso nei backup ordinari; non viene unito tramite WebDAV.
+
+L’importazione accetta un pacchetto JSON UTF-8 locale, fino a 8 MiB, nella lingua di studio attuale:
+
+```json
+{"version":1,"title":"I miei esempi","entries":[{"text":"食べました。","language":"ja"}]}
+```
+
+Ogni voce può contenere anche un riferimento `source` a una fonte già presente nella libreria. Percorsi, URL e collegamenti eseguibili vengono rifiutati. Il testo resta un dato locale; non vengono scaricati metadati o esempi da fornitori esterni. Limiti del banco: 256 fonti/pacchetti, 10.000 frasi e 32 MiB di dati serializzati; ogni frase può contenere fino a 16 KiB e 256 parole riconosciute. Installa i dizionari prima di indicizzare.

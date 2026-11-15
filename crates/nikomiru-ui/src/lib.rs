@@ -38,6 +38,7 @@ pub mod review;
 pub mod scores;
 pub mod screensaver;
 pub mod screenshot;
+pub mod sentence_bank;
 pub mod series_scores;
 pub mod servers;
 pub mod session;

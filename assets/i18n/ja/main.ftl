@@ -1424,3 +1424,26 @@ cloze-delete = 問題と復習予定を削除
 cloze-error = 操作できません。問題の重複・入力・件数上限、または古い復習予定を確認し、再読み込みしてください。
 cloze-unavailable = 対象の問題がないか、文または同じ学習言語の異なる選択肢がありません。
 cloze-start-due-choice = 期限の来た問題を選択式で復習
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = 例文バンク
+bank-close = 例文バンクを閉じる
+bank-instructions = 現在の自分の本、読み込み済みの主字幕全体、または所有するJSON例文パックを登録します。辞書の表記と読みで完全一致検索できます。保存済みの例文はオフラインでも利用できます。
+bank-index-book = 現在の本を登録
+bank-index-track = 主字幕を登録
+bank-import = 所有する例文を取り込む
+bank-indexing = 例文を準備・保存中…
+bank-cancel = 登録を中止
+bank-expression = 表記
+bank-reading = 読み
+bank-search = 完全一致の例文を検索
+bank-snapshot = 保存済み例文・出典は開くときに確認します
+bank-export = 表示中の例文を書き出す
+bank-sources = 登録済みの出典
+bank-delete = 保存済みの出典を削除
+bank-error = 登録できません。辞書・言語・形式・上限を確認してください。一部のみの保存は行いません。
+bank-cancelled = 例文の登録を中止しました。
+bank-source-missing = 元の出典を利用できません。保存済みの例文は保持します。
+bank-source-changed = 元の文章が変更されています。保存した位置は開きませんでした。
+bank-filter = 所有する例文パックJSON
+bank-examples = 出典をまたいだ例文

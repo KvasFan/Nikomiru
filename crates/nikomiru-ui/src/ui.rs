@@ -25,6 +25,10 @@ pub enum Inbound {
     Phrases(crate::phrases::Answer),
     /// An ordered cloze operation completed.
     Cloze(crate::cloze::Answer),
+    /// A complete explicitly indexed owned-source batch, before its atomic commit.
+    BankPrepared(Result<nikomiru_library::sentences::Batch, String>),
+    /// An ordered sentence-bank query/write result.
+    Bank(crate::sentence_bank::Answer),
     /// Cumulative graphic OCR text, stamped against source changes.
     SubtitleProgress {
         /// Load generation.
@@ -336,6 +340,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
             Inbound::Cloze(_) => "Cloze",
+            Inbound::BankPrepared(_) => "BankPrepared",
+            Inbound::Bank(_) => "Bank",
             Inbound::BookCount { .. } => "BookCount",
             Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
@@ -370,6 +376,17 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    BankOpen,
+    BankClose,
+    BankExamples(String, String),
+    BankIndex(bool),
+    BankImport,
+    BankCancel,
+    BankQuery(String, String),
+    BankDelete(String),
+    BankSource(Box<nikomiru_library::sentences::Example>),
+    BankExport,
+
     ClozeOpen,
     ClozeClose,
     ClozePreview(String),
@@ -1149,6 +1166,8 @@ impl Ui {
                     Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::PhrasesExport => self.session.phrases_export_to(&path),
+                    Dialog::SentencesImport => self.session.bank_import(path),
+                    Dialog::SentencesExport => self.session.bank_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
@@ -1214,6 +1233,14 @@ impl Ui {
             }
             Inbound::BookCount { request, result } => {
                 self.session.book_count_done(&request, result);
+                true
+            }
+            Inbound::BankPrepared(result) => {
+                self.session.bank_prepared(result);
+                true
+            }
+            Inbound::Bank(answer) => {
+                self.session.bank_done(answer);
                 true
             }
             Inbound::Cloze(answer) => {
@@ -1480,7 +1507,8 @@ impl Ui {
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
-        self.session.popups_covered = self.session.clozes.open
+        self.session.popups_covered = self.session.bank.open
+            || self.session.clozes.open
             || (self.view.phrases_open && !self.session.study_popup_open())
             || self.view.recall_history_open
             || self.view.web_url_open
@@ -1499,7 +1527,39 @@ impl Ui {
         self.cover_popups();
         let s = &mut self.session;
         match command {
-            Command::ClozeOpen => s.cloze_open(),
+            Command::BankOpen => {
+                s.clozes.open = false;
+                s.bank_open();
+            }
+            Command::BankClose => s.bank.open = false,
+            Command::BankExamples(e, r) => {
+                self.view.bank_expression = e.clone();
+                self.view.bank_reading = r.clone();
+                s.bank_examples(e, r);
+            }
+            Command::BankIndex(book) => s.bank_index(book),
+            Command::BankImport => self.view.dialog = Some(Dialog::SentencesImport),
+            Command::BankCancel => s.bank_cancel(),
+            Command::BankQuery(e, r) => s.bank_query(e, r),
+            Command::BankDelete(key) => s.bank_delete(key),
+            Command::BankSource(example) => {
+                if let Some(book) = s.bank_source(*example) {
+                    s.bank.open = false;
+                    if book {
+                        self.view.close_library_page();
+                        self.view.books_page_open = true;
+                    }
+                }
+            }
+            Command::BankExport => {
+                if s.bank_export_prepare() {
+                    self.view.dialog = Some(Dialog::SentencesExport);
+                }
+            }
+            Command::ClozeOpen => {
+                s.bank.open = false;
+                s.cloze_open();
+            }
             Command::ClozeClose => {
                 s.clozes.open = false;
                 s.clozes.round = None;
@@ -1955,6 +2015,21 @@ impl Ui {
     /// Starts the jobs the session queued, with replies that come back as
     /// [`Inbound`] messages, and hands on its toasts and milestones.
     fn pump(&mut self) {
+        if let Some((request, cancel)) = self.session.take_bank_prepare() {
+            let waker = self.waker.clone();
+            self.session.start_bank_prepare(
+                request,
+                cancel,
+                Box::new(move |result| waker.wake(Inbound::BankPrepared(result))),
+            );
+        }
+        for job in self.session.take_bank_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_bank_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Bank(answer))),
+            );
+        }
         if let Some(job) = self.session.take_cloze_job() {
             let waker = self.waker.clone();
             self.session.start_cloze_job(

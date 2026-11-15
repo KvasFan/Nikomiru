@@ -377,3 +377,17 @@ In the phrase notebook, choose **Preview cloze**, inspect the masked sentence an
 Open **Cloze practice**, filter the exercises and practice the first 100 shown using typed answers or choices. Typed answers compare Unicode NFC and ignore outer whitespace; case, punctuation and Japanese readings remain distinct. Choices need another distinct answer in the same study language. Answers and meanings appear after submission; advance, skip, undo the previous step or return to the exercise list explicitly. Other source pages are hidden during the exercise.
 
 Finite practice never changes review schedules or phrase/word statuses. **Enrol in scheduled review** explicitly adds an exercise's single FSRS schedule. **Review due exercises** uses the existing review settings, with four explicit ratings after feedback and one-step schedule undo. Due exercises, frozen sources and schedules survive restart and ordinary backups. Deleting an exercise also deletes its schedule; it leaves the notebook phrase untouched.
+
+### Sentence bank and exact examples
+
+Open **Sentence bank** from the phrase notebook, or **Examples across sources** from a dictionary entry. Explicitly index the current book or the complete loaded primary text track. Indexing captures plain sentences and their original reader byte locations or video intervals, using the installed dictionaries to identify expressions and readings. A new index replaces that source's previous snapshot atomically. **Cancel indexing** cancels preparation; the final atomic commit has no cancel button.
+
+Search an exact expression and reading, for example `食べる` / `たべる`: an inflected sentence such as `食べました。` can match without containing the dictionary expression literally. The browser shows at most 50 saved examples, their original matched spans and provenance. Results remain available offline. **Open source** checks the original reader context before moving to it; a changed or missing file leaves the saved example available. **Export shown examples** exports only that frozen result list as a formula-neutralised TSV. Deleting a source snapshot deletes its index, not the book, captions or learning states. Ordinary backups retain the bank; WebDAV merge is not added.
+
+**Import owned sentences** accepts a local UTF-8 JSON pack, at most 8 MiB, in the current study language:
+
+```json
+{"version":1,"title":"My examples","entries":[{"text":"食べました。","language":"ja"}]}
+```
+
+Entries may additionally contain an existing library `source` reference with the same fields as exported phrase locations; paths, URLs and executable links are refused. Imported text is plain data; no pack metadata or provider is fetched. The bank keeps at most 256 source/pack batches, 10,000 sentences and 32 MiB of serialized data. Individual sentences are at most 16 KiB with 256 recognised words. Dictionaries must be installed before indexing.

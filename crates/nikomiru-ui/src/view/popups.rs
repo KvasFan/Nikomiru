@@ -1087,6 +1087,12 @@ fn entry(
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
         });
     });
+    if ui.small_button(d.tr("bank-examples")).clicked() {
+        d.out.push(Command::BankExamples(
+            e.expression.clone(),
+            e.reading.clone(),
+        ));
+    }
     // KNW-001: what the learner knows of the word, to change
     if let Some(status_of) = d.word_status {
         let now = status_of(&e.expression, &e.reading);

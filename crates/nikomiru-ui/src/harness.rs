@@ -572,6 +572,7 @@ pub fn state() -> Result<Value, String> {
             "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
         state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
         state["books"] = json!({
@@ -588,6 +589,7 @@ pub fn state() -> Result<Value, String> {
                     "last_read_at": b.last_read_at, "whole_score":whole_score })
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
+            "busy":s.books_page.busy,
             "uid":s.books_page.open.as_ref().map(|o|&o.uid),
             "path":s.books_page.open.as_ref().and_then(|o|s.books_page.list.iter().find(|(u,_)|*u==o.uid).map(|(_,b)|&b.path)),
             "paragraph":s.books_page.open.as_ref().map(|o|o.paragraph),
@@ -1831,6 +1833,52 @@ pub fn cloze(action: String, args: Value) -> Result<(), String> {
             "undo" => ui.run(Command::ClozeUndo),
             "cancel" => ui.run(Command::ClozeCancelRound),
             _ => return Err("unknown cloze action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Owned source indexing and exact offline examples through production commands and native file handlers.
+pub fn sentence_bank(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "open" => ui.run(Command::BankOpen),
+            "close" => ui.run(Command::BankClose),
+            "book" => ui.run(Command::BankIndex(true)),
+            "track" => ui.run(Command::BankIndex(false)),
+            "cancel" => ui.run(Command::BankCancel),
+            "query" => ui.run(Command::BankExamples(
+                args["expression"].as_str().unwrap_or_default().into(),
+                args["reading"].as_str().unwrap_or_default().into(),
+            )),
+            "delete" => ui.run(Command::BankDelete(
+                args["key"].as_str().ok_or("missing key")?.into(),
+            )),
+            "source" => {
+                let example = ui
+                    .session
+                    .bank
+                    .examples
+                    .get(args["index"].as_u64().unwrap_or(0) as usize)
+                    .cloned()
+                    .ok_or("missing example")?;
+                ui.run(Command::BankSource(Box::new(example)));
+            }
+            "import" => {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::SentencesImport,
+                    path: PathBuf::from(args["path"].as_str().ok_or("missing path")?),
+                });
+            }
+            "export" => {
+                ui.run(Command::BankExport);
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::SentencesExport,
+                    path: PathBuf::from(args["path"].as_str().ok_or("missing path")?),
+                });
+            }
+            _ => return Err("unknown sentence-bank action".into()),
         }
         Ok(())
     })?

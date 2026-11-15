@@ -1441,3 +1441,26 @@ cloze-delete = Delete exercise and schedule
 cloze-error = The operation was refused: duplicate/invalid exercise, notebook limit or outdated schedule. Refresh and retry.
 cloze-unavailable = No eligible exercises, context is missing, or distinct same-language choices are unavailable.
 cloze-start-due-choice = Review due: choices
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = Sentence bank
+bank-close = Close sentence bank
+bank-instructions = Index your own current book or complete primary text track, or import an owned JSON pack. Search exact dictionary expression and reading; cached examples remain available offline.
+bank-index-book = Index current book
+bank-index-track = Index primary subtitles
+bank-import = Import owned sentences
+bank-indexing = Preparing / committing sentences…
+bank-cancel = Cancel indexing
+bank-expression = Expression
+bank-reading = Reading
+bank-search = Find exact examples
+bank-snapshot = Saved examples · sources verified when opened
+bank-export = Export shown examples
+bank-sources = Indexed sources
+bank-delete = Delete source snapshot
+bank-error = Cannot index this source: check dictionaries, language, format and limits. No partial batch was saved.
+bank-cancelled = Sentence indexing cancelled.
+bank-source-missing = The original source is unavailable; the saved example is retained.
+bank-source-changed = The original source text changed. Its saved location was not opened.
+bank-filter = Owned sentence pack JSON
+bank-examples = Examples across sources

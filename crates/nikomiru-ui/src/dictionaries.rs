@@ -90,6 +90,16 @@ pub type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// The dictionaries, from the application. Errors are already translated.
 pub trait DictionaryService: Send {
+    /// Prepare exact owned-source examples on a bulk worker separate from interactive lookup.
+    fn sentence_bank(
+        &self,
+        request: crate::sentence_bank::Request,
+        cancel: Cancel,
+        done: Done<nikomiru_library::sentences::Batch>,
+    ) {
+        let _ = (request, cancel);
+        done(Err("dictionary service unavailable".into()));
+    }
     /// Count a whole local book on a worker separate from lookups and episodes.
     fn count_book(
         &self,

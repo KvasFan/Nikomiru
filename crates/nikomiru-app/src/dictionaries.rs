@@ -335,6 +335,38 @@ impl Dictionaries {
 }
 
 impl DictionaryService for Dictionaries {
+    fn sentence_bank(
+        &self,
+        request: nikomiru_ui::sentence_bank::Request,
+        cancel: Cancel,
+        done: Done<nikomiru_library::sentences::Batch>,
+    ) {
+        let manager = Arc::clone(&self.manager);
+        let translator = self.translator.clone();
+        let stop = self.counts_stop.linked(&cancel);
+        let (tx, rx) = mpsc::sync_channel::<Done<nikomiru_library::sentences::Batch>>(1);
+        match std::thread::Builder::new()
+            .name("sentence-index".into())
+            .spawn(move || {
+                if let Ok(done) = rx.recv() {
+                    done(crate::sentence_bank::prepare(
+                        &manager,
+                        request,
+                        &stop,
+                        &translator,
+                    ));
+                }
+            }) {
+            Ok(worker) => {
+                let mut imports = self.imports.lock().unwrap_or_else(PoisonError::into_inner);
+                imports.retain(|(_, h)| !h.is_finished());
+                imports.push((cancel, worker));
+                let _ = tx.send(done);
+            }
+            Err(_) => done(Err(self.translator.tr("error-dict-unavailable", &[]))),
+        }
+    }
+
     fn count_book(
         &self,
         request: nikomiru_ui::book_scores::Request,

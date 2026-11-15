@@ -472,7 +472,26 @@ mod tests {
             .change_cloze(&phrase.id, None, crate::cloze::Change::Enrol)
             .unwrap()
             .unwrap();
+        // T-SEN-003: exact sentence indexes are restored with the complete database.
+        let batch = crate::sentences::Batch {
+            key: "pack/owned".into(),
+            title: "Owned".into(),
+            dictionary: "a".repeat(64),
+            sentences: vec![crate::sentences::Sentence {
+                text: "猫です。".into(),
+                language: "ja".into(),
+                source: None,
+                tokens: vec![crate::sentences::Token {
+                    expression: "猫".into(),
+                    reading: "ねこ".into(),
+                    start: 0,
+                    end: 3,
+                }],
+            }],
+        };
+        assert!(f.library.put_sentence_batch(&batch).unwrap());
         let out = backup(&f, false);
+        assert!(f.library.delete_sentence_batch(&batch.key).unwrap());
         assert!(f.library.remove_phrase(&phrase.id).unwrap());
         f.library
             .record_encounters("video/ep", &[("犬".into(), "いぬ".into())], 20)
@@ -519,6 +538,10 @@ mod tests {
         assert_eq!(clozes.len(), 1);
         assert_eq!(clozes[0].phrase, phrase);
         assert_eq!(clozes[0].memory, Some(crate::review::Memory::default()));
+        assert_eq!(
+            library.sentence_examples("猫", "ねこ", "ja").unwrap()[0].sentence,
+            batch.sentences[0]
+        );
         let encounters = library.word_encounters().unwrap();
         assert_eq!(encounters["video/ep"].len(), 1);
         assert_eq!(encounters["video/ep"]["猫\nねこ"], 10);

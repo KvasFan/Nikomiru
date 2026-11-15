@@ -48,6 +48,7 @@ pub mod platform;
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod portal;
 pub mod score_subtitles;
+pub mod sentence_bank;
 pub mod servers;
 pub mod setup;
 pub mod setup_tools;

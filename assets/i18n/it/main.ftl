@@ -1441,3 +1441,26 @@ cloze-delete = Elimina esercizio e calendario
 cloze-error = Operazione rifiutata: esercizio duplicato/non valido, limite del quaderno o calendario non aggiornato. Riapri e riprova.
 cloze-unavailable = Nessun esercizio disponibile, contesto mancante o scelte distinte nella stessa lingua non disponibili.
 cloze-start-due-choice = Ripassa in scadenza: scelte
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = Banco delle frasi
+bank-close = Chiudi banco delle frasi
+bank-instructions = Indicizza il libro attuale o il testo completo dei sottotitoli primari, oppure importa un pacchetto JSON di tua proprietà. Cerca espressione e lettura esatte del dizionario; gli esempi salvati restano disponibili offline.
+bank-index-book = Indicizza libro attuale
+bank-index-track = Indicizza sottotitoli primari
+bank-import = Importa frasi proprie
+bank-indexing = Preparazione / salvataggio delle frasi…
+bank-cancel = Annulla indicizzazione
+bank-expression = Espressione
+bank-reading = Lettura
+bank-search = Trova esempi esatti
+bank-snapshot = Esempi salvati · fonti verificate all’apertura
+bank-export = Esporta esempi mostrati
+bank-sources = Fonti indicizzate
+bank-delete = Elimina copia della fonte
+bank-error = Impossibile indicizzare: controlla dizionari, lingua, formato e limiti. Nessun salvataggio parziale.
+bank-cancelled = Indicizzazione delle frasi annullata.
+bank-source-missing = La fonte originale non è disponibile; l’esempio salvato resta nel banco.
+bank-source-changed = Il testo originale è cambiato. La posizione salvata non è stata aperta.
+bank-filter = Pacchetto JSON di frasi proprie
+bank-examples = Esempi fra le fonti

@@ -21,6 +21,7 @@ mod phrases;
 mod progressive_ocr;
 mod reader_words;
 mod recall;
+mod sentence_bank;
 mod series_scores;
 mod servers;
 mod subtitle_study;

@@ -34,6 +34,7 @@ mod popups;
 mod prefs_page;
 mod recall;
 mod review_view;
+mod sentence_bank;
 mod servers_page;
 mod services_page;
 pub(crate) mod settings;
@@ -54,6 +55,10 @@ use crate::ui::Command;
 /// The file dialogs of the interface, opened by the app through the XDG portal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialog {
+    /// Explicit owned sentence-pack JSON.
+    SentencesImport,
+    /// Frozen shown exact sentence examples.
+    SentencesExport,
     /// Frozen shown phrase notebook TSV.
     PhrasesExport,
     /// A video to play (LIB-001).
@@ -253,6 +258,14 @@ impl FileDialog {
                 tr("study-presets-export"),
                 vec![(tr("study-presets-filter"), vec!["*.json"]), all],
             ),
+            Dialog::SentencesImport => (
+                tr("bank-import"),
+                vec![(tr("bank-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::SentencesExport => (
+                tr("bank-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::PhrasesExport => (
                 tr("phrases-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
@@ -317,6 +330,7 @@ impl FileDialog {
                 Dialog::RecallResults => Some("nikomiru-recall-results.tsv".into()),
                 Dialog::RecallSave => Some("nikomiru-recall.json".into()),
                 Dialog::StudyPresetsExport => Some("nikomiru-study-presets.json".into()),
+                Dialog::SentencesExport => Some("nikomiru-sentence-examples.tsv".into()),
                 Dialog::PhrasesExport => Some("nikomiru-phrases.tsv".into()),
                 Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
@@ -350,6 +364,8 @@ pub(crate) struct View {
     pub phrases_open: bool,
     pub phrase_query: String,
     pub cloze_query: String,
+    pub bank_expression: String,
+    pub bank_reading: String,
     pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
@@ -666,7 +682,8 @@ impl View {
     }
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
-        s.clozes.open
+        s.bank.open
+            || s.clozes.open
             || self.phrases_open
             || self.recall_history_open
             || self.dict_page_open
@@ -699,6 +716,19 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if s.bank.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            sentence_bank::show(
+                ui,
+                s,
+                &mut self.bank_expression,
+                &mut self.bank_reading,
+                &mut out,
+            );
+            return out;
+        }
         if s.clozes.open {
             self.window(&ctx, s);
             ui.painter()

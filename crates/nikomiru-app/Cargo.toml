@@ -35,6 +35,7 @@ nikomiru-ocr.workspace = true
 nikomiru-online.workspace = true
 nikomiru-player.workspace = true
 nikomiru-subs.workspace = true
+nikomiru-text.workspace = true
 nikomiru-ui.workspace = true
 egui.workspace = true
 egui-winit.workspace = true

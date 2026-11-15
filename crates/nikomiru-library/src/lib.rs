@@ -25,6 +25,7 @@ pub mod progress;
 pub mod review;
 pub mod review_log;
 pub mod scan;
+pub mod sentences;
 pub mod series_info;
 pub mod server_items;
 pub mod stats;

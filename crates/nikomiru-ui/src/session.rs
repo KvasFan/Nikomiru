@@ -559,6 +559,10 @@ pub struct Session {
     pub phrases: crate::phrases::State,
     /// Frozen cloze exercises and finite/opt-in scheduled practice.
     pub clozes: crate::cloze::State,
+    /// Exact offline sentence snapshots and sources.
+    pub bank: crate::sentence_bank::State,
+    bank_place: Option<(nikomiru_library::phrases::Source, String)>,
+    bank_export: Option<String>,
     phrase_job: Option<crate::phrases::Job>,
     phrase_place: Option<nikomiru_library::phrases::Source>,
     phrase_export: Option<String>,
@@ -897,6 +901,9 @@ impl Session {
             library_jobs: Vec::new(),
             phrases: Default::default(),
             clozes: Default::default(),
+            bank: Default::default(),
+            bank_place: None,
+            bank_export: None,
             phrase_job: None,
             phrase_place: None,
             phrase_export: None,
@@ -5431,6 +5438,10 @@ impl Session {
 
     /// Runs an action (from a key or a button).
     pub fn action(&mut self, action: Action) -> UiEffect {
+        if self.bank.open && action == Action::Back {
+            self.bank.open = false;
+            return UiEffect::None;
+        }
         if self.clozes.open && action == Action::Back {
             self.clozes.open = false;
             self.clozes.round = None;
@@ -5754,6 +5765,7 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.bank_source_changed(false);
         self.services.subtitle_source.cancel(false);
         self.services.subtitle_source.cancel(true);
         self.secondary.clear(None);
@@ -6658,18 +6670,40 @@ impl Session {
             Err(e) => {
                 self.books_page.status = Some((e, false));
                 self.phrase_place = None;
+                self.bank_place = None;
                 return;
             }
         };
-        if self.books_page.open.is_some() {
-            self.popups.playback_changed_by_user();
-            self.book_close();
-        }
         let chars = book.chars();
         let uid = book
             .identity
             .clone()
             .unwrap_or_else(|| nikomiru_library::books::book_uid(&book.title, &book.author, chars));
+        if let Some((source, context)) = self.bank_place.take() {
+            let matches = source.uid == uid
+                && book
+                    .chapters
+                    .get(source.chapter as usize)
+                    .and_then(|c| c.paragraphs.get(source.paragraph as usize))
+                    .and_then(|p| {
+                        p.text.get(
+                            source.offset as usize
+                                ..(source.offset as usize).saturating_add(context.len()),
+                        )
+                    })
+                    == Some(context.as_str());
+            if !matches {
+                let error = self.tr("bank-source-changed", &[]);
+                self.books_page.status = Some((error.clone(), false));
+                self.toasts.push(error);
+                return;
+            }
+            self.phrase_place = Some(source);
+        }
+        if self.books_page.open.is_some() {
+            self.popups.playback_changed_by_user();
+            self.book_close();
+        }
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = library
             .and_then(|lib| lib.book(&uid).ok().flatten())
@@ -7074,6 +7108,7 @@ impl Session {
     /// The book closes: its place is saved, and the time read goes into the
     /// statistics (BOK-008).
     pub fn book_close(&mut self) {
+        self.bank_source_changed(true);
         self.books_page.study.clear();
         self.close_all_popups();
         self.book_save();
@@ -9175,3 +9210,6 @@ mod phrase_session;
 
 #[path = "session_cloze.rs"]
 mod cloze_session;
+
+#[path = "session_bank.rs"]
+mod bank_session;
