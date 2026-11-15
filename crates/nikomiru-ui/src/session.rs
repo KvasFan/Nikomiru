@@ -1488,6 +1488,18 @@ impl Session {
             r.rate(good);
         }
     }
+    /// Look up only an explicitly revealed recall headword, without a media cue.
+    pub fn recall_lookup(&mut self, anchor: crate::popup::Rect) {
+        let text = self
+            .recall
+            .as_ref()
+            .filter(|r| r.revealed)
+            .and_then(|r| r.current())
+            .map(|c| c.expression.clone());
+        if let Some(text) = text {
+            self.vocabulary_lookup(&text, anchor);
+        }
+    }
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall = None;

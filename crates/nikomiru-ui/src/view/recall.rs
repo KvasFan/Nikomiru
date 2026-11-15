@@ -4,6 +4,7 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub lookup: String,
     pub grades: [String; 2],
     pub summary_labels: [String; 4],
     pub title: String,
@@ -17,6 +18,7 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            lookup: tr("vocabulary-lookup", &[]),
             grades: ["recall-again", "recall-good"].map(|k| tr(k, &[])),
             summary_labels: [
                 "recall-good-total",
@@ -60,6 +62,18 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                             ui.heading(&card.expression);
                         }
                         ui.horizontal_wrapped(|ui| {
+                            let lookup =
+                                ui.add_enabled(recall.revealed, egui::Button::new(&labels.lookup));
+                            if lookup.clicked() {
+                                let r = lookup.rect;
+                                out.push(Command::RecallLookup(crate::popup::Rect {
+                                    x: f64::from(r.min.x),
+                                    y: f64::from(r.min.y),
+                                    w: f64::from(r.width()),
+                                    h: f64::from(r.height()),
+                                }));
+                            }
+
                             for (good, label) in [false, true].into_iter().zip(&labels.grades) {
                                 if ui
                                     .add_enabled(recall.revealed, egui::Button::new(label))
@@ -187,5 +201,49 @@ mod tests {
         h.run();
         h.get_by_label("recall-good-total: 1");
         h.get_by_label("recall-attempts-total: 1");
+    } // T-KNW-056: concealed headwords never enter disabled lookup labels or commands.
+    #[test]
+    fn recall_lookup_requires_reveal_and_retains_current_card() {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(700.0, 600.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, t: &mut Test| {
+                    show(
+                        ui.ctx(),
+                        &t.recall,
+                        &Labels::translated(&|key, _| key.to_string()),
+                        &mut t.out,
+                    );
+                },
+                Test {
+                    recall: Recall::start(
+                        "Study",
+                        &[ListedWord {
+                            expression: "猫".into(),
+                            reading: "ねこ".into(),
+                            count: 1,
+                            status: WordStatus::Unknown,
+                            card: false,
+                        }],
+                    )
+                    .unwrap(),
+                    out: Vec::new(),
+                },
+            );
+        h.run();
+        h.get_by_label("vocabulary-lookup").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        assert!(h.query_by_label("猫").is_none());
+        h.state_mut().recall.reveal();
+        h.run();
+        h.get_by_label("vocabulary-lookup").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::RecallLookup(_))
+        ));
+        assert_eq!(h.state().recall.remaining(), 1);
     }
 }

@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Dictionary lookup from recall (KNW-056, M95).
+
 - Recall keyboard controls (KNW-055, M94).
 
 - Bounded self-rated recall (KNW-054, M93).

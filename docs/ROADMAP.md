@@ -1487,7 +1487,7 @@ M82–M91 are complete. Full regression passed 1,029 workspace/integration tests
 | M92 | KNW-053 | Finite vocabulary recall sessions | done |
 | M93 | KNW-054 | Bounded self-rated recall | done |
 | M94 | KNW-055 | Recall keyboard controls | done |
-| M95 | KNW-056 | Dictionary lookup from recall | planned |
+| M95 | KNW-056 | Dictionary lookup from recall | done |
 | M96 | KNW-057 | Sentence hints for recall | planned |
 | M97 | KNW-058 | Restart recall in varied orders | planned |
 | M98 | KNW-059 | Portable recall resume files | planned |

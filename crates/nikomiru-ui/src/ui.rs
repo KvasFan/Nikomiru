@@ -504,6 +504,7 @@ pub(crate) enum Command {
     RecallSkip,
     RecallRate(bool),
     RecallClose,
+    RecallLookup(crate::popup::Rect),
     UndoWordStatuses,
     WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
@@ -1541,6 +1542,7 @@ impl Ui {
             Command::RecallReveal => s.recall_reveal(),
             Command::RecallRate(good) => s.recall_rate(good),
             Command::RecallSkip => s.recall_skip(),
+            Command::RecallLookup(anchor) => s.recall_lookup(anchor),
             Command::RecallClose => s.recall_close(),
             Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),
