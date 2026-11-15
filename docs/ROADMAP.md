@@ -1479,3 +1479,18 @@ M72–M81 are complete. Full regression passed 1,013 workspace/integration tests
 | M91 | KNW-052 | Portable study presets | done |
 
 M82–M91 are complete. Full regression passed 1,029 workspace/integration tests and 104 actual GUI cases. See [source QA 2.100.0](qa/2.100.0.md).
+
+## Continuation M92–M101 after source tag 2.100.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M92 | KNW-053 | Finite vocabulary recall sessions | done |
+| M93 | KNW-054 | Bounded self-rated recall | planned |
+| M94 | KNW-055 | Recall keyboard controls | planned |
+| M95 | KNW-056 | Dictionary lookup from recall | planned |
+| M96 | KNW-057 | Sentence hints for recall | planned |
+| M97 | KNW-058 | Restart recall in varied orders | planned |
+| M98 | KNW-059 | Portable recall resume files | planned |
+| M99 | KNW-060 | Recall results export | planned |
+| M100 | KNW-061 | Focused recall follow-up rounds | planned |
+| M101 | KNW-062 | Local recall summary history | planned |

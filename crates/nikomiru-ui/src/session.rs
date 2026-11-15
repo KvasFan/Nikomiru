@@ -398,6 +398,7 @@ pub struct Session {
     score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
+    recall: Option<crate::recall::Recall>,
     status_undo: Option<crate::words::StatusUndo>,
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     /// Captured exact word examples in the primary timeline.
@@ -796,6 +797,7 @@ impl Session {
             auto_pause_revision: 0,
             word_list: None,
             status_undo: None,
+            recall: None,
             vocabulary_scope: None,
             vocabulary_scope_id: 0,
             subtitle_examples: None,
@@ -1454,6 +1456,33 @@ impl Session {
     /// Secondary source generation for invalidating explicit translation previews.
     pub fn secondary_version(&self) -> u64 {
         self.secondary_generation
+    }
+
+    /// Capture a finite vocabulary session without changing playback or learning statuses.
+    pub fn recall_start(&mut self, source: &str, rows: &[crate::words::ListedWord]) {
+        match crate::recall::Recall::start(source, rows) {
+            Ok(recall) => self.recall = Some(recall),
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+    pub(crate) fn recall(&self) -> Option<&crate::recall::Recall> {
+        self.recall.as_ref()
+    }
+    /// Reveal the current recall answer explicitly.
+    pub fn recall_reveal(&mut self) {
+        if let Some(r) = &mut self.recall {
+            r.reveal();
+        }
+    }
+    /// Skip to the next captured recall word, concealing its answer.
+    pub fn recall_skip(&mut self) {
+        if let Some(r) = &mut self.recall {
+            r.skip();
+        }
+    }
+    /// Close the transient recall round.
+    pub fn recall_close(&mut self) {
+        self.recall = None;
     }
 
     /// Explicit finite repetition of one complete primary cue.

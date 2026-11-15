@@ -1307,3 +1307,13 @@ study-presets-invalid = 無効なファイルか、対応していない条件�
 study-presets-too-large = ファイルまたは統合後の件数が上限を超えています。
 study-presets-unsupported = このプリセット形式のバージョンには対応していません。
 study-presets-import-failed = プリセットを読み書きできません：{ $reason }
+
+recall-title = 語彙の想起練習
+recall-reveal = 答えを表示
+recall-skip = 単語をスキップ
+recall-complete = ラウンド完了
+recall-no-reading = 異なる読みはありません。準備ができたら単語を表示してください。
+recall-remaining = 残りの単語
+recall-start-shown = 表示中の語彙で練習
+recall-start-selected = 選択した語彙で練習
+recall-unavailable = 有効な見出し語と読みを持つ単語を1～1000件選んでください。

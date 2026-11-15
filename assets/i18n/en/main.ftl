@@ -1324,3 +1324,13 @@ study-presets-invalid = The preset file is invalid or contains unsupported filte
 study-presets-too-large = The preset file or merged collection exceeds its size limits.
 study-presets-unsupported = This preset file format version is not supported.
 study-presets-import-failed = Could not read or save presets: { $reason }
+
+recall-title = Vocabulary recall
+recall-reveal = Reveal answer
+recall-skip = Skip word
+recall-complete = Round complete
+recall-no-reading = No separate reading. Reveal the word when ready.
+recall-remaining = Words remaining
+recall-start-shown = Recall shown vocabulary
+recall-start-selected = Recall selected vocabulary
+recall-unavailable = Choose 1–1000 unique words with bounded, valid headwords and readings.

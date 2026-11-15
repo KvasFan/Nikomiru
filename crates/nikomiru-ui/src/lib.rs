@@ -30,6 +30,7 @@ pub mod player_settings;
 pub mod popup;
 pub mod popup_view;
 pub mod reader_words;
+mod recall;
 pub mod review;
 pub mod scores;
 pub mod screensaver;

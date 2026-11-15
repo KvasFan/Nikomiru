@@ -38,6 +38,7 @@ pub(crate) struct Labels {
     pub scripts: [String; 4],
     pub html_labels: [String; 3],
     pub coverage_labels: [String; 2],
+    pub recall_labels: [String; 2],
     pub practice_labels: [String; 5],
     pub reading_labels: [String; 4],
     pub lengths: [String; 3],
@@ -79,6 +80,7 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            recall_labels: ["recall-start-shown", "recall-start-selected"].map(|k| tr(k, &[])),
             portable: ["study-presets-import", "study-presets-export"].map(|k| tr(k, &[])),
             undo: tr("vocabulary-undo-status", &[]),
             practice_labels: [
@@ -647,6 +649,26 @@ pub(crate) fn show(
     egui::CollapsingHeader::new(&labels.reading_labels[0])
         .id_salt("vocabulary-reading-filters")
         .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for (label, rows) in [
+                    (&labels.recall_labels[0], filtered(all, query, state)),
+                    (&labels.recall_labels[1], selected(all, state)),
+                ] {
+                    if ui
+                        .add_enabled(
+                            !rows.is_empty() && rows.len() <= 1000,
+                            egui::Button::new(label),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::RecallStart {
+                            source: labels.source.clone(),
+                            rows: rows.into_iter().cloned().collect(),
+                        });
+                    }
+                }
+            });
+
             if ui
                 .checkbox(&mut state.masked, &labels.practice_labels[0])
                 .changed()
@@ -1152,6 +1174,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        recall_labels: ["Recall shown", "Recall selected"].map(String::from),
                         portable: ["Import presets", "Export presets"].map(String::from),
                         undo: "Undo status".into(),
                         practice_labels: [
@@ -1872,5 +1895,18 @@ mod tests {
         h.get_by_label("Examples selected").click();
         h.run();
         assert!(h.state().out.iter().any(|c|matches!(c,Command::ConcordanceExport { version:1,rows } if rows.len()==1&&rows[0].expression=="猫")));
+    } // T-KNW-053: recall capture retains hidden selected identities and the chosen display order.
+    #[test]
+    fn recall_actions_capture_shown_or_hidden_selected_words() {
+        let mut h = harness();
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.state_mut().query = "が".into();
+        h.run();
+        h.get_by_label("Reading filters").click();
+        h.run();
+        h.get_by_label("Recall selected").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c|matches!(c,Command::RecallStart { rows,.. } if rows.len()==1&&rows[0].expression=="猫")));
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
     }
 }

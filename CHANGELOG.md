@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Finite vocabulary recall sessions (KNW-053, M92).
+
 ## [2.100.0] - 2026-11-15
 
 Ten consecutive subtitle/study milestones (M82–M91) after source tag 2.90.0.

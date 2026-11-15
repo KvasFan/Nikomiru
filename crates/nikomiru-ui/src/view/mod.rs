@@ -30,6 +30,7 @@ pub(crate) mod palette;
 mod player_page;
 mod popups;
 mod prefs_page;
+mod recall;
 mod review_view;
 mod servers_page;
 mod services_page;
@@ -754,6 +755,14 @@ impl View {
         }
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
+        }
+        if let Some(round) = s.recall() {
+            recall::show(
+                &ctx,
+                round,
+                &recall::Labels::translated(&|key, args| s.translator().tr(key, args)),
+                &mut out,
+            );
         }
         if study_popup && !covered {
             let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);
