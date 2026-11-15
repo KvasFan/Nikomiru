@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Undo word-status changes (KNW-050, M87).
+
 - Practice vocabulary from readings (KNW-049, M86).
 
 - Cue translation preview (SUB-059, M85).

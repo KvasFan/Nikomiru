@@ -1287,3 +1287,6 @@ vocabulary-practice-hide = 単語を再び隠す
 vocabulary-practice-word = 単語を表示
 
 vocabulary-practice-select = 学習する単語を選択
+
+vocabulary-undo-status = 単語の状態を元に戻す
+vocabulary-undo-unavailable = 前の状態変更は元に戻せません。

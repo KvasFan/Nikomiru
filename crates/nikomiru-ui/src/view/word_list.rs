@@ -25,6 +25,7 @@ const READING: Color32 = Color32::from_rgb(0x9a, 0xb8, 0xff);
 pub(crate) struct Labels {
     /// "Only words not known".
     pub new_only: String,
+    pub undo: String,
     pub exact: String,
     pub presets: String,
     pub preset_save: String,
@@ -75,6 +76,7 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            undo: tr("vocabulary-undo-status", &[]),
             practice_labels: [
                 "vocabulary-practice-mask",
                 "vocabulary-practice-reveal",
@@ -276,6 +278,10 @@ impl Preset {
         state.min_count = self.min_count;
         state.max_count = self.max_count;
     }
+}
+
+pub(super) fn sync_undo(ctx: &egui::Context, available: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("word-status-undo"), available));
 }
 
 pub(super) fn sync_presets(ctx: &egui::Context, presets: &[nikomiru_core::config::StudyPreset]) {
@@ -724,6 +730,16 @@ pub(crate) fn show(
         response
             .response
             .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &labels.card_filter));
+        let available = ui
+            .ctx()
+            .data(|d| d.get_temp::<bool>(egui::Id::unique("word-status-undo")))
+            .unwrap_or(false);
+        if ui
+            .add_enabled(available, egui::Button::new(&labels.undo))
+            .clicked()
+        {
+            out.push(Command::UndoWordStatuses);
+        }
     });
     ui.horizontal_wrapped(|ui| {
         let min = ui.label(&labels.min_count);
@@ -1097,6 +1113,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        undo: "Undo status".into(),
                         practice_labels: [
                             "Practice from reading",
                             "Reveal shown words",
@@ -1787,5 +1804,19 @@ mod tests {
         h.run();
         assert!(h.state().state.revealed.is_empty());
         assert!(h.query_by_label("猫 ねこ").is_none());
+    } // T-KNW-050: the shared action uses current availability and does not change selections itself.
+    #[test]
+    fn shared_vocabulary_undo_is_explicit_and_preserves_ticks() {
+        let mut h = harness();
+        sync_undo(&h.ctx, true);
+        h.state_mut().state.ticked.insert(word_key("猫", "ねこ"));
+        h.run();
+        h.get_by_label("Undo status").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::UndoWordStatuses)
+        ));
+        assert!(h.state().state.ticked.contains(&word_key("猫", "ねこ")));
     }
 }

@@ -1304,3 +1304,6 @@ vocabulary-practice-hide = Hide words again
 vocabulary-practice-word = Reveal word
 
 vocabulary-practice-select = Select practice word
+
+vocabulary-undo-status = Undo word status
+vocabulary-undo-unavailable = The previous status change can no longer be undone.

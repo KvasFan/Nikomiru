@@ -19,6 +19,55 @@ pub use nikomiru_library::words::{Counted, Score, WordStatus};
 use nikomiru_text::furigana::distribute_inflected;
 use nikomiru_text::kana::is_kanji;
 
+/// One bounded transient status change; source generation and expected values guard undo (KNW-050).
+#[derive(Debug, Clone)]
+pub(crate) struct StatusUndo {
+    generation: u64,
+    before: Vec<(String, String, WordStatus)>,
+    after: Vec<WordStatus>,
+}
+impl StatusUndo {
+    pub(crate) fn capture(words: &Words, changes: &[(String, String, WordStatus)]) -> Option<Self> {
+        if changes.is_empty() || changes.len() > 10_000 {
+            return None;
+        }
+        let mut before = Vec::new();
+        let mut after = Vec::new();
+        let mut seen = HashSet::new();
+        let mut bytes = 0usize;
+        for (e, r, status) in changes {
+            bytes = bytes.saturating_add(e.len()).saturating_add(r.len());
+            if bytes > 8 << 20 {
+                return None;
+            }
+            if !seen.insert(word_key(e, r)) {
+                return None;
+            }
+            let old = words.status(e, r);
+            if old != *status {
+                before.push((e.clone(), r.clone(), old));
+                after.push(*status);
+            }
+        }
+        (!before.is_empty()).then_some(Self {
+            generation: words.generation(),
+            before,
+            after,
+        })
+    }
+    pub(crate) fn available(&self, words: &Words) -> bool {
+        self.generation == words.generation()
+            && self
+                .before
+                .iter()
+                .zip(&self.after)
+                .all(|((e, r, _), expected)| words.status(e, r) == *expected)
+    }
+    pub(crate) fn restore(self, words: &Words) -> Option<Vec<(String, String, WordStatus)>> {
+        self.available(words).then_some(self.before)
+    }
+}
+
 /// Texts kept split; beyond, the cache starts again (an episode has a few
 /// hundred cues).
 pub(crate) const KEPT: usize = 4096;
@@ -526,6 +575,30 @@ mod tests {
                 reading: r.into(),
             }),
         }
+    }
+
+    // T-KNW-050: undo guards all rows before returning a restore plan, never a partial restoration.
+    #[test]
+    fn status_undo_checks_expected_values_and_dictionary_generation() {
+        let mut words = Words::default();
+        let changes = vec![
+            ("猫".into(), "ねこ".into(), WordStatus::Known),
+            ("犬".into(), "いぬ".into(), WordStatus::Learning),
+        ];
+        let undo = StatusUndo::capture(&words, &changes).unwrap();
+        for (e, r, status) in &changes {
+            words.set_status(e, r, *status);
+        }
+        assert!(undo.available(&words));
+        let restored = undo.clone().restore(&words).unwrap();
+        assert!(restored.iter().all(|(_, _, s)| *s == WordStatus::Unknown));
+        words.set_status("猫", "ねこ", WordStatus::Ignored);
+        assert!(!undo.available(&words));
+        assert!(undo.clone().restore(&words).is_none());
+        words.set_status("猫", "ねこ", WordStatus::Known);
+        words.forget();
+        assert!(!undo.available(&words));
+        assert!(StatusUndo::capture(&words, &vec![changes[0].clone(); 10_001]).is_none());
     }
 
     // T-KNW-044: subset counts retain headwords, deduplicate rows and reject partial captures.

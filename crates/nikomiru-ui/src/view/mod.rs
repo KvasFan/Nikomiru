@@ -600,6 +600,7 @@ impl View {
 
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
+        word_list::sync_undo(ui.ctx(), s.word_status_undo_available());
         word_list::sync_presets(ui.ctx(), &s.config().lookup.study_presets);
         list::sync_study_presets(ui.ctx(), &s.config().subtitles.study_presets);
         // a file opened, from the page or anywhere else: the video shows

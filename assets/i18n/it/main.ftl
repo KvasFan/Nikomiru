@@ -1304,3 +1304,6 @@ vocabulary-practice-hide = Nascondi nuovamente le parole
 vocabulary-practice-word = Mostra parola
 
 vocabulary-practice-select = Seleziona parola di studio
+
+vocabulary-undo-status = Annulla stato parole
+vocabulary-undo-unavailable = La modifica precedente non può più essere annullata.

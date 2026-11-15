@@ -398,6 +398,7 @@ pub struct Session {
     score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
+    status_undo: Option<crate::words::StatusUndo>,
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
     /// Captured exact word examples in the primary timeline.
     vocabulary_scope: Option<VocabularyScope>,
@@ -790,6 +791,7 @@ impl Session {
             graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            status_undo: None,
             vocabulary_scope: None,
             vocabulary_scope_id: 0,
             subtitle_examples: None,
@@ -7863,37 +7865,76 @@ impl Session {
         reading: String,
         status: crate::words::WordStatus,
     ) {
-        self.words.set_status(&expression, &reading, status);
-        let changed_at = self.now_ms();
-        if let Some(w) = &self.writer {
-            let mark = nikomiru_library::words::WordMark { status, changed_at };
-            w.run(move |lib| {
-                if let Err(e) = lib.set_word_status(&expression, &reading, mark) {
-                    tracing::warn!("saving the status of {expression}: {e}");
-                }
-            });
+        let changes = vec![(expression, reading, status)];
+        if changes
+            .iter()
+            .any(|(e, r, s)| self.words.status(e, r) != *s)
+        {
+            self.status_undo = crate::words::StatusUndo::capture(&self.words, &changes);
         }
+        self.apply_word_statuses(changes);
     }
 
-    /// The learner set the status of many words at once, from the word
-    /// list (KNW-009): marked at once, saved in one transaction.
+    /// Change a bounded study selection together, remembering one reversible status snapshot.
     pub fn set_word_statuses(
         &mut self,
         words: Vec<(String, String)>,
         status: crate::words::WordStatus,
     ) {
-        for (expression, reading) in &words {
-            self.words.set_status(expression, reading, status);
+        let changes = words
+            .into_iter()
+            .map(|(e, r)| (e, r, status))
+            .collect::<Vec<_>>();
+        if changes
+            .iter()
+            .any(|(e, r, s)| self.words.status(e, r) != *s)
+        {
+            self.status_undo = crate::words::StatusUndo::capture(&self.words, &changes);
+        }
+        self.apply_word_statuses(changes);
+    }
+
+    fn apply_word_statuses(&mut self, changes: Vec<(String, String, crate::words::WordStatus)>) {
+        for (e, r, status) in &changes {
+            self.words.set_status(e, r, *status);
         }
         let changed_at = self.now_ms();
-        if let Some(w) = &self.writer {
-            let mark = nikomiru_library::words::WordMark { status, changed_at };
-            let marks: Vec<_> = words.into_iter().map(|(e, r)| (e, r, mark)).collect();
-            w.run(move |lib| {
+        if let Some(writer) = &self.writer {
+            let marks = changes
+                .into_iter()
+                .map(|(e, r, status)| {
+                    (
+                        e,
+                        r,
+                        nikomiru_library::words::WordMark { status, changed_at },
+                    )
+                })
+                .collect::<Vec<_>>();
+            writer.run(move |lib| {
                 if let Err(e) = lib.set_word_statuses(&marks) {
-                    tracing::warn!("saving the statuses of {} words: {e}", marks.len());
+                    tracing::warn!("saving word status changes: {e}");
                 }
             });
+        }
+    }
+
+    /// Whether the last status change can still be restored without overwriting other edits.
+    pub fn word_status_undo_available(&self) -> bool {
+        self.status_undo
+            .as_ref()
+            .is_some_and(|u| u.available(&self.words))
+    }
+
+    /// Restore the previous statuses once, guarded against changed dictionaries/statuses.
+    pub fn undo_word_statuses(&mut self) {
+        let Some(undo) = self.status_undo.take() else {
+            return;
+        };
+        if let Some(changes) = undo.restore(&self.words) {
+            self.apply_word_statuses(changes);
+        } else {
+            self.toasts
+                .push(self.tr("vocabulary-undo-unavailable", &[]));
         }
     }
 
