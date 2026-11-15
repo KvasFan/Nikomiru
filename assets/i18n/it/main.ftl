@@ -1341,3 +1341,9 @@ recall-good-total = Parole valutate Bene
 recall-again-total = Valutazioni Ancora
 recall-skipped-total = Parole saltate
 recall-attempts-total = Tentativi
+
+action-recall-reveal = Mostra risposta del ripasso
+action-recall-again = Ripasso: Ancora
+action-recall-good = Ripasso: Bene
+
+shortcuts-recall = Richiamo del vocabolario

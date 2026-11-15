@@ -145,6 +145,7 @@ pub(crate) fn body(
                 (Context::Global, "shortcuts-global"),
                 (Context::Player, "shortcuts-player"),
                 (Context::Popup, "shortcuts-popup"),
+                (Context::Recall, "shortcuts-recall"),
             ] {
                 ui.label(
                     RichText::new(t(title))

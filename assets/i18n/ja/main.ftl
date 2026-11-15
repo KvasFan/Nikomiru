@@ -1324,3 +1324,9 @@ recall-good-total = できた単語
 recall-again-total = もう一度の評価数
 recall-skipped-total = スキップした単語
 recall-attempts-total = 回答回数
+
+action-recall-reveal = 想起練習の答えを表示
+action-recall-again = 想起練習：もう一度
+action-recall-good = 想起練習：できた
+
+shortcuts-recall = 語彙の想起練習

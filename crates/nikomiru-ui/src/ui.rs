@@ -1409,6 +1409,7 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
+        self.session.recall_covered = self.view.recall_covered(&self.session);
         self.session.popups_covered = self.view.web_url_open
             || self.view.dict_page_open
             || self.view.anki_page_open

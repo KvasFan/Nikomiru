@@ -1341,3 +1341,9 @@ recall-good-total = Words rated Good
 recall-again-total = Again ratings
 recall-skipped-total = Skipped words
 recall-attempts-total = Attempts
+
+action-recall-reveal = Reveal recall answer
+action-recall-again = Recall: Again
+action-recall-good = Recall: Good
+
+shortcuts-recall = Vocabulary recall

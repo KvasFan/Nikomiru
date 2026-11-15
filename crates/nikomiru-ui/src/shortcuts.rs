@@ -21,6 +21,8 @@ pub enum Context {
     Player,
     /// A dictionary popup.
     Popup,
+    /// A finite vocabulary recall round.
+    Recall,
 }
 
 /// An action that a shortcut triggers.
@@ -84,6 +86,12 @@ pub enum Action {
     StudyReveal,
     /// Subtitle study action: study_select.
     StudySelect,
+    /// Vocabulary recall action: recall_reveal.
+    RecallReveal,
+    /// Vocabulary recall action: recall_again.
+    RecallAgain,
+    /// Vocabulary recall action: recall_good.
+    RecallGood,
 
     /// Blur the subtitle on/off (SUB-014).
     SubBlur,
@@ -122,7 +130,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 45] = [
+    pub const ALL: [Action; 48] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -152,6 +160,9 @@ impl Action {
         Action::StudyNext,
         Action::StudyReveal,
         Action::StudySelect,
+        Action::RecallReveal,
+        Action::RecallAgain,
+        Action::RecallGood,
         Action::SubBlur,
         Action::SubHide,
         Action::SubToggle,
@@ -202,6 +213,9 @@ impl Action {
             Action::StudyNext => "study_next",
             Action::StudyReveal => "study_reveal",
             Action::StudySelect => "study_select",
+            Action::RecallReveal => "recall_reveal",
+            Action::RecallAgain => "recall_again",
+            Action::RecallGood => "recall_good",
 
             Action::SubBlur => "sub_blur",
             Action::SubHide => "sub_hide",
@@ -235,6 +249,7 @@ impl Action {
     /// The context of the action.
     pub fn context(self) -> Context {
         match self {
+            Action::RecallReveal | Action::RecallAgain | Action::RecallGood => Context::Recall,
             // Back and these work on the pages too (NFR-A11Y-01)
             Action::OpenFile | Action::Back | Action::Settings => Context::Global,
             Action::PopupNext
@@ -305,6 +320,9 @@ impl Action {
             Action::StudyNext => &["Alt+ArrowDown"],
             Action::StudyReveal => &["Alt+KeyR"],
             Action::StudySelect => &["Alt+KeyT"],
+            Action::RecallReveal => &["Space"],
+            Action::RecallAgain => &["Digit1"],
+            Action::RecallGood => &["Digit2"],
 
             Action::SubBlur => &["KeyB"],
             Action::SubHide => &["KeyH"],
@@ -622,7 +640,10 @@ impl Bindings {
                 !text_focus
                     || !matches!(
                         a,
-                        Action::StudyPrevious
+                        Action::RecallReveal
+                            | Action::RecallAgain
+                            | Action::RecallGood
+                            | Action::StudyPrevious
                             | Action::StudyNext
                             | Action::StudyReveal
                             | Action::StudySelect
@@ -649,8 +670,32 @@ mod tests {
         shift: false,
     };
 
-    // T-KEY-005
+    // T-KNW-055: recall keys are separate from playback, reject typing focus and participate in global conflict validation.
+    #[test]
+    fn recall_shortcuts_are_contextual_and_configurable() {
+        let b = Bindings::defaults();
+        assert_eq!(
+            b.action(Context::Recall, "Space", false),
+            Some(Action::RecallReveal)
+        );
+        assert_eq!(
+            b.action(Context::Player, "Space", false),
+            Some(Action::PlayPause)
+        );
+        assert_eq!(b.action(Context::Recall, "Digit1", true), None);
+        let map = BTreeMap::from([("recall_reveal".into(), vec!["Ctrl+Comma".into()])]);
+        assert!(Bindings::with_overrides(&map).is_err());
+        let map = BTreeMap::from([("recall_reveal".into(), vec!["Alt+KeyR".into()])]);
+        let b = Bindings::with_overrides(&map).unwrap();
+        assert_eq!(
+            b.action(Context::Recall, "Alt+KeyR", false),
+            Some(Action::RecallReveal)
+        );
+        assert_eq!(b.action(Context::Recall, "Alt+KeyR", true), None);
+    }
+
     // T-SUB-054: configurable actions are unique, player-scoped and never consume typing keys.
+    // T-KEY-005
     #[test]
     fn study_shortcuts_respect_focus_context_and_overrides() {
         let b = Bindings::defaults();

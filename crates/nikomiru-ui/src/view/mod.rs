@@ -619,6 +619,21 @@ impl View {
         std::mem::take(&mut self.presented)
     }
 
+    pub(crate) fn recall_covered(&self, s: &Session) -> bool {
+        self.dict_page_open
+            || self.anki_page_open
+            || self.online_page_open
+            || self.player_page_open
+            || self.services_page_open
+            || self.servers_page_open
+            || self.backup_page_open
+            || self.audio_page_open
+            || self.prefs_open.is_some()
+            || self.web_url_open
+            || s.setup_page.open
+            || s.advanced_card().is_some()
+    }
+
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
         word_list::sync_undo(ui.ctx(), s.word_status_undo_available());
@@ -756,7 +771,9 @@ impl View {
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
         }
-        if let Some(round) = s.recall() {
+        if !self.recall_covered(s)
+            && let Some(round) = s.recall()
+        {
             recall::show(
                 &ctx,
                 round,

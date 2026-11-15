@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Recall keyboard controls (KNW-055, M94).
+
 - Bounded self-rated recall (KNW-054, M93).
 
 - Finite vocabulary recall sessions (KNW-053, M92).
