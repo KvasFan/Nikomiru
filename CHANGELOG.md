@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Restart recall in varied orders (KNW-058, M97).
+
 - Sentence hints for recall (KNW-057, M96).
 
 - Dictionary lookup from recall (KNW-056, M95).

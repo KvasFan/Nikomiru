@@ -1334,3 +1334,7 @@ shortcuts-recall = 語彙の想起練習
 recall-hints-capture = 現在の字幕から例文を取得
 recall-hints-reveal = 例文のヒントを表示
 recall-hints-unavailable = 解析済みの主字幕と、上限内の例文が必要です。
+
+recall-restart-original = 元の順序でやり直す
+recall-restart-reverse = 逆順でやり直す
+recall-restart-shuffle = 順序を混ぜてやり直す

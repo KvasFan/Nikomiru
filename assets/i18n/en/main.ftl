@@ -1351,3 +1351,7 @@ shortcuts-recall = Vocabulary recall
 recall-hints-capture = Capture current subtitle examples
 recall-hints-reveal = Reveal sentence hints
 recall-hints-unavailable = Complete analysed primary subtitles are required; hints must fit the capture limits.
+
+recall-restart-original = Restart original order
+recall-restart-reverse = Restart reversed
+recall-restart-shuffle = Restart shuffled

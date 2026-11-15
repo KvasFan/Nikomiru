@@ -1463,7 +1463,10 @@ impl Session {
     /// Capture a finite vocabulary session without changing playback or learning statuses.
     pub fn recall_start(&mut self, source: &str, rows: &[crate::words::ListedWord]) {
         match crate::recall::Recall::start(source, rows) {
-            Ok(recall) => self.recall = Some(recall),
+            Ok(recall) => {
+                self.recall_clear_lookup();
+                self.recall = Some(recall);
+            }
             Err(key) => self.toasts.push(self.tr(key, &[])),
         }
     }
@@ -1478,16 +1481,31 @@ impl Session {
     }
     /// Skip to the next captured recall word, concealing its answer.
     pub fn recall_skip(&mut self) {
-        if let Some(r) = &mut self.recall {
+        let changed = self.recall.as_mut().is_some_and(|r| {
+            let active = r.current().is_some();
             r.skip();
+            active
+        });
+        if changed {
+            self.recall_clear_lookup();
         }
     }
+
     /// Self-rate only an explicitly revealed recall card; no library status is changed.
     pub fn recall_rate(&mut self, good: bool) {
-        if let Some(r) = &mut self.recall {
-            r.rate(good);
+        let changed = self.recall.as_mut().is_some_and(|r| r.rate(good));
+        if changed {
+            self.recall_clear_lookup();
         }
     }
+
+    fn recall_clear_lookup(&mut self) {
+        if self.popups.is_open() {
+            self.popups.playback_changed_by_user();
+            self.close_all_popups();
+        }
+    }
+
     /// Look up only an explicitly revealed recall headword, without a media cue.
     pub fn recall_lookup(&mut self, anchor: crate::popup::Rect) {
         let text = self
@@ -1542,8 +1560,25 @@ impl Session {
         }
     }
 
+    /// Explicitly start the captured words again in original, reversed or seeded shuffled order.
+    pub fn recall_restart(&mut self, order: u8, seed: Option<u64>) {
+        let order = match order {
+            0 => crate::recall::Order::Original,
+            1 => crate::recall::Order::Reverse,
+            2 => crate::recall::Order::Shuffle,
+            _ => return,
+        };
+        let seed = seed.unwrap_or_else(|| self.services.clock.monotonic().as_nanos() as u64);
+        if self.recall.is_some() {
+            self.recall_clear_lookup();
+        }
+        if let Some(r) = &mut self.recall {
+            r.restart(order, seed);
+        }
+    }
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
+        self.recall_clear_lookup();
         self.recall = None;
     }
 

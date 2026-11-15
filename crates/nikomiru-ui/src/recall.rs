@@ -87,8 +87,16 @@ pub(crate) struct Summary {
     pub attempts: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Order {
+    Original,
+    Reverse,
+    Shuffle,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Recall {
+    pub id: String,
     pub source: String,
     pub cards: Vec<Card>,
     pub order: Vec<usize>,
@@ -145,6 +153,7 @@ impl Recall {
         let order = (0..cards.len()).collect::<Vec<_>>();
         let outcomes = vec![Outcome::default(); cards.len()];
         Ok(Self {
+            id: uuid::Uuid::new_v4().to_string(),
             source: source
                 .chars()
                 .filter(|c| !c.is_control())
@@ -160,6 +169,30 @@ impl Recall {
             history: Vec::new(),
         })
     }
+    pub fn restart(&mut self, order: Order, seed: u64) {
+        self.order = (0..self.cards.len()).collect();
+        match order {
+            Order::Original => {}
+            Order::Reverse => self.order.reverse(),
+            Order::Shuffle => {
+                let mut state = seed.max(1);
+                for i in (1..self.order.len()).rev() {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    let j = (state % ((i + 1) as u64)) as usize;
+                    self.order.swap(i, j);
+                }
+            }
+        }
+        self.id = uuid::Uuid::new_v4().to_string();
+        self.pending = self.order.iter().copied().collect();
+        self.outcomes.fill(Outcome::default());
+        self.history.clear();
+        self.revealed = false;
+        self.hint_revealed = false;
+    }
+
     pub fn current(&self) -> Option<&Card> {
         self.pending.front().and_then(|i| self.cards.get(*i))
     }
@@ -243,6 +276,33 @@ mod tests {
             },
         ]
     }
+    // T-KNW-058: restarts preserve frozen cards/hints, reset progress and shuffle each initial identity exactly once.
+    #[test]
+    fn recall_restarts_are_seeded_permutations_without_losing_hints() {
+        let mut r = Recall::start("Study", &rows()).unwrap();
+        r.cards[0].hints = vec!["猫がいる".into()];
+        let cards = r.cards.clone();
+        let id = r.id.clone();
+        r.reveal();
+        r.rate(false);
+        r.restart(Order::Reverse, 0);
+        assert_eq!(r.order, [1, 0]);
+        assert!(r.history.is_empty());
+        assert!(!r.revealed);
+        assert_ne!(r.id, id);
+        assert_eq!(r.cards, cards);
+        r.restart(Order::Shuffle, 42);
+        let order = r.order.clone();
+        r.restart(Order::Shuffle, 42);
+        assert_eq!(r.order, order);
+        let mut sorted = order;
+        sorted.sort_unstable();
+        assert_eq!(sorted, [0, 1]);
+        r.restart(Order::Original, 0);
+        assert_eq!(r.order, [0, 1]);
+        assert_eq!(r.summary().attempts, 0);
+    }
+
     // T-KNW-054: ratings require an answer, Again terminates after three attempts and skipped cards stay distinct.
     #[test]
     fn self_rated_recall_is_finite_and_does_not_grade_hidden_answers() {

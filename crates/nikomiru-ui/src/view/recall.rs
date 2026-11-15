@@ -4,6 +4,7 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub restart_labels: [String; 3],
     pub hints_ready: bool,
     pub hint_labels: [String; 2],
     pub lookup: String,
@@ -20,6 +21,12 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            restart_labels: [
+                "recall-restart-original",
+                "recall-restart-reverse",
+                "recall-restart-shuffle",
+            ]
+            .map(|k| tr(k, &[])),
             hints_ready: false,
             hint_labels: ["recall-hints-capture", "recall-hints-reveal"].map(|k| tr(k, &[])),
             lookup: tr("vocabulary-lookup", &[]),
@@ -42,13 +49,20 @@ impl Labels {
 pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &mut Vec<Command>) {
     let mut open = true;
     egui::Window::new(format!("{} · {}", labels.title, recall.source))
-        .id(egui::Id::unique("vocabulary-recall-window"))
+        .id(egui::Id::unique(("vocabulary-recall-window", &recall.id)))
         .open(&mut open)
         .default_width(420.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .max_height(ctx.content_rect().height() * 0.7)
                 .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (order, label) in labels.restart_labels.iter().enumerate() {
+                            if ui.button(label).clicked() {
+                                out.push(Command::RecallRestart(order as u8));
+                            }
+                        }
+                    });
                     ui.label(format!(
                         "{}: {} / {}",
                         labels.remaining,
@@ -321,5 +335,49 @@ mod tests {
         h.get_by_label("猫がいる");
         assert!(h.query_by_label("猫").is_none());
         assert!(!h.state().recall.revealed);
+    } // T-KNW-058: restart is an explicit command; a new round hides the old answer and preserves its captured data.
+    #[test]
+    fn recall_restart_controls_are_explicit() {
+        let mut r = Recall::start(
+            "Study",
+            &[ListedWord {
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                count: 1,
+                status: WordStatus::Unknown,
+                card: false,
+            }],
+        )
+        .unwrap();
+        r.reveal();
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(700.0, 600.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, t: &mut Test| {
+                    show(
+                        ui.ctx(),
+                        &t.recall,
+                        &Labels::translated(&|key, _| key.to_string()),
+                        &mut t.out,
+                    )
+                },
+                Test {
+                    recall: r,
+                    out: Vec::new(),
+                },
+            );
+        h.run();
+        h.get_by_label("recall-restart-shuffle").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::RecallRestart(2))
+        ));
+        h.state_mut()
+            .recall
+            .restart(crate::recall::Order::Shuffle, 1);
+        h.run();
+        assert!(h.query_by_label("猫").is_none());
     }
 }

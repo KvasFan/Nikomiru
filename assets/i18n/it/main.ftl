@@ -1351,3 +1351,7 @@ shortcuts-recall = Richiamo del vocabolario
 recall-hints-capture = Acquisisci esempi dai sottotitoli correnti
 recall-hints-reveal = Mostra indizi dalle frasi
 recall-hints-unavailable = Servono sottotitoli principali analizzati completamente e indizi entro i limiti previsti.
+
+recall-restart-original = Ricomincia nell’ordine originale
+recall-restart-reverse = Ricomincia in ordine inverso
+recall-restart-shuffle = Ricomincia in ordine casuale
