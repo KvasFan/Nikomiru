@@ -554,7 +554,8 @@ pub fn state() -> Result<Value, String> {
             Value::Null,
             |c| json!({"label":c.label,"indices":c.indices}),
         );
-        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining(), "practice_cues":s.practice_cues_remaining(), "selected":ui.view.list.study_selection(), "revealed":ui.view.list.study_reveals()});
+        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining(), "practice_cues":s.practice_cues_remaining(), "practice_wait_ms":s.practice_wait_ms(), "selected":ui.view.list.study_selection(), "revealed":ui.view.list.study_reveals()});
+        state["word_status_undo"] = json!(s.word_status_undo_available());
         state["study_presets"] = json!(s.config().lookup.study_presets);
         state["subtitle_presets"] = json!(s.config().subtitles.study_presets);
         state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
@@ -704,6 +705,86 @@ pub fn practice_queue(indices: Vec<usize>, passes: u8, version: Option<u64>) -> 
             indices,
             passes,
         })
+    })
+}
+
+/// Exercise an explicit practice control without changing the captured queue.
+pub fn practice_control(action: &str) -> Result<(), String> {
+    let command = match action {
+        "skip" => Command::PracticeSkip,
+        "restart" => Command::PracticeRestart,
+        "stop" => Command::PracticeCancel,
+        _ => return Err("unknown practice control".into()),
+    };
+    call(move |ui| ui.run(command))
+}
+/// Change the same session pause used by the visible practice control.
+pub fn practice_pause(milliseconds: u16) -> Result<(), String> {
+    call(move |ui| ui.run(Command::PracticePause(milliseconds)))
+}
+/// Change or undo a study status through the production command path.
+pub fn study_word_status(
+    expression: Option<String>,
+    reading: String,
+    status: String,
+) -> Result<(), String> {
+    let status = crate::words::WordStatus::from_name(&status).ok_or("unknown word status")?;
+    call(move |ui| {
+        if let Some(e) = expression {
+            ui.run(Command::WordsStatus(vec![(e, reading)], status));
+        } else {
+            ui.run(Command::UndoWordStatuses);
+        }
+    })
+}
+/// Save exact current-track word examples through the native TSV handler.
+pub fn word_examples_export(
+    path: &str,
+    expression: Option<String>,
+    reading: String,
+    version: Option<u64>,
+) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(all) = ui.session.word_list() {
+            let rows = all
+                .iter()
+                .filter(|w| {
+                    expression
+                        .as_ref()
+                        .is_none_or(|e| &w.expression == e && w.reading == reading)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if ui
+                .session
+                .concordance_export_prepare(version.unwrap_or(ui.session.sub_list_version), &rows)
+            {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ConcordanceExport,
+                    path,
+                });
+            }
+        }
+    })
+}
+/// Import or export both preset collections through their actual native-file handlers.
+pub fn preset_file(path: &str, export: bool) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if export {
+            if ui.session.preset_export_prepare() {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::StudyPresetsExport,
+                    path,
+                });
+            }
+        } else {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::StudyPresetsImport,
+                path,
+            });
+        }
     })
 }
 

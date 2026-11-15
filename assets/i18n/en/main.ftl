@@ -1316,3 +1316,11 @@ sub-practice-restart = Restart current line
 
 vocabulary-examples-export-shown = Export examples of shown words
 vocabulary-examples-export-selected = Export examples of selected words
+
+study-presets-import = Import study presets…
+study-presets-export = Export study presets…
+study-presets-filter = Study presets (JSON)
+study-presets-invalid = The preset file is invalid or contains unsupported filter keys.
+study-presets-too-large = The preset file or merged collection exceeds its size limits.
+study-presets-unsupported = This preset file format version is not supported.
+study-presets-import-failed = Could not read or save presets: { $reason }

@@ -416,6 +416,8 @@ pub(crate) enum Command {
         indices: Vec<usize>,
     },
     VocabularyScopeClear,
+    PresetsImport,
+    PresetsExport,
     SubtitleStudyPresetSave(nikomiru_core::config::SubtitleStudyPreset),
     SubtitleStudyPresetDelete(String),
     StudyPresetSave(nikomiru_core::config::StudyPreset),
@@ -1078,6 +1080,8 @@ impl Ui {
                     | Dialog::SubtitleHtml => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
+                    Dialog::StudyPresetsImport => self.session.preset_import_from(&path),
+                    Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
                     Dialog::FrequencyExport => self.session.frequency_export_to(&path),
@@ -1474,6 +1478,12 @@ impl Ui {
                 s.vocabulary_scope_capture(version, &indices)
             }
             Command::VocabularyScopeClear => s.vocabulary_scope_clear(),
+            Command::PresetsImport => self.view.dialog = Some(Dialog::StudyPresetsImport),
+            Command::PresetsExport => {
+                if s.preset_export_prepare() {
+                    self.view.dialog = Some(Dialog::StudyPresetsExport);
+                }
+            }
             Command::SubtitleStudyPresetSave(preset) => {
                 s.subtitle_study_preset_change(Some(preset), None)
             }

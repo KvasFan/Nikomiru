@@ -1316,3 +1316,11 @@ sub-practice-restart = Ricomincia battuta corrente
 
 vocabulary-examples-export-shown = Esporta esempi delle parole visibili
 vocabulary-examples-export-selected = Esporta esempi delle parole selezionate
+
+study-presets-import = Importa preset di studio…
+study-presets-export = Esporta preset di studio…
+study-presets-filter = Preset di studio (JSON)
+study-presets-invalid = Il file non è valido o contiene filtri non supportati.
+study-presets-too-large = Il file o la raccolta risultante supera i limiti previsti.
+study-presets-unsupported = Questa versione del formato dei preset non è supportata.
+study-presets-import-failed = Impossibile leggere o salvare i preset: { $reason }

@@ -233,6 +233,40 @@ fn subtitle_concordance_finds_inflected_words_and_rejects_old_sources() {
     h.state_until("full vocabulary restored", |s| {
         s["subtitle_study"]["vocabulary_scope"].is_null()
     });
+    // T-KNW-050: a no-op preserves the last real status change and one explicit undo restores it.
+    let old = h.state()["subtitles"]["words"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["expression"] == "食べる")
+        .unwrap()["status"]
+        .clone();
+    h.cmd(json!({"cmd":"word-status","text":"食べる","reading":"たべる","status":"known"}));
+    h.state_until("known status applied", |s| {
+        s["subtitles"]["words"].as_array().is_some_and(|rows| {
+            rows.iter()
+                .any(|w| w["expression"] == "食べる" && w["status"] == "known")
+        })
+    });
+    h.cmd(json!({"cmd":"word-status","text":"食べる","reading":"たべる","status":"known"}));
+    assert_eq!(h.state()["word_status_undo"], true);
+    h.cmd(json!({"cmd":"word-status"}));
+    h.state_until("word statuses restored", |s| {
+        s["word_status_undo"] == false
+            && s["subtitles"]["words"].as_array().is_some_and(|rows| {
+                rows.iter()
+                    .any(|w| w["expression"] == "食べる" && w["status"] == old)
+            })
+    });
+    // T-KNW-051: native sentence report freezes two exact inflected examples with original times.
+    let report = desk.path("word-examples.tsv");
+    h.cmd(json!({"cmd":"word-examples-export","path":report,"text":"食べる","reading":"たべる"}));
+    let report = std::fs::read_to_string(report).unwrap();
+    assert!(report.contains("食べる\tたべる\t1000\t2000\t食べました"));
+    assert_eq!(report.lines().count(), 3);
+    let stale = desk.path("stale-examples.tsv");
+    h.cmd(json!({"cmd":"word-examples-export","path":stale,"text":"食べる","reading":"たべる","version":u64::MAX}));
+    assert!(!stale.exists());
     let before = h.state()["time_pos"].as_f64().unwrap();
     h.cmd(json!({"cmd":"vocabulary-examples","text":"食べる","reading":"たべる"}));
     h.state_until("two exact examples", |s| {
@@ -272,6 +306,12 @@ fn named_study_presets_survive_restart_and_delete() {
         let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
         (config.contains("Cats") && config.contains("Study lines")).then_some(())
     });
+    // T-KNW-052: native export omits profile configuration; validated import restores both collections.
+    let portable = desk.path("study-presets.json");
+    h.cmd(json!({"cmd":"preset-file","path":portable,"export":true}));
+    let data = std::fs::read_to_string(&portable).unwrap();
+    assert!(data.contains("Cats") && data.contains("Study lines"));
+    assert!(!data.contains("ffmpeg"));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     let (mut app, mut h) = desk.launch();
@@ -284,11 +324,28 @@ fn named_study_presets_survive_restart_and_delete() {
         let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
         (!config.contains("Cats") && !config.contains("Study lines")).then_some(())
     });
+    h.cmd(json!({"cmd":"preset-file","path":portable}));
+    h.state_until("both preset collections imported", |s| {
+        s["study_presets"][0]["name"] == "Cats" && s["subtitle_presets"][0]["name"] == "Study lines"
+    });
+    super::support::until(Duration::from_secs(10), "import persisted", || {
+        let config = std::fs::read_to_string(desk.path("config/nikomiru/config.toml")).ok()?;
+        (config.contains("Cats") && config.contains("Study lines")).then_some(())
+    });
+    let bad = desk.path("bad-presets.json");
+    std::fs::write(
+        &bad,
+        r#"{"format":1,"subtitles":[{"name":"Bad","order":99}]}"#,
+    )
+    .unwrap();
+    let before = h.state()["subtitle_presets"].clone();
+    h.cmd(json!({"cmd":"preset-file","path":bad}));
+    assert_eq!(h.state()["subtitle_presets"], before);
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
     let (mut app, mut h) = desk.launch();
-    assert_eq!(h.state()["study_presets"], json!([]));
-    assert_eq!(h.state()["subtitle_presets"], json!([]));
+    assert_eq!(h.state()["study_presets"][0]["name"], "Cats");
+    assert_eq!(h.state()["subtitle_presets"][0]["name"], "Study lines");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -384,13 +441,22 @@ fn subtitle_text_filter_scopes_export_original_cues() {
     let mut desk = Desktop::start();
     let video = desk.path("filters.mkv");
     std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
-    std::fs::write(desk.path("filters.ja.srt"),"1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n猫 犬\n\n3\n00:00:05,000 --> 00:00:06,000\n猫  犬\n\n4\n00:00:07,000 --> 00:00:08,000\n猫\n犬\n").unwrap();
+    std::fs::write(desk.path("filters.ja.srt"),"1\n00:00:01,000 --> 00:00:02,000\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n猫 犬\n\n3\n00:00:05,000 --> 00:00:06,000\n猫  犬\n\n4\n00:00:07,000 --> 00:00:10,000\n猫\n犬\n").unwrap();
     let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
     h.wait("first-frame");
     h.state_until("four captions", |s| s["subtitles"]["cues"] == 4);
     h.cmd(json!({"cmd":"subtitle-study"}));
     h.state_until("list ready", |s| {
         s["subtitle_study"]["shown"] == json!([0, 1, 2, 3])
+    });
+    // T-SUB-056, T-SUB-057: alternate display order and exact matching retain original identities.
+    h.cmd(json!({"cmd":"subtitle-study","filters":{"name":"Runtime","order":2}}));
+    h.state_until("duration order", |s| {
+        s["subtitle_study"]["shown"] == json!([3, 0, 1, 2])
+    });
+    h.cmd(json!({"cmd":"subtitle-study","query":"猫","filters":{"name":"Runtime","exact":true}}));
+    h.state_until("exact caption", |s| {
+        s["subtitle_study"]["shown"] == json!([0])
     });
     h.cmd(json!({"cmd":"subtitle-study","filters":{"name":"Runtime","min_text":2,"unique":true}}));
     h.state_until("unique long captions", |s| {
@@ -409,6 +475,71 @@ fn subtitle_text_filter_scopes_export_original_cues() {
     assert_eq!(out.cues.len(), 1);
     assert_eq!(out.cues[0].start_ms, 7000);
     assert_eq!(out.cues[0].plain_text, "猫\n犬");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-SUB-060, T-SUB-061: delayed resumes cancel cleanly; skip/restart retain the captured queue.
+#[test]
+#[ignore = "L6: needs kwin_wayland, dbus-daemon and cargo xtask fixtures"]
+fn practice_wait_skip_restart_and_stop_do_not_resume_late() {
+    let mut desk = Desktop::start();
+    let video = desk.path("pause.mkv");
+    std::fs::copy(fixture("av_long.mkv"), &video).unwrap();
+    std::fs::write(
+        desk.path("pause.ja.srt"),
+        "1\n00:00:01,000 --> 00:00:01,700\n猫\n\n2\n00:00:03,000 --> 00:00:04,000\n犬\n",
+    )
+    .unwrap();
+    let (mut app, mut h) = desk.launch_with(&["--", video.to_str().unwrap()]);
+    h.wait("first-frame");
+    h.state_until("two practice cues", |s| s["subtitles"]["cues"] == 2);
+    h.cmd(json!({"cmd":"practice-pause","ms":1000}));
+    h.cmd(json!({"cmd":"practice-queue","indices":[0,1],"passes":2}));
+    h.state_until("waiting within first cue", |s| {
+        s["subtitle_study"]["practice_wait_ms"].is_u64()
+            && s["subtitle_study"]["practice_cues"] == 2
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"skip"}));
+    h.state_until("skipped to next cue", |s| {
+        s["subtitle_study"]["practice_cues"] == 1
+            && s["time_pos"].as_f64().is_some_and(|t| t >= 3.0)
+    });
+    h.state_until("waiting within next cue", |s| {
+        s["subtitle_study"]["practice_wait_ms"].is_u64()
+            && s["subtitle_study"]["practice_remaining"] == 1
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"restart"}));
+    h.state_until("current cue restarted", |s| {
+        s["subtitle_study"]["practice_remaining"] == 2
+            && s["subtitle_study"]["practice_wait_ms"].is_null()
+    });
+    h.state_until("waiting again", |s| {
+        s["subtitle_study"]["practice_wait_ms"].is_u64()
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"stop"}));
+    let stopped = std::time::Instant::now();
+    super::support::until(Duration::from_secs(3), "no late resume", || {
+        let s = h.state();
+        (stopped.elapsed() >= Duration::from_millis(1200)
+            && s["paused"] == true
+            && s["subtitle_study"]["practice_remaining"].is_null())
+        .then_some(())
+    });
+    h.cmd(json!({"cmd":"practice-pause","ms":0}));
+    h.cmd(json!({"cmd":"practice-queue","indices":[0],"passes":2}));
+    h.state_until("single cue active", |s| {
+        s["subtitle_study"]["practice_remaining"] == 2
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"skip"}));
+    h.state_until("last cue skipped and paused", |s| {
+        s["paused"] == true && s["subtitle_study"]["practice_cues"] == 0
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"restart"}));
+    h.state_until("finished cue can restart", |s| {
+        s["subtitle_study"]["practice_remaining"] == 2
+    });
+    h.cmd(json!({"cmd":"practice-control","action":"stop"}));
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

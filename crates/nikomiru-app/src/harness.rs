@@ -118,6 +118,34 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
         }
+        Some("practice-control") => {
+            harness::practice_control(text(command, "action")?).map(|()| Value::Null)
+        }
+        Some("practice-pause") => harness::practice_pause(
+            command["ms"]
+                .as_u64()
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or("missing pause milliseconds")?,
+        )
+        .map(|()| Value::Null),
+        Some("word-status") => harness::study_word_status(
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+            command["status"].as_str().unwrap_or("unknown").to_string(),
+        )
+        .map(|()| Value::Null),
+        Some("word-examples-export") => harness::word_examples_export(
+            text(command, "path")?,
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
+        Some("preset-file") => harness::preset_file(
+            text(command, "path")?,
+            command["export"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("practice-queue") => harness::practice_queue(
             command["indices"]
                 .as_array()

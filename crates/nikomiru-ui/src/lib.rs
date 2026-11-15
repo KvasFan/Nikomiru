@@ -40,6 +40,7 @@ pub mod session;
 pub mod setup;
 pub mod shortcuts;
 pub mod study;
+pub mod study_presets;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;

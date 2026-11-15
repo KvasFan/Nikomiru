@@ -34,6 +34,7 @@ pub(crate) struct Labels {
     pub preset_hint: String,
     pub preset_too_long: String,
     pub named: [String; 4],
+    pub portable: [String; 2],
     pub scripts: [String; 4],
     pub html_labels: [String; 3],
     pub coverage_labels: [String; 2],
@@ -78,6 +79,7 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            portable: ["study-presets-import", "study-presets-export"].map(|k| tr(k, &[])),
             undo: tr("vocabulary-undo-status", &[]),
             practice_labels: [
                 "vocabulary-practice-mask",
@@ -312,6 +314,15 @@ fn named_presets(
     egui::CollapsingHeader::new(&labels.named[0])
         .id_salt("vocabulary-persistent-presets")
         .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(&labels.portable[0]).clicked() {
+                    out.push(Command::PresetsImport);
+                }
+                if ui.button(&labels.portable[1]).clicked() {
+                    out.push(Command::PresetsExport);
+                }
+            });
+
             let saved = ui
                 .ctx()
                 .data(|d| {
@@ -1141,6 +1152,7 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        portable: ["Import presets", "Export presets"].map(String::from),
                         undo: "Undo status".into(),
                         practice_labels: [
                             "Practice from reading",

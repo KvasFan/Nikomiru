@@ -409,6 +409,7 @@ pub struct Session {
     frequency_export: Option<Vec<u8>>,
     vocabulary_html: Option<String>,
     concordance_export: Option<String>,
+    preset_export: Option<Vec<u8>>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
     study_report: Option<String>,
@@ -802,6 +803,7 @@ impl Session {
             frequency_export: None,
             vocabulary_html: None,
             concordance_export: None,
+            preset_export: None,
             history_export: None,
             subtitle_export: None,
             study_report: None,
@@ -2406,6 +2408,67 @@ impl Session {
         }
         self.preset_saving = true;
         self.config_save = Some(self.services.config.clone());
+    }
+
+    /// Capture both named filter collections without paths or service configuration.
+    pub fn preset_export_prepare(&mut self) -> bool {
+        self.preset_export = None;
+        match crate::study_presets::export(&self.services.config) {
+            Ok(bytes) => {
+                self.preset_export = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the captured portable JSON.
+    pub fn preset_export_to(&mut self, path: &Path) {
+        let Some(bytes) = self.preset_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("study-presets-import-failed", &[("reason", e.to_string())])),
+        }
+    }
+    /// Read a bounded portable file and queue a complete validated merge through the serial writer.
+    pub fn preset_import_from(&mut self, path: &Path) {
+        use std::io::Read;
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let read = || -> std::io::Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)?
+                .take((crate::study_presets::MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            Ok(bytes)
+        };
+        let bytes = match read() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.toasts
+                    .push(self.tr("study-presets-import-failed", &[("reason", e.to_string())]));
+                return;
+            }
+        };
+        match crate::study_presets::import(&bytes, &self.services.config) {
+            Ok(config) => {
+                self.services.config = config;
+                self.preset_saving = true;
+                self.config_save = Some(self.services.config.clone());
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
     }
 
     /// Apply and queue the selected settings section for persistence.

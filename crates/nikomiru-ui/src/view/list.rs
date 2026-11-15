@@ -157,6 +157,7 @@ pub(crate) struct StudyLabels {
     shapes: [String; 3],
     unique_label: String,
     preset_labels: [String; 4],
+    portable: [String; 2],
     order_labels: [String; 4],
     translation_labels: [String; 3],
     exact_label: String,
@@ -180,6 +181,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            portable: ["study-presets-import", "study-presets-export"].map(|k| tr(k, &[])),
             practice_controls: ["sub-practice-skip", "sub-practice-restart"].map(|k| tr(k, &[])),
             pause_label: tr("sub-practice-pause", &[]),
             translation_labels: ["sub-preview-title", "sub-preview-show", "sub-preview-empty"]
@@ -1306,6 +1308,15 @@ fn study_presets(
     egui::CollapsingHeader::new(&labels.preset_labels[0])
         .id_salt("subtitle-persistent-presets")
         .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(&labels.portable[0]).clicked() {
+                    out.push(Command::PresetsImport);
+                }
+                if ui.button(&labels.portable[1]).clicked() {
+                    out.push(Command::PresetsExport);
+                }
+            });
+
             let saved = ui
                 .ctx()
                 .data(|d| {

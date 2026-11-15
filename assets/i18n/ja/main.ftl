@@ -1299,3 +1299,11 @@ sub-practice-restart = 現在の字幕を最初から繰り返す
 
 vocabulary-examples-export-shown = 表示中の単語の例文を出力
 vocabulary-examples-export-selected = 選択した単語の例文を出力
+
+study-presets-import = 学習プリセットを読み込む…
+study-presets-export = 学習プリセットを書き出す…
+study-presets-filter = 学習プリセット（JSON）
+study-presets-invalid = 無効なファイルか、対応していない条件が含まれています。
+study-presets-too-large = ファイルまたは統合後の件数が上限を超えています。
+study-presets-unsupported = このプリセット形式のバージョンには対応していません。
+study-presets-import-failed = プリセットを読み書きできません：{ $reason }
