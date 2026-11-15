@@ -925,3 +925,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-CLO-002 | CLO-003 | Finite progress/summary, explicit submit/advance/skip/cancel and undo; typing focus and unchanged phrases/words/schedules in the actual app. | L1, L6 |
 | T-CLO-003 | CLO-003 | Finite progress/summary, explicit advance/skip/cancel and one-step undo independent of schedules. | L1, L6 |
 | T-CLO-004 | CLO-004 | Real redb enrol/rating/stale comparison/undo, existing FSRS outputs, due queues and persistence/backup; actual-app scheduled restart. | L1, L6 |
+
+## M106 sentence bank
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-SEN-001 | Explicit bounded indexing | Real dictionary inflection/identity/ranges, sentence boundaries, bounded packs and cancellation; failed batches retain the previous snapshot. | L1, L6 |
+| T-SEN-002 | Exact offline examples | Distinct expression/readings and language, repeated hits, bounded stable results and stale-reply rejection; actual cross-book/primary-track results without status/playback changes. | L1, L3, L6 |
+| T-SEN-003 | Sources and persistence | Original Japanese byte offsets, missing/replaced source navigation, safe shown TSV, explicit batch deletion, restart and backup retention. | L1, L6 |
