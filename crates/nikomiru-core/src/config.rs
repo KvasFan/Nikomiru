@@ -216,6 +216,8 @@ pub struct PlayerConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitleStudyPreset {
+    /// Source, shortest, longest or shortest-text display order.
+    pub order: u8,
     /// Match the whole normalised caption rather than contained search terms.
     pub exact: bool,
     /// Neighbouring cues around exact examples, zero through two.
@@ -255,6 +257,7 @@ impl SubtitleStudyPreset {
             && self.name.len() <= 64
             && !self.name.chars().any(char::is_control)
             && self.query.len() <= 4096
+            && self.order < 4
             && self.context <= 2
             && self.filter < 3
             && self.shape < 3

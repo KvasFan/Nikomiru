@@ -1280,3 +1280,8 @@ sub-practice-cues = Battute rimanenti: { $count }
 sub-practice-unavailable = Serve una selezione completa di 1–1000 battute valide comprese nella durata del video.
 
 sub-search-exact = Corrispondenza dell’intera battuta
+
+sub-order-source = Ordine della sorgente
+sub-order-short = Durata crescente
+sub-order-long = Durata decrescente
+sub-order-text = Testo più breve

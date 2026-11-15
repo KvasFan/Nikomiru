@@ -1263,3 +1263,8 @@ sub-practice-cues = 残りの字幕数：{ $count }
 sub-practice-unavailable = 動画の範囲内にある有効な字幕を1～1000件選んでください。
 
 sub-search-exact = 字幕全体と一致
+
+sub-order-source = 元の字幕順
+sub-order-short = 短い時間から
+sub-order-long = 長い時間から
+sub-order-text = 短い文章から

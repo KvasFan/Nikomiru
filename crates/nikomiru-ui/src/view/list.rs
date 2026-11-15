@@ -24,7 +24,9 @@ use super::palette;
 use super::theme;
 use crate::popup;
 use crate::session::Session;
-use crate::subtitle_study::{DurationBounds, LineShape, ReadingSpeed, TextLength, TimeWindow};
+use crate::subtitle_study::{
+    DurationBounds, LineShape, ReadingSpeed, StudyOrder, TextLength, TimeWindow,
+};
 use crate::subtitles::clock;
 use crate::ui::Command;
 
@@ -96,6 +98,7 @@ struct Scope {
     shape: LineShape,
     context: u8,
     exact: bool,
+    order: StudyOrder,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -106,6 +109,7 @@ struct Rows {
     picked: Option<(u64, String, LineFilter, u64, Scope)>,
     /// Changes whenever other rows are picked.
     generation: u64,
+    chronological: Vec<(usize, usize)>,
     /// The width the heights were measured at.
     width: f32,
     /// The text size they were measured at.
@@ -149,6 +153,7 @@ pub(crate) struct StudyLabels {
     shapes: [String; 3],
     unique_label: String,
     preset_labels: [String; 4],
+    order_labels: [String; 4],
     exact_label: String,
     text_labels: [String; 4],
     duration_labels: [String; 4],
@@ -170,6 +175,13 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            order_labels: [
+                "sub-order-source",
+                "sub-order-short",
+                "sub-order-long",
+                "sub-order-text",
+            ]
+            .map(|k| tr(k, &[])),
             exact_label: tr("sub-search-exact", &[]),
             queue_labels: [
                 "sub-practice-shown",
@@ -311,6 +323,7 @@ pub(crate) struct State {
     shape: LineShape,
     context: u8,
     exact: bool,
+    order: StudyOrder,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -394,6 +407,7 @@ impl State {
             shape: self.shape,
             context: self.context,
             exact: self.exact,
+            order: self.order,
         }
     }
     pub(crate) fn study_action(
@@ -533,6 +547,14 @@ impl Rows {
         });
         if fresh {
             self.cues = pick_indices(scene, query, filter, scope);
+            self.chronological = self
+                .cues
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(row, cue)| (cue, row))
+                .collect();
+            self.chronological.sort_unstable();
             self.picked = Some((scene.version, query.to_string(), filter, revision, scope));
             self.generation += 1;
         } else if self.width == width && self.size == scene.text_size {
@@ -558,6 +580,15 @@ impl Rows {
             tops.push((top - ROW_SPACING).max(0.0));
             tops
         });
+    }
+
+    fn current_row(&self, timeline: &Timeline, position: i64) -> Option<usize> {
+        let current = timeline.list_position(position)?;
+        let at = self
+            .chronological
+            .partition_point(|(cue, _)| *cue <= current)
+            .checked_sub(1)?;
+        self.chronological.get(at).map(|(_, row)| *row)
     }
 
     /// The rows that meet the band `top..bottom` of the list.
@@ -734,6 +765,7 @@ pub(crate) fn draw(
         state.shape = LineShape::default();
         state.context = 0;
         state.exact = false;
+        state.order = StudyOrder::default();
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -897,7 +929,7 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
             scope.context,
         )
     });
-    scene
+    let mut indices: Vec<_> = scene
         .timeline
         .cues()
         .iter()
@@ -929,7 +961,9 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 )
         })
         .map(|(i, _)| i)
-        .collect()
+        .collect();
+    crate::subtitle_study::order_indices(scene.timeline.cues(), &mut indices, scope.order);
+    indices
 }
 
 fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
@@ -946,6 +980,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             shape: state.shape,
             context: state.context,
             exact: state.exact,
+            order: state.order,
         },
     )
 }
@@ -966,6 +1001,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             shape: state.shape,
             context: state.context,
             exact: state.exact,
+            order: state.order,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -1102,6 +1138,10 @@ impl State {
         nikomiru_core::config::SubtitleStudyPreset {
             context: self.context,
             exact: self.exact,
+            order: StudyOrder::ALL
+                .iter()
+                .position(|o| *o == self.order)
+                .unwrap_or(0) as u8,
             name: self.preset_name.trim().to_string(),
             query: self.query.clone(),
             filter: match self.filter {
@@ -1132,6 +1172,7 @@ impl State {
         self.query.clone_from(&p.query);
         self.context = p.context;
         self.exact = p.exact;
+        self.order = StudyOrder::ALL[usize::from(p.order)];
         self.filter =
             [LineFilter::All, LineFilter::New, LineFilter::PlusOne][usize::from(p.filter)];
         self.window = TimeWindow {
@@ -1338,6 +1379,13 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
             egui::CollapsingHeader::new(&scene.study.text_labels[0])
                 .id_salt("subtitle-text-filters")
                 .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (order, label) in
+                            StudyOrder::ALL.into_iter().zip(&scene.study.order_labels)
+                        {
+                            ui.selectable_value(&mut state.order, order, label);
+                        }
+                    });
                     ui.checkbox(&mut state.exact, &scene.study.exact_label);
                     ui.checkbox(&mut state.unique, &scene.study.unique_label);
                     ui.horizontal_wrapped(|ui| {
@@ -1671,13 +1719,14 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     shape: state.shape,
                     context: state.context,
                     exact: state.exact,
+                    order: state.order,
                 },
                 width,
             );
             let rows = &state.rows;
             ui.set_height(rows.tops.last().copied().unwrap_or(0.0));
             let origin = ui.max_rect().min;
-            let current = timeline.list_row(&rows.cues, scene.pos_ms);
+            let current = rows.current_row(timeline, scene.pos_ms);
 
             let sizes = Sizes::of(scene.text_size);
             let text_width = (width - sizes.text_x - RIGHT).max(sizes.text);
@@ -2024,6 +2073,32 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-057: resorting maps current highlights to original cue identities and preserves ticks.
+    #[test]
+    fn reordered_study_rows_track_original_current_cues() {
+        let mut h = harness(
+            timeline(&[(1000, "猫猫"), (3000, "犬"), (5000, "鳥鳥鳥")]),
+            3500,
+            false,
+        );
+        h.run();
+        h.state_mut().state.selected.insert(2);
+        h.state_mut().state.order = StudyOrder::Text;
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1, 0, 2]);
+        assert_eq!(
+            h.state()
+                .state
+                .drawn
+                .iter()
+                .find(|r| r.current)
+                .map(|r| r.cue),
+            Some(1)
+        );
+        assert_eq!(h.state().state.selected, BTreeSet::from([2]));
+        assert_eq!(h.state().state.capture_preset().order, 3);
     }
 
     // T-SUB-056: whole-caption matching shares normalisation and every shown-snapshot predicate.

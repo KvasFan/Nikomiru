@@ -1280,3 +1280,8 @@ sub-practice-cues = Lines remaining: { $count }
 sub-practice-unavailable = A complete queue of 1–1000 valid subtitle lines within the media is required.
 
 sub-search-exact = Match the whole caption
+
+sub-order-source = Source order
+sub-order-short = Shortest duration
+sub-order-long = Longest duration
+sub-order-text = Shortest text

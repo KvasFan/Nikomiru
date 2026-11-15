@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Subtitle study row ordering (SUB-057, M83).
+
 - Exact subtitle search (SUB-056, M82).
 
 ## [2.90.0] - 2026-11-15

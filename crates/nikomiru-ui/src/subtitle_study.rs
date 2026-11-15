@@ -123,6 +123,58 @@ impl LineShape {
     }
 }
 
+/// Display order for filtered subtitle study rows (SUB-057).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StudyOrder {
+    /// Original chronological cue order.
+    #[default]
+    Source,
+    /// Shorter full cue durations first.
+    Shortest,
+    /// Longer full cue durations first.
+    Longest,
+    /// Fewer non-whitespace Unicode scalars first.
+    Text,
+}
+impl StudyOrder {
+    /// Stable persisted choices.
+    pub const ALL: [Self; 4] = [Self::Source, Self::Shortest, Self::Longest, Self::Text];
+}
+
+/// Validate all indices before sorting; ties keep original cue order.
+pub fn order_indices(
+    cues: &[nikomiru_subs::Cue],
+    indices: &mut [usize],
+    order: StudyOrder,
+) -> bool {
+    if indices.iter().any(|i| *i >= cues.len()) {
+        return false;
+    }
+    let mut keys: Vec<_> = indices
+        .iter()
+        .map(|&i| {
+            let cue = &cues[i];
+            let duration = (i128::from(cue.end_ms) - i128::from(cue.start_ms)).max(0);
+            let key = match order {
+                StudyOrder::Source => i as i128,
+                StudyOrder::Shortest => duration,
+                StudyOrder::Longest => -duration,
+                StudyOrder::Text => cue
+                    .plain_text
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .count() as i128,
+            };
+            (key, i)
+        })
+        .collect();
+    keys.sort_unstable();
+    for (dest, (_, i)) in indices.iter_mut().zip(keys) {
+        *dest = i;
+    }
+    true
+}
+
 /// Metrics of a bounded subtitle study scope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Statistics {
@@ -324,6 +376,24 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-057: stable original ties, invalid scopes and full-width duration arithmetic.
+    #[test]
+    fn study_order_uses_cached_scalar_keys_and_original_ties() {
+        let mut cues = nikomiru_subs::parse(nikomiru_subs::Format::Srt,"1\n00:00:01,000 --> 00:00:03,000\n猫 猫\n\n2\n00:00:04,000 --> 00:00:08,000\n猫\n\n3\n00:00:09,000 --> 00:00:10,000\n🐈\n").cues;
+        let mut ids = vec![0, 1, 2];
+        assert!(order_indices(&cues, &mut ids, StudyOrder::Shortest));
+        assert_eq!(ids, [2, 0, 1]);
+        order_indices(&cues, &mut ids, StudyOrder::Text);
+        assert_eq!(ids, [1, 2, 0]);
+        cues[0].start_ms = i64::MIN;
+        cues[0].end_ms = i64::MAX;
+        order_indices(&cues, &mut ids, StudyOrder::Longest);
+        assert_eq!(ids, [0, 1, 2]);
+        let mut invalid = vec![0, 9];
+        assert!(!order_indices(&cues, &mut invalid, StudyOrder::Source));
+        assert_eq!(invalid, [0, 9]);
+    }
+
     // T-SUB-055: queues are ordered/deduplicated and invalid requests never return a partial plan.
     #[test]
     fn finite_practice_queue_validates_every_captured_interval() {
