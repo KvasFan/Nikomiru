@@ -369,3 +369,11 @@ Books → Add accepts maintained `.mokuro` 0.2.x JSON with local images in a sam
 Open **Phrase notebook** from Library or Books. **Capture current source** creates an editable draft from the reader selection (or current paragraph) or current primary caption. Enter an exact phrase contained in the original sentence, add its meaning and choose its own learning status, then click **Save phrase**. **New phrase** also works without a source. Drafts are not saved automatically; duplicates and failed writes keep the draft available for correction.
 
 Search matches phrase, meaning, sentence and source title. Edit or delete a record explicitly; **Open source** returns to its original reader paragraph or paused video scene if still available. **Export shown phrases** freezes the displayed records as UTF-8 TSV and neutralises spreadsheet formulas. Phrase statuses do not change the word colours, comprehension counts or review schedule. Local phrases are retained in ordinary backups; this notebook is not merged through WebDAV yet.
+
+### Cloze exercises
+
+In the phrase notebook, choose **Preview cloze**, inspect the masked sentence and confirm **Create exercise**. The exercise retains its own snapshot, including meaning and source. Editing or deleting the notebook phrase later does not rewrite the exercise.
+
+Open **Cloze practice**, filter the exercises and practice the first 100 shown using typed answers or choices. Typed answers compare Unicode NFC and ignore outer whitespace; case, punctuation and Japanese readings remain distinct. Choices need another distinct answer in the same study language. Answers and meanings appear after submission; advance, skip, undo the previous step or return to the exercise list explicitly. Other source pages are hidden during the exercise.
+
+Finite practice never changes review schedules or phrase/word statuses. **Enrol in scheduled review** explicitly adds an exercise's single FSRS schedule. **Review due exercises** uses the existing review settings, with four explicit ratings after feedback and one-step schedule undo. Due exercises, frozen sources and schedules survive restart and ordinary backups. Deleting an exercise also deletes its schedule; it leaves the notebook phrase untouched.

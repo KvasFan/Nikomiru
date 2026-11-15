@@ -16,6 +16,7 @@ mod backup_page;
 mod bar;
 mod books_page;
 mod chrome;
+mod cloze;
 mod condense;
 mod dict_page;
 mod hooker_page;
@@ -348,6 +349,7 @@ impl FileDialog {
 pub(crate) struct View {
     pub phrases_open: bool,
     pub phrase_query: String,
+    pub cloze_query: String,
     pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
@@ -664,7 +666,8 @@ impl View {
     }
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
-        self.phrases_open
+        s.clozes.open
+            || self.phrases_open
             || self.recall_history_open
             || self.dict_page_open
             || self.anki_page_open
@@ -696,6 +699,13 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if s.clozes.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            cloze::show(ui, s, &mut self.cloze_query, &mut out);
+            return out;
+        }
         if std::mem::take(&mut self.hooker_closing) {
             self.close_hooker_page(&mut out);
         }

@@ -572,6 +572,7 @@ pub fn state() -> Result<Value, String> {
             "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
         state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(uid, b)| {
@@ -1771,6 +1772,65 @@ pub fn phrases(action: String, args: Value) -> Result<(), String> {
                 }
             }
             _ => return Err("unknown phrase action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Exercise cloze commands through normal preview, submission and committed job replies.
+pub fn cloze(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        use crate::cloze::Mode;
+        use nikomiru_library::review::Grade;
+        let id = || args["id"].as_str().map(str::to_owned).ok_or("missing id");
+        match action.as_str() {
+            "open" => ui.run(Command::ClozeOpen),
+            "close" => ui.run(Command::ClozeClose),
+            "preview" => ui.run(Command::ClozePreview(id()?)),
+            "create" => ui.run(Command::ClozeCreate),
+            "enrol" => ui.run(Command::ClozeEnrol(id()?)),
+            "delete" => ui.run(Command::ClozeDelete(id()?)),
+            "start" => ui.run(Command::ClozeStart {
+                ids: args["ids"]
+                    .as_array()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| id.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_else(|| {
+                        ui.session
+                            .clozes
+                            .items
+                            .iter()
+                            .map(|r| r.phrase.id.clone())
+                            .collect()
+                    }),
+                mode: if args["mode"] == "choice" {
+                    Mode::Choice
+                } else {
+                    Mode::Typed
+                },
+                scheduled: args["scheduled"].as_bool().unwrap_or(false),
+            }),
+            "input" => ui.run(Command::ClozeInput(
+                args["text"].as_str().unwrap_or_default().into(),
+            )),
+            "submit" => ui.run(Command::ClozeSubmit),
+            "next" => ui.run(Command::ClozeNext(
+                match args["grade"].as_str().unwrap_or("good") {
+                    "again" => Grade::Again,
+                    "hard" => Grade::Hard,
+                    "good" => Grade::Good,
+                    "easy" => Grade::Easy,
+                    _ => return Err("unknown grade".into()),
+                },
+                false,
+            )),
+            "skip" => ui.run(Command::ClozeNext(Grade::Again, true)),
+            "undo" => ui.run(Command::ClozeUndo),
+            "cancel" => ui.run(Command::ClozeCancelRound),
+            _ => return Err("unknown cloze action".into()),
         }
         Ok(())
     })?

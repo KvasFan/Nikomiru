@@ -34,13 +34,9 @@ impl Session {
         job: crate::phrases::Job,
         done: Box<dyn FnOnce(crate::phrases::Answer) + Send>,
     ) {
-        if self.services.library.is_none() {
-            done(Err(self.tr("phrases-readonly", &[])));
-            return;
-        }
         let tr = self.translator_clone();
-        let run = move |lib: &Library| {
-            let result = (|| {
+        self.library_task(
+            move |lib: &Library| {
                 let saved = match job {
                     crate::phrases::Job::List => false,
                     crate::phrases::Job::Save(p) => {
@@ -55,16 +51,28 @@ impl Session {
                     }
                 };
                 lib.phrases().map(|p| (p, saved)).map_err(|e| e.to_string())
-            })();
-            done(result);
-        };
+            },
+            done,
+        );
+    }
+    /// Shared ordered library dispatch for local notebooks; preserve the callback if worker creation fails.
+    pub(super) fn library_task<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&Library) -> Result<T, String> + Send + 'static,
+        done: Box<dyn FnOnce(Result<T, String>) + Send>,
+    ) {
+        if self.services.library.is_none() {
+            done(Err(self.tr("phrases-readonly", &[])));
+            return;
+        }
+        let run = move |lib: &Library| done(work(lib));
         if let Some(writer) = &self.writer {
             writer.run(run);
         } else if let Some(lib) = self.services.library.clone() {
             // A channel makes even thread creation failure observable, without dropping the callback.
             let (tx, rx) = std::sync::mpsc::sync_channel(1);
             match std::thread::Builder::new()
-                .name("phrase-read".into())
+                .name("study-read".into())
                 .spawn(move || {
                     if let Ok(run) = rx.recv() {
                         let run: Box<dyn FnOnce(&Library) + Send> = run;
@@ -75,7 +83,7 @@ impl Session {
                     let _ = tx.send(Box::new(run) as Box<dyn FnOnce(&Library) + Send>);
                 }
                 Err(e) => {
-                    tracing::error!("phrase worker: {e}");
+                    tracing::error!("study worker: {e}");
                     if let Some(lib) = &self.services.library {
                         run(lib);
                     }

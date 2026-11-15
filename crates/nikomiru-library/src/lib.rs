@@ -11,6 +11,7 @@
 pub mod backup;
 pub mod books;
 pub mod cards;
+pub mod cloze;
 pub mod db;
 pub mod dictionaries;
 pub mod encounters;

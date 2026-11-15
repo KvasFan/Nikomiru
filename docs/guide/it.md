@@ -370,3 +370,11 @@ Libri → Aggiungi accetta file JSON `.mokuro` 0.2.x con immagini locali in una 
 Apri **Quaderno delle frasi** dalla Libreria o dai Libri. **Cattura fonte attuale** prepara una bozza dalla selezione del lettore (o dal paragrafo attuale), oppure dal sottotitolo primario attuale. Inserisci una frase presente nel contesto originale, aggiungi il significato e scegli il suo stato, poi premi **Salva frase**. **Nuova frase** funziona anche senza fonte. Il salvataggio è esplicito; duplicati ed errori lasciano disponibile la bozza.
 
 La ricerca comprende frase, significato, contesto e titolo della fonte. Puoi modificare o eliminare una voce; **Apri fonte** torna al paragrafo originale o alla scena video in pausa, se ancora disponibili. **Esporta frasi mostrate** conserva le voci visualizzate in TSV UTF-8, neutralizzando le formule dei fogli di calcolo. Lo stato di una frase non modifica colori, conteggi di comprensione o ripassi delle parole. Le frasi locali sono incluse nei backup ordinari; il quaderno non viene ancora unito tramite WebDAV.
+
+### Esercizi cloze
+
+Nel quaderno delle frasi scegli **Anteprima cloze**, controlla il contesto mascherato e conferma **Crea esercizio**. L'esercizio conserva una copia di frase, significato e fonte; modificare o eliminare la frase nel quaderno non lo riscrive.
+
+Apri **Esercizi cloze**, filtra le voci e pratica i primi 100 esercizi mostrati, con risposte scritte o scelte. La scrittura usa Unicode NFC e ignora gli spazi esterni; maiuscole, punteggiatura e letture giapponesi restano distinti. Le scelte richiedono un'altra risposta distinta nella stessa lingua. Risposte e significati appaiono dopo l'invio; avanzamento, salto e annullamento dell'ultimo esercizio sono espliciti. Le pagine sorgente restano nascoste durante l'esercizio.
+
+La pratica finita non cambia calendari o stati di frasi e parole. **Attiva ripasso programmato** iscrive esplicitamente il singolo esercizio a FSRS. **Ripassa esercizi in scadenza** usa le impostazioni del ripasso esistente, con quattro valutazioni esplicite dopo il controllo e annullamento dell'ultima valutazione. Esercizi, fonti e calendari persistono dopo riavvio e backup. Eliminare un esercizio elimina anche il suo calendario, lasciando intatta la frase nel quaderno.

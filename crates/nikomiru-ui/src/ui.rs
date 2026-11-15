@@ -23,6 +23,8 @@ use crate::view::{Dialog, FileDialog, View};
 pub enum Inbound {
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// An ordered cloze operation completed.
+    Cloze(crate::cloze::Answer),
     /// Cumulative graphic OCR text, stamped against source changes.
     SubtitleProgress {
         /// Load generation.
@@ -333,6 +335,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::BookRead { .. } => "BookRead",
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
+            Inbound::Cloze(_) => "Cloze",
             Inbound::BookCount { .. } => "BookCount",
             Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
@@ -367,6 +370,23 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    ClozeOpen,
+    ClozeClose,
+    ClozePreview(String),
+    ClozeCreate,
+    ClozeEnrol(String),
+    ClozeDelete(String),
+    ClozeStart {
+        ids: Vec<String>,
+        mode: crate::cloze::Mode,
+        scheduled: bool,
+    },
+    ClozeInput(String),
+    ClozeSubmit,
+    ClozeNext(nikomiru_library::review::Grade, bool),
+    ClozeUndo,
+    ClozeCancelRound,
+
     PhrasesOpen,
     PhraseNew(bool),
     PhraseSave,
@@ -1196,6 +1216,10 @@ impl Ui {
                 self.session.book_count_done(&request, result);
                 true
             }
+            Inbound::Cloze(answer) => {
+                self.session.cloze_done(answer);
+                true
+            }
             Inbound::Phrases(answer) => {
                 self.session.phrases_done(answer);
                 true
@@ -1456,7 +1480,8 @@ impl Ui {
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
-        self.session.popups_covered = (self.view.phrases_open && !self.session.study_popup_open())
+        self.session.popups_covered = self.session.clozes.open
+            || (self.view.phrases_open && !self.session.study_popup_open())
             || self.view.recall_history_open
             || self.view.web_url_open
             || self.view.dict_page_open
@@ -1474,6 +1499,50 @@ impl Ui {
         self.cover_popups();
         let s = &mut self.session;
         match command {
+            Command::ClozeOpen => s.cloze_open(),
+            Command::ClozeClose => {
+                s.clozes.open = false;
+                s.clozes.round = None;
+            }
+            Command::ClozePreview(id) => s.cloze_preview(&id),
+            Command::ClozeCreate => {
+                if let Some(p) = s.clozes.preview.clone() {
+                    s.cloze_request(crate::cloze::Job::Create(Box::new(p)));
+                }
+            }
+            Command::ClozeEnrol(id) => {
+                if let Some(row) = s.clozes.items.iter().find(|r| r.phrase.id == id).cloned() {
+                    s.cloze_request(crate::cloze::Job::Enrol(Box::new(row)));
+                }
+            }
+            Command::ClozeDelete(id) => s.cloze_request(crate::cloze::Job::Delete(id)),
+            Command::ClozeStart {
+                ids,
+                mode,
+                scheduled,
+            } => s.cloze_start(&ids, mode, scheduled),
+            Command::ClozeInput(input) => {
+                if !s.clozes.busy
+                    && let Some(round) = &mut s.clozes.round
+                    && round.feedback.is_none()
+                    && input.len() <= 4096
+                {
+                    round.input = input;
+                }
+            }
+            Command::ClozeSubmit => {
+                if !s.clozes.busy
+                    && let Some(round) = &mut s.clozes.round
+                {
+                    round.submit();
+                }
+            }
+            Command::ClozeNext(grade, skip) => s.cloze_next(grade, skip),
+            Command::ClozeUndo => s.cloze_undo(),
+            Command::ClozeCancelRound => {
+                s.clozes.round = None;
+                s.clozes.preview = None;
+            }
             Command::PhrasesOpen => {
                 self.view.phrases_open = true;
                 s.phrases_request(crate::phrases::Job::List);
@@ -1886,6 +1955,13 @@ impl Ui {
     /// Starts the jobs the session queued, with replies that come back as
     /// [`Inbound`] messages, and hands on its toasts and milestones.
     fn pump(&mut self) {
+        if let Some(job) = self.session.take_cloze_job() {
+            let waker = self.waker.clone();
+            self.session.start_cloze_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
+            );
+        }
         if let Some(job) = self.session.take_phrase_job() {
             let waker = self.waker.clone();
             self.session.start_phrase_job(

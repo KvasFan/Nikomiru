@@ -13,6 +13,7 @@
 pub mod book_scores;
 pub mod books;
 pub mod catalog;
+pub mod cloze;
 pub mod condense;
 pub mod controls;
 pub mod dictionaries;

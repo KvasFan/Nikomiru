@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Create previewed cloze exercises from owned phrases, with concealed NFC-aware typed/choice rounds, finite undo and independently opt-in single-owner FSRS schedules retained across restart/backup (M105, CLO-001…CLO-004).
+
+- Keep independent local phrase vocabulary with explicit reader/caption capture, editable meanings/statuses, source navigation, shown TSV export and database backup persistence (M104, PHR-001…PHR-003).
+
 - Import local Mokuro 0.2.x volumes with safe image paths, selectable preprocessed text and exact-pixel cropped Anki images, without running OCR (M103, MNG-007…MNG-009).
 
 - Read UTF-8 TXT/Markdown files and explicitly pasted text in Books, with durable local sources, content identities, ruby, vocabulary analysis and existing lookup/mining/progress integration (M102, BOK-011…BOK-014).

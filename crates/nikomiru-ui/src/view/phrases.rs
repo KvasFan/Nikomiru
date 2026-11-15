@@ -49,6 +49,9 @@ fn draw(
             }
             ui.add_enabled_ui(!state.busy, |ui| {
                 ui.horizontal_wrapped(|ui| {
+                    if ui.button(tr("cloze-title")).clicked() {
+                        out.push(Command::ClozeOpen);
+                    }
                     if ui.button(tr("phrases-new")).clicked() {
                         out.push(Command::PhraseNew(false));
                     }
@@ -152,6 +155,9 @@ fn draw(
                                     ui.label(&p.context);
                                     ui.label(tr(&format!("word-status-{}", p.status.name())));
                                     ui.horizontal_wrapped(|ui| {
+                                        if ui.button(tr("cloze-preview")).clicked() {
+                                            out.push(Command::ClozePreview(p.id.clone()));
+                                        }
                                         if ui.button(tr("phrases-edit")).clicked() {
                                             out.push(Command::PhraseEdit(Some(p.clone())));
                                         }

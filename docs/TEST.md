@@ -923,4 +923,5 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 |---|---|---|---|
 | T-CLO-001 | CLO-001, CLO-002 | Literal masks, repeated/composed Unicode, distinct scripts/readings, duplicates/bounds and safe distractors; accessible concealed UI and explicit answer. | L1, L3 |
 | T-CLO-002 | CLO-003 | Finite progress/summary, explicit submit/advance/skip/cancel and undo; typing focus and unchanged phrases/words/schedules in the actual app. | L1, L6 |
-| T-CLO-003 | CLO-004 | Real redb enrol/rating/stale comparison/undo, existing FSRS outputs, due queues and persistence/backup; actual-app scheduled restart. | L1, L6 |
+| T-CLO-003 | CLO-003 | Finite progress/summary, explicit advance/skip/cancel and one-step undo independent of schedules. | L1, L6 |
+| T-CLO-004 | CLO-004 | Real redb enrol/rating/stale comparison/undo, existing FSRS outputs, due queues and persistence/backup; actual-app scheduled restart. | L1, L6 |

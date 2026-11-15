@@ -557,6 +557,8 @@ pub struct Session {
     library_jobs: Vec<crate::catalog::LibraryJob>,
     /// Independent local phrase notebook.
     pub phrases: crate::phrases::State,
+    /// Frozen cloze exercises and finite/opt-in scheduled practice.
+    pub clozes: crate::cloze::State,
     phrase_job: Option<crate::phrases::Job>,
     phrase_place: Option<nikomiru_library::phrases::Source>,
     phrase_export: Option<String>,
@@ -894,6 +896,7 @@ impl Session {
             own_audio: false,
             library_jobs: Vec::new(),
             phrases: Default::default(),
+            clozes: Default::default(),
             phrase_job: None,
             phrase_place: None,
             phrase_export: None,
@@ -5428,6 +5431,11 @@ impl Session {
 
     /// Runs an action (from a key or a button).
     pub fn action(&mut self, action: Action) -> UiEffect {
+        if self.clozes.open && action == Action::Back {
+            self.clozes.open = false;
+            self.clozes.round = None;
+            return UiEffect::None;
+        }
         if self.practice.is_some()
             && matches!(
                 action,
@@ -9164,3 +9172,6 @@ mod tests {
 
 #[path = "session_phrases.rs"]
 mod phrase_session;
+
+#[path = "session_cloze.rs"]
+mod cloze_session;

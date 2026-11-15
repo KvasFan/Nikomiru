@@ -466,6 +466,12 @@ mod tests {
             changed_ms: 1,
         };
         assert!(f.library.put_phrase(&phrase).unwrap());
+        // T-CLO-004: frozen exercises and their opt-in schedules share the snapshot.
+        assert!(f.library.create_cloze(&phrase).unwrap());
+        f.library
+            .change_cloze(&phrase.id, None, crate::cloze::Change::Enrol)
+            .unwrap()
+            .unwrap();
         let out = backup(&f, false);
         assert!(f.library.remove_phrase(&phrase.id).unwrap());
         f.library
@@ -508,7 +514,11 @@ mod tests {
             library.video("video/ep").unwrap().unwrap().last_position_ms,
             1234
         );
-        assert_eq!(library.phrases().unwrap(), vec![phrase]);
+        assert_eq!(library.phrases().unwrap(), vec![phrase.clone()]);
+        let clozes = library.clozes().unwrap();
+        assert_eq!(clozes.len(), 1);
+        assert_eq!(clozes[0].phrase, phrase);
+        assert_eq!(clozes[0].memory, Some(crate::review::Memory::default()));
         let encounters = library.word_encounters().unwrap();
         assert_eq!(encounters["video/ep"].len(), 1);
         assert_eq!(encounters["video/ep"]["猫\nねこ"], 10);

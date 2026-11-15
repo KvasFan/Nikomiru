@@ -8,6 +8,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod book_scores;
+mod cloze;
 mod condense;
 mod drag;
 mod dvb_subtitles;
