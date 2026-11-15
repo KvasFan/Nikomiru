@@ -36,6 +36,7 @@ pub(crate) struct Labels {
     pub scripts: [String; 4],
     pub html_labels: [String; 3],
     pub coverage_labels: [String; 2],
+    pub practice_labels: [String; 5],
     pub reading_labels: [String; 4],
     pub lengths: [String; 3],
     pub batch: [String; 5],
@@ -74,6 +75,14 @@ impl Labels {
     pub(crate) fn translated(tr: &super::popups::Translate<'_>, ticked: usize) -> Self {
         Self {
             new_only: tr("subtitle-words-new-only", &[]),
+            practice_labels: [
+                "vocabulary-practice-mask",
+                "vocabulary-practice-reveal",
+                "vocabulary-practice-hide",
+                "vocabulary-practice-word",
+                "vocabulary-practice-select",
+            ]
+            .map(|k| tr(k, &[])),
             html_labels: [
                 "vocabulary-html-tools",
                 "vocabulary-html-shown",
@@ -200,6 +209,9 @@ pub(crate) struct State {
     pub coverage_target: Option<u8>,
     pub reading_filter: u8,
     pub exact: bool,
+    masked: bool,
+    revealed: HashSet<String>,
+    mask_signature: Option<u64>,
     preset_name: String,
     pub status: Option<WordStatus>,
     pub card: CardFilter,
@@ -592,11 +604,52 @@ pub(crate) fn show(
     state: &mut State,
     out: &mut Vec<Command>,
 ) {
+    use std::hash::{Hash, Hasher};
+    let mut signature = std::collections::hash_map::DefaultHasher::new();
+    labels.source.hash(&mut signature);
+    for w in all {
+        w.expression.hash(&mut signature);
+        w.reading.hash(&mut signature);
+        w.count.hash(&mut signature);
+    }
+    let signature = signature.finish();
+    if state.mask_signature != Some(signature) {
+        state.revealed.clear();
+        state.mask_signature = Some(signature);
+    }
     presets(ui, query, labels, state);
     named_presets(ui, query, labels, state, out);
     egui::CollapsingHeader::new(&labels.reading_labels[0])
         .id_salt("vocabulary-reading-filters")
         .show(ui, |ui| {
+            if ui
+                .checkbox(&mut state.masked, &labels.practice_labels[0])
+                .changed()
+            {
+                state.revealed.clear();
+            }
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(state.masked, egui::Button::new(&labels.practice_labels[1]))
+                    .clicked()
+                {
+                    state.revealed.extend(
+                        filtered(all, query, state)
+                            .into_iter()
+                            .map(|w| word_key(&w.expression, &w.reading)),
+                    );
+                }
+                if ui
+                    .add_enabled(
+                        state.masked && !state.revealed.is_empty(),
+                        egui::Button::new(&labels.practice_labels[2]),
+                    )
+                    .clicked()
+                {
+                    state.revealed.clear();
+                }
+            });
+
             ui.horizontal_wrapped(|ui| {
                 let mut enabled = state.coverage_target.is_some();
                 if ui
@@ -905,12 +958,17 @@ pub(crate) fn show(
         .id_salt("subtitle-list-words")
         .auto_shrink([false, false])
         .show_rows(ui, ROW, shown.len(), |ui, range| {
-            for w in &shown[range] {
+            let first = range.start;
+            for (row, w) in shown[range].iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.set_height(ROW);
                     let k = key(w);
+                    let hidden = state.masked && !state.revealed.contains(&k);
+                    let reveal = format!("{} {}", labels.practice_labels[3], first + row + 1);
                     let mut ticked = state.ticked.contains(&k);
-                    let name = if w.reading.is_empty() || w.reading == w.expression {
+                    let name = if hidden {
+                        format!("{} {}", labels.practice_labels[4], first + row + 1)
+                    } else if w.reading.is_empty() || w.reading == w.expression {
                         w.expression.clone()
                     } else {
                         format!("{} {}", w.expression, w.reading)
@@ -919,17 +977,28 @@ pub(crate) fn show(
                     check.widget_info(|| WidgetInfo::selected(Role::CheckBox, true, ticked, &name));
                     if check.changed() {
                         if ticked {
-                            state.ticked.insert(k);
+                            state.ticked.insert(k.clone());
                         } else {
                             state.ticked.remove(&k);
                         }
                     }
-                    let lookup = ui.small_button("⌕").on_hover_text(&labels.lookup);
+                    let lookup = ui
+                        .add_enabled_ui(!hidden, |ui| ui.small_button("⌕"))
+                        .inner
+                        .on_hover_text(&labels.lookup);
                     lookup.widget_info(|| {
                         WidgetInfo::labeled(
                             Role::Button,
-                            true,
-                            format!("{}: {} {}", labels.lookup, w.expression, w.reading),
+                            !hidden,
+                            format!(
+                                "{}: {}",
+                                labels.lookup,
+                                if hidden {
+                                    reveal.clone()
+                                } else {
+                                    format!("{} {}", w.expression, w.reading)
+                                }
+                            ),
                         )
                     });
                     if lookup.clicked() {
@@ -945,12 +1014,22 @@ pub(crate) fn show(
                         });
                     }
                     if let Some(label) = &labels.examples {
-                        let examples = ui.small_button("≡").on_hover_text(label);
+                        let examples = ui
+                            .add_enabled_ui(!hidden, |ui| ui.small_button("≡"))
+                            .inner
+                            .on_hover_text(label);
                         examples.widget_info(|| {
                             WidgetInfo::labeled(
                                 Role::Button,
-                                true,
-                                format!("{label}: {} {}", w.expression, w.reading),
+                                !hidden,
+                                format!(
+                                    "{label}: {}",
+                                    if hidden {
+                                        reveal.clone()
+                                    } else {
+                                        format!("{} {}", w.expression, w.reading)
+                                    }
+                                ),
                             )
                         });
                         if examples.clicked() {
@@ -962,7 +1041,14 @@ pub(crate) fn show(
                     }
                     ui.label(RichText::new("●").color(color(w.status)))
                         .on_hover_text(label(labels, w.status));
-                    ui.label(RichText::new(&w.expression).family(theme::bold()));
+                    if hidden {
+                        if ui.button(&reveal).clicked() {
+                            state.revealed.insert(k);
+                            ui.ctx().request_repaint();
+                        }
+                    } else {
+                        ui.label(RichText::new(&w.expression).family(theme::bold()));
+                    }
                     if !w.reading.is_empty() && w.reading != w.expression {
                         ui.label(RichText::new(&w.reading).color(READING));
                     }
@@ -1011,6 +1097,14 @@ mod tests {
                 |ui, t: &mut Test| {
                     let labels = Labels {
                         new_only: "Only new".into(),
+                        practice_labels: [
+                            "Practice from reading",
+                            "Reveal shown words",
+                            "Hide words again",
+                            "Reveal word",
+                            "Select practice word",
+                        ]
+                        .map(String::from),
                         html_labels: ["HTML vocabulary", "HTML shown", "HTML selected"]
                             .map(String::from),
                         coverage_labels: ["Coverage target", "Reset coverage"].map(String::from),
@@ -1668,5 +1762,30 @@ mod tests {
         h.get_by_label("HTML shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c,Command::VocabularyHtml { rows, .. } if rows.len()==1 && rows[0].expression == "が")));
+    } // T-KNW-049: masked names/actions contain no headword; reveals are explicit and data-scoped.
+    #[test]
+    fn reading_practice_hides_headwords_and_resets_on_data_changes() {
+        let mut h = harness();
+        h.state_mut().state.masked = true;
+        h.run();
+        assert!(h.query_by_label("猫 ねこ").is_none());
+        assert!(h.query_by_label("猫").is_none());
+        h.get_by_label("ねこ");
+        assert!(h.state().out.is_empty());
+        h.get_by_label("Reveal word 1").click();
+        h.run();
+        h.get_by_label("猫 ねこ");
+        h.get_by_label("Lookup: 猫 ねこ").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.last(),Some(Command::VocabularyLookup { text,.. }) if text=="猫")
+        );
+        h.state_mut().words[0].status = WordStatus::Known;
+        h.run();
+        assert!(!h.state().state.revealed.is_empty());
+        h.state_mut().words[0].count += 1;
+        h.run();
+        assert!(h.state().state.revealed.is_empty());
+        assert!(h.query_by_label("猫 ねこ").is_none());
     }
 }

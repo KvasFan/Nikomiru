@@ -1297,3 +1297,10 @@ sub-copy-export = Copia ed esportazione
 sub-preview-title = Traduzione della battuta
 sub-preview-show = Mostra traduzione della riga
 sub-preview-empty = Nessuna traduzione sovrapposta.
+
+vocabulary-practice-mask = Esercita le parole a partire dalle letture
+vocabulary-practice-reveal = Mostra parole visibili
+vocabulary-practice-hide = Nascondi nuovamente le parole
+vocabulary-practice-word = Mostra parola
+
+vocabulary-practice-select = Seleziona parola di studio

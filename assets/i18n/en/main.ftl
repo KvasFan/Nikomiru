@@ -1297,3 +1297,10 @@ sub-copy-export = Copy and export
 sub-preview-title = Subtitle translation
 sub-preview-show = Show translation for line
 sub-preview-empty = No overlapping translation.
+
+vocabulary-practice-mask = Practice recalling words from readings
+vocabulary-practice-reveal = Reveal shown words
+vocabulary-practice-hide = Hide words again
+vocabulary-practice-word = Reveal word
+
+vocabulary-practice-select = Select practice word

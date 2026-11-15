@@ -1471,7 +1471,7 @@ M72–M81 are complete. Full regression passed 1,013 workspace/integration tests
 | M83 | SUB-057 | Subtitle study row ordering | done |
 | M84 | SUB-058 | Editable subtitle study time bounds | done |
 | M85 | SUB-059 | Cue translation preview | done |
-| M86 | KNW-049 | Practice vocabulary from readings | planned |
+| M86 | KNW-049 | Practice vocabulary from readings | done |
 | M87 | KNW-050 | Undo word-status changes | planned |
 | M88 | SUB-060 | Pauses between practice passes | planned |
 | M89 | SUB-061 | Skip and restart practice cues | planned |

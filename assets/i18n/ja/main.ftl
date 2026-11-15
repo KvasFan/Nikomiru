@@ -1280,3 +1280,10 @@ sub-copy-export = コピーと書き出し
 sub-preview-title = 字幕の翻訳
 sub-preview-show = この字幕の翻訳を表示
 sub-preview-empty = 重なる翻訳はありません。
+
+vocabulary-practice-mask = 読みから単語を思い出す練習
+vocabulary-practice-reveal = 表示範囲の単語を開く
+vocabulary-practice-hide = 単語を再び隠す
+vocabulary-practice-word = 単語を表示
+
+vocabulary-practice-select = 学習する単語を選択
