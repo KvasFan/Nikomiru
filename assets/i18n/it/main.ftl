@@ -1365,3 +1365,7 @@ recall-file-version = Questa versione del file del ripasso non è supportata.
 recall-file-error = Impossibile leggere o salvare i progressi: { $reason }
 
 recall-results-export = Esporta risultati del ripasso…
+
+recall-followup-difficult = Avvia ripasso delle parole difficili
+recall-followup-skipped = Avvia ripasso delle parole saltate
+recall-followup-unavailable = Completa prima la sessione e scegli una categoria che contiene parole.

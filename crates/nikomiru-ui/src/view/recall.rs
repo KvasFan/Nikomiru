@@ -4,6 +4,7 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub focused: [String; 2],
     pub results: String,
     pub file_labels: [String; 2],
     pub restart_labels: [String; 3],
@@ -23,6 +24,7 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            focused: ["recall-followup-difficult", "recall-followup-skipped"].map(|k| tr(k, &[])),
             results: tr("recall-results-export", &[]),
             file_labels: ["recall-save", "recall-load"].map(|k| tr(k, &[])),
             restart_labels: [
@@ -155,6 +157,19 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                         });
                     } else if recall.done() {
                         ui.heading(&labels.complete);
+                        for (skipped, label) in [false, true].into_iter().zip(&labels.focused) {
+                            let count = recall.focused_count(skipped);
+                            if ui
+                                .add_enabled(
+                                    count > 0,
+                                    egui::Button::new(format!("{label} ({count})")),
+                                )
+                                .clicked()
+                            {
+                                out.push(Command::RecallFocused(skipped));
+                            }
+                        }
+
                         let stats = recall.summary();
                         for (label, n) in labels.summary_labels.iter().zip([
                             stats.good,

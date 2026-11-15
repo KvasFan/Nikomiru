@@ -1348,3 +1348,7 @@ recall-file-version = この想起練習ファイルのバージョンには対�
 recall-file-error = 進捗を読み書きできません：{ $reason }
 
 recall-results-export = 想起練習の結果を書き出す…
+
+recall-followup-difficult = 難しかった単語で新しい練習
+recall-followup-skipped = スキップした単語で新しい練習
+recall-followup-unavailable = ラウンドを完了して、単語がある分類を選んでください。

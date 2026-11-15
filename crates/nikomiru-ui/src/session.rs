@@ -1672,6 +1672,22 @@ impl Session {
         }
     }
 
+    /// Start a fresh bounded round from difficult or skipped captured cards after completion.
+    pub fn recall_focused(&mut self, skipped: bool) {
+        let round = self
+            .recall
+            .as_ref()
+            .ok_or("recall-followup-unavailable")
+            .and_then(|r| r.focused(skipped));
+        match round {
+            Ok(r) => {
+                self.recall_clear_lookup();
+                self.recall = Some(r);
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall_clear_lookup();

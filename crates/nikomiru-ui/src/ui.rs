@@ -504,6 +504,7 @@ pub(crate) enum Command {
     RecallSkip,
     RecallRate(bool),
     RecallClose,
+    RecallFocused(bool),
     RecallSave,
     RecallResults,
     RecallLoad,
@@ -1566,6 +1567,7 @@ impl Ui {
                 }
             }
             Command::RecallLoad => self.view.dialog = Some(Dialog::RecallLoad),
+            Command::RecallFocused(skipped) => s.recall_focused(skipped),
             Command::RecallClose => s.recall_close(),
             Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),

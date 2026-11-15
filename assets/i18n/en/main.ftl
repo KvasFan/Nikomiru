@@ -1365,3 +1365,7 @@ recall-file-version = This recall file version is not supported.
 recall-file-error = Could not read or save recall progress: { $reason }
 
 recall-results-export = Export recall results…
+
+recall-followup-difficult = Start difficult-word round
+recall-followup-skipped = Start skipped-word round
+recall-followup-unavailable = Finish the round first and choose a category containing words.

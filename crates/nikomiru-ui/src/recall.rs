@@ -235,6 +235,43 @@ impl Recall {
         self.hint_revealed = false;
         true
     }
+    pub fn focused(&self, skipped: bool) -> Result<Self, &'static str> {
+        if !self.done() {
+            return Err("recall-followup-unavailable");
+        }
+        let cards = self
+            .cards
+            .iter()
+            .zip(&self.outcomes)
+            .filter(|(_, r)| {
+                if skipped {
+                    r.last == Some(Grade::Skipped)
+                } else {
+                    r.again > 0
+                }
+            })
+            .map(|(card, _)| card.clone())
+            .collect::<Vec<_>>();
+        if cards.is_empty() {
+            return Err("recall-followup-unavailable");
+        }
+        let mut round = Self::from_cards(&self.source, cards)?;
+        round.hint_source = self.hint_source.clone();
+        Ok(round)
+    }
+    pub fn focused_count(&self, skipped: bool) -> usize {
+        self.outcomes
+            .iter()
+            .filter(|r| {
+                if skipped {
+                    r.last == Some(Grade::Skipped)
+                } else {
+                    r.again > 0
+                }
+            })
+            .count()
+    }
+
     pub fn results_tsv(&self) -> Result<String, &'static str> {
         if self.outcomes.len() != self.cards.len() {
             return Err("recall-file-invalid");
@@ -313,6 +350,35 @@ mod tests {
             },
         ]
     }
+    // T-KNW-061: focused rounds preserve hints/identities, use new round IDs and reset all ratings.
+    #[test]
+    fn focused_recall_rounds_use_only_the_requested_completed_category() {
+        let mut r = Recall::start("Study", &rows()).unwrap();
+        r.cards[0].hints = vec!["猫がいる".into()];
+        assert!(r.focused(false).is_err());
+        r.reveal();
+        r.rate(false);
+        r.skip();
+        r.reveal();
+        r.rate(true);
+        assert!(r.done());
+        let difficult = r.focused(false).unwrap();
+        assert_ne!(difficult.id, r.id);
+        assert_eq!(difficult.cards.len(), 1);
+        assert_eq!(difficult.cards[0], r.cards[0]);
+        assert!(difficult.history.is_empty());
+        assert!(!difficult.revealed);
+        let skipped = r.focused(true).unwrap();
+        assert_eq!(skipped.cards[0].expression, "犬");
+        assert_eq!((r.focused_count(false), r.focused_count(true)), (1, 1));
+        let mut good = Recall::start("", &rows()).unwrap();
+        while !good.done() {
+            good.reveal();
+            good.rate(true);
+        }
+        assert!(good.focused(false).is_err());
+    }
+
     // T-KNW-060: one escaped row per captured word includes pending/completed state and frozen self-ratings.
     #[test]
     fn recall_results_are_frozen_neutralised_and_complete() {
