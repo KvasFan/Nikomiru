@@ -103,6 +103,27 @@ pub fn vtt(
     Ok(out)
 }
 
+/// Frozen overlap translation for one cue, with a smaller interactive display bound (SUB-059).
+pub fn translation_for(
+    primary: &[nikomiru_subs::Cue],
+    cue: usize,
+    delay: i64,
+    secondary: &[nikomiru_subs::Cue],
+    secondary_delay: i64,
+    complete: bool,
+) -> Result<String, &'static str> {
+    let rows = paired(primary, &[cue], delay, secondary, secondary_delay, complete)?;
+    let text = rows
+        .into_iter()
+        .next()
+        .ok_or("sub-export-unavailable")?
+        .secondary;
+    if text.len() > 64 << 10 {
+        return Err("sub-export-too-large");
+    }
+    Ok(text)
+}
+
 struct PairedLine {
     start: i64,
     end: i64,
@@ -614,6 +635,31 @@ mod tests {
         a[0].plain_text = "&".repeat(4 << 20);
         assert_eq!(
             html_sheet(&a, &[0], 0, &b, 0, true, "Reveal"),
+            Err("sub-export-too-large")
+        );
+    } // T-SUB-059: preview shares export pairing, independent delays and completeness bounds.
+    #[test]
+    fn translation_preview_uses_exact_overlap_and_display_bounds() {
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n",
+        )
+        .cues;
+        let mut secondary = cues.clone();
+        secondary[0].plain_text = "cat".into();
+        assert_eq!(
+            translation_for(&cues, 0, 500, &secondary, 500, true).unwrap(),
+            "cat"
+        );
+        assert_eq!(
+            translation_for(&cues, 0, 2000, &secondary, 0, true).unwrap(),
+            ""
+        );
+        assert!(translation_for(&cues, 9, 0, &secondary, 0, true).is_err());
+        assert!(translation_for(&cues, 0, 0, &secondary, 0, false).is_err());
+        secondary[0].plain_text = "x".repeat((64 << 10) + 1);
+        assert_eq!(
+            translation_for(&cues, 0, 0, &secondary, 0, true),
             Err("sub-export-too-large")
         );
     }

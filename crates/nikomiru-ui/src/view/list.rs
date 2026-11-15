@@ -57,7 +57,7 @@ impl Sizes {
             text,
             time: 14.0 * k,
             time_width: 52.0 * k,
-            text_x: 52.0 * k + 32.0,
+            text_x: 52.0 * k + 54.0,
         }
     }
 }
@@ -156,6 +156,7 @@ pub(crate) struct StudyLabels {
     unique_label: String,
     preset_labels: [String; 4],
     order_labels: [String; 4],
+    translation_labels: [String; 3],
     exact_label: String,
     text_labels: [String; 4],
     duration_labels: [String; 4],
@@ -177,6 +178,8 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            translation_labels: ["sub-preview-title", "sub-preview-show", "sub-preview-empty"]
+                .map(|k| tr(k, &[])),
             time_labels: [
                 "sub-time-edit",
                 "sub-time-from",
@@ -319,10 +322,25 @@ struct TimeDraft {
     error: bool,
 }
 
+#[derive(Debug)]
+struct TranslationPreview {
+    key: (u64, i64, u64, i64),
+    cue: usize,
+    text: String,
+}
+
+pub(crate) struct SecondaryScene<'a> {
+    cues: &'a [nikomiru_subs::Cue],
+    delay: i64,
+    version: u64,
+    complete: bool,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct State {
     query: String,
     preset_name: String,
+    translation: Option<TranslationPreview>,
     practice_passes: u8,
     rows: Rows,
     selected: BTreeSet<usize>,
@@ -495,6 +513,7 @@ struct Drawn {
 /// What the list shows: the session's part of it.
 pub(crate) struct Scene<'a> {
     pub timeline: &'a Timeline,
+    pub secondary: Option<SecondaryScene<'a>>,
     /// Changes whenever the cues change (`Session::sub_list_version`).
     pub version: u64,
     /// The playback position.
@@ -694,6 +713,12 @@ pub(crate) fn show(
     word_labels.source = s.view.title.clone();
     let scene = Scene {
         timeline: s.subs.timeline(),
+        secondary: Some(SecondaryScene {
+            cues: s.secondary.timeline().cues(),
+            delay: s.secondary.timeline().delay_ms,
+            version: s.secondary_version(),
+            complete: !s.secondary.incomplete,
+        }),
         version: s.sub_list_version,
         concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
@@ -761,6 +786,43 @@ fn score_line(s: &Session) -> Option<String> {
             )
         }
     })
+}
+
+fn translation_key(scene: &Scene<'_>) -> Option<(u64, i64, u64, i64)> {
+    let s = scene
+        .secondary
+        .as_ref()
+        .filter(|s| s.complete && !s.cues.is_empty() && scene.export_ready)?;
+    Some((scene.version, scene.timeline.delay_ms, s.version, s.delay))
+}
+fn translation_window(ctx: &egui::Context, scene: &Scene<'_>, state: &mut State) {
+    if state
+        .translation
+        .as_ref()
+        .is_some_and(|p| Some(p.key) != translation_key(scene))
+    {
+        state.translation = None;
+    }
+    let Some(preview) = &state.translation else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new(format!(
+        "{} · {}",
+        scene.study.translation_labels[0],
+        clock(scene.timeline.start_pos(preview.cue))
+    ))
+    .id(Id::unique("subtitle-translation-preview"))
+    .open(&mut open)
+    .default_width(360.0)
+    .show(ctx, |ui| {
+        ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
+            ui.label(&preview.text);
+        });
+    });
+    if !open {
+        state.translation = None;
+    }
 }
 
 pub(crate) fn draw(
@@ -907,6 +969,7 @@ pub(crate) fn draw(
                     }
                 });
         });
+    translation_window(ctx, scene, state);
     open
 }
 
@@ -1919,6 +1982,48 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     out.push(Command::ListTime(cue));
                 }
 
+                let available = translation_key(scene).is_some();
+                let translation = ui
+                    .add_enabled_ui(available, |ui| {
+                        ui.put(
+                            Rect::from_min_size(
+                                rect.min + vec2(sizes.text_x - 22.0, PAD),
+                                vec2(20.0, 20.0),
+                            ),
+                            egui::Button::new("文"),
+                        )
+                    })
+                    .inner;
+                translation.widget_info(|| {
+                    WidgetInfo::labeled(
+                        Role::Button,
+                        available,
+                        format!("{} {}", scene.study.translation_labels[1], cue + 1),
+                    )
+                });
+                if translation.clicked()
+                    && let (Some(key), Some(other)) =
+                        (translation_key(scene), scene.secondary.as_ref())
+                {
+                    let text = crate::subtitle_export::translation_for(
+                        timeline.cues(),
+                        cue,
+                        timeline.delay_ms,
+                        other.cues,
+                        other.delay,
+                        true,
+                    )
+                    .map(|s| {
+                        if s.is_empty() {
+                            scene.study.translation_labels[2].clone()
+                        } else {
+                            s
+                        }
+                    })
+                    .unwrap_or_else(|_| scene.study.copy_error.clone());
+                    state.translation = Some(TranslationPreview { key, cue, text });
+                }
+
                 let hidden = state.masked && !state.revealed.contains(&cue);
                 let reveal = format!("{} {}", scene.study.mask_labels[3], cue + 1);
                 let plain = if hidden {
@@ -2032,6 +2137,7 @@ mod tests {
 
     struct Test {
         timeline: Timeline,
+        secondary: Option<Timeline>,
         concordance: Option<crate::subtitle_study::Concordance>,
         pos_ms: i64,
         state: State,
@@ -2264,6 +2370,30 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-059: explicit translation hints preserve masked primary text and invalidate on delay/source changes.
+    #[test]
+    fn translation_preview_does_not_reveal_primary_listening_text() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "秘密の猫")]), 0, false);
+        h.state_mut().secondary = Some(timeline(&[(1000, "a secret cat")]));
+        h.state_mut().state.masked = true;
+        h.run();
+        h.get_by_label("sub-preview-show 1").click();
+        h.run();
+        h.get_by_label("a secret cat");
+        assert!(h.query_by_label("秘密の猫").is_none());
+        assert!(h.state().state.revealed.is_empty());
+        h.state_mut().timeline.delay_ms = 100;
+        h.run();
+        assert!(h.state().state.translation.is_none());
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::ListTime(_)))
+        );
     }
 
     // T-SUB-058: invalid drafts leave the active scope untouched until a complete valid Apply.
@@ -2911,6 +3041,12 @@ mod tests {
                     }
                     let scene = Scene {
                         timeline: &t.timeline,
+                        secondary: t.secondary.as_ref().map(|t| SecondaryScene {
+                            cues: t.cues(),
+                            delay: t.delay_ms,
+                            version: 1,
+                            complete: true,
+                        }),
                         version: 1,
                         concordance: t.concordance.as_ref(),
                         pos_ms: t.pos_ms,
@@ -2964,6 +3100,7 @@ mod tests {
                 },
                 Test {
                     timeline,
+                    secondary: None,
                     concordance: None,
                     pos_ms,
                     state: State::default(),

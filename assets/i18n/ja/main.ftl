@@ -1276,3 +1276,7 @@ sub-time-apply = 時間範囲を適用
 sub-time-invalid = 終了は開始より後にしてください。空欄は制限なしです。
 
 sub-copy-export = コピーと書き出し
+
+sub-preview-title = 字幕の翻訳
+sub-preview-show = この字幕の翻訳を表示
+sub-preview-empty = 重なる翻訳はありません。

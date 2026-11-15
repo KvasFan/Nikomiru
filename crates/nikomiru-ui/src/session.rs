@@ -1429,6 +1429,11 @@ impl Session {
         }
     }
 
+    /// Secondary source generation for invalidating explicit translation previews.
+    pub fn secondary_version(&self) -> u64 {
+        self.secondary_generation
+    }
+
     /// Explicit finite repetition of one complete primary cue.
     pub fn practice_start(&mut self, version: u64, cue: usize, passes: u8) {
         self.practice_queue_start(version, &[cue], passes);

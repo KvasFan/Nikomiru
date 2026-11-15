@@ -1293,3 +1293,7 @@ sub-time-apply = Apply time bounds
 sub-time-invalid = Enter valid times with the end after the start; leave empty for no bound.
 
 sub-copy-export = Copy and export
+
+sub-preview-title = Subtitle translation
+sub-preview-show = Show translation for line
+sub-preview-empty = No overlapping translation.

@@ -1293,3 +1293,7 @@ sub-time-apply = Applica intervallo
 sub-time-invalid = Inserisci tempi validi con la fine dopo l’inizio; lascia vuoto per nessun limite.
 
 sub-copy-export = Copia ed esportazione
+
+sub-preview-title = Traduzione della battuta
+sub-preview-show = Mostra traduzione della riga
+sub-preview-empty = Nessuna traduzione sovrapposta.
