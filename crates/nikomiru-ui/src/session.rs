@@ -6855,15 +6855,68 @@ impl Session {
             let key = shown.paragraphs.first()?.image.as_ref()?;
             Some(crate::ocr::OcrJob {
                 uid: open.uid.clone(),
-                page: open.chapter,
+                page,
                 picture: open.book.images.get(key)?.clone(),
                 area,
+                preset_text: None,
+                pixel_bounds: None,
             })
         });
         if job.is_some() {
+            if let Some(open) = &mut self.books_page.open {
+                open.chapter = page;
+            }
             self.books_page.ocr.reading = true;
             self.books_page.status = None;
             self.ocr_job = job;
+        }
+    }
+
+    /// Select original imported text and prepare its crop without running or downloading OCR.
+    pub fn mokuro_select(&mut self, page: usize, region: usize) {
+        if self.books_page.ocr.reading {
+            return;
+        }
+        let job = self.books_page.open.as_ref().and_then(|open| {
+            let regions = open.book.manga_regions.get(&page)?;
+            let text = regions.regions.get(region)?.text.clone();
+            let area = regions.area(region)?;
+            let key = open
+                .book
+                .chapters
+                .get(page)?
+                .paragraphs
+                .first()?
+                .image
+                .as_ref()?;
+            Some(crate::ocr::OcrJob {
+                uid: open.uid.clone(),
+                page,
+                picture: open.book.images.get(key)?.clone(),
+                area,
+                preset_text: Some(text),
+                pixel_bounds: Some(regions.regions.get(region)?.bounds),
+            })
+        });
+        if let Some(job) = job {
+            self.popups.playback_changed_by_user();
+            self.close_all_popups();
+            if let Some(open) = &mut self.books_page.open {
+                open.chapter = page;
+                if let Some(item) = open
+                    .book
+                    .chapters
+                    .get_mut(page)
+                    .and_then(|c| c.paragraphs.first_mut())
+                {
+                    item.text.clear();
+                }
+            }
+            self.books_page.highlight = None;
+            self.books_page.ocr.crop = None;
+            self.books_page.ocr.reading = true;
+            self.books_page.status = None;
+            self.ocr_job = Some(job);
         }
     }
 
@@ -6877,7 +6930,11 @@ impl Session {
     pub fn manga_recognized(&mut self, reading: crate::ocr::Reading) {
         self.books_page.ocr.reading = false;
         let (uid, page, read) = reading;
-        let open = self.books_page.open.as_mut().filter(|o| o.uid == uid);
+        let open = self
+            .books_page
+            .open
+            .as_mut()
+            .filter(|o| o.uid == uid && o.chapter == page);
         let item = open.and_then(|o| o.book.chapters.get_mut(page)?.paragraphs.first_mut());
         let Some(item) = item else {
             return;

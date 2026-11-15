@@ -809,7 +809,7 @@ books-folder = Add a folder of pages…
 books-none = No book yet. Add an EPUB, CBZ, HTML, TXT or Markdown file, paste text, or open a web page by its address. Original files stay where they are.
 books-audiobook = Open an audiobook…
 books-audio-filter = Audio files
-books-filter = Books, manga, HTML, TXT and Markdown
+books-filter = Books, manga, HTML, TXT and Markdown / Mokuro
 books-remove = Remove { $title }
 books-back = ← Books
 books-vertical = Vertical
@@ -1387,3 +1387,8 @@ books-paste-markdown = Interpret as Markdown
 books-paste-read = Read text
 books-paste-hint = Saved locally for reopening. Maximum 4 MiB. Markdown keeps headings and ruby; links and images are not opened.
 error-book-invalid-text = This text document cannot be read. Use UTF-8, a title of at most 256 characters and plain text or supported Markdown.
+
+error-book-mokuro = This Mokuro volume is unsupported or has invalid local images or text coordinates.
+mokuro-ready = Text is already available. Select a text region on the page.
+mokuro-empty-page = This page has no imported text regions.
+mokuro-region = Read region { $number } on page { $page }

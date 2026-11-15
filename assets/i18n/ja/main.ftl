@@ -793,7 +793,7 @@ books-folder = ページのフォルダーを追加…
 books-none = 本がまだありません。EPUB、CBZ、HTML、TXT、Markdown のファイルを追加するか、テキストを貼り付けるか、アドレスからウェブページを開いてください。元のファイルは移動しません。
 books-audiobook = オーディオブックを開く…
 books-audio-filter = 音声ファイル
-books-filter = 本、マンガ、HTML、TXT、Markdown
+books-filter = 本、マンガ、HTML、TXT、Markdown / Mokuro
 books-remove = { $title } を削除
 books-back = ← 本
 books-vertical = 縦書き
@@ -1370,3 +1370,8 @@ books-paste-markdown = Markdown として読む
 books-paste-read = テキストを読む
 books-paste-hint = 再度開けるようにローカルに保存します。上限 4 MiB。Markdown の見出しとルビを保持し、リンクや画像は開きません。
 error-book-invalid-text = このテキスト文書は読めません。UTF-8、256 文字以内のタイトル、プレーンテキストまたは対応する Markdown を使用してください。
+
+error-book-mokuro = 未対応の Mokuro ファイル、無効なローカル画像、またはテキスト座標です。
+mokuro-ready = テキストは処理済みです。ページ上のテキスト領域を選択してください。
+mokuro-empty-page = このページにはテキスト領域がありません。
+mokuro-region = { $page } ページの領域 { $number } を読む

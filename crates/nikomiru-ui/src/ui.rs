@@ -674,6 +674,11 @@ pub(crate) enum Command {
     BookAt(usize),
     BookClose,
     /// A part of a page was selected: left, top, width, height, as shares.
+    /// Explicit imported text-region selection.
+    MokuroSelect {
+        page: usize,
+        region: usize,
+    },
     MangaRead {
         page: usize,
         area: [f32; 4],
@@ -1775,6 +1780,7 @@ impl Ui {
             Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
+            Command::MokuroSelect { page, region } => s.mokuro_select(page, region),
             Command::MangaRead { page, area } => s.manga_read(page, area),
             Command::MangaDouble(double) => s.manga_double(double),
             Command::OcrFetch => s.ocr_fetch(),

@@ -148,8 +148,12 @@ pub(crate) fn test_text() -> Option<String> {
 }
 
 fn recognize(engine: &SharedEngine, job: &OcrJob) -> Result<Recognized, nikomiru_ocr::OcrError> {
-    let crop = nikomiru_ocr::crop(&job.picture, job.area)?;
-    let text = match test_text() {
+    let crop = if let Some(bounds) = job.pixel_bounds {
+        nikomiru_ocr::crop_pixels(&job.picture, bounds)?
+    } else {
+        nikomiru_ocr::crop(&job.picture, job.area)?
+    };
+    let text = match job.preset_text.clone().or_else(test_text) {
         Some(text) => text,
         None => engine.get()?.read(&crop)?,
     };
@@ -289,5 +293,36 @@ mod tests {
         let e = install(&http, &[short], dir.path(), &|_| {}).unwrap_err();
         assert!(matches!(e, OnlineError::TooLarge { .. }), "{e:?}");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+    // T-MNG-008: original imported text is used even with no model on disk.
+    #[test]
+    fn imported_region_prepares_its_crop_without_loading_a_model() {
+        let mut bytes = Vec::new();
+        image::RgbImage::new(100, 200)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let engine = SharedEngine {
+            dir: std::path::PathBuf::from("/missing/mokuro-model"),
+            engine: Arc::default(),
+        };
+        let result = recognize(
+            &engine,
+            &OcrJob {
+                uid: "mokuro".into(),
+                page: 0,
+                picture: bytes,
+                area: [0.1, 0.1, 0.5, 0.5],
+                preset_text: Some("猫です".into()),
+                pixel_bounds: Some([10, 20, 60, 120]),
+            },
+        )
+        .unwrap();
+        assert_eq!(result.text, "猫です");
+        let image = image::load_from_memory(&result.crop).unwrap();
+        assert_eq!((image.width(), image.height()), (50, 100));
+        assert!(engine.engine.lock().unwrap().is_none());
     }
 }

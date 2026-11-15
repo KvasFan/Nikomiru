@@ -598,6 +598,8 @@ pub fn state() -> Result<Value, String> {
                 Some(o.book.chapters.get(o.chapter)?.paragraphs.first()?.text.clone())
             }),
             "ocr_installed": s.books_page.ocr.installed,
+            "region_counts":s.books_page.open.as_ref().map(|o|o.book.manga_regions.iter().map(|(page,data)|(*page,data.regions.len())).collect::<std::collections::BTreeMap<_,_>>()),
+            "crop_bytes":s.books_page.ocr.crop.as_ref().map(|(_,bytes)|bytes.len()),
             "paragraph": s.books_page.open.as_ref().map(|o| o.paragraph),
             "along": s.books_page.along.as_ref().map(|a| json!({
                 "found": a.places.iter().flatten().count(),
@@ -1159,6 +1161,12 @@ pub fn books(
                 });
             }
             "choose" => out.push(Command::BookChoose(path.clone().unwrap_or_default())),
+            "region" => out.push(Command::MokuroSelect {
+                page: paragraph.unwrap_or_else(|| {
+                    ui.session.books_page.open.as_ref().map_or(0, |o| o.chapter)
+                }),
+                region: offset.unwrap_or(0),
+            }),
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
             "listen" => out.push(Command::BookListen),

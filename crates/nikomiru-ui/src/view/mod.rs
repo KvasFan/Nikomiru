@@ -211,6 +211,7 @@ impl FileDialog {
                             "*.txt",
                             "*.md",
                             "*.markdown",
+                            "*.mokuro",
                         ],
                     ),
                     all,

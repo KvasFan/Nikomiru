@@ -121,6 +121,25 @@ fn model_err(e: impl std::fmt::Display) -> OcrError {
 /// The part of a page in `area`: left, top, width and height as shares of the
 /// page, so the reading does not depend on how large it was drawn.
 pub fn crop(page: &[u8], area: [f32; 4]) -> Result<DynamicImage, OcrError> {
+    let decoded = decode_page(page)?;
+    let (width, height) = decoded.dimensions();
+    let (x, y, w, h) = pixels(area, width, height).ok_or(OcrError::TooSmall)?;
+    Ok(decoded.crop_imm(x, y, w, h))
+}
+
+/// Crop original integer coordinates exactly, without normalised-float rounding (MNG-008).
+pub fn crop_pixels(page: &[u8], bounds: [u32; 4]) -> Result<DynamicImage, OcrError> {
+    let decoded = decode_page(page)?;
+    let [l, t, r, b] = bounds;
+    let w = r.checked_sub(l).ok_or(OcrError::TooSmall)?;
+    let h = b.checked_sub(t).ok_or(OcrError::TooSmall)?;
+    if w < MIN_SIDE || h < MIN_SIDE || r > decoded.width() || b > decoded.height() {
+        return Err(OcrError::TooSmall);
+    }
+    Ok(decoded.crop_imm(l, t, w, h))
+}
+
+fn decode_page(page: &[u8]) -> Result<DynamicImage, OcrError> {
     let picture = |e: &dyn std::fmt::Display| OcrError::Picture(e.to_string());
     let mut reader = ImageReader::new(Cursor::new(page))
         .with_guessed_format()
@@ -130,10 +149,7 @@ pub fn crop(page: &[u8], area: [f32; 4]) -> Result<DynamicImage, OcrError> {
     limits.max_image_height = Some(MAX_SIDE);
     limits.max_alloc = Some(MAX_ALLOC);
     reader.limits(limits);
-    let decoded = reader.decode().map_err(|e| picture(&e))?;
-    let (width, height) = decoded.dimensions();
-    let (x, y, w, h) = pixels(area, width, height).ok_or(OcrError::TooSmall)?;
-    Ok(decoded.crop_imm(x, y, w, h))
+    reader.decode().map_err(|e| picture(&e))
 }
 
 /// `area` in the pixels of a page, inside it; `None` if too little is left.

@@ -809,7 +809,7 @@ books-folder = Aggiungi una cartella di pagine…
 books-none = Ancora nessun libro. Aggiungi un file EPUB, CBZ, HTML, TXT o Markdown, incolla un testo oppure apri una pagina web dal suo indirizzo. I file originali restano dove sono.
 books-audiobook = Apri un audiolibro…
 books-audio-filter = File audio
-books-filter = Libri, manga, HTML, TXT e Markdown
+books-filter = Libri, manga, HTML, TXT e Markdown / Mokuro
 books-remove = Rimuovi { $title }
 books-back = ← Libri
 books-vertical = Verticale
@@ -1387,3 +1387,8 @@ books-paste-markdown = Interpreta come Markdown
 books-paste-read = Leggi testo
 books-paste-hint = Salvato localmente per riaprirlo. Massimo 4 MiB. Markdown conserva titoli e furigana; collegamenti e immagini non vengono aperti.
 error-book-invalid-text = Impossibile leggere questo documento. Usa UTF-8, un titolo di massimo 256 caratteri e testo semplice o Markdown supportato.
+
+error-book-mokuro = Questo volume Mokuro non è supportato oppure contiene immagini locali o coordinate non valide.
+mokuro-ready = Il testo è già disponibile. Seleziona un riquadro nella pagina.
+mokuro-empty-page = Questa pagina non contiene riquadri di testo importati.
+mokuro-region = Leggi riquadro { $number } della pagina { $page }

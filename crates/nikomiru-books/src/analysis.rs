@@ -64,7 +64,7 @@ impl Budget {
 pub fn read_text(path: &Path, cancel: &Cancel) -> Result<Book, BookError> {
     check_cancel(cancel)?;
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
-    if path.is_dir() || matches!(extension.as_deref(), Some("cbz" | "zip")) {
+    if path.is_dir() || matches!(extension.as_deref(), Some("cbz" | "zip" | "mokuro")) {
         return Err(BookError::NoText);
     }
     let metadata = std::fs::metadata(path).map_err(|e| BookError::Io(e.to_string()))?;

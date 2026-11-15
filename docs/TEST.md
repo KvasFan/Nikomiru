@@ -898,3 +898,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-BOK-012 | Markdown reading | Nested inline syntax, links/image labels without network, headings/lists/code, literal HTML and safe ruby with byte-correct ranges. | L1, L3, L6 |
 | T-BOK-013 | Paste and read | Editor explicit submission, bounded managed source save/read, duplicate reuse, invalid version and partial-write failure; restart and backup retention. | L1, L3, L6 |
 | T-BOK-014 | Identity and reader integration | Equal-title/length different-content isolation, moved-file identity, saved positions, lookup/mining/word analysis and replacement failures without playback changes. | L1, L6 |
+
+
+## M103 Mokuro
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-MNG-007 | Mokuro import | Maintained fixture shape, page/region order, source identity, normal page progress, empty art pages and fail-atomic missing images; bounded nested sequences. | L1, L6 |
+| T-MNG-008 | Imported region selection | Actual scaled targets, exact stored text and JPEG crop without OCR, paired-page identity, lookup/mining and stale-result isolation. | L1, L3, L6 |
+| T-MNG-009 | Untrusted local volume | Traversal/absolute/network/duplicate/symlink image paths; versions, metadata/dimension mismatch, decoded size and clipped/invalid boxes; HTML stays data. | L1, L6 |

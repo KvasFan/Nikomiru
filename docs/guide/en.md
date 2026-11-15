@@ -359,3 +359,7 @@ Books → Add accepts UTF-8 `.txt`, `.md` and `.markdown` files, up to four MiB.
 Books → Paste text opens an explicit editor. Enter a title (up to 256 characters), paste the text, optionally choose Markdown, and press Read text. The source is kept locally and reopens from the Books list after restart. The draft remains available if saving fails. Identical title/format/content reuses the source; different content keeps its own reading position even with the same title and length. Moving a file without changing its name/content also retains its identity.
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
+
+## Mokuro manga (M103 development)
+
+Books → Add accepts maintained `.mokuro` 0.2.x JSON with local images in a same-stem folder beside it (or alongside the manifest if there is no volume folder). Select a text region on the page: its original text becomes clickable and its exact JPEG crop is available for cards, without OCR or model installation. Original page order and progress are retained. Missing images, unsafe paths and invalid coordinates reject the import before replacing a book. Modest OCR edge overruns are clipped. Executable legacy HTML viewers and remote image URLs are not used.

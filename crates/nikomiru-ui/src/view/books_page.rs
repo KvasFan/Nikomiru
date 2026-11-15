@@ -479,7 +479,18 @@ fn manga_reader(
     else {
         return;
     };
-    reading_line(ui, s, out);
+    if let Some(imported) = open.book.manga_regions.get(&open.chapter) {
+        ui.label(tr(
+            s,
+            if imported.regions.is_empty() {
+                "mokuro-empty-page"
+            } else {
+                "mokuro-ready"
+            },
+        ));
+    } else {
+        reading_line(ui, s, out);
+    }
     if !item.text.is_empty() {
         let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
         let (clicked, _, _) = paragraph(ui, item, &item.text, marked, false, None);
@@ -545,11 +556,60 @@ fn manga_reader(
         }
         None => place(open.chapter, &handle, rect, Align2::CENTER_CENTER),
     }
+    for (page, drawn) in &pages {
+        if let Some(imported) = open.book.manga_regions.get(page) {
+            for (index, region) in imported.regions.iter().enumerate() {
+                let [l, t, r, b] = region.bounds;
+                let at = egui::Rect::from_min_max(
+                    drawn.min
+                        + vec2(
+                            l as f32 / imported.width as f32 * drawn.width(),
+                            t as f32 / imported.height as f32 * drawn.height(),
+                        ),
+                    drawn.min
+                        + vec2(
+                            r as f32 / imported.width as f32 * drawn.width(),
+                            b as f32 / imported.height as f32 * drawn.height(),
+                        ),
+                );
+                let hit = ui.interact(
+                    at,
+                    Id::unique(("mokuro-region", &open.uid, *page, index)),
+                    Sense::click(),
+                );
+                let label = (s.tr)(
+                    "mokuro-region",
+                    &[
+                        ("number", (index + 1).to_string()),
+                        ("page", (page + 1).to_string()),
+                    ],
+                );
+                hit.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::Role::Button, !s.page.ocr.reading, &label)
+                });
+                if hit.hovered() {
+                    ui.painter().rect_stroke(
+                        at,
+                        0.0,
+                        egui::Stroke::new(1.5, palette::current().good),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                if hit.clicked() && !s.page.ocr.reading {
+                    out.push(Command::MokuroSelect {
+                        page: *page,
+                        region: index,
+                    });
+                }
+            }
+        }
+    }
     if s.page.ocr.installed && response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     let pointer = ui.input(|i| (i.pointer.press_origin(), i.pointer.latest_pos()));
-    if response.drag_started()
+    if open.book.manga_regions.is_empty()
+        && response.drag_started()
         && let (Some(start), Some(now)) = pointer
     {
         state.selection = Some((start, now));
@@ -1514,6 +1574,7 @@ mod tests {
             uid: "book/a".into(),
             book: Book {
                 identity: None,
+                manga_regions: Default::default(),
                 title: "本".into(),
                 author: String::new(),
                 right_to_left: false,
@@ -2034,5 +2095,35 @@ mod tests {
         assert!(h.state().out.iter().any(|c|matches!(c,Command::BookPaste(p) if p.title=="読書"&&p.text=="# 猫\n\n本文"&&p.format==nikomiru_books::text::Format::Markdown)));
         assert!(!h.state().state.paste_open);
         assert_eq!(h.state().state.paste_text, "# 猫\n\n本文");
+    }
+    // T-MNG-008: imported text has an accessible target without model installation or an OCR offer.
+    #[test]
+    fn imported_manga_region_emits_only_an_explicit_selection() {
+        let mut open = manga();
+        open.book.manga_regions.insert(
+            0,
+            nikomiru_books::mokuro::Page {
+                width: 100,
+                height: 200,
+                regions: vec![nikomiru_books::mokuro::Region {
+                    bounds: [10, 10, 80, 100],
+                    text: "猫です".into(),
+                }],
+            },
+        );
+        let mut h = harness(BooksPage {
+            open: Some(open),
+            ..Default::default()
+        });
+        h.run();
+        assert!(h.query_by_label("manga-fetch").is_none());
+        h.get_by_label("mokuro-region").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::MokuroSelect { page: 0, region: 0 }))
+        );
     }
 }

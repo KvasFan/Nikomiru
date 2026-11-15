@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Import local Mokuro 0.2.x volumes with safe image paths, selectable preprocessed text and exact-pixel cropped Anki images, without running OCR (M103, MNG-007…MNG-009).
+
 - Read UTF-8 TXT/Markdown files and explicitly pasted text in Books, with durable local sources, content identities, ruby, vocabulary analysis and existing lookup/mining/progress integration (M102, BOK-011…BOK-014).
 
 ### Changed

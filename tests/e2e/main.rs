@@ -14,6 +14,7 @@ mod dvb_subtitles;
 mod encounters;
 mod episode_scores;
 mod gaps;
+mod mokuro;
 mod perf;
 mod progressive_ocr;
 mod reader_words;

@@ -2598,6 +2598,7 @@ name = "nikomiru-books"
 version = "2.110.0"
 dependencies = [
  "flate2",
+ "image",
  "nikomiru-books",
  "nikomiru-core",
  "pulldown-cmark",

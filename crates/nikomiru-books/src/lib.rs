@@ -15,6 +15,8 @@ pub mod analysis;
 mod cbz;
 mod epub;
 mod markup;
+/// Offline data-only Mokuro volumes and original text regions.
+pub mod mokuro;
 #[cfg(feature = "test-support")]
 pub mod sample;
 /// Bounded TXT, Markdown and durable pasted documents (BOK-011…BOK-014).
@@ -35,6 +37,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     match extension.as_deref() {
         Some("cbz" | "zip") => cbz::read(path),
+        Some("mokuro") => mokuro::read(path),
         Some("html" | "htm" | "xhtml") => web::read(path),
         Some("txt" | "md" | "markdown" | "nikomiru-text") => text::read(path, None),
         _ => epub::read(path),
@@ -87,6 +90,8 @@ pub struct Book {
     /// It is made of pages: each chapter is one picture, and a position
     /// counts pages (MNG-001).
     pub manga: bool,
+    /// Imported text regions by original manga page; absent for ordinary comics.
+    pub manga_regions: BTreeMap<usize, mokuro::Page>,
     /// Its chapters, in reading order.
     pub chapters: Vec<Chapter>,
     /// The bytes of its pictures, by their place in the archive.
@@ -150,6 +155,9 @@ pub enum BookError {
     /// Invalid UTF-8, controls, title or managed document format/version.
     #[error("invalid text document")]
     InvalidText,
+    /// An unsupported, unsafe or inconsistent Mokuro volume.
+    #[error("invalid Mokuro volume")]
+    InvalidMokuro,
 }
 
 impl nikomiru_core::Localized for BookError {
@@ -163,6 +171,7 @@ impl nikomiru_core::Localized for BookError {
             Self::NoPages => "error-book-no-pages",
             Self::NotPage => "error-book-not-page",
             Self::InvalidText => "error-book-invalid-text",
+            Self::InvalidMokuro => "error-book-mokuro",
         }
     }
 
@@ -171,9 +180,12 @@ impl nikomiru_core::Localized for BookError {
             Self::Io(reason) | Self::NotEpub(reason) | Self::NotCbz(reason) => {
                 vec![("reason", reason.clone())]
             }
-            Self::TooLarge | Self::NoText | Self::NoPages | Self::NotPage | Self::InvalidText => {
-                Vec::new()
-            }
+            Self::TooLarge
+            | Self::NoText
+            | Self::NoPages
+            | Self::NotPage
+            | Self::InvalidText
+            | Self::InvalidMokuro => Vec::new(),
         }
     }
 }
@@ -194,6 +206,7 @@ mod tests {
             BookError::NoPages,
             BookError::NotPage,
             BookError::InvalidText,
+            BookError::InvalidMokuro,
         ];
         let refs: Vec<&dyn nikomiru_core::Localized> = errors
             .iter()

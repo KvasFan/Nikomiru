@@ -1526,12 +1526,12 @@ Requested by the maintainer after publishing source v2.110.0. This comparison us
 
 ### Candidate milestones after M101
 
-Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102 is **done in development**; candidates M103–M119 are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M103 are **done in development**; candidates M104–M119 are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
 
 | Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
 |---|---|---|---|---|
 | M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | done |
-| M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | not started |
+| M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | done |
 | M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | not started |
 | M105 | P1 / L | **Typed and multiple-choice cloze.** Explicitly turn captured sentences into masked-word exercises with Unicode-aware answer rules and distractors. Offer finite practice and a separate opt-in scheduled mode using the existing review engine. Check answer concealment, ambiguous readings, undo and single ownership of schedules. No Japanese bank is presumed available. | [Lector practice][src-lector-practice], [language limitations][src-lector-languages] | not started |
 | M106 | P1 / L | **Sentence bank and cross-media examples.** Index/import user-owned sentence/context references across books and subtitle sources, retaining original offsets and source links. Add optional external example providers only after defining provenance, licenses and request behavior. Check exact word identities, stale sources, offline results and bounded queries. Current concordance only covers the current primary subtitle. | [jidoujisho examples][src-jidoujisho], [Lector sentence packs][src-lector-languages] | not started |
@@ -1598,3 +1598,23 @@ Implement safe bounded loose-text parsing and an explicit paste editor using the
 **Exit criteria**: T-BOK-011…T-BOK-014 logic/component/native-app cases, translated UI/errors, `cargo xtask ci`, regenerated dependency/package notices and documented remaining Markdown rendering limits.
 
 M102 is complete in development: full CI passed 1,052 workspace/integration tests and 109 actual GUI cases in 462 seconds. See [M102 QA](qa/m102.md). The work is Unreleased on `development/m102-text-reader`; published source/binary tags are unchanged.
+
+
+## Execution of the remaining roadmap (2026-11-15)
+
+The maintainer requested development of the whole planned roadmap after M102. Execute M103–M119 consecutively, preferring shared source identities and existing reader/mining workers. Each milestone receives requirements and test cases before code, a focused validation and a commit; run full regression at integration checkpoints. Existing manual/platform exit checks remain visible. The separate scope/architecture decision inventory remains unapproved for implementation; this request accepts the listed milestone scopes and routine implementation choices, not unrelated excluded products.
+
+| Work | State | Evidence |
+| --- | --- | --- |
+| M103–M119 implementation | in progress | Starts from M102 commit `1107ae6` on `development/m103-m119` |
+| Native Windows/macOS/Android verification | pending | Record actual available runners/devices per platform; cross checks alone never close M117 |
+| Production signing/feed deployment | pending | Prepare/test the updater and delivery contract before publishing signed artifacts |
+
+
+## M103 — Offline Mokuro manga import
+
+**Requirements**: MNG-007…MNG-009.
+
+Implement maintained `.mokuro` JSON and local page images, explicit scaled region targets and off-thread exact-text/crop selection. Preserve existing manga lookup, cards and progress; reject invalid volumes atomically without executing legacy viewers. See SPECIFICATION/TEST for bounds and supported formats.
+
+**Exit criteria**: parser/path/coordinate checks, accessible region controls and actual import/lookup/mining/restart cases; fast CI and integration regression.
