@@ -1317,3 +1317,10 @@ recall-remaining = 残りの単語
 recall-start-shown = 表示中の語彙で練習
 recall-start-selected = 選択した語彙で練習
 recall-unavailable = 有効な見出し語と読みを持つ単語を1～1000件選んでください。
+
+recall-again = もう一度
+recall-good = できた
+recall-good-total = できた単語
+recall-again-total = もう一度の評価数
+recall-skipped-total = スキップした単語
+recall-attempts-total = 回答回数

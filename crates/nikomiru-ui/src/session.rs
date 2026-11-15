@@ -1480,6 +1480,12 @@ impl Session {
             r.skip();
         }
     }
+    /// Self-rate only an explicitly revealed recall card; no library status is changed.
+    pub fn recall_rate(&mut self, good: bool) {
+        if let Some(r) = &mut self.recall {
+            r.rate(good);
+        }
+    }
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall = None;

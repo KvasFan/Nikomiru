@@ -1334,3 +1334,10 @@ recall-remaining = Words remaining
 recall-start-shown = Recall shown vocabulary
 recall-start-selected = Recall selected vocabulary
 recall-unavailable = Choose 1–1000 unique words with bounded, valid headwords and readings.
+
+recall-again = Again
+recall-good = Good
+recall-good-total = Words rated Good
+recall-again-total = Again ratings
+recall-skipped-total = Skipped words
+recall-attempts-total = Attempts

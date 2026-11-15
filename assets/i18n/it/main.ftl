@@ -1334,3 +1334,10 @@ recall-remaining = Parole rimanenti
 recall-start-shown = Esercita vocabolario visibile
 recall-start-selected = Esercita vocabolario selezionato
 recall-unavailable = Scegli da 1 a 1000 parole uniche con lemmi e letture validi e di lunghezza limitata.
+
+recall-again = Ancora
+recall-good = Bene
+recall-good-total = Parole valutate Bene
+recall-again-total = Valutazioni Ancora
+recall-skipped-total = Parole saltate
+recall-attempts-total = Tentativi

@@ -4,6 +4,8 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub grades: [String; 2],
+    pub summary_labels: [String; 4],
     pub title: String,
     pub reveal: String,
     pub skip: String,
@@ -15,6 +17,14 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            grades: ["recall-again", "recall-good"].map(|k| tr(k, &[])),
+            summary_labels: [
+                "recall-good-total",
+                "recall-again-total",
+                "recall-skipped-total",
+                "recall-attempts-total",
+            ]
+            .map(|k| tr(k, &[])),
             reveal: tr("recall-reveal", &[]),
             skip: tr("recall-skip", &[]),
             complete: tr("recall-complete", &[]),
@@ -50,6 +60,15 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                             ui.heading(&card.expression);
                         }
                         ui.horizontal_wrapped(|ui| {
+                            for (good, label) in [false, true].into_iter().zip(&labels.grades) {
+                                if ui
+                                    .add_enabled(recall.revealed, egui::Button::new(label))
+                                    .clicked()
+                                {
+                                    out.push(Command::RecallRate(good));
+                                }
+                            }
+
                             if ui
                                 .add_enabled(!recall.revealed, egui::Button::new(&labels.reveal))
                                 .clicked()
@@ -62,6 +81,15 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
                         });
                     } else if recall.done() {
                         ui.heading(&labels.complete);
+                        let stats = recall.summary();
+                        for (label, n) in labels.summary_labels.iter().zip([
+                            stats.good,
+                            stats.again,
+                            stats.skipped,
+                            stats.attempts,
+                        ]) {
+                            ui.label(format!("{label}: {n}"));
+                        }
                     }
                 });
         });
@@ -113,5 +141,51 @@ mod tests {
         h.state_mut().recall.reveal();
         h.run();
         h.get_by_label("猫");
+    } // T-KNW-054: hidden answers keep self-rating controls disabled and completion exposes numeric summaries.
+    #[test]
+    fn rating_controls_require_reveal_and_show_completion_counts() {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(700.0, 600.0))
+            .allow_missing_glyphs()
+            .build_ui_state(
+                |ui, t: &mut Test| {
+                    show(
+                        ui.ctx(),
+                        &t.recall,
+                        &Labels::translated(&|key, _| key.to_string()),
+                        &mut t.out,
+                    );
+                },
+                Test {
+                    recall: Recall::start(
+                        "Study",
+                        &[ListedWord {
+                            expression: "猫".into(),
+                            reading: "ねこ".into(),
+                            count: 1,
+                            status: WordStatus::Unknown,
+                            card: false,
+                        }],
+                    )
+                    .unwrap(),
+                    out: Vec::new(),
+                },
+            );
+        h.run();
+        h.get_by_label("recall-good").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.state_mut().recall.reveal();
+        h.run();
+        h.get_by_label("recall-good").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.last(),
+            Some(Command::RecallRate(true))
+        ));
+        h.state_mut().recall.rate(true);
+        h.run();
+        h.get_by_label("recall-good-total: 1");
+        h.get_by_label("recall-attempts-total: 1");
     }
 }
