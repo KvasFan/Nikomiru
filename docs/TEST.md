@@ -933,3 +933,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-SEN-001 | Explicit bounded indexing | Real dictionary inflection/identity/ranges, sentence boundaries, bounded packs and cancellation; failed batches retain the previous snapshot. | L1, L6 |
 | T-SEN-002 | Exact offline examples | Distinct expression/readings and language, repeated hits, bounded stable results and stale-reply rejection; actual cross-book/primary-track results without status/playback changes. | L1, L3, L6 |
 | T-SEN-003 | Sources and persistence | Original Japanese byte offsets, missing/replaced source navigation, safe shown TSV, explicit batch deletion, restart and backup retention. | L1, L6 |
+
+## M107 batch mining
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-BMG-001 | Explicit bounded selection | Exact identity deduplication, selected contexts/original offsets, bounds and source changes; actual selected vocabulary and lookup capture. | L1, L3, L6 |
+| T-BMG-002 | Preview before export | Effective mappings and visible planned media, whole-batch validation, no add/media extraction before Start and stale-preview rejection. | L1, L3, L6 |
+| T-BMG-003 | Sequential execution | One export at a time, duplicate skips, per-item outcomes, stop-after-current cancellation and coexistence with single/pending mining. | L1, L6 |
+| T-BMG-004 | Safe recovery | Durable operation identity, exact-tag reconciliation, unknown commit without resend, certain retry, restart and backup retention against fake Anki fault modes. | L1, L4, L6 |
