@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Skip and restart practice cues (SUB-061, M89).
+
 - Pauses between practice passes (SUB-060, M88).
 
 - Undo word-status changes (KNW-050, M87).

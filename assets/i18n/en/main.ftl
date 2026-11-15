@@ -1310,3 +1310,6 @@ vocabulary-undo-unavailable = The previous status change can no longer be undone
 
 sub-practice-pause = Pause between passes (ms)
 sub-practice-wait = Waiting: { $count } ms
+
+sub-practice-skip = Skip current line
+sub-practice-restart = Restart current line

@@ -1310,3 +1310,6 @@ vocabulary-undo-unavailable = La modifica precedente non può più essere annull
 
 sub-practice-pause = Pausa tra ripetizioni (ms)
 sub-practice-wait = Attesa: { $count } ms
+
+sub-practice-skip = Salta battuta corrente
+sub-practice-restart = Ricomincia battuta corrente

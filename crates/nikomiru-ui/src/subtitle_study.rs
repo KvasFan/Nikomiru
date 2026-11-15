@@ -391,6 +391,7 @@ pub struct Repetition {
     /// Passes remaining, including the current pass; zero means finished and paused.
     pub left: u8,
     armed: bool,
+    total: u8,
 }
 impl Repetition {
     /// Only the explicit finite choices are accepted.
@@ -402,6 +403,7 @@ impl Repetition {
             end_ms,
             left: passes,
             armed: false,
+            total: passes,
         })
     }
     /// Arm after actual playback returns inside the captured cue, ignoring late end events.
@@ -410,6 +412,12 @@ impl Repetition {
             self.armed = true;
         }
     }
+    /// Restore the originally requested finite pass count without changing captured timings.
+    pub fn restart(&mut self) {
+        self.left = self.total;
+        self.armed = false;
+    }
+
     /// Consume a real end pause once. Some(true) seeks again; Some(false) stays paused.
     pub fn stopped(&mut self, position_ms: i64) -> Option<bool> {
         if !self.armed || self.left == 0 || position_ms < self.end_ms.saturating_sub(100) {
@@ -540,6 +548,24 @@ mod tests {
         let mut invalid = vec![0, 9];
         assert!(!order_indices(&cues, &mut invalid, StudyOrder::Source));
         assert_eq!(invalid, [0, 9]);
+    }
+
+    // T-SUB-061: restart restores the finite count and disarms any previous boundary.
+    #[test]
+    fn practice_restart_keeps_captured_interval_and_resets_passes() {
+        let cue = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n猫\n",
+        )
+        .cues
+        .remove(0);
+        let mut r = Repetition::new(&cue, 100, 3).unwrap();
+        r.position(1100);
+        assert_eq!(r.stopped(2100), Some(true));
+        assert_eq!(r.left, 2);
+        r.restart();
+        assert_eq!((r.left, r.start_ms, r.end_ms), (3, 1100, 2100));
+        assert_eq!(r.stopped(2100), None);
     }
 
     // T-SUB-060: bounded monotonic deadlines fire once and cancellation prevents later resume.

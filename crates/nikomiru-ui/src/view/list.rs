@@ -147,6 +147,7 @@ pub(crate) struct StudyLabels {
     examples: String,
     clear_examples: String,
     study_groups: [String; 3],
+    practice_controls: [String; 2],
     pause_label: String,
     queue_labels: [String; 3],
     practice_labels: [String; 2],
@@ -179,6 +180,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            practice_controls: ["sub-practice-skip", "sub-practice-restart"].map(|k| tr(k, &[])),
             pause_label: tr("sub-practice-pause", &[]),
             translation_labels: ["sub-preview-title", "sub-preview-show", "sub-preview-empty"]
                 .map(|k| tr(k, &[])),
@@ -522,6 +524,7 @@ pub(crate) struct Scene<'a> {
     pub pos_ms: i64,
     pub practice_status: Option<String>,
     pub practice_pause_ms: u16,
+    pub practice_left: Option<u8>,
     pub title: String,
     /// How much of the subtitle the learner understands, or how far its
     /// count is (KNW-007).
@@ -726,6 +729,7 @@ pub(crate) fn show(
         concordance: s.subtitle_examples(),
         pos_ms: (s.view.time_pos * 1000.0).round() as i64,
         practice_pause_ms: s.practice_pause_ms(),
+        practice_left: s.practice_remaining(),
         practice_status: s.practice_remaining().map(|n| {
             format!(
                 "{} · {}{}",
@@ -1486,6 +1490,18 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
                                 }
                                 if let Some(status) = &scene.practice_status {
                                     ui.label(status);
+                                    if ui
+                                        .add_enabled(
+                                            scene.practice_left.is_some_and(|n| n > 0),
+                                            egui::Button::new(&scene.study.practice_controls[0]),
+                                        )
+                                        .clicked()
+                                    {
+                                        out.push(Command::PracticeSkip);
+                                    }
+                                    if ui.button(&scene.study.practice_controls[1]).clicked() {
+                                        out.push(Command::PracticeRestart);
+                                    }
                                     if ui.button(&scene.study.practice_labels[1]).clicked() {
                                         out.push(Command::PracticeCancel);
                                     }
@@ -3090,6 +3106,7 @@ mod tests {
                         word_scope: None,
                         practice_status: None,
                         practice_pause_ms: 0,
+                        practice_left: None,
                         words: None,
                         word_labels: Default::default(),
                         search_hint: "Search".into(),

@@ -1293,3 +1293,6 @@ vocabulary-undo-unavailable = 前の状態変更は元に戻せません。
 
 sub-practice-pause = 繰り返しの間の休止（ミリ秒）
 sub-practice-wait = 待機中：{ $count } ミリ秒
+
+sub-practice-skip = 現在の字幕をスキップ
+sub-practice-restart = 現在の字幕を最初から繰り返す

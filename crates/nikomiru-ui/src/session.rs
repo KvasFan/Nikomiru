@@ -1558,6 +1558,52 @@ impl Session {
             .remaining(self.services.clock.monotonic())
     }
 
+    /// Skip the current finite cue, preserving the remaining captured queue.
+    pub fn practice_skip(&mut self) {
+        let Some((version, current)) = &self.practice else {
+            return;
+        };
+        if *version != self.sub_list_version || !self.view.loaded {
+            self.practice_cancel();
+            return;
+        }
+        if current.left == 0 {
+            return;
+        }
+        self.practice_wait.cancel();
+        if let Some(next) = self.practice_queue.pop_front() {
+            if self.start_practice_pass(&next) {
+                self.practice = Some((self.sub_list_version, next));
+            } else {
+                self.practice_cancel();
+            }
+        } else {
+            if let Some((_, r)) = &mut self.practice {
+                r.left = 0;
+            }
+            let _ = self.services.player.stop_at(None);
+            let _ = self.services.player.set_pause(true);
+        }
+    }
+
+    /// Restart this captured cue with its original pass count, including after completion.
+    pub fn practice_restart(&mut self) {
+        let Some((version, mut current)) = self.practice.take() else {
+            return;
+        };
+        if version != self.sub_list_version || !self.view.loaded {
+            self.practice_cancel();
+            return;
+        }
+        self.practice_wait.cancel();
+        current.restart();
+        if self.start_practice_pass(&current) {
+            self.practice = Some((version, current));
+        } else {
+            self.practice_cancel();
+        }
+    }
+
     /// Captured cues still to finish, including the current cue; zero means finished.
     pub fn practice_cues_remaining(&self) -> Option<usize> {
         self.practice_remaining()
