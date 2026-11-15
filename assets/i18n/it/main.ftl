@@ -1285,3 +1285,11 @@ sub-order-source = Ordine della sorgente
 sub-order-short = Durata crescente
 sub-order-long = Durata decrescente
 sub-order-text = Testo più breve
+
+sub-time-edit = Inserisci intervallo di studio
+sub-time-from = Da (secondi o H:MM:SS.mmm)
+sub-time-to = Fino a (secondi o H:MM:SS.mmm)
+sub-time-apply = Applica intervallo
+sub-time-invalid = Inserisci tempi validi con la fine dopo l’inizio; lascia vuoto per nessun limite.
+
+sub-copy-export = Copia ed esportazione

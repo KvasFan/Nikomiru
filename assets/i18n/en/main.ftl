@@ -1285,3 +1285,11 @@ sub-order-source = Source order
 sub-order-short = Shortest duration
 sub-order-long = Longest duration
 sub-order-text = Shortest text
+
+sub-time-edit = Enter study time bounds
+sub-time-from = From (seconds or H:MM:SS.mmm)
+sub-time-to = Until (seconds or H:MM:SS.mmm)
+sub-time-apply = Apply time bounds
+sub-time-invalid = Enter valid times with the end after the start; leave empty for no bound.
+
+sub-copy-export = Copy and export

@@ -1268,3 +1268,11 @@ sub-order-source = 元の字幕順
 sub-order-short = 短い時間から
 sub-order-long = 長い時間から
 sub-order-text = 短い文章から
+
+sub-time-edit = 学習時間の範囲を入力
+sub-time-from = 開始（秒またはH:MM:SS.mmm）
+sub-time-to = 終了（秒またはH:MM:SS.mmm）
+sub-time-apply = 時間範囲を適用
+sub-time-invalid = 終了は開始より後にしてください。空欄は制限なしです。
+
+sub-copy-export = コピーと書き出し

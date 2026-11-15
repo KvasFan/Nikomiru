@@ -175,6 +175,75 @@ pub fn order_indices(
     true
 }
 
+/// Parse nonnegative seconds, M:SS or H:MM:SS with at most three decimal digits (SUB-058).
+pub fn parse_time(text: &str) -> Option<i64> {
+    let text = text.trim();
+    if text.is_empty() || text.len() > 32 {
+        return None;
+    }
+    let parts: Vec<_> = text.split(':').collect();
+    if parts.len() > 3 {
+        return None;
+    }
+    let last = *parts.last()?;
+    let decimals: Vec<_> = last.split(['.', ',']).collect();
+    if decimals.len() > 2 {
+        return None;
+    }
+    fn number(s: &str) -> Option<u64> {
+        if s.is_empty() || !s.bytes().all(|c| c.is_ascii_digit()) {
+            None
+        } else {
+            s.parse().ok()
+        }
+    }
+    let seconds = number(decimals[0])?;
+    if parts.len() > 1 && seconds >= 60 {
+        return None;
+    }
+    let fraction = if let Some(digits) = decimals.get(1) {
+        if digits.is_empty() || digits.len() > 3 {
+            return None;
+        }
+        number(digits)?.checked_mul(10u64.pow(3 - digits.len() as u32))?
+    } else {
+        0
+    };
+    let mut total = seconds;
+    if parts.len() >= 2 {
+        let minutes = number(parts[parts.len() - 2])?;
+        if parts.len() == 3 && minutes >= 60 {
+            return None;
+        }
+        total = total.checked_add(minutes.checked_mul(60)?)?;
+    }
+    if parts.len() == 3 {
+        total = total.checked_add(number(parts[0])?.checked_mul(3600)?)?;
+    }
+    i64::try_from(total.checked_mul(1000)?.checked_add(fraction)?).ok()
+}
+
+/// Validate both editable bounds atomically; empty fields mean unbounded.
+pub fn parse_window(from: &str, to: &str) -> Option<TimeWindow> {
+    let parse = |s: &str| {
+        if s.trim().is_empty() {
+            Some(None)
+        } else {
+            parse_time(s).map(Some)
+        }
+    };
+    let window = TimeWindow {
+        from: parse(from)?,
+        to: parse(to)?,
+    };
+    if let (Some(a), Some(b)) = (window.from, window.to)
+        && a >= b
+    {
+        return None;
+    }
+    Some(window)
+}
+
 /// Metrics of a bounded subtitle study scope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Statistics {
@@ -376,6 +445,46 @@ pub struct Concordance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-SUB-058: millisecond parsing is exact, bounded and rejects invalid/reversed fields.
+    #[test]
+    fn editable_time_bounds_parse_atomically_without_rounding() {
+        for (s, ms) in [
+            ("1", 1000),
+            ("1.2", 1200),
+            ("1,025", 1025),
+            ("2:03.004", 123004),
+            ("1:02:03.004", 3723004),
+            ("120:00", 7200000),
+        ] {
+            assert_eq!(parse_time(s), Some(ms));
+        }
+        for s in [
+            "-1",
+            "+1",
+            "NaN",
+            "1.0001",
+            "1.",
+            "1:60",
+            "1:60:00",
+            "1::2",
+            "99999999999999999999999999999999",
+            "１２",
+        ] {
+            assert_eq!(parse_time(s), None, "{s}");
+        }
+        assert_eq!(parse_window("", ""), Some(TimeWindow::default()));
+        assert!(parse_window("2", "1").is_none());
+        assert!(parse_window("1", "1").is_none());
+        assert!(parse_window("bad", "3").is_none());
+        assert_eq!(
+            parse_window("1.5", ""),
+            Some(TimeWindow {
+                from: Some(1500),
+                to: None
+            })
+        );
+    }
+
     // T-SUB-057: stable original ties, invalid scopes and full-width duration arithmetic.
     #[test]
     fn study_order_uses_cached_scalar_keys_and_original_ties() {

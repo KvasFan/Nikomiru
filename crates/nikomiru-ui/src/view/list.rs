@@ -135,12 +135,14 @@ pub(crate) struct StudyLabels {
     bilingual_srt_shown: String,
     bilingual_srt_selected: String,
     select_line: String,
+    copy_export: String,
     copy_shown: String,
     copy_selected: String,
     copied: String,
     copy_error: String,
     from_here: String,
     to_here: String,
+    time_labels: [String; 5],
     reset_window: String,
     examples: String,
     clear_examples: String,
@@ -175,6 +177,14 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            time_labels: [
+                "sub-time-edit",
+                "sub-time-from",
+                "sub-time-to",
+                "sub-time-apply",
+                "sub-time-invalid",
+            ]
+            .map(|k| tr(k, &[])),
             order_labels: [
                 "sub-order-source",
                 "sub-order-short",
@@ -252,6 +262,7 @@ impl StudyLabels {
             bilingual_srt_selected: tr("sub-bilingual-srt-selected", &[]),
             select_line: tr("sub-select-line", &[]),
             copy_shown: tr("sub-copy-shown", &[]),
+            copy_export: tr("sub-copy-export", &[]),
             copy_selected: tr("sub-copy-selected", &[]),
             copied: tr("sub-transcript-copied", &[]),
             copy_error: tr("sub-export-unavailable", &[]),
@@ -301,6 +312,14 @@ struct Metrics {
 
 /// What the list keeps between frames.
 #[derive(Debug, Default)]
+struct TimeDraft {
+    seen: TimeWindow,
+    from: String,
+    to: String,
+    error: bool,
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct State {
     query: String,
     preset_name: String,
@@ -316,6 +335,7 @@ pub(crate) struct State {
     selection_version: Option<u64>,
     copied: Option<bool>,
     window: TimeWindow,
+    time_draft: Option<TimeDraft>,
     speed: ReadingSpeed,
     duration: DurationBounds,
     text_length: TextLength,
@@ -758,6 +778,7 @@ pub(crate) fn draw(
         state.selection_revision = state.selection_revision.wrapping_add(1);
         state.copied = None;
         state.window = TimeWindow::default();
+        state.time_draft = None;
         state.speed = ReadingSpeed::default();
         state.duration = DurationBounds::default();
         state.text_length = TextLength::default();
@@ -1247,446 +1268,556 @@ fn study_presets(
         });
 }
 
+fn editable_window(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State) {
+    egui::CollapsingHeader::new(&scene.study.time_labels[0])
+        .id_salt("subtitle-editable-window")
+        .show(ui, |ui| {
+            if state
+                .time_draft
+                .as_ref()
+                .is_none_or(|d| d.seen != state.window)
+            {
+                let format = |ms: Option<i64>| {
+                    ms.map(|v| format!("{}.{:03}", v / 1000, v % 1000))
+                        .unwrap_or_default()
+                };
+                state.time_draft = Some(TimeDraft {
+                    seen: state.window,
+                    from: format(state.window.from),
+                    to: format(state.window.to),
+                    error: false,
+                });
+            }
+            let Some(draft) = &mut state.time_draft else {
+                return;
+            };
+            for (label, text) in [
+                (&scene.study.time_labels[1], &mut draft.from),
+                (&scene.study.time_labels[2], &mut draft.to),
+            ] {
+                ui.horizontal(|ui| {
+                    let label = ui.label(label);
+                    ui.add(
+                        TextEdit::singleline(text)
+                            .char_limit(32)
+                            .desired_width(180.0),
+                    )
+                    .labelled_by(label.id);
+                });
+            }
+            if ui.button(&scene.study.time_labels[3]).clicked() {
+                if let Some(window) = crate::subtitle_study::parse_window(&draft.from, &draft.to) {
+                    state.window = window;
+                    draft.seen = window;
+                    draft.error = false;
+                } else {
+                    draft.error = true;
+                }
+            }
+            if draft.error {
+                ui.label(&scene.study.time_labels[4]);
+            }
+        });
+}
+
 fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     egui::CollapsingHeader::new(&scene.study.tools)
         .id_salt("subtitle-study-tools")
         .show(ui, |ui| {
-            study_presets(ui, state, &scene.study, out);
-            matching_navigation(ui, scene, state, out);
-            egui::CollapsingHeader::new(&scene.study.study_groups[0])
-                .id_salt("subtitle-study-group-0")
+            ScrollArea::vertical()
+                .id_salt("subtitle-study-tools-scroll")
+                .max_height(ui.ctx().content_rect().height() * 0.5)
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    if !matches!(state.practice_passes, 2 | 3 | 5) {
-                        state.practice_passes = 2;
-                    }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(&scene.study.queue_labels[2]);
-                        for passes in [2, 3, 5] {
-                            ui.selectable_value(
-                                &mut state.practice_passes,
-                                passes,
-                                passes.to_string(),
-                            );
-                        }
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        for (label, indices) in [
-                            (&scene.study.queue_labels[0], shown_indices(scene, state)),
-                            (
-                                &scene.study.queue_labels[1],
-                                state.selected.iter().copied().collect::<Vec<_>>(),
-                            ),
-                        ] {
-                            if ui
-                                .add_enabled(
-                                    scene.export_ready
-                                        && !indices.is_empty()
-                                        && indices.len() <= 1000,
-                                    egui::Button::new(label),
-                                )
-                                .clicked()
-                            {
-                                out.push(Command::PracticeQueue {
-                                    version: scene.version,
-                                    indices,
-                                    passes: state.practice_passes,
-                                });
+                    study_presets(ui, state, &scene.study, out);
+                    editable_window(ui, scene, state);
+                    matching_navigation(ui, scene, state, out);
+                    egui::CollapsingHeader::new(&scene.study.study_groups[0])
+                        .id_salt("subtitle-study-group-0")
+                        .show(ui, |ui| {
+                            if !matches!(state.practice_passes, 2 | 3 | 5) {
+                                state.practice_passes = 2;
                             }
-                        }
-                    });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(&scene.study.queue_labels[2]);
+                                for passes in [2, 3, 5] {
+                                    ui.selectable_value(
+                                        &mut state.practice_passes,
+                                        passes,
+                                        passes.to_string(),
+                                    );
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                for (label, indices) in [
+                                    (&scene.study.queue_labels[0], shown_indices(scene, state)),
+                                    (
+                                        &scene.study.queue_labels[1],
+                                        state.selected.iter().copied().collect::<Vec<_>>(),
+                                    ),
+                                ] {
+                                    if ui
+                                        .add_enabled(
+                                            scene.export_ready
+                                                && !indices.is_empty()
+                                                && indices.len() <= 1000,
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        out.push(Command::PracticeQueue {
+                                            version: scene.version,
+                                            indices,
+                                            passes: state.practice_passes,
+                                        });
+                                    }
+                                }
+                            });
 
+                            ui.horizontal_wrapped(|ui| {
+                                let target = scene.timeline.active(scene.pos_ms).first().copied();
+                                for passes in [2, 3, 5] {
+                                    if ui
+                                        .add_enabled(
+                                            scene.export_ready && target.is_some(),
+                                            egui::Button::new(format!(
+                                                "{} ×{passes}",
+                                                scene.study.practice_labels[0]
+                                            )),
+                                        )
+                                        .clicked()
+                                        && let Some(cue) = target
+                                    {
+                                        out.push(Command::Practice {
+                                            version: scene.version,
+                                            cue,
+                                            passes,
+                                        });
+                                    }
+                                }
+                                if let Some(status) = &scene.practice_status {
+                                    ui.label(status);
+                                    if ui.button(&scene.study.practice_labels[1]).clicked() {
+                                        out.push(Command::PracticeCancel);
+                                    }
+                                }
+                            });
+                        });
+                    egui::CollapsingHeader::new(&scene.study.study_groups[1])
+                        .id_salt("subtitle-study-group-1")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                let shown = shown_indices(scene, state);
+                                for (label, indices) in [
+                                    (&scene.study.vocabulary_labels[0], shown),
+                                    (
+                                        &scene.study.vocabulary_labels[1],
+                                        state.selected.iter().copied().collect(),
+                                    ),
+                                ] {
+                                    if ui
+                                        .add_enabled(
+                                            scene.tabs.is_some()
+                                                && scene.export_ready
+                                                && !indices.is_empty(),
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        out.push(Command::VocabularyScope {
+                                            version: scene.version,
+                                            indices,
+                                        });
+                                    }
+                                }
+                            });
+                        });
                     ui.horizontal_wrapped(|ui| {
-                        let target = scene.timeline.active(scene.pos_ms).first().copied();
-                        for passes in [2, 3, 5] {
-                            if ui
-                                .add_enabled(
-                                    scene.export_ready && target.is_some(),
-                                    egui::Button::new(format!(
-                                        "{} ×{passes}",
-                                        scene.study.practice_labels[0]
-                                    )),
-                                )
-                                .clicked()
-                                && let Some(cue) = target
-                            {
-                                out.push(Command::Practice {
-                                    version: scene.version,
-                                    cue,
-                                    passes,
-                                });
-                            }
-                        }
-                        if let Some(status) = &scene.practice_status {
-                            ui.label(status);
-                            if ui.button(&scene.study.practice_labels[1]).clicked() {
-                                out.push(Command::PracticeCancel);
-                            }
-                        }
-                    });
-                });
-            egui::CollapsingHeader::new(&scene.study.study_groups[1])
-                .id_salt("subtitle-study-group-1")
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        let shown = shown_indices(scene, state);
-                        for (label, indices) in [
-                            (&scene.study.vocabulary_labels[0], shown),
-                            (
-                                &scene.study.vocabulary_labels[1],
-                                state.selected.iter().copied().collect(),
-                            ),
-                        ] {
-                            if ui
-                                .add_enabled(
-                                    scene.tabs.is_some()
-                                        && scene.export_ready
-                                        && !indices.is_empty(),
-                                    egui::Button::new(label),
-                                )
-                                .clicked()
-                            {
-                                out.push(Command::VocabularyScope {
-                                    version: scene.version,
-                                    indices,
-                                });
-                            }
-                        }
-                    });
-                });
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .checkbox(&mut state.masked, &scene.study.mask_labels[0])
-                    .changed()
-                {
-                    state.revealed.clear();
-                }
-                if ui
-                    .add_enabled(state.masked, egui::Button::new(&scene.study.mask_labels[1]))
-                    .clicked()
-                {
-                    state.revealed.extend(shown_indices(scene, state));
-                }
-                if ui
-                    .add_enabled(
-                        state.masked && !state.revealed.is_empty(),
-                        egui::Button::new(&scene.study.mask_labels[2]),
-                    )
-                    .clicked()
-                {
-                    state.revealed.clear();
-                }
-            });
-            egui::CollapsingHeader::new(&scene.study.text_labels[0])
-                .id_salt("subtitle-text-filters")
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        for (order, label) in
-                            StudyOrder::ALL.into_iter().zip(&scene.study.order_labels)
-                        {
-                            ui.selectable_value(&mut state.order, order, label);
-                        }
-                    });
-                    ui.checkbox(&mut state.exact, &scene.study.exact_label);
-                    ui.checkbox(&mut state.unique, &scene.study.unique_label);
-                    ui.horizontal_wrapped(|ui| {
-                        for (shape, label) in
-                            [LineShape::Any, LineShape::Single, LineShape::Multiple]
-                                .into_iter()
-                                .zip(&scene.study.shapes)
-                        {
-                            ui.selectable_value(&mut state.shape, shape, label);
-                        }
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        let mut min = state.text_length.min.is_some();
-                        if ui.checkbox(&mut min, &scene.study.text_labels[1]).changed() {
-                            state.text_length.min = min.then_some(0);
-                        }
-                        if let Some(value) = &mut state.text_length.min {
-                            ui.add(egui::DragValue::new(value).range(0..=1_000_000));
-                        }
-                        let mut max = state.text_length.max.is_some();
-                        if ui.checkbox(&mut max, &scene.study.text_labels[2]).changed() {
-                            state.text_length.max = max.then_some(40);
-                        }
-                        if let Some(value) = &mut state.text_length.max {
-                            ui.add(egui::DragValue::new(value).range(0..=1_000_000));
-                        }
-                        if ui.button(&scene.study.text_labels[3]).clicked() {
-                            state.text_length = TextLength::default();
-                        }
-                    });
-                });
-            egui::CollapsingHeader::new(&scene.study.duration_labels[0])
-                .id_salt("subtitle-duration-tools")
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        let mut min = state.duration.min.is_some();
                         if ui
-                            .checkbox(&mut min, &scene.study.duration_labels[1])
+                            .checkbox(&mut state.masked, &scene.study.mask_labels[0])
                             .changed()
                         {
-                            state.duration.min = min.then_some(0);
-                        }
-                        if let Some(value) = &mut state.duration.min {
-                            ui.add(egui::DragValue::new(value).range(0..=86_400_000));
-                        }
-                        let mut max = state.duration.max.is_some();
-                        if ui
-                            .checkbox(&mut max, &scene.study.duration_labels[2])
-                            .changed()
-                        {
-                            state.duration.max = max.then_some(5000);
-                        }
-                        if let Some(value) = &mut state.duration.max {
-                            ui.add(egui::DragValue::new(value).range(0..=86_400_000));
-                        }
-                        if ui.button(&scene.study.duration_labels[3]).clicked() {
-                            state.duration = DurationBounds::default();
-                        }
-                    });
-                });
-            egui::CollapsingHeader::new(&scene.study.statistics)
-                .id_salt("subtitle-study-statistics")
-                .show(ui, |ui| study_statistics(ui, scene, state));
-            egui::CollapsingHeader::new(&scene.study.speed)
-                .id_salt("subtitle-reading-speed")
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        let mut min = state.speed.min.is_some();
-                        if ui.checkbox(&mut min, &scene.study.min_speed).changed() {
-                            state.speed.min = min.then_some(0);
-                        }
-                        if let Some(value) = &mut state.speed.min {
-                            ui.add(egui::DragValue::new(value).range(0..=500));
-                        }
-                        let mut max = state.speed.max.is_some();
-                        if ui.checkbox(&mut max, &scene.study.max_speed).changed() {
-                            state.speed.max = max.then_some(20);
-                        }
-                        if let Some(value) = &mut state.speed.max {
-                            ui.add(egui::DragValue::new(value).range(0..=500));
+                            state.revealed.clear();
                         }
                         if ui
                             .add_enabled(
-                                state.speed != ReadingSpeed::default(),
-                                egui::Button::new(&scene.study.reset_speed),
+                                state.masked,
+                                egui::Button::new(&scene.study.mask_labels[1]),
                             )
                             .clicked()
                         {
-                            state.speed = ReadingSpeed::default();
+                            state.revealed.extend(shown_indices(scene, state));
+                        }
+                        if ui
+                            .add_enabled(
+                                state.masked && !state.revealed.is_empty(),
+                                egui::Button::new(&scene.study.mask_labels[2]),
+                            )
+                            .clicked()
+                        {
+                            state.revealed.clear();
                         }
                     });
-                });
-            ui.horizontal_wrapped(|ui| {
-                if ui.button(&scene.study.from_here).clicked() {
-                    state.window.from = Some(scene.pos_ms.max(0));
-                }
-                if let Some(from) = state.window.from {
-                    ui.label(clock(from));
-                }
-                if ui.button(&scene.study.to_here).clicked() {
-                    state.window.to = Some(scene.pos_ms.max(0));
-                }
-                if let Some(to) = state.window.to {
-                    ui.label(clock(to));
-                }
-                if ui
-                    .add_enabled(
-                        state.window != TimeWindow::default(),
-                        egui::Button::new(&scene.study.reset_window),
-                    )
-                    .clicked()
-                {
-                    state.window = TimeWindow::default();
-                }
-            });
-            egui::CollapsingHeader::new(&scene.study.study_groups[2])
-                .id_salt("subtitle-study-group-2")
-                .show(ui, |ui| {
+                    egui::CollapsingHeader::new(&scene.study.text_labels[0])
+                        .id_salt("subtitle-text-filters")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                for (order, label) in
+                                    StudyOrder::ALL.into_iter().zip(&scene.study.order_labels)
+                                {
+                                    ui.selectable_value(&mut state.order, order, label);
+                                }
+                            });
+                            ui.checkbox(&mut state.exact, &scene.study.exact_label);
+                            ui.checkbox(&mut state.unique, &scene.study.unique_label);
+                            ui.horizontal_wrapped(|ui| {
+                                for (shape, label) in
+                                    [LineShape::Any, LineShape::Single, LineShape::Multiple]
+                                        .into_iter()
+                                        .zip(&scene.study.shapes)
+                                {
+                                    ui.selectable_value(&mut state.shape, shape, label);
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                let mut min = state.text_length.min.is_some();
+                                if ui.checkbox(&mut min, &scene.study.text_labels[1]).changed() {
+                                    state.text_length.min = min.then_some(0);
+                                }
+                                if let Some(value) = &mut state.text_length.min {
+                                    ui.add(egui::DragValue::new(value).range(0..=1_000_000))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label = Some(scene.study.text_labels[1].clone());
+                                            info
+                                        });
+                                }
+                                let mut max = state.text_length.max.is_some();
+                                if ui.checkbox(&mut max, &scene.study.text_labels[2]).changed() {
+                                    state.text_length.max = max.then_some(40);
+                                }
+                                if let Some(value) = &mut state.text_length.max {
+                                    ui.add(egui::DragValue::new(value).range(0..=1_000_000))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label = Some(scene.study.text_labels[2].clone());
+                                            info
+                                        });
+                                }
+                                if ui.button(&scene.study.text_labels[3]).clicked() {
+                                    state.text_length = TextLength::default();
+                                }
+                            });
+                        });
+                    egui::CollapsingHeader::new(&scene.study.duration_labels[0])
+                        .id_salt("subtitle-duration-tools")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                let mut min = state.duration.min.is_some();
+                                if ui
+                                    .checkbox(&mut min, &scene.study.duration_labels[1])
+                                    .changed()
+                                {
+                                    state.duration.min = min.then_some(0);
+                                }
+                                if let Some(value) = &mut state.duration.min {
+                                    ui.add(egui::DragValue::new(value).range(0..=86_400_000))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label =
+                                                Some(scene.study.duration_labels[1].clone());
+                                            info
+                                        });
+                                }
+                                let mut max = state.duration.max.is_some();
+                                if ui
+                                    .checkbox(&mut max, &scene.study.duration_labels[2])
+                                    .changed()
+                                {
+                                    state.duration.max = max.then_some(5000);
+                                }
+                                if let Some(value) = &mut state.duration.max {
+                                    ui.add(egui::DragValue::new(value).range(0..=86_400_000))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label =
+                                                Some(scene.study.duration_labels[2].clone());
+                                            info
+                                        });
+                                }
+                                if ui.button(&scene.study.duration_labels[3]).clicked() {
+                                    state.duration = DurationBounds::default();
+                                }
+                            });
+                        });
+                    egui::CollapsingHeader::new(&scene.study.statistics)
+                        .id_salt("subtitle-study-statistics")
+                        .show(ui, |ui| study_statistics(ui, scene, state));
+                    egui::CollapsingHeader::new(&scene.study.speed)
+                        .id_salt("subtitle-reading-speed")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                let mut min = state.speed.min.is_some();
+                                if ui.checkbox(&mut min, &scene.study.min_speed).changed() {
+                                    state.speed.min = min.then_some(0);
+                                }
+                                if let Some(value) = &mut state.speed.min {
+                                    ui.add(egui::DragValue::new(value).range(0..=500))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label = Some(scene.study.min_speed.clone());
+                                            info
+                                        });
+                                }
+                                let mut max = state.speed.max.is_some();
+                                if ui.checkbox(&mut max, &scene.study.max_speed).changed() {
+                                    state.speed.max = max.then_some(20);
+                                }
+                                if let Some(value) = &mut state.speed.max {
+                                    ui.add(egui::DragValue::new(value).range(0..=500))
+                                        .widget_info(|| {
+                                            let mut info =
+                                                WidgetInfo::drag_value(true, *value as f64);
+                                            info.label = Some(scene.study.max_speed.clone());
+                                            info
+                                        });
+                                }
+                                if ui
+                                    .add_enabled(
+                                        state.speed != ReadingSpeed::default(),
+                                        egui::Button::new(&scene.study.reset_speed),
+                                    )
+                                    .clicked()
+                                {
+                                    state.speed = ReadingSpeed::default();
+                                }
+                            });
+                        });
                     ui.horizontal_wrapped(|ui| {
-                        for (label, indices) in [
-                            (&scene.study.html_labels[0], shown_indices(scene, state)),
-                            (
-                                &scene.study.html_labels[1],
-                                state.selected.iter().copied().collect(),
-                            ),
-                        ] {
-                            if ui
-                                .add_enabled(
-                                    scene.bilingual_ready && !indices.is_empty(),
-                                    egui::Button::new(label),
-                                )
-                                .clicked()
-                            {
-                                out.push(Command::SubtitleRowsExport {
-                                    version: scene.version,
-                                    indices,
-                                    format: crate::subtitle_export::ExportFormat::Html,
+                        if ui.button(&scene.study.from_here).clicked() {
+                            state.window.from = Some(scene.pos_ms.max(0));
+                        }
+                        if let Some(from) = state.window.from {
+                            ui.label(clock(from));
+                        }
+                        if ui.button(&scene.study.to_here).clicked() {
+                            state.window.to = Some(scene.pos_ms.max(0));
+                        }
+                        if let Some(to) = state.window.to {
+                            ui.label(clock(to));
+                        }
+                        if ui
+                            .add_enabled(
+                                state.window != TimeWindow::default(),
+                                egui::Button::new(&scene.study.reset_window),
+                            )
+                            .clicked()
+                        {
+                            state.window = TimeWindow::default();
+                        }
+                    });
+                    egui::CollapsingHeader::new(&scene.study.study_groups[2])
+                        .id_salt("subtitle-study-group-2")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                for (label, indices) in [
+                                    (&scene.study.html_labels[0], shown_indices(scene, state)),
+                                    (
+                                        &scene.study.html_labels[1],
+                                        state.selected.iter().copied().collect(),
+                                    ),
+                                ] {
+                                    if ui
+                                        .add_enabled(
+                                            scene.bilingual_ready && !indices.is_empty(),
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        out.push(Command::SubtitleRowsExport {
+                                            version: scene.version,
+                                            indices,
+                                            format: crate::subtitle_export::ExportFormat::Html,
+                                        });
+                                    }
+                                }
+                            });
+                        });
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(&scene.study.invert_shown).clicked() {
+                            for i in shown_indices(scene, state) {
+                                if !state.selected.remove(&i) {
+                                    state.selected.insert(i);
+                                }
+                            }
+                            state.selection_anchor = None;
+                            state.selection_revision = state.selection_revision.wrapping_add(1);
+                        }
+                        if ui.button(&scene.study.select_shown).clicked() {
+                            state.selected.extend(shown_indices(scene, state));
+                            state.selection_revision = state.selection_revision.wrapping_add(1);
+                        }
+                        if ui
+                            .add_enabled(
+                                !state.selected.is_empty(),
+                                egui::Button::new(&scene.study.clear),
+                            )
+                            .clicked()
+                        {
+                            state.selected.clear();
+                            state.selection_revision = state.selection_revision.wrapping_add(1);
+                        }
+                    });
+                    egui::CollapsingHeader::new(&scene.study.copy_export)
+                        .id_salt("subtitle-copy-export-tools")
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                let mut copy = None;
+                                if ui
+                                    .add_enabled(
+                                        scene.export_ready,
+                                        egui::Button::new(&scene.study.copy_shown),
+                                    )
+                                    .clicked()
+                                {
+                                    copy = Some(shown_indices(scene, state));
+                                }
+                                if ui
+                                    .add_enabled(
+                                        scene.export_ready && !state.selected.is_empty(),
+                                        egui::Button::new(&scene.study.copy_selected),
+                                    )
+                                    .clicked()
+                                {
+                                    copy = Some(state.selected.iter().copied().collect());
+                                }
+                                if let Some(indices) = copy {
+                                    match crate::subtitle_export::transcript(
+                                        scene.timeline.cues(),
+                                        &indices,
+                                        scene.timeline.delay_ms,
+                                        scene.export_ready,
+                                    ) {
+                                        Ok(text) => {
+                                            ui.ctx().copy_text(text);
+                                            state.copied = Some(true);
+                                        }
+                                        Err(_) => state.copied = Some(false),
+                                    }
+                                }
+                                if ui
+                                    .add_enabled(
+                                        scene.export_ready && !state.selected.is_empty(),
+                                        egui::Button::new(&scene.study.export_selected),
+                                    )
+                                    .clicked()
+                                {
+                                    out.push(Command::SubtitleRowsExport {
+                                        version: scene.version,
+                                        indices: state.selected.iter().copied().collect(),
+                                        format: crate::subtitle_export::ExportFormat::Srt,
+                                    });
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                for selected in [false, true] {
+                                    let label = if selected {
+                                        &scene.study.vtt_selected
+                                    } else {
+                                        &scene.study.vtt_shown
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            scene.export_ready
+                                                && (!selected || !state.selected.is_empty()),
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        let indices = if selected {
+                                            state.selected.iter().copied().collect()
+                                        } else {
+                                            shown_indices(scene, state)
+                                        };
+                                        out.push(Command::SubtitleRowsExport {
+                                            version: scene.version,
+                                            indices,
+                                            format: crate::subtitle_export::ExportFormat::Vtt,
+                                        });
+                                    }
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                for selected in [false, true] {
+                                    let label = if selected {
+                                        &scene.study.bilingual_selected
+                                    } else {
+                                        &scene.study.bilingual_shown
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            scene.bilingual_ready
+                                                && (!selected || !state.selected.is_empty()),
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        let indices = if selected {
+                                            state.selected.iter().copied().collect()
+                                        } else {
+                                            shown_indices(scene, state)
+                                        };
+                                        out.push(Command::SubtitleRowsExport {
+                                            version: scene.version,
+                                            indices,
+                                            format: crate::subtitle_export::ExportFormat::Bilingual,
+                                        });
+                                    }
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                for selected in [false, true] {
+                                    let label = if selected {
+                                        &scene.study.bilingual_srt_selected
+                                    } else {
+                                        &scene.study.bilingual_srt_shown
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            scene.bilingual_ready
+                                                && (!selected || !state.selected.is_empty()),
+                                            egui::Button::new(label),
+                                        )
+                                        .clicked()
+                                    {
+                                        let indices = if selected {
+                                            state.selected.iter().copied().collect()
+                                        } else {
+                                            shown_indices(scene, state)
+                                        };
+                                        out.push(Command::SubtitleRowsExport {
+                                            version: scene.version,
+                                            indices,
+                                            format:
+                                                crate::subtitle_export::ExportFormat::BilingualSrt,
+                                        });
+                                    }
+                                }
+                            });
+                            if let Some(ok) = state.copied {
+                                ui.label(if ok {
+                                    &scene.study.copied
+                                } else {
+                                    &scene.study.copy_error
                                 });
                             }
-                        }
-                    });
+                        });
                 });
-            ui.horizontal_wrapped(|ui| {
-                if ui.button(&scene.study.invert_shown).clicked() {
-                    for i in shown_indices(scene, state) {
-                        if !state.selected.remove(&i) {
-                            state.selected.insert(i);
-                        }
-                    }
-                    state.selection_anchor = None;
-                    state.selection_revision = state.selection_revision.wrapping_add(1);
-                }
-                if ui.button(&scene.study.select_shown).clicked() {
-                    state.selected.extend(shown_indices(scene, state));
-                    state.selection_revision = state.selection_revision.wrapping_add(1);
-                }
-                if ui
-                    .add_enabled(
-                        !state.selected.is_empty(),
-                        egui::Button::new(&scene.study.clear),
-                    )
-                    .clicked()
-                {
-                    state.selected.clear();
-                    state.selection_revision = state.selection_revision.wrapping_add(1);
-                }
-                let mut copy = None;
-                if ui
-                    .add_enabled(
-                        scene.export_ready,
-                        egui::Button::new(&scene.study.copy_shown),
-                    )
-                    .clicked()
-                {
-                    copy = Some(shown_indices(scene, state));
-                }
-                if ui
-                    .add_enabled(
-                        scene.export_ready && !state.selected.is_empty(),
-                        egui::Button::new(&scene.study.copy_selected),
-                    )
-                    .clicked()
-                {
-                    copy = Some(state.selected.iter().copied().collect());
-                }
-                if let Some(indices) = copy {
-                    match crate::subtitle_export::transcript(
-                        scene.timeline.cues(),
-                        &indices,
-                        scene.timeline.delay_ms,
-                        scene.export_ready,
-                    ) {
-                        Ok(text) => {
-                            ui.ctx().copy_text(text);
-                            state.copied = Some(true);
-                        }
-                        Err(_) => state.copied = Some(false),
-                    }
-                }
-                if ui
-                    .add_enabled(
-                        scene.export_ready && !state.selected.is_empty(),
-                        egui::Button::new(&scene.study.export_selected),
-                    )
-                    .clicked()
-                {
-                    out.push(Command::SubtitleRowsExport {
-                        version: scene.version,
-                        indices: state.selected.iter().copied().collect(),
-                        format: crate::subtitle_export::ExportFormat::Srt,
-                    });
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                for selected in [false, true] {
-                    let label = if selected {
-                        &scene.study.vtt_selected
-                    } else {
-                        &scene.study.vtt_shown
-                    };
-                    if ui
-                        .add_enabled(
-                            scene.export_ready && (!selected || !state.selected.is_empty()),
-                            egui::Button::new(label),
-                        )
-                        .clicked()
-                    {
-                        let indices = if selected {
-                            state.selected.iter().copied().collect()
-                        } else {
-                            shown_indices(scene, state)
-                        };
-                        out.push(Command::SubtitleRowsExport {
-                            version: scene.version,
-                            indices,
-                            format: crate::subtitle_export::ExportFormat::Vtt,
-                        });
-                    }
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                for selected in [false, true] {
-                    let label = if selected {
-                        &scene.study.bilingual_selected
-                    } else {
-                        &scene.study.bilingual_shown
-                    };
-                    if ui
-                        .add_enabled(
-                            scene.bilingual_ready && (!selected || !state.selected.is_empty()),
-                            egui::Button::new(label),
-                        )
-                        .clicked()
-                    {
-                        let indices = if selected {
-                            state.selected.iter().copied().collect()
-                        } else {
-                            shown_indices(scene, state)
-                        };
-                        out.push(Command::SubtitleRowsExport {
-                            version: scene.version,
-                            indices,
-                            format: crate::subtitle_export::ExportFormat::Bilingual,
-                        });
-                    }
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                for selected in [false, true] {
-                    let label = if selected {
-                        &scene.study.bilingual_srt_selected
-                    } else {
-                        &scene.study.bilingual_srt_shown
-                    };
-                    if ui
-                        .add_enabled(
-                            scene.bilingual_ready && (!selected || !state.selected.is_empty()),
-                            egui::Button::new(label),
-                        )
-                        .clicked()
-                    {
-                        let indices = if selected {
-                            state.selected.iter().copied().collect()
-                        } else {
-                            shown_indices(scene, state)
-                        };
-                        out.push(Command::SubtitleRowsExport {
-                            version: scene.version,
-                            indices,
-                            format: crate::subtitle_export::ExportFormat::BilingualSrt,
-                        });
-                    }
-                }
-            });
-            if let Some(ok) = state.copied {
-                ui.label(if ok {
-                    &scene.study.copied
-                } else {
-                    &scene.study.copy_error
-                });
-            }
         });
 }
 
@@ -1921,18 +2052,30 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
         h.run();
+        h.get_by_label("sub-select-line 2").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 2").click();
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
         assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-export-selected").scroll_to_me();
+        h.run();
         h.get_by_label("sub-export-selected").click();
         h.run();
         assert!(h.state().out.iter().any(
             |c| matches!(c, Command::SubtitleRowsExport { version: 1, indices, .. } if indices == &[1])
         ));
+        h.get_by_label("sub-selection-clear").scroll_to_me();
+        h.run();
         h.get_by_label("sub-selection-clear").click();
         h.run();
         assert!(h.state().state.selected.is_empty());
@@ -1944,15 +2087,27 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
         h.run();
+        h.get_by_label("sub-select-line 2").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 2").click();
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-copy-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-copy-shown").click();
         h.step();
         assert!(h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(text) if text.contains("猫") && !text.contains("犬"))));
+        h.run();
+        h.get_by_label("sub-copy-selected").scroll_to_me();
         h.run();
         h.get_by_label("sub-copy-selected").click();
         h.step();
@@ -1966,15 +2121,27 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
         h.run();
+        h.get_by_label("sub-select-line 2").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 2").click();
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vtt-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vtt-shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Vtt, .. } if indices == &[0])));
+        h.get_by_label("sub-vtt-selected").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vtt-selected").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Vtt, .. } if indices == &[1])));
@@ -1988,8 +2155,16 @@ mod tests {
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-bilingual-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-bilingual-shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format: crate::subtitle_export::ExportFormat::Bilingual, .. } if indices == &[0])));
@@ -2005,17 +2180,31 @@ mod tests {
             false,
         );
         h.run();
+        h.get_by_label("sub-select-line 1").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 1").click();
+        h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
         h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-window-from").scroll_to_me();
+        h.run();
         h.get_by_label("sub-window-from").click();
         h.run();
         h.state_mut().pos_ms = 5000;
+        h.get_by_label("sub-window-to").scroll_to_me();
+        h.run();
         h.get_by_label("sub-window-to").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [1]);
         assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vtt-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vtt-shown").click();
         h.run();
         assert!(
@@ -2029,6 +2218,8 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::ListTime(_)))
         );
+        h.get_by_label("sub-window-reset").scroll_to_me();
+        h.run();
         h.get_by_label("sub-window-reset").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
@@ -2075,6 +2266,41 @@ mod tests {
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
     }
 
+    // T-SUB-058: invalid drafts leave the active scope untouched until a complete valid Apply.
+    #[test]
+    fn time_window_drafts_apply_together_and_keep_hidden_ticks() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.state_mut().state.selected.insert(0);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-time-edit").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-time-edit").click();
+        h.run_steps(3);
+        {
+            let d = h.state_mut().state.time_draft.as_mut().unwrap();
+            d.from = "3".into();
+            d.to = "2".into();
+        }
+        h.get_by_label("sub-time-apply").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-time-apply").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1]);
+        h.get_by_label("sub-time-invalid");
+        h.state_mut().state.time_draft.as_mut().unwrap().to = "4".into();
+        h.get_by_label("sub-time-apply").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-time-apply").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [1]);
+        assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+    }
+
     // T-SUB-057: resorting maps current highlights to original cue identities and preserves ticks.
     #[test]
     fn reordered_study_rows_track_original_current_cues() {
@@ -2111,10 +2337,16 @@ mod tests {
         h.state_mut().state.selected.insert(1);
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1]);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-text-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-text-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-search-exact").scroll_to_me();
+        h.run();
         h.get_by_label("sub-search-exact").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0]);
@@ -2134,15 +2366,23 @@ mod tests {
         h.state_mut().state.selected.insert(1);
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-practice-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-practice-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-practice-selected").scroll_to_me();
+        h.run();
         h.get_by_label("sub-practice-selected").click();
         h.run();
         assert!(h.state().out.iter().any(
             |c| matches!(c,Command::PracticeQueue { version:1,indices,passes:2 } if indices == &[1])
         ));
+        h.get_by_label("sub-practice-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-practice-shown").click();
         h.run();
         assert!(
@@ -2173,6 +2413,8 @@ mod tests {
         });
         h.run();
         assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-context-one").scroll_to_me();
+        h.run();
         h.get_by_label("sub-context-one").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
@@ -2201,8 +2443,12 @@ mod tests {
                 ..Default::default()
             }],
         );
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-presets").scroll_to_me();
+        h.run();
         h.get_by_label("sub-presets").click();
         h.run_steps(3);
         h.get_by_label("Two lines").click();
@@ -2229,10 +2475,16 @@ mod tests {
         let mut h = harness(timeline(&[(1000, "猫"), (3000, "猫\n犬")]), 0, false);
         h.run();
         h.state_mut().state.selected.insert(0);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-text-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-text-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-shape-multiple").scroll_to_me();
+        h.run();
         h.get_by_label("sub-shape-multiple").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [1]);
@@ -2259,10 +2511,16 @@ mod tests {
         h.state_mut().state.window.from = Some(2500);
         h.run();
         assert_eq!(h.state().state.rows.cues, [1, 2]);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-text-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-text-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-unique-captions").scroll_to_me();
+        h.run();
         h.get_by_label("sub-unique-captions").click();
         h.run();
         assert!(!h.state().state.unique);
@@ -2282,8 +2540,16 @@ mod tests {
         h.state_mut().state.text_length.min = Some(2);
         h.run();
         assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-vtt-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vtt-shown").click();
         h.run();
         assert!(
@@ -2291,8 +2557,12 @@ mod tests {
                 |c| matches!(c, Command::SubtitleRowsExport { indices, .. } if indices == &[1])
             )
         );
+        h.get_by_label("sub-text-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-text-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-text-reset").scroll_to_me();
+        h.run();
         h.get_by_label("sub-text-reset").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1]);
@@ -2305,10 +2575,16 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 3500, false);
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-practice-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-practice-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-practice-current ×3").scroll_to_me();
+        h.run();
         h.get_by_label("sub-practice-current ×3").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(
@@ -2339,11 +2615,17 @@ mod tests {
         h.state_mut().state.selected.insert(1);
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-invert-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-invert-shown").click();
         h.run();
         assert_eq!(h.state().state.selected, BTreeSet::from([0, 1]));
+        h.get_by_label("sub-invert-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-invert-shown").click();
         h.run();
         assert_eq!(h.state().state.selected, BTreeSet::from([1]));
@@ -2363,15 +2645,23 @@ mod tests {
         h.state_mut().state.selected.insert(1);
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-vocabulary-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vocabulary-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-vocabulary-selected").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vocabulary-selected").click();
         h.run();
         assert!(h.state().out.iter().any(
             |c| matches!(c, Command::VocabularyScope { version: 1, indices } if indices == &[1])
         ));
+        h.get_by_label("sub-vocabulary-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-vocabulary-shown").click();
         h.run();
         assert!(
@@ -2393,8 +2683,12 @@ mod tests {
             false,
         );
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-mask-text").scroll_to_me();
+        h.run();
         h.get_by_label("sub-mask-text").click();
         h.run();
         assert!(h.query_by_label("秘密の猫").is_none());
@@ -2405,6 +2699,8 @@ mod tests {
                 .iter()
                 .all(|r| !r.galley.text().contains("秘密"))
         );
+        h.get_by_label("sub-reveal-line 1").scroll_to_me();
+        h.run();
         h.get_by_label("sub-reveal-line 1").click();
         h.run();
         h.get_by_label("秘密の猫");
@@ -2415,6 +2711,8 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Command::ListText { .. }))
         );
+        h.get_by_label("sub-reveal-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-reveal-shown").click();
         h.run();
         h.get_by_label("秘密の犬");
@@ -2435,10 +2733,16 @@ mod tests {
         h.run();
         assert!(h.state().state.rows.cues.is_empty());
         assert_eq!(h.state().state.selected, BTreeSet::from([0]));
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-duration-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-duration-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-duration-reset").scroll_to_me();
+        h.run();
         h.get_by_label("sub-duration-reset").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1]);
@@ -2454,6 +2758,8 @@ mod tests {
             false,
         );
         h.run();
+        h.get_by_label("sub-select-line 1").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 1").click();
         h.run();
         h.state_mut().state.speed = ReadingSpeed {
@@ -2462,10 +2768,16 @@ mod tests {
         };
         h.run();
         assert_eq!(h.state().state.rows.cues, [1]);
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-speed-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-speed-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-speed-reset").scroll_to_me();
+        h.run();
         h.get_by_label("sub-speed-reset").click();
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
@@ -2484,12 +2796,18 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut h = harness(timeline(&[(1000, "猫猫"), (3000, "犬犬")]), 0, false);
         h.run();
+        h.get_by_label("sub-select-line 2").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 2").click();
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-stats-title").scroll_to_me();
+        h.run();
         h.get_by_label("sub-stats-title").click();
         h.run_steps(3);
         assert!(h.query_by_label("sub-stats-shown: 1 sub-stats-lines · 2 sub-stats-characters · sub-stats-dialogue: 0:01.000").is_some());
@@ -2507,8 +2825,16 @@ mod tests {
         h.run();
         h.state_mut().state.query = "猫".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-copy-export").scroll_to_me();
+        h.run();
+        h.get_by_label("sub-copy-export").click();
+        h.run_steps(3);
+        h.get_by_label("sub-bilingual-srt-shown").scroll_to_me();
+        h.run();
         h.get_by_label("sub-bilingual-srt-shown").click();
         h.run();
         assert!(h.state().out.iter().any(|c| matches!(c, Command::SubtitleRowsExport { indices, format:crate::subtitle_export::ExportFormat::BilingualSrt, .. } if indices == &[0])));
@@ -2524,12 +2850,18 @@ mod tests {
             false,
         );
         h.run();
+        h.get_by_label("sub-select-line 1").scroll_to_me();
+        h.run();
         h.get_by_label("sub-select-line 1").click();
         h.run();
         h.state_mut().state.query = "犬".into();
         h.run();
+        h.get_by_label("sub-study-tools").scroll_to_me();
+        h.run();
         h.get_by_label("sub-study-tools").click();
         h.run_steps(3);
+        h.get_by_label("sub-next-match").scroll_to_me();
+        h.run();
         h.get_by_label("sub-next-match").click();
         h.run();
         assert!(
