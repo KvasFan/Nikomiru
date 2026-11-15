@@ -235,6 +235,39 @@ impl Recall {
         self.hint_revealed = false;
         true
     }
+    pub fn results_tsv(&self) -> Result<String, &'static str> {
+        if self.outcomes.len() != self.cards.len() {
+            return Err("recall-file-invalid");
+        }
+        let pending = self.pending.iter().copied().collect::<HashSet<_>>();
+        let mut out = String::from(
+            "expression\treading\tattempts\tagain\tgood\tskipped\tlast_rating\tcomplete\n",
+        );
+        for (i, (card, result)) in self.cards.iter().zip(&self.outcomes).enumerate() {
+            let last = match result.last {
+                None => "",
+                Some(Grade::Again) => "again",
+                Some(Grade::Good) => "good",
+                Some(Grade::Skipped) => "skipped",
+            };
+            let line = format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{last}\t{}\n",
+                crate::word_export::field(&card.expression),
+                crate::word_export::field(&card.reading),
+                result.attempts,
+                result.again,
+                usize::from(result.last == Some(Grade::Good)),
+                usize::from(result.last == Some(Grade::Skipped)),
+                !pending.contains(&i)
+            );
+            if out.len().saturating_add(line.len()) > 16 << 20 {
+                return Err("analysis-export-too-large");
+            }
+            out.push_str(&line);
+        }
+        Ok(out)
+    }
+
     pub fn summary(&self) -> Summary {
         Summary {
             good: self
@@ -280,6 +313,26 @@ mod tests {
             },
         ]
     }
+    // T-KNW-060: one escaped row per captured word includes pending/completed state and frozen self-ratings.
+    #[test]
+    fn recall_results_are_frozen_neutralised_and_complete() {
+        let mut source = rows();
+        source[0].expression = "=猫".into();
+        let mut r = Recall::start("Study", &source).unwrap();
+        let initial = r.results_tsv().unwrap();
+        r.reveal();
+        r.rate(false);
+        r.skip();
+        r.reveal();
+        r.rate(true);
+        let report = r.results_tsv().unwrap();
+        assert!(report.contains("'=猫\tねこ\t2\t1\t1\t0\tgood\ttrue"));
+        assert!(report.contains("犬\tいぬ\t0\t0\t0\t1\tskipped\ttrue"));
+        assert_eq!(report.lines().count(), 3);
+        assert!(initial.contains("\tfalse"));
+        assert!(!initial.contains("\tgood\ttrue"));
+    }
+
     // T-KNW-058: restarts preserve frozen cards/hints, reset progress and shuffle each initial identity exactly once.
     #[test]
     fn recall_restarts_are_seeded_permutations_without_losing_hints() {

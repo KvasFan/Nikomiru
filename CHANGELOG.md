@@ -4,6 +4,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+- Recall results export (KNW-060, M99).
+
 - Portable recall resume files (KNW-059, M98).
 
 - Restart recall in varied orders (KNW-058, M97).

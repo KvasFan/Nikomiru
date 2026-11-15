@@ -1363,3 +1363,5 @@ recall-file-invalid = Il file del ripasso non è valido o contiene progressi inc
 recall-file-too-large = Il file del ripasso supera i limiti previsti.
 recall-file-version = Questa versione del file del ripasso non è supportata.
 recall-file-error = Impossibile leggere o salvare i progressi: { $reason }
+
+recall-results-export = Esporta risultati del ripasso…

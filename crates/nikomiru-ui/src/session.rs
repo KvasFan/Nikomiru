@@ -399,6 +399,7 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     pub(crate) recall_covered: bool,
+    recall_results: Option<String>,
     recall_file: Option<Vec<u8>>,
     recall: Option<crate::recall::Recall>,
     status_undo: Option<crate::words::StatusUndo>,
@@ -801,6 +802,7 @@ impl Session {
             status_undo: None,
             recall: None,
             recall_file: None,
+            recall_results: None,
             recall_covered: false,
             vocabulary_scope: None,
             vocabulary_scope_id: 0,
@@ -1634,6 +1636,39 @@ impl Session {
                 self.recall = Some(r);
             }
             Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Freeze one result row per captured recall word without advancing the round.
+    pub fn recall_results_prepare(&mut self) -> bool {
+        self.recall_results = None;
+        let Some(r) = &self.recall else {
+            return false;
+        };
+        match r.results_tsv() {
+            Ok(text) => {
+                self.recall_results = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the frozen recall results.
+    pub fn recall_results_to(&mut self, path: &Path) {
+        let Some(text) = self.recall_results.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("recall-file-error", &[("reason", e.to_string())])),
         }
     }
 

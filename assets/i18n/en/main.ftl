@@ -1363,3 +1363,5 @@ recall-file-invalid = The recall file is invalid or contains inconsistent progre
 recall-file-too-large = The recall file exceeds its size limits.
 recall-file-version = This recall file version is not supported.
 recall-file-error = Could not read or save recall progress: { $reason }
+
+recall-results-export = Export recall results…

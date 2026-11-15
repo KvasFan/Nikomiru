@@ -1346,3 +1346,5 @@ recall-file-invalid = ファイルが無効か、進捗の整合性がありま�
 recall-file-too-large = 想起練習ファイルが上限を超えています。
 recall-file-version = この想起練習ファイルのバージョンには対応していません。
 recall-file-error = 進捗を読み書きできません：{ $reason }
+
+recall-results-export = 想起練習の結果を書き出す…
