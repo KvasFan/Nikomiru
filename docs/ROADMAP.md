@@ -1477,3 +1477,5 @@ M72–M81 are complete. Full regression passed 1,013 workspace/integration tests
 | M89 | SUB-061 | Skip and restart practice cues | done |
 | M90 | KNW-051 | Vocabulary sentence concordance export | done |
 | M91 | KNW-052 | Portable study presets | done |
+
+M82–M91 are complete. Full regression passed 1,029 workspace/integration tests and 104 actual GUI cases. See [source QA 2.100.0](qa/2.100.0.md).

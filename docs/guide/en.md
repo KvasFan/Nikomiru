@@ -321,3 +321,21 @@ Word examples can include one or two original neighbouring cues on each side. Ex
 With the subtitle list open, Alt+Up/Down navigates matching starts, Alt+R reveals the current shown line in listening mode, and Alt+T toggles its selection. Configure these in Shortcuts. Typing focus, covering pages, closed lists and stale scopes prevent study actions. Navigation preserves pause.
 
 Sentence repetition can capture shown or selected cues as a finite queue of up to one thousand unique original cues. Choose two, three or five passes per line; the queue follows source order and pauses after the last line. All intervals must be complete, valid and within the media duration before playback begins. Remaining passes and lines are shown. Filter changes do not rewrite a running snapshot; manual controls, primary timing/source changes and Stop repetition cancel the whole queue.
+
+## Guided practice and portable filters (2.100.0 source)
+
+Caption search can match the entire normalised caption. Text filters also offer source order, shortest/longest duration and shortest text. Highlighting keeps the original current cue; previous/next matching navigation still follows time. Range selections follow display order, while subtitle exports and practice queues keep source order. Exact mode and display order persist in named subtitle presets.
+
+Enter study time bounds accepts nonnegative seconds, M:SS or H:MM:SS, with up to three decimal digits using a point or comma. Leave either field empty to remove that bound. Apply validates both fields together and rejects an end at/before the start. Draft edits do not affect the scope until applied. Study tools scroll internally so subtitle rows remain available; copy/export controls have their own expandable section.
+
+The translation button beside a cue opens its complete overlapping secondary text in a read-only window, using each track’s delay. This hint leaves primary listening text hidden and does not change playback. Changing a source or delay closes the old preview. Interactive translation text is bounded to 64 KiB.
+
+Practice recalling words from readings hides headwords in vocabulary lists, including accessible control names. Reveal one word or all shown; dictionary/example actions enable after reveal. Distinct readings supply clues. Source/count changes hide words again; status-only updates keep reveals. Explicit copying/exporting still saves the original words. This mode stays local to the view and is excluded from filter presets.
+
+Undo word status restores one previous single/bulk change across study views. It checks the dictionary generation and all expected current values before restoring, and preserves selections. A snapshot holds at most ten thousand identities and eight MiB of identity text. A conflicting later status/dictionary change makes the old action unavailable; undo does not rewrite encounter history.
+
+Sentence repetition offers a session-only pause of zero to ten thousand milliseconds between passes/cues. The interface stays responsive, shows the wait, and Stop repetition/manual/source controls cancel delayed resumes. A running wait retains its captured deadline when the setting changes. Skip current line advances the captured queue immediately, pausing when no cue remains. Restart current line restores that cue’s original finite count and retains the rest of the queue, including after completion.
+
+In subtitle vocabulary, the HTML/export section can save examples of shown or selected words as TSV. Exact segmented expression/reading identities produce one row per matching original cue, with effective milliseconds and caption text. Reports require a complete segmentation cache and are bounded to one thousand words, one hundred thousand matches and sixteen MiB; stale/incomplete requests do not write a partial file.
+
+Named preset panels can import/export both vocabulary and subtitle filter collections as JSON. The one-MiB versioned file contains only filters, excluding paths, services and secrets. Import validates the complete file and merges by name, replacing matching names while retaining others; each collection remains limited to sixteen entries. Invalid/unknown filters or excess capacity leave configuration untouched. Read-only configuration rejects import, and save results use the normal configuration writer.
