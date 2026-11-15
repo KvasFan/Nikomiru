@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Read UTF-8 TXT/Markdown files and explicitly pasted text in Books, with durable local sources, content identities, ruby, vocabulary analysis and existing lookup/mining/progress integration (M102, BOK-011…BOK-014).
+
 ### Changed
 
 - Refresh the roadmap against Fushi, Migaku, jidoujisho, Mizune, OpenKoto and Lector; distinguish implemented capabilities, proposed M102–M119 scopes and decision-gated gaps, with primary sources.

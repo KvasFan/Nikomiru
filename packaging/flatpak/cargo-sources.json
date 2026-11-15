@@ -4382,6 +4382,19 @@
   },
   {
     "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/pulldown-cmark-0.13.6",
+    "sha256": "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/pulldown-cmark/pulldown-cmark-0.13.6.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b\"}",
+    "dest": "cargo/vendor/pulldown-cmark-0.13.6",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
     "dest": "cargo/vendor/pxfm-0.1.30",
     "sha256": "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea",
     "type": "archive",
@@ -6080,6 +6093,19 @@
   {
     "contents": "{\"files\":{},\"package\":\"dce1bf08044d4b7a94028c93786f8566047edc11110595914de93362559bc658\"}",
     "dest": "cargo/vendor/unic-langid-impl-0.9.6",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/unicase-2.10.0",
+    "sha256": "357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/unicase/unicase-2.10.0.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f\"}",
+    "dest": "cargo/vendor/unicase-2.10.0",
     "dest-filename": ".cargo-checksum.json",
     "type": "inline"
   },

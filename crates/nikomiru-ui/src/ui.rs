@@ -72,6 +72,8 @@ pub enum Inbound {
     Ocr(crate::ocr::OcrEvent),
     /// A part of a page was read (MNG-003).
     OcrRead(crate::ocr::Reading),
+    /// A pasted source was validated and saved.
+    BookPasted(Result<(PathBuf, nikomiru_books::Book), String>),
     /// A book file was read (BOK-001).
     BookRead {
         /// The file.
@@ -327,6 +329,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Ocr(_) => "Ocr",
             Inbound::OcrRead(_) => "OcrRead",
             Inbound::BookRead { .. } => "BookRead",
+            Inbound::BookPasted(_) => "BookPasted",
             Inbound::BookCount { .. } => "BookCount",
             Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
@@ -654,6 +657,8 @@ pub(crate) enum Command {
     StudyReport(crate::study_report::Scope),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
+    /// Save and read a document explicitly entered in Books.
+    BookPaste(crate::books::Paste),
     /// A book of the list.
     BookChoose(String),
     BookRemove(String),
@@ -1173,6 +1178,10 @@ impl Ui {
             }
             Inbound::BookCount { request, result } => {
                 self.session.book_count_done(&request, result);
+                true
+            }
+            Inbound::BookPasted(result) => {
+                self.session.book_pasted(result);
                 true
             }
             Inbound::BookRead { path, read } => {
@@ -1758,6 +1767,7 @@ impl Ui {
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookPage(address) => s.book_page(&address),
+            Command::BookPaste(paste) => s.book_paste(paste),
             Command::BookRemove(uid) => s.book_remove(&uid),
             Command::BookChapter(chapter) => s.book_chapter(chapter),
             Command::BookAlong(on) => s.book_along(on),
@@ -2056,6 +2066,17 @@ impl Ui {
                 request,
                 Box::new(move |result| waker.wake(Inbound::WebVideo { generation, result })),
             );
+        }
+        for paste in self.session.take_book_pastes() {
+            let waker = self.waker.clone();
+            if let Err(error) = crate::books::start_paste(
+                self.session.text_dir(),
+                paste,
+                self.session.translator_clone(),
+                Box::new(move |result| waker.wake(Inbound::BookPasted(result))),
+            ) {
+                self.session.book_pasted(Err(error));
+            }
         }
         for path in self.session.take_book_reads() {
             let waker = self.waker.clone();

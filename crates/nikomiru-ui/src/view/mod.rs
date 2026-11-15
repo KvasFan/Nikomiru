@@ -203,7 +203,15 @@ impl FileDialog {
                 vec![
                     (
                         tr("books-filter"),
-                        vec!["*.epub", "*.cbz", "*.html", "*.htm"],
+                        vec![
+                            "*.epub",
+                            "*.cbz",
+                            "*.html",
+                            "*.htm",
+                            "*.txt",
+                            "*.md",
+                            "*.markdown",
+                        ],
                     ),
                     all,
                 ],

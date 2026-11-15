@@ -33,6 +33,8 @@ const PRESETS: &str = "mpv";
 pub const REVIEW: &str = "review";
 /// The web pages read as books (WEB-003).
 pub const WEB: &str = "web";
+/// Durable pasted sources (BOK-013).
+pub const TEXT: &str = "text";
 const PENDING: &str = "restore-pending";
 const BEFORE: &str = "before-restore";
 /// Marks an unpacked backup as whole.
@@ -183,6 +185,7 @@ pub fn create(contents: &Contents<'_>, out: &Path) -> Result<Manifest, BackupErr
         add_folder(&mut zip, contents.presets_dir, PRESETS)?;
         add_folder(&mut zip, &contents.data_dir.join(REVIEW), REVIEW)?;
         add_folder(&mut zip, &contents.data_dir.join(WEB), WEB)?;
+        add_folder(&mut zip, &contents.data_dir.join(TEXT), TEXT)?;
         if contents.dictionaries {
             add_folder(&mut zip, &contents.data_dir.join(DICTS), DICTS)?;
         }
@@ -242,7 +245,7 @@ pub fn unpack(archive: &Path, data_dir: &Path) -> Result<PathBuf, BackupError> {
             let root = name.components().next().map(|c| c.as_os_str().to_owned());
             let known = root.as_deref().is_some_and(|r| {
                 [
-                    MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW, WEB,
+                    MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW, WEB, TEXT,
                 ]
                 .iter()
                 .any(|k| r == std::ffi::OsStr::new(k))
@@ -318,6 +321,11 @@ pub fn finish(data_dir: &Path, config_file: &Path, presets_dir: &Path) -> std::i
     )?;
     replace(&pending.join(WEB), &data_dir.join(WEB), &before.join(WEB))?;
     replace(
+        &pending.join(TEXT),
+        &data_dir.join(TEXT),
+        &before.join(TEXT),
+    )?;
+    replace(
         &pending.join(DICTS),
         &data_dir.join(DICTS),
         &before.join(DICTS),
@@ -351,6 +359,12 @@ mod tests {
         std::fs::write(data.join("review/nikomiru_00.m4a"), "audio").unwrap();
         std::fs::create_dir_all(data.join(WEB)).unwrap();
         std::fs::write(data.join("web/nikomiru_00.html"), "page").unwrap();
+        std::fs::create_dir_all(data.join(TEXT)).unwrap();
+        std::fs::write(
+            data.join("text/local.nikomiru-text"),
+            r#"{"version":1,"title":"Study","format":"plain","text":"猫"}"#,
+        )
+        .unwrap();
         std::fs::write(presets.join("a.conf"), "preset").unwrap();
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         let record = VideoRecord {
@@ -409,6 +423,8 @@ mod tests {
             "review/nikomiru_00.m4a",
             // T-WEB-003 the pages saved
             "web/nikomiru_00.html",
+            // T-BOK-013: pasted sources belong to ordinary backups.
+            "text/local.nikomiru-text",
         ] {
             assert!(list.iter().any(|n| n == name), "{name}: {list:?}");
         }
@@ -466,6 +482,12 @@ mod tests {
         assert!(data.join("dicts/one/dict.redb").exists());
         assert!(data.join("review/nikomiru_00.m4a").exists());
         assert!(data.join("web/nikomiru_00.html").exists());
+        // T-BOK-013: restore retains the exact local source text.
+        assert!(
+            std::fs::read_to_string(data.join("text/local.nikomiru-text"))
+                .unwrap()
+                .contains("猫")
+        );
         assert!(!data.join("restore-pending").exists());
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         assert_eq!(

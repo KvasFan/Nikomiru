@@ -76,6 +76,10 @@ pub(crate) struct State {
     folder: bool,
     /// The address of a web page, as typed (WEB-001).
     address: String,
+    paste_open: bool,
+    paste_title: String,
+    paste_text: String,
+    paste_markdown: bool,
     /// The book those pictures are of, and the pictures drawn so far, by
     /// their key (BOK-010).
     book: String,
@@ -1130,6 +1134,12 @@ fn list(
         };
         ui.add(egui::Label::new(RichText::new(text).color(shade)).wrap());
     }
+    if ui
+        .add_enabled(!s.page.busy, Button::new(tr(s, "books-paste")))
+        .clicked()
+    {
+        state.paste_open = true;
+    }
     // WEB-001: a web page, read as a book
     ui.horizontal(|ui| {
         let label = ui.label(tr(s, "books-web"));
@@ -1193,6 +1203,58 @@ fn list(
         });
 }
 
+fn paste_editor(ctx: &egui::Context, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    if !state.paste_open {
+        return;
+    }
+    let mut open = true;
+    let mut submitted = false;
+    egui::Window::new(tr(s, "books-paste"))
+        .id(Id::unique("paste-book-editor"))
+        .open(&mut open)
+        .default_width(560.0)
+        .show(ctx, |ui| {
+            let label = ui.label(tr(s, "books-paste-title"));
+            ui.add(egui::TextEdit::singleline(&mut state.paste_title).char_limit(256))
+                .labelled_by(label.id);
+            ui.checkbox(&mut state.paste_markdown, tr(s, "books-paste-markdown"));
+            ui.label(tr(s, "books-paste-hint"));
+            let label = ui.label(tr(s, "books-paste-content"));
+            egui::ScrollArea::vertical()
+                .max_height(ctx.content_rect().height() * 0.45)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut state.paste_text)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(12)
+                            .char_limit(nikomiru_books::text::MAX_BYTES),
+                    )
+                    .labelled_by(label.id);
+                });
+            let ready = !s.page.busy
+                && !state.paste_title.trim().is_empty()
+                && !state.paste_title.chars().any(char::is_control)
+                && !state.paste_text.trim().is_empty()
+                && state.paste_text.len() <= nikomiru_books::text::MAX_BYTES;
+            if ui
+                .add_enabled(ready, Button::new(tr(s, "books-paste-read")))
+                .clicked()
+            {
+                out.push(Command::BookPaste(crate::books::Paste {
+                    title: state.paste_title.trim().into(),
+                    text: state.paste_text.clone(),
+                    format: if state.paste_markdown {
+                        nikomiru_books::text::Format::Markdown
+                    } else {
+                        nikomiru_books::text::Format::Plain
+                    },
+                }));
+                submitted = true;
+            }
+        });
+    state.paste_open = open && !submitted;
+}
+
 /// Draws the page; whether it closes, and whether a file is to be chosen.
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -1231,6 +1293,7 @@ pub(crate) fn draw(
                     }
                 });
         });
+    paste_editor(ctx, s, state, out);
     (close, add)
 }
 
@@ -1450,6 +1513,7 @@ mod tests {
         OpenBook {
             uid: "book/a".into(),
             book: Book {
+                identity: None,
                 title: "本".into(),
                 author: String::new(),
                 right_to_left: false,
@@ -1947,5 +2011,28 @@ mod tests {
                 .any(|c| matches!(c, Command::BookChoose(u) if u == "book/a"))
         );
         let _ = h.get_by_label("50 %");
+    }
+    // T-BOK-013: an explicit editor submission is required, empty input is disabled and the draft survives submission.
+    #[test]
+    fn pasted_text_editor_emits_an_explicit_bounded_document() {
+        let mut h = harness(BooksPage::default());
+        h.run();
+        h.get_by_label("books-paste").click();
+        h.run();
+        h.get_by_label("books-paste-read").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        {
+            let state = &mut h.state_mut().state;
+            state.paste_title = "読書".into();
+            state.paste_text = "# 猫\n\n本文".into();
+            state.paste_markdown = true;
+        }
+        h.run();
+        h.get_by_label("books-paste-read").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c|matches!(c,Command::BookPaste(p) if p.title=="読書"&&p.text=="# 猫\n\n本文"&&p.format==nikomiru_books::text::Format::Markdown)));
+        assert!(!h.state().state.paste_open);
+        assert_eq!(h.state().state.paste_text, "# 猫\n\n本文");
     }
 }

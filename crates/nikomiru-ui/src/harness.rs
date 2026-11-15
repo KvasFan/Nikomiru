@@ -586,6 +586,10 @@ pub fn state() -> Result<Value, String> {
                     "last_read_at": b.last_read_at, "whole_score":whole_score })
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
+            "uid":s.books_page.open.as_ref().map(|o|&o.uid),
+            "path":s.books_page.open.as_ref().and_then(|o|s.books_page.list.iter().find(|(u,_)|*u==o.uid).map(|(_,b)|&b.path)),
+            "paragraph":s.books_page.open.as_ref().map(|o|o.paragraph),
+            "paragraphs":s.books_page.open.as_ref().and_then(|o|o.book.chapters.get(o.chapter).map(|c|c.paragraphs.iter().map(|p|json!({"text":p.text,"heading":p.heading,"ruby":p.ruby.iter().map(|r|json!({"start":r.range.start,"end":r.range.end,"text":r.text})).collect::<Vec<_>>()})).collect::<Vec<_>>())),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
             "vertical": s.book_vertical(),
             "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
@@ -1154,6 +1158,7 @@ pub fn books(
                     Command::BookAnalysisCancel(uid)
                 });
             }
+            "choose" => out.push(Command::BookChoose(path.clone().unwrap_or_default())),
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
             "listen" => out.push(Command::BookListen),
@@ -1678,5 +1683,20 @@ pub fn recall(action: String, args: Value) -> Result<(), String> {
             }
         }
         _ => {}
+    })
+}
+
+/// Submit the explicit paste-and-read flow through the normal asynchronous source worker.
+pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::BookPaste(crate::books::Paste {
+            title,
+            text,
+            format: if markdown {
+                nikomiru_books::text::Format::Markdown
+            } else {
+                nikomiru_books::text::Format::Plain
+            },
+        }))
     })
 }

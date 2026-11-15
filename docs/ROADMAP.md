@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; source implementation through M101, candidate scopes M102–M119 |
+| Status | Living roadmap; M102 implemented in development, candidate scopes M103–M119 |
 | Last updated | 2026-11-15 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-The roadmap splits the work into **milestones** (implemented continuations through M101, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (implemented continuations through M102, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
 
-Current source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
+Latest published source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
 
 There are no dates: a milestone is closed when all its exit criteria pass, not when a deadline expires. The sizes (S/M/L/XL) only give an idea of the relative effort.
 
@@ -1526,11 +1526,11 @@ Requested by the maintainer after publishing source v2.110.0. This comparison us
 
 ### Candidate milestones after M101
 
-Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102 is **in progress**; the other candidates are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102 is **done in development**; candidates M103–M119 are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
 
 | Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
 |---|---|---|---|---|
-| M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | in progress |
+| M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | done |
 | M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | not started |
 | M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | not started |
 | M105 | P1 / L | **Typed and multiple-choice cloze.** Explicitly turn captured sentences into masked-word exercises with Unicode-aware answer rules and distractors. Offer finite practice and a separate opt-in scheduled mode using the existing review engine. Check answer concealment, ambiguous readings, undo and single ownership of schedules. No Japanese bank is presumed available. | [Lector practice][src-lector-practice], [language limitations][src-lector-languages] | not started |
@@ -1596,3 +1596,5 @@ Use a small real fixture from the relevant workflow, record the upstream version
 Implement safe bounded loose-text parsing and an explicit paste editor using the existing book reader, content-derived document identities and durable local pasted sources. Requirements and checks are specified above in SPECIFICATION/TEST before implementation. Reuse existing lookup, analysis, mining, progress and backup paths. No release/version change is implied by starting this milestone.
 
 **Exit criteria**: T-BOK-011…T-BOK-014 logic/component/native-app cases, translated UI/errors, `cargo xtask ci`, regenerated dependency/package notices and documented remaining Markdown rendering limits.
+
+M102 is complete in development: full CI passed 1,052 workspace/integration tests and 109 actual GUI cases in 462 seconds. See [M102 QA](qa/m102.md). The work is Unreleased on `development/m102-text-reader`; published source/binary tags are unchanged.

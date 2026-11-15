@@ -550,6 +550,7 @@ fn run(
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
         screenshots_dir: paths.screenshots_dir(),
+        text_dir: paths.data_dir.join("text"),
         anki: Box::new(anki),
         online: Box::new(online),
         web_video: Box::new(nikomiru_app::web_video::Worker::start(translator.clone())),

@@ -17,6 +17,8 @@ mod epub;
 mod markup;
 #[cfg(feature = "test-support")]
 pub mod sample;
+/// Bounded TXT, Markdown and durable pasted documents (BOK-011…BOK-014).
+pub mod text;
 pub mod vertical;
 pub mod web;
 
@@ -34,6 +36,7 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     match extension.as_deref() {
         Some("cbz" | "zip") => cbz::read(path),
         Some("html" | "htm" | "xhtml") => web::read(path),
+        Some("txt" | "md" | "markdown" | "nikomiru-text") => text::read(path, None),
         _ => epub::read(path),
     }
 }
@@ -72,6 +75,8 @@ pub struct Chapter {
 /// A book.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Book {
+    /// Content-derived identity for loose documents; legacy books retain their existing identity.
+    pub identity: Option<String>,
     /// Its title.
     pub title: String,
     /// Its author.
@@ -142,6 +147,9 @@ pub enum BookError {
     /// (WEB-001).
     #[error("the page is not UTF-8")]
     NotPage,
+    /// Invalid UTF-8, controls, title or managed document format/version.
+    #[error("invalid text document")]
+    InvalidText,
 }
 
 impl nikomiru_core::Localized for BookError {
@@ -154,6 +162,7 @@ impl nikomiru_core::Localized for BookError {
             Self::NotCbz(_) => "error-book-cbz",
             Self::NoPages => "error-book-no-pages",
             Self::NotPage => "error-book-not-page",
+            Self::InvalidText => "error-book-invalid-text",
         }
     }
 
@@ -162,7 +171,9 @@ impl nikomiru_core::Localized for BookError {
             Self::Io(reason) | Self::NotEpub(reason) | Self::NotCbz(reason) => {
                 vec![("reason", reason.clone())]
             }
-            Self::TooLarge | Self::NoText | Self::NoPages | Self::NotPage => Vec::new(),
+            Self::TooLarge | Self::NoText | Self::NoPages | Self::NotPage | Self::InvalidText => {
+                Vec::new()
+            }
         }
     }
 }
@@ -182,6 +193,7 @@ mod tests {
             BookError::NotCbz("r".into()),
             BookError::NoPages,
             BookError::NotPage,
+            BookError::InvalidText,
         ];
         let refs: Vec<&dyn nikomiru_core::Localized> = errors
             .iter()

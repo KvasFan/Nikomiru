@@ -197,6 +197,8 @@ pub struct Services {
     pub dictionaries: Box<dyn DictionaryService>,
     /// Where screenshots go (PLY-011).
     pub screenshots_dir: PathBuf,
+    /// Durable locally pasted text sources.
+    pub text_dir: PathBuf,
     /// Mining to Anki (ADR 0007).
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
@@ -487,6 +489,7 @@ pub struct Session {
     pub books_page: crate::books::BooksPage,
     /// Books to read, taken by the UI layer.
     book_reads: Vec<PathBuf>,
+    book_pastes: Vec<crate::books::Paste>,
     /// The part of a page to read (MNG-003).
     ocr_job: Option<crate::ocr::OcrJob>,
     /// The reading model is to be fetched (MNG-004).
@@ -852,6 +855,7 @@ impl Session {
             setup_jobs: Vec::new(),
             books_page: crate::books::BooksPage::default(),
             book_reads: Vec::new(),
+            book_pastes: Vec::new(),
             ocr_job: None,
             ocr_fetch: false,
             read_waiting: None,
@@ -6507,6 +6511,34 @@ impl Session {
         }
     }
 
+    /// Explicit paste submission; parsing and disk I/O run on the book worker.
+    pub fn book_paste(&mut self, paste: crate::books::Paste) {
+        if self.books_page.busy {
+            return;
+        }
+        self.books_page.busy = true;
+        self.books_page.status = None;
+        self.book_pastes.push(paste);
+    }
+    /// Pasted documents to validate and retain off the interface thread.
+    pub fn take_book_pastes(&mut self) -> Vec<crate::books::Paste> {
+        std::mem::take(&mut self.book_pastes)
+    }
+    /// The validated source is registered only after its atomic save succeeds.
+    pub fn book_pasted(&mut self, result: Result<(PathBuf, nikomiru_books::Book), String>) {
+        match result {
+            Ok((path, book)) => self.book_read(path, Ok(book)),
+            Err(e) => {
+                self.books_page.busy = false;
+                self.books_page.status = Some((e, false));
+            }
+        }
+    }
+    /// Pasted sources share the ordinary backup's source tree.
+    pub fn text_dir(&self) -> PathBuf {
+        self.services.text_dir.clone()
+    }
+
     /// "Open" with a web page's address (WEB-001): asked of the network only
     /// now (PRV-001).
     pub fn book_page(&mut self, address: &str) {
@@ -6611,8 +6643,15 @@ impl Session {
                 return;
             }
         };
+        if self.books_page.open.is_some() {
+            self.popups.playback_changed_by_user();
+            self.book_close();
+        }
         let chars = book.chars();
-        let uid = nikomiru_library::books::book_uid(&book.title, &book.author, chars);
+        let uid = book
+            .identity
+            .clone()
+            .unwrap_or_else(|| nikomiru_library::books::book_uid(&book.title, &book.author, chars));
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = library
             .and_then(|lib| lib.book(&uid).ok().flatten())

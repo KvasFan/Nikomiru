@@ -29,7 +29,9 @@ pub fn count(
         Err(nikomiru_books::BookError::NoText) => return Ok(Outcome::NoText),
         Err(error) => return Err(tr.error(&error)),
     };
-    let uid = nikomiru_library::books::book_uid(&book.title, &book.author, book.chars());
+    let uid = book.identity.clone().unwrap_or_else(|| {
+        nikomiru_library::books::book_uid(&book.title, &book.author, book.chars())
+    });
     if uid != request.uid {
         return Err(tr.tr("books-score-source-changed", &[]));
     }

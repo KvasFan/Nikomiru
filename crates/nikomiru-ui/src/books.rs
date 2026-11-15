@@ -81,6 +81,39 @@ pub fn start_read(
     }
 }
 
+/// A pasted document captured by the explicit editor submission.
+#[derive(Debug, Clone)]
+pub struct Paste {
+    /// Display title, bounded by the document reader.
+    pub title: String,
+    /// Original text; never rendered as executable HTML.
+    pub text: String,
+    /// Explicit plain-text or Markdown interpretation.
+    pub format: nikomiru_books::text::Format,
+}
+/// A validated, retained source or translated failure.
+pub type Pasted = Result<(PathBuf, Book), String>;
+
+/// Validate, atomically save and parse a pasted source off the UI thread.
+pub fn start_paste(
+    dir: PathBuf,
+    paste: Paste,
+    translator: Translator,
+    done: Box<dyn FnOnce(Pasted) + Send>,
+) -> Result<(), String> {
+    let errors = translator.clone();
+    std::thread::Builder::new()
+        .name("paste-book".into())
+        .spawn(move || {
+            done(
+                nikomiru_books::text::save(&dir, &paste.title, &paste.text, paste.format)
+                    .map_err(|e| translator.error(&e)),
+            );
+        })
+        .map(|_| ())
+        .map_err(|e| errors.tr("error-book-io", &[("reason", e.to_string())]))
+}
+
 /// The share of a book read, in percent.
 pub fn percent(record: &BookRecord) -> u64 {
     (record.read_chars * 100)

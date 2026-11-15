@@ -75,6 +75,7 @@ pub fn read_text(path: &Path, cancel: &Cancel) -> Result<Book, BookError> {
         return Err(BookError::TooLarge);
     }
     let book = match extension.as_deref() {
+        Some("txt" | "md" | "markdown" | "nikomiru-text") => crate::text::read(path, Some(cancel))?,
         Some("html" | "htm" | "xhtml") => {
             if metadata.len() > MAX_ENTRY_BYTES {
                 return Err(BookError::TooLarge);

@@ -312,6 +312,12 @@ fn run(command: &Value) -> Result<Value, String> {
             command["url"].as_str().map(str::to_string),
         )
         .map(|()| Value::Null),
+        Some("books-paste") => harness::book_paste(
+            text(command, "title")?.into(),
+            text(command, "text")?.into(),
+            command["markdown"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("books") => harness::books(
             text(command, "action")?,
             command["path"].as_str().map(str::to_string),
