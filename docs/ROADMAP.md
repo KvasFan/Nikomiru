@@ -2,11 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 |
-| Date | 2026-10-19 |
+| Status | Living roadmap; source implementation through M101, candidate scopes M102–M119 |
+| Last updated | 2026-11-15 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-The roadmap splits the work into **milestones** (M0…M8). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (implemented continuations through M101, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+
+Current source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
 
 There are no dates: a milestone is closed when all its exit criteria pass, not when a deadline expires. The sizes (S/M/L/XL) only give an idea of the relative effort.
 
@@ -699,7 +701,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 ---
 
-## Gap analysis against Migaku and similar tools (2026-11-09)
+## Historical gap analysis against Migaku and similar tools (2026-11-09)
 
 Asked by the maintainer: what Migaku and similar programs have that Nikomiru lacks. The programs compared are Migaku (its browser extension and apps), asbplayer, Language Reactor and SubMiner/Saitenka, as of 2026-11-09, from their store pages, their documentation and their sites. Nikomiru already has, among others:
 
@@ -708,16 +710,9 @@ Asked by the maintainer: what Migaku and similar programs have that Nikomiru lac
 - the dual subtitles, the pause at the end of each line and the alignment with the audio;
 - books, manga and web pages.
 
-What it lacks is mostly one thing: **it does not know which words the learner knows**. Migaku's core is built on that, and asbplayer and SubMiner added it:
+At that date, the main gap was learner vocabulary knowledge: statuses, Anki-derived known words, comprehension scores and playback guided by unknown words. **Those gaps have since been implemented in M20–M24 and extended through M101.** The table below is a historical snapshot, not the current missing-feature list. Current gaps and proposals are in the [2026-11-15 comparison](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15). AI and speech features still follow SPECIFICATION §1.3.
 
-- word statuses, and known words taken from Anki;
-- words coloured in the subtitles, and lines with one new word (i+1);
-- a comprehension score per episode;
-- playback that shows or pauses only on lines with new words.
-
-Nikomiru only underlines the words already made into cards (LKP-061). M20…M24 bring these in order of value; the AI and speech features stay excluded by §1.3 of the specification until the maintainer decides.
-
-| Feature | Who has it | Nikomiru | Where |
+| Feature | Who has it | Nikomiru on 2026-11-09 | Where |
 |---|---|---|---|
 | Word statuses (unknown, learning, known, ignored) | Migaku, asbplayer, Language Reactor (saved words) | no: only cards made | M20 |
 | Known words from Anki decks, by card interval | Migaku, asbplayer, SubMiner | no | M20 |
@@ -1355,7 +1350,7 @@ batch `cargo xtask ci --full` and committed/pushed source.
 
 ## For the maintainer to decide (§1.3 of the specification)
 
-These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:
+These were identified in the first Migaku comparison. §1.3 still excludes AI, speech recognition and speech synthesis. The [expanded decision backlog](#features-requiring-a-scope-or-architecture-decision) below also covers the other five projects; listing a gap does not change those exclusions:
 
 | Feature | How it could be done | What it costs |
 |---|---|---|
@@ -1370,7 +1365,7 @@ Completed in M25–M27: progressive graphic OCR, explicit external VobSub pairs 
 
 ## Backlog after M16 (in no binding order)
 
-Every item requires a change to SPECIFICATION.md before work starts.
+Every item requires a change to SPECIFICATION.md before work starts. The [M102–M119 candidate scopes](#candidate-milestones-after-m101) extend this backlog with the six-project comparison; AniDB identification remains a separate existing item.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
@@ -1496,3 +1491,108 @@ M82–M91 are complete. Full regression passed 1,029 workspace/integration tests
 | M101 | KNW-062 | Local recall summary history | done |
 
 M92–M101 are complete. Full regression passed 1,046 workspace/integration tests and 107 actual GUI cases. See [source QA 2.110.0](qa/2.110.0.md).
+
+## Comparison with Fushi, Migaku, jidoujisho, Mizune, OpenKoto and Lector (2026-11-15)
+
+Requested by the maintainer after publishing source v2.110.0. This comparison uses the projects' own documentation retrieved on 2026-11-15 and Nikomiru's current specification and source. A documented feature is evidence of a product direction, not a claim that every platform/version implements it equally. The scopes, priorities and completion checks below are **Nikomiru proposals inferred from the comparison**. They do not update Fushi's pinned reference commit in SPECIFICATION §2, introduce dependencies, or authorize implementation of existing non-goals.
+
+“Lector” here means **heuwels/lector**, the language-learning reader, rather than BasioMeusPuga's Qt ebook reader. jidoujisho means the original **arianneorpilla/jidoujisho** Android project; capabilities of newer forks are not attributed to it.
+
+### Sources and product-specific gaps
+
+| Project / primary evidence | Remaining differences relevant to Nikomiru |
+|---|---|
+| [Fushi README][src-fushi], [feature guide][src-fushi-features] | Richer reading modes/highlights, MDX/MDD media, Emby, native mobile/desktop delivery, device linking and headless access. Native text/voice hooks, source extensions and on-device speech generation fall under the decision backlog. |
+| [Migaku standard-release changelog][src-migaku], [reading/OCR guide][src-migaku-ocr] | Broader reader imports, podcast discovery, batch card creation, guided unknown-word lookup, content recommendations and photo OCR. Browser streaming, courses, speech and AI are separate scope decisions. Early-access or “coming soon” entries are not treated as shipped. |
+| [jidoujisho README][src-jidoujisho] | Offline Mokuro/HTMLZ import, song/lyrics handoff, named export profiles, locked composer fields, workflow quick actions and external sentence examples. Android/AnkiDroid delivery remains under the existing ports track. |
+| [Mizune README][src-mizune], [implementation guide][src-mizune-details] | Portable keyboard maps, named appearance choices, packaged Anime4K controls, signed app updates and native Android/macOS/Windows packages. Its first-kanji-word automatic lookup is distinct from Migaku's first-unknown-word mode. |
+| [OpenKoto README][src-openkoto], [desktop releases][src-openkoto-releases] | TXT/Markdown/paste and PDF/Word imports, search across imported material, language profiles and listening/shadowing workflows. Cloud sync, AI, CLI/MCP and iOS are decision items. The README still lists some desktop features as coming soon; iOS-only features are not assumed to exist on desktop. |
+| [Lector README][src-lector], [reading/practice guide][src-lector-practice], [language coverage][src-lector-languages] | Phrase vocabulary, typed/multiple-choice frequency cloze, broader text imports and podcast lessons. Anki review feedback is documented as beta. **Japanese and Korean have dictionaries but no supplied cloze bank**; this is not evidence of a ready-made Japanese sentence corpus. |
+
+### Capabilities already present: do not plan them again
+
+| Capability | Nikomiru baseline and remaining distinction |
+|---|---|
+| Clickable subtitles, recursive dictionaries, frequencies, pitch and word audio | M2–M5/M9/M22; dictionary collapse controls and Yomitan structured content already exist. MDict `.mdd` media and rich legacy definitions remain a distinct gap. |
+| Anki cards with editable templates, sentence context, clips/stills/animations and pending export | M4/M6/M10 and subsequent mining work. Multi-cue composition and sending already captured pending cards exist; previewing and generating a new batch and named reusable export profiles do not. |
+| Vocabulary statuses, Anki-derived knowledge, comprehension scores and unknown-word playback | M20–M22 and M25–M91. Existing filtering, coverage, concordance, presets and reports are retained. |
+| Finite recall and built-in spaced review | M92–M101 plus M17's FSRS review. Recall is self-rated and finite; typed/choice cloze, phrase-specific study and imported sentence banks remain extensions. |
+| EPUB/HTML/web reading, vertical text, pictures and read-along audiobooks | M16/M18 and audiobook work. Broad document import, persistent named annotations and full-library text search remain gaps. |
+| Manga region OCR and cropped card pictures | M16 already selects a balloon and exports that image region. Mokuro region import is missing; cropping itself is not. |
+| Clipboard/WebSocket texthooking | M14 already receives text from an external hooker. Native game injection, captured voice and a game overlay are different capabilities and remain excluded. |
+| Dual subtitles, translation preview, replay and finite practice queues | M2/M23 and M46–M89. A hold-to-peek player shortcut, guided lookup and microphone shadowing are separate extensions; translation preview does not generate a translation. |
+| Jellyfin/Plex, WebDAV sync, backups and tool installation | M11/M12/M45. Review schedules, logs and review media already sync through WebDAV (REV-006/007). Emby, remote device control and app self-updating are separate gaps. |
+| Remappable shortcuts, light/dark/system appearance and mpv presets | KEY/SET/PLY requirements already cover these. Missing: dedicated key-map interchange, named palettes and supported bundled shader presets; raw `glsl-shaders` options already work. |
+
+### Candidate milestones after M101
+
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102 is **in progress**; the other candidates are **not started**. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+
+| Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
+|---|---|---|---|---|
+| M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | in progress |
+| M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | not started |
+| M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | not started |
+| M105 | P1 / L | **Typed and multiple-choice cloze.** Explicitly turn captured sentences into masked-word exercises with Unicode-aware answer rules and distractors. Offer finite practice and a separate opt-in scheduled mode using the existing review engine. Check answer concealment, ambiguous readings, undo and single ownership of schedules. No Japanese bank is presumed available. | [Lector practice][src-lector-practice], [language limitations][src-lector-languages] | not started |
+| M106 | P1 / L | **Sentence bank and cross-media examples.** Index/import user-owned sentence/context references across books and subtitle sources, retaining original offsets and source links. Add optional external example providers only after defining provenance, licenses and request behavior. Check exact word identities, stale sources, offline results and bounded queries. Current concordance only covers the current primary subtitle. | [jidoujisho examples][src-jidoujisho], [Lector sentence packs][src-lector-languages] | not started |
+| M107 | P1 / L | **Previewed batch card generation.** Select words/cues, choose contexts and inspect cards before starting bounded sequential media extraction/export. Show per-card outcomes, duplicate checks, cancellation and safe retries after an unknown Anki outcome. Preserve pending-card export and advanced single-card composition; neither already generates a new study batch. | [Migaku][src-migaku] | not started |
+| M108 | P1 / M | **Named mining profiles and composer quick actions.** Reuse deck/note-type/field/tag mappings, pin selected composer fields across cards and choose dictionary senses explicitly. Check profile switches, missing note types and source changes without carrying stale media or overriding locked text unexpectedly. Existing templates remain supported. | [jidoujisho][src-jidoujisho] | not started |
+| M109 | P1 / M | **Guided lookup and hold-to-peek controls.** Optionally select the first unknown word when paused and expose a held-key translation peek from an existing secondary track. Keep first-kanji lookup as a separate optional rule. Check key release, focus loss, popup priority, unchanged word statuses and no automatic translation/provider request. | [Migaku][src-migaku], [Mizune][src-mizune-details] | not started |
+| M110 | P2 / L | **Additional document formats.** Stage HTMLZ/RTF, DOCX and text-layer PDF import as separately verifiable formats. Preserve reading order and source locations; validate archive/extraction limits and malformed inputs. PDF image OCR is separate from text-layer import. Select supported dependencies before promising any format. | [OpenKoto][src-openkoto], [jidoujisho][src-jidoujisho], [Migaku][src-migaku] | not started |
+| M111 | P2 / L | **Reader modes, annotations and library text search.** Add named bookmarks/highlights/notes, search across imported book/article text, and explicit horizontal paging/sentence-focus modes. Keep stable locations, delete/export behavior and backup coverage; check reopening, source replacement, Japanese offsets and bounded asynchronous indexing. Current lookup highlights and reading position are not annotations. | [Fushi reading][src-fushi-features], [Fushi highlights][src-fushi], [OpenKoto][src-openkoto] | not started |
+| M112 | P2 / L | **Podcast feeds and lyrics lessons.** Add explicit RSS/episode import, offline audio/resume and provided/imported transcript or LRC lyrics. Reuse timed lookup, line replay and card clipping. Check duplicate episode identity, interrupted downloads, missing transcripts and source links. Speech transcription is decision-gated; current-song handoff on Android waits for M117. | [Migaku podcasts][src-migaku], [jidoujisho music][src-jidoujisho], [OpenKoto lyrics][src-openkoto] | not started |
+| M113 | P2 / S | **Portable shortcut maps.** Add a dedicated bounded versioned import/export for keyboard bindings, with conflict preview, atomic apply and reset. Check unknown actions, duplicate chords, physical-key layouts and typing/popup/recall priority. This extends existing remapping without sharing an entire settings file. | [Mizune][src-mizune] | not started |
+| M114 | P2 / L | **Rich MDict resources.** Extend existing plain-text `.mdx` import with `.mdd` images/audio and a defined safe rich-definition subset. Reuse resource-size limits and glossary rendering; check paired/missing resources, malformed archives, network/script exclusion and resource retention in exported cards. Real MDict/DSL validation remains open in M15. | [Fushi dictionaries][src-fushi-features] | not started |
+| M115 | P2 / L | **Study-language profiles.** Select dictionary/normalization/tokenization/reading settings per study language and isolate vocabulary, phrase and review data. Prove Japanese plus one additional language end to end, including import, lookup, counts and cards. Existing multilingual transform data is not proof of complete multilingual product support. | [Fushi][src-fushi], [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-languages] | not started |
+| M116 | P2 / M | **Emby media-server support.** Add Emby alongside existing Jellyfin/Plex using the same playback, subtitle, source-link and progress interfaces. Check authentication, server identity, direct-play capability, expiry and resume against an Emby fixture/server; do not assume Jellyfin API compatibility is sufficient. | [Fushi media servers][src-fushi-features] | not started |
+| M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | not started |
+| M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | not started |
+| M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | not started |
+
+Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
+
+### Features requiring a scope or architecture decision
+
+These are recorded gaps, **not scheduled implementation**. SPECIFICATION §1.3 and existing privacy/license rules remain authoritative. The roadmap request authorizes this inventory; it does not reverse exclusions.
+
+| Missing capability / evidence | Current boundary and next decision |
+|---|---|
+| **Speech-generated subtitles**, including raw video and podcasts — [Fushi][src-fushi-features], [Migaku][src-migaku], [OpenKoto][src-openkoto], [Lector][src-lector] | ASR remains excluded. Define a local/remote backend, model provenance/distribution, resource bounds, cancellation and subtitle editing/quality checks before adding a milestone. Existing graphic-subtitle OCR does not transcribe speech. |
+| **Machine translation, context/grammar explanations and text Q&A** — [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-practice] | AI/translation scope needs a decision on providers, explicit requests, retained text and offline behavior. Existing secondary subtitles and dictionary meanings do not provide generated translation. |
+| **TTS, microphone shadowing and pronunciation feedback** — [OpenKoto iOS][src-openkoto], [Migaku][src-migaku], [Lector][src-lector] | TTS remains excluded. Replay/listening practice exists; recording, speech scoring and generated voices need separate audio/privacy/model choices. A desktop microphone coach must not be inferred from an iOS shadowing feature. |
+| **Tutor, writing journal/correction and generated exercises** — [Lector][src-lector], [OpenKoto][src-openkoto] | New AI/product scope. M105 covers deterministic cloze only; it does not authorize an AI tutor or generated lesson service. |
+| **Photo/screen OCR and automatic full-page manga regions** — [Migaku photo OCR][src-migaku-ocr], [Fushi manga][src-fushi-features] | Existing manga-region and subtitle OCR are implemented. Define supported local capture sources and any additional page detector/model before adding camera, desktop overlay or automatic panel/balloon detection. Google Lens remains excluded. |
+| **Browser extension and in-page streaming integration** — [Fushi browser tools][src-fushi], [Migaku][src-migaku] | A separate browser bridge/permission and local protocol design is needed. Existing URL opening and web-article import do not integrate arbitrary browser pages or DRM services. No DRM decryption is proposed. |
+| **Live device linking, extra cloud backends and headless/web/API/CLI/MCP access** — [Fushi][src-fushi], [OpenKoto tools][src-openkoto], [OpenKoto sync][src-openkoto-releases], [Lector deployment][src-lector] | WebDAV already syncs progress, vocabulary and review data/media. Pairing/control/streaming, OAuth providers, multi-user hosting and agent access are new architecture scopes; define authentication and data ownership first. A built-in server or MCP endpoint is not authorized by an import feature. |
+| **Anki review feedback beyond current known-word import** — [Lector beta sync][src-lector] | Existing Anki export, pending queue and mature-card knowledge import stay. Decide note identity, conflict/undo behavior and one scheduler's authority before importing review history or synchronizing schedules. Keep D-34's protection against reviewing the same card twice. |
+| **Native game text/voice hooks, game overlay and voice mining** — [Fushi][src-fushi-features] | Native injection remains excluded. M14 can continue using an external WebSocket/clipboard producer; text-only interoperability does not authorize hooking or recording another process. |
+| **Source-extension ecosystems, torrent/download center and subscriptions** — [Fushi][src-fushi] | Remain excluded by §1.3; ordinary local files, requested podcast feeds, URL playback and configured media servers are separate existing/proposed scopes. |
+| **iOS delivery** — [Fushi][src-fushi], [OpenKoto][src-openkoto] | Not part of D-16. Platform/runtime, distribution and AnkiMobile choices require an explicit scope decision beyond M117. |
+| **Hosted courses, curated recommendation catalogs, CEFR/fluency estimates, leaderboard and telemetry** — [Migaku][src-migaku], [Lector dashboard][src-lector-site], [Fushi][src-fushi] | Local comprehension filters and statistics already exist. A hosted content/course service and validated proficiency estimates are different products; leaderboard/usage telemetry stay excluded. Do not present vocabulary coverage as a validated language level. |
+
+### Rechecking and accepting a gap
+
+Use a small real fixture from the relevant workflow, record the upstream version/platform and compare observable behavior with Nikomiru. A website or README claim alone is not an acceptance test. Before starting a candidate, write its measurable behavior and failure cases into SPECIFICATION/TEST, including migration/backup/sync effects where applicable. Implemented parity is recorded only after the normal automated checks and the relevant real-source/manual checks; keep any remaining limits visible.
+
+[src-fushi]: https://github.com/hajisensai/Fushi/blob/main/README.md
+[src-fushi-features]: https://fushi.moe/
+[src-migaku]: https://migaku.com/blog/changelog
+[src-migaku-ocr]: https://migaku.com/faq/goals
+[src-jidoujisho]: https://github.com/arianneorpilla/jidoujisho/blob/main/README.md
+[src-mizune]: https://github.com/finchett/Mizune/blob/main/README.md
+[src-mizune-details]: https://github.com/finchett/Mizune/blob/main/docs/how-it-works.md
+[src-openkoto]: https://github.com/hikariming/openkoto/blob/main/README.md
+[src-openkoto-releases]: https://github.com/hikariming/openkoto/releases
+[src-lector]: https://github.com/heuwels/lector/blob/master/README.md
+[src-lector-site]: https://lector.dev/
+[src-lector-practice]: https://lector.dev/docs/features/
+[src-lector-languages]: https://lector.dev/docs/languages/
+
+
+## M102 — TXT, Markdown and pasted-text reading
+
+**Requirements**: BOK-011…BOK-014.
+
+Implement safe bounded loose-text parsing and an explicit paste editor using the existing book reader, content-derived document identities and durable local pasted sources. Requirements and checks are specified above in SPECIFICATION/TEST before implementation. Reuse existing lookup, analysis, mining, progress and backup paths. No release/version change is implied by starting this milestone.
+
+**Exit criteria**: T-BOK-011…T-BOK-014 logic/component/native-app cases, translated UI/errors, `cargo xtask ci`, regenerated dependency/package notices and documented remaining Markdown rendering limits.

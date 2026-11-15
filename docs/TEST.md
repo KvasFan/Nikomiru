@@ -888,3 +888,13 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-KNW-060 | Recall results export | Freeze one TSV row per captured word with attempts, ratings and completion state, neutralising spreadsheet fields and enforcing output bounds before atomic native saving. Exporting changes no round or library state. | L1, L3, L6 |
 | T-KNW-061 | Focused recall follow-up rounds | At completion explicitly create a fresh round from cards rated Again or skipped cards, preserving captured hints/identities. Show unavailable categories disabled and retain finite bounds without modifying global statuses. | L1, L3, L6 |
 | T-KNW-062 | Local recall summary history | Explicitly record a completed round summary in bounded local configuration history, once per round, without word text or changes to library learning-time statistics. Show recent summaries, allow explicit removal/clear and report asynchronous persistence failures. | L1, L3, L6 |
+
+
+## M102 text reading
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-BOK-011 | Loose text documents | UTF-8/BOM/CRLF, literal markup, empty/invalid/control input and byte/paragraph limits; normal/analysis parity and cancellation. | L1, L6 |
+| T-BOK-012 | Markdown reading | Nested inline syntax, links/image labels without network, headings/lists/code, literal HTML and safe ruby with byte-correct ranges. | L1, L3, L6 |
+| T-BOK-013 | Paste and read | Editor explicit submission, bounded managed source save/read, duplicate reuse, invalid version and partial-write failure; restart and backup retention. | L1, L3, L6 |
+| T-BOK-014 | Identity and reader integration | Equal-title/length different-content isolation, moved-file identity, saved positions, lookup/mining/word analysis and replacement failures without playback changes. | L1, L6 |

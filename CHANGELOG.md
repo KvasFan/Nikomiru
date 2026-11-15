@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+
+- Refresh the roadmap against Fushi, Migaku, jidoujisho, Mizune, OpenKoto and Lector; distinguish implemented capabilities, proposed M102–M119 scopes and decision-gated gaps, with primary sources.
+
 ## [2.110.0] - 2026-11-15
 
 Ten consecutive vocabulary recall milestones (M92–M101) after source tag 2.100.0.

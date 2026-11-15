@@ -136,7 +136,7 @@ A Cargo workspace of 11 crates: pure logic (`nikomiru-core`, `-text`, `-dict`, `
 | Document | Contents |
 |---|---|
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | Purpose, licenses, architecture, requirements, decisions and risks |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones M0–M8 up to 1.0, exit criteria, post-1.0 backlog |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones through M101, exit criteria, six-project feature comparison and candidate scopes M102–M119 |
 | [docs/TEST.md](docs/TEST.md) | Test strategy, fixtures, conformance with Fushi, case catalog |
 | [docs/adr/](docs/adr/) | Architecture decisions with the spike measurements |
 
