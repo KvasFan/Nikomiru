@@ -1338,3 +1338,11 @@ recall-hints-unavailable = 解析済みの主字幕と、上限内の例文が�
 recall-restart-original = 元の順序でやり直す
 recall-restart-reverse = 逆順でやり直す
 recall-restart-shuffle = 順序を混ぜてやり直す
+
+recall-save = 想起練習の進捗を保存…
+recall-load = 保存した想起練習を開く…
+recall-file-filter = 想起練習の進捗（JSON）
+recall-file-invalid = ファイルが無効か、進捗の整合性がありません。
+recall-file-too-large = 想起練習ファイルが上限を超えています。
+recall-file-version = この想起練習ファイルのバージョンには対応していません。
+recall-file-error = 進捗を読み書きできません：{ $reason }

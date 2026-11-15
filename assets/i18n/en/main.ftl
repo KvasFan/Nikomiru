@@ -1355,3 +1355,11 @@ recall-hints-unavailable = Complete analysed primary subtitles are required; hin
 recall-restart-original = Restart original order
 recall-restart-reverse = Restart reversed
 recall-restart-shuffle = Restart shuffled
+
+recall-save = Save recall progress…
+recall-load = Open saved recall…
+recall-file-filter = Recall progress (JSON)
+recall-file-invalid = The recall file is invalid or contains inconsistent progress.
+recall-file-too-large = The recall file exceeds its size limits.
+recall-file-version = This recall file version is not supported.
+recall-file-error = Could not read or save recall progress: { $reason }

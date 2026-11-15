@@ -1355,3 +1355,11 @@ recall-hints-unavailable = Servono sottotitoli principali analizzati completamen
 recall-restart-original = Ricomincia nell’ordine originale
 recall-restart-reverse = Ricomincia in ordine inverso
 recall-restart-shuffle = Ricomincia in ordine casuale
+
+recall-save = Salva progressi del ripasso…
+recall-load = Apri ripasso salvato…
+recall-file-filter = Progressi del ripasso (JSON)
+recall-file-invalid = Il file del ripasso non è valido o contiene progressi incoerenti.
+recall-file-too-large = Il file del ripasso supera i limiti previsti.
+recall-file-version = Questa versione del file del ripasso non è supportata.
+recall-file-error = Impossibile leggere o salvare i progressi: { $reason }

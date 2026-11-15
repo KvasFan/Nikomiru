@@ -399,6 +399,7 @@ pub struct Session {
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
     pub(crate) recall_covered: bool,
+    recall_file: Option<Vec<u8>>,
     recall: Option<crate::recall::Recall>,
     status_undo: Option<crate::words::StatusUndo>,
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
@@ -799,6 +800,7 @@ impl Session {
             word_list: None,
             status_undo: None,
             recall: None,
+            recall_file: None,
             recall_covered: false,
             vocabulary_scope: None,
             vocabulary_scope_id: 0,
@@ -1576,6 +1578,65 @@ impl Session {
             r.restart(order, seed);
         }
     }
+    /// Freeze the round's portable progress before the native save dialog.
+    pub fn recall_save_prepare(&mut self) -> bool {
+        self.recall_file = None;
+        let Some(r) = &self.recall else {
+            return false;
+        };
+        match crate::recall_file::save(r) {
+            Ok(bytes) => {
+                self.recall_file = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the frozen recall file.
+    pub fn recall_save_to(&mut self, path: &Path) {
+        let Some(bytes) = self.recall_file.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("recall-file-error", &[("reason", e.to_string())])),
+        }
+    }
+    /// Load a complete validated round before replacing any active progress; no library data is imported.
+    pub fn recall_load_from(&mut self, path: &Path) {
+        use std::io::Read;
+        let read = || -> std::io::Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)?
+                .take((crate::recall_file::MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            Ok(bytes)
+        };
+        let bytes = match read() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.toasts
+                    .push(self.tr("recall-file-error", &[("reason", e.to_string())]));
+                return;
+            }
+        };
+        match crate::recall_file::load(&bytes) {
+            Ok(r) => {
+                self.recall_clear_lookup();
+                self.recall = Some(r);
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
     /// Close the transient recall round.
     pub fn recall_close(&mut self) {
         self.recall_clear_lookup();

@@ -504,6 +504,8 @@ pub(crate) enum Command {
     RecallSkip,
     RecallRate(bool),
     RecallClose,
+    RecallSave,
+    RecallLoad,
     RecallRestart(u8),
     RecallCaptureHints,
     RecallRevealHint,
@@ -1092,6 +1094,8 @@ impl Ui {
                     | Dialog::SubtitleHtml => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
+                    Dialog::RecallSave => self.session.recall_save_to(&path),
+                    Dialog::RecallLoad => self.session.recall_load_from(&path),
                     Dialog::StudyPresetsImport => self.session.preset_import_from(&path),
                     Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
@@ -1549,6 +1553,12 @@ impl Ui {
             Command::RecallCaptureHints => s.recall_capture_hints(),
             Command::RecallRevealHint => s.recall_reveal_hint(),
             Command::RecallRestart(order) => s.recall_restart(order, None),
+            Command::RecallSave => {
+                if s.recall_save_prepare() {
+                    self.view.dialog = Some(Dialog::RecallSave);
+                }
+            }
+            Command::RecallLoad => self.view.dialog = Some(Dialog::RecallLoad),
             Command::RecallClose => s.recall_close(),
             Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),

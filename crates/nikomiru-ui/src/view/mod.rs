@@ -96,6 +96,10 @@ pub enum Dialog {
     ConcordanceExport,
     /// Import only portable named filter presets.
     StudyPresetsImport,
+    /// Saved finite recall progress.
+    RecallSave,
+    /// Resume a saved finite recall round.
+    RecallLoad,
     /// Save both named filter collections as JSON.
     StudyPresetsExport,
     /// Full per-episode encounter history.
@@ -214,6 +218,14 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::RecallSave => (
+                tr("recall-save"),
+                vec![(tr("recall-file-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::RecallLoad => (
+                tr("recall-load"),
+                vec![(tr("recall-file-filter"), vec!["*.json"]), all],
+            ),
             Dialog::StudyPresetsImport => (
                 tr("study-presets-import"),
                 vec![(tr("study-presets-filter"), vec!["*.json"]), all],
@@ -279,6 +291,7 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::RecallSave => Some("nikomiru-recall.json".into()),
                 Dialog::StudyPresetsExport => Some("nikomiru-study-presets.json".into()),
                 Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),

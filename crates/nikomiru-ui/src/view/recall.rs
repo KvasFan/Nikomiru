@@ -4,6 +4,7 @@
 use crate::{recall::Recall, ui::Command};
 #[derive(Default)]
 pub(super) struct Labels {
+    pub file_labels: [String; 2],
     pub restart_labels: [String; 3],
     pub hints_ready: bool,
     pub hint_labels: [String; 2],
@@ -21,6 +22,7 @@ impl Labels {
     pub fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             title: tr("recall-title", &[]),
+            file_labels: ["recall-save", "recall-load"].map(|k| tr(k, &[])),
             restart_labels: [
                 "recall-restart-original",
                 "recall-restart-reverse",
@@ -56,6 +58,14 @@ pub(super) fn show(ctx: &egui::Context, recall: &Recall, labels: &Labels, out: &
             egui::ScrollArea::vertical()
                 .max_height(ctx.content_rect().height() * 0.7)
                 .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(&labels.file_labels[0]).clicked() {
+                            out.push(Command::RecallSave);
+                        }
+                        if ui.button(&labels.file_labels[1]).clicked() {
+                            out.push(Command::RecallLoad);
+                        }
+                    });
                     ui.horizontal_wrapped(|ui| {
                         for (order, label) in labels.restart_labels.iter().enumerate() {
                             if ui.button(label).clicked() {

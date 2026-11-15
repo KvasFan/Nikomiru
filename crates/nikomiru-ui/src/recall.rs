@@ -3,6 +3,7 @@
 //! Frozen finite vocabulary recall, independent of playback and global statuses (KNW-053).
 
 use crate::words::ListedWord;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 
 fn valid_hint(text: &str) -> bool {
@@ -46,11 +47,13 @@ pub(crate) fn sentence_hints(
     Ok(out)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Card {
     pub expression: String,
     pub reading: String,
     pub count: usize,
+    #[serde(default, deserialize_with = "crate::recall_file::hints")]
     pub hints: Vec<String>,
 }
 impl Card {
@@ -67,7 +70,8 @@ impl Card {
                 .any(char::is_control)
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Grade {
     Again,
     Good,
