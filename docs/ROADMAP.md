@@ -1462,3 +1462,18 @@ M62–M71 are complete. Full regression passed 997 workspace/integration tests a
 | M81 | SUB-055 | Finite cue practice queues | done |
 
 M72–M81 are complete. Full regression passed 1,013 workspace/integration tests and 103 actual GUI cases. See [source QA 2.90.0](qa/2.90.0.md).
+
+## Continuation M82–M91 after source tag 2.90.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M82 | SUB-056 | Exact subtitle search | done |
+| M83 | SUB-057 | Subtitle study row ordering | planned |
+| M84 | SUB-058 | Editable subtitle study time bounds | planned |
+| M85 | SUB-059 | Cue translation preview | planned |
+| M86 | KNW-049 | Practice vocabulary from readings | planned |
+| M87 | KNW-050 | Undo word-status changes | planned |
+| M88 | SUB-060 | Pauses between practice passes | planned |
+| M89 | SUB-061 | Skip and restart practice cues | planned |
+| M90 | KNW-051 | Vocabulary sentence concordance export | planned |
+| M91 | KNW-052 | Portable study presets | planned |

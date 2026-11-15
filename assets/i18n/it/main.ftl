@@ -1278,3 +1278,5 @@ sub-practice-selected = Ripeti battute selezionate
 sub-practice-passes = Ripetizioni per battuta
 sub-practice-cues = Battute rimanenti: { $count }
 sub-practice-unavailable = Serve una selezione completa di 1–1000 battute valide comprese nella durata del video.
+
+sub-search-exact = Corrispondenza dell’intera battuta

@@ -95,6 +95,7 @@ struct Scope {
     unique: bool,
     shape: LineShape,
     context: u8,
+    exact: bool,
 }
 
 /// The rows on show: their cues and where each one starts.
@@ -148,6 +149,7 @@ pub(crate) struct StudyLabels {
     shapes: [String; 3],
     unique_label: String,
     preset_labels: [String; 4],
+    exact_label: String,
     text_labels: [String; 4],
     duration_labels: [String; 4],
     speed: String,
@@ -168,6 +170,7 @@ impl StudyLabels {
     fn translated(tr: &super::popups::Translate<'_>) -> Self {
         Self {
             tools: tr("sub-study-tools", &[]),
+            exact_label: tr("sub-search-exact", &[]),
             queue_labels: [
                 "sub-practice-shown",
                 "sub-practice-selected",
@@ -307,6 +310,7 @@ pub(crate) struct State {
     unique: bool,
     shape: LineShape,
     context: u8,
+    exact: bool,
     last_concordance: Option<(String, u64)>,
     /// The current row the list last scrolled to, with its rows' generation.
     followed: Option<(u64, usize)>,
@@ -389,6 +393,7 @@ impl State {
             unique: self.unique,
             shape: self.shape,
             context: self.context,
+            exact: self.exact,
         }
     }
     pub(crate) fn study_action(
@@ -728,6 +733,7 @@ pub(crate) fn draw(
         state.unique = false;
         state.shape = LineShape::default();
         state.context = 0;
+        state.exact = false;
         state.selection_version = Some(scene.version);
     }
     if state.word_scope != scene.word_scope {
@@ -906,7 +912,11 @@ fn pick_indices(scene: &Scene<'_>, query: &str, filter: LineFilter, scope: Scope
                 && scope.duration.keeps(cue)
                 && scope.text_length.keeps(&cue.plain_text)
                 && scope.shape.keeps(&cue.plain_text)
-                && query.matches(&[&cue.plain_text])
+                && (if scope.exact {
+                    query.matches_exact(&[&cue.plain_text])
+                } else {
+                    query.matches(&[&cue.plain_text])
+                })
                 && (scene.tabs.is_none() || filter.keeps((scene.marks)(&cue.plain_text).as_ref()))
         })
         .filter(|(_, cue)| {
@@ -935,6 +945,7 @@ fn shown_indices(scene: &Scene<'_>, state: &State) -> Vec<usize> {
             unique: state.unique,
             shape: state.shape,
             context: state.context,
+            exact: state.exact,
         },
     )
 }
@@ -954,6 +965,7 @@ fn metric_key(scene: &Scene<'_>, state: &State) -> MetricKey {
             unique: state.unique,
             shape: state.shape,
             context: state.context,
+            exact: state.exact,
         },
         concordance: state.last_concordance.clone(),
         selection: state.selection_revision,
@@ -1089,6 +1101,7 @@ impl State {
     fn capture_preset(&self) -> nikomiru_core::config::SubtitleStudyPreset {
         nikomiru_core::config::SubtitleStudyPreset {
             context: self.context,
+            exact: self.exact,
             name: self.preset_name.trim().to_string(),
             query: self.query.clone(),
             filter: match self.filter {
@@ -1118,6 +1131,7 @@ impl State {
         }
         self.query.clone_from(&p.query);
         self.context = p.context;
+        self.exact = p.exact;
         self.filter =
             [LineFilter::All, LineFilter::New, LineFilter::PlusOne][usize::from(p.filter)];
         self.window = TimeWindow {
@@ -1324,6 +1338,7 @@ fn study_tools(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mu
             egui::CollapsingHeader::new(&scene.study.text_labels[0])
                 .id_salt("subtitle-text-filters")
                 .show(ui, |ui| {
+                    ui.checkbox(&mut state.exact, &scene.study.exact_label);
                     ui.checkbox(&mut state.unique, &scene.study.unique_label);
                     ui.horizontal_wrapped(|ui| {
                         for (shape, label) in
@@ -1655,6 +1670,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     unique: state.unique,
                     shape: state.shape,
                     context: state.context,
+                    exact: state.exact,
                 },
                 width,
             );
@@ -2008,6 +2024,30 @@ mod tests {
         h.state_mut().concordance = None;
         h.run();
         assert_eq!(h.state().state.rows.cues, [0, 1, 2]);
+    }
+
+    // T-SUB-056: whole-caption matching shares normalisation and every shown-snapshot predicate.
+    #[test]
+    fn exact_caption_search_preserves_original_text_and_ticks() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "ネコ"), (3000, "ネコです")]), 0, false);
+        h.run();
+        h.state_mut().state.query = "ﾈｺ".into();
+        h.state_mut().state.selected.insert(1);
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1]);
+        h.get_by_label("sub-study-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-text-tools").click();
+        h.run_steps(3);
+        h.get_by_label("sub-search-exact").click();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0]);
+        assert!(h.state().state.capture_preset().exact);
+        assert_eq!(h.state().state.selected, BTreeSet::from([1]));
+        h.state_mut().state.query = "".into();
+        h.run();
+        assert_eq!(h.state().state.rows.cues, [0, 1]);
     }
 
     // T-SUB-055: queue buttons capture filtered original indices and preserve hidden-selected order.

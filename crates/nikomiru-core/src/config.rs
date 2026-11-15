@@ -216,6 +216,8 @@ pub struct PlayerConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitleStudyPreset {
+    /// Match the whole normalised caption rather than contained search terms.
+    pub exact: bool,
     /// Neighbouring cues around exact examples, zero through two.
     pub context: u8,
     /// Unique display name, at most 64 bytes.

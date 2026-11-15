@@ -1278,3 +1278,5 @@ sub-practice-selected = Repeat selected lines
 sub-practice-passes = Passes per line
 sub-practice-cues = Lines remaining: { $count }
 sub-practice-unavailable = A complete queue of 1–1000 valid subtitle lines within the media is required.
+
+sub-search-exact = Match the whole caption

@@ -1261,3 +1261,5 @@ sub-practice-selected = 選択した字幕を繰り返す
 sub-practice-passes = 字幕ごとの再生回数
 sub-practice-cues = 残りの字幕数：{ $count }
 sub-practice-unavailable = 動画の範囲内にある有効な字幕を1～1000件選んでください。
+
+sub-search-exact = 字幕全体と一致
