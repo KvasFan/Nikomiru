@@ -1677,3 +1677,12 @@ Stage inert HTMLZ, bounded Unicode/legacy RTF, namespace-aware DOCX and external
 **Exit criteria**: separate real format/limit tests, native helper fault/cancellation/setup checks, actual reader/lookup/mining/restart/isolation cases and regression CI. Native/sandboxed helper packaging remains separately verified in M117.
 
 M110 is complete in development: full regression passed **1,102 workspace/integration tests** and **128 actual GUI cases** in **526 seconds**. Native Linux extraction used installed Poppler 26.10.0; real distribution package transactions and native/sandboxed platform packaging checks remain open. See [M110 QA](qa/m110.md). The next accepted milestone is M111 (reader modes, annotations and library text search).
+
+
+## M111 — Reader modes, annotations and library text search
+
+**Requirements**: RDR-001…RDR-004.
+
+Add bounded local annotations (named bookmarks, highlights and notes) over original reader locations with stale detection, an in-memory library-wide literal text search through the shared document support, and explicit Pages and Sentence-focus modes for horizontal writing. Reuse validated source navigation; no WebDAV merge or new dependency.
+
+**Exit criteria**: real redb/backup checks, search cache/limit/cancellation tests, deterministic pagination/sentence tests, accessible translated controls and actual-app annotation/search/mode/restart cases; fast CI.

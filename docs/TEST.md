@@ -970,3 +970,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-DOC-003 | DOCX | Actual WordprocessingML namespaces, body/run/table order, headings/Unicode/entities, revisions/field results, external parts, invalid/duplicate/undeclared attributes, text outside the root and ZIP/XML/depth limits. | L1, L6 |
 | T-DOC-004 | PDF | Actual installed Poppler extraction with page/Unicode identity, no-text/encrypted/invalid/missing cases; fake-process over-limit/timeout/cancellation/argument safety, inherited pipes after wrapper exit, explicit setup package-manager hooks and installed-helper adoption/configuration across restart. | L1, L4, L6 |
 | T-DOC-005 | Integration | Original source indices and content invalidation; mining/phrase/index/score/restart using the same support adapter, accessible translated controls, failed imports retaining the open book and whole regression CI. | L1, L3, L6 |
+
+## M111 reader modes, annotations and search
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-RDR-001 | Annotations | Real redb validation, duplicates, bounds, edit/delete, restart, read-only and backup retention; unchanged word/phrase/progress tables; actual reader creation over word/sentence/paragraph. | L1, L6 |
+| T-RDR-002 | Display and staleness | Current/stale classification after source replacement, no seek to stale locations, drawn highlights, validated reopen, formula-safe TSV of shown rows. | L1, L3, L6 |
+| T-RDR-003 | Library search | NFC/case-folded literal matching, Japanese byte offsets, per-book/total result limits, cache invalidation by size/mtime/identity, unreadable books, cancellation and stale replies; actual cross-book result opening. | L1, L6 |
+| T-RDR-004 | Reading modes | Deterministic page groups and sentence ranges, explicit page/sentence turns, lookup offsets, saved mode across restart and accessible translated controls. | L1, L3, L6 |
