@@ -1004,3 +1004,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-DIC-036 | Rich definitions | Allowlisted tags/styles, dropped scripts/attributes/CSS, entry/bword/http/sound/other links, nesting/node bounds, redirects; safe popup model. | L1, L3 |
 | T-DIC-037 | `.mdd` resources | Real generated `.mdx`+`.mdd` (v1.2/v2.0, zlib), numbered parts, referenced-only media, unsafe paths, missing `.mdd`, malformed `.mdd` failing atomically. | L1, L4 |
 | T-DIC-038 | Audio and cards | Popup image and sound link from an imported MDict, click-only playback, card with image and `[sound:]` media; actual app import/lookup/card. | L1, L4, L6 |
+
+## M115 study-language profiles
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-LNG-001 | Profiles | Config bounds/roundtrip/invalid fallback, automatic/explicit dictionary selection, whole-word segmentation, readings switch, live switch without restart. | L1, L3, L6 |
+| T-LNG-002 | Isolation | Real redb per-language statuses/Anki words/stats with legacy Japanese keys, review language table and queues, filtered phrases/cloze/bank. | L1, L6 |
+| T-LNG-003 | English end to end | Generated English Yomitan dictionary, deinflected lookup, segmentation, book statuses/counts, card/review and restart, Japanese data unchanged. | L4, L6 |
+| T-LNG-004 | Settings | Accessible translated controls and saved profiles. | L1, L3 |

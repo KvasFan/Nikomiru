@@ -1718,3 +1718,11 @@ MDict HTML becomes the existing safe structured-content model; referenced `.mdd`
 **Exit criteria**: conversion/allowlist tests, generated `.mdx`/`.mdd` import tests with faults, popup/card media checks and an actual-app import/lookup/card case; fast CI. Real commercial MDict validation stays open (M15).
 
 M114 is complete in development: fast CI passed **1,080 tests** and the new actual-app case passed. See [M114 QA](qa/m103-m119.md#m114--rich-mdict-resources). The next accepted milestone is M115 (study-language profiles).
+
+## M115 — Study-language profiles
+
+**Requirements**: LNG-001…LNG-004.
+
+Per-language profiles (dictionaries, segmentation, readings) chosen live in General settings; per-language statuses/known words with legacy Japanese keys, filtered phrases/cloze/bank and an additive review-language table; English proven end to end beside Japanese.
+
+**Exit criteria**: config/selection/segmentation tests, real redb isolation checks, accessible settings and an actual-app English+Japanese case with restart; fast CI.
