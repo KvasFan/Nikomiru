@@ -996,3 +996,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-KEY-008 | Export | Versioned JSON of every action's physical chords, roundtrip through import with no change, atomic file. | L1, L6 |
 | T-KEY-009 | Import preview | Bounds, other format/newer version/malformed refusal, normalization/duplicates, unknown actions, invalid chords, conflicts and changed-action listing; absent actions kept. | L1, L3 |
 | T-KEY-010 | Apply/reset | Apply only without conflicts/invalid chords, live bindings and config after restart, Cancel and Reset, text-focus priority of imported single keys. | L1, L3, L6 |
+
+## M114 rich MDict
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-DIC-036 | Rich definitions | Allowlisted tags/styles, dropped scripts/attributes/CSS, entry/bword/http/sound/other links, nesting/node bounds, redirects; safe popup model. | L1, L3 |
+| T-DIC-037 | `.mdd` resources | Real generated `.mdx`+`.mdd` (v1.2/v2.0, zlib), numbered parts, referenced-only media, unsafe paths, missing `.mdd`, malformed `.mdd` failing atomically. | L1, L4 |
+| T-DIC-038 | Audio and cards | Popup image and sound link from an imported MDict, click-only playback, card with image and `[sound:]` media; actual app import/lookup/card. | L1, L4, L6 |

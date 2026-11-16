@@ -1708,3 +1708,11 @@ Versioned JSON export of physical-key bindings, bounded import with a preview of
 **Exit criteria**: format/bound/conflict tests, accessible translated preview controls and an actual-app export/import/apply/restart case; fast CI.
 
 M113 is complete in development: fast CI passed **1,076 tests** and the new actual-app case passed. See [M113 QA](qa/m103-m119.md#m113--portable-shortcut-maps). The next accepted milestone is M114 (rich MDict resources).
+
+## M114 — Rich MDict resources
+
+**Requirements**: DIC-036…DIC-038.
+
+MDict HTML becomes the existing safe structured-content model; referenced `.mdd` images and sounds become dictionary media for the popup and cards; sound links play only on click.
+
+**Exit criteria**: conversion/allowlist tests, generated `.mdx`/`.mdd` import tests with faults, popup/card media checks and an actual-app import/lookup/card case; fast CI. Real commercial MDict validation stays open (M15).
