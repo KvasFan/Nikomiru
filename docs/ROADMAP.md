@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102–M116 implemented in development, M117–M119 accepted for execution |
+| Status | Living roadmap; M102–M116 implemented in development, M117 partial (native checks open), M118–M119 accepted for execution |
 | Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
@@ -1545,7 +1545,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M114 | P2 / L | **Rich MDict resources.** Extend existing plain-text `.mdx` import with `.mdd` images/audio and a defined safe rich-definition subset. Reuse resource-size limits and glossary rendering; check paired/missing resources, malformed archives, network/script exclusion and resource retention in exported cards. Real MDict/DSL validation remains open in M15. | [Fushi dictionaries][src-fushi-features] | done in development |
 | M115 | P2 / L | **Study-language profiles.** Select dictionary/normalization/tokenization/reading settings per study language and isolate vocabulary, phrase and review data. Prove Japanese plus one additional language end to end, including import, lookup, counts and cards. Existing multilingual transform data is not proof of complete multilingual product support. | [Fushi][src-fushi], [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-languages] | done in development |
 | M116 | P2 / M | **Emby media-server support.** Add Emby alongside existing Jellyfin/Plex using the same playback, subtitle, source-link and progress interfaces. Check authentication, server identity, direct-play capability, expiry and resume against an Emby fixture/server; do not assume Jellyfin API compatibility is sufficient. | [Fushi media servers][src-fushi-features] | done in development |
-| M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | not started |
+| M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | partial: touch done, native checks open |
 | M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | not started |
 | M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | not started |
 
@@ -1746,3 +1746,5 @@ M116 is complete in development against a fake Emby: fast CI passed **1,088 test
 Touch gestures for the touch-first platforms (verifiable on Linux) and a per-platform status in `docs/qa/ports.md`. Native Windows/Android/macOS packaging and device checks and AnkiDroid stay open: the maintainer confirmed Linux only for now.
 
 **Exit criteria**: recognizer/component tests and an actual-app touch case; each platform's native checks remain unchecked until run on it.
+
+M117 is **partial**: touch gestures are implemented and checked on Linux (fast CI **1,091 tests**, actual-app touch case); native Windows/Android/macOS packaging and device checks and AnkiDroid stay open per [ports.md](qa/ports.md). The next accepted milestone is M118 (named palettes and shader presets).

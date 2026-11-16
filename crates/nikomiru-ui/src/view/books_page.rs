@@ -77,6 +77,8 @@ pub(crate) struct State {
     column: usize,
     /// A page turn asked by Page Up/Down: forward or not (RDR-004).
     pub(crate) turn: Option<bool>,
+    /// A swipe on the page (PORT-003), taken by the reader drawn.
+    pub(crate) swipe: Option<crate::gestures::Gesture>,
     /// The chapter's horizontal pages: its book, number, width and height,
     /// and its paragraphs by page (RDR-004).
     pages: Option<(PagesKey, Vec<std::ops::Range<usize>>)>,
@@ -673,7 +675,13 @@ fn manga_reader(
         }
     }
     let step = pages.len();
-    let (forward, back) = turns(ui, response.hovered());
+    let (mut forward, mut back) = turns(ui, response.hovered());
+    // PORT-003: right to left, a swipe to the right goes on
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeRight) => forward = true,
+        Some(crate::gestures::Gesture::SwipeLeft) => back = true,
+        None => {}
+    }
     if forward && open.chapter + step < open.book.chapters.len() {
         out.push(Command::BookChapter(open.chapter + step));
     } else if back && open.chapter > 0 {
@@ -837,7 +845,13 @@ fn vertical_reader(
             });
         }
     }
-    let (forward, back) = turns(ui, response.hovered());
+    let (mut forward, mut back) = turns(ui, response.hovered());
+    // PORT-003: right to left, a swipe to the right goes on
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeRight) => forward = true,
+        Some(crate::gestures::Gesture::SwipeLeft) => back = true,
+        None => {}
+    }
     let total = columns.columns;
     if forward {
         if state.column + per_page < total {
@@ -1052,7 +1066,11 @@ fn reader(
     match s.mode {
         "pages" => paged_reader(ui, s, open, chapter, state, out),
         "sentence" => sentence_reader(ui, s, open, chapter, state, out),
-        _ => scroll_reader(ui, s, open, chapter, state, out),
+        _ => {
+            // a scrolled chapter has no pages to turn
+            state.swipe = None;
+            scroll_reader(ui, s, open, chapter, state, out);
+        }
     }
     close
 }
@@ -1290,10 +1308,15 @@ fn paged_reader(
         place,
         can,
     );
-    // Page Up/Down, through the shortcut layer
+    // Page Up/Down, through the shortcut layer; a swipe (PORT-003)
     match state.turn.take() {
         Some(true) => forward |= can.1,
         Some(false) => back |= can.0,
+        None => {}
+    }
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeLeft) => forward |= can.1,
+        Some(crate::gestures::Gesture::SwipeRight) => back |= can.0,
         None => {}
     }
     if forward {
@@ -1355,16 +1378,22 @@ fn sentence_reader(
             ("paragraph", (index + 1).to_string()),
         ],
     );
-    let (back, forward) = turn_row(
+    let can = (
+        at > 0 || index > 0 || open.chapter > 0,
+        at + 1 < sentences.len() || more_here || open.chapter < last_chapter,
+    );
+    let (mut back, mut forward) = turn_row(
         ui,
         s,
         ("books-previous-sentence", "books-next-sentence"),
         place,
-        (
-            at > 0 || index > 0 || open.chapter > 0,
-            at + 1 < sentences.len() || more_here || open.chapter < last_chapter,
-        ),
+        can,
     );
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeLeft) => forward |= can.1,
+        Some(crate::gestures::Gesture::SwipeRight) => back |= can.0,
+        None => {}
+    }
     if forward {
         out.push(Command::BookSentence(true));
     } else if back {
@@ -2187,6 +2216,40 @@ mod tests {
         );
         assert_eq!(h.state().state.turn, None);
         assert!(h.query_by_label("books-page-of").is_some());
+    }
+
+    // T-PORT-004: a swipe turns pages left to right, and does nothing to a scroll.
+    #[test]
+    fn swipes_turn_pages() {
+        let mut h = harness(BooksPage {
+            open: Some(long_chapter()),
+            ..BooksPage::default()
+        });
+        h.state_mut().mode = "pages";
+        h.run();
+        h.state_mut().state.swipe = Some(crate::gestures::Gesture::SwipeLeft);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookTurn(p) if *p > 0))
+        );
+        assert!(h.state().state.swipe.is_none());
+        h.state_mut().out.clear();
+        h.state_mut().mode = "scroll";
+        h.state_mut().state.swipe = Some(crate::gestures::Gesture::SwipeLeft);
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookTurn(_)))
+        );
+        assert!(
+            h.state().state.swipe.is_none(),
+            "dropped, not kept for later"
+        );
     }
 
     // T-RDR-004: sentence focus shows one sentence; clicks keep original offsets.

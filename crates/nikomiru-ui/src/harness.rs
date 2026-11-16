@@ -1021,6 +1021,29 @@ pub fn popup_content(level: usize) -> Result<Value, String> {
     })?
 }
 
+/// A one-finger touch from `from` to `to` (PORT-003), as the window gives it
+/// to egui, in the next frame.
+pub fn touch(from: (f32, f32), to: (f32, f32)) -> Result<(), String> {
+    call(move |ui| {
+        for (phase, (x, y)) in [
+            (egui::TouchPhase::Start, from),
+            (
+                egui::TouchPhase::Move,
+                ((from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0),
+            ),
+            (egui::TouchPhase::End, to),
+        ] {
+            ui.inject(egui::Event::Touch {
+                device_id: egui::TouchDeviceId(1),
+                id: egui::TouchId(7),
+                phase,
+                pos: egui::pos2(x, y),
+                force: None,
+            });
+        }
+    })
+}
+
 /// The first dictionary sound of popup `level`, clicked (DIC-038).
 pub fn popup_sound(level: usize) -> Result<(), String> {
     use nikomiru_dict::structured::{Block, Run, Target};

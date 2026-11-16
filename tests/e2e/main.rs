@@ -36,6 +36,7 @@ mod shortcut_maps;
 mod subtitle_study;
 mod support;
 mod text_reading;
+mod touch;
 mod vobsub_pairs;
 mod web_video;
 

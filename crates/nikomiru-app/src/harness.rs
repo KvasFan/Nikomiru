@@ -354,6 +354,16 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::popup_sound(command["level"].as_u64().unwrap_or(0) as usize)
                 .map(|()| Value::Null)
         }
+        Some("touch") => {
+            let point = |key: &str| -> Result<(f32, f32), String> {
+                let p = &command[key];
+                Ok((
+                    p[0].as_f64().ok_or("x")? as f32,
+                    p[1].as_f64().ok_or("y")? as f32,
+                ))
+            };
+            harness::touch(point("from")?, point("to")?).map(|()| Value::Null)
+        }
         Some("shortcuts") => harness::shortcuts(text(command, "action")?.into(), command.clone())
             .map(|()| Value::Null),
         Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())

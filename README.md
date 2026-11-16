@@ -73,7 +73,7 @@ Published Linux binary packages are version 2.53.0. Source tag [v2.110.0](https:
 
 Unreleased development also reads local HTMLZ, RTF, DOCX and text-layer PDF files in Books (M110). PDF needs installed Poppler `pdftotext`; Setup can explicitly reuse it or offer a supported Linux system-package installation. See the [document guide](docs/guide/en.md#additional-local-documents-m110-development) for supported structures and limits.
 
-It also adds local bookmarks, highlights and notes, a search through the text of every added book and Pages/Sentence reading modes (M111); see the [guide](docs/guide/en.md#annotations-library-search-and-reading-modes-m111-development). Podcasts can be added by RSS feed and listened to offline with transcripts or your own LRC/subtitle text (M112). Shortcut maps can be exported and imported with a preview (M113). MDict dictionaries keep rich definitions with `.mdd` pictures and sounds (M114). Other study languages, such as English, get their own profile and separate study data (M115). Emby servers join Jellyfin and Plex (M116).
+It also adds local bookmarks, highlights and notes, a search through the text of every added book and Pages/Sentence reading modes (M111); see the [guide](docs/guide/en.md#annotations-library-search-and-reading-modes-m111-development). Podcasts can be added by RSS feed and listened to offline with transcripts or your own LRC/subtitle text (M112). Shortcut maps can be exported and imported with a preview (M113). MDict dictionaries keep rich definitions with `.mdd` pictures and sounds (M114). Other study languages, such as English, get their own profile and separate study data (M115). Emby servers join Jellyfin and Plex (M116). Touchscreens can swipe to seek and turn pages (M117); the Windows, Android and macOS ports remain unreleased (see `docs/qa/ports.md`).
 
 | Area | Status |
 |---|---|
@@ -140,7 +140,7 @@ A Cargo workspace of 11 crates: pure logic (`nikomiru-core`, `-text`, `-dict`, `
 | Document | Contents |
 |---|---|
 | [docs/SPECIFICATION.md](docs/SPECIFICATION.md) | Purpose, licenses, architecture, requirements, decisions and risks |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones through M116, exit criteria, six-project feature comparison and accepted scopes M117–M119 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones through M117 (native ports open), exit criteria, six-project feature comparison and accepted scopes M118–M119 |
 | [docs/TEST.md](docs/TEST.md) | Test strategy, fixtures, conformance with Fushi, case catalog |
 | [docs/adr/](docs/adr/) | Architecture decisions with the spike measurements |
 

@@ -363,6 +363,10 @@ Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 cara
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
 
+## Touch (sviluppo M117)
+
+Su uno schermo touch un tocco fa ciò che fa un clic: cerca una parola, avvia o mette in pausa, preme i pulsanti. Scorri rapidamente un dito a sinistra o a destra sul video per tornare indietro o andare avanti del passo di ricerca. Nelle modalità Pagine e Frase del lettore, scorri a sinistra per la pagina o frase successiva e a destra per la precedente; nella scrittura verticale e nei manga, che si leggono da destra a sinistra, scorri a destra per proseguire. I trascinamenti verticali continuano a scorrere. I port per Windows, Android e macOS sono seguiti in `docs/qa/ports.md`; per ora è rilasciato solo Linux.
+
 ## Lingue di studio (sviluppo M115)
 
 Impostazioni → Generali → **Lingua di studio** sceglie la lingua che studi: giapponese (predefinita) o una delle altre lingue con regole di deflessione (arabo, tedesco, greco, inglese, esperanto, spagnolo, basco, francese, irlandese, greco antico, georgiano, coreano, latino, antico irlandese, albanese, tagalog, yiddish). Ogni lingua ha le sue impostazioni: **Parole** divide il testo con la corrispondenza più lunga nel dizionario (adatta al giapponese) o in **parole intere tra gli spazi** (adatta alle lingue scritte con spazi); **Letture** mostra o nasconde le letture sopra le parole; i **dizionari** si scelgono in automatico (quelli che dichiarano la lingua e quelli che non ne dichiarano una) o a mano. Salvando, tutto si applica subito.

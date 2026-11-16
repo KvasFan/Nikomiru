@@ -362,6 +362,10 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Touch (M117 development)
+
+On a touchscreen a tap does what a click does: it looks a word up, plays or pauses, and presses buttons. Swipe one finger quickly left or right over the video to seek back or forward by the seek step. In the reader's Pages and Sentence modes, swipe left for the next page or sentence and right for the previous one; in vertical writing and manga, which read from right to left, swipe right to go on. Vertical drags keep scrolling. The Windows, Android and macOS ports are tracked in `docs/qa/ports.md`; only Linux is released for now.
+
 ## Study languages (M115 development)
 
 Settings → General → **Study language** chooses the language you study: Japanese (the default) or one of the other languages with deinflection rules (Arabic, German, Greek, English, Esperanto, Spanish, Basque, French, Irish, Ancient Greek, Georgian, Korean, Latin, Old Irish, Albanian, Tagalog, Yiddish). Each language has its own settings: **Words** splits text by the longest dictionary match (best for Japanese) or into **whole words between spaces** (best for languages written with spaces); **Readings** shows or hides readings over words; and its **dictionaries** are chosen automatically (those that declare the language, and those that declare none) or by hand. Saving applies everything at once.

@@ -402,6 +402,8 @@ impl FileDialog {
 pub(crate) struct View {
     pub phrases_open: bool,
     pub phrase_query: String,
+    /// Touch gestures (PORT-003).
+    pub gestures: crate::gestures::Tracker,
     pub cloze_query: String,
     pub reader_tools: reader_tools::Query,
     pub podcast_url: String,
@@ -718,6 +720,13 @@ impl View {
         self.dict = dict_page::State::default();
     }
 
+    /// Whether a touch is under way: its end must reach a frame.
+    fn gestures_pending(&self, events: &[egui::Event]) -> bool {
+        events
+            .iter()
+            .any(|e| matches!(e, egui::Event::Touch { .. }))
+    }
+
     /// The popups drawn since the last call, by level, once per popup.
     pub fn take_presented_popups(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.presented)
@@ -761,6 +770,33 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        // PORT-003: a swipe seeks the video or turns the reader's page
+        let events = ctx.input(|i| i.events.clone());
+        if let Some(gesture) = self.gestures.feed(&events, ctx.input(|i| i.time)) {
+            let pages = s.batch.open
+                || s.bank.open
+                || s.clozes.open
+                || s.reader.open
+                || s.podcasts.open
+                || self.recall_covered(s);
+            if self.books_page_open && !pages {
+                self.books.swipe = Some(gesture);
+            } else if !pages
+                && !self.library_page_open
+                && !self.hooker_page_open
+                && !s.popups.is_open()
+                && !ctx.egui_wants_keyboard_input()
+                && s.view.loaded
+            {
+                out.push(Command::Action(match gesture {
+                    crate::gestures::Gesture::SwipeRight => crate::shortcuts::Action::SeekForward,
+                    crate::gestures::Gesture::SwipeLeft => crate::shortcuts::Action::SeekBack,
+                }));
+            }
+        }
+        if self.gestures_pending(&events) {
+            ctx.request_repaint();
+        }
         if s.batch.open {
             self.window(&ctx, s);
             ui.painter()

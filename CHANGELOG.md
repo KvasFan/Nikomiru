@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Recognize one-finger horizontal swipes on touchscreens to seek the video and turn reader pages or sentences in the reading direction, and track each port's native evidence separately (M117, PORT-003, PORT-004; native Windows/Android/macOS checks remain open).
+
 - Add Emby servers beside Jellyfin and Plex, with Emby's own path prefix, headers, per-user routes, identity and direct-play checks (M116, SRV-014…SRV-016).
 
 - Study any language with transform tables through per-language profiles (dictionaries, longest-match or whole-word segmentation, readings) switched live in General settings, with word statuses, Anki known words, phrases, cloze exercises and review cards kept per language; English proven end to end beside Japanese (M115, LNG-001…LNG-004).
