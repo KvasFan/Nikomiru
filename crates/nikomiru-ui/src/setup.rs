@@ -26,6 +26,8 @@ pub struct Plan {
 /// Current tool settings captured for offline discovery/installation.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ToolPaths {
+    /// Configured Poppler PDF text helper.
+    pub pdftotext: String,
     /// Configured FFmpeg path.
     pub ffmpeg: String,
     /// Configured yt-dlp path.

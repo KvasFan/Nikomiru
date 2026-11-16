@@ -529,7 +529,11 @@ fn run(
         translator: translator.clone(),
         catalog: nikomiru_online::setup::catalog::catalog(),
     });
+    let book_support: Arc<dyn nikomiru_books::documents::Support> = Arc::new(
+        nikomiru_app::document_support::NativeSupport::new(config.paths.pdftotext.clone()),
+    );
     let services = Services {
+        book_support: Arc::clone(&book_support),
         player: player.handle(),
         config,
         library,
@@ -541,12 +545,15 @@ fn run(
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
         dictionaries: match dictionaries {
-            Some(manager) => Box::new(nikomiru_app::dictionaries::Dictionaries::start(
-                manager,
-                translator.clone(),
-                Arc::clone(&max_results),
-                paths.cache_dir.join("episode-scores"),
-            )),
+            Some(manager) => Box::new(
+                nikomiru_app::dictionaries::Dictionaries::start_with_support(
+                    manager,
+                    translator.clone(),
+                    Arc::clone(&max_results),
+                    paths.cache_dir.join("episode-scores"),
+                    Arc::clone(&book_support),
+                ),
+            ),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
         screenshots_dir: paths.screenshots_dir(),

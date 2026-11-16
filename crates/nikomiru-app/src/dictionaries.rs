@@ -105,6 +105,7 @@ fn spawn_book_counter(
     translator: &Translator,
     stop: &Cancel,
     cache_dir: PathBuf,
+    support: Arc<dyn nikomiru_books::documents::Support>,
 ) -> (BookJobs, Option<JoinHandle<()>>) {
     let (tx, rx) = mpsc::channel::<(
         nikomiru_ui::book_scores::Request,
@@ -126,12 +127,13 @@ fn spawn_book_counter(
                 if cancel.is_cancelled() {
                     continue;
                 }
-                done(crate::book_scores::count_cached(
+                done(crate::book_scores::count_cached_with_support(
                     &manager,
                     &request,
                     &cancel,
                     &translator,
                     &cache,
+                    &*support,
                 ));
             }
         }) {
@@ -296,6 +298,23 @@ impl Dictionaries {
         max_results: Arc<AtomicUsize>,
         scores_cache: PathBuf,
     ) -> Self {
+        Self::start_with_support(
+            manager,
+            translator,
+            max_results,
+            scores_cache,
+            Arc::new(crate::document_support::NativeSupport::default()),
+        )
+    }
+
+    /// Starts dictionary workers sharing the reader's native document support.
+    pub fn start_with_support(
+        manager: Arc<DictionaryManager>,
+        translator: Translator,
+        max_results: Arc<AtomicUsize>,
+        scores_cache: PathBuf,
+        support: Arc<dyn nikomiru_books::documents::Support>,
+    ) -> Self {
         let (jobs, worker) =
             spawn_worker("nikomiru-lookup", &manager, &translator, move |m, text| {
                 render(m, text, max_results.load(Ordering::Relaxed))
@@ -310,6 +329,7 @@ impl Dictionaries {
             &translator,
             &counts_stop,
             scores_cache.join("counts-v1/books"),
+            support,
         );
         let (counts, counts_worker) =
             spawn_counter(&manager, &translator, &counts_stop, scores_cache);

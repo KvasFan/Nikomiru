@@ -24,6 +24,9 @@ pub struct Artifact {
 /// An optional support program, with its explicit dependencies and provenance.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Tool {
+    /// Explicit native distribution-package action, separately labelled from private pinned bundles.
+    #[serde(default)]
+    pub system_package: bool,
     /// Stable assistant id.
     pub id: String,
     /// Upstream name.
@@ -87,12 +90,17 @@ mod tests {
     #[test]
     fn pinned_platforms_and_dependency_order() {
         let c = catalog();
-        assert_eq!(c.len(), 3);
+        assert_eq!(c.len(), 4);
         assert_eq!(
             resolve(&c, &["yt-dlp".into()]).unwrap(),
             ["ffmpeg", "deno", "yt-dlp"]
         );
         for tool in &c {
+            if tool.system_package {
+                assert_eq!(tool.id, "pdftotext");
+                assert!(tool.artifacts.is_empty());
+                continue;
+            }
             for platform in [
                 "linux-x86_64",
                 "linux-aarch64",

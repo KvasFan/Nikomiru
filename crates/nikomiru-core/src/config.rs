@@ -1131,6 +1131,8 @@ impl Default for AnkiConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PathsConfig {
+    /// Optional Poppler pdftotext executable/directory; empty uses NIKOMIRU_PDFTOTEXT, then PATH.
+    pub pdftotext: String,
     /// The yt-dlp executable, or its folder; empty selects NIKOMIRU_YT_DLP,
     /// then PATH. Looked up only for an explicit web-video open (PLY-023).
     pub yt_dlp: String,

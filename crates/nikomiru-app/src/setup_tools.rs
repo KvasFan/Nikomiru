@@ -36,6 +36,19 @@ pub fn detect(
     settings: &ToolPaths,
     cancel: &Cancel,
 ) -> Result<PathBuf, String> {
+    if tool.system_package {
+        if tool.id != "pdftotext" {
+            return Err("setup-tool-invalid".into());
+        }
+        for setting in [settings.pdftotext.as_str(), ""] {
+            if let Some(path) = crate::document_support::find_pdf(setting)
+                && crate::document_support::validate_pdf(&path, cancel).is_ok()
+            {
+                return Ok(path);
+            }
+        }
+        return Err("setup-tool-missing".into());
+    }
     let platform = nikomiru_online::setup::tools::platform();
     let artifact = tool
         .artifacts
@@ -152,8 +165,14 @@ pub fn inventory(
                 detail: path
                     .as_ref()
                     .map_or_else(String::new, |p| p.display().to_string()),
-                path,
-                supported: tool.artifacts.iter().any(|a| a.platform == platform),
+                path: path.clone(),
+                supported: if tool.system_package {
+                    tool.id == "pdftotext"
+                        && (path.is_some()
+                            || (parts.proxy.is_empty() && crate::poppler_setup::available()))
+                } else {
+                    tool.artifacts.iter().any(|a| a.platform == platform)
+                },
             }
         })
         .collect();
@@ -371,6 +390,18 @@ pub fn install(
     }
     if cancel.is_cancelled() {
         return Err("setup-tool-cancelled".into());
+    }
+    if tool.system_package {
+        if tool.id != "pdftotext" {
+            return Err("setup-tool-invalid".into());
+        }
+        if !parts.proxy.is_empty() {
+            return Err("setup-tool-system-proxy".into());
+        }
+        events(SetupEvent::Checking {
+            id: tool.id.clone(),
+        });
+        return crate::poppler_setup::install(cancel);
     }
     let platform = nikomiru_online::setup::tools::platform();
     let artifact = tool

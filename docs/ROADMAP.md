@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102–M109 implemented in development, M110–M119 accepted for execution |
-| Last updated | 2026-11-15 (original roadmap: 2026-10-19) |
+| Status | Living roadmap; M102–M110 implemented in development, M111–M119 accepted for execution |
+| Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-The roadmap splits the work into **milestones** (implemented continuations through M106, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (implemented continuations through M110, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
 
 Latest published source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
 
@@ -1526,7 +1526,7 @@ Requested by the maintainer after publishing source v2.110.0. This comparison us
 
 ### Candidate milestones after M101
 
-Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M109 are **done in development**; M110–M119 are accepted for implementation under the whole-roadmap request. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M109 are **done in development**; M111–M119 are accepted for implementation under the whole-roadmap request. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
 
 | Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
 |---|---|---|---|---|
@@ -1538,7 +1538,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M107 | P1 / L | **Previewed batch card generation.** Select words/cues, choose contexts and inspect cards before starting bounded sequential media extraction/export. Show per-card outcomes, duplicate checks, cancellation and safe retries after an unknown Anki outcome. Preserve pending-card export and advanced single-card composition; neither already generates a new study batch. | [Migaku][src-migaku] | done in development |
 | M108 | P1 / M | **Named mining profiles and composer quick actions.** Reuse deck/note-type/field/tag mappings, pin selected composer fields across cards and choose dictionary senses explicitly. Check profile switches, missing note types and source changes without carrying stale media or overriding locked text unexpectedly. Existing templates remain supported. | [jidoujisho][src-jidoujisho] | done in development |
 | M109 | P1 / M | **Guided lookup and hold-to-peek controls.** Optionally select the first unknown word when paused and expose a held-key translation peek from an existing secondary track. Keep first-kanji lookup as a separate optional rule. Check key release, focus loss, popup priority, unchanged word statuses and no automatic translation/provider request. | [Migaku][src-migaku], [Mizune][src-mizune-details] | done in development |
-| M110 | P2 / L | **Additional document formats.** Stage HTMLZ/RTF, DOCX and text-layer PDF import as separately verifiable formats. Preserve reading order and source locations; validate archive/extraction limits and malformed inputs. PDF image OCR is separate from text-layer import. Select supported dependencies before promising any format. | [OpenKoto][src-openkoto], [jidoujisho][src-jidoujisho], [Migaku][src-migaku] | in progress |
+| M110 | P2 / L | **Additional document formats.** Stage HTMLZ/RTF, DOCX and text-layer PDF import as separately verifiable formats. Preserve reading order and source locations; validate archive/extraction limits and malformed inputs. PDF image OCR is separate from text-layer import. Select supported dependencies before promising any format. | [OpenKoto][src-openkoto], [jidoujisho][src-jidoujisho], [Migaku][src-migaku] | done in development |
 | M111 | P2 / L | **Reader modes, annotations and library text search.** Add named bookmarks/highlights/notes, search across imported book/article text, and explicit horizontal paging/sentence-focus modes. Keep stable locations, delete/export behavior and backup coverage; check reopening, source replacement, Japanese offsets and bounded asynchronous indexing. Current lookup highlights and reading position are not annotations. | [Fushi reading][src-fushi-features], [Fushi highlights][src-fushi], [OpenKoto][src-openkoto] | not started |
 | M112 | P2 / L | **Podcast feeds and lyrics lessons.** Add explicit RSS/episode import, offline audio/resume and provided/imported transcript or LRC lyrics. Reuse timed lookup, line replay and card clipping. Check duplicate episode identity, interrupted downloads, missing transcripts and source links. Speech transcription is decision-gated; current-song handoff on Android waits for M117. | [Migaku podcasts][src-migaku], [jidoujisho music][src-jidoujisho], [OpenKoto lyrics][src-openkoto] | not started |
 | M113 | P2 / S | **Portable shortcut maps.** Add a dedicated bounded versioned import/export for keyboard bindings, with conflict preview, atomic apply and reset. Check unknown actions, duplicate chords, physical-key layouts and typing/popup/recall priority. This extends existing remapping without sharing an entire settings file. | [Mizune][src-mizune] | not started |
@@ -1675,3 +1675,5 @@ Add explicit paused-lookup rules over installed dictionaries and a physical-key 
 Stage inert HTMLZ, bounded Unicode/legacy RTF, namespace-aware DOCX and external Poppler text-layer PDF independently. Retain original source locations and reader/analysis identities; expose helper installation explicitly without reading-time downloads.
 
 **Exit criteria**: separate real format/limit tests, native helper fault/cancellation/setup checks, actual reader/lookup/mining/restart/isolation cases and regression CI. Native/sandboxed helper packaging remains separately verified in M117.
+
+M110 is complete in development: full regression passed **1,102 workspace/integration tests** and **128 actual GUI cases** in **526 seconds**. Native Linux extraction used installed Poppler 26.10.0; real distribution package transactions and native/sandboxed platform packaging checks remain open. See [M110 QA](qa/m110.md). The next accepted milestone is M111 (reader modes, annotations and library text search).

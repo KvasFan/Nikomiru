@@ -2604,6 +2604,7 @@ dependencies = [
  "nikomiru-books",
  "nikomiru-core",
  "pulldown-cmark",
+ "quick-xml",
  "serde",
  "serde_json",
  "sha2",

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Read bounded local HTMLZ, RTF, DOCX and text-layer PDF in the existing reader, with native legacy decoding, original PDF page locations and explicit Poppler discovery/setup (M110, DOC-001…DOC-005).
+
 - Optionally look up the first exact unknown word or independent first kanji on pause, and hold a configurable physical key to reveal an already loaded secondary track without changing playback or saved obscuring (M109, GDL-001…GDL-004).
 
 - Save bounded credential-free mining profiles and use explicit literal field overrides, session-only pins and fingerprinted dictionary-record selections in the advanced composer; refuse stale draft sources and preserve pending overrides (M108, MCP-001…MCP-004).

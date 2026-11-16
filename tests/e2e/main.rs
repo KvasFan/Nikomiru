@@ -11,6 +11,7 @@ mod batch_mining;
 mod book_scores;
 mod cloze;
 mod condense;
+mod documents;
 mod drag;
 mod dvb_subtitles;
 mod encounters;

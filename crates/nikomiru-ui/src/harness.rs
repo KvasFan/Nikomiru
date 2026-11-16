@@ -621,7 +621,7 @@ pub fn state() -> Result<Value, String> {
         state["setup"] = json!({
             "running": s.setup_page.running,
             "items": s.setup_page.items.iter().map(|(id, state)| (id.clone(), format!("{state:?}"))).collect::<std::collections::BTreeMap<_, _>>(),
-            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
+            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp, "pdftotext": s.config().paths.pdftotext },
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});

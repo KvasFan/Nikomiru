@@ -790,10 +790,10 @@ hooker-no-clipboard = クリップボードを読み取るプログラムがあ�
 books-title = 本
 books-add = 本またはマンガを追加…
 books-folder = ページのフォルダーを追加…
-books-none = 本がまだありません。EPUB、CBZ、HTML、TXT、Markdown のファイルを追加するか、テキストを貼り付けるか、アドレスからウェブページを開いてください。元のファイルは移動しません。
+books-none = 本がまだありません。EPUB、漫画、HTML、TXT、Markdown、HTMLZ、RTF、DOCX、テキスト付きPDFを追加するか、テキストを貼り付けるか、アドレスからウェブページを開いてください。元のファイルは移動しません。
 books-audiobook = オーディオブックを開く…
 books-audio-filter = 音声ファイル
-books-filter = 本、マンガ、HTML、TXT、Markdown / Mokuro
+books-filter = 本・マンガ・HTML/TXT/Markdown・Mokuro・HTMLZ/RTF/DOCX/PDF
 books-remove = { $title } を削除
 books-back = ← 本
 books-vertical = 縦書き
@@ -1513,3 +1513,12 @@ settings-pause-kanji = 最初の漢字
 settings-pause-hint = 最初の表示中の主字幕を使用します。未知語はインストール済み辞書と単語の状態で判定します。漢字の検索は別のルールです。
 action-lookup-first-kanji = 最初の漢字を検索
 action-peek-translation = 押している間だけ副字幕の訳を表示
+
+# M110 — Additional local documents
+error-book-document = この文書は無効、未対応、または構造上の上限を超えています。
+error-book-pdf-helper = PDFのテキスト抽出にはPopplerのpdftotextが必要です。詳細設定で実行ファイルを選択するか、対応する環境ではセットアップからインストールしてください。
+error-book-document-tool = 文書の抽出に失敗しました：{ $reason }
+settings-pdftotext = Poppler pdftotextの実行ファイルまたはフォルダー
+setup-tool-system-package = システムパッケージ（管理者認証）
+setup-tool-system-package-hint = PopplerはLinuxのパッケージ管理とそのリポジトリ・ネットワーク設定を使用します。インストールには管理者認証が必要な場合があります。停止すると後続の処理を止め、実行中のシステム処理は完了を待ちます。アプリの独自プロキシ設定時やサンドボックス内ではインストールできません。既存のツールは引き続き使用できます。
+setup-tool-system-proxy = システムのパッケージ管理でPopplerをインストールするか、既存の実行ファイルを指定してください。システムインストールでアプリのプロキシ設定を回避することはできません。

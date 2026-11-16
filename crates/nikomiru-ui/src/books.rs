@@ -68,12 +68,15 @@ pub type Read = Result<Book, String>;
 pub fn start_read(
     path: PathBuf,
     translator: Translator,
+    support: std::sync::Arc<dyn nikomiru_books::documents::Support>,
     done: Box<dyn FnOnce(PathBuf, Read) + Send>,
 ) {
     let spawned = std::thread::Builder::new()
         .name("book".into())
         .spawn(move || {
-            let read = nikomiru_books::read(&path).map_err(|e| translator.error(&e));
+            let read =
+                nikomiru_books::read_with_support(&path, &*support, &nikomiru_core::Cancel::new())
+                    .map_err(|e| translator.error(&e));
             done(path, read);
         });
     if let Err(e) = spawned {

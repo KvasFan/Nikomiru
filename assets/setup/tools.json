@@ -155,5 +155,15 @@
         ]
       }
     ]
+  },
+  {
+    "id": "pdftotext",
+    "name": "Poppler pdftotext",
+    "version": "system",
+    "license": "GPL (system package)",
+    "source": "https://poppler.freedesktop.org/",
+    "dependencies": [],
+    "artifacts": [],
+    "system_package": true
   }
 ]

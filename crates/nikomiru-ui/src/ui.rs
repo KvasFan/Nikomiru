@@ -2385,6 +2385,7 @@ impl Ui {
             crate::books::start_read(
                 path,
                 self.session.translator_clone(),
+                self.session.book_support(),
                 Box::new(move |path, read| waker.wake(Inbound::BookRead { path, read })),
             );
         }

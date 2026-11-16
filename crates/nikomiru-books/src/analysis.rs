@@ -62,6 +62,15 @@ impl Budget {
 /// A cancelled read returns an I/O error; the worker checks its token before
 /// presenting any error. Manga and image-only EPUBs return `NoText`.
 pub fn read_text(path: &Path, cancel: &Cancel) -> Result<Book, BookError> {
+    read_text_with_support(path, cancel, &crate::documents::Builtin)
+}
+
+/// Bounded analysis using the same native document decoder/helper as the reader.
+pub fn read_text_with_support(
+    path: &Path,
+    cancel: &Cancel,
+    support: &dyn crate::documents::Support,
+) -> Result<Book, BookError> {
     check_cancel(cancel)?;
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     if path.is_dir() || matches!(extension.as_deref(), Some("cbz" | "zip" | "mokuro")) {
@@ -75,6 +84,7 @@ pub fn read_text(path: &Path, cancel: &Cancel) -> Result<Book, BookError> {
         return Err(BookError::TooLarge);
     }
     let book = match extension.as_deref() {
+        Some("htmlz" | "docx" | "rtf" | "pdf") => crate::documents::read(path, support, cancel)?,
         Some("txt" | "md" | "markdown" | "nikomiru-text") => crate::text::read(path, Some(cancel))?,
         Some("html" | "htm" | "xhtml") => {
             if metadata.len() > MAX_ENTRY_BYTES {

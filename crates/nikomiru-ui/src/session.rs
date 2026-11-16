@@ -199,6 +199,8 @@ pub struct Services {
     pub screenshots_dir: PathBuf,
     /// Durable locally pasted text sources.
     pub text_dir: PathBuf,
+    /// Native document support shared with whole-book analysis.
+    pub book_support: std::sync::Arc<dyn nikomiru_books::documents::Support>,
     /// Mining to Anki (ADR 0007).
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
@@ -961,6 +963,11 @@ impl Session {
 
     fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         self.services.translator.tr(id, args)
+    }
+
+    /// Native format support for the off-thread book reader.
+    pub fn book_support(&self) -> std::sync::Arc<dyn nikomiru_books::documents::Support> {
+        std::sync::Arc::clone(&self.services.book_support)
     }
 
     /// The player, for the GUI test harness's `mpv_get`.
@@ -2909,6 +2916,9 @@ impl Session {
                 }
             }
             Section::Advanced => {
+                self.services
+                    .book_support
+                    .configure_pdf(c.paths.pdftotext.clone());
                 let path = c.paths.ffmpeg.clone();
                 self.services.subtitle_source.configure_ffmpeg(path.clone());
                 self.services.anki.configure_ffmpeg(path.clone());
@@ -9150,6 +9160,7 @@ impl Session {
     fn setup_tool_paths(&self) -> crate::setup::ToolPaths {
         let p = &self.services.config.paths;
         crate::setup::ToolPaths {
+            pdftotext: p.pdftotext.clone(),
             ffmpeg: p.ffmpeg.clone(),
             yt_dlp: p.yt_dlp.clone(),
             deno: p.deno.clone(),
@@ -9210,6 +9221,7 @@ impl Session {
                 let mut config = self.services.config.clone();
                 let path = path.to_string_lossy().into_owned();
                 match id.as_str() {
+                    "pdftotext" => config.paths.pdftotext = path,
                     "ffmpeg" => config.paths.ffmpeg = path,
                     "yt-dlp" => config.paths.yt_dlp = path,
                     "deno" => config.paths.deno = path,

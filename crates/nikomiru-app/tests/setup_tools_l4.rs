@@ -41,6 +41,7 @@ fn parts(root: &Path, tool: Tool) -> Parts {
 
 fn tool(host: &FakeFiles, bytes: &[u8]) -> Tool {
     Tool {
+        system_package: false,
         id: "deno".into(),
         name: "Test Deno".into(),
         version: "test".into(),

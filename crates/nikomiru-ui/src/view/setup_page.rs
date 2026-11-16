@@ -168,12 +168,17 @@ fn tools(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     let platform = nikomiru_online::setup::tools::platform();
     for tool in &s.page.tools {
         let artifact = tool.artifacts.iter().find(|a| a.platform == platform);
+        let supported = artifact.is_some()
+            || (tool.system_package && s.page.inventory.get(&tool.id).is_some_and(|s| s.supported));
+        if tool.system_package {
+            note(ui, &tr("setup-tool-system-package-hint"));
+        }
         let required = plan.tools.contains(&tool.id) && !s.page.ticked.contains(&tool.id);
         ui.horizontal_wrapped(|ui| {
             let mut on = s.page.ticked.contains(&tool.id) || required;
             if ui
                 .add_enabled(
-                    artifact.is_some() && !required && !s.page.running,
+                    supported && !required && !s.page.running,
                     egui::Checkbox::new(&mut on, &tool.name),
                 )
                 .changed()
@@ -189,6 +194,12 @@ fn tools(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
                     tool.version,
                     tool.license,
                     size(artifact.bytes)
+                ));
+            } else if tool.system_package && supported {
+                ui.label(format!(
+                    "{} · {}",
+                    tool.license,
+                    tr("setup-tool-system-package")
                 ));
             } else {
                 ui.label(tr("setup-tool-unsupported"));
@@ -383,6 +394,7 @@ pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) {
 mod tests {
     use super::*;
     use egui_kittest::Harness;
+    use egui_kittest::kittest::NodeT;
     use egui_kittest::kittest::Queryable;
 
     struct Test {
@@ -472,6 +484,44 @@ mod tests {
             click(&mut h, "setup-tools-refresh").as_slice(),
             [Command::SetupInspect]
         ));
+    }
+
+    // T-DOC-004, T-DOC-005: native packages are separately labelled and never preselected.
+    #[test]
+    fn poppler_requires_an_explicit_supported_selection() {
+        let mut state = test();
+        assert!(!state.page.ticked.contains("pdftotext"));
+        state.page.inventory.insert(
+            "pdftotext".into(),
+            crate::setup::ToolStatus {
+                id: "pdftotext".into(),
+                path: None,
+                detail: String::new(),
+                supported: true,
+            },
+        );
+        let mut h = harness(state);
+        h.run();
+        assert!(h.query_by_label("setup-tool-system-package-hint").is_some());
+        assert!(
+            !h.get_by_label("Poppler pdftotext")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(matches!(click(&mut h, "Poppler pdftotext").as_slice(),
+            [Command::SetupTick { id, on: true }] if id == "pdftotext"));
+        h.state_mut()
+            .page
+            .inventory
+            .get_mut("pdftotext")
+            .unwrap()
+            .supported = false;
+        h.run();
+        assert!(
+            h.get_by_label("Poppler pdftotext")
+                .accesskit_node()
+                .is_disabled()
+        );
     }
 
     // AK-BUG-004: opened from the library or the settings, which are drawn

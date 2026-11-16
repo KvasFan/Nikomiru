@@ -806,10 +806,10 @@ hooker-no-clipboard = No program to read the clipboard: install wl-paste or xcli
 books-title = Books
 books-add = Add a book or manga…
 books-folder = Add a folder of pages…
-books-none = No book yet. Add an EPUB, CBZ, HTML, TXT or Markdown file, paste text, or open a web page by its address. Original files stay where they are.
+books-none = No book yet. Add an EPUB, manga, HTML, TXT, Markdown, HTMLZ, RTF, DOCX or text-layer PDF, paste text, or open a web page by its address. Original files stay where they are.
 books-audiobook = Open an audiobook…
 books-audio-filter = Audio files
-books-filter = Books, manga, HTML, TXT and Markdown / Mokuro
+books-filter = Books, manga, HTML/TXT/Markdown, Mokuro, HTMLZ/RTF/DOCX/PDF
 books-remove = Remove { $title }
 books-back = ← Books
 books-vertical = Vertical
@@ -1530,3 +1530,12 @@ settings-pause-kanji = First kanji
 settings-pause-hint = Uses the first active primary text cue. Unknown words use installed dictionaries and your word statuses; kanji is a separate rule.
 action-lookup-first-kanji = Look up first kanji
 action-peek-translation = Hold to reveal secondary translation
+
+# M110 — Additional local documents
+error-book-document = This document is invalid, unsupported or exceeds its structural limits.
+error-book-pdf-helper = PDF text extraction needs Poppler pdftotext. Select its executable in Advanced settings or install it through Setup where supported.
+error-book-document-tool = Document extraction failed: { $reason }
+settings-pdftotext = Poppler pdftotext executable or folder
+setup-tool-system-package = System package (administrator authentication)
+setup-tool-system-package-hint = Poppler uses your Linux package manager and its repository/network settings. Install may request administrator authentication. Stop prevents later jobs while the OS completes its current transaction. Installation is unavailable with a custom app proxy or inside a sandbox; installed tools can still be reused.
+setup-tool-system-proxy = Install Poppler with your system package manager or choose an existing executable. System package installation cannot bypass the app proxy setting.

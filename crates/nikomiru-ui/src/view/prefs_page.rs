@@ -644,6 +644,9 @@ fn path_row(ui: &mut Ui, label: &str, path: &Path, copy: &str) {
 fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     form(ui, "settings-advanced", |ui| {
+        row(ui, &tr("settings-pdftotext"), |ui| {
+            ui.add(TextEdit::singleline(&mut draft.paths.pdftotext).desired_width(360.0))
+        });
         row(ui, &tr("settings-ffmpeg"), |ui| {
             ui.add(
                 TextEdit::singleline(&mut draft.paths.ffmpeg)

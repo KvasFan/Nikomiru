@@ -88,6 +88,8 @@ unic-langid = "0.9"
 uuid = "1.28"
 sha2 = "0.11"
 pulldown-cmark = { version = "0.13.6", default-features = false }
+# Inert namespace-aware DOCX body parsing (DOC-003); already in the graph.
+quick-xml = { version = "0.41.0", default-features = false }
 crc32fast = "1.5"
 # the manga model, in pure Rust (D-30)
 tract-onnx = "0.23"

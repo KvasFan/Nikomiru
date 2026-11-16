@@ -806,10 +806,10 @@ hooker-no-clipboard = Nessun programma per leggere gli appunti: installa wl-past
 books-title = Libri
 books-add = Aggiungi un libro o un manga…
 books-folder = Aggiungi una cartella di pagine…
-books-none = Ancora nessun libro. Aggiungi un file EPUB, CBZ, HTML, TXT o Markdown, incolla un testo oppure apri una pagina web dal suo indirizzo. I file originali restano dove sono.
+books-none = Ancora nessun libro. Aggiungi un EPUB, manga, HTML, TXT, Markdown, HTMLZ, RTF, DOCX o PDF con testo, incolla un testo oppure apri una pagina web dal suo indirizzo. I file originali restano dove sono.
 books-audiobook = Apri un audiolibro…
 books-audio-filter = File audio
-books-filter = Libri, manga, HTML, TXT e Markdown / Mokuro
+books-filter = Libri, manga, HTML/TXT/Markdown, Mokuro, HTMLZ/RTF/DOCX/PDF
 books-remove = Rimuovi { $title }
 books-back = ← Libri
 books-vertical = Verticale
@@ -1530,3 +1530,12 @@ settings-pause-kanji = Primo kanji
 settings-pause-hint = Usa il primo sottotitolo principale attivo. Le parole sconosciute dipendono dai dizionari installati e dai tuoi stati; il kanji è una regola separata.
 action-lookup-first-kanji = Cerca il primo kanji
 action-peek-translation = Tieni premuto per rivelare la traduzione secondaria
+
+# M110 — Additional local documents
+error-book-document = Il documento non è valido, non è supportato o supera i limiti della sua struttura.
+error-book-pdf-helper = Per estrarre il testo PDF serve Poppler pdftotext. Seleziona l’eseguibile nelle impostazioni avanzate o installalo dalla configurazione, dove supportato.
+error-book-document-tool = Estrazione del documento non riuscita: { $reason }
+settings-pdftotext = Eseguibile o cartella di Poppler pdftotext
+setup-tool-system-package = Pacchetto di sistema (autenticazione amministratore)
+setup-tool-system-package-hint = Poppler usa il gestore pacchetti Linux e le sue impostazioni di rete e repository. Installare può richiedere l’autenticazione amministratore. Interrompi evita le attività successive mentre il sistema conclude la transazione corrente. L’installazione non è disponibile con un proxy personalizzato dell’app o in una sandbox; gli strumenti già installati restano riutilizzabili.
+setup-tool-system-proxy = Installa Poppler con il gestore pacchetti del sistema o scegli un eseguibile esistente. L’installazione di sistema non può ignorare il proxy dell’app.
