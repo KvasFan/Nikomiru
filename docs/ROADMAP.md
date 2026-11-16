@@ -1758,3 +1758,11 @@ Default, OLED and High-contrast palettes checked for contrast; an explicitly dow
 **Exit criteria**: contrast tests per palette, pack verification/extraction tests, preset tests and an actual-app preset case with a local pack; fast CI.
 
 M118 is complete in development: fast CI passed **1,093 tests**, the real pinned pack download passed as an L7 test and the actual-app preset case passed. See [M118 QA](qa/m103-m119.md#m118--named-palettes-and-shader-presets). The next accepted milestone is M119 (signed application update delivery).
+
+## M119 — Signed application update delivery
+
+**Requirements**: UPD-001…UPD-004. Dependency: `minisign-verify` 0.3 (MIT, §4).
+
+Explicit update checks against a minisign-signed channel manifest pinning artifacts by size and SHA-256, rollback refusal, package-ownership detection, resumable download and a verified, atomic portable install. The production key and feed remain the maintainer's to create.
+
+**Exit criteria**: signature/rollback/ownership/install tests with generated keys, a fake update host and an actual-app check/download/install into a portable test root; fast CI. Publishing a signed production feed stays open.

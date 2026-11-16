@@ -1036,3 +1036,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-THM-001 | Palettes | Contrast of every text/popup pair for each palette, light/dark and five accents (7:1 main texts in High contrast), config fallback, accessible choice. | L1, L3 |
 | T-THM-002 | Pack | Generated archive: hash/size refusal, only known `.glsl` names, bounds, atomic publish and removal; real pinned download as an L7 test. | L1, L7 |
 | T-THM-003 | Presets | Preset file lists, raw override, missing pack; actual app with a local test pack setting and clearing `glsl-shaders`, refusal fallback. | L1, L6 |
+
+## M119 updates
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-UPD-001 | Signed manifests | Generated minisign key/signatures: valid, tampered manifest, wrong key, malformed signature, other channel/format, bounds and HTTPS rules. | L1, L4 |
+| T-UPD-002 | No rollback | Older/equal releases and replayed older manifests refused; accepted floor kept. | L1, L6 |
+| T-UPD-003 | Ownership | Flatpak, package and read-only installs only link outside; accessible translated About controls. | L1, L3 |
+| T-UPD-004 | Install | Fake host: interrupted resumable download, size/hash refusal, unsafe archive names, failed `--version`, atomic swap with the previous folder kept; actual app check/download/install of a test release into a portable test root. | L1, L4, L6 |
