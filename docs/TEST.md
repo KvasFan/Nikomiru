@@ -960,3 +960,13 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-GDL-002 | Kanji and ownership | Separate first-kanji rule/manual shortcut, original character query, stale source/dictionary/cue/pause/config cancellation and explicit-popup priority. | L1, L6 |
 | T-GDL-003 | Held secondary peek | Physical key release despite modifier/focus/binding changes; no latch on repeats, focus loss/page/popup/source clears and saved obscuring unchanged; actual secondary rendering. | L1, L3, L6 |
 | T-GDL-004 | Configuration/isolation | Accessible translated settings/actions, legacy/restart config, no hold persistence, unchanged word statuses/playback/source selection and no translation/provider request. | L1, L6 |
+
+## M110 document imports
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-DOC-001 | HTMLZ | Real ZIP/HTML/ruby reading order; unsafe/duplicate paths, ambiguous roots, compressed/decoded quotas, inert links/scripts and invalid import isolation. | L1, L6 |
+| T-DOC-002 | RTF | Real control/group parsing, scoped legacy/Unicode/fallback/surrogate cases, escaped/binary/ignored destinations, malformed nesting and invalid decoding; Japanese reader lookup. | L1, L4, L6 |
+| T-DOC-003 | DOCX | Actual WordprocessingML namespaces, body/run/table order, headings/Unicode/entities, revisions/field results, external parts and ZIP/XML/depth limits. | L1, L6 |
+| T-DOC-004 | PDF | Actual installed Poppler extraction with page/Unicode identity, no-text/encrypted/invalid/missing cases; fake-process over-limit/timeout/cancellation/argument safety and explicit setup package-manager hooks. | L1, L4, L6 |
+| T-DOC-005 | Integration | Original source indices and content invalidation; mining/phrase/index/score/restart using the same support adapter, accessible translated controls, failed imports retaining the open book and whole regression CI. | L1, L3, L6 |
