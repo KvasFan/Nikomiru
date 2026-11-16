@@ -942,3 +942,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-BMG-002 | Preview before export | Effective mappings and visible planned media, whole-batch validation, no add/media extraction before Start and stale-preview rejection. | L1, L3, L6 |
 | T-BMG-003 | Sequential execution | One export at a time, duplicate skips, per-item outcomes, stop-after-current cancellation and coexistence with single/pending mining. | L1, L6 |
 | T-BMG-004 | Safe recovery | Durable operation identity, exact-tag reconciliation, unknown commit without resend, certain retry, restart and backup retention against fake Anki fault modes. | L1, L4, L6 |
+
+## M108 mining profiles and composer
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-MCP-001 | Named profiles | Bounded config roundtrip, legacy defaults, invalid/duplicate names, credential isolation and explicit apply/delete/restart; missing Anki models. | L1, L3, L6 |
+| T-MCP-002 | Field pins | Explicit edit/pin/unpin scope, literal HTML/braces escaping, fresh media/source per card, unknown/empty fields before uploads and pending roundtrip. | L1, L4, L6 |
+| T-MCP-003 | Sense selection | Stable exact record fingerprints, selected-only definitions/images, empty/stale refusal before mutation; visible dictionary-labelled controls. | L1, L3, L6 |
+| T-MCP-004 | Draft ownership | Changed popup/source/profile cannot dispatch stale frames/context; ordinary advanced clip controls and double-submit isolation. | L1, L6 |
