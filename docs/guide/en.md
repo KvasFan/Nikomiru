@@ -166,9 +166,9 @@ To read a balloon, drag across it. The first time, the page offers a reading mod
 
 With the audiobook playing, open its book on the Books page and press **Read along**: the page follows what you hear, the paragraph marked, and **Listen from here** plays from the paragraph at the top of the page.
 
-### Jellyfin and Plex
+### Jellyfin, Emby and Plex
 
-Add a server in Settings → Media servers: for Jellyfin the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays.
+Add a server in Settings → Media servers: for Jellyfin or Emby (choose which) the address, user and password (the password is not kept); for Plex, sign in on plex.tv in your browser. Each server gets a tab on the library page. Its videos play from the original file, with the same subtitles, lookups and cards as a local one, and your position and watched state go back to the server. Nikomiru connects to a server only while its tab is open or one of its videos plays. An Emby is checked to be one before logging in; a file it cannot play directly shows an error instead of being converted (M116 development).
 
 **Open web video** on the Library page or the player bar accepts a video page URL. You can also drop the URL or pass it on the command line. Install `yt-dlp` yourself; if it is not on PATH, set its executable in Settings → Advanced (or `NIKOMIRU_YT_DLP`). The preferred subtitle languages apply to uploaded and automatic subtitles. Web videos use the same dictionary popups and cards, and their source links reopen the original page at the scene. On-demand direct HTTP media is supported, including separate audio/video streams; live, DRM and segmented-only streams are not.
 

@@ -565,3 +565,110 @@ fn l7_a_real_webdav_keeps_each_devices_file() {
     let wrong = WebDav::new(&url, &user, "wrong", false, "").unwrap();
     assert!(wrong.devices().is_err());
 }
+
+fn emby(fake: &FakeServers) -> Jellyfin {
+    use nikomiru_online::servers::jellyfin::Flavor;
+    let http = Http::new("").unwrap();
+    Jellyfin::login_as(
+        Flavor::Emby,
+        http,
+        url(&fake.emby_url()),
+        USER,
+        PASSWORD,
+        "device",
+    )
+    .unwrap()
+}
+
+// T-SRV-014: an Emby is checked to be one, logs in with its own header and browses
+// through its per-user routes.
+#[test]
+fn emby_logs_in_and_lists_its_library() {
+    use nikomiru_online::servers::jellyfin::Flavor;
+    let fake = FakeServers::start(data()).unwrap();
+    let mut server = emby(&fake);
+    assert_eq!(server.token(), TOKEN);
+    assert_eq!(server.user_id(), "user-1");
+    browse(&mut server);
+    let requests = fake.requests();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target.starts_with("/em/emby/System/Info/Public"))
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target.starts_with("/em/emby/Users/user-1/Views"))
+    );
+    assert!(
+        requests
+            .iter()
+            .filter(
+                |r| !r.target.contains("AuthenticateByName") && !r.target.contains("System/Info")
+            )
+            .all(|r| r.header("x-emby-token") == Some(TOKEN))
+    );
+    // a Jellyfin is not an Emby, and a wrong password is refused
+    let http = Http::new("").unwrap();
+    assert!(
+        Jellyfin::login_as(
+            Flavor::Emby,
+            http.clone(),
+            url(&fake.jellyfin_url()),
+            USER,
+            PASSWORD,
+            "d"
+        )
+        .is_err()
+    );
+    assert!(matches!(
+        Jellyfin::login_as(
+            Flavor::Emby,
+            http,
+            url(&fake.emby_url()),
+            USER,
+            "wrong",
+            "d"
+        ),
+        Err(OnlineError::Unauthorized { .. })
+    ));
+}
+
+// T-SRV-015: playing, reporting and marking played on an Emby; expiry and files it
+// cannot play directly are reported.
+#[test]
+fn emby_plays_reports_and_expires() {
+    let fake = FakeServers::start(data()).unwrap();
+    play(&mut emby(&fake), &fake);
+    let requests = fake.requests();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target.contains("/Users/user-1/PlayedItems/e3"))
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target.ends_with("/Sessions/Playing/Progress"))
+    );
+    let mut server = emby(&fake);
+    let stream = server.playable("e3").unwrap().stream;
+    assert!(stream.url.path().starts_with("/em/emby/Videos/e3/stream"));
+    assert!(
+        stream
+            .headers
+            .iter()
+            .any(|(k, v)| k == "X-Emby-Token" && v == TOKEN)
+    );
+    fake.data().emby_no_direct_play = true;
+    assert!(matches!(
+        server.playable("e3"),
+        Err(OnlineError::Protocol { .. })
+    ));
+    fake.data().emby_expired = true;
+    assert!(matches!(
+        server.libraries(),
+        Err(OnlineError::Unauthorized { .. })
+    ));
+}

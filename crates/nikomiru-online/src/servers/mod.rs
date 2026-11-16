@@ -26,6 +26,8 @@ pub enum ServerKind {
     Jellyfin,
     /// Plex (SRV-003).
     Plex,
+    /// Emby (SRV-014).
+    Emby,
 }
 
 impl ServerKind {
@@ -34,6 +36,7 @@ impl ServerKind {
         match self {
             Self::Jellyfin => "jellyfin",
             Self::Plex => "plex",
+            Self::Emby => "emby",
         }
     }
 
@@ -42,6 +45,7 @@ impl ServerKind {
         match key {
             "jellyfin" => Some(Self::Jellyfin),
             "plex" => Some(Self::Plex),
+            "emby" => Some(Self::Emby),
             _ => None,
         }
     }
@@ -51,6 +55,7 @@ impl ServerKind {
         match self {
             Self::Jellyfin => "Jellyfin",
             Self::Plex => "Plex",
+            Self::Emby => "Emby",
         }
     }
 }

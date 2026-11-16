@@ -873,6 +873,8 @@ pub(crate) enum Command {
         user: String,
         password: String,
         allow_unencrypted: bool,
+        /// An Emby instead (SRV-014).
+        emby: bool,
     },
     /// A sign-in to Plex (SRV-003).
     ServerPlex,
@@ -2278,9 +2280,10 @@ impl Ui {
                 user,
                 password,
                 allow_unencrypted,
+                emby,
             } => self
                 .session
-                .server_jellyfin(url, user, password, allow_unencrypted),
+                .server_jellyfin(url, user, password, allow_unencrypted, emby),
             Command::ServerPlex => self.session.server_plex(),
             Command::ServerCancel => self.session.server_cancel(),
             Command::ServerRename(id, name) => self.session.server_rename(&id, name),
@@ -2705,19 +2708,22 @@ impl Ui {
                     );
                 }
                 crate::servers::ServerJob::Jellyfin {
+                    emby,
                     url,
                     user,
                     password,
                     allow_unencrypted,
-                } => servers.jellyfin_login(
-                    url,
-                    user,
-                    password,
-                    allow_unencrypted,
-                    Box::new(move |r| {
-                        send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
-                    }),
-                ),
+                } => {
+                    let done: crate::servers::Done<nikomiru_core::config::ServerConfig> =
+                        Box::new(move |r| {
+                            send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
+                        });
+                    if emby {
+                        servers.emby_login(url, user, password, allow_unencrypted, done);
+                    } else {
+                        servers.jellyfin_login(url, user, password, allow_unencrypted, done);
+                    }
+                }
                 crate::servers::ServerJob::Plex => {
                     let sent = reply(&self.waker);
                     servers.plex_login(

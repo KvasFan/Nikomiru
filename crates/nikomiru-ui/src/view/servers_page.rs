@@ -20,6 +20,8 @@ pub(crate) struct State {
     user: String,
     password: String,
     allow_unencrypted: bool,
+    /// The login is to an Emby (SRV-014).
+    emby: bool,
     /// The names being edited, by server.
     names: std::collections::HashMap<String, String>,
 }
@@ -96,6 +98,21 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         row(ui, s, state, server, out);
     }
     section(ui, &tr(s, "servers-add-jellyfin"));
+    ui.horizontal(|ui| {
+        ui.label(tr(s, "servers-kind"));
+        if ui
+            .selectable_label(!state.emby, tr(s, "servers-kind-jellyfin"))
+            .clicked()
+        {
+            state.emby = false;
+        }
+        if ui
+            .selectable_label(state.emby, tr(s, "servers-kind-emby"))
+            .clicked()
+        {
+            state.emby = true;
+        }
+    });
     egui::Grid::new("server-login")
         .num_columns(2)
         .show(ui, |ui| {
@@ -128,6 +145,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 // kept nowhere after this (SRV-002)
                 password: std::mem::take(&mut state.password),
                 allow_unencrypted: state.allow_unencrypted,
+                emby: state.emby,
             });
         }
     });
@@ -266,6 +284,26 @@ mod tests {
             [Command::ServerJellyfin { password, .. }] if password == "secret"
         ));
         assert!(h.state().state.password.is_empty());
+    }
+
+    // T-SRV-014: Emby is chosen explicitly beside Jellyfin
+    #[test]
+    fn an_emby_is_added_from_the_page() {
+        let state = State {
+            url: "http://nas:8096".into(),
+            user: "kana".into(),
+            password: "secret".into(),
+            ..State::default()
+        };
+        let mut h = harness(Vec::new(), state);
+        h.get_by_label("servers-kind-emby").click();
+        h.run();
+        h.get_by_label("servers-log-in").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.as_slice(),
+            [Command::ServerJellyfin { emby: true, .. }]
+        ));
     }
 
     // T-SRV-001: with none, only the way to add one

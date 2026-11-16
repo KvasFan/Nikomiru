@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use nikomiru_core::config::ServerConfig;
 use nikomiru_online::servers::{Item, Library, ParentKind, PlayState};
 
-type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
+/// What a server job comes to, on the worker's thread.
+pub type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// A video of a server, ready to play through the relay.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +68,18 @@ pub trait ServerService: Send {
         allow_unencrypted: bool,
         done: Done<ServerConfig>,
     );
+    /// Logs in to an Emby (SRV-014).
+    fn emby_login(
+        &self,
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+        done: Done<ServerConfig>,
+    ) {
+        let _ = (url, user, password, allow_unencrypted);
+        done(Err(String::new()));
+    }
     /// Starts a Plex sign-in (SRV-003): `started` gets the page to open, then
     /// `done` the account's servers.
     fn plex_login(&self, started: Done<SignIn>, done: Done<Found>);
@@ -139,6 +152,8 @@ pub enum ServerJob {
     Prepare(String),
     /// Logs in to a Jellyfin.
     Jellyfin {
+        /// It is an Emby (SRV-014).
+        emby: bool,
         /// Its address.
         url: String,
         /// The user.

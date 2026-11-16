@@ -57,7 +57,10 @@ fn plays_from(kind: &str, url: String, fake: &FakeServers, stopped: &str) {
     let path = path.as_str().unwrap();
     assert!(path.starts_with("http://127.0.0.1:"), "{path}");
     assert!(
-        !path.contains(TOKEN) && !path.contains("/jf/") && !path.contains("/px/"),
+        !path.contains(TOKEN)
+            && !path.contains("/jf/")
+            && !path.contains("/px/")
+            && !path.contains("/em/"),
         "{path}"
     );
     let line = std::fs::read(format!("/proc/{}/cmdline", app.id())).unwrap();
@@ -96,6 +99,25 @@ fn a_jellyfin_video_plays_through_the_relay() {
         fake.jellyfin_url(),
         &fake,
         "/Sessions/Playing/Stopped",
+    );
+}
+
+// T-SRV-015: an Emby's video through the relay, with its resume, subtitle and stop
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn an_emby_video_plays_through_the_relay() {
+    let fake = fake();
+    plays_from(
+        "emby",
+        fake.emby_url(),
+        &fake,
+        "/emby/Sessions/Playing/Stopped",
+    );
+    assert!(
+        fake.requests()
+            .iter()
+            .filter(|r| r.target.starts_with("/em/emby/Users/user-1"))
+            .all(|r| r.header("x-emby-token") == Some(TOKEN))
     );
 }
 
