@@ -951,3 +951,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-MCP-002 | Field pins | Explicit edit/pin/unpin scope, literal HTML/braces escaping, fresh media/source per card, unknown/empty fields before uploads and pending roundtrip. | L1, L4, L6 |
 | T-MCP-003 | Sense selection | Stable exact record fingerprints, selected-only definitions/images, empty/stale refusal before mutation; visible dictionary-labelled controls. | L1, L3, L6 |
 | T-MCP-004 | Draft ownership | Changed popup/source/profile cannot dispatch stale frames/context; ordinary advanced clip controls and double-submit isolation. | L1, L6 |
+
+## M109 guided lookup and translation peek
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-GDL-001 | Optional paused lookup | Default-off config, exact segmented unknown identity/UTF-8 offsets, skip known/learning/ignored/unrecognised, no candidate and single pause transition; actual paused popup/status isolation. | L1, L3, L6 |
+| T-GDL-002 | Kanji and ownership | Separate first-kanji rule/manual shortcut, original character query, stale source/dictionary/cue/pause/config cancellation and explicit-popup priority. | L1, L6 |
+| T-GDL-003 | Held secondary peek | Physical key release despite modifier/focus/binding changes; no latch on repeats, focus loss/page/popup/source clears and saved obscuring unchanged; actual secondary rendering. | L1, L3, L6 |
+| T-GDL-004 | Configuration/isolation | Accessible translated settings/actions, legacy/restart config, no hold persistence, unchanged word statuses/playback/source selection and no translation/provider request. | L1, L6 |
