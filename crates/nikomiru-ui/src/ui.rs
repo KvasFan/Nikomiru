@@ -40,6 +40,14 @@ pub enum Inbound {
     },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// A podcast library job completed (POD-001…POD-004).
+    Podcasts(crate::podcasts::Answer),
+    /// A feed fetched: its epoch, address and result.
+    PodcastFetched(u64, String, Result<nikomiru_online::podcast::Feed, String>),
+    /// How far a download is: its serial, bytes and whole.
+    PodcastProgress(u64, u64, Option<u64>),
+    /// A download ended: its serial and result.
+    PodcastDownloaded(u64, Result<crate::podcasts::Fetched, String>),
     /// An ordered annotation operation completed (RDR-001).
     Annotations(crate::reader_tools::Answer),
     /// A library text search ended (RDR-003): its epoch and result.
@@ -361,6 +369,10 @@ impl std::fmt::Debug for Inbound {
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
             Inbound::Annotations(_) => "Annotations",
+            Inbound::Podcasts(_) => "Podcasts",
+            Inbound::PodcastFetched(..) => "PodcastFetched",
+            Inbound::PodcastProgress(..) => "PodcastProgress",
+            Inbound::PodcastDownloaded(..) => "PodcastDownloaded",
             Inbound::Search(..) => "Search",
             Inbound::Cloze(_) => "Cloze",
             Inbound::BatchContexts(_) => "BatchContexts",
@@ -452,6 +464,18 @@ pub(crate) enum Command {
     ClozeUndo,
     ClozeCancelRound,
 
+    /// POD-001…POD-004
+    PodcastsOpen,
+    PodcastsClose,
+    PodcastFetch(String),
+    PodcastFetchCancel,
+    PodcastRemove(String),
+    PodcastDownload(String, String),
+    PodcastDownloadCancel,
+    PodcastDelete(String, String),
+    PodcastImport(String, String),
+    PodcastPlay(String, String),
+    PodcastLink(String),
     /// RDR-001…RDR-004
     ReaderToolsOpen(crate::reader_tools::Tab),
     ReaderToolsClose,
@@ -1235,6 +1259,15 @@ impl Ui {
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::PhrasesExport => self.session.phrases_export_to(&path),
                     Dialog::AnnotationsExport => self.session.annotations_export_to(&path),
+                    Dialog::PodcastTranscript => {
+                        if let Some((feed, episode)) = self.session.podcasts.importing.take() {
+                            self.session.podcasts_request(crate::podcasts::Job::Import {
+                                feed,
+                                episode,
+                                path,
+                            });
+                        }
+                    }
                     Dialog::SentencesImport => self.session.bank_import(path),
                     Dialog::SentencesExport => self.session.bank_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
@@ -1342,6 +1375,22 @@ impl Ui {
             }
             Inbound::Phrases(answer) => {
                 self.session.phrases_done(answer);
+                true
+            }
+            Inbound::Podcasts(answer) => {
+                self.session.podcasts_done(answer);
+                true
+            }
+            Inbound::PodcastFetched(epoch, url, result) => {
+                self.session.podcast_fetched(epoch, url, result);
+                true
+            }
+            Inbound::PodcastProgress(serial, done, total) => {
+                self.session.podcast_progress(serial, done, total);
+                true
+            }
+            Inbound::PodcastDownloaded(serial, result) => {
+                self.session.podcast_downloaded(serial, result);
                 true
             }
             Inbound::Annotations(answer) => {
@@ -1640,6 +1689,7 @@ impl Ui {
         self.session.recall_covered = self.view.recall_covered(&self.session);
         self.session.popups_covered = self.session.batch.open
             || self.session.reader.open
+            || self.session.podcasts.open
             || self.session.bank.open
             || self.session.clozes.open
             || (self.view.phrases_open && !self.session.study_popup_open())
@@ -1756,6 +1806,29 @@ impl Ui {
                 s.clozes.round = None;
                 s.clozes.preview = None;
             }
+            Command::PodcastsOpen => {
+                s.podcasts_open();
+                self.view.close_library_page();
+            }
+            Command::PodcastsClose => s.podcasts.open = false,
+            Command::PodcastFetch(url) => s.podcast_fetch(&url),
+            Command::PodcastFetchCancel => s.podcast_fetch_cancel(),
+            Command::PodcastRemove(id) => {
+                s.podcasts_request(crate::podcasts::Job::Remove(id));
+            }
+            Command::PodcastDownload(feed, episode) => s.podcast_download(&feed, &episode),
+            Command::PodcastDownloadCancel => s.podcast_download_cancel(),
+            Command::PodcastDelete(feed, episode) => {
+                s.podcasts_request(crate::podcasts::Job::DeleteDownload { feed, episode });
+            }
+            Command::PodcastImport(feed, episode) => {
+                s.podcasts.importing = Some((feed, episode));
+                self.view.dialog = Some(Dialog::PodcastTranscript);
+            }
+            Command::PodcastPlay(feed, episode) => {
+                s.podcast_play(&feed, &episode);
+            }
+            Command::PodcastLink(url) => s.podcast_link(&url),
             Command::ReaderToolsOpen(tab) => s.reader_tools_open(tab),
             Command::ReaderToolsClose => {
                 s.reader.open = false;
@@ -2232,6 +2305,34 @@ impl Ui {
             self.session.start_cloze_job(
                 job,
                 Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
+            );
+        }
+        for job in self.session.take_podcast_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_podcast_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Podcasts(answer))),
+            );
+        }
+        if let Some(request) = self.session.take_podcast_fetch() {
+            let waker = self.waker.clone();
+            self.session.start_podcast_fetch(
+                request,
+                Box::new(move |epoch, url, result| {
+                    waker.wake(Inbound::PodcastFetched(epoch, url, result));
+                }),
+            );
+        }
+        if let Some(request) = self.session.take_podcast_download() {
+            let (progress, done) = (self.waker.clone(), self.waker.clone());
+            self.session.start_podcast_download(
+                request,
+                Box::new(move |serial, bytes, total| {
+                    progress.wake(Inbound::PodcastProgress(serial, bytes, total));
+                }),
+                Box::new(move |serial, result| {
+                    done.wake(Inbound::PodcastDownloaded(serial, result))
+                }),
             );
         }
         if let Some(job) = self.session.take_annotation_job() {

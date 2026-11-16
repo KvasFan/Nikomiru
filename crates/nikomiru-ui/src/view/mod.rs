@@ -31,6 +31,7 @@ mod overlay;
 pub(crate) mod palette;
 mod phrases;
 mod player_page;
+mod podcasts;
 mod popups;
 mod prefs_page;
 mod reader_tools;
@@ -65,6 +66,8 @@ pub enum Dialog {
     PhrasesExport,
     /// Shown reader annotations as TSV (RDR-002).
     AnnotationsExport,
+    /// Timed text for a podcast episode (POD-003).
+    PodcastTranscript,
     /// A video to play (LIB-001).
     Video,
     /// A subtitle file for the open video (SUB-006).
@@ -169,6 +172,16 @@ impl FileDialog {
             Dialog::Video => (
                 tr("open-file"),
                 vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
+            ),
+            Dialog::PodcastTranscript => (
+                tr("podcasts-import"),
+                vec![
+                    (
+                        tr("file-filter-subtitles"),
+                        vec!["*.srt", "*.vtt", "*.ass", "*.ssa", "*.lrc"],
+                    ),
+                    all,
+                ],
             ),
             Dialog::Subtitles => (
                 tr("subtitle-open-file"),
@@ -378,6 +391,7 @@ pub(crate) struct View {
     pub phrase_query: String,
     pub cloze_query: String,
     pub reader_tools: reader_tools::Query,
+    pub podcast_url: String,
     pub bank_expression: String,
     pub bank_reading: String,
     pub batch_detail: usize,
@@ -699,6 +713,7 @@ impl View {
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
         s.batch.open
             || s.reader.open
+            || s.podcasts.open
             || s.bank.open
             || s.clozes.open
             || self.phrases_open
@@ -738,6 +753,13 @@ impl View {
             ui.painter()
                 .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
             batch_mining::show(ui, s, &mut self.batch_detail, &mut out);
+            return out;
+        }
+        if s.podcasts.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            podcasts::show(ui, s, &mut self.podcast_url, &mut out);
             return out;
         }
         if s.reader.open {

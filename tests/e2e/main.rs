@@ -22,6 +22,7 @@ mod mining_profiles;
 mod mokuro;
 mod perf;
 mod phrases;
+mod podcasts;
 mod progressive_ocr;
 mod reader_tools;
 mod reader_words;

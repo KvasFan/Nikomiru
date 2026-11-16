@@ -627,6 +627,24 @@ pub fn state() -> Result<Value, String> {
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
         state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
+        state["podcasts"] = json!({
+            "open": s.podcasts.open,
+            "busy": s.podcasts.busy,
+            "fetching": s.podcasts.fetching,
+            "error": s.podcasts.error,
+            "notice": s.podcasts.notice,
+            "download": s.podcasts.download.as_ref().map(|d| json!({"feed":d.feed,"episode":d.episode,"done":d.done,"total":d.total})),
+            "dir": s.podcasts_dir(),
+            "feeds": s.podcasts.feeds.iter().map(|f| json!({
+                "id": f.id, "url": f.url, "title": f.title, "link": f.link,
+                "episodes": f.episodes.iter().map(|e| json!({
+                    "id": e.id, "title": e.title, "link": e.link, "listed": e.listed,
+                    "file": e.file, "transcript_file": e.transcript_file,
+                    "transcript": e.transcript.as_ref().map(|t| &t.mime),
+                    "partial": e.file.is_none() && s.podcast_partial(&f.id, e),
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        });
         state["reader_tools"] = json!({
             "open": s.reader.open,
             "tab": format!("{:?}", s.reader.tab),
@@ -1844,6 +1862,81 @@ pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), Str
 fn annotation_json(a: &nikomiru_library::annotations::Annotation) -> Value {
     json!({"id":a.id,"kind":a.kind.name(),"book":a.book,"title":a.title,"chapter":a.chapter,
         "paragraph":a.paragraph,"start":a.start,"end":a.end,"quote":a.quote,"name":a.name,"note":a.note})
+}
+
+/// Podcasts (POD-001…POD-004) through production commands; `index` picks
+/// the feed and `episode` the episode by position.
+pub fn podcasts(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let feed = |ui: &Ui| {
+            ui.session
+                .podcasts
+                .feeds
+                .get(args["feed"].as_u64().unwrap_or(0) as usize)
+                .cloned()
+                .ok_or("no such feed")
+        };
+        let episode = |ui: &Ui| -> Result<(String, String), String> {
+            let f = feed(ui)?;
+            let e = f
+                .episodes
+                .get(args["episode"].as_u64().unwrap_or(0) as usize)
+                .ok_or("no such episode")?;
+            Ok((f.id.clone(), e.id.clone()))
+        };
+        match action.as_str() {
+            "open" => ui.run(Command::PodcastsOpen),
+            "close" => ui.run(Command::PodcastsClose),
+            "add" => ui.run(Command::PodcastFetch(
+                args["url"].as_str().ok_or("missing url")?.into(),
+            )),
+            "refresh" => {
+                let f = feed(ui)?;
+                ui.run(Command::PodcastFetch(f.url));
+            }
+            "remove" => {
+                let f = feed(ui)?;
+                ui.run(Command::PodcastRemove(f.id));
+            }
+            "download" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastDownload(f, e));
+            }
+            "cancel" => ui.run(Command::PodcastDownloadCancel),
+            "delete" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastDelete(f, e));
+            }
+            "play" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastPlay(f, e));
+            }
+            "import" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastImport(f, e));
+                let path = args["path"].as_str().ok_or("missing path")?;
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::PodcastTranscript,
+                    path: PathBuf::from(path),
+                });
+            }
+            "link" => {
+                let (f, _) = episode(ui)?;
+                let link = ui
+                    .session
+                    .podcasts
+                    .feeds
+                    .iter()
+                    .find(|x| x.id == f)
+                    .map(|x| x.link.clone())
+                    .unwrap_or_default();
+                ui.run(Command::PodcastLink(link));
+            }
+            _ => return Err("unknown podcasts action".into()),
+        }
+        Ok(())
+    })?
 }
 
 /// Annotations and the library search (RDR-001…RDR-003) through production commands.

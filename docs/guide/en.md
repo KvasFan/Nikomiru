@@ -360,6 +360,14 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Podcasts and lyric lessons (M112 development)
+
+Books → **Podcasts** adds a podcast by its RSS feed address (HTTPS) with **Add or refresh**. Nothing is fetched or downloaded unless you ask: **Refresh** reads the feed again, **Download** saves one episode at a time for offline listening and **Play** opens it like an audiobook, with the subtitle list, word lookup, line replay and cards with the line's sound. If a download stops (Stop, a network failure or quitting), **Resume download** continues from where it stopped when the server allows it, otherwise it starts again. Episodes up to 2 GiB are accepted.
+
+When the feed offers a transcript in SRT or WebVTT (`podcast:transcript`), it is downloaded with the episode and opens with it. Other transcript types (HTML, JSON) are reported as unsupported. **Use timed text file…** takes your own SRT, WebVTT, ASS or LRC file for an episode instead. For songs, keep an `.lrc` file beside the audio file (same name) and open the song: its lines can be looked up, replayed and mined the same way. Nikomiru never transcribes speech.
+
+Feed and episode records are in local backups; downloaded files are not (download them again). **Remove with downloads** deletes a feed and its files; a refresh keeps downloaded episodes that the feed no longer lists. Web pages of feeds and episodes open in your browser only when you click them. Podcasts are not synced by WebDAV.
+
 ## Annotations, library search and reading modes (M111 development)
 
 In an open text book, **Add bookmark**, **Highlight** and **Add note** start a draft; nothing is saved until **Save**. A highlight or note starts on the word you last looked up; choose **Word**, **Sentence** or **Paragraph** to cover more. A bookmark marks the paragraph at the top of the page and needs a name. Highlights and notes are drawn behind their text. **Annotations** lists every book's annotations (or only this book's) with a filter, explicit editing/deletion, **Open in the book** and a TSV export of the shown rows. If a book's text changes, its annotations are kept but marked as changed and are never shown at a shifted place. Annotations stay on this computer: they are in local backups but not merged by WebDAV. They never change word statuses, phrases or reading progress.

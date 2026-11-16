@@ -575,6 +575,13 @@ pub struct Session {
     pub batch: crate::batch_mining::State,
     bank_place: Option<(nikomiru_library::phrases::Source, String)>,
     bank_export: Option<String>,
+    /// Podcast feeds and episodes (POD-001…POD-004).
+    pub podcasts: crate::podcasts::State,
+    podcast_jobs: Vec<crate::podcasts::Job>,
+    podcast_pending: usize,
+    podcast_serial: u64,
+    podcast_fetch_request: Option<podcast_session::FetchRequest>,
+    podcast_download_request: Option<podcast_session::DownloadRequest>,
     /// Reader annotations and the library text search (RDR-001…RDR-003).
     pub reader: crate::reader_tools::State,
     annotation_job: Option<crate::reader_tools::Job>,
@@ -935,6 +942,12 @@ impl Session {
             batch: Default::default(),
             bank_place: None,
             bank_export: None,
+            podcasts: Default::default(),
+            podcast_jobs: Vec::new(),
+            podcast_pending: 0,
+            podcast_serial: 0,
+            podcast_fetch_request: None,
+            podcast_download_request: None,
             reader: Default::default(),
             annotation_job: None,
             annotation_capture: None,
@@ -5716,6 +5729,10 @@ impl Session {
             self.bank.open = false;
             return UiEffect::None;
         }
+        if self.podcasts.open && action == Action::Back {
+            self.podcasts.open = false;
+            return UiEffect::None;
+        }
         if self.reader.open && action == Action::Back {
             self.reader.open = false;
             self.reader_discard_draft();
@@ -9561,3 +9578,6 @@ mod guided_session;
 
 #[path = "session_reader.rs"]
 mod reader_session;
+
+#[path = "session_podcasts.rs"]
+pub(crate) mod podcast_session;

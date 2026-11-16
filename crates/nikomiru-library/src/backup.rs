@@ -538,7 +538,16 @@ mod tests {
             changed_ms: 1,
         };
         assert!(f.library.put_annotation(&annotation).unwrap());
+        // T-POD-004: podcast records are in the snapshot; their audio is not.
+        let podcast = crate::podcasts::Feed {
+            id: "f".repeat(32),
+            url: "https://x/feed".into(),
+            title: "Feed".into(),
+            ..Default::default()
+        };
+        assert!(f.library.put_podcast_feed(&podcast).unwrap());
         let out = backup(&f, false);
+        assert!(f.library.remove_podcast_feed(&podcast.id).unwrap());
         assert!(f.library.remove_annotation(&annotation.id).unwrap());
         assert!(
             f.library
@@ -594,6 +603,7 @@ mod tests {
         );
         assert_eq!(library.phrases().unwrap(), vec![phrase.clone()]);
         assert_eq!(library.annotations().unwrap(), vec![annotation]);
+        assert_eq!(library.podcast_feeds().unwrap(), vec![podcast]);
         let clozes = library.clozes().unwrap();
         assert_eq!(clozes.len(), 1);
         assert_eq!(clozes[0].phrase, phrase);

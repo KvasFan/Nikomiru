@@ -1537,6 +1537,9 @@ fn list(
             if ui.button(tr(s, "books-audiobook")).clicked() {
                 state.audiobook = true;
             }
+            if ui.button(tr(s, "podcasts-title")).clicked() {
+                out.push(Command::PodcastsOpen);
+            }
             if ui.button(tr(s, "books-folder")).clicked() {
                 state.folder = true;
             }

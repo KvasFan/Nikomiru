@@ -23,6 +23,8 @@ pub mod home;
 pub mod import;
 /// Independent local phrase vocabulary.
 pub mod phrases;
+/// Podcast feeds and episodes.
+pub mod podcasts;
 pub mod policy;
 pub mod progress;
 pub mod review;

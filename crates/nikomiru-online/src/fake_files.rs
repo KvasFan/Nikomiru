@@ -21,6 +21,10 @@ struct Shared {
     requests: Mutex<Vec<Request>>,
     /// Statuses to answer instead, for the requests of a path.
     script: Mutex<VecDeque<(String, u16)>>,
+    /// Answers cut after so many bytes of their body, once (T-POD-002).
+    cuts: Mutex<HashMap<String, usize>>,
+    /// Paths whose ranges are ignored: the whole file with `200`.
+    no_ranges: Mutex<std::collections::HashSet<String>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -97,6 +101,17 @@ impl FakeFiles {
         lock(&self.shared.script).push_back((path.to_string(), status));
     }
 
+    /// Cuts the next answer for `path` after `bytes` of its body, the
+    /// connection closed as if the network failed.
+    pub fn cut_after(&self, path: &str, bytes: usize) {
+        lock(&self.shared.cuts).insert(path.to_string(), bytes);
+    }
+
+    /// Answers `path` whole, ignoring ranges, as some servers do.
+    pub fn ignore_ranges(&self, path: &str) {
+        lock(&self.shared.no_ranges).insert(path.to_string());
+    }
+
     /// The requests so far: path and `Range` header.
     pub fn requests(&self) -> Vec<(String, Option<String>)> {
         lock(&self.shared.requests)
@@ -149,8 +164,39 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
     let Some(file) = lock(&shared.files).get(&path).cloned() else {
         return respond(&mut stream, 404, "", b"");
     };
+    if let Some(after) = lock(&shared.cuts).remove(&path) {
+        let (status, headers, body) = match request
+            .header("range")
+            .and_then(|r| r.strip_prefix("bytes="))
+            .and_then(|r| r.split_once('-'))
+            .and_then(|(a, _)| a.parse::<usize>().ok())
+            .filter(|from| *from < file.len())
+        {
+            Some(from) => (
+                206,
+                format!(
+                    "Content-Range: bytes {from}-{}/{}\r\n",
+                    file.len() - 1,
+                    file.len()
+                ),
+                &file[from..],
+            ),
+            None => (200, String::new(), &file[..]),
+        };
+        let _ = write!(
+            stream,
+            "HTTP/1.1 {status} X\r\nContent-Length: {}\r\n{headers}Connection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(&body[..after.min(body.len())]);
+        let _ = stream.flush();
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        return;
+    }
+    let ranged = !lock(&shared.no_ranges).contains(&path);
     let range = request
         .header("range")
+        .filter(|_| ranged)
         .and_then(|r| r.strip_prefix("bytes="))
         .and_then(|r| r.split_once('-'))
         .and_then(|(a, b)| {

@@ -31,6 +31,7 @@ pub mod ocr;
 pub mod online;
 pub mod phrases;
 pub mod player_settings;
+pub mod podcasts;
 pub mod popup;
 pub mod popup_view;
 pub mod reader_tools;

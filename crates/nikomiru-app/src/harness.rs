@@ -350,6 +350,8 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("cloze") => {
             harness::cloze(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
         }
+        Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())
+            .map(|()| Value::Null),
         Some("reader-tools") => {
             harness::reader_tools(text(command, "action")?.into(), command.clone())
                 .map(|()| Value::Null)

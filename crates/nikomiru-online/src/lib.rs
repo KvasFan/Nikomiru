@@ -26,6 +26,7 @@ pub mod jimaku;
 pub mod language;
 pub mod metadata;
 pub mod opensubtitles;
+pub mod podcast;
 pub mod rank;
 pub mod search;
 pub mod servers;

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Add podcast feeds by HTTPS RSS with explicit refresh, resumable one-at-a-time offline episode downloads, SRT/WebVTT feed transcripts and imported LRC/subtitle timed text, played through the existing audio lookup, line replay and cards (M112, POD-001…POD-004).
+
 - Add local named bookmarks, highlights and notes with stale-source detection and TSV export, a bounded library-wide literal text search with checked result opening, and Pages and Sentence reading modes (M111, RDR-001…RDR-004).
 
 - Read bounded local HTMLZ, RTF, DOCX and text-layer PDF in the existing reader, with native legacy decoding, original PDF page locations and explicit Poppler discovery/setup (M110, DOC-001…DOC-005).
