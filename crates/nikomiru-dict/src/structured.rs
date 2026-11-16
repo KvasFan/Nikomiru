@@ -40,6 +40,15 @@ pub enum Target {
     Lookup(String),
     /// A web page, opened in the system browser.
     External(String),
+    /// A sound of the dictionary, played on click (DIC-038): its media path,
+    /// and its bytes once whoever shows it has read them.
+    Sound {
+        /// Path inside the dictionary.
+        path: String,
+        /// The sound.
+        #[serde(skip)]
+        bytes: Option<Arc<Vec<u8>>>,
+    },
 }
 
 /// The units of an image's size.
@@ -1013,6 +1022,18 @@ fn element_body(
             let href = o.get("href").and_then(Value::as_str).unwrap_or_default();
             let target = if href.starts_with("http://") || href.starts_with("https://") {
                 Target::External(href.to_string())
+            } else if let Some(path) = href.strip_prefix("sound:") {
+                match media_path(path) {
+                    Some(path) => Target::Sound { path, bytes: None },
+                    // an unsafe sound path is only its text
+                    None => {
+                        out.runs.push(Run::Text {
+                            t: text,
+                            s: text_style,
+                        });
+                        return;
+                    }
+                }
             } else {
                 let query = href
                     .split_once('?')

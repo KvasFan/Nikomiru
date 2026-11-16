@@ -27,6 +27,7 @@ mod progressive_ocr;
 mod reader_tools;
 mod reader_words;
 mod recall;
+mod rich_mdict;
 mod sentence_bank;
 mod series_scores;
 mod servers;

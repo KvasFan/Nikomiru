@@ -84,6 +84,27 @@ pub struct DictionaryFields {
     pub media: Vec<(String, Vec<u8>)>,
 }
 
+/// The extension of a sound Anki plays, from its first bytes (DIC-038).
+pub fn sound_extension(bytes: &[u8]) -> Option<&'static str> {
+    let starts = |sig: &[u8]| bytes.starts_with(sig);
+    if starts(b"ID3") || (bytes.len() > 1 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0) {
+        Some("mp3")
+    } else if starts(b"OggS") {
+        Some("ogg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        Some("wav")
+    } else if starts(b"fLaC") {
+        Some("flac")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && matches!(&bytes[8..12], b"M4A " | b"mp42" | b"isom" | b"mp41")
+    {
+        Some("m4a")
+    } else {
+        None
+    }
+}
+
 /// The kind of an image file, from its first bytes: its extension. Besides
 /// the types of POP-010, SVG and AVIF, which Anki shows (ADR 0007 §13).
 pub fn image_extension(bytes: &[u8]) -> Option<&'static str> {
@@ -479,7 +500,7 @@ pub fn dictionary_fields(
 /// `None` for what is not a usable image.
 fn attach(images: &mut Vec<(String, Vec<u8>)>, bytes: Option<Vec<u8>>) -> Option<String> {
     let bytes = bytes.filter(|b| b.len() <= MAX_IMAGE_BYTES)?;
-    let ext = image_extension(&bytes)?;
+    let ext = image_extension(&bytes).or_else(|| sound_extension(&bytes))?;
     let name = crate::media::name(&bytes, ext);
     if !images.iter().any(|(n, _)| *n == name) {
         if images.len() >= MAX_IMAGES {

@@ -575,6 +575,8 @@ pub struct Session {
     pub batch: crate::batch_mining::State,
     bank_place: Option<(nikomiru_library::phrases::Source, String)>,
     bank_export: Option<String>,
+    /// The dictionary sound played last (DIC-038), for the harness.
+    pub last_dictionary_sound: Option<String>,
     /// An imported shortcut map waiting for Apply (KEY-009).
     pub shortcut_preview: Option<crate::shortcut_maps::Preview>,
     /// The Shortcuts draft an import is compared with.
@@ -948,6 +950,7 @@ impl Session {
             batch: Default::default(),
             bank_place: None,
             bank_export: None,
+            last_dictionary_sound: None,
             shortcut_preview: None,
             shortcut_base: None,
             shortcut_export: None,
@@ -3512,6 +3515,30 @@ impl Session {
         }
         page.revealed = true;
         self.review_audio();
+    }
+
+    /// Plays a dictionary's sound (DIC-038): written to the cache, then
+    /// played like word audio.
+    pub fn dictionary_sound(&mut self, bytes: &[u8], path: &str) {
+        let ext = Path::new(path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .filter(|e| e.len() <= 5 && e.bytes().all(|b| b.is_ascii_alphanumeric()))
+            .unwrap_or_else(|| "bin".into());
+        let file = self
+            .services
+            .mining_dir
+            .join(format!("dictionary-sound.{ext}"));
+        let written = std::fs::create_dir_all(&self.services.mining_dir)
+            .and_then(|()| nikomiru_core::fs::write_atomic(&file, bytes, 0o600));
+        match written {
+            Ok(()) => {
+                self.last_dictionary_sound = Some(path.to_string());
+                self.word_audio_jobs
+                    .push(crate::word_audio::WordAudioJob::PlayFile(file));
+            }
+            Err(e) => tracing::warn!("dictionary sound: {e}"),
+        }
     }
 
     /// Plays the sentence of the card shown.

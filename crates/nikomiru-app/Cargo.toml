@@ -100,6 +100,8 @@ nikomiru-anki = { workspace = true, features = ["test-support"] }
 # the fake Jimaku and OpenSubtitles of the online subtitle tests
 nikomiru-online = { workspace = true, features = ["test-support"] }
 nikomiru-books = { workspace = true, features = ["test-support"] }
+# generated MDict files of the rich-definition tests (M114)
+nikomiru-dict = { workspace = true, features = ["test-support"] }
 # the PGS streams of the graphic subtitle tests
 nikomiru-subs = { workspace = true, features = ["test-support"] }
 image.workspace = true

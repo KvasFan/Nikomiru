@@ -530,6 +530,14 @@ impl Draw<'_> {
                 anchor: anchor(rect),
             }),
             Target::External(url) => self.out.push(Command::OpenExternal(url.clone())),
+            // DIC-038: only a sound read from the dictionary plays
+            Target::Sound {
+                path,
+                bytes: Some(bytes),
+            } => self
+                .out
+                .push(Command::DictionarySound(bytes.clone(), path.clone())),
+            Target::Sound { bytes: None, .. } => {}
         }
     }
 

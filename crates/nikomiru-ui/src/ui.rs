@@ -464,6 +464,8 @@ pub(crate) enum Command {
     ClozeUndo,
     ClozeCancelRound,
 
+    /// A dictionary's sound clicked in a popup (DIC-038): its bytes and path.
+    DictionarySound(std::sync::Arc<Vec<u8>>, String),
     /// KEY-008…KEY-010: the draft's overrides, to export or to compare with.
     ShortcutsExport(std::collections::BTreeMap<String, Vec<String>>),
     ShortcutsImport(std::collections::BTreeMap<String, Vec<String>>),
@@ -1812,6 +1814,7 @@ impl Ui {
                 s.clozes.round = None;
                 s.clozes.preview = None;
             }
+            Command::DictionarySound(bytes, path) => s.dictionary_sound(&bytes, &path),
             Command::ShortcutsExport(overrides) => {
                 s.shortcut_export = Some(crate::shortcut_maps::export(&overrides));
                 self.view.dialog = Some(Dialog::ShortcutsExport);

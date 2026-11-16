@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Import MDict definitions as safe rich structured content with images and sounds from paired `.mdd` files; dictionary sounds play on click and go with cards (M114, DIC-036…DIC-038).
+
 - Export and import versioned physical-key shortcut maps with a preview of changes, unknown actions, invalid keys and conflicts, applied atomically through the Shortcuts settings save (M113, KEY-008…KEY-010).
 
 - Add podcast feeds by HTTPS RSS with explicit refresh, resumable one-at-a-time offline episode downloads, SRT/WebVTT feed transcripts and imported LRC/subtitle timed text, played through the existing audio lookup, line replay and cards (M112, POD-001…POD-004).

@@ -8,6 +8,9 @@
 
 mod dsl;
 mod mdict;
+#[cfg(feature = "test-support")]
+pub use mdict::fixture as mdict_fixture;
+mod rich;
 mod ripemd;
 mod stardict;
 
@@ -18,6 +21,7 @@ use nikomiru_core::Cancel;
 
 use crate::import::{ImportError, MAX_ENTRIES, MAX_GLOSSARY, MAX_TOTAL};
 use crate::yomitan::{FrequencyMode, Index, Term};
+use serde_json::Value;
 
 /// The largest block or text unpacked at once.
 const UNPACKED_LIMIT: u64 = 1 << 30;
@@ -176,6 +180,34 @@ impl<'a> Terms<'a> {
         Ok(())
     }
 
+    /// An entry whose glossary is already structured (DIC-036).
+    pub(crate) fn add_glossary(&mut self, head: &str, glossary: &Value) -> Result<(), ImportError> {
+        self.added += 1;
+        if self.added.is_multiple_of(ENTRIES_PER_CHECK) && self.cancel.is_cancelled() {
+            return Err(ImportError::Cancelled);
+        }
+        if self.terms.len() as u64 >= MAX_ENTRIES {
+            return Err(ImportError::TooManyEntries);
+        }
+        let glossary = serde_json::to_string(glossary).unwrap_or_default();
+        for (expression, reading) in headwords(head) {
+            if glossary.len() > MAX_GLOSSARY {
+                return Err(ImportError::GlossaryTooLarge { expression });
+            }
+            self.terms.push(Term {
+                expression,
+                reading,
+                definition_tags: String::new(),
+                rules: String::new(),
+                score: 0.0,
+                glossary: glossary.clone(),
+                sequence: 0,
+                term_tags: String::new(),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) fn finish(self) -> Vec<Term> {
         self.terms
     }
@@ -183,10 +215,23 @@ impl<'a> Terms<'a> {
 
 /// The dictionary's entries.
 pub fn read_terms(path: &Path, kind: Kind, cancel: &Cancel) -> Result<Vec<Term>, ImportError> {
+    Ok(read_all(path, kind, cancel)?.0)
+}
+
+/// The resources a dictionary's entries use, by path.
+pub type Media = Vec<(String, Vec<u8>)>;
+
+/// The dictionary's entries and the resources of its paired files they use
+/// (DIC-037): only MDict has any.
+pub fn read_all(
+    path: &Path,
+    kind: Kind,
+    cancel: &Cancel,
+) -> Result<(Vec<Term>, Media), ImportError> {
     match kind {
-        Kind::StarDict => stardict::read_terms(path, cancel),
-        Kind::Dsl => dsl::read_terms(path, cancel),
-        Kind::Mdict => mdict::read_terms(path, cancel),
+        Kind::StarDict => Ok((stardict::read_terms(path, cancel)?, Vec::new())),
+        Kind::Dsl => Ok((dsl::read_terms(path, cancel)?, Vec::new())),
+        Kind::Mdict => mdict::read_with_media(path, cancel),
     }
 }
 

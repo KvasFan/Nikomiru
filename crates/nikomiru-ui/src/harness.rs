@@ -627,6 +627,7 @@ pub fn state() -> Result<Value, String> {
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
         state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
+        state["dictionary_sound"] = json!(s.last_dictionary_sound);
         state["shortcuts"] = json!({
             "overrides": s.config().shortcuts,
             "status": s.settings_status.as_ref().map(|(t, _)| t),
@@ -1016,6 +1017,58 @@ pub fn popup_content(level: usize) -> Result<Value, String> {
             Some(reply) => serde_json::to_value(&*reply.content).map_err(|e| e.to_string()),
             None => Ok(Value::Null),
         }
+    })?
+}
+
+/// The first dictionary sound of popup `level`, clicked (DIC-038).
+pub fn popup_sound(level: usize) -> Result<(), String> {
+    use nikomiru_dict::structured::{Block, Run, Target};
+    fn find(blocks: &[Block]) -> Option<(std::sync::Arc<Vec<u8>>, String)> {
+        for b in blocks {
+            let found = match b {
+                Block::Flow { runs } => runs.iter().find_map(|r| match r {
+                    Run::Link {
+                        target:
+                            Target::Sound {
+                                path,
+                                bytes: Some(bytes),
+                            },
+                        ..
+                    } => Some((bytes.clone(), path.clone())),
+                    _ => None,
+                }),
+                Block::Box { blocks, .. } => find(blocks),
+                Block::List { items, .. } => items.iter().find_map(|i| find(i)),
+                Block::Table { rows, .. } => {
+                    rows.iter().flatten().find_map(|cell| find(&cell.blocks))
+                }
+                Block::Details { blocks, .. } => find(blocks),
+                Block::Pairs { .. } => None,
+            };
+            if found.is_some() {
+                return found;
+            }
+        }
+        None
+    }
+    call(move |ui| {
+        let sound = ui
+            .session
+            .popups
+            .stack()
+            .get(level)
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| {
+                r.content.entries.iter().find_map(|e| {
+                    e.sections
+                        .iter()
+                        .flat_map(|s| &s.glossaries)
+                        .find_map(|g| find(&g.blocks))
+                })
+            })
+            .ok_or("no dictionary sound")?;
+        ui.run(Command::DictionarySound(sound.0, sound.1));
+        Ok(())
     })?
 }
 

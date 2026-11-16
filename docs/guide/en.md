@@ -56,7 +56,7 @@ Nikomiru reads the same ZIP files as Yomitan: terms (JMdict, Jitendex…), kanji
 3. Each type has its own list, ordered by priority; drag a dictionary by its handle to change its place.
 4. **CSS** lets you restyle a dictionary's entries. Only a safe subset of CSS applies.
 
-Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL (`.dsl`, `.dsl.dz`) and MDict (`.mdx`) dictionaries. Their definitions show as plain text, without pictures. An MDict locked to a user cannot be read.
+Besides Yomitan's ZIP files, the import takes StarDict (choose the `.ifo`), DSL (`.dsl`, `.dsl.dz`) and MDict (`.mdx`) dictionaries. StarDict and DSL definitions show as plain text, without pictures. MDict definitions keep their bold, italics, lists, tables and ruby, and links to other words open a lookup; scripts, styles and other markup are dropped (M114 development). Keep the `.mdd` file(s) beside the `.mdx` (`name.mdd`, `name.1.mdd`…): the pictures and sounds the definitions use are imported with it. A sound link (▶) plays only when you click it, and cards keep the pictures and the sounds Anki plays (MP3, Ogg, WAV, M4A, FLAC). Without the `.mdd`, pictures show their alternative text. An MDict locked to a user cannot be read.
 
 Graphic subtitles read as text now appear progressively: OCR starts near the current playback position, and unread lines keep their pictures. Text already read can be looked up while work continues. Whole-track comprehension, gap acceleration and condensed-audio export wait for completion; changing or disabling subtitles cancels the earlier reading.
 

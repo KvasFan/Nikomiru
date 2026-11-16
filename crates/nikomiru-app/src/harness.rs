@@ -350,6 +350,10 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("cloze") => {
             harness::cloze(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
         }
+        Some("popup_sound") => {
+            harness::popup_sound(command["level"].as_u64().unwrap_or(0) as usize)
+                .map(|()| Value::Null)
+        }
         Some("shortcuts") => harness::shortcuts(text(command, "action")?.into(), command.clone())
             .map(|()| Value::Null),
         Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())

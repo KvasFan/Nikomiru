@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use nikomiru_dict::css::Sheet;
 use nikomiru_dict::lookup::{Entry, KanjiEntry};
-use nikomiru_dict::structured::{self, Block, Image, Pixels, Run};
+use nikomiru_dict::structured::{self, Block, Image, Pixels, Run, Target};
 use nikomiru_dict::yomitan::{PitchPosition, Tag};
 use nikomiru_dict::{frequency, pitch, present};
 use serde::Serialize;
@@ -269,7 +269,14 @@ struct Images<'a> {
     media: MediaLookup<'a>,
     decoded: HashMap<(usize, String), Option<Arc<Pixels>>>,
     bytes: usize,
+    sounds: HashMap<(usize, String), Option<Arc<Vec<u8>>>>,
+    sound_bytes: usize,
 }
+
+/// The largest dictionary sound (DIC-038).
+const MAX_SOUND_BYTES: usize = 4 << 20;
+/// Dictionary sounds kept for one popup at most.
+const MAX_POPUP_SOUND_BYTES: usize = 16 << 20;
 
 impl Images<'_> {
     fn attach(&mut self, blocks: &mut [Block], dictionary: usize) {
@@ -300,10 +307,34 @@ impl Images<'_> {
 
     fn attach_runs(&mut self, runs: &mut [Run], dictionary: usize) {
         for r in runs {
-            if let Run::Image { image } = r {
-                image.pixels = self.pixels(dictionary, image);
+            match r {
+                Run::Image { image } => image.pixels = self.pixels(dictionary, image),
+                Run::Link {
+                    target: Target::Sound { path, bytes },
+                    ..
+                } => *bytes = self.sound(dictionary, path),
+                _ => {}
             }
         }
+    }
+
+    /// A sound's bytes (DIC-038), within the popup's sound budget.
+    fn sound(&mut self, dictionary: usize, path: &str) -> Option<Arc<Vec<u8>>> {
+        let key = (dictionary, path.to_string());
+        if let Some(known) = self.sounds.get(&key) {
+            return known.clone();
+        }
+        let bytes = (self.sound_bytes < MAX_POPUP_SOUND_BYTES)
+            .then(|| (self.media)(dictionary, path))
+            .flatten()
+            .filter(|b| b.len() <= MAX_SOUND_BYTES)
+            .filter(|b| self.sound_bytes + b.len() <= MAX_POPUP_SOUND_BYTES)
+            .map(Arc::new);
+        if let Some(b) = &bytes {
+            self.sound_bytes += b.len();
+        }
+        self.sounds.insert(key, bytes.clone());
+        bytes
     }
 
     fn pixels(&mut self, dictionary: usize, image: &Image) -> Option<Arc<Pixels>> {
@@ -564,6 +595,8 @@ pub fn content(
         media,
         decoded: HashMap::new(),
         bytes: 0,
+        sounds: HashMap::new(),
+        sound_bytes: 0,
     };
     Content {
         entries: entries
@@ -745,6 +778,9 @@ pub(crate) mod tests {
                     match target {
                         Target::Lookup(text) => assert!(!text.is_empty()),
                         Target::External(url) => assert!(crate::is_web_address(url), "{url}"),
+                        Target::Sound { path, .. } => {
+                            assert_eq!(structured::media_path(path).as_deref(), Some(path.as_str()))
+                        }
                     }
                 }
                 Run::Image { image } => {
@@ -1019,6 +1055,8 @@ pub(crate) mod tests {
             media: &media,
             decoded: HashMap::new(),
             bytes: 0,
+            sounds: HashMap::new(),
+            sound_bytes: 0,
         };
         images.attach(&mut blocks, 0);
         let Block::Flow { runs } = &blocks[0] else {
