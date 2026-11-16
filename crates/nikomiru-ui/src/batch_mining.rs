@@ -26,6 +26,7 @@ impl Candidate {
             && r.title.len() <= 1024
             && r.position_ms >= 0
             && r.position_ms <= i32::MAX as i64
+            && r.composition == Default::default()
             && r.action == CardAction::Add
             && r.picture.as_ref().is_none_or(|p| p.len() <= 4 << 20)
             && r.offset.is_none_or(|offset| {
@@ -400,6 +401,7 @@ mod tests {
         Candidate {
             source_uid: Some("book/a".into()),
             request: MineRequest {
+                composition: Default::default(),
                 query: expression.into(),
                 entry: 0,
                 expression: expression.into(),

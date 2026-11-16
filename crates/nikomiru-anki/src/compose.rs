@@ -216,6 +216,65 @@ fn glossary_block(items: &str, styles: &[(&str, &Sheet)]) -> String {
     out
 }
 
+/// Exact definition record identity selected in the composer (MCP-003).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SenseId {
+    /// Lookup dictionary order.
+    pub dictionary: usize,
+    /// Stored term identity.
+    pub term: u64,
+    /// Original content and tags fingerprint.
+    pub fingerprint: String,
+}
+
+/// Fingerprint a complete source record without retaining its text twice.
+pub fn sense_id(g: &nikomiru_dict::lookup::Glossary) -> Option<SenseId> {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    for part in [
+        &g.term.expression,
+        &g.term.reading,
+        &g.term.definition_tags,
+        &g.term.term_tags,
+        &g.term.glossary().ok()?,
+    ] {
+        h.update((part.len() as u64).to_le_bytes());
+        h.update(part.as_bytes());
+    }
+    Some(SenseId {
+        dictionary: g.dictionary,
+        term: g.term.id,
+        fingerprint: h.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+    })
+}
+
+/// Validate every explicit selected record, then filter without changing other metadata.
+pub fn selected_senses(entry: &Entry, selected: &[SenseId]) -> Option<Entry> {
+    if selected.is_empty() || selected.len() > 128 {
+        return None;
+    }
+    let mut positions = Vec::new();
+    for id in selected {
+        let i = entry
+            .glossaries
+            .iter()
+            .position(|g| sense_id(g).as_ref() == Some(id))?;
+        if positions.contains(&i) {
+            return None;
+        }
+        positions.push(i);
+    }
+    let mut out = entry.clone();
+    out.glossaries = entry
+        .glossaries
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| positions.contains(i))
+        .map(|(_, g)| g.clone())
+        .collect();
+    Some(out)
+}
+
 /// The dictionary placeholders of `entry` (ANK-021…ANK-025). `sources[i]`
 /// describes the dictionary of index `i`; `media(i, path)` reads a file of
 /// dictionary `i`, for the images of its glossaries.
@@ -674,16 +733,35 @@ pub fn fields(
     value: &dyn Fn(&str) -> String,
     keep_empty: bool,
 ) -> Result<Vec<(String, String)>, FieldsError> {
-    if !mapping.iter().any(|(f, _)| note_fields.contains(f)) {
+    fields_overridden(note_fields, mapping, value, keep_empty, &BTreeMap::new())
+}
+
+/// Compose templates with explicit literal plain-text overrides (MCP-002).
+/// Braces and HTML in an override remain literal, never another template.
+pub fn fields_overridden(
+    note_fields: &[String],
+    mapping: &[(String, String)],
+    value: &dyn Fn(&str) -> String,
+    keep_empty: bool,
+    overrides: &BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>, FieldsError> {
+    if overrides.keys().any(|f| !note_fields.contains(f))
+        || (!mapping.iter().any(|(f, _)| note_fields.contains(f)) && overrides.is_empty())
+    {
         return Err(FieldsError::NoMappedField);
     }
     let mut out = Vec::new();
     for (i, field) in note_fields.iter().enumerate() {
-        let text = mapping
-            .iter()
-            .find(|(f, _)| f == field)
-            .map(|(_, template)| render(template, value))
-            .unwrap_or_default();
+        let text = overrides
+            .get(field)
+            .map(|text| escape(text.trim()))
+            .unwrap_or_else(|| {
+                mapping
+                    .iter()
+                    .find(|(f, _)| f == field)
+                    .map(|(_, template)| render(template, value))
+                    .unwrap_or_default()
+            });
         if i == 0 && text.is_empty() {
             return Err(FieldsError::EmptyFirstField);
         }
@@ -697,6 +775,40 @@ pub fn fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-MCP-002: literal overrides are not templates or HTML, and validation precedes field output.
+    #[test]
+    fn literal_overrides_keep_braces_and_markup_inert() {
+        let fields = vec!["Expression".into(), "Sentence".into()];
+        let mapping = vec![
+            ("Expression".into(), "{expression}".into()),
+            ("Sentence".into(), "{sentence}".into()),
+        ];
+        let value = |_: &str| "default".to_string();
+        let overrides = BTreeMap::from([("Sentence".into(), "<b>{expression}</b> & text".into())]);
+        let rendered = fields_overridden(&fields, &mapping, &value, false, &overrides).unwrap();
+        assert_eq!(rendered[1].1, "&lt;b&gt;{expression}&lt;/b&gt; &amp; text");
+        assert!(
+            fields_overridden(
+                &fields,
+                &mapping,
+                &value,
+                false,
+                &BTreeMap::from([("Other".into(), "value".into())])
+            )
+            .is_err()
+        );
+        assert!(matches!(
+            fields_overridden(
+                &fields,
+                &mapping,
+                &value,
+                false,
+                &BTreeMap::from([("Expression".into(), "  ".into())])
+            ),
+            Err(FieldsError::EmptyFirstField)
+        ));
+    }
 
     // T-ANK-044: a card kept for later fills its fields as one sent at once
     #[test]
@@ -804,6 +916,23 @@ mod tests {
             },
         ];
         let fields = dictionary_fields(&entry, &sources, &mut |_, _| None);
+        // T-MCP-003: choose one source record without silently taking the other definitions.
+        let id = sense_id(&entry.glossaries[1]).unwrap();
+        let selected = selected_senses(&entry, std::slice::from_ref(&id)).unwrap();
+        let selected_fields = dictionary_fields(&selected, &sources, &mut |_, _| None);
+        assert!(selected_fields.glossary.contains("to look"));
+        assert!(
+            !selected_fields.glossary.contains("to see")
+                && !selected_fields.glossary.contains("to view")
+        );
+        assert!(selected_senses(&entry, &[]).is_none());
+        assert!(selected_senses(&entry, &[id.clone(), id.clone()]).is_none());
+        let mut changed = entry.clone();
+        changed.glossaries[1]
+            .term
+            .definition_tags
+            .push_str(" changed");
+        assert!(selected_senses(&changed, &[id]).is_none());
         let labels: Vec<&str> = fields
             .glossary
             .split("<i>")

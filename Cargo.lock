@@ -2539,6 +2539,7 @@ dependencies = [
  "nikomiru-text",
  "proptest",
  "reqwest",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

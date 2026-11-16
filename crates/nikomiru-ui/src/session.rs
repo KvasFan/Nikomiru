@@ -613,6 +613,12 @@ pub struct Session {
         std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
     /// The "Advanced mining" dialog (ANK-040).
     advanced: Option<crate::mining::AdvancedCard>,
+    /// Frozen original request and popup ownership; never rebuilt for dispatch.
+    advanced_request: Option<(u64, crate::mining::MineRequest)>,
+    /// Media load and reader source/chapter ownership at capture.
+    advanced_owner: (LoadToken, u64, u64, Option<(String, usize)>),
+    /// Explicit session-only plain-text pins.
+    composer_pins: std::collections::BTreeMap<String, String>,
     /// The word's place in its cue, for the merged sentences (ANK-041).
     advanced_word: Option<usize>,
     /// The frame of the click it keeps.
@@ -933,6 +939,9 @@ impl Session {
             moving_subtitles: false,
             pending_identity: std::collections::HashMap::new(),
             advanced: None,
+            advanced_request: None,
+            advanced_owner: (LoadToken::default(), 0, 0, None),
+            composer_pins: Default::default(),
             advanced_word: None,
             advanced_frame: None,
         }
@@ -2235,6 +2244,19 @@ impl Session {
         self.list_later();
     }
 
+    /// Apply a named profile explicitly, closing the draft and clearing its pins.
+    pub fn mining_profile_apply(&mut self, name: &str) {
+        let mut config = self.services.config.anki.clone();
+        if !config.apply_profile(name) {
+            self.anki_page.status = Some((self.tr("mining-profile-invalid", &[]), false));
+            return;
+        }
+        self.anki_save(config.clone());
+        if !config.to_review() && !config.later() {
+            self.anki_test(config);
+        }
+    }
+
     /// "Test the connection" with the settings being edited (ANK-006).
     pub fn anki_test(&mut self, config: nikomiru_core::config::AnkiConfig) {
         self.anki_page.busy = true;
@@ -2258,6 +2280,12 @@ impl Session {
     /// worker (SET-002), and go to `config.toml` unless it could not be read,
     /// which writing the defaults over would lose.
     pub fn anki_save(&mut self, config: nikomiru_core::config::AnkiConfig) {
+        if !config.valid_profiles() {
+            self.anki_page.status = Some((self.tr("mining-profile-invalid", &[]), false));
+            return;
+        }
+        self.close_advanced();
+        self.composer_pins.clear();
         self.services.config.anki = config.clone();
         self.anki_jobs
             .push(crate::mining::AnkiJob::Configure(config));
@@ -2300,6 +2328,12 @@ impl Session {
                 };
                 if !self.keep_status {
                     self.anki_page.status = Some(status);
+                }
+                if let Some(a) = self.advanced.as_mut()
+                    && lists.model == self.services.config.anki.note_type
+                    && lists.deck == self.services.config.anki.deck
+                {
+                    a.available_fields = lists.fields.clone();
                 }
                 self.anki_page.lists = Some(lists);
             }
@@ -4587,6 +4621,7 @@ impl Session {
             let p = self.popups.stack().get(level)?;
             let e = p.reply.as_ref()?.content.entries.get(entry)?;
             let request = MineRequest {
+                composition: Default::default(),
                 query: p.query.clone(),
                 entry,
                 expression: e.expression.clone(),
@@ -4625,6 +4660,7 @@ impl Session {
         let clip = cue.and_then(|c| self.clip_of(c, c));
         let (audio_input, audio_stream) = self.audio_source(&current.path);
         let request = MineRequest {
+            composition: Default::default(),
             query: p.query.clone(),
             entry,
             expression: e.expression.clone(),
@@ -4725,12 +4761,71 @@ impl Session {
         if self.popups.stack().get(level).is_none() || self.advanced.is_some() {
             return;
         }
-        let Some((_, request)) = self.mine_request(level, entry, CardAction::Add) else {
+        let Some((generation, request)) = self.mine_request(level, entry, CardAction::Add) else {
             return;
         };
-        let reference = self.reference_cue();
+        let reference = (!request.video.as_os_str().is_empty())
+            .then(|| self.reference_cue())
+            .flatten();
         let at = reference.unwrap_or(0);
+        let senses = self
+            .popups
+            .stack()
+            .get(level)
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| r.content.entries.get(entry))
+            .map(|e| {
+                e.sections
+                    .iter()
+                    .flat_map(|section| {
+                        section.glossaries.iter().enumerate().filter_map(|(i, g)| {
+                            Some(crate::mining::SenseOption {
+                                id: g.sense.clone()?,
+                                label: format!(
+                                    "{} · {} · {}",
+                                    section.dictionary,
+                                    i + 1,
+                                    g.summary
+                                ),
+                                selected: true,
+                            })
+                        })
+                    })
+                    .take(129)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let config = &self.services.config.anki;
+        let available_fields = if config.to_review() {
+            Vec::new()
+        } else if config.later() {
+            if nikomiru_anki::lapis::is_lapis(&config.note_type, &[]) {
+                nikomiru_anki::lapis::FIELDS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                config
+                    .field_mapping
+                    .get(&config.note_type)
+                    .map(|m| m.keys().cloned().collect())
+                    .unwrap_or_default()
+            }
+        } else {
+            self.anki_page
+                .lists
+                .as_ref()
+                .filter(|l| l.model == config.note_type && l.deck == config.deck)
+                .map(|l| l.fields.clone())
+                .unwrap_or_default()
+        };
         self.advanced = Some(AdvancedCard {
+            available_fields,
+            profiles: config.profiles.iter().map(|p| p.name.clone()).collect(),
+            fields: self.composer_pins.clone(),
+            pinned: self.composer_pins.keys().cloned().collect(),
+            senses,
+            error: None,
             level,
             entry,
             expression: request.expression.clone(),
@@ -4740,13 +4835,35 @@ impl Session {
             sentence: request.sentence.clone(),
             offset: request.offset,
             clip: request.clip,
-            frame: FrameKind::Click,
+            frame: if request.frame == crate::mining::FrameChoice::None {
+                FrameKind::None
+            } else {
+                FrameKind::Click
+            },
             audio: request.clip.is_some(),
             can_previous: false,
             can_next: false,
         });
         self.advanced_word = request.offset;
-        self.advanced_frame = self.ask_frame();
+        let capture_frame = request.frame == crate::mining::FrameChoice::Click;
+        self.advanced_request = Some((generation, request));
+        self.advanced_owner = (
+            self.token,
+            self.sub_list_version,
+            self.words.generation(),
+            self.books_page
+                .open
+                .as_ref()
+                .map(|b| (b.uid.clone(), b.chapter)),
+        );
+        self.advanced_frame = if capture_frame {
+            self.ask_frame()
+        } else {
+            None
+        };
+        if !self.services.config.anki.to_review() && !self.services.config.anki.later() {
+            self.anki_test(self.services.config.anki.clone());
+        }
         self.advanced_merge();
     }
 
@@ -4826,6 +4943,44 @@ impl Session {
         };
         let count = self.subs.timeline().cues().len();
         match edit {
+            AdvancedEdit::Field(name, text) => {
+                let mut staged = a.fields.clone();
+                staged.insert(name.clone(), text.clone());
+                if !nikomiru_core::mining_profiles::valid_fields(&staged) {
+                    a.error = Some(self.services.translator.tr("composer-fields-invalid", &[]));
+                    return;
+                }
+                a.fields = staged;
+                if a.pinned.contains(&name) {
+                    self.composer_pins.insert(name, text);
+                }
+                a.error = None;
+                return;
+            }
+            AdvancedEdit::Pin(name, on) => {
+                if on {
+                    if let Some(value) = a.fields.get(&name) {
+                        a.pinned.insert(name.clone());
+                        self.composer_pins.insert(name, value.clone());
+                    }
+                } else {
+                    a.pinned.remove(&name);
+                    self.composer_pins.remove(&name);
+                }
+                return;
+            }
+            AdvancedEdit::Reset(name) => {
+                a.fields.remove(&name);
+                a.pinned.remove(&name);
+                self.composer_pins.remove(&name);
+                return;
+            }
+            AdvancedEdit::Sense(index, on) => {
+                if let Some(sense) = a.senses.get_mut(index) {
+                    sense.selected = on;
+                }
+                return;
+            }
             AdvancedEdit::Previous(true) if a.first > 0 => a.first -= 1,
             AdvancedEdit::Previous(false) if Some(a.first) < a.reference => a.first += 1,
             AdvancedEdit::Next(true) if a.last + 1 < count => a.last += 1,
@@ -4871,12 +5026,58 @@ impl Session {
             }
             AdvancedEdit::Create => {
                 let a = a.clone();
-                let Some((generation, mut request)) =
-                    self.mine_request(a.level, a.entry, CardAction::Add)
-                else {
-                    self.close_advanced();
+                let Some((generation, mut request)) = self.advanced_request.clone() else {
                     return;
                 };
+                let fresh = self.mine_request(a.level, a.entry, CardAction::Add);
+                let owner = (
+                    self.token,
+                    self.sub_list_version,
+                    self.words.generation(),
+                    self.books_page
+                        .open
+                        .as_ref()
+                        .map(|b| (b.uid.clone(), b.chapter)),
+                );
+                let valid = owner == self.advanced_owner
+                    && fresh.as_ref().is_some_and(|(g, r)| {
+                        *g == generation
+                            && r.query == request.query
+                            && r.expression == request.expression
+                            && r.reading == request.reading
+                            && r.sentence == request.sentence
+                            && r.video == request.video
+                            && r.uid == request.uid
+                            && r.title == request.title
+                            && r.audio_input == request.audio_input
+                            && r.audio_stream == request.audio_stream
+                            && r.clip == request.clip
+                            && r.offset == request.offset
+                            && r.picture == request.picture
+                    });
+                if !valid {
+                    if let Some(a) = self.advanced.as_mut() {
+                        a.error = Some(self.services.translator.tr("composer-source-stale", &[]));
+                    }
+                    return;
+                }
+                if !a.senses.is_empty() {
+                    let ids: Vec<_> = a
+                        .senses
+                        .iter()
+                        .filter(|s| s.selected)
+                        .map(|s| s.id.clone())
+                        .collect();
+                    if ids.is_empty() || a.senses.len() > 128 {
+                        if let Some(a) = self.advanced.as_mut() {
+                            a.error =
+                                Some(self.services.translator.tr("composer-senses-stale", &[]));
+                        }
+                        return;
+                    }
+                    request.composition.senses = Some(ids);
+                }
+                request.composition.fields = a.fields;
                 request.sentence = a.sentence;
                 request.offset = a.offset;
                 request.clip = a.clip;
@@ -4902,6 +5103,7 @@ impl Session {
     /// Closes the "Advanced mining" dialog; the frame it kept goes.
     fn close_advanced(&mut self) {
         self.advanced = None;
+        self.advanced_request = None;
         self.advanced_frame = None;
         self.end_replay();
     }

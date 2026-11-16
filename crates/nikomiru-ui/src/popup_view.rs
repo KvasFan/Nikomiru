@@ -132,6 +132,10 @@ pub struct PitchRow {
 /// A glossary: its definition tags and its content.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Glossary {
+    /// Exact source record for explicit composer selection.
+    pub sense: Option<nikomiru_anki::compose::SenseId>,
+    /// Bounded inert description for composer sense controls.
+    pub summary: String,
     /// Tags shown (POP-008).
     pub tags: Vec<TagChip>,
     /// Content.
@@ -466,6 +470,14 @@ fn entry_view(
             let mut blocks = structured::render(&json, sheet.unwrap_or(&Sheet::default()));
             images.attach(&mut blocks, *d);
             glossaries.push(Glossary {
+                sense: nikomiru_anki::compose::sense_id(g),
+                summary: nikomiru_anki::html::text(&nikomiru_anki::glossary::definitions(
+                    &json,
+                    &mut |_| None,
+                ))
+                .chars()
+                .take(512)
+                .collect(),
                 tags: chips,
                 blocks,
             });

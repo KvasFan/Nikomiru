@@ -158,6 +158,18 @@ pub enum FrameKind {
 /// with its sentence, clip, picture and audio chosen by hand.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdvancedCard {
+    /// Field names available for overrides, validated again by the worker.
+    pub available_fields: Vec<String>,
+    /// Saved profile quick actions; applying explicitly closes this draft.
+    pub profiles: Vec<String>,
+    /// Explicit literal overrides for this card.
+    pub fields: std::collections::BTreeMap<String, String>,
+    /// Fields explicitly pinned for subsequent advanced cards in this scope.
+    pub pinned: std::collections::BTreeSet<String>,
+    /// Definition records, selected explicitly (MCP-003).
+    pub senses: Vec<SenseOption>,
+    /// A rejected edit/create, retained in the composer.
+    pub error: Option<String>,
     /// The popup.
     pub level: usize,
     /// The entry.
@@ -186,9 +198,28 @@ pub struct AdvancedCard {
     pub can_next: bool,
 }
 
+/// One dictionary-labelled exact definition record in the composer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenseOption {
+    /// Original record identity.
+    pub id: nikomiru_anki::compose::SenseId,
+    /// Dictionary and visible definition summary.
+    pub label: String,
+    /// Include the record in this card.
+    pub selected: bool,
+}
+
 /// A change in the "Advanced mining" dialog.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdvancedEdit {
+    /// Set a literal field override.
+    Field(String, String),
+    /// Explicitly pin or unpin an edited field.
+    Pin(String, bool),
+    /// Remove an override and its pin, restoring the template.
+    Reset(String),
+    /// Include/exclude this exact definition record.
+    Sense(usize, bool),
     /// The cue before the sentence added (`true`) or its first cue taken
     /// away (ANK-041).
     Previous(bool),
@@ -228,9 +259,20 @@ pub struct CheckRequest {
     pub entries: Vec<(String, String)>,
 }
 
+/// Explicit per-card composer choices, never implicitly inherited by quick mining.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Composition {
+    /// Literal plain-text field overrides.
+    pub fields: std::collections::BTreeMap<String, String>,
+    /// Exact selected dictionary definition records; `None` keeps ordinary composition.
+    pub senses: Option<Vec<nikomiru_anki::compose::SenseId>>,
+}
+
 /// A card to make from a popup entry and its scene.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct MineRequest {
+    /// Explicit composer fields and selected definition records; empty for quick/batch mining.
+    pub composition: Composition,
     /// The popup's query: the worker looks it up again.
     pub query: String,
     /// The entry's index in the reply.

@@ -1503,3 +1503,21 @@ batch-duplicate = Duplicato saltato
 batch-unresolved = Esito non risolto
 batch-failed = Errore prima del salvataggio
 batch-cancelled = Annullata
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = Profili di mining
+mining-profiles-hint = I profili contengono destinazione, mazzo, tipo di nota, etichette e modelli dei campi. Salva le impostazioni per conservarli.
+mining-profile-name = Nome del profilo
+mining-profile-save = Salva nuovo profilo
+mining-profile-apply = Applica profilo: { $name }
+mining-profile-delete = Elimina profilo: { $name }
+mining-profile-invalid = Il profilo non è valido, esiste già o supera il limite di 16 profili.
+composer-fields = Modifica e fissa i campi
+composer-fields-hint = Abilita un campo per sostituire il modello con testo letterale. I campi fissati durano per questa sessione; il mining rapido e in serie li ignorano.
+composer-field-value = Testo letterale: { $name }
+composer-pin = Fissa campo: { $name }
+composer-senses = Scegli i significati del dizionario
+composer-profile-hint = Applicare un profilo chiude questa bozza e rimuove tutti i campi fissati. Apri poi un nuovo compositore.
+composer-fields-invalid = Un campo manca, è vuoto o supera i limiti del compositore. Controlla il tipo di nota e le modifiche.
+composer-senses-stale = Seleziona almeno un significato invariato del dizionario. Dopo aver cambiato i dizionari riapri il compositore.
+composer-source-stale = La fonte o la ricerca originale è cambiata. Chiudi la bozza e apri un nuovo compositore.

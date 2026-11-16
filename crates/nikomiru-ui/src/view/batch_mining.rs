@@ -320,6 +320,7 @@ mod tests {
     #[test]
     fn batch_controls_require_a_complete_preview_and_explicit_start() {
         let request = MineRequest {
+            composition: Default::default(),
             query: "猫".into(),
             entry: 0,
             expression: "猫".into(),

@@ -339,6 +339,11 @@ pub fn state() -> Result<Value, String> {
                 "clip": a.clip.map(|(s, e)| [s, e]),
                 "frame": format!("{:?}", a.frame),
                 "audio": a.audio,
+                "fields": a.fields,
+                "available_fields": a.available_fields,
+                "pinned": a.pinned,
+                "senses": a.senses.iter().map(|s| json!({"id":s.id,"label":s.label,"selected":s.selected})).collect::<Vec<_>>(),
+                "error": a.error,
             })
         });
         let settings_status = s
@@ -500,6 +505,10 @@ pub fn state() -> Result<Value, String> {
             "anki_page": json!({
                 "open": ui.view.anki_page_open,
                 "busy": s.anki_page.busy,
+                "profiles": s.anki_config().profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>(),
+                "active_profile": s.anki_config().active_profile,
+                "deck": s.anki_config().deck,
+                "model": s.anki_config().note_type,
                 "status": s.anki_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
                 "decks": s.anki_page.lists.as_ref().map(|l| l.decks.clone()),
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
@@ -1386,6 +1395,47 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
         ui.run(command);
         Ok(())
     })?
+}
+
+/// Named profile operations through the same config save/apply paths as the page.
+pub fn mining_profile(action: String, name: String) -> Result<(), String> {
+    call(move |ui| {
+        if action == "apply" {
+            ui.run(Command::MiningProfileApply(name));
+            return Ok(());
+        }
+        let mut draft = ui.session.anki_config().clone();
+        match action.as_str() {
+            "save" => {
+                if !draft.save_profile(name) {
+                    return Err("invalid profile".into());
+                }
+            }
+            "delete" => draft.delete_profile(&name),
+            _ => return Err("unknown profile action".into()),
+        }
+        ui.run(Command::AnkiSave(draft));
+        Ok(())
+    })?
+}
+
+/// Composer literal overrides and exact sense controls, as on the page.
+pub fn composer(
+    action: String,
+    field: String,
+    text: String,
+    index: usize,
+    on: bool,
+) -> Result<(), String> {
+    use crate::mining::AdvancedEdit;
+    let edit = match action.as_str() {
+        "field" => AdvancedEdit::Field(field, text),
+        "pin" => AdvancedEdit::Pin(field, on),
+        "reset" => AdvancedEdit::Reset(field),
+        "sense" => AdvancedEdit::Sense(index, on),
+        _ => return Err("unknown composer action".into()),
+    };
+    call(move |ui| ui.run(Command::Advanced(edit)))
 }
 
 /// A property of mpv, as text (T-PERF-03: `frame-drop-count`,

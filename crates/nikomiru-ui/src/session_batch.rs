@@ -18,6 +18,7 @@ fn text_request(
     offset: Option<usize>,
 ) -> MineRequest {
     MineRequest {
+        composition: Default::default(),
         query,
         entry: 0,
         expression,

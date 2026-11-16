@@ -49,9 +49,10 @@ pub(crate) fn draw(
     let screen = ctx.content_rect();
     let size = vec2(
         640.0_f32.min(screen.width() - 32.0).max(0.0),
-        560.0_f32.min(screen.height() - 32.0).max(0.0),
+        760.0_f32.min(screen.height() - 32.0).max(0.0),
     );
-    let mut edit = |e: AdvancedEdit| out.push(Command::Advanced(e));
+    let mut commands = Vec::new();
+    let mut edit = |e: AdvancedEdit| commands.push(Command::Advanced(e));
     full_screen(ctx, "advanced-card", p.backdrop, |ui| {
         let rect = Rect::from_center_size(screen.center(), size);
         let mut ui = ui.new_child(
@@ -77,106 +78,212 @@ pub(crate) fn draw(
                     .family(theme::bold()),
                 );
 
-                // ANK-041: the sentence, the lines around it
-                section(ui, &t("mining-sentence"));
-                if card.sentence.is_empty() {
-                    ui.label(RichText::new(t("mining-no-sentence")).color(p.details));
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("advanced-sentence")
-                        .max_height(110.0)
-                        .show(ui, |ui| {
-                            ui.add(
-                                egui::Label::new(RichText::new(&card.sentence).size(17.0)).wrap(),
-                            );
+                egui::ScrollArea::vertical()
+                    .id_salt("composer-body")
+                    .max_height((size.y - 105.0).max(0.0))
+                    .show(ui, |ui| {
+                        if let Some(error) = &card.error {
+                            ui.colored_label(p.bad, error);
+                        }
+                        // ANK-041: the sentence, the lines around it
+                        section(ui, &t("mining-sentence"));
+                        if card.sentence.is_empty() {
+                            ui.label(RichText::new(t("mining-no-sentence")).color(p.details));
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .id_salt("advanced-sentence")
+                                .max_height(110.0)
+                                .show(ui, |ui| {
+                                    ui.add(
+                                        egui::Label::new(RichText::new(&card.sentence).size(17.0))
+                                            .wrap(),
+                                    );
+                                });
+                        }
+                        if card.reference.is_some() {
+                            ui.horizontal_wrapped(|ui| {
+                                let line = |ui: &mut Ui, enabled: bool, id: &str| {
+                                    ui.add_enabled(enabled, Button::new(t(id))).clicked()
+                                };
+                                let r = card.reference;
+                                if line(ui, card.can_previous, "mining-add-previous") {
+                                    edit(AdvancedEdit::Previous(true));
+                                }
+                                if line(ui, Some(card.first) < r, "mining-drop-previous") {
+                                    edit(AdvancedEdit::Previous(false));
+                                }
+                                if line(ui, card.can_next, "mining-add-next") {
+                                    edit(AdvancedEdit::Next(true));
+                                }
+                                if line(ui, r.is_some_and(|r| card.last > r), "mining-drop-next") {
+                                    edit(AdvancedEdit::Next(false));
+                                }
+                            });
+                        }
+
+                        // the clip
+                        section(ui, &t("mining-audio-section"));
+                        let mut audio = card.audio;
+                        let has_clip = card.clip.is_some();
+                        if ui
+                            .add_enabled(
+                                has_clip,
+                                egui::Checkbox::new(&mut audio, t("mining-audio")),
+                            )
+                            .changed()
+                        {
+                            edit(AdvancedEdit::Audio(audio));
+                        }
+                        if let Some((start, end)) = card.clip {
+                            ui.horizontal(|ui| {
+                                let label = ui.label(t("mining-start"));
+                                let mut v = seconds(start);
+                                let r = ui.add(
+                                    DragValue::new(&mut v)
+                                        .speed(0.01)
+                                        .fixed_decimals(2)
+                                        .suffix(" s"),
+                                );
+                                let r = r.labelled_by(label.id);
+                                if r.changed() {
+                                    edit(AdvancedEdit::Start((v * 1000.0).round() as i64));
+                                }
+                                ui.add_space(12.0);
+                                let label = ui.label(t("mining-end"));
+                                let mut v = seconds(end);
+                                let r = ui.add(
+                                    DragValue::new(&mut v)
+                                        .speed(0.01)
+                                        .fixed_decimals(2)
+                                        .suffix(" s"),
+                                );
+                                let r = r.labelled_by(label.id);
+                                if r.changed() {
+                                    edit(AdvancedEdit::End((v * 1000.0).round() as i64));
+                                }
+                                ui.add_space(12.0);
+                                ui.label(
+                                    RichText::new(format!("{:.2} s", seconds(end - start)))
+                                        .color(p.details),
+                                );
+                                ui.add_space(12.0);
+                                if ui.button(t("mining-preview")).clicked() {
+                                    edit(AdvancedEdit::Preview);
+                                }
+                            });
+                        }
+
+                        // the picture
+                        section(ui, &t("mining-picture"));
+                        for (kind, id) in [
+                            (FrameKind::Click, "mining-picture-click"),
+                            (FrameKind::SentenceStart, "mining-picture-start"),
+                            (FrameKind::None, "mining-picture-none"),
+                        ] {
+                            let enabled =
+                                kind != FrameKind::SentenceStart || card.reference.is_some();
+                            if ui
+                                .add_enabled(
+                                    enabled,
+                                    egui::RadioButton::new(card.frame == kind, t(id)),
+                                )
+                                .clicked()
+                            {
+                                edit(AdvancedEdit::Frame(kind));
+                            }
+                        }
+
+                        ui.collapsing(t("composer-fields"), |ui| {
+                            ui.label(t("composer-fields-hint"));
+                            egui::ScrollArea::vertical()
+                                .id_salt("composer-fields-scroll")
+                                .max_height(170.0)
+                                .show(ui, |ui| {
+                                    for name in card.available_fields.iter().chain(
+                                        card.fields
+                                            .keys()
+                                            .filter(|f| !card.available_fields.contains(f)),
+                                    ) {
+                                        ui.push_id(name, |ui| {
+                                            let mut enabled = card.fields.contains_key(name);
+                                            if ui.checkbox(&mut enabled, name).changed() {
+                                                if enabled {
+                                                    edit(AdvancedEdit::Field(
+                                                        name.clone(),
+                                                        String::new(),
+                                                    ));
+                                                } else {
+                                                    edit(AdvancedEdit::Reset(name.clone()));
+                                                }
+                                            }
+                                            if let Some(value) = card.fields.get(name) {
+                                                let mut text = value.clone();
+                                                let label = ui.label(tr(
+                                                    "composer-field-value",
+                                                    &[("name", name.clone())],
+                                                ));
+                                                if ui
+                                                    .add(
+                                                        egui::TextEdit::multiline(&mut text)
+                                                            .desired_rows(2)
+                                                            .char_limit(16384)
+                                                            .desired_width(f32::INFINITY),
+                                                    )
+                                                    .labelled_by(label.id)
+                                                    .changed()
+                                                {
+                                                    edit(AdvancedEdit::Field(name.clone(), text));
+                                                }
+                                                let mut pin = card.pinned.contains(name);
+                                                if ui
+                                                    .checkbox(
+                                                        &mut pin,
+                                                        tr(
+                                                            "composer-pin",
+                                                            &[("name", name.clone())],
+                                                        ),
+                                                    )
+                                                    .changed()
+                                                {
+                                                    edit(AdvancedEdit::Pin(name.clone(), pin));
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
                         });
-                }
-                if card.reference.is_some() {
-                    ui.horizontal_wrapped(|ui| {
-                        let line = |ui: &mut Ui, enabled: bool, id: &str| {
-                            ui.add_enabled(enabled, Button::new(t(id))).clicked()
-                        };
-                        let r = card.reference;
-                        if line(ui, card.can_previous, "mining-add-previous") {
-                            edit(AdvancedEdit::Previous(true));
+                        if !card.senses.is_empty() {
+                            ui.collapsing(t("composer-senses"), |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("composer-senses-scroll")
+                                    .max_height(150.0)
+                                    .show(ui, |ui| {
+                                        for (i, sense) in card.senses.iter().enumerate() {
+                                            let mut selected = sense.selected;
+                                            if ui.checkbox(&mut selected, &sense.label).changed() {
+                                                edit(AdvancedEdit::Sense(i, selected));
+                                            }
+                                        }
+                                    });
+                            });
                         }
-                        if line(ui, Some(card.first) < r, "mining-drop-previous") {
-                            edit(AdvancedEdit::Previous(false));
-                        }
-                        if line(ui, card.can_next, "mining-add-next") {
-                            edit(AdvancedEdit::Next(true));
-                        }
-                        if line(ui, r.is_some_and(|r| card.last > r), "mining-drop-next") {
-                            edit(AdvancedEdit::Next(false));
-                        }
-                    });
-                }
-
-                // the clip
-                section(ui, &t("mining-audio-section"));
-                let mut audio = card.audio;
-                let has_clip = card.clip.is_some();
-                if ui
-                    .add_enabled(has_clip, egui::Checkbox::new(&mut audio, t("mining-audio")))
-                    .changed()
-                {
-                    edit(AdvancedEdit::Audio(audio));
-                }
-                if let Some((start, end)) = card.clip {
-                    ui.horizontal(|ui| {
-                        let label = ui.label(t("mining-start"));
-                        let mut v = seconds(start);
-                        let r = ui.add(
-                            DragValue::new(&mut v)
-                                .speed(0.01)
-                                .fixed_decimals(2)
-                                .suffix(" s"),
-                        );
-                        let r = r.labelled_by(label.id);
-                        if r.changed() {
-                            edit(AdvancedEdit::Start((v * 1000.0).round() as i64));
-                        }
-                        ui.add_space(12.0);
-                        let label = ui.label(t("mining-end"));
-                        let mut v = seconds(end);
-                        let r = ui.add(
-                            DragValue::new(&mut v)
-                                .speed(0.01)
-                                .fixed_decimals(2)
-                                .suffix(" s"),
-                        );
-                        let r = r.labelled_by(label.id);
-                        if r.changed() {
-                            edit(AdvancedEdit::End((v * 1000.0).round() as i64));
-                        }
-                        ui.add_space(12.0);
-                        ui.label(
-                            RichText::new(format!("{:.2} s", seconds(end - start)))
-                                .color(p.details),
-                        );
-                        ui.add_space(12.0);
-                        if ui.button(t("mining-preview")).clicked() {
-                            edit(AdvancedEdit::Preview);
+                        if !card.profiles.is_empty() {
+                            ui.collapsing(t("mining-profiles"), |ui| {
+                                ui.label(t("composer-profile-hint"));
+                                for name in &card.profiles {
+                                    if ui
+                                        .button(tr(
+                                            "mining-profile-apply",
+                                            &[("name", name.clone())],
+                                        ))
+                                        .clicked()
+                                    {
+                                        out.push(Command::MiningProfileApply(name.clone()));
+                                    }
+                                }
+                            });
                         }
                     });
-                }
-
-                // the picture
-                section(ui, &t("mining-picture"));
-                for (kind, id) in [
-                    (FrameKind::Click, "mining-picture-click"),
-                    (FrameKind::SentenceStart, "mining-picture-start"),
-                    (FrameKind::None, "mining-picture-none"),
-                ] {
-                    let enabled = kind != FrameKind::SentenceStart || card.reference.is_some();
-                    if ui
-                        .add_enabled(enabled, egui::RadioButton::new(card.frame == kind, t(id)))
-                        .clicked()
-                    {
-                        edit(AdvancedEdit::Frame(kind));
-                    }
-                }
-
                 ui.add_space(8.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
@@ -191,6 +298,7 @@ pub(crate) fn draw(
                 });
             });
     });
+    out.extend(commands);
 }
 
 #[cfg(test)]
@@ -209,6 +317,12 @@ mod tests {
     #[test]
     fn the_dialog_sends_what_is_chosen() {
         let card = AdvancedCard {
+            available_fields: Vec::new(),
+            profiles: Vec::new(),
+            fields: Default::default(),
+            pinned: Default::default(),
+            senses: Vec::new(),
+            error: None,
             level: 0,
             entry: 1,
             expression: "食べる".into(),
@@ -263,7 +377,7 @@ mod tests {
             .out
             .iter()
             .filter_map(|c| match c {
-                Command::Advanced(e) => Some(*e),
+                Command::Advanced(e) => Some(e.clone()),
                 _ => None,
             })
             .collect();
@@ -276,6 +390,49 @@ mod tests {
                 AdvancedEdit::Preview,
                 AdvancedEdit::Create,
             ]
+        );
+        // T-MCP-002, T-MCP-003: explicit accessible pin/sense controls never dispatch Create implicitly.
+        h.state_mut().out.clear();
+        h.state_mut().card.available_fields = vec!["Sentence".into()];
+        h.state_mut()
+            .card
+            .fields
+            .insert("Sentence".into(), "literal".into());
+        h.state_mut().card.senses = vec![crate::mining::SenseOption {
+            id: nikomiru_anki::compose::SenseId {
+                dictionary: 0,
+                term: 1,
+                fingerprint: "f".repeat(64),
+            },
+            label: "Mini · 1 · to eat".into(),
+            selected: true,
+        }];
+        h.run();
+        h.get_by_label("composer-fields").click();
+        h.run();
+        h.get_by_label("composer-field-value Sentence");
+        h.get_by_label("composer-pin Sentence").click();
+        h.run();
+        assert!(h.state().out.iter().any(
+            |c| matches!(c,Command::Advanced(AdvancedEdit::Pin(name,true)) if name=="Sentence")
+        ));
+        h.get_by_label("composer-fields").click();
+        h.run();
+        h.get_by_label("composer-senses").click();
+        h.run();
+        h.get_by_label("Mini · 1 · to eat").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::Advanced(AdvancedEdit::Sense(0, false))))
+        );
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::Advanced(AdvancedEdit::Create)))
         );
     }
 }

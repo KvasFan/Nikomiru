@@ -21,6 +21,8 @@ pub type Media = (String, Vec<u8>);
 /// A card made and not sent yet: what the `anki` worker sends to Anki.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepared {
+    /// Explicit literal fields, preserved through pending export.
+    pub field_overrides: BTreeMap<String, String>,
     /// The value of each placeholder but the media's (`compose::values`).
     pub values: BTreeMap<String, String>,
     /// The dictionaries' images.
@@ -82,6 +84,8 @@ struct CardFile {
     format: u32,
     /// When it was kept, in milliseconds since the epoch.
     created_ms: i64,
+    #[serde(default)]
+    field_overrides: BTreeMap<String, String>,
     values: BTreeMap<String, String>,
     /// The dictionaries' images, files of the folder.
     media: Vec<String>,
@@ -160,6 +164,7 @@ pub fn keep(dir: &Path, p: &Prepared, anyway: bool, now: SystemTime) -> io::Resu
             created_ms: now
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX)),
+            field_overrides: p.field_overrides.clone(),
             values: p.values.clone(),
             media: p.media.iter().map(|(n, _)| n.clone()).collect(),
             audio: p.audio.as_ref().map(|(n, _)| n.clone()),
@@ -197,6 +202,9 @@ fn read(dir: &Path, id: &str) -> io::Result<CardFile> {
         && (file.anyway || operation != &file.record.source_id)
     {
         return Err(invalid("batch operation metadata"));
+    }
+    if !nikomiru_core::mining_profiles::valid_fields(&file.field_overrides) {
+        return Err(invalid("composer fields"));
     }
     if file.format > FORMAT {
         return Err(invalid(format!("format {}", file.format)));
@@ -253,6 +261,7 @@ pub fn load(dir: &Path, id: &str) -> Result<(Prepared, bool), String> {
             .map_err(|e| format!("{name}: {e}"))
     };
     let prepared = Prepared {
+        field_overrides: file.field_overrides,
         values: file.values,
         media: file.media.iter().map(media).collect::<Result<_, _>>()?,
         audio: file.audio.as_ref().map(media).transpose()?,
@@ -300,6 +309,7 @@ mod tests {
 
     fn card(word: &str, audio: &[u8]) -> Prepared {
         Prepared {
+            field_overrides: BTreeMap::from([("Extra".into(), "literal <text> {reading}".into())]),
             values: BTreeMap::from([
                 ("expression".to_string(), word.to_string()),
                 ("glossary".to_string(), "<ol><li>meal</li></ol>".to_string()),

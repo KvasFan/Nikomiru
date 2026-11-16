@@ -560,6 +560,16 @@ impl Worker {
             .get(r.entry)
             .filter(|e| e.expression == r.expression && e.reading == r.reading)
             .ok_or_else(|| self.fail_with("error-mining-dictionaries-changed", &[]))?;
+        let selected = r
+            .composition
+            .senses
+            .as_ref()
+            .map(|ids| {
+                compose::selected_senses(entry, ids)
+                    .ok_or_else(|| self.fail_with("composer-senses-stale", &[]))
+            })
+            .transpose()?;
+        let entry = selected.as_ref().unwrap_or(entry);
         let records = manager.list().unwrap_or_default();
         let sheets: Vec<Sheet> = lookup
             .dictionaries()
@@ -726,6 +736,39 @@ impl Worker {
 
     /// Makes, or overwrites, a card (ANK-031…ANK-039).
     fn mine(&mut self, r: &MineRequest, frame: Option<PendingFrame>) -> Result<Mined, MineFailure> {
+        if !nikomiru_core::mining_profiles::valid_fields(&r.composition.fields) {
+            return Err(self.fail_with("composer-fields-invalid", &[]));
+        }
+        if !r.composition.fields.is_empty() {
+            if self.parts.config.to_review() {
+                return Err(self.fail_with("composer-fields-invalid", &[]));
+            }
+            let fields = if self.parts.config.later() {
+                if lapis::is_lapis(&self.parts.config.note_type, &[]) {
+                    lapis::FIELDS.iter().map(|s| s.to_string()).collect()
+                } else {
+                    self.parts
+                        .config
+                        .field_mapping
+                        .get(&self.parts.config.note_type)
+                        .map(|m| m.keys().cloned().collect())
+                        .unwrap_or_default()
+                }
+            } else {
+                self.note_fields = None;
+                self.note_fields().map_err(|e| self.fail(&e))?
+            };
+            if r.composition.fields.keys().any(|f| !fields.contains(f))
+                || fields.first().is_some_and(|first| {
+                    r.composition
+                        .fields
+                        .get(first)
+                        .is_some_and(|s| s.trim().is_empty())
+                })
+            {
+                return Err(self.fail_with("composer-fields-invalid", &[]));
+            }
+        }
         if self.parts.config.to_review() {
             return self.mine_for_review(r, frame);
         }
@@ -812,6 +855,7 @@ impl Worker {
         };
         self.batch_check_guard()?;
         Ok(Prepared {
+            field_overrides: r.composition.fields.clone(),
             values: compose::values(&dict, &scene),
             media: dict.media,
             audio,
@@ -841,6 +885,9 @@ impl Worker {
     /// Anki stored them, the media uploaded, then `addNote` or the overwrite
     /// of the last card (ANK-026, ANK-036, ANK-037).
     fn deliver(&mut self, p: &Prepared, action: CardAction) -> Result<Mined, MineFailure> {
+        if !p.field_overrides.is_empty() {
+            self.note_fields = None;
+        }
         let fields = self.note_fields().map_err(|e| self.fail(&e))?;
         let mapping = self.mapping(&fields);
         let keep_empty = matches!(action, CardAction::Overwrite(_));
@@ -852,13 +899,14 @@ impl Worker {
                 "card-image" => image.map(compose::card_image).unwrap_or_default(),
                 other => p.values.get(other).cloned().unwrap_or_default(),
             };
-            compose::fields(fields, &mapping, &value, keep_empty).map(|values| {
-                if lapis_like {
-                    compose::lapis_safe(values)
-                } else {
-                    values
-                }
-            })
+            compose::fields_overridden(fields, &mapping, &value, keep_empty, &p.field_overrides)
+                .map(|values| {
+                    if lapis_like {
+                        compose::lapis_safe(values)
+                    } else {
+                        values
+                    }
+                })
         };
         // the fields must hold before anything goes to Anki (ANK-026)
         render(

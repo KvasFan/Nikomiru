@@ -16,6 +16,7 @@ mod dvb_subtitles;
 mod encounters;
 mod episode_scores;
 mod gaps;
+mod mining_profiles;
 mod mokuro;
 mod perf;
 mod phrases;

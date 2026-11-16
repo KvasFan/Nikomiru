@@ -2021,6 +2021,8 @@ mod tests {
                 dictionary: "JM".into(),
                 expanded: true,
                 glossaries: vec![Glossary {
+                    sense: None,
+                    summary: String::new(),
                     tags: Vec::new(),
                     blocks: structured::render(&glossary, &Sheet::default()),
                 }],

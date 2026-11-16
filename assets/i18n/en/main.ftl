@@ -1503,3 +1503,21 @@ batch-duplicate = Duplicate skipped
 batch-unresolved = Outcome unresolved
 batch-failed = Failed before commit
 batch-cancelled = Cancelled
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = Mining profiles
+mining-profiles-hint = Profiles contain destination, deck, note type, tags and templates. Save settings to retain edits.
+mining-profile-name = Profile name
+mining-profile-save = Save new profile
+mining-profile-apply = Apply profile: { $name }
+mining-profile-delete = Delete profile: { $name }
+mining-profile-invalid = The profile is invalid, already exists or exceeds the limit of 16 profiles.
+composer-fields = Override and pin fields
+composer-fields-hint = Enable a field to replace its template with literal text. Pins last for this session; quick and batch mining ignore them.
+composer-field-value = Literal text: { $name }
+composer-pin = Pin field: { $name }
+composer-senses = Choose dictionary senses
+composer-profile-hint = Applying a profile closes this draft and clears all pinned fields. Open a new composer afterwards.
+composer-fields-invalid = A field is missing, empty or exceeds the composer limits. Review the note type and overrides.
+composer-senses-stale = Select at least one unchanged dictionary sense. Reopen the composer after dictionary changes.
+composer-source-stale = The original source or lookup has changed. Close this draft and open a new composer.

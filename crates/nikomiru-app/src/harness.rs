@@ -300,6 +300,19 @@ fn run(command: &Value) -> Result<Value, String> {
         .map(|()| Value::Null),
         Some("wheel") => harness::wheel(command["y"].as_f64().ok_or("missing \"y\"")? as f32)
             .map(|()| Value::Null),
+        Some("mining-profile") => harness::mining_profile(
+            text(command, "action")?.into(),
+            text(command, "name")?.into(),
+        )
+        .map(|()| Value::Null),
+        Some("composer") => harness::composer(
+            text(command, "action")?.into(),
+            command["field"].as_str().unwrap_or_default().into(),
+            command["text"].as_str().unwrap_or_default().into(),
+            command["index"].as_u64().unwrap_or(0) as usize,
+            command["on"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
             .map(|()| Value::Null),
         Some("settings") => {

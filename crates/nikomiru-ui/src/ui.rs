@@ -625,6 +625,8 @@ pub(crate) enum Command {
     },
     /// A change in that dialog (ANK-040, ANK-041).
     Advanced(crate::mining::AdvancedEdit),
+    /// Apply a named mining profile, explicitly discarding the composer and its pins.
+    MiningProfileApply(String),
     /// The Anki settings page opened.
     AnkiOpen,
     /// "Test the connection" with these settings (ANK-006).
@@ -1857,6 +1859,7 @@ impl Ui {
             Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),
             Command::Advanced(edit) => s.advanced_edit(edit),
+            Command::MiningProfileApply(name) => s.mining_profile_apply(&name),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),

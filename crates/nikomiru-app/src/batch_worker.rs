@@ -495,6 +495,7 @@ mod tests {
     }
     fn request() -> MineRequest {
         MineRequest {
+            composition: Default::default(),
             query: "猫です".into(),
             entry: 0,
             expression: "猫".into(),
@@ -642,5 +643,64 @@ mod tests {
         w.configure(config);
         assert!(w.batch_mine(preview.ticket).is_err());
         assert!(fake.collection().notes.is_empty());
+    }
+    // T-MCP-002, T-MCP-003: invalid fields/senses never reach extraction or mutation; exact selection and literals survive pending export.
+    #[test]
+    fn composer_validates_before_media_and_preserves_literals_through_pending_export() {
+        let fake = FakeAnki::start().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = worker(dir.path(), &fake);
+        let mut r = request();
+        r.composition.fields.insert("Absent".into(), "value".into());
+        assert!(w.mine(&r, None).is_err());
+        assert!(!w.parts.cache_dir.exists());
+        r.composition.fields.clear();
+        r.composition.senses = Some(Vec::new());
+        assert!(w.mine(&r, None).is_err());
+        assert!(!w.parts.cache_dir.exists());
+        let lookup = w.parts.dictionaries.as_ref().unwrap().lookup().unwrap();
+        let entry = lookup
+            .lookup(&r.query, Options { max_results: 32 })
+            .unwrap()[0]
+            .clone();
+        let id = compose::sense_id(&entry.glossaries[0]).unwrap();
+        let mut stale = id.clone();
+        stale.fingerprint.push('0');
+        r.composition.senses = Some(vec![stale]);
+        assert!(w.mine(&r, None).is_err());
+        assert!(!w.parts.cache_dir.exists());
+        assert!(
+            !fake
+                .requests()
+                .iter()
+                .any(|r| r["action"] == "storeMediaFile" || r["action"] == "addNote")
+        );
+        r.composition.senses = Some(vec![id]);
+        r.composition
+            .fields
+            .insert("Sentence".into(), "literal <b>{expression}</b>".into());
+        let mut config = w.parts.config.clone();
+        config.destination = "anki-later".into();
+        w.configure(config.clone());
+        no_process_tools(&mut w);
+        assert!(w.mine(&r, None).unwrap().kept.is_some());
+        assert!(fake.collection().notes.is_empty());
+        let card = later::list(&w.parts.later_dir).remove(0);
+        let (prepared, _) = later::load(&w.parts.later_dir, &card.id).unwrap();
+        assert_eq!(prepared.field_overrides, r.composition.fields);
+        config.destination = "anki".into();
+        w.configure(config);
+        assert_eq!(w.send_later().sent, 1);
+        let notes = fake.collection().notes.clone();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(
+            notes[0]
+                .fields
+                .iter()
+                .find(|(k, _)| k == "Sentence")
+                .unwrap()
+                .1,
+            "literal &lt;b&gt;{expression}&lt;/b&gt;"
+        );
     }
 }

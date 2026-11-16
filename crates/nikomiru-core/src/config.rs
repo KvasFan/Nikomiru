@@ -674,6 +674,12 @@ pub struct AnkiConfig {
     /// Note type → field → template (ANK-020). A Lapis-like note type without
     /// a mapping gets the defaults of ANK-012.
     pub field_mapping: BTreeMap<String, BTreeMap<String, String>>,
+    /// Named credential-free mining snapshots (MCP-001).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<crate::mining_profiles::MiningProfile>,
+    /// Last explicitly applied profile; edited values may differ from its snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_profile: Option<String>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -695,6 +701,17 @@ impl AnkiConfig {
 
     fn bounded(mut self) -> Self {
         let defaults = Self::default();
+        let mut names = std::collections::HashSet::new();
+        self.profiles
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        self.profiles.truncate(16);
+        if self
+            .active_profile
+            .as_ref()
+            .is_some_and(|n| !self.profiles.iter().any(|p| &p.name == n))
+        {
+            self.active_profile = None;
+        }
         self.audio_pad_head_ms = self.audio_pad_head_ms.min(Self::MAX_PAD_MS);
         self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
         self.audio_quality_level = self.audio_quality_level.min(2);
@@ -1100,6 +1117,8 @@ impl Default for AnkiConfig {
             image_quality_level: 1,
             tags: Vec::new(),
             field_mapping: BTreeMap::new(),
+            profiles: Vec::new(),
+            active_profile: None,
             other: toml::Table::new(),
         }
     }

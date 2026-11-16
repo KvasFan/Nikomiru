@@ -1486,3 +1486,21 @@ batch-duplicate = 重複のためスキップ
 batch-unresolved = 結果が未解決
 batch-failed = 保存前の失敗
 batch-cancelled = キャンセル済み
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = カード作成プロファイル
+mining-profiles-hint = 保存先、デッキ、ノートタイプ、タグ、フィールドのテンプレートを保存します。変更を保持するには設定を保存してください。
+mining-profile-name = プロファイル名
+mining-profile-save = 新しいプロファイルを保存
+mining-profile-apply = プロファイルを適用：{ $name }
+mining-profile-delete = プロファイルを削除：{ $name }
+mining-profile-invalid = 無効または重複したプロファイル、もしくは上限の16件を超えています。
+composer-fields = フィールドの編集と固定
+composer-fields-hint = 有効にしたフィールドはテンプレートの代わりに入力した文字列を使用します。固定は今回の起動中のみ有効で、通常の作成や一括作成には適用されません。
+composer-field-value = 入力文字列：{ $name }
+composer-pin = フィールドを固定：{ $name }
+composer-senses = 辞書の語義を選択
+composer-profile-hint = プロファイルを適用すると下書きを閉じ、固定したフィールドをすべて解除します。その後、作成画面を開き直してください。
+composer-fields-invalid = フィールドが存在しないか、空、または上限を超えています。ノートタイプと編集内容を確認してください。
+composer-senses-stale = 変更されていない語義を少なくとも1つ選択してください。辞書の変更後は作成画面を開き直してください。
+composer-source-stale = 元のソースまたは検索が変更されました。下書きを閉じて作成画面を開き直してください。
