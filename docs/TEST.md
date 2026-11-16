@@ -988,3 +988,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-POD-002 | Offline audio | Fake host whole/range answers, interrupted transfer resume from `.part`, 200-instead-of-206 restart, length mismatch, cancellation, size/type bounds, atomic rename; actual playback/resume of a downloaded episode. | L1, L4, L6 |
 | T-POD-003 | Transcripts/lyrics | SRT/VTT transcript sidecars, unsupported/missing transcripts, explicit local LRC import; actual lookup, line replay and card audio clip for an episode and a song with LRC. | L1, L4, L6 |
 | T-POD-004 | Page/persistence | Accessible translated page controls, stale replies, explicit external links, restart and backup retention. | L1, L3, L6 |
+
+## M113 shortcut maps
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-KEY-008 | Export | Versioned JSON of every action's physical chords, roundtrip through import with no change, atomic file. | L1, L6 |
+| T-KEY-009 | Import preview | Bounds, other format/newer version/malformed refusal, normalization/duplicates, unknown actions, invalid chords, conflicts and changed-action listing; absent actions kept. | L1, L3 |
+| T-KEY-010 | Apply/reset | Apply only without conflicts/invalid chords, live bindings and config after restart, Cancel and Reset, text-focus priority of imported single keys. | L1, L3, L6 |

@@ -1698,3 +1698,11 @@ Explicit HTTPS RSS feeds with bounded inert parsing and stable episode identitie
 **Exit criteria**: parser/identity/limit tests, fake-host resume/fault tests, real redb/backup checks, translated accessible page and actual-app feed/download/transcript/playback/lyrics cases; fast CI.
 
 M112 is complete in development: fast CI passed **1,071 tests** and the new actual-app podcast case passed. See [M112 QA](qa/m103-m119.md#m112--podcast-feeds-and-lyric-lessons). The next accepted milestone is M113 (portable shortcut maps).
+
+## M113 — Portable shortcut maps
+
+**Requirements**: KEY-008…KEY-010.
+
+Versioned JSON export of physical-key bindings, bounded import with a preview of changes, unknown actions, invalid chords and conflicts, and apply through the existing atomic Shortcuts save; Reset unchanged.
+
+**Exit criteria**: format/bound/conflict tests, accessible translated preview controls and an actual-app export/import/apply/restart case; fast CI.
