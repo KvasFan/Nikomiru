@@ -979,3 +979,12 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-RDR-002 | Display and staleness | Current/stale classification after source replacement, no seek to stale locations, drawn highlights, validated reopen, formula-safe TSV of shown rows. | L1, L3, L6 |
 | T-RDR-003 | Library search | NFC/case-folded literal matching, Japanese byte offsets, per-book/total result limits, cache invalidation by size/mtime/identity, unreadable books, cancellation and stale replies; actual cross-book result opening. | L1, L6 |
 | T-RDR-004 | Reading modes | Deterministic page groups and sentence ranges, explicit page/sentence turns, lookup offsets, saved mode across restart and accessible translated controls. | L1, L3, L6 |
+
+## M112 podcasts and lyrics
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-POD-001 | Feeds | Real RSS/namespaces, GUID/enclosure identities, duplicate items, bounds, DTD/entity/malformed refusal, refresh merge retaining downloads and failed refresh isolation; real redb records/backup. | L1, L4, L6 |
+| T-POD-002 | Offline audio | Fake host whole/range answers, interrupted transfer resume from `.part`, 200-instead-of-206 restart, length mismatch, cancellation, size/type bounds, atomic rename; actual playback/resume of a downloaded episode. | L1, L4, L6 |
+| T-POD-003 | Transcripts/lyrics | SRT/VTT transcript sidecars, unsupported/missing transcripts, explicit local LRC import; actual lookup, line replay and card audio clip for an episode and a song with LRC. | L1, L4, L6 |
+| T-POD-004 | Page/persistence | Accessible translated page controls, stale replies, explicit external links, restart and backup retention. | L1, L3, L6 |

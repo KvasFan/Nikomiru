@@ -1688,3 +1688,11 @@ Add bounded local annotations (named bookmarks, highlights and notes) over origi
 **Exit criteria**: real redb/backup checks, search cache/limit/cancellation tests, deterministic pagination/sentence tests, accessible translated controls and actual-app annotation/search/mode/restart cases; fast CI.
 
 M111 is complete in development: fast CI passed **1,062 tests** and both new actual-app cases passed. See [M111 QA](qa/m103-m119.md#m111--reader-modes-annotations-and-library-search). The next accepted milestone is M112 (podcast feeds and lyrics lessons).
+
+## M112 — Podcast feeds and lyrics lessons
+
+**Requirements**: POD-001…POD-004.
+
+Explicit HTTPS RSS feeds with bounded inert parsing and stable episode identities, resumable offline downloads through `.part` files and HTTP ranges, SRT/WebVTT feed transcripts and imported LRC/subtitle files as sidecars, reusing audio-only playback, timed lookup, line replay and cards. No transcription, automatic refresh or streaming.
+
+**Exit criteria**: parser/identity/limit tests, fake-host resume/fault tests, real redb/backup checks, translated accessible page and actual-app feed/download/transcript/playback/lyrics cases; fast CI.
