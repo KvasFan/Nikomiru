@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Study any language with transform tables through per-language profiles (dictionaries, longest-match or whole-word segmentation, readings) switched live in General settings, with word statuses, Anki known words, phrases, cloze exercises and review cards kept per language; English proven end to end beside Japanese (M115, LNG-001…LNG-004).
+
 - Import MDict definitions as safe rich structured content with images and sounds from paired `.mdd` files; dictionary sounds play on click and go with cards (M114, DIC-036…DIC-038).
 
 - Export and import versioned physical-key shortcut maps with a preview of changes, unknown actions, invalid keys and conflicts, applied atomically through the Shortcuts settings save (M113, KEY-008…KEY-010).

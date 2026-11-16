@@ -802,15 +802,17 @@ impl Session {
                 Ok(mined) => words.set_mined(mined),
                 Err(e) => tracing::warn!("reading the cards made: {e}"),
             }
-            // KNW-001
-            match library.word_statuses() {
+            // KNW-001, LNG-002: the active study language's
+            let language = services.config.general.study_language.clone();
+            library.set_active_language(&language);
+            match library.word_statuses_in(&language) {
                 Ok(marks) => {
                     words.set_statuses(marks.into_iter().map(|(k, m)| (k, m.status)).collect())
                 }
                 Err(e) => tracing::warn!("reading the words' statuses: {e}"),
             }
             // KNW-005
-            match library.anki_words() {
+            match library.anki_words_in(&language) {
                 Ok(anki) => words.set_anki(anki),
                 Err(e) => tracing::warn!("reading the words from Anki: {e}"),
             }
@@ -2757,6 +2759,8 @@ impl Session {
     pub fn settings_open(&mut self) {
         self.settings_status = None;
         self.shortcut_capture(false);
+        // LNG-004: the profile's dictionary list
+        self.dict_refresh();
     }
 
     /// `config.toml`.
@@ -2986,7 +2990,20 @@ impl Session {
                 }
             }
         }
+        let profile_before = (
+            self.services.config.general.study_language.clone(),
+            self.services.config.language_profile(),
+        );
         self.services.config.copy_section(section, draft);
+        if section == Section::General
+            && profile_before
+                != (
+                    self.services.config.general.study_language.clone(),
+                    self.services.config.language_profile(),
+                )
+        {
+            self.switch_language();
+        }
         let c = &self.services.config;
         match section {
             Section::General => {
@@ -8485,7 +8502,8 @@ impl Session {
     fn wanted_marks(&self) -> crate::words::Wanted {
         let c = &self.services.config.subtitles;
         crate::words::Wanted {
-            furigana: c.furigana,
+            // LNG-001: readings only where the language's profile wants them
+            furigana: c.furigana && self.services.config.language_profile().readings,
             furigana_unknown_only: c.furigana_unknown_only,
             mined: c.mark_mined,
             colors: c.word_colors,
@@ -8551,8 +8569,9 @@ impl Session {
         }
         self.words.set_anki(words.clone());
         if let Some(w) = &self.writer {
+            let language = self.study_language();
             w.run(move |lib| {
-                if let Err(e) = lib.set_anki_words(&words) {
+                if let Err(e) = lib.set_anki_words_in(&language, &words) {
                     tracing::warn!("saving the words from Anki: {e}");
                 }
             });
@@ -8588,14 +8607,56 @@ impl Session {
                     (word, reading, mark)
                 })
                 .collect();
+            let language = self.study_language();
             w.run(move |lib| {
-                if let Err(e) = lib.set_word_statuses(&marks) {
+                if let Err(e) = lib.set_word_statuses_in(&language, &marks) {
                     tracing::warn!("saving a word list: {e}");
                 }
             });
         }
         self.toasts
             .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// The study language (LNG-001).
+    pub fn study_language(&self) -> String {
+        self.services.config.general.study_language.clone()
+    }
+
+    /// The study language or its profile changed (LNG-001, LNG-002): the
+    /// dictionaries, segmentation and readings follow at once, and so do the
+    /// words' statuses, after the writes queued for the old language.
+    fn switch_language(&mut self) {
+        let language = self.study_language();
+        let profile = self.services.config.language_profile();
+        self.wait_writes();
+        self.close_all_popups();
+        self.services.dictionaries.set_profile(
+            &language,
+            profile.dictionaries.clone(),
+            profile.segmentation == "words",
+        );
+        if let Some(library) = self.services.library.clone() {
+            library.set_active_language(&language);
+            match library.word_statuses_in(&language) {
+                Ok(marks) => self
+                    .words
+                    .set_statuses(marks.into_iter().map(|(k, m)| (k, m.status)).collect()),
+                Err(e) => tracing::warn!("reading the words' statuses: {e}"),
+            }
+            match library.anki_words_in(&language) {
+                Ok(anki) => self.words.set_anki(anki),
+                Err(e) => tracing::warn!("reading the words from Anki: {e}"),
+            }
+        }
+        self.status_undo = None;
+        // segmentations, counts and scores of the old language go
+        self.words.forget();
+        // the notebook and the exercises show the new language's
+        self.phrases.items.clear();
+        self.clozes.items.clear();
+        self.phrases_request(crate::phrases::Job::List);
+        self.cloze_request(crate::cloze::Job::List);
     }
 
     /// Waits until the library writes queued so far are done, so that a
@@ -8946,7 +9007,7 @@ impl Session {
             w.wait();
         }
         let written = library
-            .word_statuses()
+            .word_statuses_in(&self.study_language())
             .map_err(|e| e.to_string())
             .and_then(|marks| {
                 let list = nikomiru_library::words::write_list(&marks);
@@ -9046,8 +9107,9 @@ impl Session {
                     )
                 })
                 .collect::<Vec<_>>();
+            let language = self.study_language();
             writer.run(move |lib| {
-                if let Err(e) = lib.set_word_statuses(&marks) {
+                if let Err(e) = lib.set_word_statuses_in(&language, &marks) {
                     tracing::warn!("saving word status changes: {e}");
                 }
             });

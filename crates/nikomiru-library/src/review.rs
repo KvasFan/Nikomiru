@@ -8,7 +8,7 @@
 //! needs no license exception (§3). A new table leaves the other records as
 //! they are, so the schema version does not change (ADR 0007 §26).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use redb::{ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 use crate::db::{Library, LibraryError, db_err};
 
 pub(crate) const REVIEW_CARDS: TableDefinition<u64, &[u8]> = TableDefinition::new("review_cards");
+/// The study language of the cards made since LNG-002; a card without one is
+/// Japanese.
+const REVIEW_LANGUAGE: TableDefinition<u64, &str> = TableDefinition::new("review_language");
 
 /// Set in the id of every review card, so that it never meets one of
 /// Anki's note ids in `mined_cards` (REV-002).
@@ -425,6 +428,9 @@ impl Library {
             };
             let mut mined = db_err!(tx.open_table(crate::cards::MINED_CARDS))?;
             db_err!(mined.remove(id))?;
+            // LNG-002: its language goes with it
+            let mut languages = db_err!(tx.open_table(REVIEW_LANGUAGE))?;
+            db_err!(languages.remove(id))?;
             // it does not come back from another device (REV-006)
             if removed.is_some() {
                 crate::sync::bury(&tx, &crate::sync::review_key(id))?;
@@ -559,6 +565,83 @@ impl Library {
         db_err!(tx.commit())
     }
 
+    /// Adds a card made while `language` is studied (LNG-002).
+    pub fn add_review_card_in(
+        &self,
+        language: &str,
+        card: &ReviewCard,
+    ) -> Result<u64, LibraryError> {
+        let bytes = postcard::to_stdvec(card)?;
+        let tx = self.write()?;
+        let id = {
+            let mut t = db_err!(tx.open_table(REVIEW_CARDS))?;
+            let mut id = ID_BIT | (card.created_at.max(0) as u64 & (ID_BIT - 1));
+            while db_err!(t.get(id))?.is_some() {
+                id += 1;
+            }
+            db_err!(t.insert(id, bytes.as_slice()))?;
+            id
+        };
+        {
+            let mut t = db_err!(tx.open_table(REVIEW_LANGUAGE))?;
+            if language != crate::words::LEGACY_LANGUAGE && !language.is_empty() {
+                db_err!(t.insert(id, language))?;
+            } else {
+                db_err!(t.remove(id))?;
+            }
+        }
+        db_err!(tx.commit())?;
+        Ok(id)
+    }
+
+    /// The study language of each card that has one.
+    fn review_languages(&self) -> Result<HashMap<u64, String>, LibraryError> {
+        self.read(|tx| match tx.open_table(REVIEW_LANGUAGE) {
+            Ok(t) => {
+                let mut out = HashMap::new();
+                for row in db_err!(t.iter())? {
+                    let (k, v) = db_err!(row)?;
+                    out.insert(k.value(), v.value().to_string());
+                }
+                Ok(out)
+            }
+            Err(redb::TableError::TableDoesNotExist(_)) => Ok(HashMap::new()),
+            Err(e) => Err(LibraryError::Db(e.into())),
+        })
+    }
+
+    /// The cards of `language` (LNG-002).
+    pub fn review_cards_in(&self, language: &str) -> Result<Vec<(u64, ReviewCard)>, LibraryError> {
+        let languages = self.review_languages()?;
+        let wanted = if language.is_empty() {
+            crate::words::LEGACY_LANGUAGE
+        } else {
+            language
+        };
+        Ok(self
+            .review_cards()?
+            .into_iter()
+            .filter(|(id, _)| {
+                languages
+                    .get(id)
+                    .map_or(crate::words::LEGACY_LANGUAGE, String::as_str)
+                    == wanted
+            })
+            .collect())
+    }
+
+    /// What to review of `language` at `now_ms` (LNG-002).
+    pub fn review_queue_in(
+        &self,
+        language: &str,
+        now_ms: i64,
+        offset_s: i32,
+        settings: &Settings,
+    ) -> Result<Queue, LibraryError> {
+        let rows = self.review_cards_in(language)?;
+        Self::queue_of(rows, now_ms, offset_s, settings)
+    }
+
     /// What to review at `now_ms` (REV-004).
     pub fn review_queue(
         &self,
@@ -567,6 +650,15 @@ impl Library {
         settings: &Settings,
     ) -> Result<Queue, LibraryError> {
         let rows = self.review_rows()?;
+        Self::queue_of(rows, now_ms, offset_s, settings)
+    }
+
+    fn queue_of(
+        rows: Vec<(u64, ReviewCard)>,
+        now_ms: i64,
+        offset_s: i32,
+        settings: &Settings,
+    ) -> Result<Queue, LibraryError> {
         let today = day_of(now_ms, offset_s);
         let learned_today = rows
             .iter()
@@ -622,6 +714,39 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-LNG-002: cards keep the language they were made in; old ones are Japanese.
+    #[test]
+    fn review_cards_are_kept_per_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::open(&dir.path().join("l.redb")).unwrap();
+        let card = |at: i64| card(&format!("w{at}"), at);
+        let old = lib.add_review_card(&card(1)).unwrap();
+        let en = lib.add_review_card_in("en", &card(2)).unwrap();
+        let ja = lib.add_review_card_in("ja", &card(3)).unwrap();
+        let ids = |lang: &str| -> Vec<u64> {
+            let mut ids: Vec<u64> = lib
+                .review_cards_in(lang)
+                .unwrap()
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(ids("ja"), [old, ja]);
+        assert_eq!(ids("en"), [en]);
+        let settings = Settings::default();
+        assert_eq!(
+            lib.review_queue_in("en", 10, 0, &settings).unwrap().total,
+            1
+        );
+        assert_eq!(
+            lib.review_queue_in("ja", 10, 0, &settings).unwrap().total,
+            2
+        );
+        assert_eq!(lib.review_queue(10, 0, &settings).unwrap().total, 3);
+    }
 
     const NOW: i64 = 1_760_000_000_000; // 2025-10-09 08:53:20 UTC
     const SETTINGS: Settings = Settings {

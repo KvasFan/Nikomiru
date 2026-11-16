@@ -87,9 +87,75 @@ pub struct Config {
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
+    /// `[languages.<code>]`: the study-language profiles (LNG-001).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub languages: BTreeMap<String, LanguageProfile>,
     /// Sections this version does not know, kept as they are.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// The study languages: those with transform tables (LNG-001).
+pub const STUDY_LANGUAGES: &[&str] = &[
+    "ar", "de", "el", "en", "eo", "es", "eu", "fr", "ga", "grc", "ja", "ka", "ko", "la", "sga",
+    "sq", "tl", "yi",
+];
+
+/// `[languages.<code>]`: how a study language is read (LNG-001).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanguageProfile {
+    /// The dictionaries used, by id; empty: automatic.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dictionaries: Vec<String>,
+    /// `dictionary` (longest match) or `words` (whole words).
+    pub segmentation: String,
+    /// Readings are drawn over the words.
+    pub readings: bool,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for LanguageProfile {
+    fn default() -> Self {
+        Self {
+            dictionaries: Vec::new(),
+            segmentation: "dictionary".into(),
+            readings: true,
+            other: toml::Table::new(),
+        }
+    }
+}
+
+impl LanguageProfile {
+    /// Profiles at most.
+    pub const MAX_PROFILES: usize = 32;
+    /// Dictionaries named by a profile at most.
+    pub const MAX_DICTIONARIES: usize = 256;
+
+    fn bounded(mut self) -> Self {
+        if !matches!(self.segmentation.as_str(), "dictionary" | "words") {
+            self.segmentation = "dictionary".into();
+        }
+        self.dictionaries
+            .retain(|id| !id.is_empty() && id.len() <= 128 && !id.chars().any(char::is_control));
+        self.dictionaries.truncate(Self::MAX_DICTIONARIES);
+        let mut seen = std::collections::HashSet::new();
+        self.dictionaries.retain(|id| seen.insert(id.clone()));
+        self
+    }
+}
+
+impl Config {
+    /// The active study language's profile (LNG-001): its own, or the
+    /// defaults.
+    pub fn language_profile(&self) -> LanguageProfile {
+        self.languages
+            .get(&self.general.study_language)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 /// `[general]`.
@@ -1208,6 +1274,7 @@ impl Default for Config {
             books: BooksConfig::default(),
             review: ReviewConfig::default(),
             servers: Vec::new(),
+            languages: BTreeMap::new(),
             other: toml::Table::new(),
         }
     }
@@ -1276,6 +1343,16 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        // LNG-001
+        if !STUDY_LANGUAGES.contains(&c.general.study_language.as_str()) {
+            c.general.study_language = "ja".into();
+        }
+        c.languages = std::mem::take(&mut c.languages)
+            .into_iter()
+            .filter(|(code, _)| STUDY_LANGUAGES.contains(&code.as_str()))
+            .take(LanguageProfile::MAX_PROFILES)
+            .map(|(code, p)| (code, p.bounded()))
+            .collect();
         if !(2..=4).contains(&c.player.gap_speed) {
             c.player.gap_speed = 0;
         }
@@ -1377,6 +1454,7 @@ impl Config {
         match section {
             Section::General => {
                 self.general = from.general.clone();
+                self.languages = from.languages.clone();
                 self.player.seek_seconds = from.player.seek_seconds;
                 self.player.auto_next = from.player.auto_next;
                 self.player.fit = from.player.fit.clone();
@@ -1719,6 +1797,35 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    // T-LNG-001, T-LNG-004: profiles roundtrip within bounds; invalid ones fall back.
+    #[test]
+    fn language_profiles_are_bounded() {
+        let c = Config::from_toml("").unwrap();
+        assert_eq!(c.general.study_language, "ja");
+        assert_eq!(c.language_profile(), LanguageProfile::default());
+        let (c, bad) = Config::parse(
+            "[general]\nstudy_language='en'\n[languages.en]\ndictionaries=['a','a','']\nsegmentation='words'\nreadings=false\n[languages.xx]\nsegmentation='words'\n[languages.fr]\nsegmentation='nonsense'\n",
+        )
+        .unwrap();
+        assert!(bad.is_empty(), "{bad:?}");
+        assert_eq!(c.general.study_language, "en");
+        let en = c.language_profile();
+        assert_eq!(en.dictionaries, ["a"]);
+        assert_eq!(en.segmentation, "words");
+        assert!(!en.readings);
+        assert!(!c.languages.contains_key("xx"), "not a study language");
+        assert_eq!(c.languages["fr"].segmentation, "dictionary");
+        let text = c.to_text().unwrap();
+        assert_eq!(Config::from_toml(&text).unwrap(), c);
+        assert_eq!(
+            Config::from_toml("[general]\nstudy_language='zz'")
+                .unwrap()
+                .general
+                .study_language,
+            "ja"
+        );
+    }
 
     // T-RDR-004: the reading mode roundtrips; old and invalid values scroll.
     #[test]

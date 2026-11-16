@@ -363,6 +363,12 @@ Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 cara
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
 
+## Lingue di studio (sviluppo M115)
+
+Impostazioni → Generali → **Lingua di studio** sceglie la lingua che studi: giapponese (predefinita) o una delle altre lingue con regole di deflessione (arabo, tedesco, greco, inglese, esperanto, spagnolo, basco, francese, irlandese, greco antico, georgiano, coreano, latino, antico irlandese, albanese, tagalog, yiddish). Ogni lingua ha le sue impostazioni: **Parole** divide il testo con la corrispondenza più lunga nel dizionario (adatta al giapponese) o in **parole intere tra gli spazi** (adatta alle lingue scritte con spazi); **Letture** mostra o nasconde le letture sopra le parole; i **dizionari** si scelgono in automatico (quelli che dichiarano la lingua e quelli che non ne dichiarano una) o a mano. Salvando, tutto si applica subito.
+
+Stati delle parole, parole note lette da Anki, frasi, esercizi cloze e carte di ripasso sono tenuti separati per ogni lingua: segnare una parola come nota in inglese non cambia nulla in giapponese, e la scheda Ripasso mostra le carte create mentre si studiava quella lingua. Stati e frasi di prima di questa versione appartengono al giapponese. Le statistiche del ripasso contano ancora tutte le lingue.
+
 ## Podcast e lezioni con i testi delle canzoni (sviluppo M112)
 
 Libri → **Podcast** aggiunge un podcast con l’indirizzo del suo feed RSS (HTTPS) tramite **Aggiungi o aggiorna**. Nulla viene letto o scaricato senza che tu lo chieda: **Aggiorna** rilegge il feed, **Scarica** salva un episodio alla volta per l’ascolto offline e **Ascolta** lo apre come un audiolibro, con elenco dei sottotitoli, ricerca delle parole, ripetizione della battuta e carte con l’audio della battuta. Se un download si interrompe (Ferma, un errore di rete o la chiusura), **Riprendi il download** continua da dove si era fermato se il server lo consente, altrimenti ricomincia. Sono accettati episodi fino a 2 GiB.

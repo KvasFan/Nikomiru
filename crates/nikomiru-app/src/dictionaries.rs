@@ -415,6 +415,11 @@ impl DictionaryService for Dictionaries {
         send(self.jobs.as_ref(), text, done, &self.translator);
     }
 
+    fn set_profile(&self, language: &str, dictionaries: Vec<String>, whole_words: bool) {
+        self.manager
+            .set_profile(language, dictionaries, whole_words);
+    }
+
     fn segment(&self, text: String, done: Done<Vec<Word>>) {
         send(self.words.as_ref(), text, done, &self.translator);
     }

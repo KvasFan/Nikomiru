@@ -398,7 +398,17 @@ fn run(
             clock,
             &config.general.study_language,
         ) {
-            Ok(m) => Some(Arc::new(m)),
+            Ok(m) => {
+                // LNG-001: the active profile's dictionaries and segmentation
+                let profile = config.language_profile();
+                m.set_profile(
+                    &config.general.study_language,
+                    profile.dictionaries,
+                    profile.segmentation == "words",
+                );
+                library.set_active_language(&config.general.study_language);
+                Some(Arc::new(m))
+            }
             Err(e) => {
                 tracing::error!("{e}");
                 notices.push(translator.error(&e));

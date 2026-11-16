@@ -326,3 +326,39 @@ fn languages_come_from_the_study_language_and_the_dictionaries() {
         "Japanese only: no English rules"
     );
 }
+
+// T-LNG-001: whole words are looked up whole; the longest match splits inside them.
+#[test]
+fn whole_words_are_kept_whole() {
+    use nikomiru_dict::segment::segment;
+    let en = || {
+        MemStore::new("EN")
+            .with_index(|i| i.source_language = Some("en".into()))
+            .with_terms(vec![
+                term("the", "the", "", 0.0, "article"),
+                term("rapist", "rapist", "n", 0.0, "x"),
+                term("walk", "walk", "v", 0.0, "to walk"),
+            ])
+    };
+    let text = "The therapist walked, didn't she?";
+    let parts = |l: &nikomiru_dict::lookup::Lookup| -> Vec<(String, Option<String>)> {
+        segment(l, text)
+            .unwrap()
+            .into_iter()
+            .map(|w| (text[w.range].to_string(), w.headword.map(|h| h.expression)))
+            .collect()
+    };
+    let longest = lookup(vec![en()], "en");
+    assert!(parts(&longest).contains(&("rapist".into(), Some("rapist".into()))));
+    let whole = lookup(vec![en()], "en").with_whole_words(true);
+    let got = parts(&whole);
+    assert!(got.contains(&("therapist".into(), None)), "{got:?}");
+    assert!(
+        got.contains(&("walked".into(), Some("walk".into()))),
+        "{got:?}"
+    );
+    assert!(got.contains(&("didn't".into(), None)), "{got:?}");
+    assert!(got.contains(&("The".into(), Some("the".into()))), "{got:?}");
+    let joined: String = got.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(joined, text, "nothing lost");
+}

@@ -57,6 +57,41 @@ pub fn word_key(expression: &str, reading: &str) -> String {
     format!("{expression}\n{reading}")
 }
 
+/// The language of the legacy keys: Japanese, the primary one (LNG-002).
+pub const LEGACY_LANGUAGE: &str = "ja";
+
+/// The stored key of a word of `language` (LNG-002): Japanese keeps
+/// [`word_key`]; another language prefixes it with `\u{1}code\u{1}`.
+pub fn language_key(language: &str, key: &str) -> String {
+    if language == LEGACY_LANGUAGE || language.is_empty() {
+        key.to_string()
+    } else {
+        format!("\u{1}{language}\u{1}{key}")
+    }
+}
+
+/// The language and the plain [`word_key`] of a stored key.
+pub fn split_language(stored: &str) -> (&str, &str) {
+    stored
+        .strip_prefix('\u{1}')
+        .and_then(|rest| rest.split_once('\u{1}'))
+        .unwrap_or((LEGACY_LANGUAGE, stored))
+}
+
+fn of_language<T>(all: HashMap<String, T>, language: &str) -> HashMap<String, T> {
+    let language = if language.is_empty() {
+        LEGACY_LANGUAGE
+    } else {
+        language
+    };
+    all.into_iter()
+        .filter_map(|(stored, v)| {
+            let (lang, key) = split_language(&stored);
+            (lang == language).then(|| (key.to_string(), v))
+        })
+        .collect()
+}
+
 /// The largest word list read (KNW-006).
 pub const MAX_LIST_BYTES: u64 = 16 << 20;
 
@@ -372,6 +407,74 @@ impl Library {
         })
     }
 
+    /// The statuses of the words of `language`, by plain [`word_key`]
+    /// (LNG-002).
+    pub fn word_statuses_in(
+        &self,
+        language: &str,
+    ) -> Result<HashMap<String, WordMark>, LibraryError> {
+        Ok(of_language(self.word_statuses()?, language))
+    }
+
+    /// Sets the statuses of words of `language` in one transaction (LNG-002).
+    pub fn set_word_statuses_in(
+        &self,
+        language: &str,
+        marks: &[(String, String, WordMark)],
+    ) -> Result<(), LibraryError> {
+        let tx = self.write()?;
+        {
+            let mut t = db_err!(tx.open_table(WORD_STATUS))?;
+            for (expression, reading, mark) in marks {
+                let bytes = postcard::to_stdvec(mark)?;
+                let key = language_key(language, &word_key(expression, reading));
+                db_err!(t.insert(key.as_str(), bytes.as_slice()))?;
+            }
+        }
+        db_err!(tx.commit())
+    }
+
+    /// The words of `language` last read from Anki (LNG-002).
+    pub fn anki_words_in(
+        &self,
+        language: &str,
+    ) -> Result<HashMap<String, WordStatus>, LibraryError> {
+        Ok(of_language(self.anki_words()?, language))
+    }
+
+    /// Replaces the words of `language` read from Anki, keeping the other
+    /// languages' (LNG-002).
+    pub fn set_anki_words_in(
+        &self,
+        language: &str,
+        words: &HashMap<String, WordStatus>,
+    ) -> Result<(), LibraryError> {
+        let mut all: HashMap<String, WordStatus> = self
+            .anki_words()?
+            .into_iter()
+            .filter(|(stored, _)| split_language(stored).0 != language)
+            .collect();
+        for (key, status) in words {
+            all.insert(language_key(language, key), *status);
+        }
+        self.set_anki_words(&all)
+    }
+
+    /// The word statistics of `language` on local day `today` (LNG-002).
+    pub fn word_stats_in(
+        &self,
+        language: &str,
+        today: i64,
+        offset_s: i32,
+    ) -> Result<WordStats, LibraryError> {
+        Ok(WordStats::of(
+            &self.word_statuses_in(language)?,
+            &self.anki_words_in(language)?,
+            today,
+            offset_s,
+        ))
+    }
+
     /// The word statistics on local day `today` (KNW-010).
     pub fn word_stats(&self, today: i64, offset_s: i32) -> Result<WordStats, LibraryError> {
         Ok(WordStats::of(
@@ -402,6 +505,56 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-LNG-002: languages are kept apart; Japanese keeps the legacy keys.
+    #[test]
+    fn statuses_are_kept_per_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::open(&dir.path().join("l.redb")).unwrap();
+        let mark = |status| WordMark {
+            status,
+            changed_at: 1,
+        };
+        lib.set_word_status("猫", "ねこ", mark(WordStatus::Known))
+            .unwrap();
+        lib.set_word_statuses_in(
+            "en",
+            &[("cat".into(), String::new(), mark(WordStatus::Learning))],
+        )
+        .unwrap();
+        lib.set_word_statuses_in(
+            "ja",
+            &[("犬".into(), "いぬ".into(), mark(WordStatus::Known))],
+        )
+        .unwrap();
+        let ja = lib.word_statuses_in("ja").unwrap();
+        assert_eq!(ja.len(), 2);
+        assert!(
+            ja.contains_key(&word_key("猫", "ねこ")),
+            "legacy keys are Japanese"
+        );
+        let en = lib.word_statuses_in("en").unwrap();
+        assert_eq!(en.len(), 1);
+        assert_eq!(en[&word_key("cat", "")].status, WordStatus::Learning);
+        assert!(lib.word_statuses_in("fr").unwrap().is_empty());
+        lib.set_anki_words(&HashMap::from([(
+            word_key("猫", "ねこ"),
+            WordStatus::Known,
+        )]))
+        .unwrap();
+        lib.set_anki_words_in(
+            "en",
+            &HashMap::from([(word_key("dog", ""), WordStatus::Known)]),
+        )
+        .unwrap();
+        assert_eq!(lib.anki_words_in("ja").unwrap().len(), 1, "Japanese kept");
+        assert_eq!(lib.anki_words_in("en").unwrap().len(), 1);
+        lib.set_anki_words_in("en", &HashMap::new()).unwrap();
+        assert!(lib.anki_words_in("en").unwrap().is_empty());
+        assert_eq!(lib.anki_words_in("ja").unwrap().len(), 1);
+        assert_eq!(lib.word_stats_in("en", 0, 0).unwrap().learning, 1);
+        assert_eq!(split_language(&language_key("en", "a\n")), ("en", "a\n"));
+    }
 
     // T-KNW-010: the words by status; the ones known now, by the day they
     // were set known, counted on that day and after

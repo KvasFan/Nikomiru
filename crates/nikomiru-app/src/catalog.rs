@@ -229,7 +229,9 @@ impl Worker {
         let used = review.new + review.learning + review.young + review.mature > 0
             || review.days.iter().any(|n| *n > 0);
         let today = nikomiru_library::review::day_of(self.now(), offset);
-        let words = lib.word_stats(today, offset).map_err(e)?;
+        let words = lib
+            .word_stats_in(&lib.active_language(), today, offset)
+            .map_err(e)?;
         let encounters: Vec<_> = lib
             .encounter_stats(SESSIONS_SHOWN)
             .map_err(e)?
@@ -325,8 +327,9 @@ impl Worker {
                 lib.reset_review_card(id, now).map_err(e)?;
             }
         }
+        let language = lib.active_language();
         let list = lib
-            .review_cards()
+            .review_cards_in(&language)
             .map_err(e)?
             .into_iter()
             .map(|(id, c)| CardRow {
@@ -337,7 +340,9 @@ impl Worker {
                 memory: c.memory,
             })
             .collect();
-        let mut queue = lib.review_queue(now, offset, settings).map_err(e)?;
+        let mut queue = lib
+            .review_queue_in(&language, now, offset, settings)
+            .map_err(e)?;
         // the card taken back is shown again at once
         if let Some(i) = first.and_then(|id| queue.cards.iter().position(|(c, _)| *c == id)) {
             let card = queue.cards.remove(i);

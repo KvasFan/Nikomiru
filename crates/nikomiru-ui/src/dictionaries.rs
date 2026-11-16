@@ -131,6 +131,11 @@ pub trait DictionaryService: Send {
             self.count_words(request, done);
         }
     }
+    /// The study language and its profile changed (LNG-001): lookups,
+    /// segmentation and counts follow it from now on.
+    fn set_profile(&self, language: &str, dictionaries: Vec<String>, whole_words: bool) {
+        let _ = (language, dictionaries, whole_words);
+    }
     /// Looks `text` up away from the UI thread; `done` gets the popup content.
     fn lookup(&self, text: String, done: Done<Reply>);
     /// Splits `text` into words away from the UI thread, without holding up

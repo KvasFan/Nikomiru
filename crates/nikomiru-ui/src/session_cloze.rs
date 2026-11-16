@@ -116,7 +116,12 @@ impl Session {
             Err(e) => self.clozes.error = Some(e),
             Ok((rows, effect)) => {
                 self.clozes.choice_languages = crate::cloze::choice_languages(&rows);
-                self.clozes.items = rows;
+                // LNG-002: the active study language's exercises
+                let language = self.study_language();
+                self.clozes.items = rows
+                    .into_iter()
+                    .filter(|r| r.phrase.language == language)
+                    .collect();
                 match effect {
                     Effect::Created => self.clozes.preview = None,
                     Effect::Rated { id, before, after } => {

@@ -96,7 +96,12 @@ impl Session {
         self.phrases.busy = false;
         match answer {
             Ok((items, saved)) => {
-                self.phrases.items = items;
+                // LNG-002: the active study language's phrases
+                let language = self.study_language();
+                self.phrases.items = items
+                    .into_iter()
+                    .filter(|p| p.language == language)
+                    .collect();
                 if saved {
                     self.phrases.editor = None;
                 }

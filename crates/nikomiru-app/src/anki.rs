@@ -1211,9 +1211,9 @@ impl Worker {
             CardAction::Overwrite(id) => library
                 .replace_review_card(id, &card)
                 .map(|before| before.map(|before| (id, Some(before)))),
-            CardAction::Add | CardAction::AddAnyway => {
-                library.add_review_card(&card).map(|id| Some((id, None)))
-            }
+            CardAction::Add | CardAction::AddAnyway => library
+                .add_review_card_in(&library.active_language(), &card)
+                .map(|id| Some((id, None))),
         };
         let (id, replaced) = match saved {
             Ok(Some(done)) => done,

@@ -75,6 +75,8 @@ pub(crate) struct Scene<'a> {
     pub capture: (bool, Option<&'a str>),
     /// An imported shortcut map waiting for Apply (KEY-009).
     pub shortcut_preview: Option<&'a crate::shortcut_maps::Preview>,
+    /// The installed dictionaries, for the language profile (LNG-004).
+    pub dictionaries: &'a [(String, nikomiru_library::DictionaryRecord)],
     pub tr: &'a Translate<'a>,
 }
 
@@ -92,6 +94,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         licenses: third_party_licenses(),
         capture: s.capture(),
         shortcut_preview: s.shortcut_preview.as_ref(),
+        dictionaries: &s.dict_page.rows,
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.prefs, out);
@@ -264,6 +267,114 @@ fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command
     hint(ui, &tr("settings-keyring-hint"));
 }
 
+/// The study language and its profile (LNG-001, LNG-004).
+fn study_language(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+    let tr = |id: &str| (s.tr)(id, &[]);
+    section(ui, &tr("settings-study"));
+    let mut profile = draft.language_profile();
+    form(ui, "settings-study", |ui| {
+        row(ui, &tr("settings-study-language"), |ui| {
+            let options: Vec<(&str, String)> = nikomiru_core::config::STUDY_LANGUAGES
+                .iter()
+                .map(|code| (*code, language_name(code)))
+                .collect();
+            let before = draft.general.study_language.clone();
+            let response = choice(
+                ui,
+                "settings-study-language",
+                &mut draft.general.study_language,
+                &options,
+            );
+            if draft.general.study_language != before {
+                profile = draft.language_profile();
+            }
+            response
+        });
+        row(ui, &tr("settings-study-segmentation"), |ui| {
+            choice(
+                ui,
+                "settings-study-segmentation",
+                &mut profile.segmentation,
+                &[
+                    ("dictionary", tr("settings-study-segmentation-dictionary")),
+                    ("words", tr("settings-study-segmentation-words")),
+                ],
+            )
+        });
+        row(ui, &tr("settings-study-readings"), |ui| {
+            ui.checkbox(&mut profile.readings, tr("settings-study-readings-on"))
+        });
+    });
+    let automatic = profile.dictionaries.is_empty();
+    let mut auto = automatic;
+    ui.checkbox(&mut auto, tr("settings-study-dictionaries-auto"));
+    hint(ui, &tr("settings-study-dictionaries-hint"));
+    if auto != automatic {
+        profile.dictionaries = if auto {
+            Vec::new()
+        } else {
+            // start from what the automatic choice uses
+            s.dictionaries
+                .iter()
+                .filter(|(_, r)| {
+                    r.language
+                        .as_deref()
+                        .is_none_or(|l| l.is_empty() || l == draft.general.study_language)
+                })
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+    }
+    if !auto {
+        for (id, record) in s.dictionaries {
+            let mut on = profile.dictionaries.contains(id);
+            let label = match &record.language {
+                Some(l) if !l.is_empty() => format!("{} ({l})", record.name()),
+                _ => record.name().to_string(),
+            };
+            if ui.checkbox(&mut on, label).changed() {
+                if on {
+                    profile.dictionaries.push(id.clone());
+                } else {
+                    profile.dictionaries.retain(|d| d != id);
+                }
+            }
+        }
+    }
+    let language = draft.general.study_language.clone();
+    if profile == nikomiru_core::config::LanguageProfile::default() {
+        draft.languages.remove(&language);
+    } else {
+        draft.languages.insert(language, profile);
+    }
+}
+
+/// A study language's name in its own language, with its code.
+fn language_name(code: &str) -> String {
+    let name = match code {
+        "ar" => "العربية",
+        "de" => "Deutsch",
+        "el" => "Ελληνικά",
+        "en" => "English",
+        "eo" => "Esperanto",
+        "es" => "Español",
+        "eu" => "Euskara",
+        "fr" => "Français",
+        "ga" => "Gaeilge",
+        "grc" => "Ἀρχαία ἑλληνική",
+        "ja" => "日本語",
+        "ka" => "ქართული",
+        "ko" => "한국어",
+        "la" => "Latina",
+        "sga" => "Goídelc",
+        "sq" => "Shqip",
+        "tl" => "Tagalog",
+        "yi" => "ייִדיש",
+        _ => code,
+    };
+    format!("{name} ({code})")
+}
+
 fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     section(ui, &tr("settings-interface"));
@@ -310,6 +421,7 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    study_language(ui, s, draft);
     section(ui, &tr("settings-playback"));
     form(ui, "settings-playback", |ui| {
         row(ui, &tr("settings-seek"), |ui| {
@@ -771,6 +883,7 @@ mod tests {
                         licenses: t.licenses.clone(),
                         capture: (false, None),
                         shortcut_preview: None,
+                        dictionaries: &[],
                         tr: &tr,
                     };
                     let leave = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -804,6 +917,26 @@ mod tests {
         assert!(
             matches!(h.state().out.as_slice(),[Command::SettingsSave(Section::Lookup,c)] if c.lookup.pause_lookup=="unknown")
         );
+    }
+
+    // T-LNG-004: the active language's profile is edited in the draft and saved explicitly.
+    #[test]
+    fn the_study_profile_is_saved_explicitly() {
+        let mut saved = Config::default();
+        saved.general.study_language = "en".into();
+        let mut h = harness(SettingsTab::General, saved);
+        h.run();
+        h.get_by_label("settings-study-readings").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.get_by_label("settings-save").click();
+        h.run();
+        let [Command::SettingsSave(Section::General, draft)] = &h.state().out[..] else {
+            panic!("{:?}", h.state().out);
+        };
+        assert!(!draft.languages["en"].readings);
+        assert_eq!(draft.languages["en"].segmentation, "dictionary");
+        assert!(!draft.languages.contains_key("ja"));
     }
 
     // T-SET-006: Reset puts the tab's keys back in the draft, Save sends them

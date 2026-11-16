@@ -362,6 +362,12 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Study languages (M115 development)
+
+Settings → General → **Study language** chooses the language you study: Japanese (the default) or one of the other languages with deinflection rules (Arabic, German, Greek, English, Esperanto, Spanish, Basque, French, Irish, Ancient Greek, Georgian, Korean, Latin, Old Irish, Albanian, Tagalog, Yiddish). Each language has its own settings: **Words** splits text by the longest dictionary match (best for Japanese) or into **whole words between spaces** (best for languages written with spaces); **Readings** shows or hides readings over words; and its **dictionaries** are chosen automatically (those that declare the language, and those that declare none) or by hand. Saving applies everything at once.
+
+Word statuses, known words read from Anki, phrases, cloze exercises and review cards are kept separately for each language: marking a word known in English changes nothing in Japanese, and the Review tab shows the cards made while that language was studied. Statuses and phrases from before this version belong to Japanese. Review statistics still count every language.
+
 ## Podcasts and lyric lessons (M112 development)
 
 Books → **Podcasts** adds a podcast by its RSS feed address (HTTPS) with **Add or refresh**. Nothing is fetched or downloaded unless you ask: **Refresh** reads the feed again, **Download** saves one episode at a time for offline listening and **Play** opens it like an audiobook, with the subtitle list, word lookup, line replay and cards with the line's sound. If a download stops (Stop, a network failure or quitting), **Resume download** continues from where it stopped when the server allows it, otherwise it starts again. Episodes up to 2 GiB are accepted.

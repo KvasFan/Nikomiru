@@ -18,6 +18,7 @@ mod encounters;
 mod episode_scores;
 mod gaps;
 mod guided_lookup;
+mod languages;
 mod mining_profiles;
 mod mokuro;
 mod perf;
