@@ -1028,3 +1028,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 |---|---|---|---|
 | T-PORT-004 | Touch gestures | Recognizer: swipe thresholds, direction, timing, vertical drags, second finger and cancel; video seek and reader turns from injected touch events; actual app with injected touches. | L1, L3, L6 |
 | T-PORT-005 | Per-platform tracking | `docs/qa/ports.md` states each platform's evidence and open native checks; Windows cross build still checked by CI (T-PORT-003). | review |
+
+## M118 palettes and shaders
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-THM-001 | Palettes | Contrast of every text/popup pair for each palette, light/dark and five accents (7:1 main texts in High contrast), config fallback, accessible choice. | L1, L3 |
+| T-THM-002 | Pack | Generated archive: hash/size refusal, only known `.glsl` names, bounds, atomic publish and removal; real pinned download as an L7 test. | L1, L7 |
+| T-THM-003 | Presets | Preset file lists, raw override, missing pack; actual app with a local test pack setting and clearing `glsl-shaders`, refusal fallback. | L1, L6 |

@@ -1748,3 +1748,11 @@ Touch gestures for the touch-first platforms (verifiable on Linux) and a per-pla
 **Exit criteria**: recognizer/component tests and an actual-app touch case; each platform's native checks remain unchecked until run on it.
 
 M117 is **partial**: touch gestures are implemented and checked on Linux (fast CI **1,091 tests**, actual-app touch case); native Windows/Android/macOS packaging and device checks and AnkiDroid stay open per [ports.md](qa/ports.md). The next accepted milestone is M118 (named palettes and shader presets).
+
+## M118 — Named palettes and supported shader presets
+
+**Requirements**: THM-001…THM-003.
+
+Default, OLED and High-contrast palettes checked for contrast; an explicitly downloaded, pinned Anime4K v4.0.1 pack (MIT) with Fast/Quality presets through `glsl-shaders`, user mpv options winning and refusal falling back to default rendering.
+
+**Exit criteria**: contrast tests per palette, pack verification/extraction tests, preset tests and an actual-app preset case with a local pack; fast CI.
