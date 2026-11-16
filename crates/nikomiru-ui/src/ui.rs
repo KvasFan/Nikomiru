@@ -40,6 +40,8 @@ pub enum Inbound {
     },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// The Anime4K pack job ended: installed or not, or why it failed.
+    ShaderPack(Result<bool, String>),
     /// A podcast library job completed (POD-001…POD-004).
     Podcasts(crate::podcasts::Answer),
     /// A feed fetched: its epoch, address and result.
@@ -370,6 +372,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Phrases(_) => "Phrases",
             Inbound::Annotations(_) => "Annotations",
             Inbound::Podcasts(_) => "Podcasts",
+            Inbound::ShaderPack(_) => "ShaderPack",
             Inbound::PodcastFetched(..) => "PodcastFetched",
             Inbound::PodcastProgress(..) => "PodcastProgress",
             Inbound::PodcastDownloaded(..) => "PodcastDownloaded",
@@ -464,6 +467,8 @@ pub(crate) enum Command {
     ClozeUndo,
     ClozeCancelRound,
 
+    /// Download (`true`) or remove the Anime4K pack (THM-002).
+    ShaderPack(bool),
     /// A dictionary's sound clicked in a popup (DIC-038): its bytes and path.
     DictionarySound(std::sync::Arc<Vec<u8>>, String),
     /// KEY-008…KEY-010: the draft's overrides, to export or to compare with.
@@ -1387,6 +1392,10 @@ impl Ui {
                 self.session.phrases_done(answer);
                 true
             }
+            Inbound::ShaderPack(result) => {
+                self.session.shader_pack_done(result);
+                true
+            }
             Inbound::Podcasts(answer) => {
                 self.session.podcasts_done(answer);
                 true
@@ -1817,6 +1826,7 @@ impl Ui {
                 s.clozes.preview = None;
             }
             Command::DictionarySound(bytes, path) => s.dictionary_sound(&bytes, &path),
+            Command::ShaderPack(install) => s.shader_pack(install),
             Command::ShortcutsExport(overrides) => {
                 s.shortcut_export = Some(crate::shortcut_maps::export(&overrides));
                 self.view.dialog = Some(Dialog::ShortcutsExport);
@@ -2326,6 +2336,13 @@ impl Ui {
             self.session.start_cloze_job(
                 job,
                 Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
+            );
+        }
+        if let Some(install) = self.session.take_shader_job() {
+            let waker = self.waker.clone();
+            self.session.start_shader_job(
+                install,
+                Box::new(move |result| waker.wake(Inbound::ShaderPack(result))),
             );
         }
         for job in self.session.take_podcast_jobs() {

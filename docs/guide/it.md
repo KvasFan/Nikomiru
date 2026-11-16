@@ -363,6 +363,12 @@ Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 cara
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
 
+## Tavolozze e shader video (sviluppo M118)
+
+Impostazioni → Generali → **Tavolozza** offre Predefinita, **Nero OLED** (superfici nere pure, sempre scura) e **Alto contrasto** (nero su bianco o bianco su nero, con tutti i testi principali a 7:1 o più). Il colore d’accento resta, reso leggibile.
+
+Gli **shader video** possono rendere più nitidi e ingrandire gli anime con [Anime4K](https://github.com/bloc97/Anime4K) (licenza MIT, di bloc97). Fai clic una volta su **Scarica gli shader Anime4K** (0,8 MB, una release fissa verificata prima dell’uso), poi scegli **Anime4K veloce** o **Anime4K qualità** (per GPU più potenti); **Spenti** è la resa predefinita. Durante la riproduzione non si scarica nulla. Se le tue opzioni di mpv impostano `glsl-shaders`, si usano quelle e i preset restano spenti. Se il video non può usare gli shader, il preset viene spento e se ne mostra il motivo. **Rimuovi gli shader Anime4K** li elimina.
+
 ## Touch (sviluppo M117)
 
 Su uno schermo touch un tocco fa ciò che fa un clic: cerca una parola, avvia o mette in pausa, preme i pulsanti. Scorri rapidamente un dito a sinistra o a destra sul video per tornare indietro o andare avanti del passo di ricerca. Nelle modalità Pagine e Frase del lettore, scorri a sinistra per la pagina o frase successiva e a destra per la precedente; nella scrittura verticale e nei manga, che si leggono da destra a sinistra, scorri a destra per proseguire. I trascinamenti verticali continuano a scorrere. I port per Windows, Android e macOS sono seguiti in `docs/qa/ports.md`; per ora è rilasciato solo Linux.

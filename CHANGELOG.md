@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Add OLED black and High-contrast palettes checked for contrast, and optional Anime4K fast/quality shader presets from an explicitly downloaded, pinned and verified MIT release, with the user's own mpv shaders winning and refusals falling back to default rendering (M118, THM-001…THM-003).
+
 - Recognize one-finger horizontal swipes on touchscreens to seek the video and turn reader pages or sentences in the reading direction, and track each port's native evidence separately (M117, PORT-003, PORT-004; native Windows/Android/macOS checks remain open).
 
 - Add Emby servers beside Jellyfin and Plex, with Emby's own path prefix, headers, per-user routes, identity and direct-play checks (M116, SRV-014…SRV-016).

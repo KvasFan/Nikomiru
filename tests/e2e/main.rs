@@ -32,6 +32,7 @@ mod rich_mdict;
 mod sentence_bank;
 mod series_scores;
 mod servers;
+mod shaders;
 mod shortcut_maps;
 mod subtitle_study;
 mod support;

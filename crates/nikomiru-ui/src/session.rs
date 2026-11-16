@@ -257,6 +257,8 @@ pub struct Look {
     pub accent: [u8; 3],
     /// The interface scale in percent.
     pub scale: u16,
+    /// The named palette (THM-001).
+    pub palette: &'static str,
 }
 
 impl std::fmt::Debug for Services {
@@ -577,6 +579,9 @@ pub struct Session {
     bank_export: Option<String>,
     /// The dictionary sound played last (DIC-038), for the harness.
     pub last_dictionary_sound: Option<String>,
+    /// The Anime4K pack: installed, and a job running (THM-002).
+    shader_pack: (bool, bool),
+    shader_job: Option<bool>,
     /// An imported shortcut map waiting for Apply (KEY-009).
     pub shortcut_preview: Option<crate::shortcut_maps::Preview>,
     /// The Shortcuts draft an import is compared with.
@@ -827,6 +832,10 @@ impl Session {
         } else {
             Vec::new()
         };
+        // THM-002: the pack, once at start
+        let shader_installed = nikomiru_online::shaders::installed(
+            services.text_dir.parent().unwrap_or(&services.text_dir),
+        );
         Self {
             services,
             bindings,
@@ -953,6 +962,8 @@ impl Session {
             bank_place: None,
             bank_export: None,
             last_dictionary_sound: None,
+            shader_pack: (shader_installed, false),
+            shader_job: None,
             shortcut_preview: None,
             shortcut_base: None,
             shortcut_export: None,
@@ -1240,8 +1251,14 @@ impl Session {
                 }
             });
         }
-        #[cfg_attr(not(feature = "test-harness"), allow(unused_mut))]
         let (mut options, report) = options::load_options(&self.services.config.player);
+        // THM-003: the shader preset, unless the user's own options set shaders
+        if let Some(value) = self.shader_value() {
+            options.push(options::MpvOption {
+                key: "glsl-shaders".into(),
+                value,
+            });
+        }
         // the GUI tests play without a sound server: under load, PipeWire can
         // hang in mpv's core when it fails to connect, and the app with it
         #[cfg(feature = "test-harness")]
@@ -2803,6 +2820,11 @@ impl Session {
             dark,
             accent: g.accent_rgb().unwrap_or([0x35, 0x84, 0xe4]),
             scale: g.ui_scale,
+            palette: match g.palette.as_str() {
+                "oled" => "oled",
+                "high-contrast" => "high-contrast",
+                _ => "",
+            },
         }
     }
 
@@ -2990,11 +3012,17 @@ impl Session {
                 }
             }
         }
+        let shaders_before = self.services.config.player.shader_preset.clone();
         let profile_before = (
             self.services.config.general.study_language.clone(),
             self.services.config.language_profile(),
         );
         self.services.config.copy_section(section, draft);
+        if section == Section::General
+            && shaders_before != self.services.config.player.shader_preset
+        {
+            self.apply_shaders();
+        }
         if section == Section::General
             && profile_before
                 != (
@@ -3979,6 +4007,20 @@ impl Session {
     pub fn options_applied(&mut self, refused: Vec<(String, String)>) {
         if refused.is_empty() {
             return;
+        }
+        // THM-003: shaders mpv cannot use turn the preset off
+        if let Some((_, reason)) = refused.iter().find(|(k, _)| k == "glsl-shaders")
+            && !self.services.config.player.shader_preset.is_empty()
+        {
+            self.services.config.player.shader_preset.clear();
+            self.apply_option_now("glsl-shaders", "");
+            if self.services.config_writable {
+                self.config_save = Some(self.services.config.clone());
+            }
+            self.settings_status = Some((
+                self.tr("settings-shaders-refused", &[("reason", reason.clone())]),
+                false,
+            ));
         }
         let names: Vec<String> = refused.iter().map(|(k, e)| format!("{k} ({e})")).collect();
         let text = self.tr("player-refused", &[("names", names.join(", "))]);
@@ -8624,6 +8666,159 @@ impl Session {
         }
         self.toasts
             .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// The data folder.
+    fn data_dir(&self) -> PathBuf {
+        self.services
+            .text_dir
+            .parent()
+            .map_or_else(|| self.services.text_dir.clone(), Path::to_path_buf)
+    }
+
+    /// Whether the user's own mpv options set shaders (THM-003): they win.
+    pub fn shaders_overridden(&self) -> bool {
+        let p = &self.services.config.player;
+        p.mpv_options.contains_key("glsl-shaders")
+            || p.raw_mpv_options.lines().any(|l| {
+                let l = l.trim_start();
+                l.starts_with("glsl-shaders") || l.starts_with("glsl-shader=")
+            })
+    }
+
+    /// Whether the Anime4K pack is installed (THM-002).
+    pub fn shader_pack_installed(&self) -> bool {
+        self.shader_pack.0
+    }
+
+    /// Whether the pack is being installed or removed.
+    pub fn shader_pack_busy(&self) -> bool {
+        self.shader_pack.1
+    }
+
+    /// What `glsl-shaders` should be (THM-003): the preset's files, nothing
+    /// for none, `None` when the user's own options decide.
+    fn shader_value(&self) -> Option<String> {
+        if self.shaders_overridden() {
+            return None;
+        }
+        let preset = &self.services.config.player.shader_preset;
+        if preset.is_empty() {
+            return Some(String::new());
+        }
+        let files = nikomiru_online::shaders::files(&self.data_dir(), preset)?;
+        std::env::join_paths(files)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// Apply the shader preset now.
+    fn apply_shaders(&mut self) {
+        if let Some(value) = self.shader_value() {
+            self.apply_option_now("glsl-shaders", &value);
+        }
+    }
+
+    /// Download (`true`) or remove the Anime4K pack, explicitly (THM-002).
+    pub fn shader_pack(&mut self, install: bool) {
+        if self.shader_pack.1 {
+            return;
+        }
+        self.shader_pack.1 = true;
+        self.settings_status = None;
+        self.shader_job = Some(install);
+    }
+
+    /// The pack job to start.
+    pub fn take_shader_job(&mut self) -> Option<bool> {
+        self.shader_job.take()
+    }
+
+    /// Run it on a thread of its own.
+    pub fn start_shader_job(
+        &self,
+        install: bool,
+        done: Box<dyn FnOnce(Result<bool, String>) + Send>,
+    ) {
+        let data = self.data_dir();
+        let proxy = self.services.config.network.proxy.clone();
+        let spawned = std::thread::Builder::new()
+            .name("shader-pack".into())
+            .spawn(move || {
+                let result = if install {
+                    nikomiru_online::http::Http::with_timeouts(
+                        &proxy,
+                        nikomiru_online::http::CONNECT_TIMEOUT,
+                        std::time::Duration::from_secs(300),
+                    )
+                    .and_then(|http| {
+                        nikomiru_online::shaders::install(
+                            &http,
+                            &data,
+                            &nikomiru_core::Cancel::new(),
+                        )
+                    })
+                    .map(|_| true)
+                    .map_err(|e| e.to_string())
+                } else {
+                    nikomiru_online::shaders::remove(&data)
+                        .map(|()| false)
+                        .map_err(|e| e.to_string())
+                };
+                done(result);
+            });
+        if let Err(e) = spawned {
+            tracing::error!("shader pack: {e}");
+        }
+    }
+
+    /// The pack job ended.
+    pub fn shader_pack_done(&mut self, result: Result<bool, String>) {
+        self.shader_pack.1 = false;
+        self.shader_pack.0 = nikomiru_online::shaders::installed(&self.data_dir());
+        match result {
+            Ok(installed) => {
+                if !installed && !self.services.config.player.shader_preset.is_empty() {
+                    // the preset's files are gone
+                    self.services.config.player.shader_preset.clear();
+                    if self.services.config_writable {
+                        self.config_save = Some(self.services.config.clone());
+                    }
+                }
+                self.apply_shaders();
+                let key = if installed {
+                    "settings-shaders-installed"
+                } else {
+                    "settings-shaders-removed"
+                };
+                self.settings_status = Some((self.tr(key, &[]), true));
+            }
+            Err(reason) => {
+                self.settings_status = Some((
+                    self.tr("settings-shaders-failed", &[("reason", reason)]),
+                    false,
+                ));
+            }
+        }
+    }
+
+    /// Install a pack from a local archive checked against `expected` (the
+    /// harness's offline test pack).
+    #[cfg(feature = "test-harness")]
+    pub fn shader_pack_from(
+        &mut self,
+        archive: &Path,
+        expected: (&str, u64),
+    ) -> Result<(), String> {
+        nikomiru_online::shaders::unpack(
+            archive,
+            &self.data_dir(),
+            expected,
+            &nikomiru_core::Cancel::new(),
+        )
+        .map_err(|e| e.to_string())?;
+        self.shader_pack.0 = nikomiru_online::shaders::installed(&self.data_dir());
+        Ok(())
     }
 
     /// The study language (LNG-001).

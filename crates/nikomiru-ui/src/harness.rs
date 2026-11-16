@@ -629,6 +629,13 @@ pub fn state() -> Result<Value, String> {
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
         state["dictionary_sound"] = json!(s.last_dictionary_sound);
         state["study_language"] = json!(s.study_language());
+        state["shaders"] = json!({
+            "installed": s.shader_pack_installed(),
+            "busy": s.shader_pack_busy(),
+            "overridden": s.shaders_overridden(),
+            "preset": s.config().player.shader_preset,
+            "palette": s.config().general.palette,
+        });
         state["shortcuts"] = json!({
             "overrides": s.config().shortcuts,
             "status": s.settings_status.as_ref().map(|(t, _)| t),
@@ -1042,6 +1049,12 @@ pub fn touch(from: (f32, f32), to: (f32, f32)) -> Result<(), String> {
             });
         }
     })
+}
+
+/// Installs a shader pack from a local archive checked against `sha256` and
+/// `bytes` (THM-002's offline test pack), as the download would.
+pub fn shader_pack_local(path: PathBuf, sha256: String, bytes: u64) -> Result<(), String> {
+    call(move |ui| ui.session.shader_pack_from(&path, (&sha256, bytes)))?
 }
 
 /// The first dictionary sound of popup `level`, clicked (DIC-038).

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102–M116 implemented in development, M117 partial (native checks open), M118–M119 accepted for execution |
+| Status | Living roadmap; M102–M116 and M118 implemented in development, M117 partial (native checks open), M119 accepted for execution |
 | Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
@@ -1546,7 +1546,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M115 | P2 / L | **Study-language profiles.** Select dictionary/normalization/tokenization/reading settings per study language and isolate vocabulary, phrase and review data. Prove Japanese plus one additional language end to end, including import, lookup, counts and cards. Existing multilingual transform data is not proof of complete multilingual product support. | [Fushi][src-fushi], [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-languages] | done in development |
 | M116 | P2 / M | **Emby media-server support.** Add Emby alongside existing Jellyfin/Plex using the same playback, subtitle, source-link and progress interfaces. Check authentication, server identity, direct-play capability, expiry and resume against an Emby fixture/server; do not assume Jellyfin API compatibility is sufficient. | [Fushi media servers][src-fushi-features] | done in development |
 | M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | partial: touch done, native checks open |
-| M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | not started |
+| M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | done in development |
 | M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | not started |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
@@ -1756,3 +1756,5 @@ M117 is **partial**: touch gestures are implemented and checked on Linux (fast C
 Default, OLED and High-contrast palettes checked for contrast; an explicitly downloaded, pinned Anime4K v4.0.1 pack (MIT) with Fast/Quality presets through `glsl-shaders`, user mpv options winning and refusal falling back to default rendering.
 
 **Exit criteria**: contrast tests per palette, pack verification/extraction tests, preset tests and an actual-app preset case with a local pack; fast CI.
+
+M118 is complete in development: fast CI passed **1,093 tests**, the real pinned pack download passed as an L7 test and the actual-app preset case passed. See [M118 QA](qa/m103-m119.md#m118--named-palettes-and-shader-presets). The next accepted milestone is M119 (signed application update delivery).

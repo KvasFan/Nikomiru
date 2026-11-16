@@ -364,6 +364,12 @@ fn run(command: &Value) -> Result<Value, String> {
             };
             harness::touch(point("from")?, point("to")?).map(|()| Value::Null)
         }
+        Some("shader-pack-local") => harness::shader_pack_local(
+            text(command, "path")?.into(),
+            text(command, "sha256")?.into(),
+            command["bytes"].as_u64().unwrap_or(0),
+        )
+        .map(|()| Value::Null),
         Some("shortcuts") => harness::shortcuts(text(command, "action")?.into(), command.clone())
             .map(|()| Value::Null),
         Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())

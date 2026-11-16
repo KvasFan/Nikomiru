@@ -1012,7 +1012,12 @@ impl View {
         if self.look != Some(look) {
             self.look = Some(look);
             let [r, g, b] = look.accent;
-            palette::apply(ctx, look.dark, egui::Color32::from_rgb(r, g, b));
+            palette::apply_named(
+                ctx,
+                look.palette,
+                look.dark,
+                egui::Color32::from_rgb(r, g, b),
+            );
             ctx.set_zoom_factor(f32::from(look.scale) / 100.0);
         }
         self.zoom = ctx.zoom_factor();

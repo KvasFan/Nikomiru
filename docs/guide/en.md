@@ -362,6 +362,12 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Palettes and video shaders (M118 development)
+
+Settings → General → **Palette** offers Default, **OLED black** (pure black surfaces, always dark) and **High contrast** (black on white or white on black, with every main text at 7:1 or more). The accent colour still applies, made readable.
+
+**Video shaders** can sharpen and upscale anime with [Anime4K](https://github.com/bloc97/Anime4K) (MIT license, by bloc97). Click **Download Anime4K shaders** once (0.8 MB, a fixed release checked before use), then choose **Anime4K fast** or **Anime4K quality** (for stronger GPUs); **Off** is the default rendering. Nothing is downloaded during playback. If your own mpv options set `glsl-shaders`, they are used and the presets stay off. If the video cannot use the shaders, the preset is turned off and the reason shown. **Remove Anime4K shaders** deletes them.
+
 ## Touch (M117 development)
 
 On a touchscreen a tap does what a click does: it looks a word up, plays or pauses, and presses buttons. Swipe one finger quickly left or right over the video to seek back or forward by the seek step. In the reader's Pages and Sentence modes, swipe left for the next page or sentence and right for the previous one; in vertical writing and manga, which read from right to left, swipe right to go on. Vertical drags keep scrolling. The Windows, Android and macOS ports are tracked in `docs/qa/ports.md`; only Linux is released for now.

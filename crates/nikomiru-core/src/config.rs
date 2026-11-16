@@ -168,6 +168,10 @@ pub struct General {
     pub theme: String,
     /// The accent color, `#rrggbb` (SET-003).
     pub accent: String,
+    /// A named palette (THM-001): empty for the default, `oled` or
+    /// `high-contrast`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub palette: String,
     /// The interface scale in percent (SET-005), on top of the display's.
     pub ui_scale: u16,
     /// Language being studied (BCP 47), e.g. `"ja"`.
@@ -273,6 +277,10 @@ pub struct PlayerConfig {
     pub fit: String,
     /// Speed between subtitle lines (PLY-022): 0 off, or 2–4×.
     pub gap_speed: u8,
+    /// A shader preset (THM-003): empty for none, `anime4k-fast` or
+    /// `anime4k-quality`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub shader_preset: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -1222,6 +1230,7 @@ impl Default for General {
             ui_language: "system".into(),
             theme: "system".into(),
             accent: Self::ACCENT.into(),
+            palette: String::new(),
             ui_scale: 100,
             first_steps: true,
             setup_offered: false,
@@ -1245,6 +1254,7 @@ impl Default for PlayerConfig {
             time_remaining: false,
             fit: "contain".into(),
             gap_speed: 0,
+            shader_preset: String::new(),
             other: toml::Table::new(),
         }
     }
@@ -1343,6 +1353,16 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        // THM-001, THM-003
+        if !matches!(c.general.palette.as_str(), "" | "oled" | "high-contrast") {
+            c.general.palette = String::new();
+        }
+        if !matches!(
+            c.player.shader_preset.as_str(),
+            "" | "anime4k-fast" | "anime4k-quality"
+        ) {
+            c.player.shader_preset = String::new();
+        }
         // LNG-001
         if !STUDY_LANGUAGES.contains(&c.general.study_language.as_str()) {
             c.general.study_language = "ja".into();
@@ -1459,6 +1479,7 @@ impl Config {
                 self.player.auto_next = from.player.auto_next;
                 self.player.fit = from.player.fit.clone();
                 self.player.gap_speed = from.player.gap_speed;
+                self.player.shader_preset = from.player.shader_preset.clone();
             }
             Section::Subtitles => self.subtitles = from.subtitles.clone(),
             Section::Lookup => {
@@ -1496,6 +1517,7 @@ impl Config {
                 self.player.auto_next = d.player.auto_next;
                 self.player.fit = d.player.fit;
                 self.player.gap_speed = d.player.gap_speed;
+                self.player.shader_preset = d.player.shader_preset;
             }
             Section::Subtitles => {
                 let other = std::mem::take(&mut self.subtitles.other);

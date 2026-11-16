@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{ComboBox, Grid, Response, RichText, Slider, TextEdit, Ui, vec2};
+use egui::{Button, ComboBox, Grid, Response, RichText, Slider, TextEdit, Ui, vec2};
 use nikomiru_core::Config;
 use nikomiru_core::config::{General, SubtitlesConfig, parse_rgba, rgba_text};
 
@@ -77,6 +77,9 @@ pub(crate) struct Scene<'a> {
     pub shortcut_preview: Option<&'a crate::shortcut_maps::Preview>,
     /// The installed dictionaries, for the language profile (LNG-004).
     pub dictionaries: &'a [(String, nikomiru_library::DictionaryRecord)],
+    /// The Anime4K pack: installed, busy, and shaders set by the user's own
+    /// mpv options (THM-002, THM-003).
+    pub shaders: (bool, bool, bool),
     pub tr: &'a Translate<'a>,
 }
 
@@ -95,6 +98,11 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         capture: s.capture(),
         shortcut_preview: s.shortcut_preview.as_ref(),
         dictionaries: &s.dict_page.rows,
+        shaders: (
+            s.shader_pack_installed(),
+            s.shader_pack_busy(),
+            s.shaders_overridden(),
+        ),
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.prefs, out);
@@ -255,6 +263,7 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
 
 fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
     general_form(ui, s, draft);
+    shaders(ui, s, draft, out);
     let tr = |id: &str| (s.tr)(id, &[]);
     // INS-001
     section(ui, &tr("setup-title"));
@@ -265,6 +274,51 @@ fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command
     section(ui, &tr("settings-keys"));
     ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
     hint(ui, &tr("settings-keyring-hint"));
+}
+
+/// The shader presets and their pack (THM-002, THM-003).
+fn shaders(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
+    let tr = |id: &str| (s.tr)(id, &[]);
+    let (installed, busy, overridden) = s.shaders;
+    section(ui, &tr("settings-shaders"));
+    if overridden {
+        hint(ui, &tr("settings-shaders-overridden"));
+    }
+    ui.add_enabled_ui(installed && !overridden, |ui| {
+        form(ui, "settings-shaders", |ui| {
+            row(ui, &tr("settings-shaders-preset"), |ui| {
+                choice(
+                    ui,
+                    "settings-shaders-preset",
+                    &mut draft.player.shader_preset,
+                    &[
+                        ("", tr("settings-shaders-off")),
+                        ("anime4k-fast", tr("settings-shaders-fast")),
+                        ("anime4k-quality", tr("settings-shaders-quality")),
+                    ],
+                )
+            });
+        });
+    });
+    hint(ui, &tr("settings-shaders-hint"));
+    ui.horizontal(|ui| {
+        if installed {
+            if ui
+                .add_enabled(!busy, Button::new(tr("settings-shaders-remove")))
+                .clicked()
+            {
+                out.push(Command::ShaderPack(false));
+            }
+        } else if ui
+            .add_enabled(!busy, Button::new(tr("settings-shaders-download")))
+            .clicked()
+        {
+            out.push(Command::ShaderPack(true));
+        }
+        if busy {
+            ui.spinner();
+        }
+    });
 }
 
 /// The study language and its profile (LNG-001, LNG-004).
@@ -402,6 +456,19 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
                     ("system", tr("settings-theme-system")),
                     ("dark", tr("settings-theme-dark")),
                     ("light", tr("settings-theme-light")),
+                ],
+            )
+        });
+        // THM-001
+        row(ui, &tr("settings-palette"), |ui| {
+            choice(
+                ui,
+                "settings-palette",
+                &mut g.palette,
+                &[
+                    ("", tr("settings-palette-default")),
+                    ("oled", tr("settings-palette-oled")),
+                    ("high-contrast", tr("settings-palette-high-contrast")),
                 ],
             )
         });
@@ -884,6 +951,7 @@ mod tests {
                         capture: (false, None),
                         shortcut_preview: None,
                         dictionaries: &[],
+                        shaders: (false, false, false),
                         tr: &tr,
                     };
                     let leave = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
