@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod batch_mining;
 pub mod book_scores;
 pub mod books;
 pub mod catalog;

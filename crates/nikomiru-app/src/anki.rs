@@ -96,6 +96,19 @@ type LaterDone = Box<dyn FnOnce(LaterSent) + Send>;
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
 enum Job {
+    BatchPreview(
+        Vec<(String, MineRequest)>,
+        Box<dyn FnOnce(Result<Vec<nikomiru_ui::batch_mining::Preview>, String>) + Send>,
+    ),
+    BatchMine(
+        Box<nikomiru_ui::batch_mining::Ticket>,
+        Box<
+            dyn FnOnce(
+                    Result<nikomiru_ui::batch_mining::Outcome, nikomiru_ui::batch_mining::Failure>,
+                ) + Send,
+        >,
+    ),
+    BatchReconcile(String, Box<dyn FnOnce(Result<Option<u64>, String>) + Send>),
     ConfigureFfmpeg(String),
     Check(CheckRequest, Checked),
     Mine(Box<MineRequest>, Option<PendingFrame>, MineDone),
@@ -154,6 +167,11 @@ impl Anki {
                         break;
                     }
                     match job {
+                        Job::BatchPreview(requests, done) => done(worker.batch_preview(requests)),
+                        Job::BatchMine(ticket, done) => done(worker.batch_mine(*ticket)),
+                        Job::BatchReconcile(operation, done) => {
+                            done(worker.batch_reconcile(&operation))
+                        }
                         Job::Check(request, done) => done(worker.check(&request)),
                         Job::Mine(request, frame, done) => done(worker.mine(&request, frame)),
                         Job::Browse(target, done) => done(worker.browse(&target)),
@@ -198,6 +216,12 @@ impl Anki {
     fn refuse(&self, job: Job) {
         match job {
             Job::Check(_, done) => done(None),
+            Job::BatchPreview(_, done) => done(Err(self.unavailable.clone())),
+            Job::BatchMine(_, done) => done(Err(nikomiru_ui::batch_mining::Failure {
+                message: self.unavailable.clone(),
+                uncertain: false,
+            })),
+            Job::BatchReconcile(_, done) => done(Err(self.unavailable.clone())),
             Job::Mine(_, _, done) => done(Err(MineFailure {
                 message: self.unavailable.clone(),
                 duplicate: false,
@@ -217,6 +241,38 @@ impl Anki {
 }
 
 impl AnkiService for Anki {
+    fn batch_preview(
+        &self,
+        requests: Vec<(String, MineRequest)>,
+        done: Box<dyn FnOnce(Result<Vec<nikomiru_ui::batch_mining::Preview>, String>) + Send>,
+    ) {
+        if let Some(job) = self.send(Job::BatchPreview(requests, done)) {
+            self.refuse(job);
+        }
+    }
+    fn batch_mine(
+        &self,
+        ticket: nikomiru_ui::batch_mining::Ticket,
+        done: Box<
+            dyn FnOnce(
+                    Result<nikomiru_ui::batch_mining::Outcome, nikomiru_ui::batch_mining::Failure>,
+                ) + Send,
+        >,
+    ) {
+        if let Some(job) = self.send(Job::BatchMine(Box::new(ticket), done)) {
+            self.refuse(job);
+        }
+    }
+    fn batch_reconcile(
+        &self,
+        operation: String,
+        done: Box<dyn FnOnce(Result<Option<u64>, String>) + Send>,
+    ) {
+        if let Some(job) = self.send(Job::BatchReconcile(operation, done)) {
+            self.refuse(job);
+        }
+    }
+
     fn configure_ffmpeg(&self, path: String) {
         let _ = self.send(Job::ConfigureFfmpeg(path));
     }
@@ -291,6 +347,14 @@ struct Worker {
     /// The fields of the note type, once asked.
     note_fields: Option<Vec<String>>,
     tools: Option<Tools>,
+    /// Set only around one batch operation; never inherited by ordinary mining.
+    batch_operation: Option<String>,
+    /// Records an uncertain mutation without changing the ordinary miner's public result type.
+    batch_unknown: bool,
+    /// Frozen preview guards, checked again before committing generated media.
+    batch_guard: Option<nikomiru_ui::batch_mining::Ticket>,
+    /// Extra in-process guard against retrying a lost mutation response.
+    batch_unresolved: std::collections::HashSet<String>,
 }
 
 impl Worker {
@@ -305,6 +369,10 @@ impl Worker {
             paused_until: Cell::new(None),
             note_fields: None,
             tools: None,
+            batch_operation: None,
+            batch_unknown: false,
+            batch_guard: None,
+            batch_unresolved: Default::default(),
         }
     }
 
@@ -710,7 +778,10 @@ impl Worker {
             None
         });
         let (start_ms, end_ms) = r.clip.unwrap_or((r.position_ms, r.position_ms));
-        let source_id = link::new_source_id();
+        let source_id = self
+            .batch_operation
+            .clone()
+            .unwrap_or_else(link::new_source_id);
         let link = r.uid.as_ref().map(|uid| SourceLink {
             uid: uid.clone(),
             episode: 0,
@@ -739,12 +810,17 @@ impl Worker {
                 String::new()
             },
         };
+        self.batch_check_guard()?;
         Ok(Prepared {
             values: compose::values(&dict, &scene),
             media: dict.media,
             audio,
             image,
-            record: Record::of(r, &source_id, (start_ms, end_ms)),
+            record: {
+                let mut record = Record::of(r, &source_id, (start_ms, end_ms));
+                record.batch_operation = self.batch_operation.clone();
+                record
+            },
         })
     }
 
@@ -829,7 +905,14 @@ impl Worker {
                 .ok()
                 .flatten()
         });
-        let tags = compose::tags(&self.parts.config.tags, series.as_deref());
+        let mut tags = compose::tags(&self.parts.config.tags, series.as_deref());
+        if let Some(operation) = &p.record.batch_operation {
+            tags.push(batch::operation_tag(operation));
+        }
+        if let Err(failure) = self.batch_check_guard() {
+            rollback(client, &stored);
+            return Err(failure);
+        }
         let outcome = match action {
             CardAction::Add | CardAction::AddAnyway => {
                 match render(audio_name.as_deref(), image_name.as_deref(), &fields) {
@@ -869,7 +952,10 @@ impl Worker {
                 return Err(failure);
             }
             // the note may exist, or have changed: its media stay (ANK-003)
-            Err(NoteError::Unknown(failure)) => return Err(failure),
+            Err(NoteError::Unknown(failure)) => {
+                self.batch_unknown = true;
+                return Err(failure);
+            }
         };
         self.record(note_id, &p.record);
         Ok(Mined {
@@ -903,9 +989,34 @@ impl Worker {
             if card.damaged {
                 continue;
             }
+            let already_uncertain = later::uncertain(&dir, &card.id).unwrap_or(true);
+            self.batch_unknown = false;
             let outcome = later::load(&dir, &card.id)
                 .map_err(|reason| self.fail_with("error-later-damaged", &[("reason", reason)]))
                 .and_then(|(prepared, anyway)| {
+                    if let Some(operation) = &prepared.record.batch_operation {
+                        match self
+                            .batch_reconcile(operation)
+                            .map_err(|message| MineFailure {
+                                message,
+                                duplicate: false,
+                            })? {
+                            Some(id) => {
+                                self.record(id, &prepared.record);
+                                return Ok(Mined {
+                                    note_id: id,
+                                    deck: self.parts.config.deck.clone(),
+                                    overwritten: false,
+                                    kept: None,
+                                });
+                            }
+                            None if already_uncertain => {
+                                return Err(self.fail_with("batch-unknown", &[]));
+                            }
+                            None => {}
+                        }
+                    }
+
                     let action = if anyway {
                         CardAction::AddAnyway
                     } else {
@@ -922,7 +1033,12 @@ impl Worker {
                 }
                 Err(failure) => {
                     sent.failed += 1;
-                    if let Err(e) = later::note_problem(&dir, &card.id, &failure.message) {
+                    if let Err(e) = later::note_problem_outcome(
+                        &dir,
+                        &card.id,
+                        &failure.message,
+                        self.batch_unknown || already_uncertain,
+                    ) {
                         tracing::warn!("cards for later: {e}");
                     }
                     sent.first_problem.get_or_insert(failure.message);
@@ -1042,6 +1158,7 @@ impl Worker {
             created_at,
             memory: Memory::default(),
         };
+        self.batch_check_guard()?;
         let saved = match r.action {
             CardAction::Overwrite(id) => library
                 .replace_review_card(id, &card)
@@ -1404,3 +1521,6 @@ fn sentence_audio(
     }
     Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
 }
+
+#[path = "batch_worker.rs"]
+mod batch;

@@ -312,6 +312,10 @@ fn run(command: &Value) -> Result<Value, String> {
             command["url"].as_str().map(str::to_string),
         )
         .map(|()| Value::Null),
+        Some("batch-mining") => {
+            harness::batch_mining(text(command, "action")?.into(), command.clone())
+                .map(|()| Value::Null)
+        }
         Some("sentence-bank") => {
             harness::sentence_bank(text(command, "action")?.into(), command.clone())
                 .map(|()| Value::Null)

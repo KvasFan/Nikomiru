@@ -391,3 +391,11 @@ Search an exact expression and reading, for example `食べる` / `たべる`: a
 ```
 
 Entries may additionally contain an existing library `source` reference with the same fields as exported phrase locations; paths, URLs and executable links are refused. Imported text is plain data; no pack metadata or provider is fetched. The bank keeps at most 256 source/pack batches, 10,000 sentences and 32 MiB of serialized data. Individual sentences are at most 16 KiB with 256 recognised words. Dictionaries must be installed before indexing.
+
+### Previewed batch mining
+
+Open **Batch mining** from the phrase notebook, capture a dictionary entry, add a saved sentence-bank example, or select up to 20 current-primary vocabulary entries. Captured contexts remain frozen; choose among at most five per word and explicitly enable audio or picture extraction. **Preview** checks the complete text mapping, deck, note type and tags without extracting media or adding notes. Inspect the fields before **Start**. Changed settings, dictionaries or media require a new preview. Live Anki mappings need an identity-based first field for duplicate checks.
+
+Cards run one at a time. Stop finishes the current card and cancels the remaining items; continue never-sent items explicitly. Duplicate words are skipped. Retry a certain failure explicitly with its original operation identity. An unknown Anki outcome stops the batch: **Reconcile** performs a read-only exact-tag search and adopts a uniquely found note. A missing or ambiguous result stays unresolved and cannot be resent automatically. Restart restores the journal but never resumes exports. Resolved journals may be deleted explicitly; unresolved records are protected.
+
+Ordinary database backups retain journals, not prepared pending-card media. Cards kept for later use the existing pending exporter, retaining their operation tags and uncertainty protection. Bounds are 20 cards, 8 MiB of captured content, 100 retained journals and 32 MiB of journal data; remove resolved history explicitly when full.

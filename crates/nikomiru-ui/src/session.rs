@@ -561,6 +561,8 @@ pub struct Session {
     pub clozes: crate::cloze::State,
     /// Exact offline sentence snapshots and sources.
     pub bank: crate::sentence_bank::State,
+    /// Explicit frozen batch builder, journal barriers and per-item outcomes.
+    pub batch: crate::batch_mining::State,
     bank_place: Option<(nikomiru_library::phrases::Source, String)>,
     bank_export: Option<String>,
     phrase_job: Option<crate::phrases::Job>,
@@ -902,6 +904,7 @@ impl Session {
             phrases: Default::default(),
             clozes: Default::default(),
             bank: Default::default(),
+            batch: Default::default(),
             bank_place: None,
             bank_export: None,
             phrase_job: None,
@@ -5438,6 +5441,10 @@ impl Session {
 
     /// Runs an action (from a key or a button).
     pub fn action(&mut self, action: Action) -> UiEffect {
+        if self.batch.open && action == Action::Back {
+            self.batch.open = false;
+            return UiEffect::None;
+        }
         if self.bank.open && action == Action::Back {
             self.bank.open = false;
             return UiEffect::None;
@@ -9213,3 +9220,6 @@ mod cloze_session;
 
 #[path = "session_bank.rs"]
 mod bank_session;
+
+#[path = "session_batch.rs"]
+mod batch_session;

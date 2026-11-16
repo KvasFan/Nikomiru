@@ -49,6 +49,9 @@ fn draw(
             }
             ui.add_enabled_ui(!state.busy, |ui| {
                 ui.horizontal_wrapped(|ui| {
+                    if ui.button(tr("batch-title")).clicked() {
+                        out.push(Command::BatchOpen);
+                    }
                     if ui.button(tr("bank-title")).clicked() {
                         out.push(Command::BankOpen);
                     }

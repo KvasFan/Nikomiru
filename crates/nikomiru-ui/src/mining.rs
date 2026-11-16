@@ -120,7 +120,7 @@ impl MenuItem {
 }
 
 /// What to do with the card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum CardAction {
     /// A new card; Anki refuses a duplicate.
     Add,
@@ -131,7 +131,7 @@ pub enum CardAction {
 }
 
 /// The picture of a card (ANK-034, ANK-040).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 pub enum FrameChoice {
     /// The frame of the click, saved by the player.
     #[default]
@@ -229,7 +229,7 @@ pub struct CheckRequest {
 }
 
 /// A card to make from a popup entry and its scene.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct MineRequest {
     /// The popup's query: the worker looks it up again.
     pub query: String,
@@ -426,6 +426,36 @@ pub type KnownWords =
 /// Mining, away from the UI thread: the `anki` worker of the app. `done`
 /// may run on any thread.
 pub trait AnkiService: Send {
+    /// Resolve bounded effective text previews without media extraction or note creation.
+    fn batch_preview(
+        &self,
+        _requests: Vec<(String, MineRequest)>,
+        done: Box<dyn FnOnce(Result<Vec<crate::batch_mining::Preview>, String>) + Send>,
+    ) {
+        done(Err("batch exporter unavailable".into()));
+    }
+    /// Execute one previously previewed operation; the caller persists its Sending marker first.
+    fn batch_mine(
+        &self,
+        _ticket: crate::batch_mining::Ticket,
+        done: Box<
+            dyn FnOnce(Result<crate::batch_mining::Outcome, crate::batch_mining::Failure>) + Send,
+        >,
+    ) {
+        done(Err(crate::batch_mining::Failure {
+            message: "batch exporter unavailable".into(),
+            uncertain: false,
+        }));
+    }
+    /// Read-only exact-operation reconciliation; None never authorizes a resend.
+    fn batch_reconcile(
+        &self,
+        _operation: String,
+        done: Box<dyn FnOnce(Result<Option<u64>, String>) + Send>,
+    ) {
+        done(Err("batch exporter unavailable".into()));
+    }
+
     /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
     fn configure_ffmpeg(&self, _path: String) {}
     /// The words of the cards of `decks`, from their field `field`

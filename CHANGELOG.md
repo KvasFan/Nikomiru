@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Preview bounded word/context batches before sequential card export, with explicit media choices, per-card cancellation/retry and durable exact-operation recovery after unknown Anki outcomes (M107, BMG-001…BMG-004).
+
 - Index owned book, primary-track and JSON-pack sentences into an offline bank with exact dictionary expression/reading examples, original byte ranges, verified source reopening, shown TSV and ordinary backup retention (M106, SEN-001…SEN-003).
 
 - Create previewed cloze exercises from owned phrases, with concealed NFC-aware typed/choice rounds, finite undo and independently opt-in single-owner FSRS schedules retained across restart/backup (M105, CLO-001…CLO-004).

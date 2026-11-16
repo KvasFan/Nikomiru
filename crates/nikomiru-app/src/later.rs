@@ -50,6 +50,9 @@ pub struct Record {
     pub end_ms: i64,
     /// The `sourceId` of the card's link (ANK-050).
     pub source_id: String,
+    /// Stable batch operation identity, retained for later live-note reconciliation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_operation: Option<String>,
 }
 
 impl Record {
@@ -63,6 +66,7 @@ impl Record {
             start_ms,
             end_ms,
             source_id: source_id.to_string(),
+            batch_operation: None,
         }
     }
 }
@@ -90,6 +94,9 @@ struct CardFile {
     /// Why its last send failed.
     #[serde(default)]
     problem: Option<String>,
+    /// A batch note may already exist; retry only exact-operation reconciliation.
+    #[serde(default)]
+    uncertain: bool,
 }
 
 /// The name of a card's folder: digits only.
@@ -160,6 +167,7 @@ pub fn keep(dir: &Path, p: &Prepared, anyway: bool, now: SystemTime) -> io::Resu
             record: p.record.clone(),
             anyway,
             problem: None,
+            uncertain: false,
         };
         std::fs::write(part.join(CARD), serde_json::to_vec_pretty(&file)?)?;
         std::fs::rename(&part, dir.join(&id))
@@ -177,6 +185,19 @@ fn read(dir: &Path, id: &str) -> io::Result<CardFile> {
     }
     let folder = dir.join(id);
     let file: CardFile = serde_json::from_slice(&std::fs::read(folder.join(CARD))?)?;
+    if file
+        .record
+        .batch_operation
+        .as_ref()
+        .is_some_and(|id| !nikomiru_library::batches::valid_id(id))
+    {
+        return Err(invalid("batch operation identity"));
+    }
+    if let Some(operation) = &file.record.batch_operation
+        && (file.anyway || operation != &file.record.source_id)
+    {
+        return Err(invalid("batch operation metadata"));
+    }
     if file.format > FORMAT {
         return Err(invalid(format!("format {}", file.format)));
     }
@@ -251,7 +272,21 @@ pub fn forget(dir: &Path, id: &str) -> io::Result<()> {
 
 /// Notes why a card was not sent.
 pub fn note_problem(dir: &Path, id: &str, problem: &str) -> io::Result<()> {
+    note_problem_outcome(dir, id, problem, false)
+}
+/// Whether an earlier batch send might already have committed.
+pub fn uncertain(dir: &Path, id: &str) -> io::Result<bool> {
+    read(dir, id).map(|f| f.uncertain)
+}
+/// Preserve uncertainty monotonically until the prepared card is positively reconciled and removed.
+pub fn note_problem_outcome(
+    dir: &Path,
+    id: &str,
+    problem: &str,
+    uncertain: bool,
+) -> io::Result<()> {
     let mut file = read(dir, id)?;
+    file.uncertain |= uncertain;
     file.problem = Some(problem.to_string());
     let folder = dir.join(id);
     let part = folder.join(".card.json.part");
@@ -279,6 +314,7 @@ mod tests {
                 uid: Some("video/a".into()),
                 start_ms: 1_000,
                 end_ms: 2_000,
+                batch_operation: None,
                 source_id: "s".into(),
             },
         }

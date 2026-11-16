@@ -392,3 +392,11 @@ L’importazione accetta un pacchetto JSON UTF-8 locale, fino a 8 MiB, nella lin
 ```
 
 Ogni voce può contenere anche un riferimento `source` a una fonte già presente nella libreria. Percorsi, URL e collegamenti eseguibili vengono rifiutati. Il testo resta un dato locale; non vengono scaricati metadati o esempi da fornitori esterni. Limiti del banco: 256 fonti/pacchetti, 10.000 frasi e 32 MiB di dati serializzati; ogni frase può contenere fino a 16 KiB e 256 parole riconosciute. Installa i dizionari prima di indicizzare.
+
+### Creazione di carte in serie con anteprima
+
+Apri **Carte in serie** dal taccuino, acquisisci una voce del dizionario, aggiungi un esempio della banca frasi oppure seleziona fino a 20 parole del vocabolario principale corrente. I contesti acquisiti restano fissi: scegli fra un massimo di cinque per parola e abilita esplicitamente audio o immagine. **Anteprima** verifica campi, mazzo, tipo di nota ed etichette senza estrarre media o aggiungere note. Controlla i campi prima di **Avvia**. Cambiamenti a impostazioni, dizionari o media richiedono una nuova anteprima. Per Anki il primo campo deve dipendere dall’identità della parola, così da controllare i duplicati.
+
+Le carte vengono elaborate una alla volta. Interrompere conclude quella corrente e annulla le successive; riprendi esplicitamente quelle mai inviate. I duplicati vengono saltati. Un errore certo permette un nuovo tentativo esplicito con la stessa identità dell’operazione. Un esito Anki incerto interrompe la serie: **Riconcilia** cerca soltanto l’etichetta esatta e adotta una nota trovata univocamente. Nessun risultato o più risultati lasciano l’esito irrisolto e impediscono l’invio automatico. Il riavvio conserva il registro senza riprendere gli invii. Puoi eliminare i registri risolti; quelli incerti restano protetti.
+
+I backup ordinari del database conservano i registri, non i media delle carte preparate per dopo. L’esportatore delle carte conservate mantiene le etichette dell’operazione e la protezione dagli esiti incerti. I limiti sono 20 carte, 8 MiB di contenuti acquisiti, 100 registri e 32 MiB di registro; quando sono pieni elimina esplicitamente la cronologia risolta.

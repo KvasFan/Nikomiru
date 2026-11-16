@@ -21,6 +21,23 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// Exact owned primary contexts prepared for an explicit batch selection.
+    BatchContexts(Result<nikomiru_library::sentences::Batch, String>),
+    /// Complete read-only effective text previews.
+    BatchPreviewed(Result<Vec<crate::batch_mining::Preview>, String>),
+    /// One in-flight batch export's classified actual outcome.
+    BatchMined(Result<crate::batch_mining::Outcome, crate::batch_mining::Failure>),
+    /// A durable batch-journal barrier completed.
+    BatchJournal(crate::batch_mining::JournalReply),
+    /// Read-only exact-operation reconciliation.
+    BatchReconciled {
+        /// Original journal.
+        batch: String,
+        /// Persisted item metadata.
+        item: Box<nikomiru_library::batches::Item>,
+        /// Uniquely matched note, if any.
+        result: Result<Option<u64>, String>,
+    },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
     /// An ordered cloze operation completed.
@@ -340,6 +357,11 @@ impl std::fmt::Debug for Inbound {
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
             Inbound::Cloze(_) => "Cloze",
+            Inbound::BatchContexts(_) => "BatchContexts",
+            Inbound::BatchPreviewed(_) => "BatchPreviewed",
+            Inbound::BatchMined(_) => "BatchMined",
+            Inbound::BatchJournal(_) => "BatchJournal",
+            Inbound::BatchReconciled { .. } => "BatchReconciled",
             Inbound::BankPrepared(_) => "BankPrepared",
             Inbound::Bank(_) => "Bank",
             Inbound::BookCount { .. } => "BookCount",
@@ -376,6 +398,26 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    BatchOpen,
+    BatchClose,
+    BatchNew,
+    BatchAddLookup(usize, usize),
+    BatchAddWords(u64, Vec<crate::words::ListedWord>),
+    BatchAddExample(Box<nikomiru_library::sentences::Example>, String, String),
+    BatchEdit {
+        index: usize,
+        context: Option<usize>,
+        enabled: Option<bool>,
+        audio: Option<bool>,
+        image: Option<bool>,
+    },
+    BatchPreview,
+    BatchStart,
+    BatchCancel,
+    BatchRetry(usize),
+    BatchContinue,
+    BatchReconcile(String, String),
+    BatchDeleteJournal(String),
     BankOpen,
     BankClose,
     BankExamples(String, String),
@@ -1243,6 +1285,30 @@ impl Ui {
                 self.session.bank_done(answer);
                 true
             }
+            Inbound::BatchContexts(result) => {
+                self.session.batch_contexts(result);
+                true
+            }
+            Inbound::BatchPreviewed(result) => {
+                self.session.batch_previewed(result);
+                true
+            }
+            Inbound::BatchMined(result) => {
+                self.session.batch_mined(result);
+                true
+            }
+            Inbound::BatchJournal(reply) => {
+                self.session.batch_journal_done(reply);
+                true
+            }
+            Inbound::BatchReconciled {
+                batch,
+                item,
+                result,
+            } => {
+                self.session.batch_reconciled(batch, *item, result);
+                true
+            }
             Inbound::Cloze(answer) => {
                 self.session.cloze_done(answer);
                 true
@@ -1507,7 +1573,8 @@ impl Ui {
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
-        self.session.popups_covered = self.session.bank.open
+        self.session.popups_covered = self.session.batch.open
+            || self.session.bank.open
             || self.session.clozes.open
             || (self.view.phrases_open && !self.session.study_popup_open())
             || self.view.recall_history_open
@@ -1527,6 +1594,26 @@ impl Ui {
         self.cover_popups();
         let s = &mut self.session;
         match command {
+            Command::BatchOpen => s.batch_open(),
+            Command::BatchClose => s.batch.open = false,
+            Command::BatchNew => s.batch_new(),
+            Command::BatchAddLookup(level, entry) => s.batch_add_lookup(level, entry),
+            Command::BatchAddWords(version, rows) => s.batch_add_words(version, &rows),
+            Command::BatchAddExample(example, e, r) => s.batch_add_example(*example, e, r),
+            Command::BatchEdit {
+                index,
+                context,
+                enabled,
+                audio,
+                image,
+            } => s.batch_edit(index, context, enabled, audio, image),
+            Command::BatchPreview => s.batch_preview(),
+            Command::BatchStart => s.batch_start(),
+            Command::BatchCancel => s.batch_cancel(),
+            Command::BatchRetry(index) => s.batch_retry(index),
+            Command::BatchContinue => s.batch_continue(),
+            Command::BatchReconcile(batch, operation) => s.batch_reconcile(batch, operation),
+            Command::BatchDeleteJournal(id) => s.batch_delete_journal(id),
             Command::BankOpen => {
                 s.clozes.open = false;
                 s.bank_open();
@@ -2669,6 +2756,49 @@ impl Ui {
                 }),
                 Box::new(move |result| done.wake(Inbound::ImportDone { generation, result })),
             );
+        }
+        if let Some((request, cancel)) = self.session.take_batch_prepare() {
+            let waker = self.waker.clone();
+            self.session.start_bank_prepare(
+                request,
+                cancel,
+                Box::new(move |result| waker.wake(Inbound::BatchContexts(result))),
+            );
+        }
+        for job in self.session.take_batch_journals() {
+            let waker = self.waker.clone();
+            self.session.start_batch_journal(
+                job,
+                Box::new(move |reply| waker.wake(Inbound::BatchJournal(reply))),
+            );
+        }
+        for job in self.session.take_batch_service() {
+            let waker = self.waker.clone();
+            match job {
+                crate::batch_mining::ServiceJob::Preview(requests) => {
+                    self.session.anki().batch_preview(
+                        requests,
+                        Box::new(move |result| waker.wake(Inbound::BatchPreviewed(result))),
+                    )
+                }
+                crate::batch_mining::ServiceJob::Mine(ticket) => self.session.anki().batch_mine(
+                    *ticket,
+                    Box::new(move |result| waker.wake(Inbound::BatchMined(result))),
+                ),
+                crate::batch_mining::ServiceJob::Reconcile { batch, item } => {
+                    let original = *item.clone();
+                    self.session.anki().batch_reconcile(
+                        item.operation,
+                        Box::new(move |result| {
+                            waker.wake(Inbound::BatchReconciled {
+                                batch,
+                                item: Box::new(original),
+                                result,
+                            })
+                        }),
+                    );
+                }
+            }
         }
         if let Some(last) = self.session.toasts.drain(..).next_back() {
             self.view.toast(last);

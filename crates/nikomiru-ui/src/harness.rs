@@ -572,6 +572,7 @@ pub fn state() -> Result<Value, String> {
             "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp },
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
         state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
         state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
@@ -1879,6 +1880,80 @@ pub fn sentence_bank(action: String, args: Value) -> Result<(), String> {
                 });
             }
             _ => return Err("unknown sentence-bank action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Previewed batch selection, explicit start and durable reconciliation through production commands.
+pub fn batch_mining(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let index = args["index"].as_u64().unwrap_or(0) as usize;
+        match action.as_str() {
+            "open" => ui.run(Command::BatchOpen),
+            "close" => ui.run(Command::BatchClose),
+            "new" => ui.run(Command::BatchNew),
+            "lookup" => ui.run(Command::BatchAddLookup(
+                args["level"].as_u64().unwrap_or(0) as usize,
+                args["entry"].as_u64().unwrap_or(0) as usize,
+            )),
+            "words" => {
+                let rows = args["words"]
+                    .as_array()
+                    .ok_or("missing words")?
+                    .iter()
+                    .map(|w| crate::words::ListedWord {
+                        expression: w["expression"].as_str().unwrap_or_default().into(),
+                        reading: w["reading"].as_str().unwrap_or_default().into(),
+                        count: 1,
+                        status: crate::words::WordStatus::Unknown,
+                        card: false,
+                    })
+                    .collect();
+                ui.run(Command::BatchAddWords(
+                    args["version"]
+                        .as_u64()
+                        .unwrap_or(ui.session.sub_list_version),
+                    rows,
+                ));
+            }
+            "example" => {
+                let example = ui
+                    .session
+                    .bank
+                    .examples
+                    .get(index)
+                    .cloned()
+                    .ok_or("missing example")?;
+                ui.run(Command::BatchAddExample(
+                    Box::new(example),
+                    ui.session.bank.expression.clone(),
+                    ui.session.bank.reading.clone(),
+                ));
+            }
+            "edit" => ui.run(Command::BatchEdit {
+                index,
+                context: args["context"].as_u64().map(|x| x as usize),
+                enabled: args["enabled"].as_bool(),
+                audio: args["audio"].as_bool(),
+                image: args["image"].as_bool(),
+            }),
+            "preview" => ui.run(Command::BatchPreview),
+            "start" => ui.run(Command::BatchStart),
+            "cancel" => ui.run(Command::BatchCancel),
+            "retry" => ui.run(Command::BatchRetry(index)),
+            "continue" => ui.run(Command::BatchContinue),
+            "reconcile" => ui.run(Command::BatchReconcile(
+                args["batch"].as_str().ok_or("missing batch")?.into(),
+                args["operation"]
+                    .as_str()
+                    .ok_or("missing operation")?
+                    .into(),
+            )),
+            "delete-journal" => ui.run(Command::BatchDeleteJournal(
+                args["batch"].as_str().ok_or("missing batch")?.into(),
+            )),
+            _ => return Err("unknown batch action".into()),
         }
         Ok(())
     })?

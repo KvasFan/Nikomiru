@@ -490,7 +490,48 @@ mod tests {
             }],
         };
         assert!(f.library.put_sentence_batch(&batch).unwrap());
+        // T-BMG-004: unresolved Sending markers survive an ordinary backup/restore.
+        let journal = crate::batches::Journal {
+            id: "00000000-0000-4000-8000-000000000003".into(),
+            created_ms: 1,
+            items: vec![crate::batches::Item {
+                operation: "00000000-0000-4000-8000-000000000004".into(),
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                sentence: "猫です。".into(),
+                source_uid: None,
+                source_book: false,
+                start_ms: 0,
+                end_ms: 0,
+                title: "Owned".into(),
+                destination: "anki".into(),
+                deck: "Lapis".into(),
+                note_type: "Lapis".into(),
+                status: crate::batches::Status::Planned,
+            }],
+        };
+        assert!(f.library.start_batch(&journal).unwrap());
+        assert!(
+            f.library
+                .change_batch_item(
+                    &journal.id,
+                    &journal.items[0].operation,
+                    &crate::batches::Status::Planned,
+                    &crate::batches::Status::Sending
+                )
+                .unwrap()
+        );
         let out = backup(&f, false);
+        assert!(
+            f.library
+                .change_batch_item(
+                    &journal.id,
+                    &journal.items[0].operation,
+                    &crate::batches::Status::Sending,
+                    &crate::batches::Status::Created(42)
+                )
+                .unwrap()
+        );
         assert!(f.library.delete_sentence_batch(&batch.key).unwrap());
         assert!(f.library.remove_phrase(&phrase.id).unwrap());
         f.library
@@ -541,6 +582,10 @@ mod tests {
         assert_eq!(
             library.sentence_examples("猫", "ねこ", "ja").unwrap()[0].sentence,
             batch.sentences[0]
+        );
+        assert_eq!(
+            library.batch_journals().unwrap()[0].items[0].status,
+            crate::batches::Status::Sending
         );
         let encounters = library.word_encounters().unwrap();
         assert_eq!(encounters["video/ep"].len(), 1);

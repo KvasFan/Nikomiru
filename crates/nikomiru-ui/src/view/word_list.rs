@@ -55,6 +55,7 @@ pub(crate) struct Labels {
     pub cards: [String; 3],
     pub source: String,
     pub source_version: Option<u64>,
+    pub mining: String,
     pub sentence_labels: [String; 2],
     pub frequency_shown: String,
     pub frequency_selected: String,
@@ -151,6 +152,7 @@ impl Labels {
             copy_limit: tr("analysis-export-too-large", &[]),
             source: String::new(),
             source_version: None,
+            mining: tr("batch-selected", &[]),
             sentence_labels: [
                 "vocabulary-examples-export-shown",
                 "vocabulary-examples-export-selected",
@@ -1031,6 +1033,21 @@ pub(crate) fn show(
         "{}: {} · {}: {}",
         labels.selected_words, counts.selected_words, labels.occurrences, counts.selected_tokens
     ));
+    if let Some(version) = labels.source_version {
+        let rows = selected(all, state);
+        if ui
+            .add_enabled(
+                !rows.is_empty() && rows.len() <= 20,
+                egui::Button::new(&labels.mining),
+            )
+            .clicked()
+        {
+            out.push(Command::BatchAddWords(
+                version,
+                rows.into_iter().cloned().collect(),
+            ));
+        }
+    }
     ScrollArea::vertical()
         .id_salt("subtitle-list-words")
         .auto_shrink([false, false])
@@ -1230,6 +1247,7 @@ mod tests {
                         copy_limit: "Too large".into(),
                         source: "Test source".into(),
                         source_version: Some(1),
+                        mining: "Add selected cards".into(),
                         sentence_labels: ["Examples shown", "Examples selected"].map(String::from),
                         frequency_shown: "Export frequency shown".into(),
                         frequency_selected: "Export frequency selected".into(),

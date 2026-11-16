@@ -154,6 +154,13 @@ fn draw(
                         text.append(rest, 0.0, base.clone());
                     }
                     ui.label(text);
+                    if ui.button(tr("batch-add-context")).clicked() {
+                        out.push(Command::BatchAddExample(
+                            Box::new(example.clone()),
+                            state.expression.clone(),
+                            state.reading.clone(),
+                        ));
+                    }
                     ui.label(&example.title);
                     if let Some(source) = &example.sentence.source {
                         ui.label(&source.title);

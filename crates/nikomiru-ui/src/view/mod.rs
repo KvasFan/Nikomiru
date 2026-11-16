@@ -14,6 +14,7 @@ mod anki_page;
 mod audio_page;
 mod backup_page;
 mod bar;
+mod batch_mining;
 mod books_page;
 mod chrome;
 mod cloze;
@@ -366,6 +367,7 @@ pub(crate) struct View {
     pub cloze_query: String,
     pub bank_expression: String,
     pub bank_reading: String,
+    pub batch_detail: usize,
     pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
@@ -682,7 +684,8 @@ impl View {
     }
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
-        s.bank.open
+        s.batch.open
+            || s.bank.open
             || s.clozes.open
             || self.phrases_open
             || self.recall_history_open
@@ -716,6 +719,13 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        if s.batch.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            batch_mining::show(ui, s, &mut self.batch_detail, &mut out);
+            return out;
+        }
         if s.bank.open {
             self.window(&ctx, s);
             ui.painter()

@@ -1093,6 +1093,9 @@ fn entry(
             e.reading.clone(),
         ));
     }
+    if ui.small_button(d.tr("batch-add-lookup")).clicked() {
+        d.out.push(Command::BatchAddLookup(card.level, k));
+    }
     // KNW-001: what the learner knows of the word, to change
     if let Some(status_of) = d.word_status {
         let now = status_of(&e.expression, &e.reading);
