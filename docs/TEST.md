@@ -1013,3 +1013,11 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-LNG-002 | Isolation | Real redb per-language statuses/Anki words/stats with legacy Japanese keys, review language table and queues, filtered phrases/cloze/bank. | L1, L6 |
 | T-LNG-003 | English end to end | Generated English Yomitan dictionary, deinflected lookup, segmentation, book statuses/counts, card/review and restart, Japanese data unchanged. | L4, L6 |
 | T-LNG-004 | Settings | Accessible translated controls and saved profiles. | L1, L3 |
+
+## M116 Emby
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-SRV-014 | Emby login | Fake Emby identity/header/prefix checks, Jellyfin refused as Emby, wrong password, token-only record; accessible Emby choice. | L3, L4 |
+| T-SRV-015 | Emby library/playback | Per-user views/items with paging, search, cover, direct-play refusal, subtitles, reports and played mark; actual relay playback with resume and stop report. | L4, L6 |
+| T-SRV-016 | Emby expiry | Expired token as Unauthorized; actual app message. | L4 |

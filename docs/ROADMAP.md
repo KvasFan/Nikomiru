@@ -1728,3 +1728,11 @@ Per-language profiles (dictionaries, segmentation, readings) chosen live in Gene
 **Exit criteria**: config/selection/segmentation tests, real redb isolation checks, accessible settings and an actual-app English+Japanese case with restart; fast CI.
 
 M115 is complete in development: fast CI passed **1,085 tests** and the new actual-app English+Japanese case passed. See [M115 QA](qa/m103-m119.md#m115--study-language-profiles). The next accepted milestone is M116 (Emby media-server support).
+
+## M116 — Emby media-server support
+
+**Requirements**: SRV-014…SRV-016.
+
+Emby through the shared Jellyfin-family client with Emby's `/emby` prefix, headers, per-user routes, identity and direct-play checks, against a fake Emby.
+
+**Exit criteria**: fake-server L4 login/browse/play/expiry tests, accessible choice and an actual-app relay playback case; fast CI. Real Emby validation stays manual.
