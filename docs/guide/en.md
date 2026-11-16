@@ -362,6 +362,10 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Updates (M119 development)
+
+Settings → About → **Updates** looks for a new version only when you click **Check for updates**; Nikomiru never checks, downloads or installs by itself. Choose the **Stable** or **Beta** channel. A release is accepted only if its channel's list is signed with the key built into Nikomiru and is newer than both the running version and any version already seen, so an old list cannot be replayed. For a portable install (a folder you can write), **Download** fetches the release (resuming if interrupted, then checked by size and SHA-256) and **Install** unpacks it beside the current folder, checks that the new program runs as that version, and swaps the folders, keeping the old one as `.previous`; the new version starts next time. Flatpak and distribution packages are updated by their own tools and are never replaced. Builds without a signing key (for now, all of them: the signed feed is not published yet) say so and point to the release page.
+
 ## Palettes and video shaders (M118 development)
 
 Settings → General → **Palette** offers Default, **OLED black** (pure black surfaces, always dark) and **High contrast** (black on white or white on black, with every main text at 7:1 or more). The accent colour still applies, made readable.

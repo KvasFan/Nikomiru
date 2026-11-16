@@ -339,3 +339,69 @@ fn download_once(
     std::fs::rename(&part, dest).map_err(|e| io(&e))?;
     Ok(dest.to_path_buf())
 }
+
+/// Downloads `url` to `dest` through `dest.part`, at most `limit` bytes,
+/// resuming what an earlier attempt left there with a range request, or
+/// starting again when the server answers the whole file (POD-002,
+/// UPD-004). The length is checked before the rename; cancelled or failed,
+/// the partial file stays for the next try.
+pub fn resumable(
+    http: &Http,
+    url: &Url,
+    dest: &Path,
+    limit: u64,
+    cancel: &Cancel,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<u64, OnlineError> {
+    let part = part_path(dest);
+    if let Some(dir) = part.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| io(&e))?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&part)
+        .map_err(|e| io(&e))?;
+    let have = file.metadata().map_err(|e| io(&e))?.len();
+    // both callbacks write the same file and counters
+    let state = std::cell::RefCell::new((file, 0u64, None::<u64>, progress));
+    let result = http.stream_from(
+        url,
+        "download",
+        have,
+        limit,
+        &mut |offset, total| {
+            let (file, done, whole, progress) = &mut *state.borrow_mut();
+            file.set_len(offset).map_err(|e| io(&e))?;
+            file.seek(SeekFrom::Start(offset)).map_err(|e| io(&e))?;
+            *done = offset;
+            *whole = total;
+            progress(*done, *whole);
+            Ok(())
+        },
+        &mut |piece| {
+            if cancel.is_cancelled() {
+                return Err(OnlineError::Cancelled);
+            }
+            let (file, done, whole, progress) = &mut *state.borrow_mut();
+            file.write_all(piece).map_err(|e| io(&e))?;
+            *done += piece.len() as u64;
+            progress(*done, *whole);
+            Ok(())
+        },
+    );
+    let (file, _, whole, _) = state.into_inner();
+    let result = result.and_then(|()| file.sync_all().map_err(|e| io(&e)));
+    drop(file);
+    result?;
+    let size = std::fs::metadata(&part).map_err(|e| io(&e))?.len();
+    if whole.is_some_and(|w| w != size) || size == 0 {
+        return Err(OnlineError::Protocol {
+            provider: url.host_str().unwrap_or("download").to_string(),
+            reason: format!("{size} bytes of {}", whole.unwrap_or(0)),
+        });
+    }
+    std::fs::rename(&part, dest).map_err(|e| io(&e))?;
+    Ok(size)
+}

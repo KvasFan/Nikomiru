@@ -38,6 +38,7 @@ mod subtitle_study;
 mod support;
 mod text_reading;
 mod touch;
+mod updates;
 mod vobsub_pairs;
 mod web_video;
 

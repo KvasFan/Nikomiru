@@ -56,6 +56,7 @@ pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
 mod ui;
+pub mod updates;
 pub mod view;
 pub mod web_video;
 pub mod word_audio;

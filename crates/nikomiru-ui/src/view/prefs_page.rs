@@ -80,6 +80,9 @@ pub(crate) struct Scene<'a> {
     /// The Anime4K pack: installed, busy, and shaders set by the user's own
     /// mpv options (THM-002, THM-003).
     pub shaders: (bool, bool, bool),
+    /// Updates: their state, who owns this install, and whether this build
+    /// can check (UPD-001…UPD-004).
+    pub updates: Option<(&'a crate::updates::State, crate::updates::Owner, bool)>,
     pub tr: &'a Translate<'a>,
 }
 
@@ -103,6 +106,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
             s.shader_pack_busy(),
             s.shaders_overridden(),
         ),
+        updates: Some((&s.updates, s.update_owner(), s.updates_configured())),
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.prefs, out);
@@ -881,6 +885,109 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     hint(ui, &tr("settings-mpv-hint"));
 }
 
+/// The updates of the About tab (UPD-001…UPD-004): asked for, never by
+/// themselves.
+fn update_section(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    (state, owner, configured): (&crate::updates::State, crate::updates::Owner, bool),
+    out: &mut Vec<Command>,
+) {
+    use crate::updates::Owner;
+    let tr = |id: &str| (s.tr)(id, &[]);
+    section(ui, &tr("updates-title"));
+    let mut channel = s.saved.updates.channel.clone();
+    form(ui, "updates", |ui| {
+        row(ui, &tr("updates-channel"), |ui| {
+            choice(
+                ui,
+                "updates-channel",
+                &mut channel,
+                &[
+                    ("stable", tr("updates-channel-stable")),
+                    ("beta", tr("updates-channel-beta")),
+                ],
+            )
+        });
+    });
+    if channel != s.saved.updates.channel {
+        out.push(Command::UpdateChannel(channel));
+    }
+    let busy = state.checking || state.downloading.is_some() || state.installing;
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(configured && !busy, Button::new(tr("updates-check")))
+            .clicked()
+        {
+            out.push(Command::UpdateCheck);
+        }
+        if busy {
+            ui.spinner();
+        }
+    });
+    if !configured {
+        hint(ui, &tr("updates-unconfigured"));
+    }
+    if state.up_to_date {
+        ui.label(tr("updates-up-to-date"));
+    }
+    if let Some(a) = &state.available {
+        ui.label((s.tr)(
+            "updates-available",
+            &[
+                ("version", a.release.clone()),
+                ("date", a.published.clone()),
+            ],
+        ));
+        if ui.link(tr("updates-notes")).clicked() {
+            out.push(Command::OpenExternal(a.notes_url.clone()));
+        }
+        match owner {
+            Owner::Portable if state.installed.is_none() => {
+                ui.horizontal(|ui| {
+                    if state.downloaded.is_none() {
+                        let size = a.artifact.as_ref().map_or(0, |x| x.bytes >> 20);
+                        if ui
+                            .add_enabled(
+                                a.artifact.is_some() && !busy,
+                                Button::new((s.tr)(
+                                    "updates-download",
+                                    &[("size", size.to_string())],
+                                )),
+                            )
+                            .clicked()
+                        {
+                            out.push(Command::UpdateDownload);
+                        }
+                    } else if ui
+                        .add_enabled(!busy, Button::new(tr("updates-install")))
+                        .clicked()
+                    {
+                        out.push(Command::UpdateInstall);
+                    }
+                });
+                if let Some((done, total)) = state.downloading {
+                    let total = total.map_or_else(|| "?".into(), |t| (t >> 20).to_string());
+                    ui.label((s.tr)(
+                        "updates-downloading",
+                        &[("done", (done >> 20).to_string()), ("total", total)],
+                    ));
+                }
+            }
+            Owner::Portable => {}
+            Owner::Flatpak => hint(ui, &tr("updates-flatpak")),
+            Owner::Package => hint(ui, &tr("updates-package")),
+            Owner::ReadOnly => hint(ui, &tr("updates-read-only")),
+        }
+    }
+    if let Some(version) = &state.installed {
+        ui.label((s.tr)("updates-installed", &[("version", version.clone())]));
+    }
+    if let Some(error) = &state.error {
+        ui.colored_label(palette::current().bad, error);
+    }
+}
+
 fn about(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     let tr = |id: &str| (s.tr)(id, &[]);
     ui.label(
@@ -889,6 +996,9 @@ fn about(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
             .family(theme::bold()),
     );
     hint(ui, &tr("about-tagline"));
+    if let Some(updates) = s.updates {
+        update_section(ui, s, updates, out);
+    }
     ui.horizontal(|ui| {
         ui.label(tr("about-license"));
         if ui.link("GPL-3.0-only").clicked() {
@@ -931,6 +1041,7 @@ mod tests {
         state: State,
         out: Vec<Command>,
         leave: Leave,
+        updates: Option<(crate::updates::State, crate::updates::Owner, bool)>,
     }
 
     fn harness(tab: SettingsTab, saved: Config) -> Harness<'static, Test> {
@@ -952,6 +1063,7 @@ mod tests {
                         shortcut_preview: None,
                         dictionaries: &[],
                         shaders: (false, false, false),
+                        updates: t.updates.as_ref().map(|(st, o, c)| (st, *o, *c)),
                         tr: &tr,
                     };
                     let leave = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -966,6 +1078,7 @@ mod tests {
                     state: State::default(),
                     out: Vec::new(),
                     leave: Leave::Stay,
+                    updates: None,
                 },
             )
     }
@@ -1038,6 +1151,46 @@ mod tests {
         h.get_by_label("settings-shortcuts").click();
         h.run();
         assert_eq!(h.state().leave, Leave::To(SettingsTab::Shortcuts));
+    }
+
+    // T-UPD-003: checks are explicit; a package-owned install only gets directions.
+    #[test]
+    fn updates_are_explicit_and_respect_packages() {
+        use crate::updates::{Available, Owner, State as U};
+        let mut h = harness(SettingsTab::About, Config::default());
+        h.state_mut().updates = Some((U::default(), Owner::Package, true));
+        h.run();
+        assert!(h.state().out.is_empty(), "nothing by itself");
+        h.get_by_label("updates-check").click();
+        h.run();
+        assert!(matches!(h.state().out[..], [Command::UpdateCheck]));
+        h.state_mut().out.clear();
+        let available = Available {
+            release: "9.0.0".into(),
+            published: "2026-11-16".into(),
+            notes_url: "https://example.org".into(),
+            artifact: None,
+        };
+        h.state_mut().updates = Some((
+            U {
+                available: Some(available),
+                ..U::default()
+            },
+            Owner::Package,
+            true,
+        ));
+        h.run();
+        h.get_by_label("updates-package");
+        assert!(h.query_by_label("updates-install").is_none());
+        // a build without a key cannot check
+        h.state_mut().updates = Some((U::default(), Owner::Portable, false));
+        h.run();
+        use egui_kittest::kittest::NodeT;
+        assert!(
+            h.get_by_label("updates-check")
+                .accesskit_node()
+                .is_disabled()
+        );
     }
 
     #[test]

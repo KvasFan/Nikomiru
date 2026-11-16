@@ -629,6 +629,19 @@ pub fn state() -> Result<Value, String> {
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
         state["dictionary_sound"] = json!(s.last_dictionary_sound);
         state["study_language"] = json!(s.study_language());
+        state["updates"] = json!({
+            "configured": s.updates_configured(),
+            "owner": format!("{:?}", s.update_owner()),
+            "checking": s.updates.checking,
+            "up_to_date": s.updates.up_to_date,
+            "available": s.updates.available.as_ref().map(|a| json!({"release": a.release, "artifact": a.artifact.is_some()})),
+            "downloading": s.updates.downloading.is_some(),
+            "downloaded": s.updates.downloaded,
+            "installing": s.updates.installing,
+            "installed": s.updates.installed,
+            "error": s.updates.error,
+            "channel": s.config().updates.channel,
+        });
         state["shaders"] = json!({
             "installed": s.shader_pack_installed(),
             "busy": s.shader_pack_busy(),
@@ -1049,6 +1062,23 @@ pub fn touch(from: (f32, f32), to: (f32, f32)) -> Result<(), String> {
             });
         }
     })
+}
+
+/// Updates (UPD-001…UPD-004) through production commands: `check`,
+/// `download`, `install`, `channel` (`channel`).
+pub fn updates(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "check" => ui.run(Command::UpdateCheck),
+            "download" => ui.run(Command::UpdateDownload),
+            "install" => ui.run(Command::UpdateInstall),
+            "channel" => ui.run(Command::UpdateChannel(
+                args["channel"].as_str().unwrap_or_default().into(),
+            )),
+            _ => return Err("unknown updates action".into()),
+        }
+        Ok(())
+    })?
 }
 
 /// Installs a shader pack from a local archive checked against `sha256` and

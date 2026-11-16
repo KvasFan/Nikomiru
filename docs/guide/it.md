@@ -363,6 +363,10 @@ Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 cara
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
 
+## Aggiornamenti (sviluppo M119)
+
+Impostazioni → Informazioni → **Aggiornamenti** cerca una nuova versione solo quando fai clic su **Cerca aggiornamenti**; Nikomiru non controlla, scarica né installa mai da solo. Scegli il canale **Stabile** o **Beta**. Una versione è accettata solo se l’elenco del suo canale è firmato con la chiave inclusa in Nikomiru ed è più recente sia della versione in uso sia di qualsiasi versione già vista, così un elenco vecchio non può essere riproposto. Per un’installazione portatile (una cartella in cui puoi scrivere), **Scarica** prende la versione (riprendendo se interrotto, poi verificata per dimensione e SHA-256) e **Installa** la estrae accanto alla cartella attuale, verifica che il nuovo programma risponda con quella versione e scambia le cartelle, tenendo la vecchia come `.previous`; la nuova versione parte alla prossima apertura. Flatpak e pacchetti delle distribuzioni si aggiornano con i propri strumenti e non vengono mai sostituiti. Le build senza chiave di firma (per ora tutte: l’elenco firmato non è ancora pubblicato) lo dicono e rimandano alla pagina delle release.
+
 ## Tavolozze e shader video (sviluppo M118)
 
 Impostazioni → Generali → **Tavolozza** offre Predefinita, **Nero OLED** (superfici nere pure, sempre scura) e **Alto contrasto** (nero su bianco o bianco su nero, con tutti i testi principali a 7:1 o più). Il colore d’accento resta, reso leggibile.

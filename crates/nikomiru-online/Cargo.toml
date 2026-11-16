@@ -9,7 +9,7 @@ publish.workspace = true
 
 [features]
 # The fake Jimaku and OpenSubtitles of the tests (`nikomiru_online::fake`).
-test-support = []
+test-support = ["dep:ed25519-compact"]
 
 [dependencies]
 nikomiru-core.workspace = true
@@ -23,6 +23,9 @@ thiserror.workspace = true
 tungstenite.workspace = true
 # RSS feeds (POD-001), already in the graph through nikomiru-books (ADR 0010)
 quick-xml.workspace = true
+minisign-verify.workspace = true
+# signs test manifests (`test-support` only)
+ed25519-compact = { workspace = true, optional = true }
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 zip.workspace = true

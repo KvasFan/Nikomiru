@@ -217,6 +217,8 @@ pub struct Services {
     pub ocr: Box<dyn crate::ocr::OcrService>,
     /// The downloads of the setup assistant (INS-001…INS-006).
     pub setup: Box<dyn crate::setup::SetupService>,
+    /// Application updates (UPD-001…UPD-004).
+    pub updates: Box<dyn crate::updates::UpdateService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -246,6 +248,14 @@ pub struct Services {
     /// `[lookup] max_results`, shared with the workers that look words up:
     /// the settings change it at once (SET-002).
     pub lookup_limit: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// An update job to start (UPD-001…UPD-004).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateJob {
+    Check,
+    Download,
+    Install,
 }
 
 /// How the interface looks (SET-003, SET-005).
@@ -579,6 +589,9 @@ pub struct Session {
     bank_export: Option<String>,
     /// The dictionary sound played last (DIC-038), for the harness.
     pub last_dictionary_sound: Option<String>,
+    /// The About section's updates (UPD-001…UPD-004).
+    pub updates: crate::updates::State,
+    update_jobs: Vec<UpdateJob>,
     /// The Anime4K pack: installed, and a job running (THM-002).
     shader_pack: (bool, bool),
     shader_job: Option<bool>,
@@ -963,6 +976,8 @@ impl Session {
             bank_export: None,
             last_dictionary_sound: None,
             shader_pack: (shader_installed, false),
+            updates: Default::default(),
+            update_jobs: Vec::new(),
             shader_job: None,
             shortcut_preview: None,
             shortcut_base: None,
@@ -8666,6 +8681,138 @@ impl Session {
         }
         self.toasts
             .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// Who owns this install (UPD-003).
+    pub fn update_owner(&self) -> crate::updates::Owner {
+        self.services.updates.owner()
+    }
+
+    /// Whether this build can check for updates.
+    pub fn updates_configured(&self) -> bool {
+        self.services.updates.configured()
+    }
+
+    /// Check the channel, explicitly (UPD-001).
+    pub fn update_check(&mut self) {
+        if self.updates.checking || self.updates.downloading.is_some() || self.updates.installing {
+            return;
+        }
+        self.updates = crate::updates::State {
+            checking: true,
+            ..Default::default()
+        };
+        self.update_jobs.push(UpdateJob::Check);
+    }
+
+    /// Download the release found (UPD-004).
+    pub fn update_download(&mut self) {
+        if self.updates.available.is_none() || self.updates.downloading.is_some() {
+            return;
+        }
+        self.updates.error = None;
+        self.updates.downloading = Some((0, None));
+        self.update_jobs.push(UpdateJob::Download);
+    }
+
+    /// Install the verified download (UPD-004).
+    pub fn update_install(&mut self) {
+        if self.updates.downloaded.is_none() || self.updates.installing {
+            return;
+        }
+        self.updates.error = None;
+        self.updates.installing = true;
+        self.update_jobs.push(UpdateJob::Install);
+    }
+
+    /// The release channel, saved at once.
+    pub fn update_channel(&mut self, channel: &str) {
+        if !matches!(channel, "stable" | "beta") {
+            return;
+        }
+        self.services.config.updates.channel = channel.into();
+        self.updates = Default::default();
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// Start the update jobs asked for.
+    pub fn start_update_jobs(&mut self, waker: &std::sync::Arc<dyn crate::ui::Waker>) {
+        let proxy = self.services.config.network.proxy.clone();
+        for job in std::mem::take(&mut self.update_jobs) {
+            let w = waker.clone();
+            match job {
+                UpdateJob::Check => self.services.updates.check(
+                    self.services.config.updates.channel.clone(),
+                    proxy.clone(),
+                    Box::new(move |r| w.wake(crate::ui::Inbound::UpdateChecked(r))),
+                ),
+                UpdateJob::Download => {
+                    let Some(available) = self.updates.available.clone() else {
+                        continue;
+                    };
+                    let p = waker.clone();
+                    self.services.updates.download(
+                        available,
+                        proxy.clone(),
+                        Box::new(move |d, t| p.wake(crate::ui::Inbound::UpdateProgress(d, t))),
+                        Box::new(move |r| w.wake(crate::ui::Inbound::UpdateDownloaded(r))),
+                    );
+                }
+                UpdateJob::Install => {
+                    let (Some(archive), Some(available)) = (
+                        self.updates.downloaded.clone(),
+                        self.updates.available.clone(),
+                    ) else {
+                        continue;
+                    };
+                    self.services.updates.install(
+                        archive,
+                        available,
+                        Box::new(move |r| w.wake(crate::ui::Inbound::UpdateInstalled(r))),
+                    );
+                }
+            }
+        }
+    }
+
+    /// A check ended.
+    pub fn update_checked(&mut self, result: Result<Option<crate::updates::Available>, String>) {
+        self.updates.checking = false;
+        match result {
+            Ok(Some(available)) => self.updates.available = Some(available),
+            Ok(None) => self.updates.up_to_date = true,
+            Err(e) => self.updates.error = Some(e),
+        }
+    }
+
+    /// How far the download is.
+    pub fn update_progress(&mut self, done: u64, total: Option<u64>) {
+        if self.updates.downloading.is_some() {
+            self.updates.downloading = Some((done, total));
+        }
+    }
+
+    /// The download ended.
+    pub fn update_downloaded(&mut self, result: Result<PathBuf, String>) {
+        self.updates.downloading = None;
+        match result {
+            Ok(path) => self.updates.downloaded = Some(path),
+            Err(e) => self.updates.error = Some(e),
+        }
+    }
+
+    /// The install ended.
+    pub fn update_installed(&mut self, result: Result<(), String>) {
+        self.updates.installing = false;
+        match result {
+            Ok(()) => {
+                self.updates.downloaded = None;
+                self.updates.installed = self.updates.available.as_ref().map(|a| a.release.clone());
+            }
+            Err(e) => self.updates.error = Some(e),
+        }
     }
 
     /// The data folder.

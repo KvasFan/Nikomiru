@@ -40,6 +40,14 @@ pub enum Inbound {
     },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// A check ended (UPD-001): a newer release, none, or why not.
+    UpdateChecked(Result<Option<crate::updates::Available>, String>),
+    /// How far the update download is.
+    UpdateProgress(u64, Option<u64>),
+    /// The update download ended.
+    UpdateDownloaded(Result<PathBuf, String>),
+    /// The update install ended.
+    UpdateInstalled(Result<(), String>),
     /// The Anime4K pack job ended: installed or not, or why it failed.
     ShaderPack(Result<bool, String>),
     /// A podcast library job completed (POD-001…POD-004).
@@ -373,6 +381,10 @@ impl std::fmt::Debug for Inbound {
             Inbound::Annotations(_) => "Annotations",
             Inbound::Podcasts(_) => "Podcasts",
             Inbound::ShaderPack(_) => "ShaderPack",
+            Inbound::UpdateChecked(_) => "UpdateChecked",
+            Inbound::UpdateProgress(..) => "UpdateProgress",
+            Inbound::UpdateDownloaded(_) => "UpdateDownloaded",
+            Inbound::UpdateInstalled(_) => "UpdateInstalled",
             Inbound::PodcastFetched(..) => "PodcastFetched",
             Inbound::PodcastProgress(..) => "PodcastProgress",
             Inbound::PodcastDownloaded(..) => "PodcastDownloaded",
@@ -469,6 +481,11 @@ pub(crate) enum Command {
 
     /// Download (`true`) or remove the Anime4K pack (THM-002).
     ShaderPack(bool),
+    /// UPD-001…UPD-004
+    UpdateCheck,
+    UpdateDownload,
+    UpdateInstall,
+    UpdateChannel(String),
     /// A dictionary's sound clicked in a popup (DIC-038): its bytes and path.
     DictionarySound(std::sync::Arc<Vec<u8>>, String),
     /// KEY-008…KEY-010: the draft's overrides, to export or to compare with.
@@ -1392,6 +1409,22 @@ impl Ui {
                 self.session.phrases_done(answer);
                 true
             }
+            Inbound::UpdateChecked(result) => {
+                self.session.update_checked(result);
+                true
+            }
+            Inbound::UpdateProgress(done, total) => {
+                self.session.update_progress(done, total);
+                true
+            }
+            Inbound::UpdateDownloaded(result) => {
+                self.session.update_downloaded(result);
+                true
+            }
+            Inbound::UpdateInstalled(result) => {
+                self.session.update_installed(result);
+                true
+            }
             Inbound::ShaderPack(result) => {
                 self.session.shader_pack_done(result);
                 true
@@ -1827,6 +1860,10 @@ impl Ui {
             }
             Command::DictionarySound(bytes, path) => s.dictionary_sound(&bytes, &path),
             Command::ShaderPack(install) => s.shader_pack(install),
+            Command::UpdateCheck => s.update_check(),
+            Command::UpdateDownload => s.update_download(),
+            Command::UpdateInstall => s.update_install(),
+            Command::UpdateChannel(channel) => s.update_channel(&channel),
             Command::ShortcutsExport(overrides) => {
                 s.shortcut_export = Some(crate::shortcut_maps::export(&overrides));
                 self.view.dialog = Some(Dialog::ShortcutsExport);
@@ -2338,6 +2375,7 @@ impl Ui {
                 Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
             );
         }
+        self.session.start_update_jobs(&self.waker);
         if let Some(install) = self.session.take_shader_job() {
             let waker = self.waker.clone();
             self.session.start_shader_job(

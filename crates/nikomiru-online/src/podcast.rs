@@ -4,7 +4,6 @@
 //! identities, resumable offline downloads and feed transcripts. Nothing
 //! here runs on its own: every request is an explicit action of the user.
 
-use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
 use quick_xml::NsReader;
@@ -376,10 +375,6 @@ pub fn transcript(http: &Http, url: &str, cancel: &Cancel) -> Result<Vec<u8>, On
     small(http, &url, MAX_TRANSCRIPT, cancel)
 }
 
-fn io(e: &std::io::Error) -> OnlineError {
-    OnlineError::Io(e.to_string())
-}
-
 /// Downloads `url` to `dest` through `dest.part` (POD-002): what an earlier
 /// attempt left there is resumed by a range request, or started again when
 /// the server answers the whole file. The length is checked before the
@@ -392,57 +387,7 @@ pub fn download(
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<u64, OnlineError> {
     let url = crate::http::checked_url(url)?;
-    let part = crate::setup::fetch::part_path(dest);
-    if let Some(dir) = part.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| io(&e))?;
-    }
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&part)
-        .map_err(|e| io(&e))?;
-    let have = file.metadata().map_err(|e| io(&e))?.len();
-    // both callbacks write the same file and counters
-    let state = std::cell::RefCell::new((file, 0u64, None::<u64>, progress));
-    let result = http.stream_from(
-        &url,
-        "podcast",
-        have,
-        MAX_AUDIO,
-        &mut |offset, total| {
-            let (file, done, whole, progress) = &mut *state.borrow_mut();
-            file.set_len(offset).map_err(|e| io(&e))?;
-            file.seek(SeekFrom::Start(offset)).map_err(|e| io(&e))?;
-            *done = offset;
-            *whole = total;
-            progress(*done, *whole);
-            Ok(())
-        },
-        &mut |piece| {
-            if cancel.is_cancelled() {
-                return Err(OnlineError::Cancelled);
-            }
-            let (file, done, whole, progress) = &mut *state.borrow_mut();
-            file.write_all(piece).map_err(|e| io(&e))?;
-            *done += piece.len() as u64;
-            progress(*done, *whole);
-            Ok(())
-        },
-    );
-    let (file, _, whole, _) = state.into_inner();
-    let result = result.and_then(|()| file.sync_all().map_err(|e| io(&e)));
-    drop(file);
-    result?;
-    let size = std::fs::metadata(&part).map_err(|e| io(&e))?.len();
-    if whole.is_some_and(|w| w != size) || size == 0 {
-        return Err(OnlineError::Protocol {
-            provider: url.host_str().unwrap_or("podcast").to_string(),
-            reason: format!("{size} bytes of {}", whole.unwrap_or(0)),
-        });
-    }
-    std::fs::rename(&part, dest).map_err(|e| io(&e))?;
-    Ok(size)
+    crate::setup::fetch::resumable(http, &url, dest, MAX_AUDIO, cancel, progress)
 }
 
 #[cfg(test)]

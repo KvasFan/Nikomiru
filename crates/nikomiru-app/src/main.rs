@@ -576,6 +576,10 @@ fn run(
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
         ocr: Box::new(ocr),
         setup: Box::new(setup),
+        updates: Box::new(nikomiru_app::updates::Updater::new(
+            paths.data_dir.clone(),
+            translator.clone(),
+        )),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

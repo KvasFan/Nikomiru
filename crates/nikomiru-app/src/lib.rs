@@ -58,6 +58,7 @@ pub mod shell;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
+pub mod updates;
 pub mod vobsub_pair;
 pub mod web_video;
 #[allow(unsafe_code)]

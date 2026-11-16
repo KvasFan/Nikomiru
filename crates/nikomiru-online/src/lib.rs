@@ -33,6 +33,7 @@ pub mod servers;
 pub mod setup;
 pub mod shaders;
 pub mod store;
+pub mod updates;
 pub mod web_video;
 pub mod webdav;
 

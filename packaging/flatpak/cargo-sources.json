@@ -1405,6 +1405,19 @@
   },
   {
     "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/ed25519-compact-2.6.1",
+    "sha256": "9547879431a90e352a35863a54416d92898a787b9af09e6ae2e09a96bd78be80",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/ed25519-compact/ed25519-compact-2.6.1.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"9547879431a90e352a35863a54416d92898a787b9af09e6ae2e09a96bd78be80\"}",
+    "dest": "cargo/vendor/ed25519-compact-2.6.1",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
     "dest": "cargo/vendor/egui-0.37.0",
     "sha256": "bec9144f49b7a28b5f395d3147e325b4fe3e77ba686eac11d1bdf0a7da3f375f",
     "type": "archive",
@@ -3194,6 +3207,19 @@
   {
     "contents": "{\"files\":{},\"package\":\"86886cf6dbf4e614b19c9a1eec9775f021869d7eadde0fc73921a81b90c9b4c9\"}",
     "dest": "cargo/vendor/minijinja-2.24.0",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/minisign-verify-0.3.0",
+    "sha256": "871285dc19d8d0ebe0eef3d0e99a205f2a71363b122632cbbfa4a6c370a960ce",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/minisign-verify/minisign-verify-0.3.0.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"871285dc19d8d0ebe0eef3d0e99a205f2a71363b122632cbbfa4a6c370a960ce\"}",
+    "dest": "cargo/vendor/minisign-verify-0.3.0",
     "dest-filename": ".cargo-checksum.json",
     "type": "inline"
   },

@@ -370,6 +370,9 @@ fn run(command: &Value) -> Result<Value, String> {
             command["bytes"].as_u64().unwrap_or(0),
         )
         .map(|()| Value::Null),
+        Some("updates") => {
+            harness::updates(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
+        }
         Some("shortcuts") => harness::shortcuts(text(command, "action")?.into(), command.clone())
             .map(|()| Value::Null),
         Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())

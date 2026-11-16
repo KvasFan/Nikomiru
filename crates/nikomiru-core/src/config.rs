@@ -87,6 +87,8 @@ pub struct Config {
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
+    /// `[updates]`: the release channel (UPD-001).
+    pub updates: UpdatesConfig,
     /// `[languages.<code>]`: the study-language profiles (LNG-001).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub languages: BTreeMap<String, LanguageProfile>,
@@ -911,6 +913,26 @@ impl Default for HookerConfig {
     }
 }
 
+/// `[updates]` (UPD-001): Nikomiru looks for updates only when asked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdatesConfig {
+    /// `stable` or `beta`.
+    pub channel: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self {
+            channel: "stable".into(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
 /// `[sync]`: the WebDAV folder (BAK-004).
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -1285,6 +1307,7 @@ impl Default for Config {
             review: ReviewConfig::default(),
             servers: Vec::new(),
             languages: BTreeMap::new(),
+            updates: UpdatesConfig::default(),
             other: toml::Table::new(),
         }
     }
@@ -1353,6 +1376,10 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        // UPD-001
+        if !matches!(c.updates.channel.as_str(), "stable" | "beta") {
+            c.updates.channel = "stable".into();
+        }
         // THM-001, THM-003
         if !matches!(c.general.palette.as_str(), "" | "oled" | "high-contrast") {
             c.general.palette = String::new();
