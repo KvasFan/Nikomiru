@@ -79,6 +79,20 @@ fn run(command: &Value) -> Result<Value, String> {
             let timeout = Duration::from_millis(command["timeout_ms"].as_u64().unwrap_or(10_000));
             harness::wait(text(command, "event")?, timeout)
         }
+        Some("focus-lost") => harness::focus_lost().map(|()| Value::Null),
+        Some("key-event") => harness::key_event(
+            text(command, "code")?,
+            command["mods"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            command["pressed"].as_bool().unwrap_or(true),
+            command["repeat"].as_bool().unwrap_or(false),
+            command["text_focus"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("key") => {
             let mods: Vec<String> = command["mods"]
                 .as_array()

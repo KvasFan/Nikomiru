@@ -1441,6 +1441,7 @@ impl Ui {
 
     /// The window lost the keyboard: the release of a held key will not come.
     pub fn focus_lost(&mut self) {
+        self.session.release_translation_peek();
         self.session.release_hold();
         self.pump();
     }
@@ -1481,6 +1482,7 @@ impl Ui {
     /// Time-based work: the control bar, hover popups, the screensaver.
     /// Returns whether the window needs a redraw.
     pub fn tick(&mut self) -> bool {
+        self.cover_popups();
         let before = (
             self.session.controls_visible(),
             self.session.popups.stack().len(),
@@ -1501,6 +1503,9 @@ impl Ui {
 
     /// Draws a frame into `ui` (the whole window).
     pub fn frame(&mut self, ui: &mut egui::Ui) {
+        self.cover_popups();
+        self.session
+            .guided_input_priority(ui.ctx().egui_wants_keyboard_input());
         let commands = self.view.frame(ui, &self.session);
         for command in commands {
             self.apply(command);

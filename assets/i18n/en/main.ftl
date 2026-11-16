@@ -1521,3 +1521,12 @@ composer-profile-hint = Applying a profile closes this draft and clears all pinn
 composer-fields-invalid = A field is missing, empty or exceeds the composer limits. Review the note type and overrides.
 composer-senses-stale = Select at least one unchanged dictionary sense. Reopen the composer after dictionary changes.
 composer-source-stale = The original source or lookup has changed. Close this draft and open a new composer.
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = Look up when paused
+settings-pause-off = Off
+settings-pause-unknown = First unknown word
+settings-pause-kanji = First kanji
+settings-pause-hint = Uses the first active primary text cue. Unknown words use installed dictionaries and your word statuses; kanji is a separate rule.
+action-lookup-first-kanji = Look up first kanji
+action-peek-translation = Hold to reveal secondary translation

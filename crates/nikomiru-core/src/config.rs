@@ -557,6 +557,8 @@ impl RecallSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LookupConfig {
+    /// Optional pause-transition lookup: `off`, `unknown` or independent `kanji` (GDL-001).
+    pub pause_lookup: String,
     /// Latest one hundred explicitly recorded recall summaries.
     pub recall_history: Vec<RecallSummary>,
     /// Explicit named study filters, at most sixteen.
@@ -576,6 +578,7 @@ pub struct LookupConfig {
 impl Default for LookupConfig {
     fn default() -> Self {
         Self {
+            pause_lookup: "off".into(),
             max_results: 10,
             recall_history: Vec::new(),
             study_presets: Vec::new(),
@@ -1271,6 +1274,9 @@ impl Config {
             c.player.gap_speed = 0;
         }
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
+        if !matches!(c.lookup.pause_lookup.as_str(), "off" | "unknown" | "kanji") {
+            c.lookup.pause_lookup = "off".into();
+        }
         let mut names = std::collections::HashSet::new();
         c.lookup
             .study_presets
@@ -1704,6 +1710,30 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    // T-GDL-001, T-GDL-004: old configurations stay off; the explicit rule roundtrips without transient key state.
+    #[test]
+    fn guided_pause_rules_are_explicit_and_legacy_defaults_remain_off() {
+        assert_eq!(
+            Config::from_toml("[lookup]").unwrap().lookup.pause_lookup,
+            "off"
+        );
+        for rule in ["off", "unknown", "kanji"] {
+            let (config, bad) = Config::parse(&format!("[lookup]\npause_lookup='{rule}'")).unwrap();
+            assert!(bad.is_empty());
+            let text = config.to_text().unwrap();
+            assert_eq!(Config::parse(&text).unwrap().0.lookup.pause_lookup, rule);
+            assert!(!text.contains("translation_hold"));
+        }
+        assert_eq!(
+            Config::parse("[lookup]\npause_lookup='invalid'")
+                .unwrap()
+                .0
+                .lookup
+                .pause_lookup,
+            "off"
+        );
+    }
 
     #[test]
     fn missing_file_gives_defaults() {

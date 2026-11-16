@@ -1521,3 +1521,12 @@ composer-profile-hint = Applicare un profilo chiude questa bozza e rimuove tutti
 composer-fields-invalid = Un campo manca, è vuoto o supera i limiti del compositore. Controlla il tipo di nota e le modifiche.
 composer-senses-stale = Seleziona almeno un significato invariato del dizionario. Dopo aver cambiato i dizionari riapri il compositore.
 composer-source-stale = La fonte o la ricerca originale è cambiata. Chiudi la bozza e apri un nuovo compositore.
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = Ricerca alla pausa
+settings-pause-off = Disattivata
+settings-pause-unknown = Prima parola sconosciuta
+settings-pause-kanji = Primo kanji
+settings-pause-hint = Usa il primo sottotitolo principale attivo. Le parole sconosciute dipendono dai dizionari installati e dai tuoi stati; il kanji è una regola separata.
+action-lookup-first-kanji = Cerca il primo kanji
+action-peek-translation = Tieni premuto per rivelare la traduzione secondaria

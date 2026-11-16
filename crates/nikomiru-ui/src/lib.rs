@@ -20,6 +20,7 @@ pub mod controls;
 pub mod dictionaries;
 mod encounters;
 mod gaps;
+mod guided_lookup;
 #[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod hooker;

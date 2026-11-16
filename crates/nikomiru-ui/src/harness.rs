@@ -189,6 +189,42 @@ pub fn key(code: &str, mods: &[String], repeats: u64, text_focus: bool) -> Resul
     })
 }
 
+/// One physical window key event, preserving a held key across calls.
+pub fn key_event(
+    code: &str,
+    mods: Vec<String>,
+    pressed: bool,
+    repeat: bool,
+    text_focus: bool,
+) -> Result<(), String> {
+    let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
+    let mut held = Modifiers::default();
+    for m in mods {
+        match m.as_str() {
+            "Shift" => held.shift = true,
+            "Ctrl" => held.ctrl = true,
+            "Alt" => held.alt = true,
+            _ => return Err("unknown modifier".into()),
+        }
+    }
+    call(move |ui| {
+        ui.key(
+            Key {
+                evdev,
+                mods: held,
+                pressed,
+                repeat,
+            },
+            text_focus,
+        );
+    })
+}
+
+/// Deliver the same transient-control cleanup as the native focus-loss event.
+pub fn focus_lost() -> Result<(), String> {
+    call(|ui| ui.focus_lost())
+}
+
 /// "Hide" on the library's first steps (LIB-013).
 pub fn hide_first_steps() -> Result<(), String> {
     call(|ui| ui.run(Command::HideFirstSteps))
@@ -255,6 +291,12 @@ pub fn state() -> Result<Value, String> {
     call(|ui| {
         let s = &ui.session;
         let v = &s.view;
+        let guided_lookup = json!({
+            "rule": s.config().lookup.pause_lookup,
+            "target": s.keyboard_lookup(),
+            "peeking": s.translation_peeking(),
+            "secondary_mode": s.config().subtitles.secondary_obscure,
+        });
         // the progress bar and the thumbnail under the pointer (PLY-014)
         let bar_progress = ui
             .view
@@ -549,6 +591,7 @@ pub fn state() -> Result<Value, String> {
             })),
             "dictionaries": s.dict_page.json(),
         });
+        state["guided_lookup"] = guided_lookup;
         state["web_video"] =
             json!({ "page": s.web_page(), "loading": s.web_loading(), "error": s.web_error });
         state["audio_export"] = json!({

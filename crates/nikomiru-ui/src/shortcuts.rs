@@ -119,6 +119,10 @@ pub enum Action {
     CreateCardAdvanced,
     /// Looks up the first word of the subtitle shown (NFR-A11Y-01).
     LookupSubtitle,
+    /// Look up the first kanji of the current primary cue (GDL-002).
+    LookupFirstKanji,
+    /// Reveal the existing secondary track only while its physical key is held.
+    PeekTranslation,
     /// The lookup starts a word earlier in its subtitle (a character while
     /// its words are not known, LKP-060).
     LookupPrev,
@@ -130,7 +134,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 48] = [
+    pub const ALL: [Action; 50] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -176,6 +180,8 @@ impl Action {
         Action::CreateCard,
         Action::CreateCardAdvanced,
         Action::LookupSubtitle,
+        Action::LookupFirstKanji,
+        Action::PeekTranslation,
         Action::LookupPrev,
         Action::LookupNext,
         Action::Settings,
@@ -230,6 +236,8 @@ impl Action {
             Action::CreateCard => "create_card",
             Action::CreateCardAdvanced => "create_card_advanced",
             Action::LookupSubtitle => "lookup_subtitle",
+            Action::LookupFirstKanji => "lookup_first_kanji",
+            Action::PeekTranslation => "peek_translation",
             Action::LookupPrev => "lookup_prev",
             Action::LookupNext => "lookup_next",
             Action::Settings => "settings",
@@ -337,6 +345,8 @@ impl Action {
             Action::CreateCard => &["Ctrl+Enter"],
             Action::CreateCardAdvanced => &["Ctrl+Shift+Enter"],
             Action::LookupSubtitle => &["Enter"],
+            Action::LookupFirstKanji => &[],
+            Action::PeekTranslation => &["KeyT"],
             Action::LookupPrev => &["ArrowLeft"],
             Action::LookupNext => &["ArrowRight"],
             Action::Settings => &["Ctrl+Comma"],

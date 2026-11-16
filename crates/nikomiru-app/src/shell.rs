@@ -322,7 +322,10 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                     return;
                 }
             }
-            WindowEvent::Focused(false) => open.ui.focus_lost(),
+            WindowEvent::Focused(false) => {
+                open.ui.focus_lost();
+                open.gl.window.request_redraw();
+            }
             WindowEvent::DroppedFile(path) => {
                 if !self.dropped {
                     self.dropped = true;

@@ -452,6 +452,14 @@ pub struct Session {
     /// offset of its grapheme; the overlay, which knows where the cue is,
     /// opens it as a click would.
     keyboard_lookup: Option<(usize, usize)>,
+    /// A pending pause transition, checked against original ownership.
+    guided_pending: Option<crate::guided_lookup::Pending>,
+    /// The queued keyboard target belongs to a guided transition.
+    guided_target: bool,
+    /// The queued target asks only its original kanji character.
+    keyboard_kanji: bool,
+    /// Original physical key of the transient secondary peek.
+    translation_hold: Option<u32>,
     /// The clip of the link being opened: once its subtitles are there,
     /// playback goes to its first cue (ANK-052).
     link_clip: Option<LinkClip>,
@@ -854,6 +862,10 @@ impl Session {
             popups_covered: false,
             study_popup_generation: None,
             keyboard_lookup: None,
+            guided_pending: None,
+            guided_target: false,
+            keyboard_kanji: false,
+            translation_hold: None,
             link_clip: None,
             start_at: None,
             opening: nikomiru_library::policy::Opening::Chosen,
@@ -1079,6 +1091,8 @@ impl Session {
             self.services.servers.close();
         }
         self.release_hold();
+        self.release_translation_peek();
+        self.cancel_guided();
         self.flush_position();
         self.restore_gap_speed();
         self.view.speed = self.gap_speed.normal(self.view.speed);
@@ -1347,7 +1361,14 @@ impl Session {
                 }
                 // STA-001: what played up to the pause counts, the pause does not
                 self.study_sample(!p);
+                let entered_pause = p && !self.view.paused;
                 self.view.paused = p;
+                if !p {
+                    self.cancel_guided();
+                }
+                if entered_pause {
+                    self.arm_guided();
+                }
                 if p {
                     self.practice_boundary();
                 }
@@ -1410,6 +1431,8 @@ impl Session {
     /// Periodic update (from the UI's timer): the screensaver policy, and a
     /// hover popup the pointer left (POP-003).
     pub fn tick(&mut self) {
+        self.guided_input_priority(false);
+        self.resolve_guided();
         if self
             .practice
             .as_ref()
@@ -5568,6 +5591,11 @@ impl Session {
         auto_repeat: bool,
         text_focus: bool,
     ) -> (UiEffect, bool) {
+        if !pressed && self.translation_hold == Some(evdev) {
+            self.release_translation_peek();
+            return (UiEffect::None, true);
+        }
+        self.guided_input_priority(text_focus);
         let Some(chord) = crate::shortcuts::chord(evdev, mods) else {
             if pressed {
                 tracing::debug!("key: evdev code {evdev} has no name");
@@ -5612,6 +5640,19 @@ impl Session {
         if !pressed {
             if action == Action::HoldSpeed {
                 self.release_hold();
+            }
+            return (UiEffect::None, true);
+        }
+        if action == Action::PeekTranslation {
+            if self.translation_hold.is_none()
+                && !auto_repeat
+                && !text_focus
+                && !self.popups_covered
+                && !self.popups.is_open()
+                && self.secondary.source.is_some()
+                && self.recall.is_none()
+            {
+                self.translation_hold = Some(evdev);
             }
             return (UiEffect::None, true);
         }
@@ -5705,9 +5746,16 @@ impl Session {
             }
             // NFR-A11Y-01: the first word of the subtitle shown
             Action::LookupSubtitle => {
+                self.cancel_guided();
+                self.keyboard_kanji = false;
                 self.keyboard_lookup = self.subs.active().first().map(|&cue| (cue, 0));
                 Ok(())
             }
+            Action::LookupFirstKanji => {
+                self.first_kanji_lookup();
+                Ok(())
+            }
+            Action::PeekTranslation => Ok(()),
             Action::LookupPrev | Action::LookupNext => {
                 self.step_lookup(action == Action::LookupNext);
                 Ok(())
@@ -5962,6 +6010,9 @@ impl Session {
     /// close, since they looked up words of the cues that were (and replay or
     /// go to them).
     fn cues_changed(&mut self) {
+        self.cancel_guided();
+        self.keyboard_lookup = None;
+        self.keyboard_kanji = false;
         if self.practice.is_some() {
             self.end_replay();
         }
@@ -5974,6 +6025,8 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.release_translation_peek();
+        self.cancel_guided();
         self.bank_source_changed(false);
         self.services.subtitle_source.cancel(false);
         self.services.subtitle_source.cancel(true);
@@ -6301,6 +6354,7 @@ impl Session {
     }
 
     fn progress_changed(&mut self) {
+        self.cancel_guided();
         if self.practice.is_some() {
             self.end_replay();
         }
@@ -6508,6 +6562,7 @@ impl Session {
     /// The secondary subtitle chosen in the menu: a source key, or `"off"`
     /// (SUB-017). Text sources only: mpv draws graphic tracks.
     pub fn select_secondary(&mut self, key: &str) {
+        self.release_translation_peek();
         self.secondary_generation += 1;
         let source = self
             .sub_sources
@@ -6566,6 +6621,9 @@ impl Session {
     /// The obscuring of the secondary subtitle now: its own mode, lifted
     /// like the main one's (SUB-014, SUB-017).
     pub fn secondary_obscure_now(&self) -> Obscure {
+        if self.translation_peeking() {
+            return Obscure::None;
+        }
         crate::subtitles::obscured(
             self.secondary.mode,
             self.view.loaded && !self.view.paused,
@@ -6644,7 +6702,14 @@ impl Session {
     /// text from there (LKP-001…LKP-003) is looked up in a popup next to
     /// `anchor`; playback pauses if it was going.
     pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        let kanji = self.keyboard_lookup == Some((cue, offset)) && self.keyboard_kanji;
+        self.cancel_guided();
         self.keyboard_lookup = None;
+        self.keyboard_kanji = false;
+        if kanji {
+            self.look_up_kanji(cue, offset, anchor);
+            return;
+        }
         // a click: the popup does not close when the pointer leaves
         self.hover.reset();
         self.look_up_grapheme(cue, offset, anchor);
@@ -6684,6 +6749,8 @@ impl Session {
     }
 
     fn look_up_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        self.cancel_guided();
+        self.keyboard_kanji = false;
         let Some(text) = self.subs.cue(cue).map(|c| c.plain_text.clone()) else {
             return;
         };
@@ -7512,6 +7579,10 @@ impl Session {
     }
 
     fn run_popup_commands(&mut self, commands: Vec<Command>) {
+        if self.popups.is_open() {
+            self.release_translation_peek();
+            self.cancel_guided();
+        }
         for c in commands {
             match c {
                 Command::Pause => {
@@ -8183,6 +8254,7 @@ impl Session {
         result: Result<Vec<nikomiru_dict::segment::Word>, String>,
     ) {
         self.words.done(generation, text, result);
+        self.resolve_guided();
     }
 
     /// The rows of the subtitle list in view: their words are split, to
@@ -9425,3 +9497,6 @@ mod bank_session;
 
 #[path = "session_batch.rs"]
 mod batch_session;
+
+#[path = "session_guided.rs"]
+mod guided_session;

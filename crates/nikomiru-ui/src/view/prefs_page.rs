@@ -575,6 +575,23 @@ fn look(
 fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     form(ui, "settings-lookup", |ui| {
+        row(ui, &tr("settings-pause-lookup"), |ui| {
+            let result = egui::ComboBox::from_id_salt("pause-lookup-rule")
+                .selected_text(tr(&format!("settings-pause-{}", draft.lookup.pause_lookup)))
+                .show_ui(ui, |ui| {
+                    for (value, key) in [
+                        ("off", "settings-pause-off"),
+                        ("unknown", "settings-pause-unknown"),
+                        ("kanji", "settings-pause-kanji"),
+                    ] {
+                        ui.selectable_value(&mut draft.lookup.pause_lookup, value.into(), tr(key));
+                    }
+                });
+            result.response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::ComboBox, true, tr("settings-pause-lookup"))
+            });
+            result.response
+        });
         row(ui, &tr("settings-lookup-results"), |ui| {
             ui.add(Slider::new(&mut draft.lookup.max_results, 1..=50))
         });
@@ -599,6 +616,7 @@ fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    ui.label(tr("settings-pause-hint"));
     ui.checkbox(
         &mut draft.lookup.hover_without_modifier,
         tr("settings-lookup-hover"),
@@ -742,6 +760,23 @@ mod tests {
                     leave: Leave::Stay,
                 },
             )
+    }
+
+    // T-GDL-001, T-GDL-004: the accessible optional rule remains a draft until explicit Save.
+    #[test]
+    fn paused_lookup_rule_is_named_and_saved_explicitly() {
+        let mut h = harness(SettingsTab::Lookup, Config::default());
+        h.run();
+        h.get_by_label("settings-pause-lookup").click();
+        h.run();
+        h.get_by_label("settings-pause-unknown").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.get_by_label("settings-save").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(),[Command::SettingsSave(Section::Lookup,c)] if c.lookup.pause_lookup=="unknown")
+        );
     }
 
     // T-SET-006: Reset puts the tab's keys back in the draft, Save sends them

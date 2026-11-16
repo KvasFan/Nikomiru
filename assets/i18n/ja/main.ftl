@@ -1504,3 +1504,12 @@ composer-profile-hint = プロファイルを適用すると下書きを閉じ�
 composer-fields-invalid = フィールドが存在しないか、空、または上限を超えています。ノートタイプと編集内容を確認してください。
 composer-senses-stale = 変更されていない語義を少なくとも1つ選択してください。辞書の変更後は作成画面を開き直してください。
 composer-source-stale = 元のソースまたは検索が変更されました。下書きを閉じて作成画面を開き直してください。
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = 一時停止時の検索
+settings-pause-off = 無効
+settings-pause-unknown = 最初の未知語
+settings-pause-kanji = 最初の漢字
+settings-pause-hint = 最初の表示中の主字幕を使用します。未知語はインストール済み辞書と単語の状態で判定します。漢字の検索は別のルールです。
+action-lookup-first-kanji = 最初の漢字を検索
+action-peek-translation = 押している間だけ副字幕の訳を表示
