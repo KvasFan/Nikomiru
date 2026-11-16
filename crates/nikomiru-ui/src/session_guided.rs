@@ -15,6 +15,7 @@ impl Session {
             && !self.clozes.open
             && !self.batch.open
             && !self.bank.open
+            && !self.reader.open
     }
     pub(super) fn cancel_guided(&mut self) {
         self.guided_pending = None;
@@ -139,6 +140,7 @@ impl Session {
             && self.recall.is_none()
             && !self.batch.open
             && !self.bank.open
+            && !self.reader.open
             && !self.clozes.open
     }
     /// Refresh priority barriers when a page or text input gains ownership.
@@ -150,6 +152,7 @@ impl Session {
             || self.clozes.open
             || self.batch.open
             || self.bank.open
+            || self.reader.open
         {
             self.release_translation_peek();
             self.cancel_guided();

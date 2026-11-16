@@ -25,6 +25,8 @@ pub struct OpenBook {
     pub jump: bool,
     /// When reading started (monotonic ms), and how far along.
     pub started: (i64, u64),
+    /// The sentence of the paragraph shown in sentence focus (RDR-004).
+    pub sentence: usize,
 }
 
 /// The Books page.
@@ -40,6 +42,9 @@ pub struct BooksPage {
     pub open: Option<OpenBook>,
     /// The word looked up: its paragraph and bytes (BOK-006).
     pub highlight: Option<(usize, std::ops::Range<usize>)>,
+    /// The text an annotation or a search result led to: its paragraph and
+    /// bytes (RDR-002, RDR-003).
+    pub found: Option<(usize, std::ops::Range<usize>)>,
     /// A book is being read.
     pub busy: bool,
     /// The page's message, and whether it is good news.

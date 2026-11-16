@@ -33,6 +33,7 @@ mod phrases;
 mod player_page;
 mod popups;
 mod prefs_page;
+mod reader_tools;
 mod recall;
 mod review_view;
 mod sentence_bank;
@@ -62,6 +63,8 @@ pub enum Dialog {
     SentencesExport,
     /// Frozen shown phrase notebook TSV.
     PhrasesExport,
+    /// Shown reader annotations as TSV (RDR-002).
+    AnnotationsExport,
     /// A video to play (LIB-001).
     Video,
     /// A subtitle file for the open video (SUB-006).
@@ -275,6 +278,10 @@ impl FileDialog {
                 tr("phrases-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
             ),
+            Dialog::AnnotationsExport => (
+                tr("annotations-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
             Dialog::ConcordanceExport => (
                 tr("vocabulary-examples-export-shown"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
@@ -337,6 +344,7 @@ impl FileDialog {
                 Dialog::StudyPresetsExport => Some("nikomiru-study-presets.json".into()),
                 Dialog::SentencesExport => Some("nikomiru-sentence-examples.tsv".into()),
                 Dialog::PhrasesExport => Some("nikomiru-phrases.tsv".into()),
+                Dialog::AnnotationsExport => Some("nikomiru-annotations.tsv".into()),
                 Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
                 Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
@@ -369,6 +377,7 @@ pub(crate) struct View {
     pub phrases_open: bool,
     pub phrase_query: String,
     pub cloze_query: String,
+    pub reader_tools: reader_tools::Query,
     pub bank_expression: String,
     pub bank_reading: String,
     pub batch_detail: usize,
@@ -689,6 +698,7 @@ impl View {
 
     pub(crate) fn recall_covered(&self, s: &Session) -> bool {
         s.batch.open
+            || s.reader.open
             || s.bank.open
             || s.clozes.open
             || self.phrases_open
@@ -728,6 +738,13 @@ impl View {
             ui.painter()
                 .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
             batch_mining::show(ui, s, &mut self.batch_detail, &mut out);
+            return out;
+        }
+        if s.reader.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            reader_tools::show(ui, s, &mut self.reader_tools, &mut out);
             return out;
         }
         if s.bank.open {

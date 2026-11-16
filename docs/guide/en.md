@@ -360,6 +360,14 @@ Books → Paste text opens an explicit editor. Enter a title (up to 256 characte
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
 
+## Annotations, library search and reading modes (M111 development)
+
+In an open text book, **Add bookmark**, **Highlight** and **Add note** start a draft; nothing is saved until **Save**. A highlight or note starts on the word you last looked up; choose **Word**, **Sentence** or **Paragraph** to cover more. A bookmark marks the paragraph at the top of the page and needs a name. Highlights and notes are drawn behind their text. **Annotations** lists every book's annotations (or only this book's) with a filter, explicit editing/deletion, **Open in the book** and a TSV export of the shown rows. If a book's text changes, its annotations are kept but marked as changed and are never shown at a shifted place. Annotations stay on this computer: they are in local backups but not merged by WebDAV. They never change word statuses, phrases or reading progress.
+
+**Search books** finds literal text in every added book (manga excluded), ignoring case and Unicode composition. Up to 200 results (20 per book) show their book, chapter and context; opening one checks that the text is still there before moving the reader. The text is read once per session and read again when a file changes; changed or missing books are listed as not searched. Searching does not move any reading position.
+
+For horizontal writing, choose **Scroll** (the default), **Pages** or **Sentence** in the reader bar. Pages shows whole paragraphs a page at a time; Sentence shows one larger sentence of its paragraph. Turn with the Previous/Next buttons or Page Up/Page Down. Lookup, cards, status underlines and read-along work in every mode; the choice is saved. Vertical writing and manga keep their own pages.
+
 ## Additional local documents (M110 development)
 
 Books → Add also accepts `.htmlz`, `.rtf`, `.docx` and text-layer `.pdf` files. Each uses the usual word lookup, cards, phrases, sentence indexing, analysis and saved reading position. Original files stay where they are; their contents are not copied into backups or WebDAV. Moving a file with the same name/content retains its identity; replacing its content creates a different source. Failed imports keep the current book open.

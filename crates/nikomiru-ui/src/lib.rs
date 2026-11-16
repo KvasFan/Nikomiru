@@ -33,6 +33,7 @@ pub mod phrases;
 pub mod player_settings;
 pub mod popup;
 pub mod popup_view;
+pub mod reader_tools;
 pub mod reader_words;
 mod recall;
 mod recall_file;

@@ -575,6 +575,14 @@ pub struct Session {
     pub batch: crate::batch_mining::State,
     bank_place: Option<(nikomiru_library::phrases::Source, String)>,
     bank_export: Option<String>,
+    /// Reader annotations and the library text search (RDR-001…RDR-003).
+    pub reader: crate::reader_tools::State,
+    annotation_job: Option<crate::reader_tools::Job>,
+    /// Where a new annotation was captured: chapter, paragraph and bytes.
+    annotation_capture: Option<(usize, usize, std::ops::Range<usize>)>,
+    annotation_export: Option<String>,
+    search_request: Option<(crate::reader_tools::Request, nikomiru_core::Cancel)>,
+    search_index: std::sync::Arc<std::sync::Mutex<crate::reader_tools::Index>>,
     phrase_job: Option<crate::phrases::Job>,
     phrase_place: Option<nikomiru_library::phrases::Source>,
     phrase_export: Option<String>,
@@ -927,6 +935,12 @@ impl Session {
             batch: Default::default(),
             bank_place: None,
             bank_export: None,
+            reader: Default::default(),
+            annotation_job: None,
+            annotation_capture: None,
+            annotation_export: None,
+            search_request: None,
+            search_index: Default::default(),
             phrase_job: None,
             phrase_place: None,
             phrase_export: None,
@@ -5702,6 +5716,11 @@ impl Session {
             self.bank.open = false;
             return UiEffect::None;
         }
+        if self.reader.open && action == Action::Back {
+            self.reader.open = false;
+            self.reader_discard_draft();
+            return UiEffect::None;
+        }
         if self.clozes.open && action == Action::Back {
             self.clozes.open = false;
             self.clozes.round = None;
@@ -6965,6 +6984,7 @@ impl Session {
             .identity
             .clone()
             .unwrap_or_else(|| nikomiru_library::books::book_uid(&book.title, &book.author, chars));
+        let mut mark = None;
         if let Some((source, context)) = self.bank_place.take() {
             let matches = source.uid == uid
                 && book
@@ -6984,6 +7004,10 @@ impl Session {
                 self.toasts.push(error);
                 return;
             }
+            mark = Some((
+                source.paragraph as usize,
+                source.offset as usize..source.offset as usize + context.len(),
+            ));
             self.phrase_place = Some(source);
         }
         if self.books_page.open.is_some() {
@@ -7022,8 +7046,27 @@ impl Session {
             paragraph: record.paragraph as usize,
             jump: true,
             started: (moment.mono_ms, record.read_chars),
+            sentence: 0,
             book,
         });
+        if let Some((paragraph, range)) = mark.filter(|(p, _)| *p == record.paragraph as usize) {
+            if let Some(open) = &mut self.books_page.open {
+                open.sentence = open
+                    .book
+                    .chapters
+                    .get(open.chapter)
+                    .and_then(|c| c.paragraphs.get(paragraph))
+                    .map_or(0, |p| {
+                        nikomiru_text::sentence::sentences(&p.text)
+                            .iter()
+                            .position(|r| r.end > range.start)
+                            .unwrap_or(0)
+                    });
+            }
+            self.books_page.found = Some((paragraph, range));
+        }
+        // the open book's highlights are drawn from the committed set (RDR-002)
+        self.annotations_request(crate::reader_tools::Job::List);
         self.books_reload();
     }
 
@@ -7186,8 +7229,10 @@ impl Session {
         {
             open.chapter = chapter;
             open.paragraph = 0;
+            open.sentence = 0;
             open.jump = true;
             self.books_page.status = None;
+            self.books_page.found = None;
         }
     }
 
@@ -7395,6 +7440,7 @@ impl Session {
     /// statistics (BOK-008).
     pub fn book_close(&mut self) {
         self.bank_source_changed(true);
+        self.books_page.found = None;
         self.books_page.study.clear();
         self.close_all_popups();
         self.book_save();
@@ -9512,3 +9558,6 @@ mod batch_session;
 
 #[path = "session_guided.rs"]
 mod guided_session;
+
+#[path = "session_reader.rs"]
+mod reader_session;

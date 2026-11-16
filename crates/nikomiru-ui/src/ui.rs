@@ -40,6 +40,10 @@ pub enum Inbound {
     },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// An ordered annotation operation completed (RDR-001).
+    Annotations(crate::reader_tools::Answer),
+    /// A library text search ended (RDR-003): its epoch and result.
+    Search(u64, Result<crate::reader_tools::Outcome, String>),
     /// An ordered cloze operation completed.
     Cloze(crate::cloze::Answer),
     /// A complete explicitly indexed owned-source batch, before its atomic commit.
@@ -356,6 +360,8 @@ impl std::fmt::Debug for Inbound {
             Inbound::BookRead { .. } => "BookRead",
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
+            Inbound::Annotations(_) => "Annotations",
+            Inbound::Search(..) => "Search",
             Inbound::Cloze(_) => "Cloze",
             Inbound::BatchContexts(_) => "BatchContexts",
             Inbound::BatchPreviewed(_) => "BatchPreviewed",
@@ -445,6 +451,24 @@ pub(crate) enum Command {
     ClozeNext(nikomiru_library::review::Grade, bool),
     ClozeUndo,
     ClozeCancelRound,
+
+    /// RDR-001…RDR-004
+    ReaderToolsOpen(crate::reader_tools::Tab),
+    ReaderToolsClose,
+    AnnotationNew(nikomiru_library::annotations::Kind),
+    AnnotationScope(crate::reader_tools::Scope),
+    AnnotationEdit(Option<nikomiru_library::annotations::Annotation>),
+    AnnotationSave,
+    AnnotationDelete(String),
+    AnnotationGo(String),
+    AnnotationExport(Vec<String>),
+    AnnotationsThisBook(bool),
+    SearchRun(String),
+    SearchCancel,
+    SearchGo(usize),
+    BookMode(String),
+    BookTurn(usize),
+    BookSentence(bool),
 
     PhrasesOpen,
     PhraseNew(bool),
@@ -1210,6 +1234,7 @@ impl Ui {
                     Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::PhrasesExport => self.session.phrases_export_to(&path),
+                    Dialog::AnnotationsExport => self.session.annotations_export_to(&path),
                     Dialog::SentencesImport => self.session.bank_import(path),
                     Dialog::SentencesExport => self.session.bank_export_to(&path),
                     Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
@@ -1319,6 +1344,14 @@ impl Ui {
                 self.session.phrases_done(answer);
                 true
             }
+            Inbound::Annotations(answer) => {
+                self.session.annotations_done(answer);
+                true
+            }
+            Inbound::Search(epoch, result) => {
+                self.session.search_done(epoch, result);
+                true
+            }
             Inbound::BookPasted(result) => {
                 self.session.book_pasted(result);
                 true
@@ -1379,6 +1412,31 @@ impl Ui {
     /// focused button with Space).
     pub fn key(&mut self, key: Key, text_focus: bool) -> bool {
         self.cover_popups();
+        // RDR-004: Page Up/Down turn pages or sentences of the book read
+        if key.pressed
+            && !text_focus
+            && self.view.books_page_open
+            && !self.session.popups_covered
+            && !self.session.popups.is_open()
+            && let Some(forward) = match key.evdev {
+                109 => Some(true),
+                104 => Some(false),
+                _ => None,
+            }
+        {
+            match self.session.book_turning() {
+                Some("pages") => {
+                    self.view.books.turn = Some(forward);
+                    return true;
+                }
+                Some(_) => {
+                    self.apply(Command::BookSentence(forward));
+                    self.pump();
+                    return true;
+                }
+                None => {}
+            }
+        }
         let (effect, taken) =
             self.session
                 .key(key.evdev, key.mods, key.pressed, key.repeat, text_focus);
@@ -1581,6 +1639,7 @@ impl Ui {
     fn cover_popups(&mut self) {
         self.session.recall_covered = self.view.recall_covered(&self.session);
         self.session.popups_covered = self.session.batch.open
+            || self.session.reader.open
             || self.session.bank.open
             || self.session.clozes.open
             || (self.view.phrases_open && !self.session.study_popup_open())
@@ -1697,6 +1756,49 @@ impl Ui {
                 s.clozes.round = None;
                 s.clozes.preview = None;
             }
+            Command::ReaderToolsOpen(tab) => s.reader_tools_open(tab),
+            Command::ReaderToolsClose => {
+                s.reader.open = false;
+                s.reader.editor = None;
+            }
+            Command::AnnotationNew(kind) => s.annotation_new(kind),
+            Command::AnnotationScope(scope) => s.annotation_scope(scope),
+            Command::AnnotationEdit(a) => {
+                if a.is_none() {
+                    s.reader_discard_draft();
+                } else {
+                    s.reader.editor = a;
+                }
+            }
+            Command::AnnotationSave => s.annotation_save(),
+            Command::AnnotationDelete(id) => {
+                s.annotations_request(crate::reader_tools::Job::Delete(id));
+            }
+            Command::AnnotationGo(id) => {
+                if s.annotation_go(&id) {
+                    s.reader.open = false;
+                    self.view.close_library_page();
+                    self.view.books_page_open = true;
+                }
+            }
+            Command::AnnotationExport(ids) => {
+                if s.annotations_export_prepare(&ids) {
+                    self.view.dialog = Some(Dialog::AnnotationsExport);
+                }
+            }
+            Command::AnnotationsThisBook(on) => s.reader.this_book = on,
+            Command::SearchRun(query) => s.search_run(&query),
+            Command::SearchCancel => s.search_cancel(),
+            Command::SearchGo(index) => {
+                if s.search_go(index) {
+                    s.reader.open = false;
+                    self.view.close_library_page();
+                    self.view.books_page_open = true;
+                }
+            }
+            Command::BookMode(mode) => s.book_set_mode(&mode),
+            Command::BookTurn(paragraph) => s.book_turn(paragraph),
+            Command::BookSentence(forward) => s.book_sentence(forward),
             Command::PhrasesOpen => {
                 self.view.phrases_open = true;
                 s.phrases_request(crate::phrases::Job::List);
@@ -2130,6 +2232,21 @@ impl Ui {
             self.session.start_cloze_job(
                 job,
                 Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
+            );
+        }
+        if let Some(job) = self.session.take_annotation_job() {
+            let waker = self.waker.clone();
+            self.session.start_annotation_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Annotations(answer))),
+            );
+        }
+        if let Some((request, cancel)) = self.session.take_search_request() {
+            let waker = self.waker.clone();
+            self.session.start_search(
+                request,
+                cancel,
+                Box::new(move |epoch, result| waker.wake(Inbound::Search(epoch, result))),
             );
         }
         if let Some(job) = self.session.take_phrase_job() {

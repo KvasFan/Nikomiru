@@ -627,6 +627,31 @@ pub fn state() -> Result<Value, String> {
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
         state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
+        state["reader_tools"] = json!({
+            "open": s.reader.open,
+            "tab": format!("{:?}", s.reader.tab),
+            "busy": s.reader.busy,
+            "error": s.reader.error,
+            "editor": s.reader.editor.as_ref().map(annotation_json),
+            "items": s.reader.items.iter().map(|a| {
+                let mut row = annotation_json(a);
+                row["current"] = json!(s.annotation_current(a));
+                row
+            }).collect::<Vec<_>>(),
+            "search": {
+                "query": s.reader.search.query,
+                "epoch": s.reader.search.epoch,
+                "running": s.reader.search.running,
+                "error": s.reader.search.error,
+                "outcome": s.reader.search.outcome.as_ref().map(|o| json!({
+                    "epoch": o.epoch,
+                    "searched": o.searched,
+                    "failed": o.failed,
+                    "truncated": o.truncated,
+                    "hits": o.hits.iter().map(|h| json!({"uid":h.uid,"title":h.title,"chapter":h.chapter,"paragraph":h.paragraph,"start":h.start,"end":h.end,"text":h.text,"snippet":h.snippet.0})).collect::<Vec<_>>(),
+                })),
+            },
+        });
         state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(uid, b)| {
@@ -649,6 +674,10 @@ pub fn state() -> Result<Value, String> {
             "paragraphs":s.books_page.open.as_ref().and_then(|o|o.book.chapters.get(o.chapter).map(|c|c.paragraphs.iter().map(|p|json!({"text":p.text,"heading":p.heading,"ruby":p.ruby.iter().map(|r|json!({"start":r.range.start,"end":r.range.end,"text":r.text})).collect::<Vec<_>>()})).collect::<Vec<_>>())),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
             "vertical": s.book_vertical(),
+            "mode": s.book_mode(),
+            "sentence": s.books_page.open.as_ref().map(|o| o.sentence),
+            "found": s.books_page.found.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
+            "annotated": s.chapter_annotations().iter().map(|(p, r)| json!([p, r.start, r.end])).collect::<Vec<_>>(),
             "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
             "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
             "page_text": s.books_page.open.as_ref().and_then(|o| {
@@ -1227,6 +1256,11 @@ pub fn books(
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
             "listen" => out.push(Command::BookListen),
+            // RDR-004: `path` is the mode; `paragraph` the page's first
+            "mode" => out.push(Command::BookMode(path.clone().unwrap_or_default())),
+            "turn" => out.push(Command::BookTurn(paragraph.unwrap_or(0))),
+            "next-sentence" => out.push(Command::BookSentence(true)),
+            "previous-sentence" => out.push(Command::BookSentence(false)),
             // WEB-001: `path` is the address typed
             "page" => out.push(Command::BookPage(path.clone().unwrap_or_default())),
             "read" => out.push(Command::MangaRead {
@@ -1805,6 +1839,83 @@ pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), Str
             },
         }))
     })
+}
+
+fn annotation_json(a: &nikomiru_library::annotations::Annotation) -> Value {
+    json!({"id":a.id,"kind":a.kind.name(),"book":a.book,"title":a.title,"chapter":a.chapter,
+        "paragraph":a.paragraph,"start":a.start,"end":a.end,"quote":a.quote,"name":a.name,"note":a.note})
+}
+
+/// Annotations and the library search (RDR-001…RDR-003) through production commands.
+pub fn reader_tools(action: String, args: Value) -> Result<(), String> {
+    use crate::reader_tools::{Scope, Tab};
+    call(move |ui| -> Result<(), String> {
+        let text = |key: &str| args[key].as_str().map(str::to_owned);
+        match action.as_str() {
+            "open" => ui.run(Command::ReaderToolsOpen(
+                if text("tab").as_deref() == Some("search") {
+                    Tab::Search
+                } else {
+                    Tab::Annotations
+                },
+            )),
+            "close" => ui.run(Command::ReaderToolsClose),
+            "new" => ui.run(Command::AnnotationNew(
+                crate::reader_tools::kind(&text("kind").ok_or("missing kind")?)
+                    .ok_or("unknown kind")?,
+            )),
+            "scope" => ui.run(Command::AnnotationScope(match text("scope").as_deref() {
+                Some("word") => Scope::Word,
+                Some("sentence") => Scope::Sentence,
+                Some("paragraph") => Scope::Paragraph,
+                _ => return Err("unknown scope".into()),
+            })),
+            "edit" => {
+                let mut a = match text("id") {
+                    Some(id) => ui.session.reader.items.iter().find(|a| a.id == id).cloned(),
+                    None => ui.session.reader.editor.clone(),
+                }
+                .ok_or("annotation missing")?;
+                if let Some(name) = text("name") {
+                    a.name = name;
+                }
+                if let Some(note) = text("note") {
+                    a.note = note;
+                }
+                ui.run(Command::AnnotationEdit(Some(a)));
+            }
+            "save" => ui.run(Command::AnnotationSave),
+            "cancel" => ui.run(Command::AnnotationEdit(None)),
+            "delete" => ui.run(Command::AnnotationDelete(text("id").ok_or("missing id")?)),
+            "go" => ui.run(Command::AnnotationGo(text("id").ok_or("missing id")?)),
+            "export" => {
+                let query = text("query").unwrap_or_default();
+                let ids = ui
+                    .session
+                    .reader
+                    .items
+                    .iter()
+                    .filter(|a| crate::reader_tools::matches(a, &query))
+                    .map(|a| a.id.clone())
+                    .collect();
+                ui.run(Command::AnnotationExport(ids));
+                if let Some(path) = text("path") {
+                    ui.view.dialog = None;
+                    ui.handle(Inbound::Chosen {
+                        dialog: crate::view::Dialog::AnnotationsExport,
+                        path: PathBuf::from(path),
+                    });
+                }
+            }
+            "search" => ui.run(Command::SearchRun(text("query").unwrap_or_default())),
+            "search-cancel" => ui.run(Command::SearchCancel),
+            "search-go" => ui.run(Command::SearchGo(
+                args["index"].as_u64().ok_or("missing index")? as usize,
+            )),
+            _ => return Err("unknown reader-tools action".into()),
+        }
+        Ok(())
+    })?
 }
 
 /// Phrase notebook through production commands; editing changes a draft, never a saved record.

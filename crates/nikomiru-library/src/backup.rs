@@ -521,7 +521,25 @@ mod tests {
                 )
                 .unwrap()
         );
+        // T-RDR-001: annotations are part of the ordinary database snapshot.
+        let annotation = crate::annotations::Annotation {
+            id: "00000000-0000-4000-8000-000000000005".into(),
+            kind: crate::annotations::Kind::Bookmark,
+            book: "book/abc".into(),
+            title: "猫".into(),
+            chapter: 0,
+            paragraph: 0,
+            start: 0,
+            end: 3,
+            quote: "猫".into(),
+            name: "start".into(),
+            note: String::new(),
+            created_ms: 1,
+            changed_ms: 1,
+        };
+        assert!(f.library.put_annotation(&annotation).unwrap());
         let out = backup(&f, false);
+        assert!(f.library.remove_annotation(&annotation.id).unwrap());
         assert!(
             f.library
                 .change_batch_item(
@@ -575,6 +593,7 @@ mod tests {
             1234
         );
         assert_eq!(library.phrases().unwrap(), vec![phrase.clone()]);
+        assert_eq!(library.annotations().unwrap(), vec![annotation]);
         let clozes = library.clozes().unwrap();
         assert_eq!(clozes.len(), 1);
         assert_eq!(clozes[0].phrase, phrase);

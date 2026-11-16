@@ -361,6 +361,14 @@ Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 cara
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
 
+## Annotazioni, ricerca nei libri e modalità di lettura (sviluppo M111)
+
+In un libro di testo aperto, **Aggiungi segnalibro**, **Evidenzia** e **Aggiungi nota** creano una bozza; nulla viene salvato prima di **Salva**. Evidenziazioni e note partono dall’ultima parola cercata; scegli **Parola**, **Frase** o **Paragrafo** per coprire di più. Un segnalibro segna il paragrafo in cima alla pagina e deve avere un nome. Evidenziazioni e note sono disegnate dietro al testo. **Annotazioni** elenca le annotazioni di tutti i libri (o solo di questo) con un filtro, modifica ed eliminazione esplicite, **Apri nel libro** ed esportazione TSV delle righe mostrate. Se il testo di un libro cambia, le annotazioni restano ma sono segnate come cambiate e non vengono mai mostrate in un punto spostato. Restano su questo computer: sono nei backup locali ma non vengono unite da WebDAV. Non cambiano mai stati delle parole, frasi o posizione di lettura.
+
+**Cerca nei libri** trova un testo letterale in tutti i libri aggiunti (esclusi i manga), senza distinguere maiuscole e composizione Unicode. Fino a 200 risultati (20 per libro) mostrano libro, capitolo e contesto; aprirne uno verifica che il testo sia ancora lì prima di spostare il lettore. Il testo viene letto una volta per sessione e riletto quando un file cambia; i libri cambiati o mancanti sono elencati come non cercati. La ricerca non sposta nessuna posizione di lettura.
+
+Per la scrittura orizzontale scegli **Scorrimento** (predefinito), **Pagine** o **Frase** nella barra del lettore. Pagine mostra paragrafi interi una pagina alla volta; Frase mostra una frase più grande del suo paragrafo. Si gira con i pulsanti Precedente/Successiva o con Pagina su/Pagina giù. Dizionario, carte, sottolineature degli stati e lettura accompagnata funzionano in tutte le modalità; la scelta viene salvata. La scrittura verticale e i manga mantengono le loro pagine.
+
 ## Altri documenti locali (sviluppo M110)
 
 Libri → Aggiungi accetta anche file `.htmlz`, `.rtf`, `.docx` e `.pdf` con testo. Usano ricerca delle parole, carte, frasi, indice delle frasi, analisi e posizione salvata del lettore. I file originali restano dove sono; i contenuti non vengono copiati nei backup o su WebDAV. Spostare un file conservandone nome e contenuto mantiene la sua identità; cambiare il contenuto crea una fonte diversa. Un’importazione fallita lascia aperto il libro attuale.

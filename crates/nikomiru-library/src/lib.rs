@@ -8,6 +8,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+/// Reader bookmarks, highlights and notes.
+pub mod annotations;
 pub mod backup;
 pub mod batches;
 pub mod books;

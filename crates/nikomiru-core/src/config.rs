@@ -765,6 +765,10 @@ pub struct BooksConfig {
     pub vertical: Option<bool>,
     /// Manga show two pages side by side (MNG-002).
     pub double_pages: bool,
+    /// Horizontal reading mode: `scroll` (also when empty), `pages` or
+    /// `sentence` (RDR-004).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub mode: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -1279,6 +1283,9 @@ impl Config {
         if !matches!(c.lookup.pause_lookup.as_str(), "off" | "unknown" | "kanji") {
             c.lookup.pause_lookup = "off".into();
         }
+        if !matches!(c.books.mode.as_str(), "" | "scroll" | "pages" | "sentence") {
+            c.books.mode = String::new();
+        }
         let mut names = std::collections::HashSet::new();
         c.lookup
             .study_presets
@@ -1712,6 +1719,19 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    // T-RDR-004: the reading mode roundtrips; old and invalid values scroll.
+    #[test]
+    fn reading_modes_are_explicit() {
+        assert_eq!(Config::from_toml("[books]").unwrap().books.mode, "");
+        for mode in ["scroll", "pages", "sentence"] {
+            let (config, bad) = Config::parse(&format!("[books]\nmode='{mode}'")).unwrap();
+            assert!(bad.is_empty());
+            let text = config.to_text().unwrap();
+            assert_eq!(Config::parse(&text).unwrap().0.books.mode, mode);
+        }
+        assert_eq!(Config::parse("[books]\nmode='x'").unwrap().0.books.mode, "");
+    }
 
     // T-GDL-001, T-GDL-004: old configurations stay off; the explicit rule roundtrips without transient key state.
     #[test]

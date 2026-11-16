@@ -23,6 +23,7 @@ mod mokuro;
 mod perf;
 mod phrases;
 mod progressive_ocr;
+mod reader_tools;
 mod reader_words;
 mod recall;
 mod sentence_bank;

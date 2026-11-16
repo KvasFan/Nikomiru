@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Add local named bookmarks, highlights and notes with stale-source detection and TSV export, a bounded library-wide literal text search with checked result opening, and Pages and Sentence reading modes (M111, RDR-001…RDR-004).
+
 - Read bounded local HTMLZ, RTF, DOCX and text-layer PDF in the existing reader, with native legacy decoding, original PDF page locations and explicit Poppler discovery/setup (M110, DOC-001…DOC-005).
 
 - Optionally look up the first exact unknown word or independent first kanji on pause, and hold a configurable physical key to reveal an already loaded secondary track without changing playback or saved obscuring (M109, GDL-001…GDL-004).
