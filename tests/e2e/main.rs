@@ -30,6 +30,7 @@ mod recall;
 mod sentence_bank;
 mod series_scores;
 mod servers;
+mod shortcut_maps;
 mod subtitle_study;
 mod support;
 mod text_reading;

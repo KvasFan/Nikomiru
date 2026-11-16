@@ -12,6 +12,7 @@ use egui::{Button, Grid, RichText, Role, Ui, WidgetInfo, vec2};
 
 use super::palette;
 use super::popups::Translate;
+use crate::shortcut_maps::Preview;
 use crate::shortcuts::{Action, Bindings, Context, display, normalize};
 use crate::ui::Command;
 
@@ -99,17 +100,106 @@ fn add(
     }
 }
 
+/// The import preview (KEY-009): what changes, what is ignored or refused;
+/// true when Apply replaced `overrides`.
+fn import_preview(
+    ui: &mut Ui,
+    tr: &Translate<'_>,
+    overrides: &mut BTreeMap<String, Vec<String>>,
+    preview: &Preview,
+    out: &mut Vec<Command>,
+) -> bool {
+    let p = palette::current();
+    let t = |id: &str| tr(id, &[]);
+    let mut applied = false;
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.label(RichText::new(t("shortcut-map-preview")).strong());
+        let shown = |keys: &[String]| {
+            if keys.is_empty() {
+                "—".to_string()
+            } else {
+                keys.iter()
+                    .map(|k| display(k))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        };
+        if preview.changes.is_empty() {
+            ui.label(t("shortcut-map-no-changes"));
+        }
+        for change in &preview.changes {
+            ui.label(tr(
+                "shortcut-map-change",
+                &[
+                    ("action", tr(&change.action.label_id(), &[])),
+                    ("before", shown(&change.before)),
+                    ("after", shown(&change.after)),
+                ],
+            ));
+        }
+        if !preview.unknown.is_empty() {
+            ui.label(tr(
+                "shortcut-map-unknown",
+                &[("actions", preview.unknown.join(", "))],
+            ));
+        }
+        for (action, chord) in &preview.invalid {
+            ui.label(
+                RichText::new(tr(
+                    "shortcut-map-invalid-key",
+                    &[("action", action.clone()), ("key", chord.clone())],
+                ))
+                .color(p.bad),
+            );
+        }
+        if !preview.conflicts.is_empty() {
+            let keys: Vec<String> = preview
+                .conflicts
+                .iter()
+                .map(|c| display(&c.chord))
+                .collect();
+            ui.label(
+                RichText::new(tr("shortcuts-conflict", &[("keys", keys.join(", "))])).color(p.bad),
+            );
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(preview.applicable(), Button::new(t("shortcut-map-apply")))
+                .clicked()
+            {
+                overrides.clone_from(&preview.overrides);
+                applied = true;
+            }
+            if ui.button(t("shortcut-map-cancel")).clicked() {
+                out.push(Command::ShortcutsPreviewClose);
+            }
+        });
+    });
+    applied
+}
+
 /// Draws the tab. `capture`: whether the session waits for a key, and the
-/// chord it got.
+/// chord it got; and the import preview, if any. True when an imported map
+/// was applied to `overrides`.
 pub(crate) fn body(
     ui: &mut Ui,
     tr: &Translate<'_>,
     overrides: &mut BTreeMap<String, Vec<String>>,
     state: &mut State,
-    capture: (bool, Option<&str>),
+    (capture, preview): ((bool, Option<&str>), Option<&Preview>),
     out: &mut Vec<Command>,
-) {
+) -> bool {
     let t = |id: &str| tr(id, &[]);
+    // KEY-008, KEY-009
+    ui.horizontal(|ui| {
+        if ui.button(t("shortcut-map-export")).clicked() {
+            out.push(Command::ShortcutsExport(overrides.clone()));
+        }
+        if ui.button(t("shortcut-map-import")).clicked() {
+            out.push(Command::ShortcutsImport(overrides.clone()));
+        }
+    });
+    let applied = preview.is_some_and(|p| import_preview(ui, tr, overrides, p, out));
     // the key pressed, once the session has it
     if let Some((action, started)) = state.capturing {
         let (waiting, got) = capture;
@@ -159,6 +249,7 @@ pub(crate) fn body(
                 }
             }
         });
+    applied
 }
 
 /// An action: its name, its keys with × and +, ↺ if they are not the
@@ -231,6 +322,8 @@ mod tests {
         state: State,
         capture: (bool, Option<String>),
         out: Vec<Command>,
+        preview: Option<Preview>,
+        applied: bool,
     }
 
     fn harness() -> Harness<'static, Test> {
@@ -249,15 +342,56 @@ mod tests {
                         text
                     };
                     let capture = (t.capture.0, t.capture.1.as_deref());
-                    body(ui, &tr, &mut t.overrides, &mut t.state, capture, &mut t.out);
+                    let applied = body(
+                        ui,
+                        &tr,
+                        &mut t.overrides,
+                        &mut t.state,
+                        (capture, t.preview.as_ref()),
+                        &mut t.out,
+                    );
+                    t.applied |= applied;
                 },
                 Test {
                     overrides: BTreeMap::new(),
                     state: State::default(),
                     capture: (false, None),
                     out: Vec::new(),
+                    preview: None,
+                    applied: false,
                 },
             )
+    }
+
+    // T-KEY-008…T-KEY-010: export/import are explicit; Apply only without conflicts.
+    #[test]
+    fn maps_are_previewed_before_apply() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("shortcut-map-export").click();
+        h.get_by_label("shortcut-map-import").click();
+        h.run();
+        assert!(matches!(
+            h.state().out[..],
+            [Command::ShortcutsExport(_), Command::ShortcutsImport(_)]
+        ));
+        let map = br#"{"format":"nikomiru-shortcuts","version":1,"actions":{"mute":["Space"]}}"#;
+        h.state_mut().preview = Some(crate::shortcut_maps::preview(map, &BTreeMap::new()).unwrap());
+        h.run();
+        use egui_kittest::kittest::NodeT;
+        assert!(
+            h.get_by_label("shortcut-map-apply")
+                .accesskit_node()
+                .is_disabled()
+        );
+        let map = br#"{"format":"nikomiru-shortcuts","version":1,"actions":{"mute":["KeyQ"]}}"#;
+        h.state_mut().preview = Some(crate::shortcut_maps::preview(map, &BTreeMap::new()).unwrap());
+        h.run();
+        h.get_by_label("shortcut-map-change action-mute M Q");
+        h.get_by_label("shortcut-map-apply").click();
+        h.run();
+        assert!(h.state().applied);
+        assert_eq!(h.state().overrides["mute"], ["KeyQ"]);
     }
 
     // T-KEY-001, T-KEY-003

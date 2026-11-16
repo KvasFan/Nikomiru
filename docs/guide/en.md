@@ -201,6 +201,8 @@ With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" 
 
 The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, Enter and Space drive the controls. Every shortcut is listed, and can be changed, in Settings → Shortcuts.
 
+**Export shortcuts…** saves every action's keys as a small JSON file (physical keys, so the same keys on any keyboard layout); **Import shortcuts…** reads one and shows what would change, actions it does not know (ignored), keys it does not recognise and conflicts. Nothing changes until **Apply**, which is available only without invalid keys or conflicts and saves at once; **Cancel** drops the preview. **Reset** still restores the defaults. Typing in a text field still never triggers single-key shortcuts. (M113 development)
+
 | Key | Action |
 |---|---|
 | Space, P | Play/pause |

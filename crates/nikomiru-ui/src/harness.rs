@@ -627,6 +627,17 @@ pub fn state() -> Result<Value, String> {
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
         state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
         state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
+        state["shortcuts"] = json!({
+            "overrides": s.config().shortcuts,
+            "status": s.settings_status.as_ref().map(|(t, _)| t),
+            "preview": s.shortcut_preview.as_ref().map(|p| json!({
+                "changes": p.changes.iter().map(|c| json!({"action": c.action.name(), "before": c.before, "after": c.after})).collect::<Vec<_>>(),
+                "unknown": p.unknown,
+                "invalid": p.invalid,
+                "conflicts": p.conflicts.iter().map(|c| &c.chord).collect::<Vec<_>>(),
+                "applicable": p.applicable(),
+            })),
+        });
         state["podcasts"] = json!({
             "open": s.podcasts.open,
             "busy": s.podcasts.busy,
@@ -1862,6 +1873,55 @@ pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), Str
 fn annotation_json(a: &nikomiru_library::annotations::Annotation) -> Value {
     json!({"id":a.id,"kind":a.kind.name(),"book":a.book,"title":a.title,"chapter":a.chapter,
         "paragraph":a.paragraph,"start":a.start,"end":a.end,"quote":a.quote,"name":a.name,"note":a.note})
+}
+
+/// Shortcut maps (KEY-008…KEY-010): `export`/`import` with `path` through
+/// the dialogs' handlers; `apply` does what the tab's Apply does: the
+/// preview's bindings saved as the Shortcuts section.
+pub fn shortcuts(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let path = || {
+            args["path"]
+                .as_str()
+                .map(PathBuf::from)
+                .ok_or("missing path")
+        };
+        let overrides = ui.session.config().shortcuts.clone();
+        match action.as_str() {
+            "export" => {
+                ui.run(Command::ShortcutsExport(overrides.clone()));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ShortcutsExport,
+                    path: path()?,
+                });
+            }
+            "import" => {
+                ui.run(Command::ShortcutsImport(overrides));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ShortcutsImport,
+                    path: path()?,
+                });
+            }
+            "apply" => {
+                let preview = ui.session.shortcut_preview.clone().ok_or("no preview")?;
+                if !preview.applicable() {
+                    return Err("not applicable".into());
+                }
+                let mut draft = ui.session.config().clone();
+                draft.shortcuts = preview.overrides;
+                ui.run(Command::SettingsSave(
+                    nikomiru_core::config::Section::Shortcuts,
+                    Box::new(draft),
+                ));
+                ui.run(Command::ShortcutsPreviewClose);
+            }
+            "cancel" => ui.run(Command::ShortcutsPreviewClose),
+            _ => return Err("unknown shortcuts action".into()),
+        }
+        Ok(())
+    })?
 }
 
 /// Podcasts (POD-001…POD-004) through production commands; `index` picks

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102–M112 implemented in development, M113–M119 accepted for execution |
+| Status | Living roadmap; M102–M113 implemented in development, M114–M119 accepted for execution |
 | Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
@@ -1541,7 +1541,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M110 | P2 / L | **Additional document formats.** Stage HTMLZ/RTF, DOCX and text-layer PDF import as separately verifiable formats. Preserve reading order and source locations; validate archive/extraction limits and malformed inputs. PDF image OCR is separate from text-layer import. Select supported dependencies before promising any format. | [OpenKoto][src-openkoto], [jidoujisho][src-jidoujisho], [Migaku][src-migaku] | done in development |
 | M111 | P2 / L | **Reader modes, annotations and library text search.** Add named bookmarks/highlights/notes, search across imported book/article text, and explicit horizontal paging/sentence-focus modes. Keep stable locations, delete/export behavior and backup coverage; check reopening, source replacement, Japanese offsets and bounded asynchronous indexing. Current lookup highlights and reading position are not annotations. | [Fushi reading][src-fushi-features], [Fushi highlights][src-fushi], [OpenKoto][src-openkoto] | done in development |
 | M112 | P2 / L | **Podcast feeds and lyrics lessons.** Add explicit RSS/episode import, offline audio/resume and provided/imported transcript or LRC lyrics. Reuse timed lookup, line replay and card clipping. Check duplicate episode identity, interrupted downloads, missing transcripts and source links. Speech transcription is decision-gated; current-song handoff on Android waits for M117. | [Migaku podcasts][src-migaku], [jidoujisho music][src-jidoujisho], [OpenKoto lyrics][src-openkoto] | done in development |
-| M113 | P2 / S | **Portable shortcut maps.** Add a dedicated bounded versioned import/export for keyboard bindings, with conflict preview, atomic apply and reset. Check unknown actions, duplicate chords, physical-key layouts and typing/popup/recall priority. This extends existing remapping without sharing an entire settings file. | [Mizune][src-mizune] | not started |
+| M113 | P2 / S | **Portable shortcut maps.** Add a dedicated bounded versioned import/export for keyboard bindings, with conflict preview, atomic apply and reset. Check unknown actions, duplicate chords, physical-key layouts and typing/popup/recall priority. This extends existing remapping without sharing an entire settings file. | [Mizune][src-mizune] | done in development |
 | M114 | P2 / L | **Rich MDict resources.** Extend existing plain-text `.mdx` import with `.mdd` images/audio and a defined safe rich-definition subset. Reuse resource-size limits and glossary rendering; check paired/missing resources, malformed archives, network/script exclusion and resource retention in exported cards. Real MDict/DSL validation remains open in M15. | [Fushi dictionaries][src-fushi-features] | not started |
 | M115 | P2 / L | **Study-language profiles.** Select dictionary/normalization/tokenization/reading settings per study language and isolate vocabulary, phrase and review data. Prove Japanese plus one additional language end to end, including import, lookup, counts and cards. Existing multilingual transform data is not proof of complete multilingual product support. | [Fushi][src-fushi], [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-languages] | not started |
 | M116 | P2 / M | **Emby media-server support.** Add Emby alongside existing Jellyfin/Plex using the same playback, subtitle, source-link and progress interfaces. Check authentication, server identity, direct-play capability, expiry and resume against an Emby fixture/server; do not assume Jellyfin API compatibility is sufficient. | [Fushi media servers][src-fushi-features] | not started |
@@ -1706,3 +1706,5 @@ M112 is complete in development: fast CI passed **1,071 tests** and the new actu
 Versioned JSON export of physical-key bindings, bounded import with a preview of changes, unknown actions, invalid chords and conflicts, and apply through the existing atomic Shortcuts save; Reset unchanged.
 
 **Exit criteria**: format/bound/conflict tests, accessible translated preview controls and an actual-app export/import/apply/restart case; fast CI.
+
+M113 is complete in development: fast CI passed **1,076 tests** and the new actual-app case passed. See [M113 QA](qa/m103-m119.md#m113--portable-shortcut-maps). The next accepted milestone is M114 (rich MDict resources).

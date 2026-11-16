@@ -575,6 +575,12 @@ pub struct Session {
     pub batch: crate::batch_mining::State,
     bank_place: Option<(nikomiru_library::phrases::Source, String)>,
     bank_export: Option<String>,
+    /// An imported shortcut map waiting for Apply (KEY-009).
+    pub shortcut_preview: Option<crate::shortcut_maps::Preview>,
+    /// The Shortcuts draft an import is compared with.
+    pub shortcut_base: Option<std::collections::BTreeMap<String, Vec<String>>>,
+    /// A shortcut map to write.
+    pub shortcut_export: Option<String>,
     /// Podcast feeds and episodes (POD-001…POD-004).
     pub podcasts: crate::podcasts::State,
     podcast_jobs: Vec<crate::podcasts::Job>,
@@ -942,6 +948,9 @@ impl Session {
             batch: Default::default(),
             bank_place: None,
             bank_export: None,
+            shortcut_preview: None,
+            shortcut_base: None,
+            shortcut_export: None,
             podcasts: Default::default(),
             podcast_jobs: Vec::new(),
             podcast_pending: 0,
@@ -2913,6 +2922,50 @@ impl Session {
                 self.config_save = Some(self.services.config.clone());
             }
             Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Write the exported shortcut map atomically (KEY-008).
+    pub fn shortcuts_export_to(&mut self, path: &Path) {
+        if let Some(text) = self.shortcut_export.take() {
+            match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+                Ok(()) => self.toasts.push(self.tr(
+                    "analysis-export-saved",
+                    &[("path", path.display().to_string())],
+                )),
+                Err(e) => self
+                    .toasts
+                    .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+            }
+        }
+    }
+
+    /// Read a shortcut map into a preview; nothing changes yet (KEY-009).
+    pub fn shortcuts_import_from(&mut self, path: &Path) {
+        use std::io::Read;
+        let base = self
+            .shortcut_base
+            .take()
+            .unwrap_or_else(|| self.services.config.shortcuts.clone());
+        let mut bytes = Vec::new();
+        let read = std::fs::File::open(path).and_then(|f| {
+            f.take(crate::shortcut_maps::MAX_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+        });
+        let result = match read {
+            Ok(_) => crate::shortcut_maps::preview(&bytes, &base).map_err(|k| self.tr(k, &[])),
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(preview) => {
+                self.shortcut_preview = Some(preview);
+                self.settings_status = None;
+            }
+            Err(reason) => {
+                self.shortcut_preview = None;
+                self.settings_status =
+                    Some((self.tr("shortcut-map-failed", &[("reason", reason)]), false));
+            }
         }
     }
 

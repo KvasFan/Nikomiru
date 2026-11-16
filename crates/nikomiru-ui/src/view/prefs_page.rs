@@ -73,6 +73,8 @@ pub(crate) struct Scene<'a> {
     pub licenses: Option<PathBuf>,
     /// Whether the session waits for a shortcut's key, and the chord it got.
     pub capture: (bool, Option<&'a str>),
+    /// An imported shortcut map waiting for Apply (KEY-009).
+    pub shortcut_preview: Option<&'a crate::shortcut_maps::Preview>,
     pub tr: &'a Translate<'a>,
 }
 
@@ -89,6 +91,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         logs_dir: s.logs_dir(),
         licenses: third_party_licenses(),
         capture: s.capture(),
+        shortcut_preview: s.shortcut_preview.as_ref(),
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.prefs, out);
@@ -163,7 +166,23 @@ pub(crate) fn draw(
             SettingsTab::Lookup => lookup(ui, s, draft),
             SettingsTab::Shortcuts => {
                 let shortcuts = &mut state.shortcuts;
-                shortcuts_page::body(ui, s.tr, &mut draft.shortcuts, shortcuts, s.capture, out);
+                let preview = s.shortcut_preview;
+                let applied = shortcuts_page::body(
+                    ui,
+                    s.tr,
+                    &mut draft.shortcuts,
+                    shortcuts,
+                    (s.capture, preview),
+                    out,
+                );
+                // KEY-010: the map replaced the draft; the usual save applies it
+                if applied {
+                    out.push(Command::SettingsSave(
+                        section_shortcuts(),
+                        Box::new(draft.clone()),
+                    ));
+                    out.push(Command::ShortcutsPreviewClose);
+                }
             }
             SettingsTab::Advanced => advanced(ui, s, draft),
             SettingsTab::About => about(ui, s, out),
@@ -175,6 +194,10 @@ pub(crate) fn draw(
         out.push(Command::ShortcutCapture(false));
     }
     leave
+}
+
+fn section_shortcuts() -> nikomiru_core::config::Section {
+    nikomiru_core::config::Section::Shortcuts
 }
 
 fn section(ui: &mut Ui, text: &str) {
@@ -747,6 +770,7 @@ mod tests {
                         logs_dir: Path::new("/home/u/.local/state/nikomiru/logs"),
                         licenses: t.licenses.clone(),
                         capture: (false, None),
+                        shortcut_preview: None,
                         tr: &tr,
                     };
                     let leave = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);

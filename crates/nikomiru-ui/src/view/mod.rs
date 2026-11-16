@@ -68,6 +68,10 @@ pub enum Dialog {
     AnnotationsExport,
     /// Timed text for a podcast episode (POD-003).
     PodcastTranscript,
+    /// A shortcut map to write (KEY-008).
+    ShortcutsExport,
+    /// A shortcut map to read (KEY-009).
+    ShortcutsImport,
     /// A video to play (LIB-001).
     Video,
     /// A subtitle file for the open video (SUB-006).
@@ -172,6 +176,14 @@ impl FileDialog {
             Dialog::Video => (
                 tr("open-file"),
                 vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
+            ),
+            Dialog::ShortcutsExport => (
+                tr("shortcut-map-export"),
+                vec![(tr("shortcut-map-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::ShortcutsImport => (
+                tr("shortcut-map-import"),
+                vec![(tr("shortcut-map-filter"), vec!["*.json"]), all],
             ),
             Dialog::PodcastTranscript => (
                 tr("podcasts-import"),
@@ -358,6 +370,7 @@ impl FileDialog {
                 Dialog::SentencesExport => Some("nikomiru-sentence-examples.tsv".into()),
                 Dialog::PhrasesExport => Some("nikomiru-phrases.tsv".into()),
                 Dialog::AnnotationsExport => Some("nikomiru-annotations.tsv".into()),
+                Dialog::ShortcutsExport => Some("nikomiru-shortcuts.json".into()),
                 Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
                 Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
                 Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),

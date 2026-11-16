@@ -464,6 +464,10 @@ pub(crate) enum Command {
     ClozeUndo,
     ClozeCancelRound,
 
+    /// KEY-008…KEY-010: the draft's overrides, to export or to compare with.
+    ShortcutsExport(std::collections::BTreeMap<String, Vec<String>>),
+    ShortcutsImport(std::collections::BTreeMap<String, Vec<String>>),
+    ShortcutsPreviewClose,
     /// POD-001…POD-004
     PodcastsOpen,
     PodcastsClose,
@@ -1259,6 +1263,8 @@ impl Ui {
                     Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
                     Dialog::PhrasesExport => self.session.phrases_export_to(&path),
                     Dialog::AnnotationsExport => self.session.annotations_export_to(&path),
+                    Dialog::ShortcutsExport => self.session.shortcuts_export_to(&path),
+                    Dialog::ShortcutsImport => self.session.shortcuts_import_from(&path),
                     Dialog::PodcastTranscript => {
                         if let Some((feed, episode)) = self.session.podcasts.importing.take() {
                             self.session.podcasts_request(crate::podcasts::Job::Import {
@@ -1806,6 +1812,15 @@ impl Ui {
                 s.clozes.round = None;
                 s.clozes.preview = None;
             }
+            Command::ShortcutsExport(overrides) => {
+                s.shortcut_export = Some(crate::shortcut_maps::export(&overrides));
+                self.view.dialog = Some(Dialog::ShortcutsExport);
+            }
+            Command::ShortcutsImport(overrides) => {
+                s.shortcut_base = Some(overrides);
+                self.view.dialog = Some(Dialog::ShortcutsImport);
+            }
+            Command::ShortcutsPreviewClose => s.shortcut_preview = None,
             Command::PodcastsOpen => {
                 s.podcasts_open();
                 self.view.close_library_page();

@@ -47,6 +47,7 @@ pub mod series_scores;
 pub mod servers;
 pub mod session;
 pub mod setup;
+pub mod shortcut_maps;
 pub mod shortcuts;
 pub mod study;
 pub mod study_presets;

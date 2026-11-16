@@ -201,6 +201,8 @@ Con una cartella WebDAV (Nextcloud e simili, con una password per app), "Sincron
 
 Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio e Spazio comandano i controlli. Ogni scorciatoia è elencata, e si può cambiare, in Impostazioni → Scorciatoie.
 
+**Esporta scorciatoie…** salva i tasti di ogni azione in un piccolo file JSON (tasti fisici, quindi gli stessi con qualunque disposizione della tastiera); **Importa scorciatoie…** ne legge uno e mostra cosa cambierebbe, le azioni che non conosce (ignorate), i tasti non riconosciuti e i conflitti. Nulla cambia prima di **Applica**, disponibile solo senza tasti non validi o conflitti, che salva subito; **Annulla** scarta l’anteprima. **Ripristina** riporta ancora i valori predefiniti. Mentre scrivi in un campo di testo le scorciatoie a tasto singolo restano inattive. (sviluppo M113)
+
 | Tasto | Azione |
 |---|---|
 | Spazio, P | Riproduci/pausa |
