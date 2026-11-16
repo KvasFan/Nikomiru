@@ -1021,3 +1021,10 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-SRV-014 | Emby login | Fake Emby identity/header/prefix checks, Jellyfin refused as Emby, wrong password, token-only record; accessible Emby choice. | L3, L4 |
 | T-SRV-015 | Emby library/playback | Per-user views/items with paging, search, cover, direct-play refusal, subtitles, reports and played mark; actual relay playback with resume and stop report. | L4, L6 |
 | T-SRV-016 | Emby expiry | Expired token as Unauthorized; actual app message. | L4 |
+
+## M117 ports
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-PORT-004 | Touch gestures | Recognizer: swipe thresholds, direction, timing, vertical drags, second finger and cancel; video seek and reader turns from injected touch events; actual app with injected touches. | L1, L3, L6 |
+| T-PORT-005 | Per-platform tracking | `docs/qa/ports.md` states each platform's evidence and open native checks; Windows cross build still checked by CI (T-PORT-003). | review |

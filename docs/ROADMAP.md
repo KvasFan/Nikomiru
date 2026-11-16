@@ -1738,3 +1738,11 @@ Emby through the shared Jellyfin-family client with Emby's `/emby` prefix, heade
 **Exit criteria**: fake-server L4 login/browse/play/expiry tests, accessible choice and an actual-app relay playback case; fast CI. Real Emby validation stays manual.
 
 M116 is complete in development against a fake Emby: fast CI passed **1,088 tests** and the actual-app relay case passed; validation on a real Emby server remains manual. See [M116 QA](qa/m103-m119.md#m116--emby-media-server-support). The next accepted milestone is M117 (platform ports).
+
+## M117 — Platform ports delivery
+
+**Requirements**: PORT-003, PORT-004.
+
+Touch gestures for the touch-first platforms (verifiable on Linux) and a per-platform status in `docs/qa/ports.md`. Native Windows/Android/macOS packaging and device checks and AnkiDroid stay open: the maintainer confirmed Linux only for now.
+
+**Exit criteria**: recognizer/component tests and an actual-app touch case; each platform's native checks remain unchecked until run on it.
