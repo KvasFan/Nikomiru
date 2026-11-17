@@ -12,11 +12,11 @@ Released and checked every block by `cargo xtask ci --full` (Wayland through an 
 |---|---|---|
 | Build | done | `x86_64-pc-windows-gnu` cross build from Linux; `cargo xtask ci` checks every crate for Windows with clippy (ADR 0009). |
 | Windows layers (dialogs, theme, screen kept on, keyring, single instance, encodings, time, folders) | written; partly tried under Wine | ADR 0009 table: keyring, single instance, encodings, local time and folders tested under Wine 11.21. |
-| Package | built, not tried natively | `cargo xtask windows --libmpv … --ffmpeg …` ZIP with `SOURCES.txt`. |
+| Package | published, not tried natively | `cargo xtask windows --libmpv … --ffmpeg …` makes the ZIP with `SOURCES.txt` and, with `wixl` (msitools), an MSI for all users under Program Files with a Start menu shortcut and major upgrades. Both published with 2.120.0; the MSI installs, runs `--version` and uninstalls under Wine 11.21. |
 | Touch gestures | implemented | Shared egui code (PORT-003); not tried on a Windows tablet. |
 | Platform tool installation (INS-007) | open | The setup catalogue lists Linux builds only. |
 | Native checks: start, video with clickable subtitles, lookup, card | **open** | Needs a real Windows machine. |
-| Source offer for libmpv/ffmpeg in a published ZIP | **open** | Maintainer's choice (ADR 0009). |
+| Source offer for libmpv/ffmpeg in a published ZIP | written offer by link | `SOURCES.txt` names each archive, its SHA-256 and the upstream release with the sources; the maintainer asked to publish the ZIP and the installer on 2026-11-17. |
 
 ## Android
 
