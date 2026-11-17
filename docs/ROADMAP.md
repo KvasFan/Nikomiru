@@ -1768,3 +1768,5 @@ Explicit update checks against a minisign-signed channel manifest pinning artifa
 **Exit criteria**: signature/rollback/ownership/install tests with generated keys, a fake update host and an actual-app check/download/install into a portable test root; fast CI. Publishing a signed production feed stays open.
 
 M119 is complete in development except for publishing: fast CI passed **1,100 tests** and the actual-app signed-update case passed. Creating the maintainer's minisign key, setting `PRODUCTION_KEY` and publishing signed channel manifests remain open. See [M119 QA](qa/m103-m119.md#m119--signed-application-updates).
+
+M102–M119 are complete in development, with M117 partial (native ports and AnkiDroid) and M119's production key and signed feed unpublished. Full regression passed 1,159 workspace/integration tests and 138 actual GUI cases. See [source QA 2.120.0](qa/2.120.0.md).

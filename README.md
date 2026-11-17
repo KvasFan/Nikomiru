@@ -69,7 +69,7 @@
 
 ## What works today
 
-Published Linux binary packages are version 2.53.0. Source tag [v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0) includes the selected-tool installer and subtitle/study milestones M45…M101, including finite vocabulary recall; build from source to use them. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+Published Linux binary packages are version 2.53.0. Source tag [v2.120.0](https://github.com/KvasFan/Nikomiru/tree/v2.120.0) includes the selected-tool installer and milestones M45…M119, including local documents, annotations, podcasts, MDict media, study languages beyond Japanese, Emby and signed update checks; build from source to use them. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 Unreleased development also reads local HTMLZ, RTF, DOCX and text-layer PDF files in Books (M110). PDF needs installed Poppler `pdftotext`; Setup can explicitly reuse it or offer a supported Linux system-package installation. See the [document guide](docs/guide/en.md#additional-local-documents-m110-development) for supported structures and limits.
 

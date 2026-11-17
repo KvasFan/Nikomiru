@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.120.0] - 2026-11-17
+
+Eighteen reading, study, server and platform milestones (M102–M119) after source tag 2.110.0.
+
 ### Added
 
 - Add explicit, signed application updates: minisign-verified channel manifests pinning artifacts by size and SHA-256, rollback and replay refusal, resumable downloads, a version-checked atomic install for portable folders, and package-owned installs left to their tools; the production key and feed remain to be published (M119, UPD-001…UPD-004).
