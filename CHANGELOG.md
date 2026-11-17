@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Build a Windows MSI installer beside the ZIP with `cargo xtask windows` when `wixl` (msitools) is installed: all users under Program Files, a Start menu shortcut, upgrades replacing older releases; the Windows program is built without the build machine's paths.
+
 ## [2.120.0] - 2026-11-17
 
 Eighteen reading, study, server and platform milestones (M102–M119) after source tag 2.110.0.
