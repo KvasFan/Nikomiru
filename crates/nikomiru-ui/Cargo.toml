@@ -32,6 +32,8 @@ fluent-bundle.workspace = true
 unic-langid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Bounded Yomitan frequency dictionary output (KNW-038); already used by app/importers.
+zip.workspace = true
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 

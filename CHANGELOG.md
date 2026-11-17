@@ -4,6 +4,202 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.120.0] - 2026-11-17
+
+Eighteen reading, study, server and platform milestones (M102–M119) after source tag 2.110.0.
+
+### Added
+
+- Add explicit, signed application updates: minisign-verified channel manifests pinning artifacts by size and SHA-256, rollback and replay refusal, resumable downloads, a version-checked atomic install for portable folders, and package-owned installs left to their tools; the production key and feed remain to be published (M119, UPD-001…UPD-004).
+
+- Add OLED black and High-contrast palettes checked for contrast, and optional Anime4K fast/quality shader presets from an explicitly downloaded, pinned and verified MIT release, with the user's own mpv shaders winning and refusals falling back to default rendering (M118, THM-001…THM-003).
+
+- Recognize one-finger horizontal swipes on touchscreens to seek the video and turn reader pages or sentences in the reading direction, and track each port's native evidence separately (M117, PORT-003, PORT-004; native Windows/Android/macOS checks remain open).
+
+- Add Emby servers beside Jellyfin and Plex, with Emby's own path prefix, headers, per-user routes, identity and direct-play checks (M116, SRV-014…SRV-016).
+
+- Study any language with transform tables through per-language profiles (dictionaries, longest-match or whole-word segmentation, readings) switched live in General settings, with word statuses, Anki known words, phrases, cloze exercises and review cards kept per language; English proven end to end beside Japanese (M115, LNG-001…LNG-004).
+
+- Import MDict definitions as safe rich structured content with images and sounds from paired `.mdd` files; dictionary sounds play on click and go with cards (M114, DIC-036…DIC-038).
+
+- Export and import versioned physical-key shortcut maps with a preview of changes, unknown actions, invalid keys and conflicts, applied atomically through the Shortcuts settings save (M113, KEY-008…KEY-010).
+
+- Add podcast feeds by HTTPS RSS with explicit refresh, resumable one-at-a-time offline episode downloads, SRT/WebVTT feed transcripts and imported LRC/subtitle timed text, played through the existing audio lookup, line replay and cards (M112, POD-001…POD-004).
+
+- Add local named bookmarks, highlights and notes with stale-source detection and TSV export, a bounded library-wide literal text search with checked result opening, and Pages and Sentence reading modes (M111, RDR-001…RDR-004).
+
+- Read bounded local HTMLZ, RTF, DOCX and text-layer PDF in the existing reader, with native legacy decoding, original PDF page locations and explicit Poppler discovery/setup (M110, DOC-001…DOC-005).
+
+- Optionally look up the first exact unknown word or independent first kanji on pause, and hold a configurable physical key to reveal an already loaded secondary track without changing playback or saved obscuring (M109, GDL-001…GDL-004).
+
+- Save bounded credential-free mining profiles and use explicit literal field overrides, session-only pins and fingerprinted dictionary-record selections in the advanced composer; refuse stale draft sources and preserve pending overrides (M108, MCP-001…MCP-004).
+
+- Preview bounded word/context batches before sequential card export, with explicit media choices, per-card cancellation/retry and durable exact-operation recovery after unknown Anki outcomes (M107, BMG-001…BMG-004).
+
+- Index owned book, primary-track and JSON-pack sentences into an offline bank with exact dictionary expression/reading examples, original byte ranges, verified source reopening, shown TSV and ordinary backup retention (M106, SEN-001…SEN-003).
+
+- Create previewed cloze exercises from owned phrases, with concealed NFC-aware typed/choice rounds, finite undo and independently opt-in single-owner FSRS schedules retained across restart/backup (M105, CLO-001…CLO-004).
+
+- Keep independent local phrase vocabulary with explicit reader/caption capture, editable meanings/statuses, source navigation, shown TSV export and database backup persistence (M104, PHR-001…PHR-003).
+
+- Import local Mokuro 0.2.x volumes with safe image paths, selectable preprocessed text and exact-pixel cropped Anki images, without running OCR (M103, MNG-007…MNG-009).
+
+- Read UTF-8 TXT/Markdown files and explicitly pasted text in Books, with durable local sources, content identities, ruby, vocabulary analysis and existing lookup/mining/progress integration (M102, BOK-011…BOK-014).
+
+### Changed
+
+- Refresh the roadmap against Fushi, Migaku, jidoujisho, Mizune, OpenKoto and Lector; distinguish implemented capabilities, proposed M102–M119 scopes and decision-gated gaps, with primary sources.
+
+## [2.110.0] - 2026-11-15
+
+Ten consecutive vocabulary recall milestones (M92–M101) after source tag 2.100.0.
+
+### Added
+
+- Local recall summary history (KNW-062, M101).
+
+- Focused recall follow-up rounds (KNW-061, M100).
+
+- Recall results export (KNW-060, M99).
+
+- Portable recall resume files (KNW-059, M98).
+
+- Restart recall in varied orders (KNW-058, M97).
+
+- Sentence hints for recall (KNW-057, M96).
+
+- Dictionary lookup from recall (KNW-056, M95).
+
+- Recall keyboard controls (KNW-055, M94).
+
+- Bounded self-rated recall (KNW-054, M93).
+
+- Finite vocabulary recall sessions (KNW-053, M92).
+
+## [2.100.0] - 2026-11-15
+
+Ten consecutive subtitle/study milestones (M82–M91) after source tag 2.90.0.
+
+### Added
+
+- Portable study presets (KNW-052, M91).
+
+- Vocabulary sentence concordance export (KNW-051, M90).
+
+- Skip and restart practice cues (SUB-061, M89).
+
+- Pauses between practice passes (SUB-060, M88).
+
+- Undo word-status changes (KNW-050, M87).
+
+- Practice vocabulary from readings (KNW-049, M86).
+
+- Cue translation preview (SUB-059, M85).
+
+- Editable subtitle study time bounds (SUB-058, M84).
+
+- Subtitle study row ordering (SUB-057, M83).
+
+- Exact subtitle search (SUB-056, M82).
+
+## [2.90.0] - 2026-11-15
+
+Ten consecutive subtitle/study milestones (M72–M81) after source tag 2.80.0.
+
+### Added
+
+- Finite cue practice queues (SUB-055, M81).
+
+- Subtitle study keyboard actions (SUB-054, M80).
+
+- Context around word examples (SUB-053, M79).
+
+- Vocabulary HTML study sheets (KNW-048, M78).
+
+- Persistent subtitle study presets (SUB-052, M77).
+
+- Vocabulary coverage targets (KNW-047, M76).
+
+- Vocabulary reading filters (KNW-046, M75).
+
+- Single or multiline captions (SUB-051, M74).
+
+- Unique subtitle captions (SUB-050, M73).
+
+- Subtitle text-length bounds (SUB-049, M72).
+
+## [2.80.0] - 2026-11-14
+
+Ten consecutive subtitle/study milestones (M62–M71) after source tag 2.70.0.
+
+### Added
+
+- Finite subtitle repetition (SUB-048, M71).
+
+- Vocabulary study batches (KNW-045, M70).
+
+- Subtitle range selection (SUB-047, M69).
+
+- Bilingual HTML study sheets (SUB-046, M68).
+
+- Vocabulary from subtitle study scopes (KNW-044, M67).
+
+- Listening text masking (SUB-045, M66).
+
+- Subtitle duration filters (SUB-044, M65).
+
+- Vocabulary expression length (KNW-043, M64).
+
+- Vocabulary script filters (KNW-042, M63).
+
+- Named persistent study presets (KNW-041, M62).
+
+## [2.70.0] - 2026-11-14
+
+Ten consecutive subtitle/study milestones (M52–M61) after source tag 2.60.0.
+
+### Added
+
+- Remember and reuse vocabulary search/filter/order settings across views during the current session, preserving each view’s selections (KNW-040, M61).
+
+- Navigate to previous/next matching subtitle starts within the current study scope, preserving pause and selections (SUB-043, M60).
+
+- Export complete bilingual SRT files using the bounded independent-delay translation pairing (SUB-042, M59).
+
+- Inspect shown/selected subtitle statistics with Unicode character totals and overlap-merged dialogue duration (SUB-041, M58).
+
+- Filter subtitle study scopes by exact non-whitespace Unicode characters per second (SUB-040, M57).
+
+- Match exact normalised headwords/readings in shared vocabulary views, alongside contains search (KNW-039, M56).
+
+- Export shown/selected study counts as complete importable Yomitan frequency dictionaries, with readings and exact occurrence counts (KNW-038, M55).
+
+- Find current-subtitle word examples by exact segmented headword/reading, including inflected forms, with source/revision invalidation (KNW-037, M54).
+
+- Look up words directly from study lists, including above the library and before opening any media (KNW-036, M53).
+
+- Show distinct-word and occurrence coverage for shown and selected study vocabulary (KNW-035, M52).
+
+## [2.60.0] - 2026-11-14
+
+Support-tool installation and six consecutive subtitle/study milestones (M45–M51).
+
+### Added
+
+- Filter shared study vocabulary by minimum/maximum occurrences without losing hidden selections (KNW-034, M51).
+
+- Restrict subtitle study, shown copies and exports to a playback-time window without seeking or losing hidden selections (SUB-039, M50).
+
+- Export overlap-aligned bilingual study transcripts with independent primary/secondary delays (SUB-038, M49).
+
+- Export shown or selected complete subtitle lines as escaped, portable WebVTT (SUB-037, M48).
+
+- Copy shown or selected subtitle transcripts as safe, timed TSV snapshots (SUB-036, M47).
+
+- Select subtitle lines across filters and export the selected complete timeline as SRT with the current delay (SUB-035, M46).
+
+- The setup assistant can install selected FFmpeg/ffprobe, yt-dlp and its Deno runtime, plus the local OCR model. Downloads are pinned and verified for Linux/Windows x86_64/ARM64, existing tools are reused, and configured paths take effect immediately (INS-007, M45).
+
 ## [2.53.0] - 2026-11-14
 
 Twenty consecutive subtitle and study milestones (M25–M44), following 2.33.0.

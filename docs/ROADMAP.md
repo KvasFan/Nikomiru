@@ -2,11 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft v0.1 |
-| Date | 2026-10-19 |
+| Status | Living roadmap; M102–M116, M118 and M119 implemented in development, M117 partial (native checks open), signed feed not yet published |
+| Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
-The roadmap splits the work into **milestones** (M0…M8). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+The roadmap splits the work into **milestones** (implemented continuations through M110, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
+
+Latest published source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
 
 There are no dates: a milestone is closed when all its exit criteria pass, not when a deadline expires. The sizes (S/M/L/XL) only give an idea of the relative effort.
 
@@ -699,7 +701,7 @@ The order is the maintainer's (D-19, 2026-10-30): M11 to M16, then the rest of t
 
 ---
 
-## Gap analysis against Migaku and similar tools (2026-11-09)
+## Historical gap analysis against Migaku and similar tools (2026-11-09)
 
 Asked by the maintainer: what Migaku and similar programs have that Nikomiru lacks. The programs compared are Migaku (its browser extension and apps), asbplayer, Language Reactor and SubMiner/Saitenka, as of 2026-11-09, from their store pages, their documentation and their sites. Nikomiru already has, among others:
 
@@ -708,16 +710,9 @@ Asked by the maintainer: what Migaku and similar programs have that Nikomiru lac
 - the dual subtitles, the pause at the end of each line and the alignment with the audio;
 - books, manga and web pages.
 
-What it lacks is mostly one thing: **it does not know which words the learner knows**. Migaku's core is built on that, and asbplayer and SubMiner added it:
+At that date, the main gap was learner vocabulary knowledge: statuses, Anki-derived known words, comprehension scores and playback guided by unknown words. **Those gaps have since been implemented in M20–M24 and extended through M101.** The table below is a historical snapshot, not the current missing-feature list. Current gaps and proposals are in the [2026-11-15 comparison](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15). AI and speech features still follow SPECIFICATION §1.3.
 
-- word statuses, and known words taken from Anki;
-- words coloured in the subtitles, and lines with one new word (i+1);
-- a comprehension score per episode;
-- playback that shows or pauses only on lines with new words.
-
-Nikomiru only underlines the words already made into cards (LKP-061). M20…M24 bring these in order of value; the AI and speech features stay excluded by §1.3 of the specification until the maintainer decides.
-
-| Feature | Who has it | Nikomiru | Where |
+| Feature | Who has it | Nikomiru on 2026-11-09 | Where |
 |---|---|---|---|
 | Word statuses (unknown, learning, known, ignored) | Migaku, asbplayer, Language Reactor (saved words) | no: only cards made | M20 |
 | Known words from Anki decks, by card interval | Migaku, asbplayer, SubMiner | no | M20 |
@@ -1059,6 +1054,7 @@ The same subtitle/study priority applies; development proceeds in order.
 | M42 | Export the current complete text subtitle track as SRT | done |
 | M43 | Inspect and clear persistent analysis caches | done |
 | M44 | Export comprehension summaries for analysed books and series | done |
+| M45 | Install selected platform-specific support tools in the setup assistant | done |
 
 ## M35 — Normalised study and subtitle search
 
@@ -1171,9 +1167,190 @@ and final batch regression.
 
 ---
 
+## Next ten milestones — M46…M55 (2026-11-14)
+
+The maintainer requested another consecutive batch after M45. Continue the
+subtitle/study priority (D-63), without a new request between milestones.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M46 | Selected subtitle SRT | done |
+| M47 | Copy subtitle transcripts | done |
+| M48 | WebVTT subtitle export | done |
+| M49 | Bilingual study transcript | done |
+| M50 | Subtitle study time window | done |
+| M51 | Vocabulary frequency ranges | done |
+| M52 | Vocabulary coverage summary | done |
+| M53 | Dictionary lookup from study vocabulary | done |
+| M54 | Subtitle word concordance | done |
+| M55 | Study frequency dictionary export | done |
+
+## M46 — Selected subtitle SRT
+
+**Requirements**: SUB-035.
+
+The subtitle list offers explicit per-cue selection, Select shown and Clear selection. Selections survive search/filter changes and retain original cue indices, but reset on any primary timeline version change. Export selected as SRT captures the selection, primary delay and complete text before the save dialog; hidden selections are included in timeline order. Partial OCR, empty selections, stale versions and invalid indices cannot export. Reuse SUB-034 bounds and atomic save, without changing playback, cue text or lookup targets.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M47 — Copy subtitle transcripts
+
+**Requirements**: SUB-036.
+
+Copy shown and Copy selected in the subtitle list write a bounded UTF-8 TSV snapshot with start_ms, end_ms and plain text, applying the primary delay and spreadsheet/control-character neutralisation. Only explicit clicks copy; selection is preserved and hidden selected cues remain included. Invalid/empty/partial snapshots report a translated outcome and produce no clipboard output. No file, status or playback changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M48 — WebVTT subtitle export
+
+**Requirements**: SUB-037.
+
+The subtitle list can export shown or selected complete primary cues as portable WebVTT. Capture indices, delay and text at the click, clip negative intervals as SUB-034, escape markup and preserve Unicode, multiline text and overlaps; remove structural blank-line/cue injection. Native save defaults to .vtt and writes atomically under the shared 100,000-cue/16 MiB bounds.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M49 — Bilingual study transcript
+
+**Requirements**: SUB-038.
+
+The subtitle list exports shown or selected primary cues as UTF-8 TSV with effective start_ms/end_ms, primary and secondary text. Each complete primary cue is paired with all distinct secondary texts whose effective intervals overlap positively after each track’s independent delay. Retain unmatched primary rows with blank secondary text. Both timelines must be complete, secondary text must exist, and pairing/output work is bounded; snapshot before save, spreadsheet-safe atomic output, no source or playback changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M50 — Subtitle study time window
+
+**Requirements**: SUB-039.
+
+The subtitle list offers optional From and To playback-time bounds, populated from the current playback position, plus reset. Keep cues with positive overlap with the inclusive-start/exclusive-end window after the primary delay, alongside existing text/new-word filters. Invalid/empty windows show no cues; selections hidden by a window survive. New timeline versions reset the window and selection. Copy/export shown follows the same window; controls do not seek or change media.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M51 — Vocabulary frequency ranges
+
+**Requirements**: KNW-034.
+
+All shared study vocabulary views offer minimum and optional maximum occurrence counts, combined with search/status/card/order filters. Bounds apply to shown rows, Select shown and shown copy/export, while hidden ticks stay selected for explicit selected actions. Empty/inverted ranges show no rows; changing the range never changes counts, statuses or starts an analysis. Reset removes both bounds.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M52 — Vocabulary coverage summary
+
+**Requirements**: KNW-035.
+
+Every shared vocabulary view reports shown distinct words, shown occurrence tokens and their share of all analysed tokens, plus selected distinct words/tokens including hidden selections. Compute from original count values with overflow-safe arithmetic; empty denominators are explicitly unavailable. Update with every view/selection/status change and do not reinterpret distinct words as tokens or trigger analyses.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M53 — Dictionary lookup from study vocabulary
+
+**Requirements**: KNW-036.
+
+Every shared vocabulary row offers an explicitly labelled dictionary lookup. Open the existing root popup for that row’s expression, without an unrelated subtitle/book cue or automatic mining action; keep its study view, filters and ticks. Lookups run on the existing asynchronous dictionary service, retain normal popup privacy/pause behavior and work before any video or book is opened.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M54 — Subtitle word concordance
+
+**Requirements**: KNW-037.
+
+The current primary subtitle vocabulary offers Examples for a word. Match exact segmented headword/reading identities, including inflected surface forms, against the complete current primary timeline; do not use a substring guess. Show matching original cues in the Lines tab with ordinary seek and lookup, combined with existing filters and export/copy selection. The filter can be cleared, and source/dictionary/status-analysis invalidation rejects stale concordances. Unavailable segmentation is explicit; no implicit playback, status or encounter changes.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+## M55 — Study frequency dictionary export
+
+**Requirements**: KNW-038.
+
+Study vocabulary views export currently shown or explicitly selected rows as a complete Yomitan v3 frequency dictionary ZIP, index.json plus term_meta_bank_1.json. Counts use occurrence-based mode and preserve separate readings, Unicode and exact positive counts independently of display order; duplicates/invalid identities and oversized input/output fail closed. Title identifies the source study list, save is a frozen bounded snapshot and atomic, and export does not install the dictionary or change statuses. Reimport with the existing importer must preserve the exported frequencies.
+
+**Exit criteria**: marked logic and accessible-control tests, relevant actual
+worker/GUI checks, `cargo xtask ci`; final batch `cargo xtask ci --full`.
+
+---
+
+## Continuation after the Git tag — M52…M61 (2026-11-14)
+
+The maintainer requested a tag/push at the interrupted M51 and ten more
+milestones (D-64). `v2.60.0` captures M45…M51. M52…M55 keep the plan above;
+M56…M61 extend it as follows. No new request is needed between increments.
+
+| Milestone | Deliverable | Status |
+|---|---|---|
+| M56 | Exact vocabulary search | done |
+| M57 | Subtitle reading-speed filters | done |
+| M58 | Subtitle study statistics | done |
+| M59 | Bilingual SRT export | done |
+| M60 | Navigate matching subtitle lines | done |
+| M61 | Reusable session study filters | done |
+
+## M56 — Exact vocabulary search
+
+**Requirements**: KNW-039.
+
+Shared vocabulary views offer normalised exact headword/reading matching alongside the default contains search. Exact means the whole query matches one whole display field after the existing width/kana/case folding; combine with all existing filters and preserve hidden selections. Empty queries show all eligible rows and the mode affects shown selection/copy/export only.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M57 — Subtitle reading-speed filters
+
+**Requirements**: SUB-040.
+
+Study tools optionally filter cues by minimum and maximum reading speed in Unicode non-whitespace characters per second. Compute using the full positive cue duration, with overflow-safe integer comparisons and no rounding at thresholds. Combine with text/word/time/concordance filters and shown actions; invalid ranges show no cues. Reset on source version changes; no media or timing edits.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M58 — Subtitle study statistics
+
+**Requirements**: SUB-041.
+
+Study tools show the current shown and selected cue counts, non-whitespace character totals and total effective dialogue time using the union of overlapping clipped intervals. Hidden selected cues are included in selected metrics. Empty scopes show zero; invalid indices and oversized requests are unavailable, not partial totals. Metrics are view-only, use the same filters and captured delay, and reset with the timeline.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M59 — Bilingual SRT export
+
+**Requirements**: SUB-042.
+
+Shown or selected complete primary cues can export as SRT with primary text followed by the overlapping distinct secondary translations. Reuse the bounded independently delayed overlap pairing, negative clipping and plain-text SRT escaping. Retain untranslated primary cues and reject missing/partial secondary tracks. Freeze before native save and write atomically without modifying either track.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M60 — Navigate matching subtitle lines
+
+**Requirements**: SUB-043.
+
+Study tools offer Previous matching line and Next matching line using the current shown original cue indices after all filters. Choose the nearest strict earlier/later effective start with a small equality margin, no wrapping. Preserve playback pause, ticks and filters; unavailable directions are disabled. User actions alone seek; changing filters or navigation controls does not start playback or record encounters while paused.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+## M61 — Reusable session study filters
+
+**Requirements**: KNW-040.
+
+Shared vocabulary views can explicitly remember the current search, exact/contains mode, status/card/occurrence/order filters and apply or forget that one preset in another view during the same application session. Selection identities are excluded. Applying updates the visible query and filters while preserving current ticks and analysis identity; preset text is bounded. This is session-only and writes no configuration or library data.
+
+**Exit criteria**: marked logic/accessibility tests, `cargo xtask ci`, final
+batch `cargo xtask ci --full` and committed/pushed source.
+
+---
+
 ## For the maintainer to decide (§1.3 of the specification)
 
-These are Migaku's, but §1.3 excludes AI, speech recognition and speech synthesis. Each needs a decision before it can be planned:
+These were identified in the first Migaku comparison. §1.3 still excludes AI, speech recognition and speech synthesis. The [expanded decision backlog](#features-requiring-a-scope-or-architecture-decision) below also covers the other five projects; listing a gap does not change those exclusions:
 
 | Feature | How it could be done | What it costs |
 |---|---|---|
@@ -1188,7 +1365,7 @@ Completed in M25–M27: progressive graphic OCR, explicit external VobSub pairs 
 
 ## Backlog after M16 (in no binding order)
 
-Every item requires a change to SPECIFICATION.md before work starts.
+Every item requires a change to SPECIFICATION.md before work starts. The [M102–M119 candidate scopes](#candidate-milestones-after-m101) extend this backlog with the six-project comparison; AniDB identification remains a separate existing item.
 
 | Item | Notes on licenses and dependencies |
 |---|---|
@@ -1231,3 +1408,365 @@ Done outside the backlog on 2026-11-09, for 2.19.0: DVD graphic subtitles (VobSu
 - SemVer. Until 1.0, `0.MINOR.PATCH`: MINOR for each milestone, PATCH for fixes. From 1.0, MINOR for each milestone that adds features, PATCH for fixes, MAJOR for a change that drops what users relied on, and for M16, which makes Nikomiru a reader too (D-19).
 - The `library.redb` schema can only change with a migration (DAT-001), even before 1.0.
 - CHANGELOG in the *Keep a Changelog* format.
+
+## M45 — Selected support-tool installation
+
+**Requirements**: INS-007. Requested by the maintainer after 2.53.0: the setup
+assistant downloads/installs selected FFmpeg, yt-dlp and required support
+components for the platform. Include ffprobe, Deno and optional OCR model;
+reuse existing tools, verify pinned artifacts and apply paths to active workers.
+
+**Exit criteria**: safe installation/rollback/cancellation and platform tests,
+actual local-worker/UI checks, `cargo xtask ci`, refreshed license/vendor data.
+
+Status: done. `cargo xtask ci --full` passed 952 workspace tests and 97 GUI
+tests; real Linux x86_64 upstream downloads/probes passed. See [M45 QA](qa/m45.md).
+
+## Continuation M62–M71 after source tag 2.70.0
+
+The maintainer authorises ten consecutive subtitle/study milestones and final Git tag/push.
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M62 | KNW-041 | Named persistent study presets | done |
+| M63 | KNW-042 | Vocabulary script filters | done |
+| M64 | KNW-043 | Vocabulary expression length | done |
+| M65 | SUB-044 | Subtitle duration filters | done |
+| M66 | SUB-045 | Listening text masking | done |
+| M67 | KNW-044 | Vocabulary from subtitle study scopes | done |
+| M68 | SUB-046 | Bilingual HTML study sheets | done |
+| M69 | SUB-047 | Subtitle range selection | done |
+| M70 | KNW-045 | Vocabulary study batches | done |
+| M71 | SUB-048 | Finite subtitle repetition | done |
+
+M62–M71 are complete. Full regression passed 997 workspace/integration tests and 102 actual GUI cases; final cancellation guards passed fast CI and the targeted real-app suite. See [source QA 2.80.0](qa/2.80.0.md).
+
+## Continuation M72–M81 after source tag 2.80.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M72 | SUB-049 | Subtitle text-length bounds | done |
+| M73 | SUB-050 | Unique subtitle captions | done |
+| M74 | SUB-051 | Single or multiline captions | done |
+| M75 | KNW-046 | Vocabulary reading filters | done |
+| M76 | KNW-047 | Vocabulary coverage targets | done |
+| M77 | SUB-052 | Persistent subtitle study presets | done |
+| M78 | KNW-048 | Vocabulary HTML study sheets | done |
+| M79 | SUB-053 | Context around word examples | done |
+| M80 | SUB-054 | Subtitle study keyboard actions | done |
+| M81 | SUB-055 | Finite cue practice queues | done |
+
+M72–M81 are complete. Full regression passed 1,013 workspace/integration tests and 103 actual GUI cases. See [source QA 2.90.0](qa/2.90.0.md).
+
+## Continuation M82–M91 after source tag 2.90.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M82 | SUB-056 | Exact subtitle search | done |
+| M83 | SUB-057 | Subtitle study row ordering | done |
+| M84 | SUB-058 | Editable subtitle study time bounds | done |
+| M85 | SUB-059 | Cue translation preview | done |
+| M86 | KNW-049 | Practice vocabulary from readings | done |
+| M87 | KNW-050 | Undo word-status changes | done |
+| M88 | SUB-060 | Pauses between practice passes | done |
+| M89 | SUB-061 | Skip and restart practice cues | done |
+| M90 | KNW-051 | Vocabulary sentence concordance export | done |
+| M91 | KNW-052 | Portable study presets | done |
+
+M82–M91 are complete. Full regression passed 1,029 workspace/integration tests and 104 actual GUI cases. See [source QA 2.100.0](qa/2.100.0.md).
+
+## Continuation M92–M101 after source tag 2.100.0
+
+| Milestone | Requirements | Scope | Status |
+| --- | --- | --- | --- |
+| M92 | KNW-053 | Finite vocabulary recall sessions | done |
+| M93 | KNW-054 | Bounded self-rated recall | done |
+| M94 | KNW-055 | Recall keyboard controls | done |
+| M95 | KNW-056 | Dictionary lookup from recall | done |
+| M96 | KNW-057 | Sentence hints for recall | done |
+| M97 | KNW-058 | Restart recall in varied orders | done |
+| M98 | KNW-059 | Portable recall resume files | done |
+| M99 | KNW-060 | Recall results export | done |
+| M100 | KNW-061 | Focused recall follow-up rounds | done |
+| M101 | KNW-062 | Local recall summary history | done |
+
+M92–M101 are complete. Full regression passed 1,046 workspace/integration tests and 107 actual GUI cases. See [source QA 2.110.0](qa/2.110.0.md).
+
+## Comparison with Fushi, Migaku, jidoujisho, Mizune, OpenKoto and Lector (2026-11-15)
+
+Requested by the maintainer after publishing source v2.110.0. This comparison uses the projects' own documentation retrieved on 2026-11-15 and Nikomiru's current specification and source. A documented feature is evidence of a product direction, not a claim that every platform/version implements it equally. The scopes, priorities and completion checks below are **Nikomiru proposals inferred from the comparison**. They do not update Fushi's pinned reference commit in SPECIFICATION §2, introduce dependencies, or authorize implementation of existing non-goals.
+
+“Lector” here means **heuwels/lector**, the language-learning reader, rather than BasioMeusPuga's Qt ebook reader. jidoujisho means the original **arianneorpilla/jidoujisho** Android project; capabilities of newer forks are not attributed to it.
+
+### Sources and product-specific gaps
+
+| Project / primary evidence | Remaining differences relevant to Nikomiru |
+|---|---|
+| [Fushi README][src-fushi], [feature guide][src-fushi-features] | Richer reading modes/highlights, MDX/MDD media, Emby, native mobile/desktop delivery, device linking and headless access. Native text/voice hooks, source extensions and on-device speech generation fall under the decision backlog. |
+| [Migaku standard-release changelog][src-migaku], [reading/OCR guide][src-migaku-ocr] | Broader reader imports, podcast discovery, batch card creation, guided unknown-word lookup, content recommendations and photo OCR. Browser streaming, courses, speech and AI are separate scope decisions. Early-access or “coming soon” entries are not treated as shipped. |
+| [jidoujisho README][src-jidoujisho] | Offline Mokuro/HTMLZ import, song/lyrics handoff, named export profiles, locked composer fields, workflow quick actions and external sentence examples. Android/AnkiDroid delivery remains under the existing ports track. |
+| [Mizune README][src-mizune], [implementation guide][src-mizune-details] | Portable keyboard maps, named appearance choices, packaged Anime4K controls, signed app updates and native Android/macOS/Windows packages. Its first-kanji-word automatic lookup is distinct from Migaku's first-unknown-word mode. |
+| [OpenKoto README][src-openkoto], [desktop releases][src-openkoto-releases] | TXT/Markdown/paste and PDF/Word imports, search across imported material, language profiles and listening/shadowing workflows. Cloud sync, AI, CLI/MCP and iOS are decision items. The README still lists some desktop features as coming soon; iOS-only features are not assumed to exist on desktop. |
+| [Lector README][src-lector], [reading/practice guide][src-lector-practice], [language coverage][src-lector-languages] | Phrase vocabulary, typed/multiple-choice frequency cloze, broader text imports and podcast lessons. Anki review feedback is documented as beta. **Japanese and Korean have dictionaries but no supplied cloze bank**; this is not evidence of a ready-made Japanese sentence corpus. |
+
+### Capabilities already present: do not plan them again
+
+| Capability | Nikomiru baseline and remaining distinction |
+|---|---|
+| Clickable subtitles, recursive dictionaries, frequencies, pitch and word audio | M2–M5/M9/M22; dictionary collapse controls and Yomitan structured content already exist. MDict `.mdd` media and rich legacy definitions remain a distinct gap. |
+| Anki cards with editable templates, sentence context, clips/stills/animations and pending export | M4/M6/M10 and subsequent mining work. Multi-cue composition and sending already captured pending cards exist; previewing and generating a new batch and named reusable export profiles do not. |
+| Vocabulary statuses, Anki-derived knowledge, comprehension scores and unknown-word playback | M20–M22 and M25–M91. Existing filtering, coverage, concordance, presets and reports are retained. |
+| Finite recall and built-in spaced review | M92–M101 plus M17's FSRS review. Recall is self-rated and finite; typed/choice cloze, phrase-specific study and imported sentence banks remain extensions. |
+| EPUB/HTML/web reading, vertical text, pictures and read-along audiobooks | M16/M18 and audiobook work. Broad document import, persistent named annotations and full-library text search remain gaps. |
+| Manga region OCR and cropped card pictures | M16 already selects a balloon and exports that image region. Mokuro region import is missing; cropping itself is not. |
+| Clipboard/WebSocket texthooking | M14 already receives text from an external hooker. Native game injection, captured voice and a game overlay are different capabilities and remain excluded. |
+| Dual subtitles, translation preview, replay and finite practice queues | M2/M23 and M46–M89. A hold-to-peek player shortcut, guided lookup and microphone shadowing are separate extensions; translation preview does not generate a translation. |
+| Jellyfin/Plex, WebDAV sync, backups and tool installation | M11/M12/M45. Review schedules, logs and review media already sync through WebDAV (REV-006/007). Emby, remote device control and app self-updating are separate gaps. |
+| Remappable shortcuts, light/dark/system appearance and mpv presets | KEY/SET/PLY requirements already cover these. Missing: dedicated key-map interchange, named palettes and supported bundled shader presets; raw `glsl-shaders` options already work. |
+
+### Candidate milestones after M101
+
+Priority is a proposed order: **P1** extends subtitles/study first, **P2** broadens reading and media, **P3** improves delivery/customization. Sizes are estimates, not release dates. M102–M109 are **done in development**; M111–M119 are accepted for implementation under the whole-roadmap request. Before any implementation, add concrete requirement IDs and test cases to SPECIFICATION.md and TEST.md, resolve dependency/license choices, and apply the existing definition of done. No version/tag or completion is reserved by this table.
+
+| Milestone | Priority / size | Proposed scope and completion check | Evidence | Status |
+|---|---|---|---|---|
+| M102 | P1 / M | **TXT, Markdown and pasted-text reading.** Import into the existing safe paragraph/lookup pipeline, retain source identity and reading progress. Check Unicode, headings, ruby preservation where present, bounded input, reopen and normal lookup/mining; imported markup must not execute. | [OpenKoto][src-openkoto], [Lector][src-lector], [Migaku][src-migaku] | done |
+| M103 | P1 / M | **Offline Mokuro manga import.** Read supported preprocessed text/region data with local page images, map lookup and card capture to the correct region, retain page progress and cropped pictures. Check missing images, coordinates, traversal and executable HTML rejection; do not rerun OCR for existing text. | [jidoujisho][src-jidoujisho] | done |
+| M104 | P1 / M | **Phrase vocabulary.** Save an explicitly selected multiword phrase with its source sentence, translation/definition and status, separately from expression/reading word identities. Check export, duplicate handling and source reopening; phrase statuses must not silently mark each constituent word known or distort comprehension scores. | [Lector][src-lector] | done |
+| M105 | P1 / L | **Typed and multiple-choice cloze.** Explicitly turn captured sentences into masked-word exercises with Unicode-aware answer rules and distractors. Offer finite practice and a separate opt-in scheduled mode using the existing review engine. Check answer concealment, ambiguous readings, undo and single ownership of schedules. No Japanese bank is presumed available. | [Lector practice][src-lector-practice], [language limitations][src-lector-languages] | done |
+| M106 | P1 / L | **Sentence bank and cross-media examples.** Index/import user-owned sentence/context references across books and subtitle sources, retaining original offsets and source links. Add optional external example providers only after defining provenance, licenses and request behavior. Check exact word identities, stale sources, offline results and bounded queries. Current concordance only covers the current primary subtitle. | [jidoujisho examples][src-jidoujisho], [Lector sentence packs][src-lector-languages] | done |
+| M107 | P1 / L | **Previewed batch card generation.** Select words/cues, choose contexts and inspect cards before starting bounded sequential media extraction/export. Show per-card outcomes, duplicate checks, cancellation and safe retries after an unknown Anki outcome. Preserve pending-card export and advanced single-card composition; neither already generates a new study batch. | [Migaku][src-migaku] | done in development |
+| M108 | P1 / M | **Named mining profiles and composer quick actions.** Reuse deck/note-type/field/tag mappings, pin selected composer fields across cards and choose dictionary senses explicitly. Check profile switches, missing note types and source changes without carrying stale media or overriding locked text unexpectedly. Existing templates remain supported. | [jidoujisho][src-jidoujisho] | done in development |
+| M109 | P1 / M | **Guided lookup and hold-to-peek controls.** Optionally select the first unknown word when paused and expose a held-key translation peek from an existing secondary track. Keep first-kanji lookup as a separate optional rule. Check key release, focus loss, popup priority, unchanged word statuses and no automatic translation/provider request. | [Migaku][src-migaku], [Mizune][src-mizune-details] | done in development |
+| M110 | P2 / L | **Additional document formats.** Stage HTMLZ/RTF, DOCX and text-layer PDF import as separately verifiable formats. Preserve reading order and source locations; validate archive/extraction limits and malformed inputs. PDF image OCR is separate from text-layer import. Select supported dependencies before promising any format. | [OpenKoto][src-openkoto], [jidoujisho][src-jidoujisho], [Migaku][src-migaku] | done in development |
+| M111 | P2 / L | **Reader modes, annotations and library text search.** Add named bookmarks/highlights/notes, search across imported book/article text, and explicit horizontal paging/sentence-focus modes. Keep stable locations, delete/export behavior and backup coverage; check reopening, source replacement, Japanese offsets and bounded asynchronous indexing. Current lookup highlights and reading position are not annotations. | [Fushi reading][src-fushi-features], [Fushi highlights][src-fushi], [OpenKoto][src-openkoto] | done in development |
+| M112 | P2 / L | **Podcast feeds and lyrics lessons.** Add explicit RSS/episode import, offline audio/resume and provided/imported transcript or LRC lyrics. Reuse timed lookup, line replay and card clipping. Check duplicate episode identity, interrupted downloads, missing transcripts and source links. Speech transcription is decision-gated; current-song handoff on Android waits for M117. | [Migaku podcasts][src-migaku], [jidoujisho music][src-jidoujisho], [OpenKoto lyrics][src-openkoto] | done in development |
+| M113 | P2 / S | **Portable shortcut maps.** Add a dedicated bounded versioned import/export for keyboard bindings, with conflict preview, atomic apply and reset. Check unknown actions, duplicate chords, physical-key layouts and typing/popup/recall priority. This extends existing remapping without sharing an entire settings file. | [Mizune][src-mizune] | done in development |
+| M114 | P2 / L | **Rich MDict resources.** Extend existing plain-text `.mdx` import with `.mdd` images/audio and a defined safe rich-definition subset. Reuse resource-size limits and glossary rendering; check paired/missing resources, malformed archives, network/script exclusion and resource retention in exported cards. Real MDict/DSL validation remains open in M15. | [Fushi dictionaries][src-fushi-features] | done in development |
+| M115 | P2 / L | **Study-language profiles.** Select dictionary/normalization/tokenization/reading settings per study language and isolate vocabulary, phrase and review data. Prove Japanese plus one additional language end to end, including import, lookup, counts and cards. Existing multilingual transform data is not proof of complete multilingual product support. | [Fushi][src-fushi], [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-languages] | done in development |
+| M116 | P2 / M | **Emby media-server support.** Add Emby alongside existing Jellyfin/Plex using the same playback, subtitle, source-link and progress interfaces. Check authentication, server identity, direct-play capability, expiry and resume against an Emby fixture/server; do not assume Jellyfin API compatibility is sufficient. | [Fushi media servers][src-fushi-features] | done in development |
+| M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | partial: touch done, native checks open |
+| M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | done in development |
+| M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | done in development (feed not published) |
+
+Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
+
+### Features requiring a scope or architecture decision
+
+These are recorded gaps, **not scheduled implementation**. SPECIFICATION §1.3 and existing privacy/license rules remain authoritative. The roadmap request authorizes this inventory; it does not reverse exclusions.
+
+| Missing capability / evidence | Current boundary and next decision |
+|---|---|
+| **Speech-generated subtitles**, including raw video and podcasts — [Fushi][src-fushi-features], [Migaku][src-migaku], [OpenKoto][src-openkoto], [Lector][src-lector] | ASR remains excluded. Define a local/remote backend, model provenance/distribution, resource bounds, cancellation and subtitle editing/quality checks before adding a milestone. Existing graphic-subtitle OCR does not transcribe speech. |
+| **Machine translation, context/grammar explanations and text Q&A** — [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-practice] | AI/translation scope needs a decision on providers, explicit requests, retained text and offline behavior. Existing secondary subtitles and dictionary meanings do not provide generated translation. |
+| **TTS, microphone shadowing and pronunciation feedback** — [OpenKoto iOS][src-openkoto], [Migaku][src-migaku], [Lector][src-lector] | TTS remains excluded. Replay/listening practice exists; recording, speech scoring and generated voices need separate audio/privacy/model choices. A desktop microphone coach must not be inferred from an iOS shadowing feature. |
+| **Tutor, writing journal/correction and generated exercises** — [Lector][src-lector], [OpenKoto][src-openkoto] | New AI/product scope. M105 covers deterministic cloze only; it does not authorize an AI tutor or generated lesson service. |
+| **Photo/screen OCR and automatic full-page manga regions** — [Migaku photo OCR][src-migaku-ocr], [Fushi manga][src-fushi-features] | Existing manga-region and subtitle OCR are implemented. Define supported local capture sources and any additional page detector/model before adding camera, desktop overlay or automatic panel/balloon detection. Google Lens remains excluded. |
+| **Browser extension and in-page streaming integration** — [Fushi browser tools][src-fushi], [Migaku][src-migaku] | A separate browser bridge/permission and local protocol design is needed. Existing URL opening and web-article import do not integrate arbitrary browser pages or DRM services. No DRM decryption is proposed. |
+| **Live device linking, extra cloud backends and headless/web/API/CLI/MCP access** — [Fushi][src-fushi], [OpenKoto tools][src-openkoto], [OpenKoto sync][src-openkoto-releases], [Lector deployment][src-lector] | WebDAV already syncs progress, vocabulary and review data/media. Pairing/control/streaming, OAuth providers, multi-user hosting and agent access are new architecture scopes; define authentication and data ownership first. A built-in server or MCP endpoint is not authorized by an import feature. |
+| **Anki review feedback beyond current known-word import** — [Lector beta sync][src-lector] | Existing Anki export, pending queue and mature-card knowledge import stay. Decide note identity, conflict/undo behavior and one scheduler's authority before importing review history or synchronizing schedules. Keep D-34's protection against reviewing the same card twice. |
+| **Native game text/voice hooks, game overlay and voice mining** — [Fushi][src-fushi-features] | Native injection remains excluded. M14 can continue using an external WebSocket/clipboard producer; text-only interoperability does not authorize hooking or recording another process. |
+| **Source-extension ecosystems, torrent/download center and subscriptions** — [Fushi][src-fushi] | Remain excluded by §1.3; ordinary local files, requested podcast feeds, URL playback and configured media servers are separate existing/proposed scopes. |
+| **iOS delivery** — [Fushi][src-fushi], [OpenKoto][src-openkoto] | Not part of D-16. Platform/runtime, distribution and AnkiMobile choices require an explicit scope decision beyond M117. |
+| **Hosted courses, curated recommendation catalogs, CEFR/fluency estimates, leaderboard and telemetry** — [Migaku][src-migaku], [Lector dashboard][src-lector-site], [Fushi][src-fushi] | Local comprehension filters and statistics already exist. A hosted content/course service and validated proficiency estimates are different products; leaderboard/usage telemetry stay excluded. Do not present vocabulary coverage as a validated language level. |
+
+### Rechecking and accepting a gap
+
+Use a small real fixture from the relevant workflow, record the upstream version/platform and compare observable behavior with Nikomiru. A website or README claim alone is not an acceptance test. Before starting a candidate, write its measurable behavior and failure cases into SPECIFICATION/TEST, including migration/backup/sync effects where applicable. Implemented parity is recorded only after the normal automated checks and the relevant real-source/manual checks; keep any remaining limits visible.
+
+[src-fushi]: https://github.com/hajisensai/Fushi/blob/main/README.md
+[src-fushi-features]: https://fushi.moe/
+[src-migaku]: https://migaku.com/blog/changelog
+[src-migaku-ocr]: https://migaku.com/faq/goals
+[src-jidoujisho]: https://github.com/arianneorpilla/jidoujisho/blob/main/README.md
+[src-mizune]: https://github.com/finchett/Mizune/blob/main/README.md
+[src-mizune-details]: https://github.com/finchett/Mizune/blob/main/docs/how-it-works.md
+[src-openkoto]: https://github.com/hikariming/openkoto/blob/main/README.md
+[src-openkoto-releases]: https://github.com/hikariming/openkoto/releases
+[src-lector]: https://github.com/heuwels/lector/blob/master/README.md
+[src-lector-site]: https://lector.dev/
+[src-lector-practice]: https://lector.dev/docs/features/
+[src-lector-languages]: https://lector.dev/docs/languages/
+
+
+## M102 — TXT, Markdown and pasted-text reading
+
+**Requirements**: BOK-011…BOK-014.
+
+Implement safe bounded loose-text parsing and an explicit paste editor using the existing book reader, content-derived document identities and durable local pasted sources. Requirements and checks are specified above in SPECIFICATION/TEST before implementation. Reuse existing lookup, analysis, mining, progress and backup paths. No release/version change is implied by starting this milestone.
+
+**Exit criteria**: T-BOK-011…T-BOK-014 logic/component/native-app cases, translated UI/errors, `cargo xtask ci`, regenerated dependency/package notices and documented remaining Markdown rendering limits.
+
+M102 is complete in development: full CI passed 1,052 workspace/integration tests and 109 actual GUI cases in 462 seconds. See [M102 QA](qa/m102.md). The work is Unreleased on `development/m102-text-reader`; published source/binary tags are unchanged.
+
+
+## Execution of the remaining roadmap (2026-11-15)
+
+The maintainer requested development of the whole planned roadmap after M102. Execute M103–M119 consecutively, preferring shared source identities and existing reader/mining workers. Each milestone receives requirements and test cases before code, a focused validation and a commit; run full regression at integration checkpoints. Existing manual/platform exit checks remain visible. The separate scope/architecture decision inventory remains unapproved for implementation; this request accepts the listed milestone scopes and routine implementation choices, not unrelated excluded products.
+
+| Work | State | Evidence |
+| --- | --- | --- |
+| M103–M119 implementation | in progress | Starts from M102 commit `1107ae6` on `development/m103-m119` |
+| Native Windows/macOS/Android verification | pending | Maintainer confirmed Linux only for now; native Windows/macOS/Android checks remain open; cross checks alone never close M117 |
+| Production signing/feed deployment | pending | Prepare/test the updater and delivery contract before publishing signed artifacts |
+
+
+## M103 — Offline Mokuro manga import
+
+**Requirements**: MNG-007…MNG-009.
+
+Implement maintained `.mokuro` JSON and local page images, explicit scaled region targets and off-thread exact-text/crop selection. Preserve existing manga lookup, cards and progress; reject invalid volumes atomically without executing legacy viewers. See SPECIFICATION/TEST for bounds and supported formats.
+
+**Exit criteria**: parser/path/coordinate checks, accessible region controls and actual import/lookup/mining/restart cases; fast CI and integration regression.
+
+
+## M104 — Phrase vocabulary
+
+**Requirements**: PHR-001…PHR-003.
+
+Implement bounded independent phrase records and explicit reader/caption capture, editing, source navigation and shown TSV export through a translated notebook. Retain local records in database backups; no word-status, review-schedule or WebDAV merge changes are implied.
+
+**Exit criteria**: real redb validation/restart/isolation checks, accessible explicit draft controls, actual-app source capture/edit/export/restart tests and fast CI.
+
+## M105 — Typed and multiple-choice cloze
+
+**Requirements**: CLO-001…CLO-004.
+
+Turn user-owned phrase/context snapshots into explicitly previewed exercises. Keep Unicode-aware finite practice separate from opt-in FSRS schedules; reuse the existing algorithm and retain one memory owner per exercise. No supplied Japanese sentence bank or generated provider is assumed.
+
+**Exit criteria**: concealed accessible prompts, exact answer/distractor checks, finite undo/progress, transactional schedule compare/undo/restart/backup and actual-app checks; fast CI and batch integration regression.
+
+## M106 — Local sentence bank and cross-media examples
+
+**Requirements**: SEN-001…SEN-003.
+
+Index explicitly chosen owned book text, primary text tracks and bounded owned JSON sentence packs with real dictionary identities and original positions. Provide exact offline cross-media examples with explicit validated source navigation, provenance, deletion and shown export. External providers are optional and not enabled by this milestone.
+
+**Exit criteria**: real dictionary and transaction/limit checks; translated accessible browser and actual cross-media/restart/source-change tests; backup and regression CI.
+
+## M107 — Previewed batch card generation
+
+**Requirements**: BMG-001…BMG-004.
+
+Capture bounded explicit word/context selections, inspect effective text mappings before media extraction, and export sequentially through the existing miner. Journal operation identities before mutation and resolve unknown Anki outcomes without automatic resend. Preserve advanced single-card and pending-card flows.
+
+**Exit criteria**: selection/preview/ordering/cancellation checks, fake-Anki unknown/duplicate/retry fault cases, actual-app batch flows, journal restart/backup and regression CI.
+
+## M108 — Named mining profiles and composer controls
+
+**Requirements**: MCP-001…MCP-004.
+
+Reuse bounded credential-free TOML profiles, explicit session-only plain-text field pins and exact dictionary-record sense selections. Preserve templates, single/pending export and frozen source ownership.
+
+**Exit criteria**: real configuration/worker/pending isolation checks, accessible translated controls, actual-app profile/pin/sense/source-change cases, fast CI and integration regression.
+
+## M109 — Guided lookup and held secondary peek
+
+**Requirements**: GDL-001…GDL-004.
+
+Add explicit paused-lookup rules over installed dictionaries and a physical-key hold that temporarily reveals an existing secondary track. Preserve popup/input ownership, statuses and playback; never request translation or another source.
+
+**Exit criteria**: exact identity/offset and delayed-source guards, accessible translated settings/actions, actual-app pause/held-key/focus/page cases and regression CI.
+
+## M110 — Additional local document formats
+
+**Requirements**: DOC-001…DOC-005. Dependency choices: [ADR 0010](adr/0010-document-imports.md).
+
+Stage inert HTMLZ, bounded Unicode/legacy RTF, namespace-aware DOCX and external Poppler text-layer PDF independently. Retain original source locations and reader/analysis identities; expose helper installation explicitly without reading-time downloads.
+
+**Exit criteria**: separate real format/limit tests, native helper fault/cancellation/setup checks, actual reader/lookup/mining/restart/isolation cases and regression CI. Native/sandboxed helper packaging remains separately verified in M117.
+
+M110 is complete in development: full regression passed **1,102 workspace/integration tests** and **128 actual GUI cases** in **526 seconds**. Native Linux extraction used installed Poppler 26.10.0; real distribution package transactions and native/sandboxed platform packaging checks remain open. See [M110 QA](qa/m110.md). The next accepted milestone is M111 (reader modes, annotations and library text search).
+
+
+## M111 — Reader modes, annotations and library text search
+
+**Requirements**: RDR-001…RDR-004.
+
+Add bounded local annotations (named bookmarks, highlights and notes) over original reader locations with stale detection, an in-memory library-wide literal text search through the shared document support, and explicit Pages and Sentence-focus modes for horizontal writing. Reuse validated source navigation; no WebDAV merge or new dependency.
+
+**Exit criteria**: real redb/backup checks, search cache/limit/cancellation tests, deterministic pagination/sentence tests, accessible translated controls and actual-app annotation/search/mode/restart cases; fast CI.
+
+M111 is complete in development: fast CI passed **1,062 tests** and both new actual-app cases passed. See [M111 QA](qa/m103-m119.md#m111--reader-modes-annotations-and-library-search). The next accepted milestone is M112 (podcast feeds and lyrics lessons).
+
+## M112 — Podcast feeds and lyrics lessons
+
+**Requirements**: POD-001…POD-004.
+
+Explicit HTTPS RSS feeds with bounded inert parsing and stable episode identities, resumable offline downloads through `.part` files and HTTP ranges, SRT/WebVTT feed transcripts and imported LRC/subtitle files as sidecars, reusing audio-only playback, timed lookup, line replay and cards. No transcription, automatic refresh or streaming.
+
+**Exit criteria**: parser/identity/limit tests, fake-host resume/fault tests, real redb/backup checks, translated accessible page and actual-app feed/download/transcript/playback/lyrics cases; fast CI.
+
+M112 is complete in development: fast CI passed **1,071 tests** and the new actual-app podcast case passed. See [M112 QA](qa/m103-m119.md#m112--podcast-feeds-and-lyric-lessons). The next accepted milestone is M113 (portable shortcut maps).
+
+## M113 — Portable shortcut maps
+
+**Requirements**: KEY-008…KEY-010.
+
+Versioned JSON export of physical-key bindings, bounded import with a preview of changes, unknown actions, invalid chords and conflicts, and apply through the existing atomic Shortcuts save; Reset unchanged.
+
+**Exit criteria**: format/bound/conflict tests, accessible translated preview controls and an actual-app export/import/apply/restart case; fast CI.
+
+M113 is complete in development: fast CI passed **1,076 tests** and the new actual-app case passed. See [M113 QA](qa/m103-m119.md#m113--portable-shortcut-maps). The next accepted milestone is M114 (rich MDict resources).
+
+## M114 — Rich MDict resources
+
+**Requirements**: DIC-036…DIC-038.
+
+MDict HTML becomes the existing safe structured-content model; referenced `.mdd` images and sounds become dictionary media for the popup and cards; sound links play only on click.
+
+**Exit criteria**: conversion/allowlist tests, generated `.mdx`/`.mdd` import tests with faults, popup/card media checks and an actual-app import/lookup/card case; fast CI. Real commercial MDict validation stays open (M15).
+
+M114 is complete in development: fast CI passed **1,080 tests** and the new actual-app case passed. See [M114 QA](qa/m103-m119.md#m114--rich-mdict-resources). The next accepted milestone is M115 (study-language profiles).
+
+## M115 — Study-language profiles
+
+**Requirements**: LNG-001…LNG-004.
+
+Per-language profiles (dictionaries, segmentation, readings) chosen live in General settings; per-language statuses/known words with legacy Japanese keys, filtered phrases/cloze/bank and an additive review-language table; English proven end to end beside Japanese.
+
+**Exit criteria**: config/selection/segmentation tests, real redb isolation checks, accessible settings and an actual-app English+Japanese case with restart; fast CI.
+
+M115 is complete in development: fast CI passed **1,085 tests** and the new actual-app English+Japanese case passed. See [M115 QA](qa/m103-m119.md#m115--study-language-profiles). The next accepted milestone is M116 (Emby media-server support).
+
+## M116 — Emby media-server support
+
+**Requirements**: SRV-014…SRV-016.
+
+Emby through the shared Jellyfin-family client with Emby's `/emby` prefix, headers, per-user routes, identity and direct-play checks, against a fake Emby.
+
+**Exit criteria**: fake-server L4 login/browse/play/expiry tests, accessible choice and an actual-app relay playback case; fast CI. Real Emby validation stays manual.
+
+M116 is complete in development against a fake Emby: fast CI passed **1,088 tests** and the actual-app relay case passed; validation on a real Emby server remains manual. See [M116 QA](qa/m103-m119.md#m116--emby-media-server-support). The next accepted milestone is M117 (platform ports).
+
+## M117 — Platform ports delivery
+
+**Requirements**: PORT-003, PORT-004.
+
+Touch gestures for the touch-first platforms (verifiable on Linux) and a per-platform status in `docs/qa/ports.md`. Native Windows/Android/macOS packaging and device checks and AnkiDroid stay open: the maintainer confirmed Linux only for now.
+
+**Exit criteria**: recognizer/component tests and an actual-app touch case; each platform's native checks remain unchecked until run on it.
+
+M117 is **partial**: touch gestures are implemented and checked on Linux (fast CI **1,091 tests**, actual-app touch case); native Windows/Android/macOS packaging and device checks and AnkiDroid stay open per [ports.md](qa/ports.md). The next accepted milestone is M118 (named palettes and shader presets).
+
+## M118 — Named palettes and supported shader presets
+
+**Requirements**: THM-001…THM-003.
+
+Default, OLED and High-contrast palettes checked for contrast; an explicitly downloaded, pinned Anime4K v4.0.1 pack (MIT) with Fast/Quality presets through `glsl-shaders`, user mpv options winning and refusal falling back to default rendering.
+
+**Exit criteria**: contrast tests per palette, pack verification/extraction tests, preset tests and an actual-app preset case with a local pack; fast CI.
+
+M118 is complete in development: fast CI passed **1,093 tests**, the real pinned pack download passed as an L7 test and the actual-app preset case passed. See [M118 QA](qa/m103-m119.md#m118--named-palettes-and-shader-presets). The next accepted milestone is M119 (signed application update delivery).
+
+## M119 — Signed application update delivery
+
+**Requirements**: UPD-001…UPD-004. Dependency: `minisign-verify` 0.3 (MIT, §4).
+
+Explicit update checks against a minisign-signed channel manifest pinning artifacts by size and SHA-256, rollback refusal, package-ownership detection, resumable download and a verified, atomic portable install. The production key and feed remain the maintainer's to create.
+
+**Exit criteria**: signature/rollback/ownership/install tests with generated keys, a fake update host and an actual-app check/download/install into a portable test root; fast CI. Publishing a signed production feed stays open.
+
+M119 is complete in development except for publishing: fast CI passed **1,100 tests** and the actual-app signed-update case passed. Creating the maintainer's minisign key, setting `PRODUCTION_KEY` and publishing signed channel manifests remain open. See [M119 QA](qa/m103-m119.md#m119--signed-application-updates).
+
+M102–M119 are complete in development, with M117 partial (native ports and AnkiDroid) and M119's production key and signed feed unpublished. Full regression passed 1,159 workspace/integration tests and 138 actual GUI cases. See [source QA 2.120.0](qa/2.120.0.md).

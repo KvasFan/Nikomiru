@@ -51,6 +51,10 @@ pub(crate) struct State {
     review: Option<ReviewConfig>,
     /// The tags as typed.
     tags: String,
+    /// New profile name, retained after validation errors.
+    profile_name: String,
+    /// Local profile edit validation outcome.
+    profile_error: bool,
     /// The API key is shown.
     show_key: bool,
     /// The "Create Lapis deck" already applied.
@@ -247,8 +251,57 @@ fn later(ui: &mut Ui, s: &Scene<'_>, chosen: bool, out: &mut Vec<Command>) {
     });
 }
 
+fn profiles(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    let Some(draft) = state.draft.as_mut() else {
+        return;
+    };
+    section(ui, &tr(s, "mining-profiles"));
+    ui.label(tr(s, "mining-profiles-hint"));
+    ui.horizontal(|ui| {
+        let label = ui.label(tr(s, "mining-profile-name"));
+        ui.add(
+            TextEdit::singleline(&mut state.profile_name)
+                .char_limit(80)
+                .desired_width(160.0),
+        )
+        .labelled_by(label.id);
+        if ui
+            .add_enabled(!s.page.busy, Button::new(tr(s, "mining-profile-save")))
+            .clicked()
+        {
+            draft.tags = state.tags.split_whitespace().map(str::to_owned).collect();
+            state.profile_error = !draft.save_profile(state.profile_name.clone());
+            if !state.profile_error {
+                state.profile_name.clear();
+            }
+        }
+    });
+    let names: Vec<_> = draft.profiles.iter().map(|p| p.name.clone()).collect();
+    for name in names {
+        ui.horizontal(|ui| {
+            ui.label(&name);
+            let apply = (s.tr)("mining-profile-apply", &[("name", name.clone())]);
+            if ui.add_enabled(!s.page.busy, Button::new(apply)).clicked() {
+                state.profile_error = !draft.apply_profile(&name);
+                state.tags = draft.tags.join(" ");
+                if !state.profile_error && !draft.to_review() && !draft.later() {
+                    out.push(Command::AnkiTest(draft.clone()));
+                }
+            }
+            let delete = (s.tr)("mining-profile-delete", &[("name", name.clone())]);
+            if ui.button(delete).clicked() {
+                draft.delete_profile(&name);
+            }
+        });
+    }
+    if state.profile_error {
+        ui.colored_label(palette::current().bad, tr(s, "mining-profile-invalid"));
+    }
+}
+
 fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let page = s.page;
+    profiles(ui, s, state, out);
     let Some(draft) = state.draft.as_mut() else {
         return;
     };
@@ -602,6 +655,35 @@ mod tests {
                 .map(|f| (*f).to_string())
                 .collect(),
         }
+    }
+
+    // T-MCP-001: accessible explicit draft operations; the ordinary Save remains the persistence boundary.
+    #[test]
+    fn profile_controls_edit_the_draft_without_implicit_saving() {
+        let mut h = harness(AnkiPage::default());
+        h.run();
+        h.get_by_label("mining-profile-name").focus();
+        h.get_by_label("mining-profile-name").type_text("Reading");
+        h.run();
+        let out = click(&mut h, "mining-profile-save");
+        assert!(out.is_empty());
+        assert_eq!(
+            h.state().state.draft.as_ref().unwrap().profiles[0].name,
+            "Reading"
+        );
+        assert!(h.state().saved.profiles.is_empty());
+        h.state_mut().state.draft.as_mut().unwrap().deck = "Edited".into();
+        let out = click(&mut h, "mining-profile-apply");
+        assert!(matches!(out.as_slice(),[Command::AnkiTest(c)] if c.deck=="Lapis"));
+        let out = click(&mut h, "anki-save");
+        assert!(
+            out.iter().any(
+                |c| matches!(c,Command::AnkiSave(c) if c.profiles.len()==1 && c.deck=="Lapis")
+            )
+        );
+        let out = click(&mut h, "mining-profile-delete");
+        assert!(out.is_empty());
+        assert!(h.state().state.draft.as_ref().unwrap().profiles.is_empty());
     }
 
     // T-ANK-044: the cards kept, Remove and Send to Anki

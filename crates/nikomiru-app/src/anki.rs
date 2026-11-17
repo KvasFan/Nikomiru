@@ -96,6 +96,20 @@ type LaterDone = Box<dyn FnOnce(LaterSent) + Send>;
 type Render<'a> = dyn Fn(&[String]) -> Result<Vec<(String, String)>, compose::FieldsError> + 'a;
 
 enum Job {
+    BatchPreview(
+        Vec<(String, MineRequest)>,
+        Box<dyn FnOnce(Result<Vec<nikomiru_ui::batch_mining::Preview>, String>) + Send>,
+    ),
+    BatchMine(
+        Box<nikomiru_ui::batch_mining::Ticket>,
+        Box<
+            dyn FnOnce(
+                    Result<nikomiru_ui::batch_mining::Outcome, nikomiru_ui::batch_mining::Failure>,
+                ) + Send,
+        >,
+    ),
+    BatchReconcile(String, Box<dyn FnOnce(Result<Option<u64>, String>) + Send>),
+    ConfigureFfmpeg(String),
     Check(CheckRequest, Checked),
     Mine(Box<MineRequest>, Option<PendingFrame>, MineDone),
     Browse(BrowseTarget, Browsed),
@@ -153,11 +167,20 @@ impl Anki {
                         break;
                     }
                     match job {
+                        Job::BatchPreview(requests, done) => done(worker.batch_preview(requests)),
+                        Job::BatchMine(ticket, done) => done(worker.batch_mine(*ticket)),
+                        Job::BatchReconcile(operation, done) => {
+                            done(worker.batch_reconcile(&operation))
+                        }
                         Job::Check(request, done) => done(worker.check(&request)),
                         Job::Mine(request, frame, done) => done(worker.mine(&request, frame)),
                         Job::Browse(target, done) => done(worker.browse(&target)),
                         Job::Refresh(config, done) => done(worker.refresh(&config)),
                         Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
+                        Job::ConfigureFfmpeg(path) => {
+                            worker.parts.ffmpeg = path;
+                            worker.tools = None;
+                        }
                         Job::Configure(config) => worker.configure(*config),
                         Job::Later(done) => done(worker.later()),
                         Job::SendLater(done) => done(worker.send_later()),
@@ -193,6 +216,12 @@ impl Anki {
     fn refuse(&self, job: Job) {
         match job {
             Job::Check(_, done) => done(None),
+            Job::BatchPreview(_, done) => done(Err(self.unavailable.clone())),
+            Job::BatchMine(_, done) => done(Err(nikomiru_ui::batch_mining::Failure {
+                message: self.unavailable.clone(),
+                uncertain: false,
+            })),
+            Job::BatchReconcile(_, done) => done(Err(self.unavailable.clone())),
             Job::Mine(_, _, done) => done(Err(MineFailure {
                 message: self.unavailable.clone(),
                 duplicate: false,
@@ -200,7 +229,7 @@ impl Anki {
             Job::Browse(_, done) => done(Err(self.unavailable.clone())),
             Job::Refresh(_, done) => done(Err(self.unavailable.clone())),
             Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
-            Job::Configure(_) => {}
+            Job::Configure(_) | Job::ConfigureFfmpeg(_) => {}
             Job::Later(done) | Job::ForgetLater(_, done) => done(Vec::new()),
             Job::KnownWords(_, _, done) => done(Err(self.unavailable.clone())),
             Job::SendLater(done) => done(LaterSent {
@@ -212,6 +241,42 @@ impl Anki {
 }
 
 impl AnkiService for Anki {
+    fn batch_preview(
+        &self,
+        requests: Vec<(String, MineRequest)>,
+        done: Box<dyn FnOnce(Result<Vec<nikomiru_ui::batch_mining::Preview>, String>) + Send>,
+    ) {
+        if let Some(job) = self.send(Job::BatchPreview(requests, done)) {
+            self.refuse(job);
+        }
+    }
+    fn batch_mine(
+        &self,
+        ticket: nikomiru_ui::batch_mining::Ticket,
+        done: Box<
+            dyn FnOnce(
+                    Result<nikomiru_ui::batch_mining::Outcome, nikomiru_ui::batch_mining::Failure>,
+                ) + Send,
+        >,
+    ) {
+        if let Some(job) = self.send(Job::BatchMine(Box::new(ticket), done)) {
+            self.refuse(job);
+        }
+    }
+    fn batch_reconcile(
+        &self,
+        operation: String,
+        done: Box<dyn FnOnce(Result<Option<u64>, String>) + Send>,
+    ) {
+        if let Some(job) = self.send(Job::BatchReconcile(operation, done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn configure_ffmpeg(&self, path: String) {
+        let _ = self.send(Job::ConfigureFfmpeg(path));
+    }
+
     fn check(&self, request: CheckRequest, done: Checked) {
         if let Some(job) = self.send(Job::Check(request, done)) {
             self.refuse(job);
@@ -282,6 +347,14 @@ struct Worker {
     /// The fields of the note type, once asked.
     note_fields: Option<Vec<String>>,
     tools: Option<Tools>,
+    /// Set only around one batch operation; never inherited by ordinary mining.
+    batch_operation: Option<String>,
+    /// Records an uncertain mutation without changing the ordinary miner's public result type.
+    batch_unknown: bool,
+    /// Frozen preview guards, checked again before committing generated media.
+    batch_guard: Option<nikomiru_ui::batch_mining::Ticket>,
+    /// Extra in-process guard against retrying a lost mutation response.
+    batch_unresolved: std::collections::HashSet<String>,
 }
 
 impl Worker {
@@ -296,6 +369,10 @@ impl Worker {
             paused_until: Cell::new(None),
             note_fields: None,
             tools: None,
+            batch_operation: None,
+            batch_unknown: false,
+            batch_guard: None,
+            batch_unresolved: Default::default(),
         }
     }
 
@@ -483,6 +560,16 @@ impl Worker {
             .get(r.entry)
             .filter(|e| e.expression == r.expression && e.reading == r.reading)
             .ok_or_else(|| self.fail_with("error-mining-dictionaries-changed", &[]))?;
+        let selected = r
+            .composition
+            .senses
+            .as_ref()
+            .map(|ids| {
+                compose::selected_senses(entry, ids)
+                    .ok_or_else(|| self.fail_with("composer-senses-stale", &[]))
+            })
+            .transpose()?;
+        let entry = selected.as_ref().unwrap_or(entry);
         let records = manager.list().unwrap_or_default();
         let sheets: Vec<Sheet> = lookup
             .dictionaries()
@@ -649,6 +736,39 @@ impl Worker {
 
     /// Makes, or overwrites, a card (ANK-031…ANK-039).
     fn mine(&mut self, r: &MineRequest, frame: Option<PendingFrame>) -> Result<Mined, MineFailure> {
+        if !nikomiru_core::mining_profiles::valid_fields(&r.composition.fields) {
+            return Err(self.fail_with("composer-fields-invalid", &[]));
+        }
+        if !r.composition.fields.is_empty() {
+            if self.parts.config.to_review() {
+                return Err(self.fail_with("composer-fields-invalid", &[]));
+            }
+            let fields = if self.parts.config.later() {
+                if lapis::is_lapis(&self.parts.config.note_type, &[]) {
+                    lapis::FIELDS.iter().map(|s| s.to_string()).collect()
+                } else {
+                    self.parts
+                        .config
+                        .field_mapping
+                        .get(&self.parts.config.note_type)
+                        .map(|m| m.keys().cloned().collect())
+                        .unwrap_or_default()
+                }
+            } else {
+                self.note_fields = None;
+                self.note_fields().map_err(|e| self.fail(&e))?
+            };
+            if r.composition.fields.keys().any(|f| !fields.contains(f))
+                || fields.first().is_some_and(|first| {
+                    r.composition
+                        .fields
+                        .get(first)
+                        .is_some_and(|s| s.trim().is_empty())
+                })
+            {
+                return Err(self.fail_with("composer-fields-invalid", &[]));
+            }
+        }
         if self.parts.config.to_review() {
             return self.mine_for_review(r, frame);
         }
@@ -701,7 +821,10 @@ impl Worker {
             None
         });
         let (start_ms, end_ms) = r.clip.unwrap_or((r.position_ms, r.position_ms));
-        let source_id = link::new_source_id();
+        let source_id = self
+            .batch_operation
+            .clone()
+            .unwrap_or_else(link::new_source_id);
         let link = r.uid.as_ref().map(|uid| SourceLink {
             uid: uid.clone(),
             episode: 0,
@@ -730,12 +853,18 @@ impl Worker {
                 String::new()
             },
         };
+        self.batch_check_guard()?;
         Ok(Prepared {
+            field_overrides: r.composition.fields.clone(),
             values: compose::values(&dict, &scene),
             media: dict.media,
             audio,
             image,
-            record: Record::of(r, &source_id, (start_ms, end_ms)),
+            record: {
+                let mut record = Record::of(r, &source_id, (start_ms, end_ms));
+                record.batch_operation = self.batch_operation.clone();
+                record
+            },
         })
     }
 
@@ -756,6 +885,9 @@ impl Worker {
     /// Anki stored them, the media uploaded, then `addNote` or the overwrite
     /// of the last card (ANK-026, ANK-036, ANK-037).
     fn deliver(&mut self, p: &Prepared, action: CardAction) -> Result<Mined, MineFailure> {
+        if !p.field_overrides.is_empty() {
+            self.note_fields = None;
+        }
         let fields = self.note_fields().map_err(|e| self.fail(&e))?;
         let mapping = self.mapping(&fields);
         let keep_empty = matches!(action, CardAction::Overwrite(_));
@@ -767,13 +899,14 @@ impl Worker {
                 "card-image" => image.map(compose::card_image).unwrap_or_default(),
                 other => p.values.get(other).cloned().unwrap_or_default(),
             };
-            compose::fields(fields, &mapping, &value, keep_empty).map(|values| {
-                if lapis_like {
-                    compose::lapis_safe(values)
-                } else {
-                    values
-                }
-            })
+            compose::fields_overridden(fields, &mapping, &value, keep_empty, &p.field_overrides)
+                .map(|values| {
+                    if lapis_like {
+                        compose::lapis_safe(values)
+                    } else {
+                        values
+                    }
+                })
         };
         // the fields must hold before anything goes to Anki (ANK-026)
         render(
@@ -820,7 +953,14 @@ impl Worker {
                 .ok()
                 .flatten()
         });
-        let tags = compose::tags(&self.parts.config.tags, series.as_deref());
+        let mut tags = compose::tags(&self.parts.config.tags, series.as_deref());
+        if let Some(operation) = &p.record.batch_operation {
+            tags.push(batch::operation_tag(operation));
+        }
+        if let Err(failure) = self.batch_check_guard() {
+            rollback(client, &stored);
+            return Err(failure);
+        }
         let outcome = match action {
             CardAction::Add | CardAction::AddAnyway => {
                 match render(audio_name.as_deref(), image_name.as_deref(), &fields) {
@@ -860,7 +1000,10 @@ impl Worker {
                 return Err(failure);
             }
             // the note may exist, or have changed: its media stay (ANK-003)
-            Err(NoteError::Unknown(failure)) => return Err(failure),
+            Err(NoteError::Unknown(failure)) => {
+                self.batch_unknown = true;
+                return Err(failure);
+            }
         };
         self.record(note_id, &p.record);
         Ok(Mined {
@@ -894,9 +1037,34 @@ impl Worker {
             if card.damaged {
                 continue;
             }
+            let already_uncertain = later::uncertain(&dir, &card.id).unwrap_or(true);
+            self.batch_unknown = false;
             let outcome = later::load(&dir, &card.id)
                 .map_err(|reason| self.fail_with("error-later-damaged", &[("reason", reason)]))
                 .and_then(|(prepared, anyway)| {
+                    if let Some(operation) = &prepared.record.batch_operation {
+                        match self
+                            .batch_reconcile(operation)
+                            .map_err(|message| MineFailure {
+                                message,
+                                duplicate: false,
+                            })? {
+                            Some(id) => {
+                                self.record(id, &prepared.record);
+                                return Ok(Mined {
+                                    note_id: id,
+                                    deck: self.parts.config.deck.clone(),
+                                    overwritten: false,
+                                    kept: None,
+                                });
+                            }
+                            None if already_uncertain => {
+                                return Err(self.fail_with("batch-unknown", &[]));
+                            }
+                            None => {}
+                        }
+                    }
+
                     let action = if anyway {
                         CardAction::AddAnyway
                     } else {
@@ -913,7 +1081,12 @@ impl Worker {
                 }
                 Err(failure) => {
                     sent.failed += 1;
-                    if let Err(e) = later::note_problem(&dir, &card.id, &failure.message) {
+                    if let Err(e) = later::note_problem_outcome(
+                        &dir,
+                        &card.id,
+                        &failure.message,
+                        self.batch_unknown || already_uncertain,
+                    ) {
                         tracing::warn!("cards for later: {e}");
                     }
                     sent.first_problem.get_or_insert(failure.message);
@@ -1033,13 +1206,14 @@ impl Worker {
             created_at,
             memory: Memory::default(),
         };
+        self.batch_check_guard()?;
         let saved = match r.action {
             CardAction::Overwrite(id) => library
                 .replace_review_card(id, &card)
                 .map(|before| before.map(|before| (id, Some(before)))),
-            CardAction::Add | CardAction::AddAnyway => {
-                library.add_review_card(&card).map(|id| Some((id, None)))
-            }
+            CardAction::Add | CardAction::AddAnyway => library
+                .add_review_card_in(&library.active_language(), &card)
+                .map(|id| Some((id, None))),
         };
         let (id, replaced) = match saved {
             Ok(Some(done)) => done,
@@ -1395,3 +1569,6 @@ fn sentence_audio(
     }
     Ok((nikomiru_anki::media::name(&bytes, ext), bytes))
 }
+
+#[path = "batch_worker.rs"]
+mod batch;

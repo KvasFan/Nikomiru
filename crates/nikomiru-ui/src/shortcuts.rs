@@ -21,6 +21,8 @@ pub enum Context {
     Player,
     /// A dictionary popup.
     Popup,
+    /// A finite vocabulary recall round.
+    Recall,
 }
 
 /// An action that a shortcut triggers.
@@ -76,6 +78,21 @@ pub enum Action {
     SubList,
     /// Search in the subtitle list (SUB-015).
     SubSearch,
+    /// Subtitle study action: study_previous.
+    StudyPrevious,
+    /// Subtitle study action: study_next.
+    StudyNext,
+    /// Subtitle study action: study_reveal.
+    StudyReveal,
+    /// Subtitle study action: study_select.
+    StudySelect,
+    /// Vocabulary recall action: recall_reveal.
+    RecallReveal,
+    /// Vocabulary recall action: recall_again.
+    RecallAgain,
+    /// Vocabulary recall action: recall_good.
+    RecallGood,
+
     /// Blur the subtitle on/off (SUB-014).
     SubBlur,
     /// Hide the subtitle on/off (SUB-014).
@@ -102,6 +119,10 @@ pub enum Action {
     CreateCardAdvanced,
     /// Looks up the first word of the subtitle shown (NFR-A11Y-01).
     LookupSubtitle,
+    /// Look up the first kanji of the current primary cue (GDL-002).
+    LookupFirstKanji,
+    /// Reveal the existing secondary track only while its physical key is held.
+    PeekTranslation,
     /// The lookup starts a word earlier in its subtitle (a character while
     /// its words are not known, LKP-060).
     LookupPrev,
@@ -113,7 +134,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 41] = [
+    pub const ALL: [Action; 50] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -139,6 +160,13 @@ impl Action {
         Action::ReplayPrevCue,
         Action::SubList,
         Action::SubSearch,
+        Action::StudyPrevious,
+        Action::StudyNext,
+        Action::StudyReveal,
+        Action::StudySelect,
+        Action::RecallReveal,
+        Action::RecallAgain,
+        Action::RecallGood,
         Action::SubBlur,
         Action::SubHide,
         Action::SubToggle,
@@ -152,6 +180,8 @@ impl Action {
         Action::CreateCard,
         Action::CreateCardAdvanced,
         Action::LookupSubtitle,
+        Action::LookupFirstKanji,
+        Action::PeekTranslation,
         Action::LookupPrev,
         Action::LookupNext,
         Action::Settings,
@@ -185,6 +215,14 @@ impl Action {
             Action::ReplayPrevCue => "replay_prev_cue",
             Action::SubList => "sub_list",
             Action::SubSearch => "sub_search",
+            Action::StudyPrevious => "study_previous",
+            Action::StudyNext => "study_next",
+            Action::StudyReveal => "study_reveal",
+            Action::StudySelect => "study_select",
+            Action::RecallReveal => "recall_reveal",
+            Action::RecallAgain => "recall_again",
+            Action::RecallGood => "recall_good",
+
             Action::SubBlur => "sub_blur",
             Action::SubHide => "sub_hide",
             Action::SubToggle => "sub_toggle",
@@ -198,6 +236,8 @@ impl Action {
             Action::CreateCard => "create_card",
             Action::CreateCardAdvanced => "create_card_advanced",
             Action::LookupSubtitle => "lookup_subtitle",
+            Action::LookupFirstKanji => "lookup_first_kanji",
+            Action::PeekTranslation => "peek_translation",
             Action::LookupPrev => "lookup_prev",
             Action::LookupNext => "lookup_next",
             Action::Settings => "settings",
@@ -217,6 +257,7 @@ impl Action {
     /// The context of the action.
     pub fn context(self) -> Context {
         match self {
+            Action::RecallReveal | Action::RecallAgain | Action::RecallGood => Context::Recall,
             // Back and these work on the pages too (NFR-A11Y-01)
             Action::OpenFile | Action::Back | Action::Settings => Context::Global,
             Action::PopupNext
@@ -283,6 +324,14 @@ impl Action {
             Action::ReplayPrevCue => &["Shift+KeyR"],
             Action::SubList => &["KeyL"],
             Action::SubSearch => &["Ctrl+KeyF"],
+            Action::StudyPrevious => &["Alt+ArrowUp"],
+            Action::StudyNext => &["Alt+ArrowDown"],
+            Action::StudyReveal => &["Alt+KeyR"],
+            Action::StudySelect => &["Alt+KeyT"],
+            Action::RecallReveal => &["Space"],
+            Action::RecallAgain => &["Digit1"],
+            Action::RecallGood => &["Digit2"],
+
             Action::SubBlur => &["KeyB"],
             Action::SubHide => &["KeyH"],
             Action::SubToggle => &["KeyV"],
@@ -296,6 +345,8 @@ impl Action {
             Action::CreateCard => &["Ctrl+Enter"],
             Action::CreateCardAdvanced => &["Ctrl+Shift+Enter"],
             Action::LookupSubtitle => &["Enter"],
+            Action::LookupFirstKanji => &[],
+            Action::PeekTranslation => &["KeyT"],
             Action::LookupPrev => &["ArrowLeft"],
             Action::LookupNext => &["ArrowRight"],
             Action::Settings => &["Ctrl+Comma"],
@@ -595,6 +646,19 @@ impl Bindings {
             .get(&(context, chord.to_string()))
             .or_else(|| self.by_chord.get(&(Context::Global, chord.to_string())))
             .copied()
+            .filter(|a| {
+                !text_focus
+                    || !matches!(
+                        a,
+                        Action::RecallReveal
+                            | Action::RecallAgain
+                            | Action::RecallGood
+                            | Action::StudyPrevious
+                            | Action::StudyNext
+                            | Action::StudyReveal
+                            | Action::StudySelect
+                    )
+            })
     }
 }
 
@@ -616,7 +680,56 @@ mod tests {
         shift: false,
     };
 
+    // T-KNW-055: recall keys are separate from playback, reject typing focus and participate in global conflict validation.
+    #[test]
+    fn recall_shortcuts_are_contextual_and_configurable() {
+        let b = Bindings::defaults();
+        assert_eq!(
+            b.action(Context::Recall, "Space", false),
+            Some(Action::RecallReveal)
+        );
+        assert_eq!(
+            b.action(Context::Player, "Space", false),
+            Some(Action::PlayPause)
+        );
+        assert_eq!(b.action(Context::Recall, "Digit1", true), None);
+        let map = BTreeMap::from([("recall_reveal".into(), vec!["Ctrl+Comma".into()])]);
+        assert!(Bindings::with_overrides(&map).is_err());
+        let map = BTreeMap::from([("recall_reveal".into(), vec!["Alt+KeyR".into()])]);
+        let b = Bindings::with_overrides(&map).unwrap();
+        assert_eq!(
+            b.action(Context::Recall, "Alt+KeyR", false),
+            Some(Action::RecallReveal)
+        );
+        assert_eq!(b.action(Context::Recall, "Alt+KeyR", true), None);
+    }
+
+    // T-SUB-054: configurable actions are unique, player-scoped and never consume typing keys.
     // T-KEY-005
+    #[test]
+    fn study_shortcuts_respect_focus_context_and_overrides() {
+        let b = Bindings::defaults();
+        for action in [
+            Action::StudyPrevious,
+            Action::StudyNext,
+            Action::StudyReveal,
+            Action::StudySelect,
+        ] {
+            let key = action.default_keys()[0];
+            assert_eq!(b.action(Context::Player, key, false), Some(action));
+            assert_eq!(b.action(Context::Player, key, true), None);
+            assert_eq!(b.action(Context::Global, key, false), None);
+            assert_eq!(Action::from_name(action.name()), Some(action));
+        }
+        let overrides =
+            std::collections::BTreeMap::from([("study_next".into(), vec!["Alt+KeyN".into()])]);
+        let b = Bindings::with_overrides(&overrides).unwrap();
+        assert_eq!(
+            b.action(Context::Player, "Alt+KeyN", false),
+            Some(Action::StudyNext)
+        );
+    }
+
     #[test]
     fn only_the_actions_that_step_repeat() {
         for once in [

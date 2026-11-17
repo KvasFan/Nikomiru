@@ -10,14 +10,18 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod batch_mining;
 pub mod book_scores;
 pub mod books;
 pub mod catalog;
+pub mod cloze;
 pub mod condense;
 pub mod controls;
 pub mod dictionaries;
 mod encounters;
 mod gaps;
+pub mod gestures;
+mod guided_lookup;
 #[cfg(feature = "test-harness")]
 pub mod harness;
 pub mod hooker;
@@ -26,24 +30,33 @@ pub mod i18n;
 pub mod mining;
 pub mod ocr;
 pub mod online;
+pub mod phrases;
 pub mod player_settings;
+pub mod podcasts;
 pub mod popup;
 pub mod popup_view;
+pub mod reader_tools;
 pub mod reader_words;
+mod recall;
+mod recall_file;
 pub mod review;
 pub mod scores;
 pub mod screensaver;
 pub mod screenshot;
+pub mod sentence_bank;
 pub mod series_scores;
 pub mod servers;
 pub mod session;
 pub mod setup;
+pub mod shortcut_maps;
 pub mod shortcuts;
 pub mod study;
+pub mod study_presets;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
 mod ui;
+pub mod updates;
 pub mod view;
 pub mod web_video;
 pub mod word_audio;
@@ -57,6 +70,7 @@ pub use view::{Dialog, FileDialog};
 
 /// Bounded plain SRT export of complete current subtitles.
 pub mod subtitle_export;
+pub mod subtitle_study;
 
 /// Local snapshots of completed comprehension summaries.
 pub mod study_report;

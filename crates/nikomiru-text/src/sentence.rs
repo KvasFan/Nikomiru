@@ -62,9 +62,50 @@ pub fn sentence(text: &str, selection: Range<usize>) -> Sentence {
     }
 }
 
+/// Every sentence of `text`, in order, by the same rules as [`sentence`]
+/// (RDR-004): their byte ranges, trimmed, none of them empty.
+pub fn sentences(text: &str) -> Vec<Range<usize>> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < text.len() {
+        let rest = &text[at..];
+        let blank = rest.len() - rest.trim_start().len();
+        at += blank;
+        if at >= text.len() {
+            break;
+        }
+        let found = sentence(text, at..at).range;
+        let end = if found.end > at {
+            found.end
+        } else {
+            at + text[at..].chars().next().map_or(1, char::len_utf8)
+        };
+        let range = found.start.max(at)..found.end.max(at);
+        if !range.is_empty() {
+            out.push(range);
+        }
+        at = end;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-RDR-004: sentence focus covers the paragraph in order.
+    #[test]
+    fn a_paragraph_splits_into_its_sentences() {
+        let text = "彼は「こんにちは」と言った。次の文。 Last one";
+        let parts: Vec<&str> = sentences(text).into_iter().map(|r| &text[r]).collect();
+        assert_eq!(
+            parts,
+            ["彼は「こんにちは」と言った。", "次の文。", "Last one"]
+        );
+        assert!(sentences("").is_empty());
+        assert!(sentences("  \n ").is_empty());
+        assert_eq!(sentences("。。"), vec![0..6]);
+    }
 
     fn around<'a>(text: &'a str, word: &str) -> &'a str {
         let at = text.find(word).unwrap();

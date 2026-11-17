@@ -136,7 +136,7 @@ pub fn drop(paths: &[String]) -> Result<(), String> {
 
 /// Presses and releases a key, given by its W3C `code` name, with modifiers
 /// (`Ctrl`, `Shift`, `Alt`), through the window's key handler.
-pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
+pub fn key(code: &str, mods: &[String], repeats: u64, text_focus: bool) -> Result<(), String> {
     let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
     let mut held = Modifiers::default();
     for m in mods {
@@ -155,12 +155,12 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             pressed,
             repeat,
         };
-        let taken = ui.key(key(true, false), false);
+        let taken = ui.key(key(true, false), text_focus);
         // held: the auto-repeats of the window system
         for _ in 0..repeats {
-            ui.key(key(true, true), false);
+            ui.key(key(true, true), text_focus);
         }
-        ui.key(key(false, false), false);
+        ui.key(key(false, false), text_focus);
         // what the window gives egui: a key no shortcut took, on a page
         if !taken && (ui.page_open() || held.ctrl) {
             let short = name
@@ -187,6 +187,42 @@ pub fn key(code: &str, mods: &[String], repeats: u64) -> Result<(), String> {
             }
         }
     })
+}
+
+/// One physical window key event, preserving a held key across calls.
+pub fn key_event(
+    code: &str,
+    mods: Vec<String>,
+    pressed: bool,
+    repeat: bool,
+    text_focus: bool,
+) -> Result<(), String> {
+    let evdev = evdev_code(code).ok_or_else(|| format!("unknown key {code}"))?;
+    let mut held = Modifiers::default();
+    for m in mods {
+        match m.as_str() {
+            "Shift" => held.shift = true,
+            "Ctrl" => held.ctrl = true,
+            "Alt" => held.alt = true,
+            _ => return Err("unknown modifier".into()),
+        }
+    }
+    call(move |ui| {
+        ui.key(
+            Key {
+                evdev,
+                mods: held,
+                pressed,
+                repeat,
+            },
+            text_focus,
+        );
+    })
+}
+
+/// Deliver the same transient-control cleanup as the native focus-loss event.
+pub fn focus_lost() -> Result<(), String> {
+    call(|ui| ui.focus_lost())
 }
 
 /// "Hide" on the library's first steps (LIB-013).
@@ -255,6 +291,12 @@ pub fn state() -> Result<Value, String> {
     call(|ui| {
         let s = &ui.session;
         let v = &s.view;
+        let guided_lookup = json!({
+            "rule": s.config().lookup.pause_lookup,
+            "target": s.keyboard_lookup(),
+            "peeking": s.translation_peeking(),
+            "secondary_mode": s.config().subtitles.secondary_obscure,
+        });
         // the progress bar and the thumbnail under the pointer (PLY-014)
         let bar_progress = ui
             .view
@@ -339,6 +381,11 @@ pub fn state() -> Result<Value, String> {
                 "clip": a.clip.map(|(s, e)| [s, e]),
                 "frame": format!("{:?}", a.frame),
                 "audio": a.audio,
+                "fields": a.fields,
+                "available_fields": a.available_fields,
+                "pinned": a.pinned,
+                "senses": a.senses.iter().map(|s| json!({"id":s.id,"label":s.label,"selected":s.selected})).collect::<Vec<_>>(),
+                "error": a.error,
             })
         });
         let settings_status = s
@@ -452,6 +499,7 @@ pub fn state() -> Result<Value, String> {
             "controls_visible": s.controls_visible(),
             "fullscreen": ui.view.fullscreen,
             "subtitles": {
+                "version": s.sub_list_version,
                 "source": s.subs.source.as_ref().map(|x| x.key()),
                 "incomplete": s.subs.incomplete,
                 "read_progress": s.subs.read_progress,
@@ -499,6 +547,10 @@ pub fn state() -> Result<Value, String> {
             "anki_page": json!({
                 "open": ui.view.anki_page_open,
                 "busy": s.anki_page.busy,
+                "profiles": s.anki_config().profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>(),
+                "active_profile": s.anki_config().active_profile,
+                "deck": s.anki_config().deck,
+                "model": s.anki_config().note_type,
                 "status": s.anki_page.status.as_ref().map(|(t, ok)| json!({ "text": t, "ok": ok })),
                 "decks": s.anki_page.lists.as_ref().map(|l| l.decks.clone()),
                 "models": s.anki_page.lists.as_ref().map(|l| l.models.clone()),
@@ -539,6 +591,7 @@ pub fn state() -> Result<Value, String> {
             })),
             "dictionaries": s.dict_page.json(),
         });
+        state["guided_lookup"] = guided_lookup;
         state["web_video"] =
             json!({ "page": s.web_page(), "loading": s.web_loading(), "error": s.web_error });
         state["audio_export"] = json!({
@@ -549,8 +602,108 @@ pub fn state() -> Result<Value, String> {
         // SUB-027
         state["moving_subtitles"] = json!(s.moving_subtitles().is_some());
         // INS-001
+        state["concordance"] = s.subtitle_examples().map_or(
+            Value::Null,
+            |c| json!({"label":c.label,"indices":c.indices}),
+        );
+        state["subtitle_study"] = json!({"shown":ui.view.list.study_rows(), "vocabulary_scope":s.vocabulary_scope_id(), "practice_remaining":s.practice_remaining(), "practice_cues":s.practice_cues_remaining(), "practice_wait_ms":s.practice_wait_ms(), "selected":ui.view.list.study_selection(), "revealed":ui.view.list.study_reveals()});
+        state["recall"]=s.recall().map_or(Value::Null,|r| {
+            let summary=r.summary();json!({"id":r.id,"source":r.source,"cards":r.cards,"order":r.order,"pending":r.pending,"history":r.history,"revealed":r.revealed,"hint_revealed":r.hint_revealed,"hint_source":r.hint_source,"current":r.current().map(|c|&c.expression),"done":r.done(),"summary":{"good":summary.good,"again":summary.again,"skipped":summary.skipped,"attempts":summary.attempts},"covered":s.recall_covered})
+        });
+        state["recall_history"] = json!(s.config().lookup.recall_history);
+        state["recall_history_failed"] = json!(s.recall_history_failed());
+        state["recall_history_open"] = json!(ui.view.recall_history_open);
+        state["word_status_undo"] = json!(s.word_status_undo_available());
+        state["study_presets"] = json!(s.config().lookup.study_presets);
+        state["subtitle_presets"] = json!(s.config().subtitles.study_presets);
+        state["study_popup"] = json!({"open": s.study_popup_open(), "cue": s.popups.root_cue()});
         state["setup_open"] = json!(s.setup_page.open);
+        state["setup"] = json!({
+            "running": s.setup_page.running,
+            "items": s.setup_page.items.iter().map(|(id, state)| (id.clone(), format!("{state:?}"))).collect::<std::collections::BTreeMap<_, _>>(),
+            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp, "pdftotext": s.config().paths.pdftotext },
+        });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
+        state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
+        state["sentence_bank"] = json!({"open":s.bank.open,"indexing":s.bank.indexing,"querying":s.bank.querying,"error":s.bank.error,"epoch":s.bank.epoch,"expression":s.bank.expression,"reading":s.bank.reading,"batches":s.bank.batches.iter().map(|b|json!({"key":b.key,"title":b.title,"count":b.count})).collect::<Vec<_>>(),"examples":s.bank.examples.iter().map(|e|json!({"sentence":e.sentence,"batch":e.batch,"title":e.title,"ranges":e.ranges})).collect::<Vec<_>>()});
+        state["cloze"] = json!({"open":s.clozes.open,"busy":s.clozes.busy,"error":s.clozes.error,"preview":s.clozes.preview,"items":s.clozes.items,"round":s.clozes.round.as_ref().map(|r|json!({"index":r.index,"total":r.rows.len(),"scheduled":r.scheduled,"mode":format!("{:?}",r.mode),"prompt":r.current().and_then(|c|c.prompt()),"feedback":r.feedback,"input":r.input,"options":r.options(),"results":r.results.iter().map(|x|format!("{x:?}")).collect::<Vec<_>>(),"undo":r.undo.is_some(),"answer":r.feedback.and_then(|_|r.current().map(|c|&c.phrase.text))}))});
+        state["dictionary_sound"] = json!(s.last_dictionary_sound);
+        state["study_language"] = json!(s.study_language());
+        state["updates"] = json!({
+            "configured": s.updates_configured(),
+            "owner": format!("{:?}", s.update_owner()),
+            "checking": s.updates.checking,
+            "up_to_date": s.updates.up_to_date,
+            "available": s.updates.available.as_ref().map(|a| json!({"release": a.release, "artifact": a.artifact.is_some()})),
+            "downloading": s.updates.downloading.is_some(),
+            "downloaded": s.updates.downloaded,
+            "installing": s.updates.installing,
+            "installed": s.updates.installed,
+            "error": s.updates.error,
+            "channel": s.config().updates.channel,
+        });
+        state["shaders"] = json!({
+            "installed": s.shader_pack_installed(),
+            "busy": s.shader_pack_busy(),
+            "overridden": s.shaders_overridden(),
+            "preset": s.config().player.shader_preset,
+            "palette": s.config().general.palette,
+        });
+        state["shortcuts"] = json!({
+            "overrides": s.config().shortcuts,
+            "status": s.settings_status.as_ref().map(|(t, _)| t),
+            "preview": s.shortcut_preview.as_ref().map(|p| json!({
+                "changes": p.changes.iter().map(|c| json!({"action": c.action.name(), "before": c.before, "after": c.after})).collect::<Vec<_>>(),
+                "unknown": p.unknown,
+                "invalid": p.invalid,
+                "conflicts": p.conflicts.iter().map(|c| &c.chord).collect::<Vec<_>>(),
+                "applicable": p.applicable(),
+            })),
+        });
+        state["podcasts"] = json!({
+            "open": s.podcasts.open,
+            "busy": s.podcasts.busy,
+            "fetching": s.podcasts.fetching,
+            "error": s.podcasts.error,
+            "notice": s.podcasts.notice,
+            "download": s.podcasts.download.as_ref().map(|d| json!({"feed":d.feed,"episode":d.episode,"done":d.done,"total":d.total})),
+            "dir": s.podcasts_dir(),
+            "feeds": s.podcasts.feeds.iter().map(|f| json!({
+                "id": f.id, "url": f.url, "title": f.title, "link": f.link,
+                "episodes": f.episodes.iter().map(|e| json!({
+                    "id": e.id, "title": e.title, "link": e.link, "listed": e.listed,
+                    "file": e.file, "transcript_file": e.transcript_file,
+                    "transcript": e.transcript.as_ref().map(|t| &t.mime),
+                    "partial": e.file.is_none() && s.podcast_partial(&f.id, e),
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        });
+        state["reader_tools"] = json!({
+            "open": s.reader.open,
+            "tab": format!("{:?}", s.reader.tab),
+            "busy": s.reader.busy,
+            "error": s.reader.error,
+            "editor": s.reader.editor.as_ref().map(annotation_json),
+            "items": s.reader.items.iter().map(|a| {
+                let mut row = annotation_json(a);
+                row["current"] = json!(s.annotation_current(a));
+                row
+            }).collect::<Vec<_>>(),
+            "search": {
+                "query": s.reader.search.query,
+                "epoch": s.reader.search.epoch,
+                "running": s.reader.search.running,
+                "error": s.reader.search.error,
+                "outcome": s.reader.search.outcome.as_ref().map(|o| json!({
+                    "epoch": o.epoch,
+                    "searched": o.searched,
+                    "failed": o.failed,
+                    "truncated": o.truncated,
+                    "hits": o.hits.iter().map(|h| json!({"uid":h.uid,"title":h.title,"chapter":h.chapter,"paragraph":h.paragraph,"start":h.start,"end":h.end,"text":h.text,"snippet":h.snippet.0})).collect::<Vec<_>>(),
+                })),
+            },
+        });
+        state["phrases"] = json!({"open":ui.view.phrases_open,"busy":s.phrases.busy,"error":s.phrases.error,"editor":s.phrases.editor,"items":s.phrases.items});
         state["books"] = json!({
             "list": s.books_page.list.iter().map(|(uid, b)| {
                 let whole_score = match s.books_page.scores.get(uid) {
@@ -565,14 +718,25 @@ pub fn state() -> Result<Value, String> {
                     "last_read_at": b.last_read_at, "whole_score":whole_score })
             }).collect::<Vec<_>>(),
             "open": s.books_page.open.as_ref().map(|o| o.book.title.clone()),
+            "busy":s.books_page.busy,
+            "uid":s.books_page.open.as_ref().map(|o|&o.uid),
+            "path":s.books_page.open.as_ref().and_then(|o|s.books_page.list.iter().find(|(u,_)|*u==o.uid).map(|(_,b)|&b.path)),
+            "paragraph":s.books_page.open.as_ref().map(|o|o.paragraph),
+            "paragraphs":s.books_page.open.as_ref().and_then(|o|o.book.chapters.get(o.chapter).map(|c|c.paragraphs.iter().map(|p|json!({"text":p.text,"heading":p.heading,"ruby":p.ruby.iter().map(|r|json!({"start":r.range.start,"end":r.range.end,"text":r.text})).collect::<Vec<_>>()})).collect::<Vec<_>>())),
             "chapter": s.books_page.open.as_ref().map(|o| o.chapter),
             "vertical": s.book_vertical(),
+            "mode": s.book_mode(),
+            "sentence": s.books_page.open.as_ref().map(|o| o.sentence),
+            "found": s.books_page.found.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
+            "annotated": s.chapter_annotations().iter().map(|(p, r)| json!([p, r.start, r.end])).collect::<Vec<_>>(),
             "highlight": s.books_page.highlight.as_ref().map(|(p, r)| json!([p, r.start, r.end])),
             "status": s.books_page.status.as_ref().map(|(t, _)| t.clone()),
             "page_text": s.books_page.open.as_ref().and_then(|o| {
                 Some(o.book.chapters.get(o.chapter)?.paragraphs.first()?.text.clone())
             }),
             "ocr_installed": s.books_page.ocr.installed,
+            "region_counts":s.books_page.open.as_ref().map(|o|o.book.manga_regions.iter().map(|(page,data)|(*page,data.regions.len())).collect::<std::collections::BTreeMap<_,_>>()),
+            "crop_bytes":s.books_page.ocr.crop.as_ref().map(|(_,bytes)|bytes.len()),
             "paragraph": s.books_page.open.as_ref().map(|o| o.paragraph),
             "along": s.books_page.along.as_ref().map(|a| json!({
                 "found": a.places.iter().flatten().count(),
@@ -624,6 +788,242 @@ pub fn lookup(text: &str) -> Result<(), String> {
     })
 }
 
+/// Open the subtitle study list, set its query, or navigate its last rendered matching rows.
+pub fn subtitle_study(
+    query: Option<String>,
+    forward: Option<bool>,
+    filters: Option<nikomiru_core::config::SubtitleStudyPreset>,
+    mask: Option<bool>,
+) -> Result<(), String> {
+    call(move |ui| {
+        ui.view.sub_list_open = true;
+        if let Some(preset) = filters {
+            ui.view.list.set_study_filters(&preset);
+        }
+        if let Some(enabled) = mask {
+            ui.view.list.study_mask(enabled);
+        }
+        if let Some(query) = query {
+            ui.view.list.set_study_query(query);
+        }
+        if let Some(forward) = forward
+            && let Some(cue) = ui.view.list.matching_target(&ui.session, forward)
+        {
+            ui.run(Command::ListTime(cue));
+        }
+    })
+}
+
+/// Native-save vocabulary practice sheet from the active captured/full vocabulary.
+pub fn vocabulary_html(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(rows) = ui.session.word_list()
+            && ui
+                .session
+                .vocabulary_html_prepare(&ui.session.view.title.clone(), &rows)
+        {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::VocabularyHtml,
+                path,
+            });
+        }
+    })
+}
+
+/// Save/delete subtitle presets through the normal configuration writer.
+pub fn subtitle_preset(
+    name: String,
+    preset: Option<nikomiru_core::config::SubtitleStudyPreset>,
+) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(mut preset) = preset {
+            preset.name = name;
+            ui.run(Command::SubtitleStudyPresetSave(preset));
+        } else {
+            ui.run(Command::SubtitleStudyPresetDelete(name));
+        }
+    })
+}
+
+/// Capture the same finite queue as the study scope buttons.
+pub fn practice_queue(indices: Vec<usize>, passes: u8, version: Option<u64>) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::PracticeQueue {
+            version: version.unwrap_or(ui.session.sub_list_version),
+            indices,
+            passes,
+        })
+    })
+}
+
+/// Exercise an explicit practice control without changing the captured queue.
+pub fn practice_control(action: &str) -> Result<(), String> {
+    let command = match action {
+        "skip" => Command::PracticeSkip,
+        "restart" => Command::PracticeRestart,
+        "stop" => Command::PracticeCancel,
+        _ => return Err("unknown practice control".into()),
+    };
+    call(move |ui| ui.run(command))
+}
+/// Change the same session pause used by the visible practice control.
+pub fn practice_pause(milliseconds: u16) -> Result<(), String> {
+    call(move |ui| ui.run(Command::PracticePause(milliseconds)))
+}
+/// Change or undo a study status through the production command path.
+pub fn study_word_status(
+    expression: Option<String>,
+    reading: String,
+    status: String,
+) -> Result<(), String> {
+    let status = crate::words::WordStatus::from_name(&status).ok_or("unknown word status")?;
+    call(move |ui| {
+        if let Some(e) = expression {
+            ui.run(Command::WordsStatus(vec![(e, reading)], status));
+        } else {
+            ui.run(Command::UndoWordStatuses);
+        }
+    })
+}
+/// Save exact current-track word examples through the native TSV handler.
+pub fn word_examples_export(
+    path: &str,
+    expression: Option<String>,
+    reading: String,
+    version: Option<u64>,
+) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(all) = ui.session.word_list() {
+            let rows = all
+                .iter()
+                .filter(|w| {
+                    expression
+                        .as_ref()
+                        .is_none_or(|e| &w.expression == e && w.reading == reading)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if ui
+                .session
+                .concordance_export_prepare(version.unwrap_or(ui.session.sub_list_version), &rows)
+            {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ConcordanceExport,
+                    path,
+                });
+            }
+        }
+    })
+}
+/// Import or export both preset collections through their actual native-file handlers.
+pub fn preset_file(path: &str, export: bool) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if export {
+            if ui.session.preset_export_prepare() {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::StudyPresetsExport,
+                    path,
+                });
+            }
+        } else {
+            ui.handle(Inbound::Chosen {
+                dialog: crate::view::Dialog::StudyPresetsImport,
+                path,
+            });
+        }
+    })
+}
+
+/// Exercise the same explicit finite-repetition commands as the study buttons.
+pub fn practice(cue: Option<usize>, passes: u8) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(cue) = cue {
+            ui.run(Command::Practice {
+                version: ui.session.sub_list_version,
+                cue,
+                passes,
+            });
+        } else {
+            ui.run(Command::PracticeCancel);
+        }
+    })
+}
+
+/// Capture explicit subtitle vocabulary, or return to the full track.
+pub fn vocabulary_scope(indices: Option<Vec<usize>>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(indices) = indices {
+            ui.run(Command::VocabularyScope {
+                version: ui.session.sub_list_version,
+                indices,
+            });
+        } else {
+            ui.run(Command::VocabularyScopeClear);
+        }
+    })
+}
+
+/// Save/delete a real named preset through the configuration writer.
+pub fn study_preset(name: String, query: Option<String>) -> Result<(), String> {
+    call(move |ui| {
+        if let Some(query) = query {
+            ui.run(Command::StudyPresetSave(
+                nikomiru_core::config::StudyPreset {
+                    name,
+                    query,
+                    exact: true,
+                    ..Default::default()
+                },
+            ));
+        } else {
+            ui.run(Command::StudyPresetDelete(name));
+        }
+    })
+}
+
+/// Save the complete current vocabulary as a frequency dictionary through the native-save handler.
+pub fn frequency_export(path: &str) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    call(move |ui| {
+        if let Some(rows) = ui.session.word_list() {
+            let source = ui.session.view.title.clone();
+            if ui.session.frequency_export_prepare(&source, &rows) {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::FrequencyExport,
+                    path,
+                });
+            }
+        }
+    })
+}
+
+/// Exact primary-subtitle word examples, or clear the filter.
+pub fn vocabulary_examples(expression: Option<String>, reading: String) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(match expression {
+            Some(expression) => Command::VocabularyExamples {
+                expression,
+                reading,
+            },
+            None => Command::SubtitleExamplesClear,
+        })
+    })
+}
+
+/// Study lookup, preserving an open library/analysis view.
+pub fn vocabulary_lookup(text: &str) -> Result<(), String> {
+    let text = text.to_string();
+    call(move |ui| {
+        ui.run(Command::VocabularyLookup {
+            text,
+            anchor: crate::popup::Rect::default(),
+        })
+    })
+}
+
 /// The view model of popup `level` (POP-009), as drawn: `null` while its
 /// lookup runs.
 pub fn popup_content(level: usize) -> Result<Value, String> {
@@ -638,6 +1038,104 @@ pub fn popup_content(level: usize) -> Result<Value, String> {
             Some(reply) => serde_json::to_value(&*reply.content).map_err(|e| e.to_string()),
             None => Ok(Value::Null),
         }
+    })?
+}
+
+/// A one-finger touch from `from` to `to` (PORT-003), as the window gives it
+/// to egui, in the next frame.
+pub fn touch(from: (f32, f32), to: (f32, f32)) -> Result<(), String> {
+    call(move |ui| {
+        for (phase, (x, y)) in [
+            (egui::TouchPhase::Start, from),
+            (
+                egui::TouchPhase::Move,
+                ((from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0),
+            ),
+            (egui::TouchPhase::End, to),
+        ] {
+            ui.inject(egui::Event::Touch {
+                device_id: egui::TouchDeviceId(1),
+                id: egui::TouchId(7),
+                phase,
+                pos: egui::pos2(x, y),
+                force: None,
+            });
+        }
+    })
+}
+
+/// Updates (UPD-001…UPD-004) through production commands: `check`,
+/// `download`, `install`, `channel` (`channel`).
+pub fn updates(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "check" => ui.run(Command::UpdateCheck),
+            "download" => ui.run(Command::UpdateDownload),
+            "install" => ui.run(Command::UpdateInstall),
+            "channel" => ui.run(Command::UpdateChannel(
+                args["channel"].as_str().unwrap_or_default().into(),
+            )),
+            _ => return Err("unknown updates action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Installs a shader pack from a local archive checked against `sha256` and
+/// `bytes` (THM-002's offline test pack), as the download would.
+pub fn shader_pack_local(path: PathBuf, sha256: String, bytes: u64) -> Result<(), String> {
+    call(move |ui| ui.session.shader_pack_from(&path, (&sha256, bytes)))?
+}
+
+/// The first dictionary sound of popup `level`, clicked (DIC-038).
+pub fn popup_sound(level: usize) -> Result<(), String> {
+    use nikomiru_dict::structured::{Block, Run, Target};
+    fn find(blocks: &[Block]) -> Option<(std::sync::Arc<Vec<u8>>, String)> {
+        for b in blocks {
+            let found = match b {
+                Block::Flow { runs } => runs.iter().find_map(|r| match r {
+                    Run::Link {
+                        target:
+                            Target::Sound {
+                                path,
+                                bytes: Some(bytes),
+                            },
+                        ..
+                    } => Some((bytes.clone(), path.clone())),
+                    _ => None,
+                }),
+                Block::Box { blocks, .. } => find(blocks),
+                Block::List { items, .. } => items.iter().find_map(|i| find(i)),
+                Block::Table { rows, .. } => {
+                    rows.iter().flatten().find_map(|cell| find(&cell.blocks))
+                }
+                Block::Details { blocks, .. } => find(blocks),
+                Block::Pairs { .. } => None,
+            };
+            if found.is_some() {
+                return found;
+            }
+        }
+        None
+    }
+    call(move |ui| {
+        let sound = ui
+            .session
+            .popups
+            .stack()
+            .get(level)
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| {
+                r.content.entries.iter().find_map(|e| {
+                    e.sections
+                        .iter()
+                        .flat_map(|s| &s.glossaries)
+                        .find_map(|g| find(&g.blocks))
+                })
+            })
+            .ok_or("no dictionary sound")?;
+        ui.run(Command::DictionarySound(sound.0, sound.1));
+        Ok(())
     })?
 }
 
@@ -897,9 +1395,21 @@ pub fn books(
                     Command::BookAnalysisCancel(uid)
                 });
             }
+            "choose" => out.push(Command::BookChoose(path.clone().unwrap_or_default())),
+            "region" => out.push(Command::MokuroSelect {
+                page: paragraph.unwrap_or_else(|| {
+                    ui.session.books_page.open.as_ref().map_or(0, |o| o.chapter)
+                }),
+                region: offset.unwrap_or(0),
+            }),
             // ABK-005: Read along, and Listen from here
             "along" => out.push(Command::BookAlong(ui.session.books_page.along.is_none())),
             "listen" => out.push(Command::BookListen),
+            // RDR-004: `path` is the mode; `paragraph` the page's first
+            "mode" => out.push(Command::BookMode(path.clone().unwrap_or_default())),
+            "turn" => out.push(Command::BookTurn(paragraph.unwrap_or(0))),
+            "next-sentence" => out.push(Command::BookSentence(true)),
+            "previous-sentence" => out.push(Command::BookSentence(false)),
             // WEB-001: `path` is the address typed
             "page" => out.push(Command::BookPage(path.clone().unwrap_or_default())),
             "read" => out.push(Command::MangaRead {
@@ -1113,6 +1623,47 @@ pub fn anki(action: &str, config: Option<&str>) -> Result<(), String> {
     })?
 }
 
+/// Named profile operations through the same config save/apply paths as the page.
+pub fn mining_profile(action: String, name: String) -> Result<(), String> {
+    call(move |ui| {
+        if action == "apply" {
+            ui.run(Command::MiningProfileApply(name));
+            return Ok(());
+        }
+        let mut draft = ui.session.anki_config().clone();
+        match action.as_str() {
+            "save" => {
+                if !draft.save_profile(name) {
+                    return Err("invalid profile".into());
+                }
+            }
+            "delete" => draft.delete_profile(&name),
+            _ => return Err("unknown profile action".into()),
+        }
+        ui.run(Command::AnkiSave(draft));
+        Ok(())
+    })?
+}
+
+/// Composer literal overrides and exact sense controls, as on the page.
+pub fn composer(
+    action: String,
+    field: String,
+    text: String,
+    index: usize,
+    on: bool,
+) -> Result<(), String> {
+    use crate::mining::AdvancedEdit;
+    let edit = match action.as_str() {
+        "field" => AdvancedEdit::Field(field, text),
+        "pin" => AdvancedEdit::Pin(field, on),
+        "reset" => AdvancedEdit::Reset(field),
+        "sense" => AdvancedEdit::Sense(index, on),
+        _ => return Err("unknown composer action".into()),
+    };
+    call(move |ui| ui.run(Command::Advanced(edit)))
+}
+
 /// A property of mpv, as text (T-PERF-03: `frame-drop-count`,
 /// `vo-delayed-frame-count`); `null` when mpv has none.
 pub fn mpv_property(name: &str) -> Result<Option<String>, String> {
@@ -1177,11 +1728,26 @@ pub fn move_subtitles() -> Result<(), String> {
     call(|ui| ui.run(Command::MoveSubtitles))
 }
 
-/// The setup assistant (INS-001): `open` or `close`.
-pub fn setup(action: &str) -> Result<(), String> {
+/// The setup assistant (INS-001, INS-007): open/close, tick/clear, install/stop/refresh.
+pub fn setup(action: &str, id: Option<String>, on: bool) -> Result<(), String> {
+    if action == "clear" {
+        return call(|ui| {
+            let ids = ui.session.setup_page.ticked.clone();
+            for id in ids {
+                ui.run(Command::SetupTick { id, on: false });
+            }
+        });
+    }
     let command = match action {
         "open" => Command::SetupOpen,
         "close" => Command::SetupClose,
+        "refresh" => Command::SetupInspect,
+        "install" => Command::SetupInstall,
+        "stop" => Command::SetupStop,
+        "tick" => Command::SetupTick {
+            id: id.ok_or("missing tool id")?,
+            on,
+        },
         other => return Err(format!("unknown setup action {other:?}")),
     };
     call(|ui| ui.run(command))
@@ -1271,14 +1837,41 @@ pub fn graphic_read_cancel() -> Result<(), String> {
 }
 
 /// Native-save equivalent for current complete subtitle SRT (SUB-034).
-pub fn subtitle_export(path: &str) -> Result<(), String> {
+pub fn subtitle_export(
+    path: &str,
+    indices: Option<Vec<usize>>,
+    format: &str,
+    version: Option<u64>,
+) -> Result<(), String> {
     let path = PathBuf::from(path);
+    let format = match format {
+        "srt" => crate::subtitle_export::ExportFormat::Srt,
+        "vtt" => crate::subtitle_export::ExportFormat::Vtt,
+        "bilingual" => crate::subtitle_export::ExportFormat::Bilingual,
+        "bilingual-srt" => crate::subtitle_export::ExportFormat::BilingualSrt,
+        "html" => crate::subtitle_export::ExportFormat::Html,
+        _ => return Err("unknown subtitle format".into()),
+    };
     call(move |ui| {
-        if ui.session.subtitle_export_prepare() {
-            ui.handle(Inbound::Chosen {
-                dialog: crate::view::Dialog::SubtitleExport,
-                path,
-            });
+        let indices =
+            indices.unwrap_or_else(|| (0..ui.session.subs.timeline().cues().len()).collect());
+        let version = version.unwrap_or(ui.session.sub_list_version);
+        if ui
+            .session
+            .subtitle_selected_prepare(version, &indices, format)
+        {
+            let dialog = match format {
+                crate::subtitle_export::ExportFormat::Html => crate::view::Dialog::SubtitleHtml,
+                crate::subtitle_export::ExportFormat::BilingualSrt => {
+                    crate::view::Dialog::SubtitleBilingualSrt
+                }
+                crate::subtitle_export::ExportFormat::Srt => crate::view::Dialog::SubtitleExport,
+                crate::subtitle_export::ExportFormat::Vtt => crate::view::Dialog::SubtitleVtt,
+                crate::subtitle_export::ExportFormat::Bilingual => {
+                    crate::view::Dialog::SubtitleBilingual
+                }
+            };
+            ui.handle(Inbound::Chosen { dialog, path });
         }
     })
 }
@@ -1299,4 +1892,546 @@ pub fn study_report(scope: &str, path: &str) -> Result<(), String> {
             });
         }
     })
+}
+
+/// Exercise finite recall through normal UI commands and native selected-file handlers.
+pub fn recall(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| match action.as_str() {
+        "start" => {
+            let rows = if let Some(rows) = args["words"].as_array() {
+                rows.iter()
+                    .map(|w| crate::words::ListedWord {
+                        expression: w["expression"].as_str().unwrap_or_default().into(),
+                        reading: w["reading"].as_str().unwrap_or_default().into(),
+                        count: w["count"].as_u64().unwrap_or(1) as usize,
+                        status: crate::words::WordStatus::Unknown,
+                        card: false,
+                    })
+                    .collect()
+            } else {
+                ui.session
+                    .word_list()
+                    .map(|words| {
+                        words
+                            .iter()
+                            .filter(|w| args["text"].as_str().is_none_or(|t| w.expression == t))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            ui.run(Command::RecallStart {
+                source: args["source"].as_str().unwrap_or("Recall test").into(),
+                rows,
+            });
+        }
+        "reveal" => ui.run(Command::RecallReveal),
+        "again" => ui.run(Command::RecallRate(false)),
+        "good" => ui.run(Command::RecallRate(true)),
+        "skip" => ui.run(Command::RecallSkip),
+        "close" => ui.run(Command::RecallClose),
+        "hints" => ui.run(Command::RecallCaptureHints),
+        "hint" => ui.run(Command::RecallRevealHint),
+        "lookup" => ui.run(Command::RecallLookup(Rect {
+            x: 300.0,
+            y: 300.0,
+            w: 80.0,
+            h: 30.0,
+        })),
+        "restart" => {
+            ui.session.recall_restart(
+                args["order"].as_u64().unwrap_or(0) as u8,
+                args["seed"].as_u64(),
+            );
+        }
+        "focused" => ui.run(Command::RecallFocused(
+            args["skipped"].as_bool().unwrap_or(false),
+        )),
+        "record" => ui.run(Command::RecallHistoryChange {
+            record: true,
+            delete: None,
+        }),
+        "delete" => ui.run(Command::RecallHistoryChange {
+            record: false,
+            delete: args["id"].as_str().map(str::to_string),
+        }),
+        "retry" => ui.run(Command::RecallHistoryRetry),
+        "history" => ui.run(Command::RecallHistoryOpen),
+        "save" | "load" | "results" => {
+            let path = PathBuf::from(args["path"].as_str().unwrap_or_default());
+            let dialog = match action.as_str() {
+                "save" if ui.session.recall_save_prepare() => Some(crate::view::Dialog::RecallSave),
+                "results" if ui.session.recall_results_prepare() => {
+                    Some(crate::view::Dialog::RecallResults)
+                }
+                "load" => Some(crate::view::Dialog::RecallLoad),
+                _ => None,
+            };
+            if let Some(dialog) = dialog {
+                ui.handle(Inbound::Chosen { dialog, path });
+            }
+        }
+        _ => {}
+    })
+}
+
+/// Submit the explicit paste-and-read flow through the normal asynchronous source worker.
+pub fn book_paste(title: String, text: String, markdown: bool) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::BookPaste(crate::books::Paste {
+            title,
+            text,
+            format: if markdown {
+                nikomiru_books::text::Format::Markdown
+            } else {
+                nikomiru_books::text::Format::Plain
+            },
+        }))
+    })
+}
+
+fn annotation_json(a: &nikomiru_library::annotations::Annotation) -> Value {
+    json!({"id":a.id,"kind":a.kind.name(),"book":a.book,"title":a.title,"chapter":a.chapter,
+        "paragraph":a.paragraph,"start":a.start,"end":a.end,"quote":a.quote,"name":a.name,"note":a.note})
+}
+
+/// Shortcut maps (KEY-008…KEY-010): `export`/`import` with `path` through
+/// the dialogs' handlers; `apply` does what the tab's Apply does: the
+/// preview's bindings saved as the Shortcuts section.
+pub fn shortcuts(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let path = || {
+            args["path"]
+                .as_str()
+                .map(PathBuf::from)
+                .ok_or("missing path")
+        };
+        let overrides = ui.session.config().shortcuts.clone();
+        match action.as_str() {
+            "export" => {
+                ui.run(Command::ShortcutsExport(overrides.clone()));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ShortcutsExport,
+                    path: path()?,
+                });
+            }
+            "import" => {
+                ui.run(Command::ShortcutsImport(overrides));
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::ShortcutsImport,
+                    path: path()?,
+                });
+            }
+            "apply" => {
+                let preview = ui.session.shortcut_preview.clone().ok_or("no preview")?;
+                if !preview.applicable() {
+                    return Err("not applicable".into());
+                }
+                let mut draft = ui.session.config().clone();
+                draft.shortcuts = preview.overrides;
+                ui.run(Command::SettingsSave(
+                    nikomiru_core::config::Section::Shortcuts,
+                    Box::new(draft),
+                ));
+                ui.run(Command::ShortcutsPreviewClose);
+            }
+            "cancel" => ui.run(Command::ShortcutsPreviewClose),
+            _ => return Err("unknown shortcuts action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Podcasts (POD-001…POD-004) through production commands; `index` picks
+/// the feed and `episode` the episode by position.
+pub fn podcasts(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let feed = |ui: &Ui| {
+            ui.session
+                .podcasts
+                .feeds
+                .get(args["feed"].as_u64().unwrap_or(0) as usize)
+                .cloned()
+                .ok_or("no such feed")
+        };
+        let episode = |ui: &Ui| -> Result<(String, String), String> {
+            let f = feed(ui)?;
+            let e = f
+                .episodes
+                .get(args["episode"].as_u64().unwrap_or(0) as usize)
+                .ok_or("no such episode")?;
+            Ok((f.id.clone(), e.id.clone()))
+        };
+        match action.as_str() {
+            "open" => ui.run(Command::PodcastsOpen),
+            "close" => ui.run(Command::PodcastsClose),
+            "add" => ui.run(Command::PodcastFetch(
+                args["url"].as_str().ok_or("missing url")?.into(),
+            )),
+            "refresh" => {
+                let f = feed(ui)?;
+                ui.run(Command::PodcastFetch(f.url));
+            }
+            "remove" => {
+                let f = feed(ui)?;
+                ui.run(Command::PodcastRemove(f.id));
+            }
+            "download" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastDownload(f, e));
+            }
+            "cancel" => ui.run(Command::PodcastDownloadCancel),
+            "delete" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastDelete(f, e));
+            }
+            "play" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastPlay(f, e));
+            }
+            "import" => {
+                let (f, e) = episode(ui)?;
+                ui.run(Command::PodcastImport(f, e));
+                let path = args["path"].as_str().ok_or("missing path")?;
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::PodcastTranscript,
+                    path: PathBuf::from(path),
+                });
+            }
+            "link" => {
+                let (f, _) = episode(ui)?;
+                let link = ui
+                    .session
+                    .podcasts
+                    .feeds
+                    .iter()
+                    .find(|x| x.id == f)
+                    .map(|x| x.link.clone())
+                    .unwrap_or_default();
+                ui.run(Command::PodcastLink(link));
+            }
+            _ => return Err("unknown podcasts action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Annotations and the library search (RDR-001…RDR-003) through production commands.
+pub fn reader_tools(action: String, args: Value) -> Result<(), String> {
+    use crate::reader_tools::{Scope, Tab};
+    call(move |ui| -> Result<(), String> {
+        let text = |key: &str| args[key].as_str().map(str::to_owned);
+        match action.as_str() {
+            "open" => ui.run(Command::ReaderToolsOpen(
+                if text("tab").as_deref() == Some("search") {
+                    Tab::Search
+                } else {
+                    Tab::Annotations
+                },
+            )),
+            "close" => ui.run(Command::ReaderToolsClose),
+            "new" => ui.run(Command::AnnotationNew(
+                crate::reader_tools::kind(&text("kind").ok_or("missing kind")?)
+                    .ok_or("unknown kind")?,
+            )),
+            "scope" => ui.run(Command::AnnotationScope(match text("scope").as_deref() {
+                Some("word") => Scope::Word,
+                Some("sentence") => Scope::Sentence,
+                Some("paragraph") => Scope::Paragraph,
+                _ => return Err("unknown scope".into()),
+            })),
+            "edit" => {
+                let mut a = match text("id") {
+                    Some(id) => ui.session.reader.items.iter().find(|a| a.id == id).cloned(),
+                    None => ui.session.reader.editor.clone(),
+                }
+                .ok_or("annotation missing")?;
+                if let Some(name) = text("name") {
+                    a.name = name;
+                }
+                if let Some(note) = text("note") {
+                    a.note = note;
+                }
+                ui.run(Command::AnnotationEdit(Some(a)));
+            }
+            "save" => ui.run(Command::AnnotationSave),
+            "cancel" => ui.run(Command::AnnotationEdit(None)),
+            "delete" => ui.run(Command::AnnotationDelete(text("id").ok_or("missing id")?)),
+            "go" => ui.run(Command::AnnotationGo(text("id").ok_or("missing id")?)),
+            "export" => {
+                let query = text("query").unwrap_or_default();
+                let ids = ui
+                    .session
+                    .reader
+                    .items
+                    .iter()
+                    .filter(|a| crate::reader_tools::matches(a, &query))
+                    .map(|a| a.id.clone())
+                    .collect();
+                ui.run(Command::AnnotationExport(ids));
+                if let Some(path) = text("path") {
+                    ui.view.dialog = None;
+                    ui.handle(Inbound::Chosen {
+                        dialog: crate::view::Dialog::AnnotationsExport,
+                        path: PathBuf::from(path),
+                    });
+                }
+            }
+            "search" => ui.run(Command::SearchRun(text("query").unwrap_or_default())),
+            "search-cancel" => ui.run(Command::SearchCancel),
+            "search-go" => ui.run(Command::SearchGo(
+                args["index"].as_u64().ok_or("missing index")? as usize,
+            )),
+            _ => return Err("unknown reader-tools action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Phrase notebook through production commands; editing changes a draft, never a saved record.
+pub fn phrases(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "open" => ui.run(Command::PhrasesOpen),
+            "capture" => ui.run(Command::PhraseNew(true)),
+            "new" => ui.run(Command::PhraseNew(false)),
+            "edit" => {
+                let mut p = if let Some(id) = args["id"].as_str() {
+                    ui.session
+                        .phrases
+                        .items
+                        .iter()
+                        .find(|p| p.id == id)
+                        .cloned()
+                } else {
+                    ui.session.phrases.editor.clone()
+                }
+                .ok_or("phrase draft missing")?;
+                if let Some(text) = args["text"].as_str() {
+                    p.text = text.into();
+                }
+                if let Some(text) = args["definition"].as_str() {
+                    p.definition = text.into();
+                }
+                if let Some(text) = args["context"].as_str() {
+                    p.context = text.into();
+                }
+                if let Some(text) = args["status"].as_str() {
+                    p.status = crate::words::WordStatus::from_name(text).ok_or("invalid status")?;
+                }
+                ui.run(Command::PhraseEdit(Some(p)));
+            }
+            "save" => ui.run(Command::PhraseSave),
+            "cancel" => ui.run(Command::PhraseEdit(None)),
+            "delete" => ui.run(Command::PhraseDelete(
+                args["id"].as_str().ok_or("missing id")?.into(),
+            )),
+            "source" => ui.run(Command::PhraseSource(
+                args["id"].as_str().ok_or("missing id")?.into(),
+            )),
+            "export" => {
+                let query = args["query"].as_str().unwrap_or_default();
+                let ids = ui
+                    .session
+                    .phrases
+                    .items
+                    .iter()
+                    .filter(|p| crate::phrases::matches(p, query))
+                    .map(|p| p.id.clone())
+                    .collect();
+                ui.run(Command::PhraseExport(ids));
+                if let Some(path) = args["path"].as_str() {
+                    ui.view.dialog = None;
+                    ui.handle(Inbound::Chosen {
+                        dialog: crate::view::Dialog::PhrasesExport,
+                        path: PathBuf::from(path),
+                    });
+                }
+            }
+            _ => return Err("unknown phrase action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Exercise cloze commands through normal preview, submission and committed job replies.
+pub fn cloze(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        use crate::cloze::Mode;
+        use nikomiru_library::review::Grade;
+        let id = || args["id"].as_str().map(str::to_owned).ok_or("missing id");
+        match action.as_str() {
+            "open" => ui.run(Command::ClozeOpen),
+            "close" => ui.run(Command::ClozeClose),
+            "preview" => ui.run(Command::ClozePreview(id()?)),
+            "create" => ui.run(Command::ClozeCreate),
+            "enrol" => ui.run(Command::ClozeEnrol(id()?)),
+            "delete" => ui.run(Command::ClozeDelete(id()?)),
+            "start" => ui.run(Command::ClozeStart {
+                ids: args["ids"]
+                    .as_array()
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(|id| id.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_else(|| {
+                        ui.session
+                            .clozes
+                            .items
+                            .iter()
+                            .map(|r| r.phrase.id.clone())
+                            .collect()
+                    }),
+                mode: if args["mode"] == "choice" {
+                    Mode::Choice
+                } else {
+                    Mode::Typed
+                },
+                scheduled: args["scheduled"].as_bool().unwrap_or(false),
+            }),
+            "input" => ui.run(Command::ClozeInput(
+                args["text"].as_str().unwrap_or_default().into(),
+            )),
+            "submit" => ui.run(Command::ClozeSubmit),
+            "next" => ui.run(Command::ClozeNext(
+                match args["grade"].as_str().unwrap_or("good") {
+                    "again" => Grade::Again,
+                    "hard" => Grade::Hard,
+                    "good" => Grade::Good,
+                    "easy" => Grade::Easy,
+                    _ => return Err("unknown grade".into()),
+                },
+                false,
+            )),
+            "skip" => ui.run(Command::ClozeNext(Grade::Again, true)),
+            "undo" => ui.run(Command::ClozeUndo),
+            "cancel" => ui.run(Command::ClozeCancelRound),
+            _ => return Err("unknown cloze action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Owned source indexing and exact offline examples through production commands and native file handlers.
+pub fn sentence_bank(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        match action.as_str() {
+            "open" => ui.run(Command::BankOpen),
+            "close" => ui.run(Command::BankClose),
+            "book" => ui.run(Command::BankIndex(true)),
+            "track" => ui.run(Command::BankIndex(false)),
+            "cancel" => ui.run(Command::BankCancel),
+            "query" => ui.run(Command::BankExamples(
+                args["expression"].as_str().unwrap_or_default().into(),
+                args["reading"].as_str().unwrap_or_default().into(),
+            )),
+            "delete" => ui.run(Command::BankDelete(
+                args["key"].as_str().ok_or("missing key")?.into(),
+            )),
+            "source" => {
+                let example = ui
+                    .session
+                    .bank
+                    .examples
+                    .get(args["index"].as_u64().unwrap_or(0) as usize)
+                    .cloned()
+                    .ok_or("missing example")?;
+                ui.run(Command::BankSource(Box::new(example)));
+            }
+            "import" => {
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::SentencesImport,
+                    path: PathBuf::from(args["path"].as_str().ok_or("missing path")?),
+                });
+            }
+            "export" => {
+                ui.run(Command::BankExport);
+                ui.view.dialog = None;
+                ui.handle(Inbound::Chosen {
+                    dialog: crate::view::Dialog::SentencesExport,
+                    path: PathBuf::from(args["path"].as_str().ok_or("missing path")?),
+                });
+            }
+            _ => return Err("unknown sentence-bank action".into()),
+        }
+        Ok(())
+    })?
+}
+
+/// Previewed batch selection, explicit start and durable reconciliation through production commands.
+pub fn batch_mining(action: String, args: Value) -> Result<(), String> {
+    call(move |ui| -> Result<(), String> {
+        let index = args["index"].as_u64().unwrap_or(0) as usize;
+        match action.as_str() {
+            "open" => ui.run(Command::BatchOpen),
+            "close" => ui.run(Command::BatchClose),
+            "new" => ui.run(Command::BatchNew),
+            "lookup" => ui.run(Command::BatchAddLookup(
+                args["level"].as_u64().unwrap_or(0) as usize,
+                args["entry"].as_u64().unwrap_or(0) as usize,
+            )),
+            "words" => {
+                let rows = args["words"]
+                    .as_array()
+                    .ok_or("missing words")?
+                    .iter()
+                    .map(|w| crate::words::ListedWord {
+                        expression: w["expression"].as_str().unwrap_or_default().into(),
+                        reading: w["reading"].as_str().unwrap_or_default().into(),
+                        count: 1,
+                        status: crate::words::WordStatus::Unknown,
+                        card: false,
+                    })
+                    .collect();
+                ui.run(Command::BatchAddWords(
+                    args["version"]
+                        .as_u64()
+                        .unwrap_or(ui.session.sub_list_version),
+                    rows,
+                ));
+            }
+            "example" => {
+                let example = ui
+                    .session
+                    .bank
+                    .examples
+                    .get(index)
+                    .cloned()
+                    .ok_or("missing example")?;
+                ui.run(Command::BatchAddExample(
+                    Box::new(example),
+                    ui.session.bank.expression.clone(),
+                    ui.session.bank.reading.clone(),
+                ));
+            }
+            "edit" => ui.run(Command::BatchEdit {
+                index,
+                context: args["context"].as_u64().map(|x| x as usize),
+                enabled: args["enabled"].as_bool(),
+                audio: args["audio"].as_bool(),
+                image: args["image"].as_bool(),
+            }),
+            "preview" => ui.run(Command::BatchPreview),
+            "start" => ui.run(Command::BatchStart),
+            "cancel" => ui.run(Command::BatchCancel),
+            "retry" => ui.run(Command::BatchRetry(index)),
+            "continue" => ui.run(Command::BatchContinue),
+            "reconcile" => ui.run(Command::BatchReconcile(
+                args["batch"].as_str().ok_or("missing batch")?.into(),
+                args["operation"]
+                    .as_str()
+                    .ok_or("missing operation")?
+                    .into(),
+            )),
+            "delete-journal" => ui.run(Command::BatchDeleteJournal(
+                args["batch"].as_str().ok_or("missing batch")?.into(),
+            )),
+            _ => return Err("unknown batch action".into()),
+        }
+        Ok(())
+    })?
 }

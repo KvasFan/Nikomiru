@@ -86,6 +86,7 @@ fn state_text(s: &Scene<'_>, id: &str, installed: bool) -> Option<(String, bool)
                 true,
             )
         }
+        ItemState::Checking => (tr("setup-tool-checking", &[]), true),
         ItemState::Importing => (tr("setup-state-importing", &[]), true),
         ItemState::Done => (tr("setup-state-done", &[]), true),
         ItemState::Failed(message) => (message.clone(), false),
@@ -152,12 +153,98 @@ fn audio(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     }
 }
 
+fn tools(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
+    let tr = |key: &str| (s.tr)(key, &[]);
+    section(ui, &tr("setup-tools"));
+    note(ui, &tr("setup-tools-hint"));
+    note(ui, &tr("setup-runtime-ready"));
+    if ui
+        .add_enabled(!s.page.running, Button::new(tr("setup-tools-refresh")))
+        .clicked()
+    {
+        out.push(Command::SetupInspect);
+    }
+    let plan = s.page.plan(&s.installed);
+    let platform = nikomiru_online::setup::tools::platform();
+    for tool in &s.page.tools {
+        let artifact = tool.artifacts.iter().find(|a| a.platform == platform);
+        let supported = artifact.is_some()
+            || (tool.system_package && s.page.inventory.get(&tool.id).is_some_and(|s| s.supported));
+        if tool.system_package {
+            note(ui, &tr("setup-tool-system-package-hint"));
+        }
+        let required = plan.tools.contains(&tool.id) && !s.page.ticked.contains(&tool.id);
+        ui.horizontal_wrapped(|ui| {
+            let mut on = s.page.ticked.contains(&tool.id) || required;
+            if ui
+                .add_enabled(
+                    supported && !required && !s.page.running,
+                    egui::Checkbox::new(&mut on, &tool.name),
+                )
+                .changed()
+            {
+                out.push(Command::SetupTick {
+                    id: tool.id.clone(),
+                    on,
+                });
+            }
+            if let Some(artifact) = artifact {
+                ui.label(format!(
+                    "{} · {} · {}",
+                    tool.version,
+                    tool.license,
+                    size(artifact.bytes)
+                ));
+            } else if tool.system_package && supported {
+                ui.label(format!(
+                    "{} · {}",
+                    tool.license,
+                    tr("setup-tool-system-package")
+                ));
+            } else {
+                ui.label(tr("setup-tool-unsupported"));
+            }
+            if required {
+                ui.label(tr("setup-tool-required"));
+            }
+            if let Some((text, good)) = state_text(s, &tool.id, false) {
+                ui.label(RichText::new(text).color(if good {
+                    palette::current().good
+                } else {
+                    palette::current().bad
+                }));
+            } else if let Some(row) = s.page.inventory.get(&tool.id)
+                && row.path.is_some()
+            {
+                ui.label(tr("setup-tool-available"))
+                    .on_hover_text(&row.detail);
+            }
+        });
+    }
+    item(
+        ui,
+        s,
+        "ocr-model",
+        &tr("setup-tool-model"),
+        &format!("{} · Apache-2.0", size(nikomiru_ocr::model_bytes())),
+        false,
+        out,
+    );
+    if s.page
+        .inventory
+        .get("ocr-model")
+        .is_some_and(|r| r.path.is_some())
+    {
+        note(ui, &tr("setup-tool-available"));
+    }
+}
+
 fn buttons(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     let tr = |key: &str| (s.tr)(key, &[]);
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let plan = s.page.plan(&s.installed);
-        let any = !(plan.dictionaries.is_empty() && plan.audio.is_empty());
+        let any = !(plan.dictionaries.is_empty() && plan.audio.is_empty() && plan.tools.is_empty());
         if ui
             .add_enabled(
                 any && !s.page.running,
@@ -295,6 +382,7 @@ pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) {
                             ui.set_max_width(820.0);
                             dictionaries(ui, s, out);
                             audio(ui, s, out);
+                            tools(ui, s, out);
                             buttons(ui, s, out);
                             cards(ui, s, out);
                         });
@@ -306,6 +394,7 @@ pub(crate) fn draw(ctx: &egui::Context, s: &Scene<'_>, out: &mut Vec<Command>) {
 mod tests {
     use super::*;
     use egui_kittest::Harness;
+    use egui_kittest::kittest::NodeT;
     use egui_kittest::kittest::Queryable;
 
     struct Test {
@@ -318,7 +407,7 @@ mod tests {
 
     fn harness(test: Test) -> Harness<'static, Test> {
         Harness::builder()
-            .with_size(vec2(1100.0, 900.0))
+            .with_size(vec2(1100.0, 1400.0))
             .allow_missing_glyphs()
             .build_ui_state(
                 |ui, t: &mut Test| {
@@ -379,6 +468,62 @@ mod tests {
         ));
     }
 
+    // T-INS-007: tools are explicit opt-ins, with platform metadata and an offline refresh.
+    #[test]
+    fn selecting_support_tools_is_explicit() {
+        let mut h = harness(test());
+        h.run();
+        for name in ["FFmpeg + ffprobe", "yt-dlp", "Deno", "setup-tool-model"] {
+            assert!(h.query_by_label(name).is_some(), "{name}");
+        }
+        let commands = click(&mut h, "yt-dlp");
+        assert!(
+            matches!(commands.as_slice(), [Command::SetupTick { id, on: true }] if id == "yt-dlp")
+        );
+        assert!(matches!(
+            click(&mut h, "setup-tools-refresh").as_slice(),
+            [Command::SetupInspect]
+        ));
+    }
+
+    // T-DOC-004, T-DOC-005: native packages are separately labelled and never preselected.
+    #[test]
+    fn poppler_requires_an_explicit_supported_selection() {
+        let mut state = test();
+        assert!(!state.page.ticked.contains("pdftotext"));
+        state.page.inventory.insert(
+            "pdftotext".into(),
+            crate::setup::ToolStatus {
+                id: "pdftotext".into(),
+                path: None,
+                detail: String::new(),
+                supported: true,
+            },
+        );
+        let mut h = harness(state);
+        h.run();
+        assert!(h.query_by_label("setup-tool-system-package-hint").is_some());
+        assert!(
+            !h.get_by_label("Poppler pdftotext")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(matches!(click(&mut h, "Poppler pdftotext").as_slice(),
+            [Command::SetupTick { id, on: true }] if id == "pdftotext"));
+        h.state_mut()
+            .page
+            .inventory
+            .get_mut("pdftotext")
+            .unwrap()
+            .supported = false;
+        h.run();
+        assert!(
+            h.get_by_label("Poppler pdftotext")
+                .accesskit_node()
+                .is_disabled()
+        );
+    }
+
     // AK-BUG-004: opened from the library or the settings, which are drawn
     // as full pages of their own, the assistant comes above them and takes
     // the clicks
@@ -389,7 +534,7 @@ mod tests {
             open: bool,
         }
         let mut h = Harness::builder()
-            .with_size(vec2(1100.0, 900.0))
+            .with_size(vec2(1100.0, 1400.0))
             .allow_missing_glyphs()
             .build_ui_state(
                 |ui, o: &mut Over| {

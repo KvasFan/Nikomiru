@@ -13,10 +13,13 @@ use std::path::Path;
 
 use nikomiru_core::Cancel;
 
+use std::collections::BTreeSet;
+
 use super::{
-    Terms, UNPACKED_LIMIT, bad, html_to_text, index, read_file, revision_of, ripemd, stem,
+    Media, Terms, UNPACKED_LIMIT, bad, html_to_text, index, read_file, revision_of, rich, ripemd,
+    stem,
 };
-use crate::import::ImportError;
+use crate::import::{ImportError, MAX_ENTRY, MAX_TOTAL};
 use crate::yomitan::{Index, Term};
 
 /// How many links are followed from a headword.
@@ -110,7 +113,7 @@ fn attribute(xml: &str, name: &str) -> Option<String> {
     Some(rest[..rest.find('"')?].to_string())
 }
 
-fn header_of(path: &Path, text: &[u8]) -> Result<Header, ImportError> {
+fn header_of(path: &Path, text: &[u8], mdd: bool) -> Result<Header, ImportError> {
     let units = text
         .as_chunks::<2>()
         .0
@@ -119,15 +122,17 @@ fn header_of(path: &Path, text: &[u8]) -> Result<Header, ImportError> {
     let xml: String = char::decode_utf16(units)
         .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
         .collect();
-    if !xml.contains("<Dictionary") {
+    if !xml.contains(if mdd { "<Library_Data" } else { "<Dictionary" }) {
         return Err(bad(path, "not an MDict file"));
     }
     let encoding = attribute(&xml, "Encoding").unwrap_or_default();
-    let utf16 = match encoding.to_ascii_uppercase().as_str() {
-        "" | "UTF-8" | "UTF8" => false,
-        "UTF-16" | "UTF16" => true,
-        other => return Err(bad(path, format!("the encoding {other} is not read"))),
-    };
+    // the keys of an `.mdd` are paths in UTF-16, whatever it says
+    let utf16 = mdd
+        || match encoding.to_ascii_uppercase().as_str() {
+            "" | "UTF-8" | "UTF8" => false,
+            "UTF-16" | "UTF16" => true,
+            other => return Err(bad(path, format!("the encoding {other} is not read"))),
+        };
     let encrypted = attribute(&xml, "Encrypted").unwrap_or_default();
     Ok(Header {
         title: attribute(&xml, "Title").unwrap_or_default(),
@@ -146,6 +151,14 @@ fn header_of(path: &Path, text: &[u8]) -> Result<Header, ImportError> {
 
 /// The header, and the cursor after it.
 fn open<'a>(path: &Path, bytes: &'a [u8]) -> Result<(Header, Cursor<'a>), ImportError> {
+    open_as(path, bytes, false)
+}
+
+fn open_as<'a>(
+    path: &Path,
+    bytes: &'a [u8],
+    mdd: bool,
+) -> Result<(Header, Cursor<'a>), ImportError> {
     let cut = || bad(path, "cut short");
     let mut cursor = Cursor::new(bytes);
     let size = cursor.u32().ok_or_else(cut)?;
@@ -154,7 +167,7 @@ fn open<'a>(path: &Path, bytes: &'a [u8]) -> Result<(Header, Cursor<'a>), Import
     if sum != adler32(text).to_le_bytes() {
         return Err(bad(path, "the header is damaged"));
     }
-    Ok((header_of(path, text)?, cursor))
+    Ok((header_of(path, text, mdd)?, cursor))
 }
 
 pub(super) fn read_index(path: &Path) -> Result<Index, ImportError> {
@@ -358,7 +371,16 @@ fn read_records(path: &Path, wide: bool, mut cursor: Cursor<'_>) -> Result<Vec<u
     Ok(out)
 }
 
-pub(super) fn read_terms(path: &Path, cancel: &Cancel) -> Result<Vec<Term>, ImportError> {
+#[cfg(test)]
+fn read_terms(path: &Path, cancel: &Cancel) -> Result<Vec<Term>, ImportError> {
+    Ok(read_entries(path, cancel)?.0)
+}
+
+/// The entries as structured content, and the resources they use (DIC-036).
+fn read_entries(
+    path: &Path,
+    cancel: &Cancel,
+) -> Result<(Vec<Term>, BTreeSet<String>), ImportError> {
     let bytes = read_file(path)?;
     let (header, cursor) = open(path, &bytes)?;
     let wide = header.version >= 2.0;
@@ -378,6 +400,7 @@ pub(super) fn read_terms(path: &Path, cancel: &Cancel) -> Result<Vec<Term>, Impo
         .map(|(i, k)| (k.1.as_str(), i))
         .collect();
     let mut terms = Terms::new(cancel);
+    let mut refs = BTreeSet::new();
     for (i, key) in keys.iter().enumerate() {
         let Some(mut text) = record(i) else {
             return Err(bad(path, "an entry is outside the definitions"));
@@ -392,27 +415,132 @@ pub(super) fn read_terms(path: &Path, cancel: &Cancel) -> Result<Vec<Term>, Impo
                 .and_then(|at| record(*at))
                 .unwrap_or_default();
         }
-        if text.starts_with("@@@LINK=") {
+        if text.starts_with("@@@LINK=") || html_to_text(&text).trim().is_empty() {
             continue;
         }
-        terms.add(&key.1, &html_to_text(&text))?;
+        let glossary = rich::to_structured(&text, &mut refs);
+        terms.add_glossary(&key.1, &glossary)?;
     }
-    Ok(terms.finish())
+    Ok((terms.finish(), refs))
 }
 
-#[cfg(test)]
-mod tests {
+/// The `.mdd` files paired with an `.mdx`: `name.mdd`, then `name.1.mdd`…
+/// `name.9.mdd` (DIC-037).
+fn paired(path: &Path) -> Vec<std::path::PathBuf> {
+    let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+        return Vec::new();
+    };
+    std::iter::once(format!("{stem}.mdd"))
+        .chain((1..=9).map(|n| format!("{stem}.{n}.mdd")))
+        .map(|name| path.with_file_name(name))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
+/// The resources of an `.mdd` that are in `wanted`, read block by block so
+/// a large file is never held unpacked whole.
+fn read_resources(
+    path: &Path,
+    wanted: &BTreeSet<String>,
+    cancel: &Cancel,
+    out: &mut Media,
+) -> Result<(), ImportError> {
+    let bytes = read_file(path)?;
+    let (header, cursor) = open_as(path, &bytes, true)?;
+    let wide = header.version >= 2.0;
+    let (keys, mut cursor) = read_keys(path, &header, cursor)?;
+    // where each wanted resource is, by offset into the records
+    let mut spans: Vec<(u64, u64, String)> = Vec::new();
+    for (i, (start, name)) in keys.iter().enumerate() {
+        let Some(key) = rich::resource_key(name) else {
+            continue;
+        };
+        if !wanted.contains(&key) || out.iter().any(|(k, _)| *k == key) {
+            continue;
+        }
+        let end = keys.get(i + 1).map_or(u64::MAX, |k| k.0);
+        if end < *start {
+            return Err(bad(path, "the resources are not in order"));
+        }
+        spans.push((*start, end, key));
+    }
+    let cut = || bad(path, "the resources are cut short");
+    let blocks = cursor.number(wide).ok_or_else(cut)?;
+    let _entries = cursor.number(wide).ok_or_else(cut)?;
+    let info_size = cursor.number(wide).ok_or_else(cut)?;
+    let _size = cursor.number(wide).ok_or_else(cut)?;
+    let mut info = Cursor::new(cursor.take(info_size).ok_or_else(cut)?);
+    let mut found: Vec<Vec<u8>> = vec![Vec::new(); spans.len()];
+    let mut base = 0u64;
+    let mut total = 0u64;
+    for _ in 0..blocks {
+        if cancel.is_cancelled() {
+            return Err(ImportError::Cancelled);
+        }
+        let compressed = info.number(wide).ok_or_else(cut)?;
+        let unpacked = info.number(wide).ok_or_else(cut)?;
+        let block = cursor.take(compressed).ok_or_else(cut)?;
+        let end = base.checked_add(unpacked).ok_or_else(cut)?;
+        // only blocks holding a wanted resource are unpacked
+        if spans.iter().any(|(s, e, _)| *s < end && *e > base) {
+            let data = unpack(path, block, unpacked)?;
+            for ((s, e, _), bytes) in spans.iter().zip(found.iter_mut()) {
+                if *s < end && *e > base {
+                    let from = s.saturating_sub(base) as usize;
+                    let to = ((*e).min(end) - base) as usize;
+                    bytes.extend_from_slice(&data[from..to]);
+                    if bytes.len() as u64 > MAX_ENTRY {
+                        return Err(bad(path, "a resource is too large"));
+                    }
+                    total += (to - from) as u64;
+                    if total > MAX_TOTAL {
+                        return Err(bad(path, "too large once unpacked"));
+                    }
+                }
+            }
+        }
+        base = end;
+    }
+    for ((_, _, key), bytes) in spans.into_iter().zip(found) {
+        if !bytes.is_empty() {
+            out.push((key, bytes));
+        }
+    }
+    Ok(())
+}
+
+/// The entries, then what their paired `.mdd` files hold of what they use.
+pub(super) fn read_with_media(
+    path: &Path,
+    cancel: &Cancel,
+) -> Result<(Vec<Term>, Media), ImportError> {
+    let (terms, refs) = read_entries(path, cancel)?;
+    let mut media = Media::new();
+    if !refs.is_empty() {
+        for mdd in paired(path) {
+            read_resources(&mdd, &refs, cancel, &mut media)?;
+        }
+    }
+    Ok((terms, media))
+}
+
+/// Small MDict files in writemdict's shape, for tests here and the
+/// application's (DIC-036…DIC-038).
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixture {
     use std::io::Write;
 
-    use super::*;
+    use super::{adler32, ripemd};
 
-    fn deflate(data: &[u8]) -> Vec<u8> {
+    /// zlib, as MDict packs its blocks.
+    pub fn deflate(data: &[u8]) -> Vec<u8> {
         let mut out = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
-        out.write_all(data).unwrap();
-        out.finish().unwrap()
+        let _ = out.write_all(data);
+        out.finish().unwrap_or_default()
     }
 
-    fn block(data: &[u8], packed: bool) -> Vec<u8> {
+    /// A block with its kind and checksum.
+    pub fn block(data: &[u8], packed: bool) -> Vec<u8> {
         let mut out = if packed {
             vec![2, 0, 0, 0]
         } else {
@@ -424,7 +552,7 @@ mod tests {
     }
 
     /// The reverse of `unscramble`.
-    fn scramble(data: &mut [u8], key: &[u8; 16]) {
+    pub fn scramble(data: &mut [u8], key: &[u8; 16]) {
         let mut previous = 0x36u8;
         for (i, byte) in data.iter_mut().enumerate() {
             let plain = *byte ^ previous ^ (i as u8) ^ key[i % key.len()];
@@ -434,7 +562,7 @@ mod tests {
     }
 
     /// A dictionary in the shape of writemdict's, of engine 2.0 or 1.2.
-    fn file(entries: &[(&str, &str)], wide: bool, encrypted: u32, utf16: bool) -> Vec<u8> {
+    pub fn file(entries: &[(&str, &str)], wide: bool, encrypted: u32, utf16: bool) -> Vec<u8> {
         let number = |n: u64| {
             if wide {
                 n.to_be_bytes().to_vec()
@@ -528,11 +656,121 @@ mod tests {
         out
     }
 
+    /// An `.mdd` in the same shape: UTF-16 path keys, raw records.
+    pub fn mdd(entries: &[(&str, &[u8])], wide: bool) -> Vec<u8> {
+        let utf16 = true;
+        let number = |n: u64| {
+            if wide {
+                n.to_be_bytes().to_vec()
+            } else {
+                (n as u32).to_be_bytes().to_vec()
+            }
+        };
+        let encode =
+            |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+        let (mut keys, mut records) = (Vec::new(), Vec::new());
+        for (name, data) in entries {
+            keys.extend_from_slice(&number(records.len() as u64));
+            keys.extend_from_slice(&encode(name));
+            keys.extend_from_slice(&[0, 0]);
+            records.extend_from_slice(data);
+        }
+        let key_block = block(&keys, true);
+        let mut info = number(entries.len() as u64);
+        for word in [entries[0].0, entries[entries.len() - 1].0] {
+            let chars = word.encode_utf16().count();
+            if wide {
+                info.extend_from_slice(&(chars as u16).to_be_bytes());
+            } else {
+                info.push(chars as u8);
+            }
+            info.extend_from_slice(&encode(word));
+            if wide {
+                info.extend_from_slice(&[0, 0]);
+            }
+        }
+        let _ = utf16;
+        info.extend_from_slice(&number(key_block.len() as u64));
+        info.extend_from_slice(&number(keys.len() as u64));
+        let info_bytes = if wide {
+            let mut out = vec![2, 0, 0, 0];
+            out.extend_from_slice(&adler32(&info).to_be_bytes());
+            out.extend_from_slice(&deflate(&info));
+            out
+        } else {
+            info.clone()
+        };
+        let xml = format!(
+            "<Library_Data GeneratedByEngineVersion=\"{}\" Encrypted=\"0\" Encoding=\"\" Title=\"\"/>",
+            if wide { "2.0" } else { "1.2" },
+        );
+        let header: Vec<u8> = xml.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let mut out = (header.len() as u32).to_be_bytes().to_vec();
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&adler32(&header).to_le_bytes());
+        let mut section = number(1);
+        section.extend_from_slice(&number(entries.len() as u64));
+        if wide {
+            section.extend_from_slice(&(info.len() as u64).to_be_bytes());
+        }
+        section.extend_from_slice(&number(info_bytes.len() as u64));
+        section.extend_from_slice(&number(key_block.len() as u64));
+        out.extend_from_slice(&section);
+        if wide {
+            out.extend_from_slice(&adler32(&section).to_be_bytes());
+        }
+        out.extend_from_slice(&info_bytes);
+        out.extend_from_slice(&key_block);
+        // two record blocks: a resource may be in either
+        let half = records.len() / 2;
+        let blocks = [
+            block(&records[..half], true),
+            block(&records[half..], false),
+        ];
+        let mut info = Vec::new();
+        for (b, size) in blocks.iter().zip([half, records.len() - half]) {
+            info.extend_from_slice(&number(b.len() as u64));
+            info.extend_from_slice(&number(size as u64));
+        }
+        out.extend_from_slice(&number(2));
+        out.extend_from_slice(&number(entries.len() as u64));
+        out.extend_from_slice(&number(info.len() as u64));
+        out.extend_from_slice(&number((blocks[0].len() + blocks[1].len()) as u64));
+        out.extend_from_slice(&info);
+        out.extend_from_slice(&blocks[0]);
+        out.extend_from_slice(&blocks[1]);
+        out
+    }
+
+    /// Writes `stem.mdx` and, with resources, `stem.mdd` into `dir`.
+    pub fn write_pair(
+        dir: &std::path::Path,
+        stem: &str,
+        entries: &[(&str, &str)],
+        resources: &[(&str, &[u8])],
+    ) -> std::path::PathBuf {
+        let mdx = dir.join(format!("{stem}.mdx"));
+        std::fs::write(&mdx, file(entries, true, 0, false)).unwrap_or_default();
+        if !resources.is_empty() {
+            std::fs::write(dir.join(format!("{stem}.mdd")), mdd(resources, true))
+                .unwrap_or_default();
+        }
+        mdx
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixture::*;
+    use super::*;
+
     const ENTRIES: [(&str, &str); 3] = [
         ("たべる【食べる】", "<b>to eat</b><br>food"),
         ("喰べる", "@@@LINK=たべる【食べる】"),
         ("飲む", "to drink"),
     ];
+
+    const EAT: &str = r#"[{"content":[{"content":["to eat"],"style":{"fontWeight":"bold"},"tag":"span"},{"tag":"br"},"food"],"type":"structured-content"}]"#;
 
     fn read(bytes: &[u8]) -> Result<Vec<Term>, ImportError> {
         let dir = tempfile::tempdir().unwrap();
@@ -567,9 +805,13 @@ mod tests {
             assert_eq!(
                 words,
                 [
-                    ("食べる", "たべる", r#"["to eat\nfood"]"#),
-                    ("喰べる", "", r#"["to eat\nfood"]"#),
-                    ("飲む", "", r#"["to drink"]"#),
+                    ("食べる", "たべる", EAT),
+                    ("喰べる", "", EAT),
+                    (
+                        "飲む",
+                        "",
+                        r#"[{"content":["to drink"],"type":"structured-content"}]"#
+                    ),
                 ],
                 "{wide} {encrypted} {utf16}"
             );
@@ -608,6 +850,56 @@ mod tests {
             ("う", "@@@LINK=ない"),
         ];
         assert!(read(&file(&entries, true, 0, false)).unwrap().is_empty());
+    }
+
+    // T-DIC-037: paired and numbered `.mdd` files give only the resources used.
+    #[test]
+    fn paired_resources_are_read() {
+        let entries = [(
+            "猫",
+            r#"<img src="\Img\Cat.png"><a href="sound://snd/neko.mp3">▶</a><img src="missing.png">"#,
+        )];
+        for wide in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("pic.mdx");
+            std::fs::write(&path, file(&entries, wide, 0, false)).unwrap();
+            let png = b"\x89PNG\r\n\x1a\nimage".to_vec();
+            let mp3 = b"ID3\x03sound".to_vec();
+            std::fs::write(
+                dir.path().join("pic.mdd"),
+                mdd(
+                    &[("\\img\\cat.png", &png), ("\\unused.bin", &[1u8; 64])],
+                    wide,
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.path().join("pic.1.mdd"),
+                mdd(&[("\\snd\\neko.mp3", &mp3)], wide),
+            )
+            .unwrap();
+            let (terms, media) = read_with_media(&path, &Cancel::new()).unwrap();
+            assert_eq!(terms.len(), 1);
+            let mut names: Vec<_> = media.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+            names.sort();
+            assert_eq!(
+                names,
+                [("img/cat.png", png.clone()), ("snd/neko.mp3", mp3.clone())],
+                "{wide}"
+            );
+            // a damaged `.mdd` fails the import
+            let mut damaged = std::fs::read(dir.path().join("pic.1.mdd")).unwrap();
+            let at = damaged.len() - 3;
+            damaged[at] ^= 0xff;
+            std::fs::write(dir.path().join("pic.1.mdd"), damaged).unwrap();
+            assert!(read_with_media(&path, &Cancel::new()).is_err());
+            // without any `.mdd`, the text alone
+            std::fs::remove_file(dir.path().join("pic.mdd")).unwrap();
+            std::fs::remove_file(dir.path().join("pic.1.mdd")).unwrap();
+            let (terms, media) = read_with_media(&path, &Cancel::new()).unwrap();
+            assert_eq!(terms.len(), 1);
+            assert!(media.is_empty());
+        }
     }
 
     // T-DIC-004

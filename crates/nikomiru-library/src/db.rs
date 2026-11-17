@@ -272,6 +272,27 @@ pub struct Library {
     schema: u32,
     /// Its file, for a backup (BAK-001).
     path: std::path::PathBuf,
+    /// The study language whose words, cards and statistics the workers
+    /// read (LNG-002).
+    language: std::sync::RwLock<String>,
+}
+
+impl Library {
+    /// The study language the workers read words, cards and statistics of
+    /// (LNG-002).
+    pub fn active_language(&self) -> String {
+        self.language
+            .read()
+            .map(|l| l.clone())
+            .unwrap_or_else(|_| crate::words::LEGACY_LANGUAGE.into())
+    }
+
+    /// Sets it, when the learner changes the study language.
+    pub fn set_active_language(&self, language: &str) {
+        if let Ok(mut l) = self.language.write() {
+            *l = language.to_string();
+        }
+    }
 }
 
 impl std::fmt::Debug for Library {
@@ -369,6 +390,7 @@ impl Library {
                     db: Handle::ReadOnly(ro),
                     schema: v,
                     path: path.to_path_buf(),
+                    language: std::sync::RwLock::new(crate::words::LEGACY_LANGUAGE.into()),
                 });
             }
             let from = found.unwrap_or(0);
@@ -406,6 +428,7 @@ impl Library {
                 db: Handle::ReadWrite(db),
                 schema: current,
                 path: path.to_path_buf(),
+                language: std::sync::RwLock::new(crate::words::LEGACY_LANGUAGE.into()),
             });
         }
         if let Some(dir) = path.parent() {
@@ -423,6 +446,7 @@ impl Library {
             db: Handle::ReadWrite(db),
             schema: current,
             path: path.to_path_buf(),
+            language: std::sync::RwLock::new(crate::words::LEGACY_LANGUAGE.into()),
         })
     }
 

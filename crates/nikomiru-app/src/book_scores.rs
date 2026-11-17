@@ -16,10 +16,27 @@ pub fn count(
     cancel: &Cancel,
     tr: &Translator,
 ) -> Result<Outcome, String> {
+    count_with_support(
+        manager,
+        request,
+        cancel,
+        tr,
+        &crate::document_support::NativeSupport::default(),
+    )
+}
+
+/// Count with the same native format support used to display the document.
+pub fn count_with_support(
+    manager: &DictionaryManager,
+    request: &Request,
+    cancel: &Cancel,
+    tr: &Translator,
+    support: &dyn nikomiru_books::documents::Support,
+) -> Result<Outcome, String> {
     if cancel.is_cancelled() {
         return Err("closing".into());
     }
-    let read = nikomiru_books::analysis::read_text(&request.path, cancel);
+    let read = nikomiru_books::analysis::read_text_with_support(&request.path, cancel, support);
     if cancel.is_cancelled() {
         return Err("closing".into());
     }
@@ -29,7 +46,9 @@ pub fn count(
         Err(nikomiru_books::BookError::NoText) => return Ok(Outcome::NoText),
         Err(error) => return Err(tr.error(&error)),
     };
-    let uid = nikomiru_library::books::book_uid(&book.title, &book.author, book.chars());
+    let uid = book.identity.clone().unwrap_or_else(|| {
+        nikomiru_library::books::book_uid(&book.title, &book.author, book.chars())
+    });
     if uid != request.uid {
         return Err(tr.tr("books-score-source-changed", &[]));
     }
@@ -60,6 +79,34 @@ pub fn count_cached(
     tr: &Translator,
     cache: &crate::analysis_cache::Store,
 ) -> Result<Outcome, String> {
+    count_cached_with_support(
+        manager,
+        request,
+        cancel,
+        tr,
+        cache,
+        &crate::document_support::NativeSupport::default(),
+    )
+}
+
+/// Native document analysis shares display support; converted documents bypass legacy text caches.
+pub fn count_cached_with_support(
+    manager: &DictionaryManager,
+    request: &Request,
+    cancel: &Cancel,
+    tr: &Translator,
+    cache: &crate::analysis_cache::Store,
+    support: &dyn nikomiru_books::documents::Support,
+) -> Result<Outcome, String> {
+    if request.path.extension().is_some_and(|e| {
+        matches!(
+            e.to_string_lossy().to_ascii_lowercase().as_str(),
+            "htmlz" | "rtf" | "docx" | "pdf"
+        )
+    }) {
+        return count_with_support(manager, request, cancel, tr, support);
+    }
+
     if cancel.is_cancelled() {
         return Err("cancelled".into());
     }
@@ -70,7 +117,7 @@ pub fn count_cached(
         tracing::debug!(book = %request.uid, "book count cache hit");
         return Ok(Outcome::Counted(counted));
     }
-    let result = count(manager, request, cancel, tr)?;
+    let result = count_with_support(manager, request, cancel, tr, support)?;
     if let (Some(key), Outcome::Counted(counted)) = (&before, &result) {
         if crate::analysis_cache::key(manager, &request.path, &request.uid, cancel).as_ref()
             != Some(key)

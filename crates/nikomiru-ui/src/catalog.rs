@@ -174,6 +174,8 @@ type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// The library worker (the app's `library` thread).
 pub trait LibraryService: Send {
+    /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
+    fn configure_ffmpeg(&self, _path: String) {}
     /// Export condensed episode audio off the UI thread (AUD-010).
     fn condense(&self, request: crate::condense::Request, done: Done<crate::condense::Report>);
     /// The home page.

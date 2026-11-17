@@ -21,6 +21,53 @@ use crate::view::{Dialog, FileDialog, View};
 
 /// Work done on another thread, for the UI thread.
 pub enum Inbound {
+    /// Exact owned primary contexts prepared for an explicit batch selection.
+    BatchContexts(Result<nikomiru_library::sentences::Batch, String>),
+    /// Complete read-only effective text previews.
+    BatchPreviewed(Result<Vec<crate::batch_mining::Preview>, String>),
+    /// One in-flight batch export's classified actual outcome.
+    BatchMined(Result<crate::batch_mining::Outcome, crate::batch_mining::Failure>),
+    /// A durable batch-journal barrier completed.
+    BatchJournal(crate::batch_mining::JournalReply),
+    /// Read-only exact-operation reconciliation.
+    BatchReconciled {
+        /// Original journal.
+        batch: String,
+        /// Persisted item metadata.
+        item: Box<nikomiru_library::batches::Item>,
+        /// Uniquely matched note, if any.
+        result: Result<Option<u64>, String>,
+    },
+    /// An ordered local phrase operation completed.
+    Phrases(crate::phrases::Answer),
+    /// A check ended (UPD-001): a newer release, none, or why not.
+    UpdateChecked(Result<Option<crate::updates::Available>, String>),
+    /// How far the update download is.
+    UpdateProgress(u64, Option<u64>),
+    /// The update download ended.
+    UpdateDownloaded(Result<PathBuf, String>),
+    /// The update install ended.
+    UpdateInstalled(Result<(), String>),
+    /// The Anime4K pack job ended: installed or not, or why it failed.
+    ShaderPack(Result<bool, String>),
+    /// A podcast library job completed (POD-001…POD-004).
+    Podcasts(crate::podcasts::Answer),
+    /// A feed fetched: its epoch, address and result.
+    PodcastFetched(u64, String, Result<nikomiru_online::podcast::Feed, String>),
+    /// How far a download is: its serial, bytes and whole.
+    PodcastProgress(u64, u64, Option<u64>),
+    /// A download ended: its serial and result.
+    PodcastDownloaded(u64, Result<crate::podcasts::Fetched, String>),
+    /// An ordered annotation operation completed (RDR-001).
+    Annotations(crate::reader_tools::Answer),
+    /// A library text search ended (RDR-003): its epoch and result.
+    Search(u64, Result<crate::reader_tools::Outcome, String>),
+    /// An ordered cloze operation completed.
+    Cloze(crate::cloze::Answer),
+    /// A complete explicitly indexed owned-source batch, before its atomic commit.
+    BankPrepared(Result<nikomiru_library::sentences::Batch, String>),
+    /// An ordered sentence-bank query/write result.
+    Bank(crate::sentence_bank::Answer),
     /// Cumulative graphic OCR text, stamped against source changes.
     SubtitleProgress {
         /// Load generation.
@@ -72,6 +119,8 @@ pub enum Inbound {
     Ocr(crate::ocr::OcrEvent),
     /// A part of a page was read (MNG-003).
     OcrRead(crate::ocr::Reading),
+    /// A pasted source was validated and saved.
+    BookPasted(Result<(PathBuf, nikomiru_books::Book), String>),
     /// A book file was read (BOK-001).
     BookRead {
         /// The file.
@@ -327,6 +376,27 @@ impl std::fmt::Debug for Inbound {
             Inbound::Ocr(_) => "Ocr",
             Inbound::OcrRead(_) => "OcrRead",
             Inbound::BookRead { .. } => "BookRead",
+            Inbound::BookPasted(_) => "BookPasted",
+            Inbound::Phrases(_) => "Phrases",
+            Inbound::Annotations(_) => "Annotations",
+            Inbound::Podcasts(_) => "Podcasts",
+            Inbound::ShaderPack(_) => "ShaderPack",
+            Inbound::UpdateChecked(_) => "UpdateChecked",
+            Inbound::UpdateProgress(..) => "UpdateProgress",
+            Inbound::UpdateDownloaded(_) => "UpdateDownloaded",
+            Inbound::UpdateInstalled(_) => "UpdateInstalled",
+            Inbound::PodcastFetched(..) => "PodcastFetched",
+            Inbound::PodcastProgress(..) => "PodcastProgress",
+            Inbound::PodcastDownloaded(..) => "PodcastDownloaded",
+            Inbound::Search(..) => "Search",
+            Inbound::Cloze(_) => "Cloze",
+            Inbound::BatchContexts(_) => "BatchContexts",
+            Inbound::BatchPreviewed(_) => "BatchPreviewed",
+            Inbound::BatchMined(_) => "BatchMined",
+            Inbound::BatchJournal(_) => "BatchJournal",
+            Inbound::BatchReconciled { .. } => "BatchReconciled",
+            Inbound::BankPrepared(_) => "BankPrepared",
+            Inbound::Bank(_) => "Bank",
             Inbound::BookCount { .. } => "BookCount",
             Inbound::SeriesWordCount { .. } => "SeriesWordCount",
             Inbound::Quit => "Quit",
@@ -361,6 +431,104 @@ pub struct Key {
 /// session while it draws; the commands run after the frame.
 #[derive(Debug, Clone)]
 pub(crate) enum Command {
+    BatchOpen,
+    BatchClose,
+    BatchNew,
+    BatchAddLookup(usize, usize),
+    BatchAddWords(u64, Vec<crate::words::ListedWord>),
+    BatchAddExample(Box<nikomiru_library::sentences::Example>, String, String),
+    BatchEdit {
+        index: usize,
+        context: Option<usize>,
+        enabled: Option<bool>,
+        audio: Option<bool>,
+        image: Option<bool>,
+    },
+    BatchPreview,
+    BatchStart,
+    BatchCancel,
+    BatchRetry(usize),
+    BatchContinue,
+    BatchReconcile(String, String),
+    BatchDeleteJournal(String),
+    BankOpen,
+    BankClose,
+    BankExamples(String, String),
+    BankIndex(bool),
+    BankImport,
+    BankCancel,
+    BankQuery(String, String),
+    BankDelete(String),
+    BankSource(Box<nikomiru_library::sentences::Example>),
+    BankExport,
+
+    ClozeOpen,
+    ClozeClose,
+    ClozePreview(String),
+    ClozeCreate,
+    ClozeEnrol(String),
+    ClozeDelete(String),
+    ClozeStart {
+        ids: Vec<String>,
+        mode: crate::cloze::Mode,
+        scheduled: bool,
+    },
+    ClozeInput(String),
+    ClozeSubmit,
+    ClozeNext(nikomiru_library::review::Grade, bool),
+    ClozeUndo,
+    ClozeCancelRound,
+
+    /// Download (`true`) or remove the Anime4K pack (THM-002).
+    ShaderPack(bool),
+    /// UPD-001…UPD-004
+    UpdateCheck,
+    UpdateDownload,
+    UpdateInstall,
+    UpdateChannel(String),
+    /// A dictionary's sound clicked in a popup (DIC-038): its bytes and path.
+    DictionarySound(std::sync::Arc<Vec<u8>>, String),
+    /// KEY-008…KEY-010: the draft's overrides, to export or to compare with.
+    ShortcutsExport(std::collections::BTreeMap<String, Vec<String>>),
+    ShortcutsImport(std::collections::BTreeMap<String, Vec<String>>),
+    ShortcutsPreviewClose,
+    /// POD-001…POD-004
+    PodcastsOpen,
+    PodcastsClose,
+    PodcastFetch(String),
+    PodcastFetchCancel,
+    PodcastRemove(String),
+    PodcastDownload(String, String),
+    PodcastDownloadCancel,
+    PodcastDelete(String, String),
+    PodcastImport(String, String),
+    PodcastPlay(String, String),
+    PodcastLink(String),
+    /// RDR-001…RDR-004
+    ReaderToolsOpen(crate::reader_tools::Tab),
+    ReaderToolsClose,
+    AnnotationNew(nikomiru_library::annotations::Kind),
+    AnnotationScope(crate::reader_tools::Scope),
+    AnnotationEdit(Option<nikomiru_library::annotations::Annotation>),
+    AnnotationSave,
+    AnnotationDelete(String),
+    AnnotationGo(String),
+    AnnotationExport(Vec<String>),
+    AnnotationsThisBook(bool),
+    SearchRun(String),
+    SearchCancel,
+    SearchGo(usize),
+    BookMode(String),
+    BookTurn(usize),
+    BookSentence(bool),
+
+    PhrasesOpen,
+    PhraseNew(bool),
+    PhraseSave,
+    PhraseEdit(Option<nikomiru_library::phrases::Phrase>),
+    PhraseDelete(String),
+    PhraseSource(String),
+    PhraseExport(Vec<String>),
     WebOpenDialog,
     WebOpen(String),
     Condense(crate::condense::Target, nikomiru_media::condense::Format),
@@ -396,6 +564,43 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// Exact current-subtitle word examples.
+    Practice {
+        version: u64,
+        cue: usize,
+        passes: u8,
+    },
+    PracticeCancel,
+    PracticeSkip,
+    PracticeRestart,
+    PracticePause(u16),
+    PracticeQueue {
+        version: u64,
+        indices: Vec<usize>,
+        passes: u8,
+    },
+    VocabularyScope {
+        version: u64,
+        indices: Vec<usize>,
+    },
+    VocabularyScopeClear,
+    PresetsImport,
+    PresetsExport,
+    SubtitleStudyPresetSave(nikomiru_core::config::SubtitleStudyPreset),
+    SubtitleStudyPresetDelete(String),
+    StudyPresetSave(nikomiru_core::config::StudyPreset),
+    StudyPresetDelete(String),
+    VocabularyExamples {
+        expression: String,
+        reading: String,
+    },
+    /// Leave the examples filter.
+    SubtitleExamplesClear,
+    /// Dictionary lookup from a study vocabulary row, without a cue context.
+    VocabularyLookup {
+        text: String,
+        anchor: Rect,
+    },
     /// The pointer is over this step of the progress bar (PLY-014).
     BarHover(i64),
     /// The rows of the subtitle list in view changed: their words are
@@ -443,9 +648,45 @@ pub(crate) enum Command {
     WordsExport,
     /// Export a complete analysed vocabulary snapshot.
     AnalysisWordsExport(Vec<crate::words::ListedWord>),
+    /// Save selected/shown study counts as an importable frequency dictionary.
+    ConcordanceExport {
+        version: u64,
+        rows: Vec<crate::words::ListedWord>,
+    },
+    VocabularyHtml {
+        source: String,
+        rows: Vec<crate::words::ListedWord>,
+    },
+    FrequencyExport {
+        source: String,
+        rows: Vec<crate::words::ListedWord>,
+    },
     /// Save the full historical set of one episode.
     EncounterExport(String),
     /// A status chosen for the words ticked in the word list (KNW-009).
+    RecallStart {
+        source: String,
+        rows: Vec<crate::words::ListedWord>,
+    },
+    RecallReveal,
+    RecallSkip,
+    RecallRate(bool),
+    RecallClose,
+    RecallHistoryOpen,
+    RecallHistoryChange {
+        record: bool,
+        delete: Option<String>,
+    },
+    RecallHistoryRetry,
+    RecallFocused(bool),
+    RecallSave,
+    RecallResults,
+    RecallLoad,
+    RecallRestart(u8),
+    RecallCaptureHints,
+    RecallRevealHint,
+    RecallLookup(crate::popup::Rect),
+    UndoWordStatuses,
     WordsStatus(Vec<(String, String)>, crate::words::WordStatus),
     /// A status chosen for the word of an entry (KNW-001).
     WordStatus {
@@ -460,6 +701,8 @@ pub(crate) enum Command {
     },
     /// A change in that dialog (ANK-040, ANK-041).
     Advanced(crate::mining::AdvancedEdit),
+    /// Apply a named mining profile, explicitly discarding the composer and its pins.
+    MiningProfileApply(String),
     /// The Anki settings page opened.
     AnkiOpen,
     /// "Test the connection" with these settings (ANK-006).
@@ -571,10 +814,18 @@ pub(crate) enum Command {
     GraphicReadCancel,
     /// Export current complete text subtitles as SRT.
     SubtitleExport,
+    /// Export explicitly selected original subtitle cues.
+    SubtitleRowsExport {
+        version: u64,
+        indices: Vec<usize>,
+        format: crate::subtitle_export::ExportFormat,
+    },
     /// Export a captured completed-analysis summary.
     StudyReport(crate::study_report::Scope),
     /// "Open" with a web page's address on the Books page (WEB-001).
     BookPage(String),
+    /// Save and read a document explicitly entered in Books.
+    BookPaste(crate::books::Paste),
     /// A book of the list.
     BookChoose(String),
     BookRemove(String),
@@ -590,6 +841,11 @@ pub(crate) enum Command {
     BookAt(usize),
     BookClose,
     /// A part of a page was selected: left, top, width, height, as shares.
+    /// Explicit imported text-region selection.
+    MokuroSelect {
+        page: usize,
+        region: usize,
+    },
     MangaRead {
         page: usize,
         area: [f32; 4],
@@ -639,6 +895,8 @@ pub(crate) enum Command {
         user: String,
         password: String,
         allow_unencrypted: bool,
+        /// An Emby instead (SRV-014).
+        emby: bool,
     },
     /// A sign-in to Plex (SRV-003).
     ServerPlex,
@@ -685,6 +943,8 @@ pub(crate) enum Command {
     SetupInstall,
     /// "Stop".
     SetupStop,
+    /// Refresh optional tool inventory offline.
+    SetupInspect,
     /// The main subtitle dropped at an edge and a distance from it, in
     /// pixels of a video 1080 px high (SUB-027).
     SubtitlesPlaced {
@@ -1014,9 +1274,36 @@ impl Ui {
                     Dialog::BackupOpen => self.session.backup_chosen(path),
                     Dialog::WordsImport => self.session.words_import(&path),
                     Dialog::StudyReport => self.session.study_report_to(&path),
-                    Dialog::SubtitleExport => self.session.subtitle_export_to(&path),
+                    Dialog::SubtitleExport
+                    | Dialog::SubtitleVtt
+                    | Dialog::SubtitleBilingual
+                    | Dialog::SubtitleBilingualSrt
+                    | Dialog::SubtitleHtml => self.session.subtitle_export_to(&path),
                     Dialog::EncounterExport => self.session.history_export_to(path),
                     Dialog::AnalysisWordsExport => self.session.analysis_export_to(&path),
+                    Dialog::RecallResults => self.session.recall_results_to(&path),
+                    Dialog::RecallSave => self.session.recall_save_to(&path),
+                    Dialog::RecallLoad => self.session.recall_load_from(&path),
+                    Dialog::StudyPresetsImport => self.session.preset_import_from(&path),
+                    Dialog::StudyPresetsExport => self.session.preset_export_to(&path),
+                    Dialog::ConcordanceExport => self.session.concordance_export_to(&path),
+                    Dialog::PhrasesExport => self.session.phrases_export_to(&path),
+                    Dialog::AnnotationsExport => self.session.annotations_export_to(&path),
+                    Dialog::ShortcutsExport => self.session.shortcuts_export_to(&path),
+                    Dialog::ShortcutsImport => self.session.shortcuts_import_from(&path),
+                    Dialog::PodcastTranscript => {
+                        if let Some((feed, episode)) = self.session.podcasts.importing.take() {
+                            self.session.podcasts_request(crate::podcasts::Job::Import {
+                                feed,
+                                episode,
+                                path,
+                            });
+                        }
+                    }
+                    Dialog::SentencesImport => self.session.bank_import(path),
+                    Dialog::SentencesExport => self.session.bank_export_to(&path),
+                    Dialog::VocabularyHtml => self.session.vocabulary_html_to(&path),
+                    Dialog::FrequencyExport => self.session.frequency_export_to(&path),
                     Dialog::WordsExport => self.session.words_export(&path),
                 }
                 true
@@ -1082,6 +1369,94 @@ impl Ui {
                 self.session.book_count_done(&request, result);
                 true
             }
+            Inbound::BankPrepared(result) => {
+                self.session.bank_prepared(result);
+                true
+            }
+            Inbound::Bank(answer) => {
+                self.session.bank_done(answer);
+                true
+            }
+            Inbound::BatchContexts(result) => {
+                self.session.batch_contexts(result);
+                true
+            }
+            Inbound::BatchPreviewed(result) => {
+                self.session.batch_previewed(result);
+                true
+            }
+            Inbound::BatchMined(result) => {
+                self.session.batch_mined(result);
+                true
+            }
+            Inbound::BatchJournal(reply) => {
+                self.session.batch_journal_done(reply);
+                true
+            }
+            Inbound::BatchReconciled {
+                batch,
+                item,
+                result,
+            } => {
+                self.session.batch_reconciled(batch, *item, result);
+                true
+            }
+            Inbound::Cloze(answer) => {
+                self.session.cloze_done(answer);
+                true
+            }
+            Inbound::Phrases(answer) => {
+                self.session.phrases_done(answer);
+                true
+            }
+            Inbound::UpdateChecked(result) => {
+                self.session.update_checked(result);
+                true
+            }
+            Inbound::UpdateProgress(done, total) => {
+                self.session.update_progress(done, total);
+                true
+            }
+            Inbound::UpdateDownloaded(result) => {
+                self.session.update_downloaded(result);
+                true
+            }
+            Inbound::UpdateInstalled(result) => {
+                self.session.update_installed(result);
+                true
+            }
+            Inbound::ShaderPack(result) => {
+                self.session.shader_pack_done(result);
+                true
+            }
+            Inbound::Podcasts(answer) => {
+                self.session.podcasts_done(answer);
+                true
+            }
+            Inbound::PodcastFetched(epoch, url, result) => {
+                self.session.podcast_fetched(epoch, url, result);
+                true
+            }
+            Inbound::PodcastProgress(serial, done, total) => {
+                self.session.podcast_progress(serial, done, total);
+                true
+            }
+            Inbound::PodcastDownloaded(serial, result) => {
+                self.session.podcast_downloaded(serial, result);
+                true
+            }
+            Inbound::Annotations(answer) => {
+                self.session.annotations_done(answer);
+                true
+            }
+            Inbound::Search(epoch, result) => {
+                self.session.search_done(epoch, result);
+                true
+            }
+            Inbound::BookPasted(result) => {
+                self.session.book_pasted(result);
+                true
+            }
             Inbound::BookRead { path, read } => {
                 self.session.book_read(path, read);
                 true
@@ -1112,17 +1487,62 @@ impl Ui {
         redraw
     }
 
+    fn effect(&mut self, effect: crate::session::UiEffect) {
+        if let crate::session::UiEffect::SubtitleStudy(action) = effect {
+            if self.view.sub_list_open
+                && !self.view.library_page_open
+                && !self.view.books_page_open
+                && !self.view.hooker_page_open
+                && !self.view.servers_page_open
+                && !self.view.backup_page_open
+                && !self.session.setup_page.open
+                && !self.session.popups_covered
+                && !self.session.popups.is_open()
+                && let Some(command) = self.view.list.study_action(&self.session, action)
+            {
+                self.apply(command);
+            }
+        } else {
+            self.view.effect(effect);
+        }
+    }
+
     /// A key of the window (KEY-002). `text_focus`: a text field has the
     /// keyboard (KEY-004). Returns whether a shortcut took the key: then egui
     /// must not see it (it would move the focus with Tab or arrows, or press the
     /// focused button with Space).
     pub fn key(&mut self, key: Key, text_focus: bool) -> bool {
         self.cover_popups();
+        // RDR-004: Page Up/Down turn pages or sentences of the book read
+        if key.pressed
+            && !text_focus
+            && self.view.books_page_open
+            && !self.session.popups_covered
+            && !self.session.popups.is_open()
+            && let Some(forward) = match key.evdev {
+                109 => Some(true),
+                104 => Some(false),
+                _ => None,
+            }
+        {
+            match self.session.book_turning() {
+                Some("pages") => {
+                    self.view.books.turn = Some(forward);
+                    return true;
+                }
+                Some(_) => {
+                    self.apply(Command::BookSentence(forward));
+                    self.pump();
+                    return true;
+                }
+                None => {}
+            }
+        }
         let (effect, taken) =
             self.session
                 .key(key.evdev, key.mods, key.pressed, key.repeat, text_focus);
         if key.pressed {
-            self.view.effect(effect);
+            self.effect(effect);
         }
         self.pump();
         taken
@@ -1180,6 +1600,7 @@ impl Ui {
 
     /// The window lost the keyboard: the release of a held key will not come.
     pub fn focus_lost(&mut self) {
+        self.session.release_translation_peek();
         self.session.release_hold();
         self.pump();
     }
@@ -1220,6 +1641,7 @@ impl Ui {
     /// Time-based work: the control bar, hover popups, the screensaver.
     /// Returns whether the window needs a redraw.
     pub fn tick(&mut self) -> bool {
+        self.cover_popups();
         let before = (
             self.session.controls_visible(),
             self.session.popups.stack().len(),
@@ -1240,6 +1662,9 @@ impl Ui {
 
     /// Draws a frame into `ui` (the whole window).
     pub fn frame(&mut self, ui: &mut egui::Ui) {
+        self.cover_popups();
+        self.session
+            .guided_input_priority(ui.ctx().egui_wants_keyboard_input());
         let commands = self.view.frame(ui, &self.session);
         for command in commands {
             self.apply(command);
@@ -1313,7 +1738,15 @@ impl Ui {
 
     /// Tells the session whether a settings page covers the popups.
     fn cover_popups(&mut self) {
-        self.session.popups_covered = self.view.web_url_open
+        self.session.recall_covered = self.view.recall_covered(&self.session);
+        self.session.popups_covered = self.session.batch.open
+            || self.session.reader.open
+            || self.session.podcasts.open
+            || self.session.bank.open
+            || self.session.clozes.open
+            || (self.view.phrases_open && !self.session.study_popup_open())
+            || self.view.recall_history_open
+            || self.view.web_url_open
             || self.view.dict_page_open
             || self.view.anki_page_open
             || self.view.online_page_open
@@ -1321,7 +1754,7 @@ impl Ui {
             || self.view.services_page_open
             || self.view.audio_page_open
             || self.view.prefs_open.is_some()
-            || self.view.library_page_open
+            || (self.view.library_page_open && !self.session.study_popup_open())
             || self.session.advanced_card().is_some();
     }
 
@@ -1329,9 +1762,213 @@ impl Ui {
         self.cover_popups();
         let s = &mut self.session;
         match command {
+            Command::BatchOpen => s.batch_open(),
+            Command::BatchClose => s.batch.open = false,
+            Command::BatchNew => s.batch_new(),
+            Command::BatchAddLookup(level, entry) => s.batch_add_lookup(level, entry),
+            Command::BatchAddWords(version, rows) => s.batch_add_words(version, &rows),
+            Command::BatchAddExample(example, e, r) => s.batch_add_example(*example, e, r),
+            Command::BatchEdit {
+                index,
+                context,
+                enabled,
+                audio,
+                image,
+            } => s.batch_edit(index, context, enabled, audio, image),
+            Command::BatchPreview => s.batch_preview(),
+            Command::BatchStart => s.batch_start(),
+            Command::BatchCancel => s.batch_cancel(),
+            Command::BatchRetry(index) => s.batch_retry(index),
+            Command::BatchContinue => s.batch_continue(),
+            Command::BatchReconcile(batch, operation) => s.batch_reconcile(batch, operation),
+            Command::BatchDeleteJournal(id) => s.batch_delete_journal(id),
+            Command::BankOpen => {
+                s.clozes.open = false;
+                s.bank_open();
+            }
+            Command::BankClose => s.bank.open = false,
+            Command::BankExamples(e, r) => {
+                self.view.bank_expression = e.clone();
+                self.view.bank_reading = r.clone();
+                s.bank_examples(e, r);
+            }
+            Command::BankIndex(book) => s.bank_index(book),
+            Command::BankImport => self.view.dialog = Some(Dialog::SentencesImport),
+            Command::BankCancel => s.bank_cancel(),
+            Command::BankQuery(e, r) => s.bank_query(e, r),
+            Command::BankDelete(key) => s.bank_delete(key),
+            Command::BankSource(example) => {
+                if let Some(book) = s.bank_source(*example) {
+                    s.bank.open = false;
+                    if book {
+                        self.view.close_library_page();
+                        self.view.books_page_open = true;
+                    }
+                }
+            }
+            Command::BankExport => {
+                if s.bank_export_prepare() {
+                    self.view.dialog = Some(Dialog::SentencesExport);
+                }
+            }
+            Command::ClozeOpen => {
+                s.bank.open = false;
+                s.cloze_open();
+            }
+            Command::ClozeClose => {
+                s.clozes.open = false;
+                s.clozes.round = None;
+            }
+            Command::ClozePreview(id) => s.cloze_preview(&id),
+            Command::ClozeCreate => {
+                if let Some(p) = s.clozes.preview.clone() {
+                    s.cloze_request(crate::cloze::Job::Create(Box::new(p)));
+                }
+            }
+            Command::ClozeEnrol(id) => {
+                if let Some(row) = s.clozes.items.iter().find(|r| r.phrase.id == id).cloned() {
+                    s.cloze_request(crate::cloze::Job::Enrol(Box::new(row)));
+                }
+            }
+            Command::ClozeDelete(id) => s.cloze_request(crate::cloze::Job::Delete(id)),
+            Command::ClozeStart {
+                ids,
+                mode,
+                scheduled,
+            } => s.cloze_start(&ids, mode, scheduled),
+            Command::ClozeInput(input) => {
+                if !s.clozes.busy
+                    && let Some(round) = &mut s.clozes.round
+                    && round.feedback.is_none()
+                    && input.len() <= 4096
+                {
+                    round.input = input;
+                }
+            }
+            Command::ClozeSubmit => {
+                if !s.clozes.busy
+                    && let Some(round) = &mut s.clozes.round
+                {
+                    round.submit();
+                }
+            }
+            Command::ClozeNext(grade, skip) => s.cloze_next(grade, skip),
+            Command::ClozeUndo => s.cloze_undo(),
+            Command::ClozeCancelRound => {
+                s.clozes.round = None;
+                s.clozes.preview = None;
+            }
+            Command::DictionarySound(bytes, path) => s.dictionary_sound(&bytes, &path),
+            Command::ShaderPack(install) => s.shader_pack(install),
+            Command::UpdateCheck => s.update_check(),
+            Command::UpdateDownload => s.update_download(),
+            Command::UpdateInstall => s.update_install(),
+            Command::UpdateChannel(channel) => s.update_channel(&channel),
+            Command::ShortcutsExport(overrides) => {
+                s.shortcut_export = Some(crate::shortcut_maps::export(&overrides));
+                self.view.dialog = Some(Dialog::ShortcutsExport);
+            }
+            Command::ShortcutsImport(overrides) => {
+                s.shortcut_base = Some(overrides);
+                self.view.dialog = Some(Dialog::ShortcutsImport);
+            }
+            Command::ShortcutsPreviewClose => s.shortcut_preview = None,
+            Command::PodcastsOpen => {
+                s.podcasts_open();
+                self.view.close_library_page();
+            }
+            Command::PodcastsClose => s.podcasts.open = false,
+            Command::PodcastFetch(url) => s.podcast_fetch(&url),
+            Command::PodcastFetchCancel => s.podcast_fetch_cancel(),
+            Command::PodcastRemove(id) => {
+                s.podcasts_request(crate::podcasts::Job::Remove(id));
+            }
+            Command::PodcastDownload(feed, episode) => s.podcast_download(&feed, &episode),
+            Command::PodcastDownloadCancel => s.podcast_download_cancel(),
+            Command::PodcastDelete(feed, episode) => {
+                s.podcasts_request(crate::podcasts::Job::DeleteDownload { feed, episode });
+            }
+            Command::PodcastImport(feed, episode) => {
+                s.podcasts.importing = Some((feed, episode));
+                self.view.dialog = Some(Dialog::PodcastTranscript);
+            }
+            Command::PodcastPlay(feed, episode) => {
+                s.podcast_play(&feed, &episode);
+            }
+            Command::PodcastLink(url) => s.podcast_link(&url),
+            Command::ReaderToolsOpen(tab) => s.reader_tools_open(tab),
+            Command::ReaderToolsClose => {
+                s.reader.open = false;
+                s.reader.editor = None;
+            }
+            Command::AnnotationNew(kind) => s.annotation_new(kind),
+            Command::AnnotationScope(scope) => s.annotation_scope(scope),
+            Command::AnnotationEdit(a) => {
+                if a.is_none() {
+                    s.reader_discard_draft();
+                } else {
+                    s.reader.editor = a;
+                }
+            }
+            Command::AnnotationSave => s.annotation_save(),
+            Command::AnnotationDelete(id) => {
+                s.annotations_request(crate::reader_tools::Job::Delete(id));
+            }
+            Command::AnnotationGo(id) => {
+                if s.annotation_go(&id) {
+                    s.reader.open = false;
+                    self.view.close_library_page();
+                    self.view.books_page_open = true;
+                }
+            }
+            Command::AnnotationExport(ids) => {
+                if s.annotations_export_prepare(&ids) {
+                    self.view.dialog = Some(Dialog::AnnotationsExport);
+                }
+            }
+            Command::AnnotationsThisBook(on) => s.reader.this_book = on,
+            Command::SearchRun(query) => s.search_run(&query),
+            Command::SearchCancel => s.search_cancel(),
+            Command::SearchGo(index) => {
+                if s.search_go(index) {
+                    s.reader.open = false;
+                    self.view.close_library_page();
+                    self.view.books_page_open = true;
+                }
+            }
+            Command::BookMode(mode) => s.book_set_mode(&mode),
+            Command::BookTurn(paragraph) => s.book_turn(paragraph),
+            Command::BookSentence(forward) => s.book_sentence(forward),
+            Command::PhrasesOpen => {
+                self.view.phrases_open = true;
+                s.phrases_request(crate::phrases::Job::List);
+            }
+            Command::PhraseNew(capture) => s.phrase_new(capture),
+            Command::PhraseEdit(p) => s.phrases.editor = p,
+            Command::PhraseSave => {
+                if let Some(mut p) = s.phrases.editor.clone() {
+                    p.changed_ms = s.phrase_now().max(p.created_ms);
+                    s.phrases_request(crate::phrases::Job::Save(p));
+                }
+            }
+            Command::PhraseDelete(id) => s.phrases_request(crate::phrases::Job::Delete(id)),
+            Command::PhraseSource(id) => {
+                if let Some(book) = s.phrase_source(&id) {
+                    self.view.phrases_open = false;
+                    if book {
+                        self.view.close_library_page();
+                        self.view.books_page_open = true;
+                    }
+                }
+            }
+            Command::PhraseExport(ids) => {
+                if s.phrases_export_prepare(&ids) {
+                    self.view.dialog = Some(Dialog::PhrasesExport);
+                }
+            }
             Command::Action(action) => {
                 let effect = s.action(action);
-                self.view.effect(effect);
+                self.effect(effect);
             }
             Command::SeekTo(seconds) => s.seek_to(seconds),
             Command::SetVolume(volume) => s.set_volume(volume),
@@ -1343,7 +1980,7 @@ impl Ui {
                     s.close_all_popups();
                 } else if s.view.loaded {
                     let effect = s.action(Action::PlayPause);
-                    self.view.effect(effect);
+                    self.effect(effect);
                 }
             }
             Command::SelectSubtitles(key) => s.select_subtitles(&key),
@@ -1364,6 +2001,47 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::VocabularyExamples {
+                expression,
+                reading,
+            } => {
+                s.subtitle_examples_for(&expression, &reading);
+                self.view.sub_list_open = true;
+            }
+            Command::SubtitleExamplesClear => s.subtitle_examples_clear(),
+            Command::Practice {
+                version,
+                cue,
+                passes,
+            } => s.practice_start(version, cue, passes),
+            Command::PracticeQueue {
+                version,
+                indices,
+                passes,
+            } => s.practice_queue_start(version, &indices, passes),
+            Command::PracticePause(ms) => s.set_practice_pause_ms(ms),
+            Command::PracticeSkip => s.practice_skip(),
+            Command::PracticeRestart => s.practice_restart(),
+            Command::PracticeCancel => s.practice_cancel(),
+            Command::VocabularyScope { version, indices } => {
+                s.vocabulary_scope_capture(version, &indices)
+            }
+            Command::VocabularyScopeClear => s.vocabulary_scope_clear(),
+            Command::PresetsImport => self.view.dialog = Some(Dialog::StudyPresetsImport),
+            Command::PresetsExport => {
+                if s.preset_export_prepare() {
+                    self.view.dialog = Some(Dialog::StudyPresetsExport);
+                }
+            }
+            Command::SubtitleStudyPresetSave(preset) => {
+                s.subtitle_study_preset_change(Some(preset), None)
+            }
+            Command::SubtitleStudyPresetDelete(name) => {
+                s.subtitle_study_preset_change(None, Some(name))
+            }
+            Command::StudyPresetSave(preset) => s.study_preset_change(Some(preset), None),
+            Command::StudyPresetDelete(name) => s.study_preset_change(None, Some(name)),
+            Command::VocabularyLookup { text, anchor } => s.vocabulary_lookup(&text, anchor),
             Command::BarHover(at_ms) => s.bar_hover(at_ms),
             Command::ListRows(cues) => s.list_rows(&cues),
             Command::BookRows(uid, chapter, paragraphs) => s.book_rows(&uid, chapter, &paragraphs),
@@ -1399,8 +2077,36 @@ impl Ui {
                 entry,
                 status,
             } => s.popup_word_status(level, entry, status),
+            Command::RecallStart { source, rows } => s.recall_start(&source, &rows),
+            Command::RecallReveal => s.recall_reveal(),
+            Command::RecallRate(good) => s.recall_rate(good),
+            Command::RecallSkip => s.recall_skip(),
+            Command::RecallLookup(anchor) => s.recall_lookup(anchor),
+            Command::RecallCaptureHints => s.recall_capture_hints(),
+            Command::RecallRevealHint => s.recall_reveal_hint(),
+            Command::RecallRestart(order) => s.recall_restart(order, None),
+            Command::RecallResults => {
+                if s.recall_results_prepare() {
+                    self.view.dialog = Some(Dialog::RecallResults);
+                }
+            }
+            Command::RecallSave => {
+                if s.recall_save_prepare() {
+                    self.view.dialog = Some(Dialog::RecallSave);
+                }
+            }
+            Command::RecallLoad => self.view.dialog = Some(Dialog::RecallLoad),
+            Command::RecallFocused(skipped) => s.recall_focused(skipped),
+            Command::RecallHistoryOpen => self.view.recall_history_open = true,
+            Command::RecallHistoryChange { record, delete } => {
+                s.recall_history_change(record, delete)
+            }
+            Command::RecallHistoryRetry => s.recall_history_retry(),
+            Command::RecallClose => s.recall_close(),
+            Command::UndoWordStatuses => s.undo_word_statuses(),
             Command::WordsStatus(words, status) => s.set_word_statuses(words, status),
             Command::Advanced(edit) => s.advanced_edit(edit),
+            Command::MiningProfileApply(name) => s.mining_profile_apply(&name),
             Command::LinkLocate => self.view.dialog = Some(Dialog::Locate),
             Command::AnkiOpen => s.anki_open(),
             Command::AnkiTest(config) => s.anki_test(config),
@@ -1416,6 +2122,7 @@ impl Ui {
             Command::SetupClose => s.setup_close(),
             Command::SetupTick { id, on } => s.setup_tick(&id, on),
             Command::SetupInstall => s.setup_install(),
+            Command::SetupInspect => s.setup_inspect(),
             Command::SetupStop => s.setup_stop(),
             Command::SubtitlesPlaced { top, margin } => s.subtitles_placed(top, margin),
             Command::SelectSecondary(key) => s.select_secondary(&key),
@@ -1475,6 +2182,21 @@ impl Ui {
                     self.view.dialog = Some(Dialog::EncounterExport);
                 }
             }
+            Command::ConcordanceExport { version, rows } => {
+                if s.concordance_export_prepare(version, &rows) {
+                    self.view.dialog = Some(Dialog::ConcordanceExport);
+                }
+            }
+            Command::VocabularyHtml { source, rows } => {
+                if s.vocabulary_html_prepare(&source, &rows) {
+                    self.view.dialog = Some(Dialog::VocabularyHtml);
+                }
+            }
+            Command::FrequencyExport { source, rows } => {
+                if s.frequency_export_prepare(&source, &rows) {
+                    self.view.dialog = Some(Dialog::FrequencyExport);
+                }
+            }
             Command::AnalysisWordsExport(rows) => {
                 if s.analysis_export_prepare(&rows) {
                     self.view.dialog = Some(Dialog::AnalysisWordsExport);
@@ -1528,6 +2250,27 @@ impl Ui {
                     self.view.dialog = Some(Dialog::StudyReport);
                 }
             }
+            Command::SubtitleRowsExport {
+                version,
+                indices,
+                format,
+            } => {
+                if s.subtitle_selected_prepare(version, &indices, format) {
+                    self.view.dialog = Some(match format {
+                        crate::subtitle_export::ExportFormat::Html => {
+                            crate::view::Dialog::SubtitleHtml
+                        }
+                        crate::subtitle_export::ExportFormat::BilingualSrt => {
+                            Dialog::SubtitleBilingualSrt
+                        }
+                        crate::subtitle_export::ExportFormat::Srt => Dialog::SubtitleExport,
+                        crate::subtitle_export::ExportFormat::Vtt => Dialog::SubtitleVtt,
+                        crate::subtitle_export::ExportFormat::Bilingual => {
+                            Dialog::SubtitleBilingual
+                        }
+                    });
+                }
+            }
             Command::SubtitleExport => {
                 if s.subtitle_export_prepare() {
                     self.view.dialog = Some(Dialog::SubtitleExport);
@@ -1538,6 +2281,7 @@ impl Ui {
             Command::SeriesAnalyse(id) => s.series_analyse(id),
             Command::BookChoose(uid) => s.book_choose(&uid),
             Command::BookPage(address) => s.book_page(&address),
+            Command::BookPaste(paste) => s.book_paste(paste),
             Command::BookRemove(uid) => s.book_remove(&uid),
             Command::BookChapter(chapter) => s.book_chapter(chapter),
             Command::BookAlong(on) => s.book_along(on),
@@ -1545,6 +2289,7 @@ impl Ui {
             Command::BookWriting(vertical) => s.book_writing(vertical),
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
+            Command::MokuroSelect { page, region } => s.mokuro_select(page, region),
             Command::MangaRead { page, area } => s.manga_read(page, area),
             Command::MangaDouble(double) => s.manga_double(double),
             Command::OcrFetch => s.ocr_fetch(),
@@ -1582,9 +2327,10 @@ impl Ui {
                 user,
                 password,
                 allow_unencrypted,
+                emby,
             } => self
                 .session
-                .server_jellyfin(url, user, password, allow_unencrypted),
+                .server_jellyfin(url, user, password, allow_unencrypted, emby),
             Command::ServerPlex => self.session.server_plex(),
             Command::ServerCancel => self.session.server_cancel(),
             Command::ServerRename(id, name) => self.session.server_rename(&id, name),
@@ -1607,6 +2353,86 @@ impl Ui {
     /// Starts the jobs the session queued, with replies that come back as
     /// [`Inbound`] messages, and hands on its toasts and milestones.
     fn pump(&mut self) {
+        if let Some((request, cancel)) = self.session.take_bank_prepare() {
+            let waker = self.waker.clone();
+            self.session.start_bank_prepare(
+                request,
+                cancel,
+                Box::new(move |result| waker.wake(Inbound::BankPrepared(result))),
+            );
+        }
+        for job in self.session.take_bank_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_bank_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Bank(answer))),
+            );
+        }
+        if let Some(job) = self.session.take_cloze_job() {
+            let waker = self.waker.clone();
+            self.session.start_cloze_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Cloze(answer))),
+            );
+        }
+        self.session.start_update_jobs(&self.waker);
+        if let Some(install) = self.session.take_shader_job() {
+            let waker = self.waker.clone();
+            self.session.start_shader_job(
+                install,
+                Box::new(move |result| waker.wake(Inbound::ShaderPack(result))),
+            );
+        }
+        for job in self.session.take_podcast_jobs() {
+            let waker = self.waker.clone();
+            self.session.start_podcast_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Podcasts(answer))),
+            );
+        }
+        if let Some(request) = self.session.take_podcast_fetch() {
+            let waker = self.waker.clone();
+            self.session.start_podcast_fetch(
+                request,
+                Box::new(move |epoch, url, result| {
+                    waker.wake(Inbound::PodcastFetched(epoch, url, result));
+                }),
+            );
+        }
+        if let Some(request) = self.session.take_podcast_download() {
+            let (progress, done) = (self.waker.clone(), self.waker.clone());
+            self.session.start_podcast_download(
+                request,
+                Box::new(move |serial, bytes, total| {
+                    progress.wake(Inbound::PodcastProgress(serial, bytes, total));
+                }),
+                Box::new(move |serial, result| {
+                    done.wake(Inbound::PodcastDownloaded(serial, result))
+                }),
+            );
+        }
+        if let Some(job) = self.session.take_annotation_job() {
+            let waker = self.waker.clone();
+            self.session.start_annotation_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Annotations(answer))),
+            );
+        }
+        if let Some((request, cancel)) = self.session.take_search_request() {
+            let waker = self.waker.clone();
+            self.session.start_search(
+                request,
+                cancel,
+                Box::new(move |epoch, result| waker.wake(Inbound::Search(epoch, result))),
+            );
+        }
+        if let Some(job) = self.session.take_phrase_job() {
+            let waker = self.waker.clone();
+            self.session.start_phrase_job(
+                job,
+                Box::new(move |answer| waker.wake(Inbound::Phrases(answer))),
+            );
+        }
         for (generation, request) in self.session.take_subtitle_loads() {
             let waker = self.waker.clone();
             let source = request.source.clone();
@@ -1706,6 +2532,13 @@ impl Ui {
                     let waker = self.waker.clone();
                     self.session.setup_service().install(
                         plan,
+                        Box::new(move |event| waker.wake(Inbound::Setup(event))),
+                    );
+                }
+                crate::setup::SetupJob::Inspect(paths) => {
+                    let waker = self.waker.clone();
+                    self.session.setup_service().inspect(
+                        paths,
                         Box::new(move |event| waker.wake(Inbound::Setup(event))),
                     );
                 }
@@ -1830,11 +2663,23 @@ impl Ui {
                 Box::new(move |result| waker.wake(Inbound::WebVideo { generation, result })),
             );
         }
+        for paste in self.session.take_book_pastes() {
+            let waker = self.waker.clone();
+            if let Err(error) = crate::books::start_paste(
+                self.session.text_dir(),
+                paste,
+                self.session.translator_clone(),
+                Box::new(move |result| waker.wake(Inbound::BookPasted(result))),
+            ) {
+                self.session.book_pasted(Err(error));
+            }
+        }
         for path in self.session.take_book_reads() {
             let waker = self.waker.clone();
             crate::books::start_read(
                 path,
                 self.session.translator_clone(),
+                self.session.book_support(),
                 Box::new(move |path, read| waker.wake(Inbound::BookRead { path, read })),
             );
         }
@@ -1918,19 +2763,22 @@ impl Ui {
                     );
                 }
                 crate::servers::ServerJob::Jellyfin {
+                    emby,
                     url,
                     user,
                     password,
                     allow_unencrypted,
-                } => servers.jellyfin_login(
-                    url,
-                    user,
-                    password,
-                    allow_unencrypted,
-                    Box::new(move |r| {
-                        send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
-                    }),
-                ),
+                } => {
+                    let done: crate::servers::Done<nikomiru_core::config::ServerConfig> =
+                        Box::new(move |r| {
+                            send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
+                        });
+                    if emby {
+                        servers.emby_login(url, user, password, allow_unencrypted, done);
+                    } else {
+                        servers.jellyfin_login(url, user, password, allow_unencrypted, done);
+                    }
+                }
                 crate::servers::ServerJob::Plex => {
                     let sent = reply(&self.waker);
                     servers.plex_login(
@@ -2214,6 +3062,49 @@ impl Ui {
                 }),
                 Box::new(move |result| done.wake(Inbound::ImportDone { generation, result })),
             );
+        }
+        if let Some((request, cancel)) = self.session.take_batch_prepare() {
+            let waker = self.waker.clone();
+            self.session.start_bank_prepare(
+                request,
+                cancel,
+                Box::new(move |result| waker.wake(Inbound::BatchContexts(result))),
+            );
+        }
+        for job in self.session.take_batch_journals() {
+            let waker = self.waker.clone();
+            self.session.start_batch_journal(
+                job,
+                Box::new(move |reply| waker.wake(Inbound::BatchJournal(reply))),
+            );
+        }
+        for job in self.session.take_batch_service() {
+            let waker = self.waker.clone();
+            match job {
+                crate::batch_mining::ServiceJob::Preview(requests) => {
+                    self.session.anki().batch_preview(
+                        requests,
+                        Box::new(move |result| waker.wake(Inbound::BatchPreviewed(result))),
+                    )
+                }
+                crate::batch_mining::ServiceJob::Mine(ticket) => self.session.anki().batch_mine(
+                    *ticket,
+                    Box::new(move |result| waker.wake(Inbound::BatchMined(result))),
+                ),
+                crate::batch_mining::ServiceJob::Reconcile { batch, item } => {
+                    let original = *item.clone();
+                    self.session.anki().batch_reconcile(
+                        item.operation,
+                        Box::new(move |result| {
+                            waker.wake(Inbound::BatchReconciled {
+                                batch,
+                                item: Box::new(original),
+                                result,
+                            })
+                        }),
+                    );
+                }
+            }
         }
         if let Some(last) = self.session.toasts.drain(..).next_back() {
             self.view.toast(last);

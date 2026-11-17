@@ -51,6 +51,7 @@ impl std::fmt::Debug for Parts {
 type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 enum Job {
+    ConfigureFfmpeg(String),
     Home(Done<Home>),
     Episodes(u64, Done<SeriesDetail>),
     Import(PathBuf, Grouping, Done<ImportReport>),
@@ -228,7 +229,9 @@ impl Worker {
         let used = review.new + review.learning + review.young + review.mature > 0
             || review.days.iter().any(|n| *n > 0);
         let today = nikomiru_library::review::day_of(self.now(), offset);
-        let words = lib.word_stats(today, offset).map_err(e)?;
+        let words = lib
+            .word_stats_in(&lib.active_language(), today, offset)
+            .map_err(e)?;
         let encounters: Vec<_> = lib
             .encounter_stats(SESSIONS_SHOWN)
             .map_err(e)?
@@ -324,8 +327,9 @@ impl Worker {
                 lib.reset_review_card(id, now).map_err(e)?;
             }
         }
+        let language = lib.active_language();
         let list = lib
-            .review_cards()
+            .review_cards_in(&language)
             .map_err(e)?
             .into_iter()
             .map(|(id, c)| CardRow {
@@ -336,7 +340,9 @@ impl Worker {
                 memory: c.memory,
             })
             .collect();
-        let mut queue = lib.review_queue(now, offset, settings).map_err(e)?;
+        let mut queue = lib
+            .review_queue_in(&language, now, offset, settings)
+            .map_err(e)?;
         // the card taken back is shown again at once
         if let Some(i) = first.and_then(|id| queue.cards.iter().position(|(c, _)| *c == id)) {
             let card = queue.cards.remove(i);
@@ -462,6 +468,10 @@ impl Catalog {
                             });
                             done(result);
                         }
+                        Job::ConfigureFfmpeg(path) => {
+                            worker.parts.ffmpeg = path;
+                            worker.tools = None;
+                        }
                         Job::Home(done) => done(worker.home()),
                         Job::Episodes(id, done) => done(worker.series(id)),
                         Job::Import(root, grouping, done) => done(worker.import(&root, grouping)),
@@ -501,6 +511,7 @@ impl Catalog {
         let no = self.unavailable.clone();
         match refused {
             Some(Job::Condense(_, done)) => done(Err(no)),
+            Some(Job::ConfigureFfmpeg(_)) => {}
             Some(Job::Home(done)) => done(Err(no)),
             Some(Job::Episodes(_, done)) => done(Err(no)),
             Some(Job::Import(_, _, done)) => done(Err(no)),
@@ -516,6 +527,10 @@ impl Catalog {
 }
 
 impl LibraryService for Catalog {
+    fn configure_ffmpeg(&self, path: String) {
+        self.send(Job::ConfigureFfmpeg(path));
+    }
+
     fn condense(
         &self,
         request: nikomiru_ui::condense::Request,

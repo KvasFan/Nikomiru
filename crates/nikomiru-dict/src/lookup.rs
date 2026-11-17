@@ -257,6 +257,21 @@ pub struct Lookup {
     steps: Vec<Vec<Step>>,
     groups: Vec<Group>,
     cache: Mutex<Lru<Arc<Vec<Entry>>>>,
+    /// Words are whole between spaces and punctuation (LNG-001).
+    whole_words: bool,
+}
+
+impl Lookup {
+    /// The same lookup, splitting texts into whole words (LNG-001).
+    pub fn with_whole_words(mut self, whole: bool) -> Self {
+        self.whole_words = whole;
+        self
+    }
+
+    /// Whether texts are split into whole words.
+    pub fn whole_words(&self) -> bool {
+        self.whole_words
+    }
 }
 
 impl std::fmt::Debug for Lookup {
@@ -327,6 +342,7 @@ impl Lookup {
             steps,
             dictionaries,
             cache: Mutex::new(Lru::new(CACHE_SIZE)),
+            whole_words: false,
         }
     }
 

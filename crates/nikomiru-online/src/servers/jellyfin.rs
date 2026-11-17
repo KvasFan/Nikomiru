@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Jellyfin's HTTP API (SRV-002, SRV-006…SRV-011).
+//! Jellyfin's HTTP API (SRV-002, SRV-006…SRV-011), and Emby's (SRV-014):
+//! the API Jellyfin was forked from, with its own path prefix, headers,
+//! per-user routes, server identity and direct-play checks.
 
 use reqwest::Url;
 use serde_json::{Value, json};
@@ -12,19 +14,36 @@ use super::{
 use crate::error::OnlineError;
 use crate::http::Http;
 
-const NAME: &str = "Jellyfin";
+/// Which of the two servers this is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flavor {
+    /// Jellyfin (SRV-002).
+    Jellyfin,
+    /// Emby (SRV-014).
+    Emby,
+}
+
+impl Flavor {
+    fn name(self) -> &'static str {
+        match self {
+            Flavor::Jellyfin => "Jellyfin",
+            Flavor::Emby => "Emby",
+        }
+    }
+}
 /// Microseconds in tenths: the server's ticks in a millisecond.
 const TICKS_PER_MS: u64 = 10_000;
 /// The fields [`item_of`] reads that are not sent unless asked.
 const FIELDS: &str = "ProviderIds";
 
-/// A Jellyfin server, logged in.
+/// A Jellyfin or Emby server, logged in.
 pub struct Jellyfin {
     http: Http,
     base: Url,
     token: String,
     user_id: String,
     device_id: String,
+    flavor: Flavor,
 }
 
 impl std::fmt::Debug for Jellyfin {
@@ -35,13 +54,17 @@ impl std::fmt::Debug for Jellyfin {
     }
 }
 
-fn authorization(device_id: &str, token: Option<&str>) -> String {
+fn authorization(flavor: Flavor, device_id: &str, token: Option<&str>) -> String {
     let device: String = device_id
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .collect();
+    let scheme = match flavor {
+        Flavor::Jellyfin => "MediaBrowser",
+        Flavor::Emby => "Emby",
+    };
     let mut value = format!(
-        "MediaBrowser Client=\"Nikomiru\", Device=\"Nikomiru\", DeviceId=\"{device}\", Version=\"{}\"",
+        "{scheme} Client=\"Nikomiru\", Device=\"Nikomiru\", DeviceId=\"{device}\", Version=\"{}\"",
         env!("CARGO_PKG_VERSION")
     );
     if let Some(token) = token {
@@ -50,11 +73,24 @@ fn authorization(device_id: &str, token: Option<&str>) -> String {
     value
 }
 
-fn protocol(reason: &str) -> OnlineError {
+fn protocol_of(flavor: Flavor, reason: &str) -> OnlineError {
     OnlineError::Protocol {
-        provider: NAME.into(),
+        provider: flavor.name().into(),
         reason: reason.into(),
     }
+}
+
+/// The address an Emby answers on: its base with `/emby` (SRV-014).
+fn emby_base(base: &Url) -> Result<Url, OnlineError> {
+    if base.path().trim_end_matches('/').ends_with("/emby") {
+        return Ok(base.clone());
+    }
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .map_err(|()| OnlineError::BadUrl(base.to_string()))?
+        .pop_if_empty()
+        .push("emby");
+    Ok(url)
 }
 
 fn number(value: &Value) -> Option<u32> {
@@ -113,20 +149,55 @@ impl Jellyfin {
         password: &str,
         device_id: &str,
     ) -> Result<Self, OnlineError> {
+        Self::login_as(Flavor::Jellyfin, http, base, user, password, device_id)
+    }
+
+    /// Logs in to a server of `flavor`. An Emby is first asked what it is:
+    /// a Jellyfin answering at its address is refused (SRV-014).
+    pub fn login_as(
+        flavor: Flavor,
+        http: Http,
+        base: Url,
+        user: &str,
+        password: &str,
+        device_id: &str,
+    ) -> Result<Self, OnlineError> {
+        let name = flavor.name();
+        let base = match flavor {
+            Flavor::Jellyfin => base,
+            Flavor::Emby => {
+                let base = emby_base(&base)?;
+                let info = http.get(&join(&base, &["System", "Info", "Public"])?, &[])?;
+                let info = success(info, name)?.json(name)?;
+                let product = info["ProductName"].as_str().unwrap_or_default();
+                if info["Id"].as_str().is_none_or(str::is_empty)
+                    || product.to_ascii_lowercase().contains("jellyfin")
+                {
+                    return Err(protocol_of(flavor, "not an Emby server"));
+                }
+                base
+            }
+        };
         let url = join(&base, &["Users", "AuthenticateByName"])?;
-        let header = authorization(device_id, None);
+        let header = authorization(flavor, device_id, None);
+        let header_name = match flavor {
+            Flavor::Jellyfin => "Authorization",
+            Flavor::Emby => "X-Emby-Authorization",
+        };
         let answer = http.post_json(
             &url,
-            &[("Authorization", &header)],
+            &[(header_name, &header)],
             &json!({ "Username": user, "Pw": password }),
         )?;
-        let answer = success(answer, NAME)?.json(NAME)?;
+        let answer = success(answer, name)?.json(name)?;
         let token = answer["AccessToken"].as_str();
         let user_id = answer["User"]["Id"].as_str();
         let (Some(token), Some(user_id)) = (token, user_id) else {
-            return Err(protocol("no token in the answer"));
+            return Err(protocol_of(flavor, "no token in the answer"));
         };
-        Ok(Self::new(http, base, token, user_id, device_id))
+        let mut server = Self::new(http, base, token, user_id, device_id);
+        server.flavor = flavor;
+        Ok(server)
     }
 
     /// A session already logged in.
@@ -137,6 +208,52 @@ impl Jellyfin {
             token: token.to_string(),
             user_id: user_id.to_string(),
             device_id: device_id.to_string(),
+            flavor: Flavor::Jellyfin,
+        }
+    }
+
+    /// An Emby session already logged in (SRV-014).
+    pub fn new_emby(
+        http: Http,
+        base: Url,
+        token: &str,
+        user_id: &str,
+        device_id: &str,
+    ) -> Result<Self, OnlineError> {
+        let mut server = Self::new(http, emby_base(&base)?, token, user_id, device_id);
+        server.flavor = Flavor::Emby;
+        Ok(server)
+    }
+
+    fn name(&self) -> &'static str {
+        self.flavor.name()
+    }
+
+    fn protocol(&self, reason: &str) -> OnlineError {
+        protocol_of(self.flavor, reason)
+    }
+
+    /// The headers of a request: Jellyfin's `Authorization`, or Emby's own.
+    fn headers(&self) -> Vec<(&'static str, String)> {
+        let header = authorization(self.flavor, &self.device_id, Some(&self.token));
+        match self.flavor {
+            Flavor::Jellyfin => vec![("Authorization", header)],
+            Flavor::Emby => vec![
+                ("X-Emby-Authorization", header),
+                ("X-Emby-Token", self.token.clone()),
+            ],
+        }
+    }
+
+    /// A per-user route: Emby keeps the user in the path.
+    fn user_path<'a>(&'a self, jellyfin: &[&'a str], emby: &[&'a str]) -> Vec<&'a str> {
+        match self.flavor {
+            Flavor::Jellyfin => jellyfin.to_vec(),
+            Flavor::Emby => {
+                let mut path = vec!["Users", self.user_id.as_str()];
+                path.extend_from_slice(emby);
+                path
+            }
         }
     }
 
@@ -150,26 +267,30 @@ impl Jellyfin {
         &self.user_id
     }
 
-    fn header(&self) -> String {
-        authorization(&self.device_id, Some(&self.token))
+    fn header_refs<'a>(headers: &'a [(&'static str, String)]) -> Vec<(&'static str, &'a str)> {
+        headers.iter().map(|(k, v)| (*k, v.as_str())).collect()
     }
 
     fn get(&self, url: &Url) -> Result<Value, OnlineError> {
-        let answer = self.http.get(url, &[("Authorization", &self.header())])?;
-        success(answer, NAME)?.json(NAME)
+        let headers = self.headers();
+        let answer = self.http.get(url, &Self::header_refs(&headers))?;
+        success(answer, self.name())?.json(self.name())
     }
 
     fn post(&self, url: &Url, body: &Value) -> Result<(), OnlineError> {
+        let headers = self.headers();
         let answer = self
             .http
-            .post_json(url, &[("Authorization", &self.header())], body)?;
-        success(answer, NAME).map(|_| ())
+            .post_json(url, &Self::header_refs(&headers), body)?;
+        success(answer, self.name()).map(|_| ())
     }
 
     fn items(&self, query: &[(&str, &str)], start: usize) -> Result<Page, OnlineError> {
-        let mut url = join(&self.base, &["Items"])?;
+        let mut url = join(&self.base, &self.user_path(&["Items"], &["Items"]))?;
+        if self.flavor == Flavor::Jellyfin {
+            url.query_pairs_mut().append_pair("userId", &self.user_id);
+        }
         url.query_pairs_mut()
-            .append_pair("userId", &self.user_id)
             .append_pair("StartIndex", &start.to_string())
             .append_pair("Limit", &PAGE.to_string())
             .append_pair("Fields", FIELDS)
@@ -178,9 +299,11 @@ impl Jellyfin {
     }
 
     fn item_json(&self, id: &str) -> Result<Value, OnlineError> {
-        let mut url = join(&self.base, &["Items", id])?;
+        let mut url = join(&self.base, &self.user_path(&["Items", id], &["Items", id]))?;
+        if self.flavor == Flavor::Jellyfin {
+            url.query_pairs_mut().append_pair("userId", &self.user_id);
+        }
         url.query_pairs_mut()
-            .append_pair("userId", &self.user_id)
             .append_pair("Fields", "ProviderIds,MediaSources");
         self.get(&url)
     }
@@ -188,8 +311,10 @@ impl Jellyfin {
 
 impl MediaServer for Jellyfin {
     fn libraries(&mut self) -> Result<Vec<Library>, OnlineError> {
-        let mut url = join(&self.base, &["UserViews"])?;
-        url.query_pairs_mut().append_pair("userId", &self.user_id);
+        let mut url = join(&self.base, &self.user_path(&["UserViews"], &["Views"]))?;
+        if self.flavor == Flavor::Jellyfin {
+            url.query_pairs_mut().append_pair("userId", &self.user_id);
+        }
         let answer = self.get(&url)?;
         let wanted = |v: &&Value| {
             matches!(
@@ -238,12 +363,19 @@ impl MediaServer for Jellyfin {
     }
 
     fn item(&mut self, id: &str) -> Result<Item, OnlineError> {
-        item_of(&self.item_json(id)?).ok_or_else(|| protocol("not a video"))
+        item_of(&self.item_json(id)?).ok_or_else(|| self.protocol("not a video"))
     }
 
     fn playable(&mut self, id: &str) -> Result<Playable, OnlineError> {
         let answer = self.item_json(id)?;
         let source = &answer["MediaSources"][0];
+        // SRV-015: an Emby says whether the file can be played as it is
+        if self.flavor == Flavor::Emby
+            && source["SupportsDirectPlay"] != true
+            && source["SupportsDirectStream"] != true
+        {
+            return Err(self.protocol("the file cannot be played directly"));
+        }
         let source_id = source["Id"].as_str().unwrap_or(id).to_string();
         let mut url = join(&self.base, &["Videos", id, "stream"])?;
         url.query_pairs_mut()
@@ -266,7 +398,11 @@ impl MediaServer for Jellyfin {
         Ok(Playable {
             stream: Stream {
                 url,
-                headers: vec![("Authorization".into(), self.header())],
+                headers: self
+                    .headers()
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
             },
             source: source_id,
             subtitles,
@@ -277,22 +413,24 @@ impl MediaServer for Jellyfin {
         let mut parts = subtitle.id.splitn(3, '/');
         let (Some(video), Some(source), Some(index)) = (parts.next(), parts.next(), parts.next())
         else {
-            return Err(protocol("a bad subtitle"));
+            return Err(self.protocol("a bad subtitle"));
         };
         let file = format!("Stream.{}", subtitle.format);
         let url = join(
             &self.base,
             &["Videos", video, source, "Subtitles", index, &file],
         )?;
-        let answer = self.http.get(&url, &[("Authorization", &self.header())])?;
-        Ok(success(answer, NAME)?.body)
+        let headers = self.headers();
+        let answer = self.http.get(&url, &Self::header_refs(&headers))?;
+        Ok(success(answer, self.name())?.body)
     }
 
     fn cover(&mut self, cover: &str) -> Result<Vec<u8>, OnlineError> {
         let mut url = join(&self.base, &["Items", cover, "Images", "Primary"])?;
         url.query_pairs_mut().append_pair("maxHeight", "480");
-        let answer = self.http.get(&url, &[("Authorization", &self.header())])?;
-        Ok(success(answer, NAME)?.body)
+        let headers = self.headers();
+        let answer = self.http.get(&url, &Self::header_refs(&headers))?;
+        Ok(success(answer, self.name())?.body)
     }
 
     fn report(
@@ -321,8 +459,13 @@ impl MediaServer for Jellyfin {
     }
 
     fn mark_played(&mut self, id: &str) -> Result<(), OnlineError> {
-        let mut url = join(&self.base, &["UserPlayedItems", id])?;
-        url.query_pairs_mut().append_pair("userId", &self.user_id);
+        let mut url = join(
+            &self.base,
+            &self.user_path(&["UserPlayedItems", id], &["PlayedItems", id]),
+        )?;
+        if self.flavor == Flavor::Jellyfin {
+            url.query_pairs_mut().append_pair("userId", &self.user_id);
+        }
         self.post(&url, &json!({}))
     }
 

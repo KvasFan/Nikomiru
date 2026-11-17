@@ -290,6 +290,8 @@ fn read_inner(path: &Path, cancel: Option<&nikomiru_core::Cancel>) -> Result<Boo
         .iter()
         .any(|t| attribute(t, "page-progression-direction") == Some("rtl"));
     Ok(Book {
+        identity: None,
+        manga_regions: Default::default(),
         right_to_left,
         manga: false,
         title: element(&opf, "title")

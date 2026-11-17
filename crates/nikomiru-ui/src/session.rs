@@ -42,6 +42,8 @@ pub enum UiEffect {
     ToggleSubList,
     /// Open the subtitle list with the search field focused.
     SubSearch,
+    /// A command for the current rendered subtitle study scope.
+    SubtitleStudy(Action),
     /// Open the settings on the tab shown last (SET-008).
     OpenSettings,
 }
@@ -146,6 +148,8 @@ pub trait IdleInhibitor: Send {
 /// Loads subtitles away from the UI thread: decoding (SUB-005) and the
 /// extraction of embedded tracks (SUB-007). `done` may run on any thread.
 pub trait SubtitleSource: Send {
+    /// Apply an explicitly configured/installed FFmpeg to subsequent jobs.
+    fn configure_ffmpeg(&self, _path: String) {}
     /// Loads `request` and calls `done` with the result or a translated error.
     fn load(&self, request: Request, done: Box<dyn FnOnce(Result<Loaded, String>) + Send>);
 
@@ -193,6 +197,10 @@ pub struct Services {
     pub dictionaries: Box<dyn DictionaryService>,
     /// Where screenshots go (PLY-011).
     pub screenshots_dir: PathBuf,
+    /// Durable locally pasted text sources.
+    pub text_dir: PathBuf,
+    /// Native document support shared with whole-book analysis.
+    pub book_support: std::sync::Arc<dyn nikomiru_books::documents::Support>,
     /// Mining to Anki (ADR 0007).
     pub anki: Box<dyn crate::mining::AnkiService>,
     /// Online subtitles (ADR 0008).
@@ -209,6 +217,8 @@ pub struct Services {
     pub ocr: Box<dyn crate::ocr::OcrService>,
     /// The downloads of the setup assistant (INS-001…INS-006).
     pub setup: Box<dyn crate::setup::SetupService>,
+    /// Application updates (UPD-001…UPD-004).
+    pub updates: Box<dyn crate::updates::UpdateService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -240,6 +250,14 @@ pub struct Services {
     pub lookup_limit: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
+/// An update job to start (UPD-001…UPD-004).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateJob {
+    Check,
+    Download,
+    Install,
+}
+
 /// How the interface looks (SET-003, SET-005).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Look {
@@ -249,6 +267,8 @@ pub struct Look {
     pub accent: [u8; 3],
     /// The interface scale in percent.
     pub scale: u16,
+    /// The named palette (THM-001).
+    pub palette: &'static str,
 }
 
 impl std::fmt::Debug for Services {
@@ -334,7 +354,17 @@ struct LinkClip {
     load: Option<u64>,
 }
 
-/// The playback session.
+/// Retained counts and current row scores from a captured primary-cue scope.
+#[derive(Debug)]
+struct VocabularyScope {
+    version: u64,
+    generation: u64,
+    revision: u64,
+    counted: crate::words::Counted,
+    rows: std::sync::Arc<Vec<crate::words::ListedWord>>,
+}
+
+/// The active application session and its asynchronous work.
 pub struct Session {
     services: Services,
     bindings: Bindings,
@@ -384,8 +414,22 @@ pub struct Session {
     score: Option<(u64, u64, Result<crate::words::Score, usize>)>,
     /// The words of the main subtitle, once all its lines are split
     /// (KNW-009); counted again with its score.
+    pub(crate) recall_covered: bool,
+    recall_results: Option<String>,
+    recall_file: Option<Vec<u8>>,
+    recall: Option<crate::recall::Recall>,
+    status_undo: Option<crate::words::StatusUndo>,
     word_list: Option<std::sync::Arc<Vec<crate::words::ListedWord>>>,
+    /// Captured exact word examples in the primary timeline.
+    vocabulary_scope: Option<VocabularyScope>,
+    vocabulary_scope_id: u64,
+    subtitle_examples: Option<crate::subtitle_study::Concordance>,
     analysis_export: Option<String>,
+    /// Frozen importable frequency dictionary.
+    frequency_export: Option<Vec<u8>>,
+    vocabulary_html: Option<String>,
+    concordance_export: Option<String>,
+    preset_export: Option<Vec<u8>>,
     history_export: Option<String>,
     subtitle_export: Option<String>,
     study_report: Option<String>,
@@ -416,10 +460,20 @@ pub struct Session {
     /// so): the popups wait under it, and the keys go to its controls but
     /// the global shortcuts' (POP-014, NFR-A11Y-01).
     pub popups_covered: bool,
+    /// Root generation explicitly opened from a study word list.
+    study_popup_generation: Option<u64>,
     /// A lookup asked from the keyboard (NFR-A11Y-01): the cue and the byte
     /// offset of its grapheme; the overlay, which knows where the cue is,
     /// opens it as a click would.
     keyboard_lookup: Option<(usize, usize)>,
+    /// A pending pause transition, checked against original ownership.
+    guided_pending: Option<crate::guided_lookup::Pending>,
+    /// The queued keyboard target belongs to a guided transition.
+    guided_target: bool,
+    /// The queued target asks only its original kanji character.
+    keyboard_kanji: bool,
+    /// Original physical key of the transient secondary peek.
+    translation_hold: Option<u32>,
     /// The clip of the link being opened: once its subtitles are there,
     /// playback goes to its first cue (ANK-052).
     link_clip: Option<LinkClip>,
@@ -434,6 +488,11 @@ pub struct Session {
     config_save: Option<Config>,
     /// A write of the settings is running: the next one waits for it.
     config_saving: bool,
+    /// Tool paths awaiting a successful settings write (INS-007).
+    recall_history_saving: bool,
+    recall_history_failed: bool,
+    preset_saving: bool,
+    setup_saving: std::collections::BTreeSet<String>,
     /// The settings "Create Lapis deck" was asked with.
     lapis_request: Option<nikomiru_core::config::AnkiConfig>,
     /// The page's message stays when the settings it saved are written.
@@ -452,6 +511,7 @@ pub struct Session {
     pub books_page: crate::books::BooksPage,
     /// Books to read, taken by the UI layer.
     book_reads: Vec<PathBuf>,
+    book_pastes: Vec<crate::books::Paste>,
     /// The part of a page to read (MNG-003).
     ocr_job: Option<crate::ocr::OcrJob>,
     /// The reading model is to be fetched (MNG-004).
@@ -517,6 +577,48 @@ pub struct Session {
     own_audio: bool,
     /// The library jobs to start.
     library_jobs: Vec<crate::catalog::LibraryJob>,
+    /// Independent local phrase notebook.
+    pub phrases: crate::phrases::State,
+    /// Frozen cloze exercises and finite/opt-in scheduled practice.
+    pub clozes: crate::cloze::State,
+    /// Exact offline sentence snapshots and sources.
+    pub bank: crate::sentence_bank::State,
+    /// Explicit frozen batch builder, journal barriers and per-item outcomes.
+    pub batch: crate::batch_mining::State,
+    bank_place: Option<(nikomiru_library::phrases::Source, String)>,
+    bank_export: Option<String>,
+    /// The dictionary sound played last (DIC-038), for the harness.
+    pub last_dictionary_sound: Option<String>,
+    /// The About section's updates (UPD-001…UPD-004).
+    pub updates: crate::updates::State,
+    update_jobs: Vec<UpdateJob>,
+    /// The Anime4K pack: installed, and a job running (THM-002).
+    shader_pack: (bool, bool),
+    shader_job: Option<bool>,
+    /// An imported shortcut map waiting for Apply (KEY-009).
+    pub shortcut_preview: Option<crate::shortcut_maps::Preview>,
+    /// The Shortcuts draft an import is compared with.
+    pub shortcut_base: Option<std::collections::BTreeMap<String, Vec<String>>>,
+    /// A shortcut map to write.
+    pub shortcut_export: Option<String>,
+    /// Podcast feeds and episodes (POD-001…POD-004).
+    pub podcasts: crate::podcasts::State,
+    podcast_jobs: Vec<crate::podcasts::Job>,
+    podcast_pending: usize,
+    podcast_serial: u64,
+    podcast_fetch_request: Option<podcast_session::FetchRequest>,
+    podcast_download_request: Option<podcast_session::DownloadRequest>,
+    /// Reader annotations and the library text search (RDR-001…RDR-003).
+    pub reader: crate::reader_tools::State,
+    annotation_job: Option<crate::reader_tools::Job>,
+    /// Where a new annotation was captured: chapter, paragraph and bytes.
+    annotation_capture: Option<(usize, usize, std::ops::Range<usize>)>,
+    annotation_export: Option<String>,
+    search_request: Option<(crate::reader_tools::Request, nikomiru_core::Cancel)>,
+    search_index: std::sync::Arc<std::sync::Mutex<crate::reader_tools::Index>>,
+    phrase_job: Option<crate::phrases::Job>,
+    phrase_place: Option<nikomiru_library::phrases::Source>,
+    phrase_export: Option<String>,
     /// The word audio jobs to start.
     word_audio_jobs: Vec<crate::word_audio::WordAudioJob>,
     /// Videos opened so far: an online answer for another one is dropped.
@@ -547,6 +649,10 @@ pub struct Session {
     /// The pointer is over a popup.
     popup_hovered: bool,
     /// A cue is being replayed from the popup: mpv stops at its end (SUB-013).
+    practice_pause_ms: u16,
+    practice_wait: crate::subtitle_study::PracticeWait,
+    practice_queue: std::collections::VecDeque<crate::subtitle_study::Repetition>,
+    practice: Option<(u64, crate::subtitle_study::Repetition)>,
     replaying: bool,
     /// Where mpv stops for the pause at the end of each line, in player
     /// milliseconds (SUB-026).
@@ -558,6 +664,12 @@ pub struct Session {
         std::collections::HashMap<u64, nikomiru_library::series_info::SeriesInfoRecord>,
     /// The "Advanced mining" dialog (ANK-040).
     advanced: Option<crate::mining::AdvancedCard>,
+    /// Frozen original request and popup ownership; never rebuilt for dispatch.
+    advanced_request: Option<(u64, crate::mining::MineRequest)>,
+    /// Media load and reader source/chapter ownership at capture.
+    advanced_owner: (LoadToken, u64, u64, Option<(String, usize)>),
+    /// Explicit session-only plain-text pins.
+    composer_pins: std::collections::BTreeMap<String, String>,
     /// The word's place in its cue, for the merged sentences (ANK-041).
     advanced_word: Option<usize>,
     /// The frame of the click it keeps.
@@ -708,15 +820,17 @@ impl Session {
                 Ok(mined) => words.set_mined(mined),
                 Err(e) => tracing::warn!("reading the cards made: {e}"),
             }
-            // KNW-001
-            match library.word_statuses() {
+            // KNW-001, LNG-002: the active study language's
+            let language = services.config.general.study_language.clone();
+            library.set_active_language(&language);
+            match library.word_statuses_in(&language) {
                 Ok(marks) => {
                     words.set_statuses(marks.into_iter().map(|(k, m)| (k, m.status)).collect())
                 }
                 Err(e) => tracing::warn!("reading the words' statuses: {e}"),
             }
             // KNW-005
-            match library.anki_words() {
+            match library.anki_words_in(&language) {
                 Ok(anki) => words.set_anki(anki),
                 Err(e) => tracing::warn!("reading the words from Anki: {e}"),
             }
@@ -731,6 +845,10 @@ impl Session {
         } else {
             Vec::new()
         };
+        // THM-002: the pack, once at start
+        let shader_installed = nikomiru_online::shaders::installed(
+            services.text_dir.parent().unwrap_or(&services.text_dir),
+        );
         Self {
             services,
             bindings,
@@ -762,7 +880,19 @@ impl Session {
             graphic_bitmap: None,
             auto_pause_revision: 0,
             word_list: None,
+            status_undo: None,
+            recall: None,
+            recall_file: None,
+            recall_results: None,
+            recall_covered: false,
+            vocabulary_scope: None,
+            vocabulary_scope_id: 0,
+            subtitle_examples: None,
             analysis_export: None,
+            frequency_export: None,
+            vocabulary_html: None,
+            concordance_export: None,
+            preset_export: None,
             history_export: None,
             subtitle_export: None,
             study_report: None,
@@ -779,13 +909,22 @@ impl Session {
             last_card: None,
             missing_link: None,
             popups_covered: false,
+            study_popup_generation: None,
             keyboard_lookup: None,
+            guided_pending: None,
+            guided_target: false,
+            keyboard_kanji: false,
+            translation_hold: None,
             link_clip: None,
             start_at: None,
             opening: nikomiru_library::policy::Opening::Chosen,
             anki_page: crate::mining::AnkiPage::default(),
             config_save: None,
             config_saving: false,
+            recall_history_saving: false,
+            recall_history_failed: false,
+            preset_saving: false,
+            setup_saving: Default::default(),
             lapis_request: None,
             keep_status: false,
             saving_page: SavingPage::default(),
@@ -796,6 +935,7 @@ impl Session {
             setup_jobs: Vec::new(),
             books_page: crate::books::BooksPage::default(),
             book_reads: Vec::new(),
+            book_pastes: Vec::new(),
             ocr_job: None,
             ocr_fetch: false,
             read_waiting: None,
@@ -828,6 +968,35 @@ impl Session {
             prefs: Default::default(),
             own_audio: false,
             library_jobs: Vec::new(),
+            phrases: Default::default(),
+            clozes: Default::default(),
+            bank: Default::default(),
+            batch: Default::default(),
+            bank_place: None,
+            bank_export: None,
+            last_dictionary_sound: None,
+            shader_pack: (shader_installed, false),
+            updates: Default::default(),
+            update_jobs: Vec::new(),
+            shader_job: None,
+            shortcut_preview: None,
+            shortcut_base: None,
+            shortcut_export: None,
+            podcasts: Default::default(),
+            podcast_jobs: Vec::new(),
+            podcast_pending: 0,
+            podcast_serial: 0,
+            podcast_fetch_request: None,
+            podcast_download_request: None,
+            reader: Default::default(),
+            annotation_job: None,
+            annotation_capture: None,
+            annotation_export: None,
+            search_request: None,
+            search_index: Default::default(),
+            phrase_job: None,
+            phrase_place: None,
+            phrase_export: None,
             word_audio_jobs: Vec::new(),
             online_generation: 0,
             auto_online: None,
@@ -842,11 +1011,18 @@ impl Session {
             writer,
             hover: Hover::default(),
             popup_hovered: false,
+            practice_pause_ms: 0,
+            practice_wait: Default::default(),
+            practice_queue: Default::default(),
+            practice: None,
             replaying: false,
             auto_pause_end: None,
             moving_subtitles: false,
             pending_identity: std::collections::HashMap::new(),
             advanced: None,
+            advanced_request: None,
+            advanced_owner: (LoadToken::default(), 0, 0, None),
+            composer_pins: Default::default(),
             advanced_word: None,
             advanced_frame: None,
         }
@@ -854,6 +1030,11 @@ impl Session {
 
     fn tr(&self, id: &str, args: &[(&str, String)]) -> String {
         self.services.translator.tr(id, args)
+    }
+
+    /// Native format support for the off-thread book reader.
+    pub fn book_support(&self) -> std::sync::Arc<dyn nikomiru_books::documents::Support> {
+        std::sync::Arc::clone(&self.services.book_support)
     }
 
     /// The player, for the GUI test harness's `mpv_get`.
@@ -882,6 +1063,8 @@ impl Session {
             generation: self.web_generation,
             page: page.trim().to_string(),
             executable: self.services.config.paths.yt_dlp.clone(),
+            javascript: self.services.config.paths.deno.clone(),
+            ffmpeg: self.services.config.paths.ffmpeg.clone(),
             proxy: self.services.config.network.proxy.clone(),
             languages: self.services.config.subtitles.preferred_languages.clone(),
             folder: self.services.subtitles_dir.join("web").join(uid),
@@ -982,6 +1165,8 @@ impl Session {
             self.services.servers.close();
         }
         self.release_hold();
+        self.release_translation_peek();
+        self.cancel_guided();
         self.flush_position();
         self.restore_gap_speed();
         self.view.speed = self.gap_speed.normal(self.view.speed);
@@ -1081,8 +1266,14 @@ impl Session {
                 }
             });
         }
-        #[cfg_attr(not(feature = "test-harness"), allow(unused_mut))]
         let (mut options, report) = options::load_options(&self.services.config.player);
+        // THM-003: the shader preset, unless the user's own options set shaders
+        if let Some(value) = self.shader_value() {
+            options.push(options::MpvOption {
+                key: "glsl-shaders".into(),
+                value,
+            });
+        }
         // the GUI tests play without a sound server: under load, PipeWire can
         // hang in mpv's core when it fails to connect, and the app with it
         #[cfg(feature = "test-harness")]
@@ -1216,6 +1407,11 @@ impl Session {
                     self.events.push(UiEvent::FirstFrame);
                 }
                 self.view.time_pos = t;
+                if !self.practice_wait.pending()
+                    && let Some((_, practice)) = &mut self.practice
+                {
+                    practice.position((t * 1000.0).round() as i64);
+                }
                 let pos_ms = (t * 1000.0).round() as i64;
                 for index in self.subs.update(pos_ms) {
                     self.events.push(UiEvent::CueShown {
@@ -1245,7 +1441,17 @@ impl Session {
                 }
                 // STA-001: what played up to the pause counts, the pause does not
                 self.study_sample(!p);
+                let entered_pause = p && !self.view.paused;
                 self.view.paused = p;
+                if !p {
+                    self.cancel_guided();
+                }
+                if entered_pause {
+                    self.arm_guided();
+                }
+                if p {
+                    self.practice_boundary();
+                }
                 self.controls.set_playing(!p, now);
                 // stopped at a line's end: on to the next one
                 self.update_auto_pause();
@@ -1277,7 +1483,13 @@ impl Session {
             PlayerEvent::Aid(a) => self.view.aid = a,
             PlayerEvent::Chapters(c) => self.view.chapters = c,
             // LIB-009: the episode ended (`keep-open` holds its last frame)
-            PlayerEvent::EofReached(true) => self.episode_ended(now),
+            PlayerEvent::EofReached(true) => {
+                if self.practice.is_some() {
+                    self.practice_boundary();
+                } else if !self.replaying {
+                    self.episode_ended(now);
+                }
+            }
             PlayerEvent::EofReached(false) => self.cancel_next(),
             PlayerEvent::EndFile(EndFile::Error(e)) => {
                 tracing::warn!("playback error: {e}");
@@ -1299,9 +1511,27 @@ impl Session {
     /// Periodic update (from the UI's timer): the screensaver policy, and a
     /// hover popup the pointer left (POP-003).
     pub fn tick(&mut self) {
+        self.guided_input_priority(false);
+        self.resolve_guided();
+        if self
+            .practice
+            .as_ref()
+            .is_some_and(|(v, _)| *v != self.sub_list_version)
+        {
+            self.end_replay();
+        }
         self.update_gap_speed();
         self.update_screensaver();
         let now = self.services.clock.monotonic();
+        if self.practice_wait.take_due(now)
+            && self
+                .practice
+                .as_ref()
+                .is_some_and(|(_, r)| !self.start_practice_pass(r))
+        {
+            self.practice_cancel();
+        }
+
         // STA-004: the session saved every minute
         if let Some(save) = self.study.due_save(now.as_millis() as i64) {
             self.write_study(save);
@@ -1357,6 +1587,9 @@ impl Session {
     /// The end set by a replay from the popup no longer applies: the user
     /// took control, a popup closed or another file opened.
     fn end_replay(&mut self) {
+        self.practice = None;
+        self.practice_queue.clear();
+        self.practice_wait.cancel();
         if std::mem::take(&mut self.replaying) {
             let p = &self.services.player;
             let _ = p.stop_at(None);
@@ -1366,6 +1599,492 @@ impl Session {
                 let _ = p.seek_absolute(self.view.time_pos);
             }
         }
+    }
+
+    /// Secondary source generation for invalidating explicit translation previews.
+    pub fn secondary_version(&self) -> u64 {
+        self.secondary_generation
+    }
+
+    /// Capture a finite vocabulary session without changing playback or learning statuses.
+    pub fn recall_start(&mut self, source: &str, rows: &[crate::words::ListedWord]) {
+        match crate::recall::Recall::start(source, rows) {
+            Ok(recall) => {
+                self.recall_clear_lookup();
+                self.recall = Some(recall);
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+    pub(crate) fn recall(&self) -> Option<&crate::recall::Recall> {
+        self.recall.as_ref()
+    }
+    /// Reveal the current recall answer explicitly.
+    pub fn recall_reveal(&mut self) {
+        if let Some(r) = &mut self.recall {
+            r.reveal();
+        }
+    }
+    /// Skip to the next captured recall word, concealing its answer.
+    pub fn recall_skip(&mut self) {
+        let changed = self.recall.as_mut().is_some_and(|r| {
+            let active = r.current().is_some();
+            r.skip();
+            active
+        });
+        if changed {
+            self.recall_clear_lookup();
+        }
+    }
+
+    /// Self-rate only an explicitly revealed recall card; no library status is changed.
+    pub fn recall_rate(&mut self, good: bool) {
+        let changed = self.recall.as_mut().is_some_and(|r| r.rate(good));
+        if changed {
+            self.recall_clear_lookup();
+        }
+    }
+
+    fn recall_clear_lookup(&mut self) {
+        if self.popups.is_open() {
+            self.popups.playback_changed_by_user();
+            self.close_all_popups();
+        }
+    }
+
+    /// Look up only an explicitly revealed recall headword, without a media cue.
+    pub fn recall_lookup(&mut self, anchor: crate::popup::Rect) {
+        let text = self
+            .recall
+            .as_ref()
+            .filter(|r| r.revealed)
+            .and_then(|r| r.current())
+            .map(|c| c.expression.clone());
+        if let Some(text) = text {
+            self.vocabulary_lookup(&text, anchor);
+        }
+    }
+    pub(crate) fn recall_hints_ready(&self) -> bool {
+        self.word_colors_on() && !self.subs.incomplete && self.word_list.is_some()
+    }
+    /// Capture complete exact subtitle hints before replacing the round's previous context.
+    pub fn recall_capture_hints(&mut self) {
+        let Some(round) = &self.recall else {
+            return;
+        };
+        if !self.recall_hints_ready() {
+            self.toasts.push(self.tr("recall-hints-unavailable", &[]));
+            return;
+        }
+        match crate::recall::sentence_hints(&self.words, self.subs.timeline().cues(), &round.cards)
+        {
+            Ok(hints) => {
+                if let Some(r) = &mut self.recall {
+                    for (card, hints) in r.cards.iter_mut().zip(hints) {
+                        card.hints = hints;
+                    }
+                    r.hint_source = Some(
+                        self.view
+                            .title
+                            .chars()
+                            .filter(|c| !c.is_control())
+                            .take(256)
+                            .collect(),
+                    );
+                    r.hint_revealed = false;
+                }
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+    /// Reveal only the current card's captured context, leaving its answer state unchanged.
+    pub fn recall_reveal_hint(&mut self) {
+        if let Some(r) = &mut self.recall
+            && r.current().is_some_and(|c| !c.hints.is_empty())
+        {
+            r.hint_revealed = true;
+        }
+    }
+
+    /// Explicitly start the captured words again in original, reversed or seeded shuffled order.
+    pub fn recall_restart(&mut self, order: u8, seed: Option<u64>) {
+        let order = match order {
+            0 => crate::recall::Order::Original,
+            1 => crate::recall::Order::Reverse,
+            2 => crate::recall::Order::Shuffle,
+            _ => return,
+        };
+        let seed = seed.unwrap_or_else(|| self.services.clock.monotonic().as_nanos() as u64);
+        if self.recall.is_some() {
+            self.recall_clear_lookup();
+        }
+        if let Some(r) = &mut self.recall {
+            r.restart(order, seed);
+        }
+    }
+    /// Freeze the round's portable progress before the native save dialog.
+    pub fn recall_save_prepare(&mut self) -> bool {
+        self.recall_file = None;
+        let Some(r) = &self.recall else {
+            return false;
+        };
+        match crate::recall_file::save(r) {
+            Ok(bytes) => {
+                self.recall_file = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the frozen recall file.
+    pub fn recall_save_to(&mut self, path: &Path) {
+        let Some(bytes) = self.recall_file.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("recall-file-error", &[("reason", e.to_string())])),
+        }
+    }
+    /// Load a complete validated round before replacing any active progress; no library data is imported.
+    pub fn recall_load_from(&mut self, path: &Path) {
+        use std::io::Read;
+        let read = || -> std::io::Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)?
+                .take((crate::recall_file::MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            Ok(bytes)
+        };
+        let bytes = match read() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.toasts
+                    .push(self.tr("recall-file-error", &[("reason", e.to_string())]));
+                return;
+            }
+        };
+        match crate::recall_file::load(&bytes) {
+            Ok(r) => {
+                self.recall_clear_lookup();
+                self.recall = Some(r);
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Freeze one result row per captured recall word without advancing the round.
+    pub fn recall_results_prepare(&mut self) -> bool {
+        self.recall_results = None;
+        let Some(r) = &self.recall else {
+            return false;
+        };
+        match r.results_tsv() {
+            Ok(text) => {
+                self.recall_results = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the frozen recall results.
+    pub fn recall_results_to(&mut self, path: &Path) {
+        let Some(text) = self.recall_results.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("recall-file-error", &[("reason", e.to_string())])),
+        }
+    }
+
+    /// Start a fresh bounded round from difficult or skipped captured cards after completion.
+    pub fn recall_focused(&mut self, skipped: bool) {
+        let round = self
+            .recall
+            .as_ref()
+            .ok_or("recall-followup-unavailable")
+            .and_then(|r| r.focused(skipped));
+        match round {
+            Ok(r) => {
+                self.recall_clear_lookup();
+                self.recall = Some(r);
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Whether the completed round can be explicitly recorded once in local history.
+    pub(crate) fn recall_can_record(&self) -> bool {
+        self.services.config_writable
+            && self.recall.as_ref().is_some_and(|r| {
+                r.done()
+                    && !self
+                        .services
+                        .config
+                        .lookup
+                        .recall_history
+                        .iter()
+                        .any(|entry| entry.id == r.id)
+            })
+    }
+    /// Whether local history changes can be persisted.
+    pub(crate) fn recall_history_writable(&self) -> bool {
+        self.services.config_writable
+    }
+    /// A failed asynchronous history write can be retried explicitly.
+    pub(crate) fn recall_history_failed(&self) -> bool {
+        self.recall_history_failed
+    }
+    /// Record a completed aggregate once, or remove one/all summaries; no learning statistics are changed.
+    pub fn recall_history_change(&mut self, record: bool, delete: Option<String>) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        if record {
+            if !self.recall_can_record() {
+                return;
+            }
+            let Some(r) = &self.recall else {
+                return;
+            };
+            let stats = r.summary();
+            let at = self.moment();
+            let (date, hour) = nikomiru_library::stats::local_day_hour(at.unix_ms, at.offset_s);
+            let minute =
+                (at.unix_ms.div_euclid(1000) + i64::from(at.offset_s)).rem_euclid(3600) / 60;
+            let summary = nikomiru_core::config::RecallSummary {
+                id: r.id.clone(),
+                source: r.source.clone(),
+                recorded: format!("{date} {hour:02}:{minute:02}"),
+                cards: r.cards.len(),
+                good: stats.good,
+                again: stats.again,
+                skipped: stats.skipped,
+                attempts: stats.attempts,
+            };
+            if !summary.valid() {
+                return;
+            }
+            let history = &mut self.services.config.lookup.recall_history;
+            history.push(summary);
+            if history.len() > 100 {
+                history.drain(..history.len() - 100);
+            }
+        } else if let Some(id) = delete {
+            self.services
+                .config
+                .lookup
+                .recall_history
+                .retain(|r| r.id != id);
+        } else {
+            self.services.config.lookup.recall_history.clear();
+        }
+        self.recall_history_retry();
+    }
+    /// Retry the current aggregate history through the existing serial atomic configuration writer.
+    pub fn recall_history_retry(&mut self) {
+        if !self.services.config_writable {
+            return;
+        }
+        self.recall_history_saving = true;
+        self.recall_history_failed = false;
+        self.config_save = Some(self.services.config.clone());
+    }
+
+    /// Close the transient recall round.
+    pub fn recall_close(&mut self) {
+        self.recall_clear_lookup();
+        self.recall = None;
+    }
+
+    /// Explicit finite repetition of one complete primary cue.
+    pub fn practice_start(&mut self, version: u64, cue: usize, passes: u8) {
+        self.practice_queue_start(version, &[cue], passes);
+    }
+
+    /// Capture and start a finite ordered queue from original shown/selected cue identities.
+    pub fn practice_queue_start(&mut self, version: u64, indices: &[usize], passes: u8) {
+        let queue = if version == self.sub_list_version && self.view.loaded && !self.subs.incomplete
+        {
+            crate::subtitle_study::repetition_queue(
+                self.subs.timeline().cues(),
+                indices,
+                self.subs.timeline().delay_ms,
+                passes,
+                (self.view.duration > 0.0).then_some((self.view.duration * 1000.0).round() as i64),
+            )
+        } else {
+            Err("sub-practice-unavailable")
+        };
+        let Ok(mut queue) = queue else {
+            self.toasts.push(self.tr("sub-practice-unavailable", &[]));
+            return;
+        };
+        let Some(first) = queue.pop_front() else {
+            return;
+        };
+        self.end_replay();
+        self.cancel_next();
+        self.restore_gap_speed();
+        self.popups.playback_changed_by_user();
+        if self.start_practice_pass(&first) {
+            self.replaying = true;
+            self.practice = Some((version, first));
+            self.practice_queue = queue;
+        } else {
+            let _ = self.services.player.stop_at(None);
+        }
+    }
+
+    fn start_practice_pass(&self, practice: &crate::subtitle_study::Repetition) -> bool {
+        let p = &self.services.player;
+        p.stop_at(Some(practice.end_ms as f64 / 1000.0))
+            .and_then(|()| p.seek_absolute(practice.start_ms as f64 / 1000.0))
+            .and_then(|()| p.set_pause(false))
+            .is_ok()
+    }
+
+    fn practice_boundary(&mut self) {
+        if self.practice_wait.pending() {
+            return;
+        }
+        if self
+            .practice
+            .as_ref()
+            .is_some_and(|(v, _)| *v != self.sub_list_version)
+        {
+            self.end_replay();
+            return;
+        }
+        let step = self
+            .practice
+            .as_mut()
+            .and_then(|(_, r)| r.stopped((self.view.time_pos * 1000.0).round() as i64));
+        match step {
+            Some(true) => self.next_practice_pass(),
+            Some(false) => {
+                if let Some(next) = self.practice_queue.pop_front() {
+                    self.practice = Some((self.sub_list_version, next));
+                    self.next_practice_pass();
+                } else {
+                    let _ = self.services.player.set_pause(true);
+                }
+            }
+            None => {}
+        }
+    }
+
+    fn next_practice_pass(&mut self) {
+        if self
+            .practice_wait
+            .schedule(self.services.clock.monotonic(), self.practice_pause_ms)
+        {
+            let _ = self.services.player.set_pause(true);
+        } else if self
+            .practice
+            .as_ref()
+            .is_some_and(|(_, r)| !self.start_practice_pass(r))
+        {
+            self.practice_cancel();
+        }
+    }
+
+    /// Session-only pause between subsequent finite passes/cues, in milliseconds.
+    pub fn practice_pause_ms(&self) -> u16 {
+        self.practice_pause_ms
+    }
+    /// Set the next inter-pass pause, bounded to ten seconds; running waits keep their deadline.
+    pub fn set_practice_pause_ms(&mut self, milliseconds: u16) {
+        self.practice_pause_ms = milliseconds.min(10_000);
+    }
+    /// Remaining time for a pending practice resume; cancellation removes it immediately.
+    pub fn practice_wait_ms(&self) -> Option<u64> {
+        self.practice_wait
+            .remaining(self.services.clock.monotonic())
+    }
+
+    /// Skip the current finite cue, preserving the remaining captured queue.
+    pub fn practice_skip(&mut self) {
+        let Some((version, current)) = &self.practice else {
+            return;
+        };
+        if *version != self.sub_list_version || !self.view.loaded {
+            self.practice_cancel();
+            return;
+        }
+        if current.left == 0 {
+            return;
+        }
+        self.practice_wait.cancel();
+        if let Some(next) = self.practice_queue.pop_front() {
+            if self.start_practice_pass(&next) {
+                self.practice = Some((self.sub_list_version, next));
+            } else {
+                self.practice_cancel();
+            }
+        } else {
+            if let Some((_, r)) = &mut self.practice {
+                r.left = 0;
+            }
+            let _ = self.services.player.stop_at(None);
+            let _ = self.services.player.set_pause(true);
+        }
+    }
+
+    /// Restart this captured cue with its original pass count, including after completion.
+    pub fn practice_restart(&mut self) {
+        let Some((version, mut current)) = self.practice.take() else {
+            return;
+        };
+        if version != self.sub_list_version || !self.view.loaded {
+            self.practice_cancel();
+            return;
+        }
+        self.practice_wait.cancel();
+        current.restart();
+        if self.start_practice_pass(&current) {
+            self.practice = Some((version, current));
+        } else {
+            self.practice_cancel();
+        }
+    }
+
+    /// Captured cues still to finish, including the current cue; zero means finished.
+    pub fn practice_cues_remaining(&self) -> Option<usize> {
+        self.practice_remaining()
+            .map(|left| self.practice_queue.len() + usize::from(left > 0))
+    }
+
+    /// Remaining finite passes; zero retains the finished pause until explicit user control.
+    pub fn practice_remaining(&self) -> Option<u8> {
+        self.practice
+            .as_ref()
+            .filter(|(v, _)| *v == self.sub_list_version)
+            .map(|(_, r)| r.left)
+    }
+
+    /// Stop repetition and leave playback paused at the current position.
+    pub fn practice_cancel(&mut self) {
+        self.end_replay();
+        let _ = self.services.player.set_pause(true);
     }
 
     /// The pause at the end of each line (SUB-026): mpv stops (`end`, as the
@@ -1481,6 +2200,7 @@ impl Session {
     /// "Replay sentence" (POP-015, SUB-013): the popup's cue from its start,
     /// pausing at its end.
     pub fn popup_replay(&mut self) {
+        self.end_replay();
         let Some(cue) = self.popups.root_cue() else {
             return;
         };
@@ -1627,6 +2347,19 @@ impl Session {
         self.list_later();
     }
 
+    /// Apply a named profile explicitly, closing the draft and clearing its pins.
+    pub fn mining_profile_apply(&mut self, name: &str) {
+        let mut config = self.services.config.anki.clone();
+        if !config.apply_profile(name) {
+            self.anki_page.status = Some((self.tr("mining-profile-invalid", &[]), false));
+            return;
+        }
+        self.anki_save(config.clone());
+        if !config.to_review() && !config.later() {
+            self.anki_test(config);
+        }
+    }
+
     /// "Test the connection" with the settings being edited (ANK-006).
     pub fn anki_test(&mut self, config: nikomiru_core::config::AnkiConfig) {
         self.anki_page.busy = true;
@@ -1650,6 +2383,12 @@ impl Session {
     /// worker (SET-002), and go to `config.toml` unless it could not be read,
     /// which writing the defaults over would lose.
     pub fn anki_save(&mut self, config: nikomiru_core::config::AnkiConfig) {
+        if !config.valid_profiles() {
+            self.anki_page.status = Some((self.tr("mining-profile-invalid", &[]), false));
+            return;
+        }
+        self.close_advanced();
+        self.composer_pins.clear();
         self.services.config.anki = config.clone();
         self.anki_jobs
             .push(crate::mining::AnkiJob::Configure(config));
@@ -1692,6 +2431,12 @@ impl Session {
                 };
                 if !self.keep_status {
                     self.anki_page.status = Some(status);
+                }
+                if let Some(a) = self.advanced.as_mut()
+                    && lists.model == self.services.config.anki.note_type
+                    && lists.deck == self.services.config.anki.deck
+                {
+                    a.available_fields = lists.fields.clone();
                 }
                 self.anki_page.lists = Some(lists);
             }
@@ -1766,6 +2511,38 @@ impl Session {
         if self.config_save.is_some() {
             // newer settings wait: their write tells how it went
             return;
+        }
+        if std::mem::take(&mut self.recall_history_saving) {
+            self.recall_history_failed = result.is_err();
+            self.toasts.push(match &result {
+                Ok(()) => self.tr("settings-saved", &[]),
+                Err(reason) => self.tr("recall-history-error", &[("reason", reason.clone())]),
+            });
+        }
+        if std::mem::take(&mut self.preset_saving) {
+            self.toasts.push(match &result {
+                Ok(()) => self.tr("settings-saved", &[]),
+                Err(message) => message.clone(),
+            });
+        }
+        let setup_paths = std::mem::take(&mut self.setup_saving);
+        for id in &setup_paths {
+            self.setup_page.items.insert(
+                id.clone(),
+                match &result {
+                    Ok(()) => crate::setup::ItemState::Done,
+                    Err(message) => crate::setup::ItemState::Failed(message.clone()),
+                },
+            );
+        }
+        if !setup_paths.is_empty() {
+            match &result {
+                Ok(()) if !self.setup_page.busy() => {
+                    self.toasts.push(self.tr("setup-finished", &[]))
+                }
+                Err(message) => self.toasts.push(message.clone()),
+                _ => {}
+            }
         }
         let status = match result {
             Ok(()) if std::mem::take(&mut self.keep_status) => return,
@@ -2014,6 +2791,8 @@ impl Session {
     pub fn settings_open(&mut self) {
         self.settings_status = None;
         self.shortcut_capture(false);
+        // LNG-004: the profile's dictionary list
+        self.dict_refresh();
     }
 
     /// `config.toml`.
@@ -2056,12 +2835,185 @@ impl Session {
             dark,
             accent: g.accent_rgb().unwrap_or([0x35, 0x84, 0xe4]),
             scale: g.ui_scale,
+            palette: match g.palette.as_str() {
+                "oled" => "oled",
+                "high-contrast" => "high-contrast",
+                _ => "",
+            },
         }
     }
 
     /// Saves a tab of the settings, the keys of `section` in `draft`: they
     /// apply at once (SET-002) and go to `config.toml` unless it could not
     /// be read. Shortcuts that conflict are refused (KEY-001).
+    /// Explicit persistent preset mutation, using the serial configuration writer.
+    pub fn study_preset_change(
+        &mut self,
+        preset: Option<nikomiru_core::config::StudyPreset>,
+        delete: Option<String>,
+    ) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let saved = &mut self.services.config.lookup.study_presets;
+        if let Some(p) = preset {
+            if !p.valid() {
+                return;
+            }
+            if let Some(old) = saved.iter_mut().find(|old| old.name == p.name) {
+                *old = p;
+            } else if saved.len() < 16 {
+                saved.push(p);
+            } else {
+                return;
+            }
+        } else if let Some(name) = delete {
+            saved.retain(|p| p.name != name);
+        } else {
+            return;
+        }
+        self.preset_saving = true;
+        self.config_save = Some(self.services.config.clone());
+    }
+
+    /// Explicit persistent preset mutation, using the serial configuration writer.
+    pub fn subtitle_study_preset_change(
+        &mut self,
+        preset: Option<nikomiru_core::config::SubtitleStudyPreset>,
+        delete: Option<String>,
+    ) {
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let saved = &mut self.services.config.subtitles.study_presets;
+        if let Some(p) = preset {
+            if !p.valid() {
+                return;
+            }
+            if let Some(old) = saved.iter_mut().find(|old| old.name == p.name) {
+                *old = p;
+            } else if saved.len() < 16 {
+                saved.push(p);
+            } else {
+                return;
+            }
+        } else if let Some(name) = delete {
+            saved.retain(|p| p.name != name);
+        } else {
+            return;
+        }
+        self.preset_saving = true;
+        self.config_save = Some(self.services.config.clone());
+    }
+
+    /// Capture both named filter collections without paths or service configuration.
+    pub fn preset_export_prepare(&mut self) -> bool {
+        self.preset_export = None;
+        match crate::study_presets::export(&self.services.config) {
+            Ok(bytes) => {
+                self.preset_export = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the captured portable JSON.
+    pub fn preset_export_to(&mut self, path: &Path) {
+        let Some(bytes) = self.preset_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("study-presets-import-failed", &[("reason", e.to_string())])),
+        }
+    }
+    /// Read a bounded portable file and queue a complete validated merge through the serial writer.
+    pub fn preset_import_from(&mut self, path: &Path) {
+        use std::io::Read;
+        if !self.services.config_writable {
+            self.toasts.push(self.tr("settings-not-saved", &[]));
+            return;
+        }
+        let read = || -> std::io::Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)?
+                .take((crate::study_presets::MAX_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            Ok(bytes)
+        };
+        let bytes = match read() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.toasts
+                    .push(self.tr("study-presets-import-failed", &[("reason", e.to_string())]));
+                return;
+            }
+        };
+        match crate::study_presets::import(&bytes, &self.services.config) {
+            Ok(config) => {
+                self.services.config = config;
+                self.preset_saving = true;
+                self.config_save = Some(self.services.config.clone());
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Write the exported shortcut map atomically (KEY-008).
+    pub fn shortcuts_export_to(&mut self, path: &Path) {
+        if let Some(text) = self.shortcut_export.take() {
+            match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+                Ok(()) => self.toasts.push(self.tr(
+                    "analysis-export-saved",
+                    &[("path", path.display().to_string())],
+                )),
+                Err(e) => self
+                    .toasts
+                    .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+            }
+        }
+    }
+
+    /// Read a shortcut map into a preview; nothing changes yet (KEY-009).
+    pub fn shortcuts_import_from(&mut self, path: &Path) {
+        use std::io::Read;
+        let base = self
+            .shortcut_base
+            .take()
+            .unwrap_or_else(|| self.services.config.shortcuts.clone());
+        let mut bytes = Vec::new();
+        let read = std::fs::File::open(path).and_then(|f| {
+            f.take(crate::shortcut_maps::MAX_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+        });
+        let result = match read {
+            Ok(_) => crate::shortcut_maps::preview(&bytes, &base).map_err(|k| self.tr(k, &[])),
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(preview) => {
+                self.shortcut_preview = Some(preview);
+                self.settings_status = None;
+            }
+            Err(reason) => {
+                self.shortcut_preview = None;
+                self.settings_status =
+                    Some((self.tr("shortcut-map-failed", &[("reason", reason)]), false));
+            }
+        }
+    }
+
+    /// Apply and queue the selected settings section for persistence.
     pub fn settings_save(&mut self, section: nikomiru_core::config::Section, draft: &Config) {
         use nikomiru_core::config::Section;
         if section == Section::Shortcuts {
@@ -2075,7 +3027,26 @@ impl Session {
                 }
             }
         }
+        let shaders_before = self.services.config.player.shader_preset.clone();
+        let profile_before = (
+            self.services.config.general.study_language.clone(),
+            self.services.config.language_profile(),
+        );
         self.services.config.copy_section(section, draft);
+        if section == Section::General
+            && shaders_before != self.services.config.player.shader_preset
+        {
+            self.apply_shaders();
+        }
+        if section == Section::General
+            && profile_before
+                != (
+                    self.services.config.general.study_language.clone(),
+                    self.services.config.language_profile(),
+                )
+        {
+            self.switch_language();
+        }
         let c = &self.services.config;
         match section {
             Section::General => {
@@ -2086,6 +3057,16 @@ impl Session {
                 for option in nikomiru_player::options::fit_options(&c.player.fit) {
                     self.apply_option_now(&option.key, &option.value);
                 }
+            }
+            Section::Advanced => {
+                self.services
+                    .book_support
+                    .configure_pdf(c.paths.pdftotext.clone());
+                let path = c.paths.ffmpeg.clone();
+                self.services.subtitle_source.configure_ffmpeg(path.clone());
+                self.services.anki.configure_ffmpeg(path.clone());
+                self.services.catalog.configure_ffmpeg(path.clone());
+                self.services.thumbnails.configure_ffmpeg(path);
             }
             Section::Subtitles => {
                 self.subs.mode = Obscure::from_config(&c.subtitles.obscure);
@@ -2596,6 +3577,30 @@ impl Session {
         self.review_audio();
     }
 
+    /// Plays a dictionary's sound (DIC-038): written to the cache, then
+    /// played like word audio.
+    pub fn dictionary_sound(&mut self, bytes: &[u8], path: &str) {
+        let ext = Path::new(path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .filter(|e| e.len() <= 5 && e.bytes().all(|b| b.is_ascii_alphanumeric()))
+            .unwrap_or_else(|| "bin".into());
+        let file = self
+            .services
+            .mining_dir
+            .join(format!("dictionary-sound.{ext}"));
+        let written = std::fs::create_dir_all(&self.services.mining_dir)
+            .and_then(|()| nikomiru_core::fs::write_atomic(&file, bytes, 0o600));
+        match written {
+            Ok(()) => {
+                self.last_dictionary_sound = Some(path.to_string());
+                self.word_audio_jobs
+                    .push(crate::word_audio::WordAudioJob::PlayFile(file));
+            }
+            Err(e) => tracing::warn!("dictionary sound: {e}"),
+        }
+    }
+
     /// Plays the sentence of the card shown.
     pub fn review_audio(&mut self) {
         if let Some(path) = self
@@ -3018,6 +4023,20 @@ impl Session {
         if refused.is_empty() {
             return;
         }
+        // THM-003: shaders mpv cannot use turn the preset off
+        if let Some((_, reason)) = refused.iter().find(|(k, _)| k == "glsl-shaders")
+            && !self.services.config.player.shader_preset.is_empty()
+        {
+            self.services.config.player.shader_preset.clear();
+            self.apply_option_now("glsl-shaders", "");
+            if self.services.config_writable {
+                self.config_save = Some(self.services.config.clone());
+            }
+            self.settings_status = Some((
+                self.tr("settings-shaders-refused", &[("reason", reason.clone())]),
+                false,
+            ));
+        }
         let names: Vec<String> = refused.iter().map(|(k, e)| format!("{k} ({e})")).collect();
         let text = self.tr("player-refused", &[("names", names.join(", "))]);
         self.player_page.status = Some((text, false));
@@ -3361,12 +4380,20 @@ impl Session {
     }
 
     /// A Jellyfin login from the page.
-    pub fn server_jellyfin(&mut self, url: String, user: String, password: String, allow: bool) {
+    pub fn server_jellyfin(
+        &mut self,
+        url: String,
+        user: String,
+        password: String,
+        allow: bool,
+        emby: bool,
+    ) {
         self.server_device();
         self.servers_changed();
         self.servers_page.logging_in = true;
         self.servers_page.status = None;
         self.server_jobs.push(crate::servers::ServerJob::Jellyfin {
+            emby,
             url,
             user,
             password,
@@ -3816,6 +4843,7 @@ impl Session {
             let p = self.popups.stack().get(level)?;
             let e = p.reply.as_ref()?.content.entries.get(entry)?;
             let request = MineRequest {
+                composition: Default::default(),
                 query: p.query.clone(),
                 entry,
                 expression: e.expression.clone(),
@@ -3854,6 +4882,7 @@ impl Session {
         let clip = cue.and_then(|c| self.clip_of(c, c));
         let (audio_input, audio_stream) = self.audio_source(&current.path);
         let request = MineRequest {
+            composition: Default::default(),
             query: p.query.clone(),
             entry,
             expression: e.expression.clone(),
@@ -3954,12 +4983,71 @@ impl Session {
         if self.popups.stack().get(level).is_none() || self.advanced.is_some() {
             return;
         }
-        let Some((_, request)) = self.mine_request(level, entry, CardAction::Add) else {
+        let Some((generation, request)) = self.mine_request(level, entry, CardAction::Add) else {
             return;
         };
-        let reference = self.reference_cue();
+        let reference = (!request.video.as_os_str().is_empty())
+            .then(|| self.reference_cue())
+            .flatten();
         let at = reference.unwrap_or(0);
+        let senses = self
+            .popups
+            .stack()
+            .get(level)
+            .and_then(|p| p.reply.as_ref())
+            .and_then(|r| r.content.entries.get(entry))
+            .map(|e| {
+                e.sections
+                    .iter()
+                    .flat_map(|section| {
+                        section.glossaries.iter().enumerate().filter_map(|(i, g)| {
+                            Some(crate::mining::SenseOption {
+                                id: g.sense.clone()?,
+                                label: format!(
+                                    "{} · {} · {}",
+                                    section.dictionary,
+                                    i + 1,
+                                    g.summary
+                                ),
+                                selected: true,
+                            })
+                        })
+                    })
+                    .take(129)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let config = &self.services.config.anki;
+        let available_fields = if config.to_review() {
+            Vec::new()
+        } else if config.later() {
+            if nikomiru_anki::lapis::is_lapis(&config.note_type, &[]) {
+                nikomiru_anki::lapis::FIELDS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                config
+                    .field_mapping
+                    .get(&config.note_type)
+                    .map(|m| m.keys().cloned().collect())
+                    .unwrap_or_default()
+            }
+        } else {
+            self.anki_page
+                .lists
+                .as_ref()
+                .filter(|l| l.model == config.note_type && l.deck == config.deck)
+                .map(|l| l.fields.clone())
+                .unwrap_or_default()
+        };
         self.advanced = Some(AdvancedCard {
+            available_fields,
+            profiles: config.profiles.iter().map(|p| p.name.clone()).collect(),
+            fields: self.composer_pins.clone(),
+            pinned: self.composer_pins.keys().cloned().collect(),
+            senses,
+            error: None,
             level,
             entry,
             expression: request.expression.clone(),
@@ -3969,13 +5057,35 @@ impl Session {
             sentence: request.sentence.clone(),
             offset: request.offset,
             clip: request.clip,
-            frame: FrameKind::Click,
+            frame: if request.frame == crate::mining::FrameChoice::None {
+                FrameKind::None
+            } else {
+                FrameKind::Click
+            },
             audio: request.clip.is_some(),
             can_previous: false,
             can_next: false,
         });
         self.advanced_word = request.offset;
-        self.advanced_frame = self.ask_frame();
+        let capture_frame = request.frame == crate::mining::FrameChoice::Click;
+        self.advanced_request = Some((generation, request));
+        self.advanced_owner = (
+            self.token,
+            self.sub_list_version,
+            self.words.generation(),
+            self.books_page
+                .open
+                .as_ref()
+                .map(|b| (b.uid.clone(), b.chapter)),
+        );
+        self.advanced_frame = if capture_frame {
+            self.ask_frame()
+        } else {
+            None
+        };
+        if !self.services.config.anki.to_review() && !self.services.config.anki.later() {
+            self.anki_test(self.services.config.anki.clone());
+        }
         self.advanced_merge();
     }
 
@@ -4055,6 +5165,44 @@ impl Session {
         };
         let count = self.subs.timeline().cues().len();
         match edit {
+            AdvancedEdit::Field(name, text) => {
+                let mut staged = a.fields.clone();
+                staged.insert(name.clone(), text.clone());
+                if !nikomiru_core::mining_profiles::valid_fields(&staged) {
+                    a.error = Some(self.services.translator.tr("composer-fields-invalid", &[]));
+                    return;
+                }
+                a.fields = staged;
+                if a.pinned.contains(&name) {
+                    self.composer_pins.insert(name, text);
+                }
+                a.error = None;
+                return;
+            }
+            AdvancedEdit::Pin(name, on) => {
+                if on {
+                    if let Some(value) = a.fields.get(&name) {
+                        a.pinned.insert(name.clone());
+                        self.composer_pins.insert(name, value.clone());
+                    }
+                } else {
+                    a.pinned.remove(&name);
+                    self.composer_pins.remove(&name);
+                }
+                return;
+            }
+            AdvancedEdit::Reset(name) => {
+                a.fields.remove(&name);
+                a.pinned.remove(&name);
+                self.composer_pins.remove(&name);
+                return;
+            }
+            AdvancedEdit::Sense(index, on) => {
+                if let Some(sense) = a.senses.get_mut(index) {
+                    sense.selected = on;
+                }
+                return;
+            }
             AdvancedEdit::Previous(true) if a.first > 0 => a.first -= 1,
             AdvancedEdit::Previous(false) if Some(a.first) < a.reference => a.first += 1,
             AdvancedEdit::Next(true) if a.last + 1 < count => a.last += 1,
@@ -4100,12 +5248,58 @@ impl Session {
             }
             AdvancedEdit::Create => {
                 let a = a.clone();
-                let Some((generation, mut request)) =
-                    self.mine_request(a.level, a.entry, CardAction::Add)
-                else {
-                    self.close_advanced();
+                let Some((generation, mut request)) = self.advanced_request.clone() else {
                     return;
                 };
+                let fresh = self.mine_request(a.level, a.entry, CardAction::Add);
+                let owner = (
+                    self.token,
+                    self.sub_list_version,
+                    self.words.generation(),
+                    self.books_page
+                        .open
+                        .as_ref()
+                        .map(|b| (b.uid.clone(), b.chapter)),
+                );
+                let valid = owner == self.advanced_owner
+                    && fresh.as_ref().is_some_and(|(g, r)| {
+                        *g == generation
+                            && r.query == request.query
+                            && r.expression == request.expression
+                            && r.reading == request.reading
+                            && r.sentence == request.sentence
+                            && r.video == request.video
+                            && r.uid == request.uid
+                            && r.title == request.title
+                            && r.audio_input == request.audio_input
+                            && r.audio_stream == request.audio_stream
+                            && r.clip == request.clip
+                            && r.offset == request.offset
+                            && r.picture == request.picture
+                    });
+                if !valid {
+                    if let Some(a) = self.advanced.as_mut() {
+                        a.error = Some(self.services.translator.tr("composer-source-stale", &[]));
+                    }
+                    return;
+                }
+                if !a.senses.is_empty() {
+                    let ids: Vec<_> = a
+                        .senses
+                        .iter()
+                        .filter(|s| s.selected)
+                        .map(|s| s.id.clone())
+                        .collect();
+                    if ids.is_empty() || a.senses.len() > 128 {
+                        if let Some(a) = self.advanced.as_mut() {
+                            a.error =
+                                Some(self.services.translator.tr("composer-senses-stale", &[]));
+                        }
+                        return;
+                    }
+                    request.composition.senses = Some(ids);
+                }
+                request.composition.fields = a.fields;
                 request.sentence = a.sentence;
                 request.offset = a.offset;
                 request.clip = a.clip;
@@ -4131,6 +5325,7 @@ impl Session {
     /// Closes the "Advanced mining" dialog; the frame it kept goes.
     fn close_advanced(&mut self) {
         self.advanced = None;
+        self.advanced_request = None;
         self.advanced_frame = None;
         self.end_replay();
     }
@@ -4595,6 +5790,11 @@ impl Session {
         auto_repeat: bool,
         text_focus: bool,
     ) -> (UiEffect, bool) {
+        if !pressed && self.translation_hold == Some(evdev) {
+            self.release_translation_peek();
+            return (UiEffect::None, true);
+        }
+        self.guided_input_priority(text_focus);
         let Some(chord) = crate::shortcuts::chord(evdev, mods) else {
             if pressed {
                 tracing::debug!("key: evdev code {evdev} has no name");
@@ -4611,7 +5811,17 @@ impl Session {
         }
         // a page over the video: its controls get the keys, but the global
         // ones; a popup's keys first, then the player's (KEY-003)
-        let action = if self.popups_covered {
+        let action = if self.recall.is_some() && !self.recall_covered {
+            self.bindings.action(
+                if self.popups.is_open() && !self.popups_covered {
+                    Context::Popup
+                } else {
+                    Context::Recall
+                },
+                &chord,
+                text_focus,
+            )
+        } else if self.popups_covered {
             self.bindings.action(Context::Global, &chord, text_focus)
         } else if self.popups.is_open() {
             self.bindings
@@ -4632,7 +5842,23 @@ impl Session {
             }
             return (UiEffect::None, true);
         }
+        if action == Action::PeekTranslation {
+            if self.translation_hold.is_none()
+                && !auto_repeat
+                && !text_focus
+                && !self.popups_covered
+                && !self.popups.is_open()
+                && self.secondary.source.is_some()
+                && self.recall.is_none()
+            {
+                self.translation_hold = Some(evdev);
+            }
+            return (UiEffect::None, true);
+        }
         if action == Action::HoldSpeed {
+            if self.practice.is_some() {
+                self.end_replay();
+            }
             let normal = self.gap_speed.normal(self.view.speed);
             if let Some(speed) = self.hold.key_down(normal, auto_repeat) {
                 self.restore_gap_speed();
@@ -4657,6 +5883,54 @@ impl Session {
 
     /// Runs an action (from a key or a button).
     pub fn action(&mut self, action: Action) -> UiEffect {
+        if self.batch.open && action == Action::Back {
+            self.batch.open = false;
+            return UiEffect::None;
+        }
+        if self.bank.open && action == Action::Back {
+            self.bank.open = false;
+            return UiEffect::None;
+        }
+        if self.podcasts.open && action == Action::Back {
+            self.podcasts.open = false;
+            return UiEffect::None;
+        }
+        if self.reader.open && action == Action::Back {
+            self.reader.open = false;
+            self.reader_discard_draft();
+            return UiEffect::None;
+        }
+        if self.clozes.open && action == Action::Back {
+            self.clozes.open = false;
+            self.clozes.round = None;
+            return UiEffect::None;
+        }
+        if self.practice.is_some()
+            && matches!(
+                action,
+                Action::PlayPause
+                    | Action::SeekBack
+                    | Action::SeekForward
+                    | Action::FramePrev
+                    | Action::FrameNext
+                    | Action::ChapterPrev
+                    | Action::ChapterNext
+                    | Action::SubPrev
+                    | Action::SubNext
+                    | Action::ReplayCue
+                    | Action::ReplayPrevCue
+                    | Action::SubDelayMinus
+                    | Action::SubDelayPlus
+                    | Action::SubAlignPrev
+                    | Action::SubAlignNext
+                    | Action::SpeedUp
+                    | Action::SpeedDown
+                    | Action::SpeedReset
+                    | Action::HoldSpeed
+            )
+        {
+            self.end_replay();
+        }
         let p = &self.services.player;
         let step = control::seek_step(self.services.config.player.seek_seconds);
         let result = match action {
@@ -4680,9 +5954,16 @@ impl Session {
             }
             // NFR-A11Y-01: the first word of the subtitle shown
             Action::LookupSubtitle => {
+                self.cancel_guided();
+                self.keyboard_kanji = false;
                 self.keyboard_lookup = self.subs.active().first().map(|&cue| (cue, 0));
                 Ok(())
             }
+            Action::LookupFirstKanji => {
+                self.first_kanji_lookup();
+                Ok(())
+            }
+            Action::PeekTranslation => Ok(()),
             Action::LookupPrev | Action::LookupNext => {
                 self.step_lookup(action == Action::LookupNext);
                 Ok(())
@@ -4846,6 +6127,22 @@ impl Session {
             }
             Action::SubList => return UiEffect::ToggleSubList,
             Action::SubSearch => return UiEffect::SubSearch,
+            Action::RecallReveal => {
+                self.recall_reveal();
+                Ok(())
+            }
+            Action::RecallAgain => {
+                self.recall_rate(false);
+                Ok(())
+            }
+            Action::RecallGood => {
+                self.recall_rate(true);
+                Ok(())
+            }
+            Action::StudyPrevious
+            | Action::StudyNext
+            | Action::StudyReveal
+            | Action::StudySelect => return UiEffect::SubtitleStudy(action),
             Action::Fullscreen => return UiEffect::ToggleFullscreen,
             Action::Back if self.setup_page.open => {
                 self.setup_close();
@@ -4861,6 +6158,10 @@ impl Session {
             }
             Action::Back if self.popups.is_open() && !self.popups_covered => {
                 self.close_popup();
+                return UiEffect::None;
+            }
+            Action::Back if self.recall.is_some() && !self.recall_covered => {
+                self.recall_close();
                 return UiEffect::None;
             }
             // LIB-009: Esc stops the next episode
@@ -4880,7 +6181,8 @@ impl Session {
     }
 
     /// Absolute seek from the progress bar.
-    pub fn seek_to(&self, seconds: f64) {
+    pub fn seek_to(&mut self, seconds: f64) {
+        self.end_replay();
         let _ = self.services.player.seek_absolute(seconds);
     }
 
@@ -4916,6 +6218,12 @@ impl Session {
     /// close, since they looked up words of the cues that were (and replay or
     /// go to them).
     fn cues_changed(&mut self) {
+        self.cancel_guided();
+        self.keyboard_lookup = None;
+        self.keyboard_kanji = false;
+        if self.practice.is_some() {
+            self.end_replay();
+        }
         self.restore_gap_speed();
         self.sub_list_version += 1;
         self.update_auto_pause();
@@ -4925,6 +6233,9 @@ impl Session {
     }
 
     fn reset_subtitles(&mut self) {
+        self.release_translation_peek();
+        self.cancel_guided();
+        self.bank_source_changed(false);
         self.services.subtitle_source.cancel(false);
         self.services.subtitle_source.cancel(true);
         self.secondary.clear(None);
@@ -5251,6 +6562,10 @@ impl Session {
     }
 
     fn progress_changed(&mut self) {
+        self.cancel_guided();
+        if self.practice.is_some() {
+            self.end_replay();
+        }
         self.restore_gap_speed();
         self.sub_list_version += 1;
         self.update_auto_pause();
@@ -5455,6 +6770,7 @@ impl Session {
     /// The secondary subtitle chosen in the menu: a source key, or `"off"`
     /// (SUB-017). Text sources only: mpv draws graphic tracks.
     pub fn select_secondary(&mut self, key: &str) {
+        self.release_translation_peek();
         self.secondary_generation += 1;
         let source = self
             .sub_sources
@@ -5513,6 +6829,9 @@ impl Session {
     /// The obscuring of the secondary subtitle now: its own mode, lifted
     /// like the main one's (SUB-014, SUB-017).
     pub fn secondary_obscure_now(&self) -> Obscure {
+        if self.translation_peeking() {
+            return Obscure::None;
+        }
         crate::subtitles::obscured(
             self.secondary.mode,
             self.view.loaded && !self.view.paused,
@@ -5578,6 +6897,7 @@ impl Session {
     }
 
     fn after_delay_change(&mut self, delay_ms: i64) {
+        self.end_replay();
         self.remember(nikomiru_library::policy::Remember::Delay(delay_ms));
         self.subs.update((self.view.time_pos * 1000.0) as i64);
         self.update_secondary();
@@ -5590,7 +6910,14 @@ impl Session {
     /// text from there (LKP-001…LKP-003) is looked up in a popup next to
     /// `anchor`; playback pauses if it was going.
     pub fn select_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        let kanji = self.keyboard_lookup == Some((cue, offset)) && self.keyboard_kanji;
+        self.cancel_guided();
         self.keyboard_lookup = None;
+        self.keyboard_kanji = false;
+        if kanji {
+            self.look_up_kanji(cue, offset, anchor);
+            return;
+        }
         // a click: the popup does not close when the pointer leaves
         self.hover.reset();
         self.look_up_grapheme(cue, offset, anchor);
@@ -5630,6 +6957,8 @@ impl Session {
     }
 
     fn look_up_grapheme(&mut self, cue: usize, offset: usize, anchor: Rect) {
+        self.cancel_guided();
+        self.keyboard_kanji = false;
         let Some(text) = self.subs.cue(cue).map(|c| c.plain_text.clone()) else {
             return;
         };
@@ -5693,6 +7022,34 @@ impl Session {
         } else {
             self.book_reads.push(path);
         }
+    }
+
+    /// Explicit paste submission; parsing and disk I/O run on the book worker.
+    pub fn book_paste(&mut self, paste: crate::books::Paste) {
+        if self.books_page.busy {
+            return;
+        }
+        self.books_page.busy = true;
+        self.books_page.status = None;
+        self.book_pastes.push(paste);
+    }
+    /// Pasted documents to validate and retain off the interface thread.
+    pub fn take_book_pastes(&mut self) -> Vec<crate::books::Paste> {
+        std::mem::take(&mut self.book_pastes)
+    }
+    /// The validated source is registered only after its atomic save succeeds.
+    pub fn book_pasted(&mut self, result: Result<(PathBuf, nikomiru_books::Book), String>) {
+        match result {
+            Ok((path, book)) => self.book_read(path, Ok(book)),
+            Err(e) => {
+                self.books_page.busy = false;
+                self.books_page.status = Some((e, false));
+            }
+        }
+    }
+    /// Pasted sources share the ordinary backup's source tree.
+    pub fn text_dir(&self) -> PathBuf {
+        self.services.text_dir.clone()
     }
 
     /// "Open" with a web page's address (WEB-001): asked of the network only
@@ -5796,11 +7153,46 @@ impl Session {
             Ok(book) => book,
             Err(e) => {
                 self.books_page.status = Some((e, false));
+                self.phrase_place = None;
+                self.bank_place = None;
                 return;
             }
         };
         let chars = book.chars();
-        let uid = nikomiru_library::books::book_uid(&book.title, &book.author, chars);
+        let uid = book
+            .identity
+            .clone()
+            .unwrap_or_else(|| nikomiru_library::books::book_uid(&book.title, &book.author, chars));
+        let mut mark = None;
+        if let Some((source, context)) = self.bank_place.take() {
+            let matches = source.uid == uid
+                && book
+                    .chapters
+                    .get(source.chapter as usize)
+                    .and_then(|c| c.paragraphs.get(source.paragraph as usize))
+                    .and_then(|p| {
+                        p.text.get(
+                            source.offset as usize
+                                ..(source.offset as usize).saturating_add(context.len()),
+                        )
+                    })
+                    == Some(context.as_str());
+            if !matches {
+                let error = self.tr("bank-source-changed", &[]);
+                self.books_page.status = Some((error.clone(), false));
+                self.toasts.push(error);
+                return;
+            }
+            mark = Some((
+                source.paragraph as usize,
+                source.offset as usize..source.offset as usize + context.len(),
+            ));
+            self.phrase_place = Some(source);
+        }
+        if self.books_page.open.is_some() {
+            self.popups.playback_changed_by_user();
+            self.book_close();
+        }
         let library = self.services.library.as_ref().filter(|l| !l.read_only());
         let mut record = library
             .and_then(|lib| lib.book(&uid).ok().flatten())
@@ -5816,7 +7208,16 @@ impl Session {
         {
             tracing::warn!("library: {e}");
         }
+        if let Some(place) = self.phrase_place.take().filter(|p| p.uid == uid) {
+            record.chapter = place.chapter;
+            record.paragraph = place.paragraph;
+        }
         let chapter = (record.chapter as usize).min(book.chapters.len().saturating_sub(1));
+        record.paragraph = record.paragraph.min(
+            book.chapters
+                .get(chapter)
+                .map_or(0, |c| c.paragraphs.len().saturating_sub(1)) as u32,
+        );
         self.books_page.study.clear();
         self.books_page.open = Some(crate::books::OpenBook {
             uid,
@@ -5824,8 +7225,27 @@ impl Session {
             paragraph: record.paragraph as usize,
             jump: true,
             started: (moment.mono_ms, record.read_chars),
+            sentence: 0,
             book,
         });
+        if let Some((paragraph, range)) = mark.filter(|(p, _)| *p == record.paragraph as usize) {
+            if let Some(open) = &mut self.books_page.open {
+                open.sentence = open
+                    .book
+                    .chapters
+                    .get(open.chapter)
+                    .and_then(|c| c.paragraphs.get(paragraph))
+                    .map_or(0, |p| {
+                        nikomiru_text::sentence::sentences(&p.text)
+                            .iter()
+                            .position(|r| r.end > range.start)
+                            .unwrap_or(0)
+                    });
+            }
+            self.books_page.found = Some((paragraph, range));
+        }
+        // the open book's highlights are drawn from the committed set (RDR-002)
+        self.annotations_request(crate::reader_tools::Job::List);
         self.books_reload();
     }
 
@@ -5988,8 +7408,10 @@ impl Session {
         {
             open.chapter = chapter;
             open.paragraph = 0;
+            open.sentence = 0;
             open.jump = true;
             self.books_page.status = None;
+            self.books_page.found = None;
         }
     }
 
@@ -6004,15 +7426,68 @@ impl Session {
             let key = shown.paragraphs.first()?.image.as_ref()?;
             Some(crate::ocr::OcrJob {
                 uid: open.uid.clone(),
-                page: open.chapter,
+                page,
                 picture: open.book.images.get(key)?.clone(),
                 area,
+                preset_text: None,
+                pixel_bounds: None,
             })
         });
         if job.is_some() {
+            if let Some(open) = &mut self.books_page.open {
+                open.chapter = page;
+            }
             self.books_page.ocr.reading = true;
             self.books_page.status = None;
             self.ocr_job = job;
+        }
+    }
+
+    /// Select original imported text and prepare its crop without running or downloading OCR.
+    pub fn mokuro_select(&mut self, page: usize, region: usize) {
+        if self.books_page.ocr.reading {
+            return;
+        }
+        let job = self.books_page.open.as_ref().and_then(|open| {
+            let regions = open.book.manga_regions.get(&page)?;
+            let text = regions.regions.get(region)?.text.clone();
+            let area = regions.area(region)?;
+            let key = open
+                .book
+                .chapters
+                .get(page)?
+                .paragraphs
+                .first()?
+                .image
+                .as_ref()?;
+            Some(crate::ocr::OcrJob {
+                uid: open.uid.clone(),
+                page,
+                picture: open.book.images.get(key)?.clone(),
+                area,
+                preset_text: Some(text),
+                pixel_bounds: Some(regions.regions.get(region)?.bounds),
+            })
+        });
+        if let Some(job) = job {
+            self.popups.playback_changed_by_user();
+            self.close_all_popups();
+            if let Some(open) = &mut self.books_page.open {
+                open.chapter = page;
+                if let Some(item) = open
+                    .book
+                    .chapters
+                    .get_mut(page)
+                    .and_then(|c| c.paragraphs.first_mut())
+                {
+                    item.text.clear();
+                }
+            }
+            self.books_page.highlight = None;
+            self.books_page.ocr.crop = None;
+            self.books_page.ocr.reading = true;
+            self.books_page.status = None;
+            self.ocr_job = Some(job);
         }
     }
 
@@ -6026,7 +7501,11 @@ impl Session {
     pub fn manga_recognized(&mut self, reading: crate::ocr::Reading) {
         self.books_page.ocr.reading = false;
         let (uid, page, read) = reading;
-        let open = self.books_page.open.as_mut().filter(|o| o.uid == uid);
+        let open = self
+            .books_page
+            .open
+            .as_mut()
+            .filter(|o| o.uid == uid && o.chapter == page);
         let item = open.and_then(|o| o.book.chapters.get_mut(page)?.paragraphs.first_mut());
         let Some(item) = item else {
             return;
@@ -6139,6 +7618,8 @@ impl Session {
     /// The book closes: its place is saved, and the time read goes into the
     /// statistics (BOK-008).
     pub fn book_close(&mut self) {
+        self.bank_source_changed(true);
+        self.books_page.found = None;
         self.books_page.study.clear();
         self.close_all_popups();
         self.book_save();
@@ -6304,10 +7785,45 @@ impl Session {
         self.run_popup_commands(commands);
     }
 
+    /// Explicit text-only study lookup, never attached to a media cue.
+    pub fn vocabulary_lookup(&mut self, text: &str, anchor: Rect) {
+        if text.len() > 4096 {
+            return;
+        }
+        let query = nikomiru_text::scan::normalize(text);
+        if query.is_empty() {
+            return;
+        }
+        self.hover.reset();
+        let playing = self.view.loaded && !self.view.paused;
+        let commands = self
+            .popups
+            .open_from_subtitle(playing, query, Origin::Glossary, anchor);
+        self.run_popup_commands(commands);
+        self.study_popup_generation = self.popups.stack().first().map(|p| p.generation);
+    }
+
+    /// This root belongs above the current study view, including library word lists.
+    pub fn study_popup_open(&self) -> bool {
+        self.study_popup_generation.is_some_and(|g| {
+            self.popups
+                .stack()
+                .first()
+                .is_some_and(|p| p.generation == g)
+        })
+    }
+
     fn run_popup_commands(&mut self, commands: Vec<Command>) {
+        if self.popups.is_open() {
+            self.release_translation_peek();
+            self.cancel_guided();
+        }
         for c in commands {
             match c {
                 Command::Pause => {
+                    if self.practice.is_some() {
+                        self.end_replay();
+                    }
                     let _ = self.services.player.set_pause(true);
                 }
                 Command::Resume => {
@@ -6588,6 +8104,20 @@ impl Session {
     /// they or the statuses change (KNW-007). The words' cache holds a long
     /// film's lines; beyond, there is no score.
     fn count_score(&mut self) {
+        if self.vocabulary_scope.as_ref().is_some_and(|v| {
+            v.version != self.sub_list_version
+                || v.generation != self.words.generation()
+                || !self.word_colors_on()
+                || self.subs.incomplete
+        }) {
+            self.vocabulary_scope = None;
+        }
+        if let Some(scope) = &mut self.vocabulary_scope
+            && scope.revision != self.words.revision()
+        {
+            scope.rows = std::sync::Arc::new(self.words.listed_counted(&scope.counted));
+            scope.revision = self.words.revision();
+        }
         if !self.services.config.subtitles.word_colors || self.subs.incomplete {
             self.score = None;
             self.word_list = None;
@@ -6632,7 +8162,99 @@ impl Session {
     /// The words of the main subtitle by how often they come, once all its
     /// lines are split, while the words are coloured (KNW-009).
     pub fn word_list(&self) -> Option<std::sync::Arc<Vec<crate::words::ListedWord>>> {
-        self.word_list.clone()
+        self.active_vocabulary_scope()
+            .map(|v| v.rows.clone())
+            .or_else(|| self.word_list.clone())
+    }
+
+    fn active_vocabulary_scope(&self) -> Option<&VocabularyScope> {
+        self.vocabulary_scope.as_ref().filter(|v| {
+            v.version == self.sub_list_version
+                && v.generation == self.words.generation()
+                && self.word_colors_on()
+                && !self.subs.incomplete
+        })
+    }
+
+    /// Current captured vocabulary identity, independent of word-status revisions.
+    pub fn vocabulary_scope_id(&self) -> Option<u64> {
+        self.active_vocabulary_scope()
+            .map(|_| self.vocabulary_scope_id)
+    }
+
+    /// Explicitly capture vocabulary from the requested primary cue scope.
+    pub fn vocabulary_scope_capture(&mut self, version: u64, indices: &[usize]) {
+        if version != self.sub_list_version
+            || !self.subtitle_export_ready()
+            || !self.word_colors_on()
+        {
+            self.toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[]));
+            return;
+        }
+        match self
+            .words
+            .counted_cues(self.subs.timeline().cues(), indices)
+        {
+            Ok(counted) => {
+                let rows = std::sync::Arc::new(self.words.listed_counted(&counted));
+                self.vocabulary_scope_id = self.vocabulary_scope_id.wrapping_add(1);
+                self.vocabulary_scope = Some(VocabularyScope {
+                    version,
+                    generation: self.words.generation(),
+                    revision: self.words.revision(),
+                    counted,
+                    rows,
+                });
+            }
+            Err(key) => self.toasts.push(self.tr(key, &[])),
+        }
+    }
+
+    /// Return to the full primary-track vocabulary.
+    pub fn vocabulary_scope_clear(&mut self) {
+        self.vocabulary_scope = None;
+    }
+
+    /// Filter current subtitle lines by a complete exact segmented word identity.
+    pub fn subtitle_examples_for(&mut self, expression: &str, reading: &str) {
+        if self.subs.incomplete || !self.word_colors_on() || self.word_list.is_none() {
+            self.toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[]));
+            return;
+        }
+        match self
+            .words
+            .examples(self.subs.timeline().cues(), expression, reading)
+        {
+            Ok(indices) if !indices.is_empty() => {
+                self.subtitle_examples = Some(crate::subtitle_study::Concordance {
+                    key: nikomiru_library::words::word_key(expression, reading),
+                    label: format!("{expression} {reading}"),
+                    indices,
+                    version: self.sub_list_version,
+                    revision: self.words.revision(),
+                })
+            }
+            _ => self
+                .toasts
+                .push(self.tr("vocabulary-examples-unavailable", &[])),
+        }
+    }
+
+    /// Only expose examples whose source and segmentation/status revision are still current.
+    pub fn subtitle_examples(&self) -> Option<&crate::subtitle_study::Concordance> {
+        self.subtitle_examples.as_ref().filter(|c| {
+            c.version == self.sub_list_version
+                && c.revision == self.words.revision()
+                && self.word_colors_on()
+                && !self.subs.incomplete
+        })
+    }
+
+    /// Leave the examples filter without changing the primary text or playback.
+    pub fn subtitle_examples_clear(&mut self) {
+        self.subtitle_examples = None;
     }
 
     /// The score of the main subtitle, or how many of its lines are split
@@ -6867,6 +8489,7 @@ impl Session {
         result: Result<Vec<nikomiru_dict::segment::Word>, String>,
     ) {
         self.words.done(generation, text, result);
+        self.resolve_guided();
     }
 
     /// The rows of the subtitle list in view: their words are split, to
@@ -6944,7 +8567,8 @@ impl Session {
     fn wanted_marks(&self) -> crate::words::Wanted {
         let c = &self.services.config.subtitles;
         crate::words::Wanted {
-            furigana: c.furigana,
+            // LNG-001: readings only where the language's profile wants them
+            furigana: c.furigana && self.services.config.language_profile().readings,
             furigana_unknown_only: c.furigana_unknown_only,
             mined: c.mark_mined,
             colors: c.word_colors,
@@ -7010,8 +8634,9 @@ impl Session {
         }
         self.words.set_anki(words.clone());
         if let Some(w) = &self.writer {
+            let language = self.study_language();
             w.run(move |lib| {
-                if let Err(e) = lib.set_anki_words(&words) {
+                if let Err(e) = lib.set_anki_words_in(&language, &words) {
                     tracing::warn!("saving the words from Anki: {e}");
                 }
             });
@@ -7047,14 +8672,341 @@ impl Session {
                     (word, reading, mark)
                 })
                 .collect();
+            let language = self.study_language();
             w.run(move |lib| {
-                if let Err(e) = lib.set_word_statuses(&marks) {
+                if let Err(e) = lib.set_word_statuses_in(&language, &marks) {
                     tracing::warn!("saving a word list: {e}");
                 }
             });
         }
         self.toasts
             .push(self.tr("toast-words-imported", &[("count", count)]));
+    }
+
+    /// Who owns this install (UPD-003).
+    pub fn update_owner(&self) -> crate::updates::Owner {
+        self.services.updates.owner()
+    }
+
+    /// Whether this build can check for updates.
+    pub fn updates_configured(&self) -> bool {
+        self.services.updates.configured()
+    }
+
+    /// Check the channel, explicitly (UPD-001).
+    pub fn update_check(&mut self) {
+        if self.updates.checking || self.updates.downloading.is_some() || self.updates.installing {
+            return;
+        }
+        self.updates = crate::updates::State {
+            checking: true,
+            ..Default::default()
+        };
+        self.update_jobs.push(UpdateJob::Check);
+    }
+
+    /// Download the release found (UPD-004).
+    pub fn update_download(&mut self) {
+        if self.updates.available.is_none() || self.updates.downloading.is_some() {
+            return;
+        }
+        self.updates.error = None;
+        self.updates.downloading = Some((0, None));
+        self.update_jobs.push(UpdateJob::Download);
+    }
+
+    /// Install the verified download (UPD-004).
+    pub fn update_install(&mut self) {
+        if self.updates.downloaded.is_none() || self.updates.installing {
+            return;
+        }
+        self.updates.error = None;
+        self.updates.installing = true;
+        self.update_jobs.push(UpdateJob::Install);
+    }
+
+    /// The release channel, saved at once.
+    pub fn update_channel(&mut self, channel: &str) {
+        if !matches!(channel, "stable" | "beta") {
+            return;
+        }
+        self.services.config.updates.channel = channel.into();
+        self.updates = Default::default();
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// Start the update jobs asked for.
+    pub fn start_update_jobs(&mut self, waker: &std::sync::Arc<dyn crate::ui::Waker>) {
+        let proxy = self.services.config.network.proxy.clone();
+        for job in std::mem::take(&mut self.update_jobs) {
+            let w = waker.clone();
+            match job {
+                UpdateJob::Check => self.services.updates.check(
+                    self.services.config.updates.channel.clone(),
+                    proxy.clone(),
+                    Box::new(move |r| w.wake(crate::ui::Inbound::UpdateChecked(r))),
+                ),
+                UpdateJob::Download => {
+                    let Some(available) = self.updates.available.clone() else {
+                        continue;
+                    };
+                    let p = waker.clone();
+                    self.services.updates.download(
+                        available,
+                        proxy.clone(),
+                        Box::new(move |d, t| p.wake(crate::ui::Inbound::UpdateProgress(d, t))),
+                        Box::new(move |r| w.wake(crate::ui::Inbound::UpdateDownloaded(r))),
+                    );
+                }
+                UpdateJob::Install => {
+                    let (Some(archive), Some(available)) = (
+                        self.updates.downloaded.clone(),
+                        self.updates.available.clone(),
+                    ) else {
+                        continue;
+                    };
+                    self.services.updates.install(
+                        archive,
+                        available,
+                        Box::new(move |r| w.wake(crate::ui::Inbound::UpdateInstalled(r))),
+                    );
+                }
+            }
+        }
+    }
+
+    /// A check ended.
+    pub fn update_checked(&mut self, result: Result<Option<crate::updates::Available>, String>) {
+        self.updates.checking = false;
+        match result {
+            Ok(Some(available)) => self.updates.available = Some(available),
+            Ok(None) => self.updates.up_to_date = true,
+            Err(e) => self.updates.error = Some(e),
+        }
+    }
+
+    /// How far the download is.
+    pub fn update_progress(&mut self, done: u64, total: Option<u64>) {
+        if self.updates.downloading.is_some() {
+            self.updates.downloading = Some((done, total));
+        }
+    }
+
+    /// The download ended.
+    pub fn update_downloaded(&mut self, result: Result<PathBuf, String>) {
+        self.updates.downloading = None;
+        match result {
+            Ok(path) => self.updates.downloaded = Some(path),
+            Err(e) => self.updates.error = Some(e),
+        }
+    }
+
+    /// The install ended.
+    pub fn update_installed(&mut self, result: Result<(), String>) {
+        self.updates.installing = false;
+        match result {
+            Ok(()) => {
+                self.updates.downloaded = None;
+                self.updates.installed = self.updates.available.as_ref().map(|a| a.release.clone());
+            }
+            Err(e) => self.updates.error = Some(e),
+        }
+    }
+
+    /// The data folder.
+    fn data_dir(&self) -> PathBuf {
+        self.services
+            .text_dir
+            .parent()
+            .map_or_else(|| self.services.text_dir.clone(), Path::to_path_buf)
+    }
+
+    /// Whether the user's own mpv options set shaders (THM-003): they win.
+    pub fn shaders_overridden(&self) -> bool {
+        let p = &self.services.config.player;
+        p.mpv_options.contains_key("glsl-shaders")
+            || p.raw_mpv_options.lines().any(|l| {
+                let l = l.trim_start();
+                l.starts_with("glsl-shaders") || l.starts_with("glsl-shader=")
+            })
+    }
+
+    /// Whether the Anime4K pack is installed (THM-002).
+    pub fn shader_pack_installed(&self) -> bool {
+        self.shader_pack.0
+    }
+
+    /// Whether the pack is being installed or removed.
+    pub fn shader_pack_busy(&self) -> bool {
+        self.shader_pack.1
+    }
+
+    /// What `glsl-shaders` should be (THM-003): the preset's files, nothing
+    /// for none, `None` when the user's own options decide.
+    fn shader_value(&self) -> Option<String> {
+        if self.shaders_overridden() {
+            return None;
+        }
+        let preset = &self.services.config.player.shader_preset;
+        if preset.is_empty() {
+            return Some(String::new());
+        }
+        let files = nikomiru_online::shaders::files(&self.data_dir(), preset)?;
+        std::env::join_paths(files)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// Apply the shader preset now.
+    fn apply_shaders(&mut self) {
+        if let Some(value) = self.shader_value() {
+            self.apply_option_now("glsl-shaders", &value);
+        }
+    }
+
+    /// Download (`true`) or remove the Anime4K pack, explicitly (THM-002).
+    pub fn shader_pack(&mut self, install: bool) {
+        if self.shader_pack.1 {
+            return;
+        }
+        self.shader_pack.1 = true;
+        self.settings_status = None;
+        self.shader_job = Some(install);
+    }
+
+    /// The pack job to start.
+    pub fn take_shader_job(&mut self) -> Option<bool> {
+        self.shader_job.take()
+    }
+
+    /// Run it on a thread of its own.
+    pub fn start_shader_job(
+        &self,
+        install: bool,
+        done: Box<dyn FnOnce(Result<bool, String>) + Send>,
+    ) {
+        let data = self.data_dir();
+        let proxy = self.services.config.network.proxy.clone();
+        let spawned = std::thread::Builder::new()
+            .name("shader-pack".into())
+            .spawn(move || {
+                let result = if install {
+                    nikomiru_online::http::Http::with_timeouts(
+                        &proxy,
+                        nikomiru_online::http::CONNECT_TIMEOUT,
+                        std::time::Duration::from_secs(300),
+                    )
+                    .and_then(|http| {
+                        nikomiru_online::shaders::install(
+                            &http,
+                            &data,
+                            &nikomiru_core::Cancel::new(),
+                        )
+                    })
+                    .map(|_| true)
+                    .map_err(|e| e.to_string())
+                } else {
+                    nikomiru_online::shaders::remove(&data)
+                        .map(|()| false)
+                        .map_err(|e| e.to_string())
+                };
+                done(result);
+            });
+        if let Err(e) = spawned {
+            tracing::error!("shader pack: {e}");
+        }
+    }
+
+    /// The pack job ended.
+    pub fn shader_pack_done(&mut self, result: Result<bool, String>) {
+        self.shader_pack.1 = false;
+        self.shader_pack.0 = nikomiru_online::shaders::installed(&self.data_dir());
+        match result {
+            Ok(installed) => {
+                if !installed && !self.services.config.player.shader_preset.is_empty() {
+                    // the preset's files are gone
+                    self.services.config.player.shader_preset.clear();
+                    if self.services.config_writable {
+                        self.config_save = Some(self.services.config.clone());
+                    }
+                }
+                self.apply_shaders();
+                let key = if installed {
+                    "settings-shaders-installed"
+                } else {
+                    "settings-shaders-removed"
+                };
+                self.settings_status = Some((self.tr(key, &[]), true));
+            }
+            Err(reason) => {
+                self.settings_status = Some((
+                    self.tr("settings-shaders-failed", &[("reason", reason)]),
+                    false,
+                ));
+            }
+        }
+    }
+
+    /// Install a pack from a local archive checked against `expected` (the
+    /// harness's offline test pack).
+    #[cfg(feature = "test-harness")]
+    pub fn shader_pack_from(
+        &mut self,
+        archive: &Path,
+        expected: (&str, u64),
+    ) -> Result<(), String> {
+        nikomiru_online::shaders::unpack(
+            archive,
+            &self.data_dir(),
+            expected,
+            &nikomiru_core::Cancel::new(),
+        )
+        .map_err(|e| e.to_string())?;
+        self.shader_pack.0 = nikomiru_online::shaders::installed(&self.data_dir());
+        Ok(())
+    }
+
+    /// The study language (LNG-001).
+    pub fn study_language(&self) -> String {
+        self.services.config.general.study_language.clone()
+    }
+
+    /// The study language or its profile changed (LNG-001, LNG-002): the
+    /// dictionaries, segmentation and readings follow at once, and so do the
+    /// words' statuses, after the writes queued for the old language.
+    fn switch_language(&mut self) {
+        let language = self.study_language();
+        let profile = self.services.config.language_profile();
+        self.wait_writes();
+        self.close_all_popups();
+        self.services.dictionaries.set_profile(
+            &language,
+            profile.dictionaries.clone(),
+            profile.segmentation == "words",
+        );
+        if let Some(library) = self.services.library.clone() {
+            library.set_active_language(&language);
+            match library.word_statuses_in(&language) {
+                Ok(marks) => self
+                    .words
+                    .set_statuses(marks.into_iter().map(|(k, m)| (k, m.status)).collect()),
+                Err(e) => tracing::warn!("reading the words' statuses: {e}"),
+            }
+            match library.anki_words_in(&language) {
+                Ok(anki) => self.words.set_anki(anki),
+                Err(e) => tracing::warn!("reading the words from Anki: {e}"),
+            }
+        }
+        self.status_undo = None;
+        // segmentations, counts and scores of the old language go
+        self.words.forget();
+        // the notebook and the exercises show the new language's
+        self.phrases.items.clear();
+        self.clozes.items.clear();
+        self.phrases_request(crate::phrases::Job::List);
+        self.cloze_request(crate::cloze::Job::List);
     }
 
     /// Waits until the library writes queued so far are done, so that a
@@ -7170,6 +9122,41 @@ impl Session {
         }
     }
 
+    /// Freeze an explicitly selected complete timeline, rejecting old list commands.
+    pub fn subtitle_selected_prepare(
+        &mut self,
+        version: u64,
+        indices: &[usize],
+        format: crate::subtitle_export::ExportFormat,
+    ) -> bool {
+        self.subtitle_export = None;
+        if version != self.sub_list_version {
+            return false;
+        }
+        match crate::subtitle_export::render(
+            self.subs.timeline().cues(),
+            indices,
+            self.subs.timeline().delay_ms,
+            !self.subs.incomplete,
+            format,
+            Some((
+                self.secondary.timeline().cues(),
+                self.secondary.timeline().delay_ms,
+                !self.secondary.incomplete,
+            )),
+            &self.tr("sub-html-translation", &[]),
+        ) {
+            Ok(text) => {
+                self.subtitle_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
     /// Write the frozen SRT atomically without changing the displayed source.
     pub fn subtitle_export_to(&mut self, path: &std::path::Path) {
         let Some(text) = self.subtitle_export.take() else {
@@ -7202,6 +9189,129 @@ impl Session {
             self.wait_writes();
             self.library_jobs
                 .push(crate::catalog::LibraryJob::ExportEncounters(uid, path));
+        }
+    }
+
+    /// Freeze an importable frequency dictionary before native save.
+    pub fn frequency_export_prepare(
+        &mut self,
+        source: &str,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.frequency_export = None;
+        match crate::word_export::frequency_zip(source, rows) {
+            Ok(bytes) => {
+                self.frequency_export = Some(bytes);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically save the frozen dictionary without installing it.
+    pub fn frequency_export_to(&mut self, path: &std::path::Path) {
+        let Some(bytes) = self.frequency_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, &bytes, 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+        }
+    }
+
+    /// Freeze exact sentence examples for a bounded set of primary vocabulary identities.
+    pub fn concordance_export_prepare(
+        &mut self,
+        version: u64,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.concordance_export = None;
+        if version != self.sub_list_version || self.subs.incomplete || !self.word_colors_on() {
+            return false;
+        }
+        match crate::word_export::concordance_tsv(
+            &self.words,
+            self.subs.timeline().cues(),
+            rows,
+            self.subs.timeline().delay_ms,
+        ) {
+            Ok(text) => {
+                self.concordance_export = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+    /// Atomically save the captured sentence report without re-reading source cues.
+    pub fn concordance_export_to(&mut self, path: &Path) {
+        let Some(text) = self.concordance_export.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(e) => self
+                .toasts
+                .push(self.tr("toast-words-export-failed", &[("reason", e.to_string())])),
+        }
+    }
+
+    /// Freeze the list at the click, before the native save dialog opens.
+    pub fn vocabulary_html_prepare(
+        &mut self,
+        source: &str,
+        rows: &[crate::words::ListedWord],
+    ) -> bool {
+        self.vocabulary_html = None;
+        let labels = [
+            "vocabulary-html-reading",
+            "word-status-unknown",
+            "word-status-learning",
+            "word-status-known",
+            "word-status-ignored",
+            "vocabulary-occurrences",
+            "subtitle-words-card",
+        ]
+        .map(|k| self.tr(k, &[]));
+        match crate::word_export::html_sheet(source, rows, &labels) {
+            Ok(text) => {
+                self.vocabulary_html = Some(text);
+                true
+            }
+            Err(key) => {
+                self.toasts.push(self.tr(key, &[]));
+                false
+            }
+        }
+    }
+
+    /// Atomically write the frozen local vocabulary, without status/history changes.
+    pub fn vocabulary_html_to(&mut self, path: &std::path::Path) {
+        let Some(text) = self.vocabulary_html.take() else {
+            return;
+        };
+        match nikomiru_core::fs::write_atomic(path, text.as_bytes(), 0o600) {
+            Ok(()) => self.toasts.push(self.tr(
+                "analysis-export-saved",
+                &[("path", path.display().to_string())],
+            )),
+            Err(error) => self.toasts.push(self.tr(
+                "toast-words-export-failed",
+                &[("reason", error.to_string())],
+            )),
         }
     }
 
@@ -7247,7 +9357,7 @@ impl Session {
             w.wait();
         }
         let written = library
-            .word_statuses()
+            .word_statuses_in(&self.study_language())
             .map_err(|e| e.to_string())
             .and_then(|marks| {
                 let list = nikomiru_library::words::write_list(&marks);
@@ -7302,37 +9412,77 @@ impl Session {
         reading: String,
         status: crate::words::WordStatus,
     ) {
-        self.words.set_status(&expression, &reading, status);
-        let changed_at = self.now_ms();
-        if let Some(w) = &self.writer {
-            let mark = nikomiru_library::words::WordMark { status, changed_at };
-            w.run(move |lib| {
-                if let Err(e) = lib.set_word_status(&expression, &reading, mark) {
-                    tracing::warn!("saving the status of {expression}: {e}");
-                }
-            });
+        let changes = vec![(expression, reading, status)];
+        if changes
+            .iter()
+            .any(|(e, r, s)| self.words.status(e, r) != *s)
+        {
+            self.status_undo = crate::words::StatusUndo::capture(&self.words, &changes);
         }
+        self.apply_word_statuses(changes);
     }
 
-    /// The learner set the status of many words at once, from the word
-    /// list (KNW-009): marked at once, saved in one transaction.
+    /// Change a bounded study selection together, remembering one reversible status snapshot.
     pub fn set_word_statuses(
         &mut self,
         words: Vec<(String, String)>,
         status: crate::words::WordStatus,
     ) {
-        for (expression, reading) in &words {
-            self.words.set_status(expression, reading, status);
+        let changes = words
+            .into_iter()
+            .map(|(e, r)| (e, r, status))
+            .collect::<Vec<_>>();
+        if changes
+            .iter()
+            .any(|(e, r, s)| self.words.status(e, r) != *s)
+        {
+            self.status_undo = crate::words::StatusUndo::capture(&self.words, &changes);
+        }
+        self.apply_word_statuses(changes);
+    }
+
+    fn apply_word_statuses(&mut self, changes: Vec<(String, String, crate::words::WordStatus)>) {
+        for (e, r, status) in &changes {
+            self.words.set_status(e, r, *status);
         }
         let changed_at = self.now_ms();
-        if let Some(w) = &self.writer {
-            let mark = nikomiru_library::words::WordMark { status, changed_at };
-            let marks: Vec<_> = words.into_iter().map(|(e, r)| (e, r, mark)).collect();
-            w.run(move |lib| {
-                if let Err(e) = lib.set_word_statuses(&marks) {
-                    tracing::warn!("saving the statuses of {} words: {e}", marks.len());
+        if let Some(writer) = &self.writer {
+            let marks = changes
+                .into_iter()
+                .map(|(e, r, status)| {
+                    (
+                        e,
+                        r,
+                        nikomiru_library::words::WordMark { status, changed_at },
+                    )
+                })
+                .collect::<Vec<_>>();
+            let language = self.study_language();
+            writer.run(move |lib| {
+                if let Err(e) = lib.set_word_statuses_in(&language, &marks) {
+                    tracing::warn!("saving word status changes: {e}");
                 }
             });
+        }
+    }
+
+    /// Whether the last status change can still be restored without overwriting other edits.
+    pub fn word_status_undo_available(&self) -> bool {
+        self.status_undo
+            .as_ref()
+            .is_some_and(|u| u.available(&self.words))
+    }
+
+    /// Restore the previous statuses once, guarded against changed dictionaries/statuses.
+    pub fn undo_word_statuses(&mut self) {
+        let Some(undo) = self.status_undo.take() else {
+            return;
+        };
+        if let Some(changes) = undo.restore(&self.words) {
+            self.apply_word_statuses(changes);
+        } else {
+            self.toasts
+                .push(self.tr("vocabulary-undo-unavailable", &[]));
         }
     }
 
@@ -7514,6 +9664,7 @@ impl Session {
     /// noted, the dictionaries and Anki are read again.
     pub fn setup_open(&mut self) {
         self.setup_page.open = true;
+        self.setup_inspect();
         if !self.services.config.general.setup_offered {
             self.services.config.general.setup_offered = true;
             if self.services.config_writable {
@@ -7548,8 +9699,35 @@ impl Session {
 
     /// The catalogue's dictionaries installed already (INS-002).
     pub fn setup_installed(&self) -> std::collections::BTreeSet<String> {
-        self.setup_page
-            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()))
+        let mut installed = self
+            .setup_page
+            .installed(self.dict_page.rows.iter().map(|(_, r)| r.name()));
+        installed.extend(
+            self.setup_page
+                .inventory
+                .iter()
+                .filter(|(_, s)| s.path.is_some())
+                .map(|(id, _)| id.clone()),
+        );
+        installed
+    }
+
+    fn setup_tool_paths(&self) -> crate::setup::ToolPaths {
+        let p = &self.services.config.paths;
+        crate::setup::ToolPaths {
+            pdftotext: p.pdftotext.clone(),
+            ffmpeg: p.ffmpeg.clone(),
+            yt_dlp: p.yt_dlp.clone(),
+            deno: p.deno.clone(),
+        }
+    }
+
+    /// Refresh the assistant's offline inventory, without starting a download.
+    pub fn setup_inspect(&mut self) {
+        if !self.setup_page.running {
+            self.setup_jobs
+                .push(crate::setup::SetupJob::Inspect(self.setup_tool_paths()));
+        }
     }
 
     /// "Install" (INS-001): what is ticked and not there yet.
@@ -7557,11 +9735,17 @@ impl Session {
         if self.setup_page.running {
             return;
         }
-        let plan = self.setup_page.plan(&self.setup_installed());
-        if plan.dictionaries.is_empty() && plan.audio.is_empty() {
+        let mut plan = self.setup_page.plan(&self.setup_installed());
+        plan.configured = self.setup_tool_paths();
+        if plan.dictionaries.is_empty() && plan.audio.is_empty() && plan.tools.is_empty() {
             return;
         }
-        for id in plan.dictionaries.iter().chain(&plan.audio) {
+        for id in plan
+            .dictionaries
+            .iter()
+            .chain(&plan.audio)
+            .chain(&plan.tools)
+        {
             self.setup_page.items.insert(id.clone(), ItemState::Waiting);
         }
         self.setup_page.running = true;
@@ -7588,6 +9772,33 @@ impl Session {
         use crate::setup::SetupEvent;
         self.setup_page.event(&event);
         match event {
+            SetupEvent::Tool { id, path } => {
+                let mut config = self.services.config.clone();
+                let path = path.to_string_lossy().into_owned();
+                match id.as_str() {
+                    "pdftotext" => config.paths.pdftotext = path,
+                    "ffmpeg" => config.paths.ffmpeg = path,
+                    "yt-dlp" => config.paths.yt_dlp = path,
+                    "deno" => config.paths.deno = path,
+                    _ => return,
+                }
+                self.settings_save(nikomiru_core::config::Section::Advanced, &config);
+                if self.services.config_writable {
+                    self.setup_saving.insert(id.clone());
+                    self.setup_page
+                        .items
+                        .insert(id, crate::setup::ItemState::Checking);
+                } else {
+                    let message = self.tr("settings-not-saved", &[]);
+                    self.setup_page
+                        .items
+                        .insert(id, crate::setup::ItemState::Failed(message.clone()));
+                    self.toasts.push(message);
+                }
+            }
+            SetupEvent::Model { .. } => {
+                self.books_page.ocr.installed = self.services.ocr.installed();
+            }
             SetupEvent::Dictionary { .. } => self.setup_next_import(),
             SetupEvent::Audio { path, .. } => self.setup_audio(&path),
             SetupEvent::Finished if !self.setup_page.busy() => {
@@ -7747,7 +9958,8 @@ impl Session {
     }
 
     /// A click on the time of a list row: playback goes to the cue.
-    pub fn seek_to_cue(&self, cue: usize) {
+    pub fn seek_to_cue(&mut self, cue: usize) {
+        self.end_replay();
         if cue < self.subs.timeline().cues().len() {
             let ms = self.subs.timeline().start_pos(cue);
             let _ = self.services.player.seek_absolute(ms as f64 / 1000.0);
@@ -7840,3 +10052,24 @@ mod tests {
         );
     }
 }
+
+#[path = "session_phrases.rs"]
+mod phrase_session;
+
+#[path = "session_cloze.rs"]
+mod cloze_session;
+
+#[path = "session_bank.rs"]
+mod bank_session;
+
+#[path = "session_batch.rs"]
+mod batch_session;
+
+#[path = "session_guided.rs"]
+mod guided_session;
+
+#[path = "session_reader.rs"]
+mod reader_session;
+
+#[path = "session_podcasts.rs"]
+pub(crate) mod podcast_session;

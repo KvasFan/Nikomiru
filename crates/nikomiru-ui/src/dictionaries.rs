@@ -90,6 +90,16 @@ pub type Done<T> = Box<dyn FnOnce(Result<T, String>) + Send>;
 
 /// The dictionaries, from the application. Errors are already translated.
 pub trait DictionaryService: Send {
+    /// Prepare exact owned-source examples on a bulk worker separate from interactive lookup.
+    fn sentence_bank(
+        &self,
+        request: crate::sentence_bank::Request,
+        cancel: Cancel,
+        done: Done<nikomiru_library::sentences::Batch>,
+    ) {
+        let _ = (request, cancel);
+        done(Err("dictionary service unavailable".into()));
+    }
     /// Count a whole local book on a worker separate from lookups and episodes.
     fn count_book(
         &self,
@@ -120,6 +130,11 @@ pub trait DictionaryService: Send {
         if !cancel.is_cancelled() {
             self.count_words(request, done);
         }
+    }
+    /// The study language and its profile changed (LNG-001): lookups,
+    /// segmentation and counts follow it from now on.
+    fn set_profile(&self, language: &str, dictionaries: Vec<String>, whole_words: bool) {
+        let _ = (language, dictionaries, whole_words);
     }
     /// Looks `text` up away from the UI thread; `done` gets the popup content.
     fn lookup(&self, text: String, done: Done<Reply>);

@@ -21,6 +21,8 @@ pub type Media = (String, Vec<u8>);
 /// A card made and not sent yet: what the `anki` worker sends to Anki.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepared {
+    /// Explicit literal fields, preserved through pending export.
+    pub field_overrides: BTreeMap<String, String>,
     /// The value of each placeholder but the media's (`compose::values`).
     pub values: BTreeMap<String, String>,
     /// The dictionaries' images.
@@ -50,6 +52,9 @@ pub struct Record {
     pub end_ms: i64,
     /// The `sourceId` of the card's link (ANK-050).
     pub source_id: String,
+    /// Stable batch operation identity, retained for later live-note reconciliation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_operation: Option<String>,
 }
 
 impl Record {
@@ -63,6 +68,7 @@ impl Record {
             start_ms,
             end_ms,
             source_id: source_id.to_string(),
+            batch_operation: None,
         }
     }
 }
@@ -78,6 +84,8 @@ struct CardFile {
     format: u32,
     /// When it was kept, in milliseconds since the epoch.
     created_ms: i64,
+    #[serde(default)]
+    field_overrides: BTreeMap<String, String>,
     values: BTreeMap<String, String>,
     /// The dictionaries' images, files of the folder.
     media: Vec<String>,
@@ -90,6 +98,9 @@ struct CardFile {
     /// Why its last send failed.
     #[serde(default)]
     problem: Option<String>,
+    /// A batch note may already exist; retry only exact-operation reconciliation.
+    #[serde(default)]
+    uncertain: bool,
 }
 
 /// The name of a card's folder: digits only.
@@ -153,6 +164,7 @@ pub fn keep(dir: &Path, p: &Prepared, anyway: bool, now: SystemTime) -> io::Resu
             created_ms: now
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX)),
+            field_overrides: p.field_overrides.clone(),
             values: p.values.clone(),
             media: p.media.iter().map(|(n, _)| n.clone()).collect(),
             audio: p.audio.as_ref().map(|(n, _)| n.clone()),
@@ -160,6 +172,7 @@ pub fn keep(dir: &Path, p: &Prepared, anyway: bool, now: SystemTime) -> io::Resu
             record: p.record.clone(),
             anyway,
             problem: None,
+            uncertain: false,
         };
         std::fs::write(part.join(CARD), serde_json::to_vec_pretty(&file)?)?;
         std::fs::rename(&part, dir.join(&id))
@@ -177,6 +190,22 @@ fn read(dir: &Path, id: &str) -> io::Result<CardFile> {
     }
     let folder = dir.join(id);
     let file: CardFile = serde_json::from_slice(&std::fs::read(folder.join(CARD))?)?;
+    if file
+        .record
+        .batch_operation
+        .as_ref()
+        .is_some_and(|id| !nikomiru_library::batches::valid_id(id))
+    {
+        return Err(invalid("batch operation identity"));
+    }
+    if let Some(operation) = &file.record.batch_operation
+        && (file.anyway || operation != &file.record.source_id)
+    {
+        return Err(invalid("batch operation metadata"));
+    }
+    if !nikomiru_core::mining_profiles::valid_fields(&file.field_overrides) {
+        return Err(invalid("composer fields"));
+    }
     if file.format > FORMAT {
         return Err(invalid(format!("format {}", file.format)));
     }
@@ -232,6 +261,7 @@ pub fn load(dir: &Path, id: &str) -> Result<(Prepared, bool), String> {
             .map_err(|e| format!("{name}: {e}"))
     };
     let prepared = Prepared {
+        field_overrides: file.field_overrides,
         values: file.values,
         media: file.media.iter().map(media).collect::<Result<_, _>>()?,
         audio: file.audio.as_ref().map(media).transpose()?,
@@ -251,7 +281,21 @@ pub fn forget(dir: &Path, id: &str) -> io::Result<()> {
 
 /// Notes why a card was not sent.
 pub fn note_problem(dir: &Path, id: &str, problem: &str) -> io::Result<()> {
+    note_problem_outcome(dir, id, problem, false)
+}
+/// Whether an earlier batch send might already have committed.
+pub fn uncertain(dir: &Path, id: &str) -> io::Result<bool> {
+    read(dir, id).map(|f| f.uncertain)
+}
+/// Preserve uncertainty monotonically until the prepared card is positively reconciled and removed.
+pub fn note_problem_outcome(
+    dir: &Path,
+    id: &str,
+    problem: &str,
+    uncertain: bool,
+) -> io::Result<()> {
     let mut file = read(dir, id)?;
+    file.uncertain |= uncertain;
     file.problem = Some(problem.to_string());
     let folder = dir.join(id);
     let part = folder.join(".card.json.part");
@@ -265,6 +309,7 @@ mod tests {
 
     fn card(word: &str, audio: &[u8]) -> Prepared {
         Prepared {
+            field_overrides: BTreeMap::from([("Extra".into(), "literal <text> {reading}".into())]),
             values: BTreeMap::from([
                 ("expression".to_string(), word.to_string()),
                 ("glossary".to_string(), "<ol><li>meal</li></ol>".to_string()),
@@ -279,6 +324,7 @@ mod tests {
                 uid: Some("video/a".into()),
                 start_ms: 1_000,
                 end_ms: 2_000,
+                batch_operation: None,
                 source_id: "s".into(),
             },
         }

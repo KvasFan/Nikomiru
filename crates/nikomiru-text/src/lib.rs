@@ -10,12 +10,15 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod cloze;
 pub mod count;
 pub mod filename;
 pub mod furigana;
 pub mod hangul;
 pub mod kana;
 mod kanji_variants;
+/// Literal library text search.
+pub mod literal;
 pub mod scan;
 pub mod sentence;
 pub mod variants;

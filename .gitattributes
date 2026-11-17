@@ -1,3 +1,6 @@
 # The vendored Lapis files must stay byte for byte as upstream (ANK-010).
 assets/anki/lapis/*.html -text
 assets/anki/lapis/*.css -text
+
+# PDF cross-reference offsets and fixed-width records require exact bytes.
+tests/fixtures/documents/*.pdf binary

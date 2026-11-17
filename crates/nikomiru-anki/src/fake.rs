@@ -42,6 +42,8 @@ pub enum Behaviour {
     /// Applies the request to the collection, then closes without a reply: the
     /// reply was lost after the change.
     ApplyThenClose,
+    /// Delay a successful applied response, allowing deterministic cancellation while a request is in flight.
+    ApplyAfter(Duration),
     /// Reads the request and never replies.
     Hang,
 }
@@ -383,6 +385,11 @@ fn serve(shared: &Shared, mut stream: TcpStream) {
             let _ = answer(shared, &request);
             let _ = stream.shutdown(Shutdown::Both);
         }
+        Some(Behaviour::ApplyAfter(delay)) => {
+            std::thread::sleep(delay);
+            let reply = answer(shared, &request);
+            respond(shared, &mut stream, 200, &reply.to_string());
+        }
         Some(Behaviour::Hang) => {
             // until the client gives up
             let mut sink = [0u8; 64];
@@ -687,6 +694,9 @@ impl Collection {
     }
 
     fn term_matches(&self, note: &StoredNote, term: &str) -> bool {
+        if let Some(tag) = term.strip_prefix("tag:") {
+            return note.tags.iter().any(|t| t.eq_ignore_ascii_case(tag));
+        }
         if let Some(deck) = term.strip_prefix("deck:") {
             return Self::in_deck(note, deck);
         }

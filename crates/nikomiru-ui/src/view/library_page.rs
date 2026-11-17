@@ -335,6 +335,17 @@ pub(crate) fn draw(
                 }
             });
         });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(tr(s, "recall-history")).clicked() {
+                out.push(Command::RecallHistoryOpen);
+            }
+            if ui.button(tr(s, "phrases-title")).clicked() {
+                out.push(Command::PhrasesOpen);
+            }
+            if ui.button(tr(s, "recall-load")).clicked() {
+                out.push(Command::RecallLoad);
+            }
+        });
         if let Some((text, ok)) = &s.page.status {
             ui.add(
                 egui::Label::new(RichText::new(text).color(if *ok {

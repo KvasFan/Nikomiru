@@ -37,7 +37,8 @@ pub(crate) fn show(
     let label = ui.label(tr("books-words-search", &[]));
     ui.add(egui::TextEdit::singleline(&mut state.query).desired_width(320.0))
         .labelled_by(label.id);
-    let labels = word_list::Labels::translated(tr, state.words.ticked.len());
+    let mut labels = word_list::Labels::translated(tr, state.words.ticked.len());
+    labels.source = title.to_string();
 
     ui.horizontal(|ui| {
         let shown = word_list::filtered(words, &state.query, &state.words);
@@ -66,7 +67,7 @@ pub(crate) fn show(
             out.push(Command::AnalysisWordsExport(selected));
         }
     });
-    word_list::show(ui, words, &state.query, &labels, &mut state.words, out);
+    word_list::show(ui, words, &mut state.query, &labels, &mut state.words, out);
     close
 }
 

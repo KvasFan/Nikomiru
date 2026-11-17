@@ -87,9 +87,77 @@ pub struct Config {
     /// `[[servers]]`: the media servers added (SRV-001).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerConfig>,
+    /// `[updates]`: the release channel (UPD-001).
+    pub updates: UpdatesConfig,
+    /// `[languages.<code>]`: the study-language profiles (LNG-001).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub languages: BTreeMap<String, LanguageProfile>,
     /// Sections this version does not know, kept as they are.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// The study languages: those with transform tables (LNG-001).
+pub const STUDY_LANGUAGES: &[&str] = &[
+    "ar", "de", "el", "en", "eo", "es", "eu", "fr", "ga", "grc", "ja", "ka", "ko", "la", "sga",
+    "sq", "tl", "yi",
+];
+
+/// `[languages.<code>]`: how a study language is read (LNG-001).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanguageProfile {
+    /// The dictionaries used, by id; empty: automatic.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dictionaries: Vec<String>,
+    /// `dictionary` (longest match) or `words` (whole words).
+    pub segmentation: String,
+    /// Readings are drawn over the words.
+    pub readings: bool,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for LanguageProfile {
+    fn default() -> Self {
+        Self {
+            dictionaries: Vec::new(),
+            segmentation: "dictionary".into(),
+            readings: true,
+            other: toml::Table::new(),
+        }
+    }
+}
+
+impl LanguageProfile {
+    /// Profiles at most.
+    pub const MAX_PROFILES: usize = 32;
+    /// Dictionaries named by a profile at most.
+    pub const MAX_DICTIONARIES: usize = 256;
+
+    fn bounded(mut self) -> Self {
+        if !matches!(self.segmentation.as_str(), "dictionary" | "words") {
+            self.segmentation = "dictionary".into();
+        }
+        self.dictionaries
+            .retain(|id| !id.is_empty() && id.len() <= 128 && !id.chars().any(char::is_control));
+        self.dictionaries.truncate(Self::MAX_DICTIONARIES);
+        let mut seen = std::collections::HashSet::new();
+        self.dictionaries.retain(|id| seen.insert(id.clone()));
+        self
+    }
+}
+
+impl Config {
+    /// The active study language's profile (LNG-001): its own, or the
+    /// defaults.
+    pub fn language_profile(&self) -> LanguageProfile {
+        self.languages
+            .get(&self.general.study_language)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 /// `[general]`.
@@ -102,6 +170,10 @@ pub struct General {
     pub theme: String,
     /// The accent color, `#rrggbb` (SET-003).
     pub accent: String,
+    /// A named palette (THM-001): empty for the default, `oled` or
+    /// `high-contrast`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub palette: String,
     /// The interface scale in percent (SET-005), on top of the display's.
     pub ui_scale: u16,
     /// Language being studied (BCP 47), e.g. `"ja"`.
@@ -207,9 +279,65 @@ pub struct PlayerConfig {
     pub fit: String,
     /// Speed between subtitle lines (PLY-022): 0 off, or 2–4×.
     pub gap_speed: u8,
+    /// A shader preset (THM-003): empty for none, `anime4k-fast` or
+    /// `anime4k-quality`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub shader_preset: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+/// Persistent subtitle study filters without source/selection identities (SUB-052).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SubtitleStudyPreset {
+    /// Source, shortest, longest or shortest-text display order.
+    pub order: u8,
+    /// Match the whole normalised caption rather than contained search terms.
+    pub exact: bool,
+    /// Neighbouring cues around exact examples, zero through two.
+    pub context: u8,
+    /// Unique display name, at most 64 bytes.
+    pub name: String,
+    /// Search input, at most 4096 bytes.
+    pub query: String,
+    /// All, new-word or plus-one line choice.
+    pub filter: u8,
+    /// Optional effective start bound.
+    pub from: Option<i64>,
+    /// Optional effective end bound.
+    pub to: Option<i64>,
+    /// Minimum characters per second.
+    pub min_speed: Option<u32>,
+    /// Maximum characters per second.
+    pub max_speed: Option<u32>,
+    /// Minimum milliseconds.
+    pub min_duration: Option<u64>,
+    /// Maximum milliseconds.
+    pub max_duration: Option<u64>,
+    /// Minimum non-whitespace scalars.
+    pub min_text: Option<u32>,
+    /// Maximum non-whitespace scalars.
+    pub max_text: Option<u32>,
+    /// Keep the first repeated caption only.
+    pub unique: bool,
+    /// Any, single-line or multiline captions.
+    pub shape: u8,
+}
+impl SubtitleStudyPreset {
+    /// Reject invalid names, queries and choice indices.
+    pub fn valid(&self) -> bool {
+        !self.name.trim().is_empty()
+            && self.name == self.name.trim()
+            && self.name.len() <= 64
+            && !self.name.chars().any(char::is_control)
+            && self.query.len() <= 4096
+            && self.order < 4
+            && self.context <= 2
+            && self.filter < 3
+            && self.shape < 3
+    }
 }
 
 /// `[subtitles]` (SUB-008, SUB-010, SUB-014, SUB-021…023, LKP-051, LKP-052,
@@ -217,6 +345,8 @@ pub struct PlayerConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SubtitlesConfig {
+    /// Explicit named subtitle study snapshots, at most sixteen.
+    pub study_presets: Vec<SubtitleStudyPreset>,
     /// Languages of the subtitles chosen automatically, in order (SUB-008).
     pub preferred_languages: Vec<String>,
     /// Font size in pixels for a video 1080 px high (SUB-010).
@@ -309,6 +439,11 @@ impl SubtitlesConfig {
     fn bounded(self) -> Self {
         let d = Self::default();
         let mut c = self;
+        let mut names = std::collections::HashSet::new();
+        c.study_presets
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        c.study_presets.truncate(16);
+
         if !(8.0..=200.0).contains(&c.font_size) {
             c.font_size = d.font_size;
         }
@@ -354,6 +489,7 @@ impl SubtitlesConfig {
 impl Default for SubtitlesConfig {
     fn default() -> Self {
         Self {
+            study_presets: Vec::new(),
             preferred_languages: vec!["ja".into(), "jpn".into()],
             font_size: 36.0,
             font: String::new(),
@@ -389,10 +525,120 @@ impl Default for SubtitlesConfig {
     }
 }
 
+/// A bounded, named vocabulary filter snapshot (KNW-041).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StudyPreset {
+    /// Optional occurrence coverage percentage, 1 through 100.
+    pub coverage_target: Option<u8>,
+    /// Any, distinct nonempty reading, or no distinct reading.
+    pub reading_filter: u8,
+    /// Inclusive non-whitespace scalar minimum length.
+    pub min_length: usize,
+    /// Optional inclusive scalar maximum length.
+    pub max_length: Option<usize>,
+    /// Any script, kanji, kana or Latin presence.
+    pub script: u8,
+    /// Unique display name.
+    pub name: String,
+    /// Normalised search input.
+    pub query: String,
+    /// Keep only new or learning words.
+    pub new_only: bool,
+    /// Match complete fields.
+    pub exact: bool,
+    /// Unknown, learning, known or ignored index.
+    pub status: Option<u8>,
+    /// Any, with or without card index.
+    pub card: u8,
+    /// Frequency descending, ascending, expression or reading index.
+    pub order: u8,
+    /// Inclusive minimum occurrence count.
+    pub min_count: usize,
+    /// Optional inclusive maximum occurrence count.
+    pub max_count: Option<usize>,
+}
+
+impl StudyPreset {
+    /// Reject invalid snapshots instead of silently changing their meaning.
+    pub fn valid(&self) -> bool {
+        !self.name.trim().is_empty()
+            && self.name == self.name.trim()
+            && self.name.len() <= 64
+            && !self.name.chars().any(char::is_control)
+            && self.query.len() <= 4096
+            && self.status.is_none_or(|s| s < 4)
+            && self.coverage_target.is_none_or(|p| (1..=100).contains(&p))
+            && self.reading_filter < 3
+            && self.script < 4
+            && self.card < 3
+            && self.order < 4
+    }
+}
+
+/// Explicit aggregate recall summary; contains no captured words (KNW-062).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecallSummary {
+    /// Canonical unique round identity, retained by portable resume files.
+    pub id: String,
+    /// Bounded display title.
+    pub source: String,
+    /// Local recording date and time, YYYY-MM-DD HH:MM.
+    pub recorded: String,
+    /// Number of unique captured words.
+    pub cards: usize,
+    /// Cards last rated Good.
+    pub good: usize,
+    /// Total Again votes.
+    pub again: usize,
+    /// Cards last skipped.
+    pub skipped: usize,
+    /// Total self-rated attempts.
+    pub attempts: usize,
+}
+impl RecallSummary {
+    /// Validate aggregate bounds before accepting a local history item.
+    pub fn valid(&self) -> bool {
+        let id = self.id.as_bytes();
+        let uuid = id.len() == 36
+            && id.iter().enumerate().all(|(i, c)| {
+                if [8, 13, 18, 23].contains(&i) {
+                    *c == b'-'
+                } else {
+                    c.is_ascii_digit() || (b'a'..=b'f').contains(c)
+                }
+            });
+        let date = self.recorded.as_bytes();
+        let date_valid = date.len() == 16
+            && date.iter().enumerate().all(|(i, c)| match i {
+                4 | 7 => *c == b'-',
+                10 => *c == b' ',
+                13 => *c == b':',
+                _ => c.is_ascii_digit(),
+            });
+        uuid && date_valid
+            && self.source.chars().count() <= 256
+            && !self.source.chars().any(char::is_control)
+            && (1..=1000).contains(&self.cards)
+            && self.good <= self.cards
+            && self.skipped <= self.cards - self.good
+            && self.attempts <= self.cards * 3
+            && self.again <= self.attempts
+            && self.good <= self.attempts
+    }
+}
+
 /// `[lookup]` (LKP-035, POP-003).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LookupConfig {
+    /// Optional pause-transition lookup: `off`, `unknown` or independent `kanji` (GDL-001).
+    pub pause_lookup: String,
+    /// Latest one hundred explicitly recorded recall summaries.
+    pub recall_history: Vec<RecallSummary>,
+    /// Explicit named study filters, at most sixteen.
+    pub study_presets: Vec<StudyPreset>,
     /// Headword groups in a popup (LKP-035), 1–50.
     pub max_results: usize,
     /// Look words up on hover without holding Shift (POP-003).
@@ -408,7 +654,10 @@ pub struct LookupConfig {
 impl Default for LookupConfig {
     fn default() -> Self {
         Self {
+            pause_lookup: "off".into(),
             max_results: 10,
+            recall_history: Vec::new(),
+            study_presets: Vec::new(),
             hover_without_modifier: false,
             resume_on_leave: true,
             other: toml::Table::new(),
@@ -504,6 +753,12 @@ pub struct AnkiConfig {
     /// Note type → field → template (ANK-020). A Lapis-like note type without
     /// a mapping gets the defaults of ANK-012.
     pub field_mapping: BTreeMap<String, BTreeMap<String, String>>,
+    /// Named credential-free mining snapshots (MCP-001).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<crate::mining_profiles::MiningProfile>,
+    /// Last explicitly applied profile; edited values may differ from its snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_profile: Option<String>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -525,6 +780,17 @@ impl AnkiConfig {
 
     fn bounded(mut self) -> Self {
         let defaults = Self::default();
+        let mut names = std::collections::HashSet::new();
+        self.profiles
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        self.profiles.truncate(16);
+        if self
+            .active_profile
+            .as_ref()
+            .is_some_and(|n| !self.profiles.iter().any(|p| &p.name == n))
+        {
+            self.active_profile = None;
+        }
         self.audio_pad_head_ms = self.audio_pad_head_ms.min(Self::MAX_PAD_MS);
         self.audio_pad_tail_ms = self.audio_pad_tail_ms.min(Self::MAX_PAD_MS);
         self.audio_quality_level = self.audio_quality_level.min(2);
@@ -575,6 +841,10 @@ pub struct BooksConfig {
     pub vertical: Option<bool>,
     /// Manga show two pages side by side (MNG-002).
     pub double_pages: bool,
+    /// Horizontal reading mode: `scroll` (also when empty), `pages` or
+    /// `sentence` (RDR-004).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub mode: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -638,6 +908,26 @@ impl Default for HookerConfig {
         Self {
             url: "ws://127.0.0.1:6677".into(),
             clipboard: false,
+            other: toml::Table::new(),
+        }
+    }
+}
+
+/// `[updates]` (UPD-001): Nikomiru looks for updates only when asked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdatesConfig {
+    /// `stable` or `beta`.
+    pub channel: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self {
+            channel: "stable".into(),
             other: toml::Table::new(),
         }
     }
@@ -930,6 +1220,8 @@ impl Default for AnkiConfig {
             image_quality_level: 1,
             tags: Vec::new(),
             field_mapping: BTreeMap::new(),
+            profiles: Vec::new(),
+            active_profile: None,
             other: toml::Table::new(),
         }
     }
@@ -939,9 +1231,13 @@ impl Default for AnkiConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PathsConfig {
+    /// Optional Poppler pdftotext executable/directory; empty uses NIKOMIRU_PDFTOTEXT, then PATH.
+    pub pdftotext: String,
     /// The yt-dlp executable, or its folder; empty selects NIKOMIRU_YT_DLP,
     /// then PATH. Looked up only for an explicit web-video open (PLY-023).
     pub yt_dlp: String,
+    /// Optional Deno executable/folder for yt-dlp bundled JavaScript challenges.
+    pub deno: String,
     /// The ffmpeg executable, or its folder; empty = `NIKOMIRU_FFMPEG`, then
     /// `PATH` (EXT-001). ffprobe is looked for next to it.
     pub ffmpeg: String,
@@ -956,6 +1252,7 @@ impl Default for General {
             ui_language: "system".into(),
             theme: "system".into(),
             accent: Self::ACCENT.into(),
+            palette: String::new(),
             ui_scale: 100,
             first_steps: true,
             setup_offered: false,
@@ -979,6 +1276,7 @@ impl Default for PlayerConfig {
             time_remaining: false,
             fit: "contain".into(),
             gap_speed: 0,
+            shader_preset: String::new(),
             other: toml::Table::new(),
         }
     }
@@ -1008,6 +1306,8 @@ impl Default for Config {
             books: BooksConfig::default(),
             review: ReviewConfig::default(),
             servers: Vec::new(),
+            languages: BTreeMap::new(),
+            updates: UpdatesConfig::default(),
             other: toml::Table::new(),
         }
     }
@@ -1076,10 +1376,52 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        // UPD-001
+        if !matches!(c.updates.channel.as_str(), "stable" | "beta") {
+            c.updates.channel = "stable".into();
+        }
+        // THM-001, THM-003
+        if !matches!(c.general.palette.as_str(), "" | "oled" | "high-contrast") {
+            c.general.palette = String::new();
+        }
+        if !matches!(
+            c.player.shader_preset.as_str(),
+            "" | "anime4k-fast" | "anime4k-quality"
+        ) {
+            c.player.shader_preset = String::new();
+        }
+        // LNG-001
+        if !STUDY_LANGUAGES.contains(&c.general.study_language.as_str()) {
+            c.general.study_language = "ja".into();
+        }
+        c.languages = std::mem::take(&mut c.languages)
+            .into_iter()
+            .filter(|(code, _)| STUDY_LANGUAGES.contains(&code.as_str()))
+            .take(LanguageProfile::MAX_PROFILES)
+            .map(|(code, p)| (code, p.bounded()))
+            .collect();
         if !(2..=4).contains(&c.player.gap_speed) {
             c.player.gap_speed = 0;
         }
         c.lookup.max_results = c.lookup.max_results.clamp(1, 50);
+        if !matches!(c.lookup.pause_lookup.as_str(), "off" | "unknown" | "kanji") {
+            c.lookup.pause_lookup = "off".into();
+        }
+        if !matches!(c.books.mode.as_str(), "" | "scroll" | "pages" | "sentence") {
+            c.books.mode = String::new();
+        }
+        let mut names = std::collections::HashSet::new();
+        c.lookup
+            .study_presets
+            .retain(|p| p.valid() && names.insert(p.name.clone()));
+        c.lookup.study_presets.truncate(16);
+        let mut ids = std::collections::HashSet::new();
+        c.lookup.recall_history.reverse();
+        c.lookup
+            .recall_history
+            .retain(|p| p.valid() && ids.insert(p.id.clone()));
+        c.lookup.recall_history.truncate(100);
+        c.lookup.recall_history.reverse();
         c.subtitles = c.subtitles.bounded();
         if !PlayerConfig::FITS.contains(&c.player.fit.as_str()) {
             c.player.fit = PlayerConfig::default().fit;
@@ -1159,10 +1501,12 @@ impl Config {
         match section {
             Section::General => {
                 self.general = from.general.clone();
+                self.languages = from.languages.clone();
                 self.player.seek_seconds = from.player.seek_seconds;
                 self.player.auto_next = from.player.auto_next;
                 self.player.fit = from.player.fit.clone();
                 self.player.gap_speed = from.player.gap_speed;
+                self.player.shader_preset = from.player.shader_preset.clone();
             }
             Section::Subtitles => self.subtitles = from.subtitles.clone(),
             Section::Lookup => {
@@ -1200,6 +1544,7 @@ impl Config {
                 self.player.auto_next = d.player.auto_next;
                 self.player.fit = d.player.fit;
                 self.player.gap_speed = d.player.gap_speed;
+                self.player.shader_preset = d.player.shader_preset;
             }
             Section::Subtitles => {
                 let other = std::mem::take(&mut self.subtitles.other);
@@ -1501,6 +1846,72 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    // T-LNG-001, T-LNG-004: profiles roundtrip within bounds; invalid ones fall back.
+    #[test]
+    fn language_profiles_are_bounded() {
+        let c = Config::from_toml("").unwrap();
+        assert_eq!(c.general.study_language, "ja");
+        assert_eq!(c.language_profile(), LanguageProfile::default());
+        let (c, bad) = Config::parse(
+            "[general]\nstudy_language='en'\n[languages.en]\ndictionaries=['a','a','']\nsegmentation='words'\nreadings=false\n[languages.xx]\nsegmentation='words'\n[languages.fr]\nsegmentation='nonsense'\n",
+        )
+        .unwrap();
+        assert!(bad.is_empty(), "{bad:?}");
+        assert_eq!(c.general.study_language, "en");
+        let en = c.language_profile();
+        assert_eq!(en.dictionaries, ["a"]);
+        assert_eq!(en.segmentation, "words");
+        assert!(!en.readings);
+        assert!(!c.languages.contains_key("xx"), "not a study language");
+        assert_eq!(c.languages["fr"].segmentation, "dictionary");
+        let text = c.to_text().unwrap();
+        assert_eq!(Config::from_toml(&text).unwrap(), c);
+        assert_eq!(
+            Config::from_toml("[general]\nstudy_language='zz'")
+                .unwrap()
+                .general
+                .study_language,
+            "ja"
+        );
+    }
+
+    // T-RDR-004: the reading mode roundtrips; old and invalid values scroll.
+    #[test]
+    fn reading_modes_are_explicit() {
+        assert_eq!(Config::from_toml("[books]").unwrap().books.mode, "");
+        for mode in ["scroll", "pages", "sentence"] {
+            let (config, bad) = Config::parse(&format!("[books]\nmode='{mode}'")).unwrap();
+            assert!(bad.is_empty());
+            let text = config.to_text().unwrap();
+            assert_eq!(Config::parse(&text).unwrap().0.books.mode, mode);
+        }
+        assert_eq!(Config::parse("[books]\nmode='x'").unwrap().0.books.mode, "");
+    }
+
+    // T-GDL-001, T-GDL-004: old configurations stay off; the explicit rule roundtrips without transient key state.
+    #[test]
+    fn guided_pause_rules_are_explicit_and_legacy_defaults_remain_off() {
+        assert_eq!(
+            Config::from_toml("[lookup]").unwrap().lookup.pause_lookup,
+            "off"
+        );
+        for rule in ["off", "unknown", "kanji"] {
+            let (config, bad) = Config::parse(&format!("[lookup]\npause_lookup='{rule}'")).unwrap();
+            assert!(bad.is_empty());
+            let text = config.to_text().unwrap();
+            assert_eq!(Config::parse(&text).unwrap().0.lookup.pause_lookup, rule);
+            assert!(!text.contains("translation_hold"));
+        }
+        assert_eq!(
+            Config::parse("[lookup]\npause_lookup='invalid'")
+                .unwrap()
+                .0
+                .lookup
+                .pause_lookup,
+            "off"
+        );
+    }
 
     #[test]
     fn missing_file_gives_defaults() {
@@ -2101,5 +2512,178 @@ enabled = false
         }
         assert!(!locked.join(".nikomiru-write-check").exists());
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod study_preset_tests {
+    use super::*;
+    // T-KNW-041: restart round-trip and invalid/duplicate/bounded snapshots.
+    #[test]
+    fn named_presets_round_trip_and_bound() {
+        let p = StudyPreset {
+            name: "Listening".into(),
+            query: "猫".into(),
+            exact: true,
+            ..Default::default()
+        };
+        let mut c = Config::default();
+        c.lookup.study_presets = vec![p.clone(), p.clone(), StudyPreset::default()];
+        let text = toml::to_string(&c).unwrap();
+        let read = Config::from_toml(&text).unwrap();
+        assert_eq!(read.lookup.study_presets, vec![p.clone()]);
+        assert!(p.valid());
+        assert!(
+            !StudyPreset {
+                name: " x ".into(),
+                ..p.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !StudyPreset {
+                query: "x".repeat(4097),
+                ..p.clone()
+            }
+            .valid()
+        );
+        c.lookup.study_presets = (0..20)
+            .map(|i| StudyPreset {
+                name: i.to_string(),
+                ..p.clone()
+            })
+            .collect();
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .lookup
+                .study_presets
+                .len(),
+            16
+        );
+    }
+}
+
+#[cfg(test)]
+mod subtitle_preset_tests {
+    use super::*;
+    // T-SUB-052: configuration restart, choice validation and bounded deduplication.
+    #[test]
+    fn subtitle_study_presets_round_trip_and_bound() {
+        let p = SubtitleStudyPreset {
+            name: "Listening".into(),
+            query: "猫".into(),
+            unique: true,
+            min_text: Some(2),
+            from: Some(1234),
+            shape: 2,
+            ..Default::default()
+        };
+        let mut c = Config::default();
+        c.subtitles.study_presets = vec![p.clone(), p.clone(), SubtitleStudyPreset::default()];
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .subtitles
+                .study_presets
+                .as_slice(),
+            std::slice::from_ref(&p)
+        );
+        assert!(
+            !SubtitleStudyPreset {
+                shape: 3,
+                ..p.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !SubtitleStudyPreset {
+                query: "x".repeat(4097),
+                ..p.clone()
+            }
+            .valid()
+        );
+        c.subtitles.study_presets = (0..20)
+            .map(|i| SubtitleStudyPreset {
+                name: i.to_string(),
+                ..p.clone()
+            })
+            .collect();
+        assert_eq!(
+            Config::from_toml(&toml::to_string(&c).unwrap())
+                .unwrap()
+                .subtitles
+                .study_presets
+                .len(),
+            16
+        );
+    }
+}
+
+#[cfg(test)]
+mod recall_history_tests {
+    use super::*;
+    // T-KNW-062: local summaries round-trip, retain the latest hundred and deduplicate stable round identities.
+    #[test]
+    fn recall_history_keeps_only_valid_recent_unique_aggregates() {
+        let row = RecallSummary {
+            id: "00000000-0000-0000-0000-000000000001".into(),
+            source: "Study".into(),
+            recorded: "2026-11-15 10:30".into(),
+            cards: 2,
+            good: 1,
+            again: 1,
+            skipped: 1,
+            attempts: 2,
+        };
+        assert!(row.valid());
+        let mut c = Config::default();
+        c.lookup.recall_history = vec![row.clone(), row.clone(), RecallSummary::default()];
+        let read = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(read.lookup.recall_history, vec![row.clone()]);
+        c.lookup.recall_history = (0..105)
+            .map(|i| RecallSummary {
+                id: format!("00000000-0000-0000-0000-{i:012x}"),
+                ..row.clone()
+            })
+            .collect();
+        let read = Config::from_toml(&toml::to_string(&c).unwrap()).unwrap();
+        assert_eq!(read.lookup.recall_history.len(), 100);
+        assert!(read.lookup.recall_history[0].id.ends_with("000000000005"));
+        assert!(
+            !RecallSummary {
+                cards: 1001,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                attempts: 7,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                skipped: 2,
+                ..row.clone()
+            }
+            .valid()
+        );
+        assert!(
+            !RecallSummary {
+                source: "x\n".into(),
+                ..row
+            }
+            .valid()
+        );
+        assert!(
+            Config::from_toml("[lookup]\nmax_results=10")
+                .unwrap()
+                .lookup
+                .recall_history
+                .is_empty()
+        );
     }
 }

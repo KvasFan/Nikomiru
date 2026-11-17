@@ -530,6 +530,14 @@ impl Draw<'_> {
                 anchor: anchor(rect),
             }),
             Target::External(url) => self.out.push(Command::OpenExternal(url.clone())),
+            // DIC-038: only a sound read from the dictionary plays
+            Target::Sound {
+                path,
+                bytes: Some(bytes),
+            } => self
+                .out
+                .push(Command::DictionarySound(bytes.clone(), path.clone())),
+            Target::Sound { bytes: None, .. } => {}
         }
     }
 
@@ -1087,6 +1095,15 @@ fn entry(
             ui.with_layout(Layout::left_to_right(Align::TOP), |ui| headword(ui, e));
         });
     });
+    if ui.small_button(d.tr("bank-examples")).clicked() {
+        d.out.push(Command::BankExamples(
+            e.expression.clone(),
+            e.reading.clone(),
+        ));
+    }
+    if ui.small_button(d.tr("batch-add-lookup")).clicked() {
+        d.out.push(Command::BatchAddLookup(card.level, k));
+    }
     // KNW-001: what the learner knows of the word, to change
     if let Some(status_of) = d.word_status {
         let now = status_of(&e.expression, &e.reading);
@@ -2012,6 +2029,8 @@ mod tests {
                 dictionary: "JM".into(),
                 expanded: true,
                 glossaries: vec![Glossary {
+                    sense: None,
+                    summary: String::new(),
                     tags: Vec::new(),
                     blocks: structured::render(&glossary, &Sheet::default()),
                 }],

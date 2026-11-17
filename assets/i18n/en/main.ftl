@@ -193,7 +193,7 @@ settings-lookup-hover = Look words up on hover, without Shift
 settings-lookup-resume = Resume playback when the pointer leaves the popup
 settings-ffmpeg = ffmpeg program
 settings-ffmpeg-hint = empty: ffmpeg from PATH
-settings-next-start = A change of the ffmpeg program takes effect from the next start of Nikomiru.
+settings-next-start = Tool path changes apply to subsequent operations without restarting Nikomiru.
 settings-folders = Files and folders
 settings-config-file = Settings file
 settings-logs = Logs
@@ -744,7 +744,7 @@ stats-delete-session = Delete the session of { $date }, { $name }
 settings-servers = Media servers
 servers-added = Servers added
 servers-none = No server yet. Nikomiru connects to one only after you add it.
-servers-add-jellyfin = Add a Jellyfin server
+servers-add-jellyfin = Add a Jellyfin or Emby server
 servers-name = Name
 servers-address = Address
 servers-address-hint = http://192.168.1.10:8096
@@ -806,10 +806,10 @@ hooker-no-clipboard = No program to read the clipboard: install wl-paste or xcli
 books-title = Books
 books-add = Add a book or manga…
 books-folder = Add a folder of pages…
-books-none = No book yet. Add an EPUB, a CBZ or an HTML page: its file stays where it is. Or open a web page by its address.
+books-none = No book yet. Add an EPUB, manga, HTML, TXT, Markdown, HTMLZ, RTF, DOCX or text-layer PDF, paste text, or open a web page by its address. Original files stay where they are.
 books-audiobook = Open an audiobook…
 books-audio-filter = Audio files
-books-filter = EPUB books, CBZ manga and HTML pages
+books-filter = Books, manga, HTML/TXT/Markdown, Mokuro, HTMLZ/RTF/DOCX/PDF
 books-remove = Remove { $title }
 books-back = ← Books
 books-vertical = Vertical
@@ -948,10 +948,10 @@ books-listen = Listen from here
 # Setup assistant (INS-001…INS-006)
 setup-title = Setup assistant
 setup-close = Close
-setup-open = Set up dictionaries, audio and cards…
-setup-open-hint = Downloads free dictionaries and word audio, and sets up how cards are made, as on the first start.
-setup-first-steps = Dictionaries, word audio and cards in one place:
-setup-intro = Choose what to install. Nothing is downloaded until you press Install; downloads go on while you use Nikomiru, and resume after a restart.
+setup-open = Configure dictionaries, audio, cards and tools…
+setup-open-hint = Download free dictionaries, word audio and support tools, and choose how cards are made.
+setup-first-steps = Dictionaries, word audio, cards and support tools in one place:
+setup-intro = Choose what to install. Nothing is downloaded until you press Install; downloads continue while you use Nikomiru. Incomplete support-tool downloads restart when you try again.
 setup-dictionaries = Dictionaries
 setup-dictionaries-hint = Downloaded from where their makers publish them, then imported as a file you chose would be.
 setup-license-unstated = terms of its source, not stated
@@ -1099,3 +1099,577 @@ study-report-export = Export analysed summaries…
 study-report-empty = No completed analyses are available for this report.
 study-report-saved = Comprehension report saved to { $path }.
 study-report-failed = The report could not be saved: { $reason }
+
+# Selected private support tools (INS-007).
+setup-tools = Support tools
+setup-tools-hint = Select the tools to install. Existing working tools are reused. yt-dlp also requires FFmpeg and Deno. Downloads are checked and installed for this application without administrator privileges.
+setup-runtime-ready = Playback, graphics and TLS libraries are provided by the application package or operating system.
+setup-tools-refresh = Check installed tools
+setup-tool-required = Required by the selection
+setup-tool-available = Available locally; will be reused
+setup-tool-model = Local OCR model
+setup-tool-checking = Extracting and checking…
+setup-tool-unsupported = No installer available for this platform
+setup-tool-cancelled = Installation cancelled
+setup-tool-invalid = The tool or installation plan is invalid.
+setup-tool-missing = The tool was not found.
+setup-tool-archive = The archive is incomplete or contains unsafe entries.
+setup-tool-too-large = The download or extracted files exceed the size limit.
+setup-tool-damaged = The installation location cannot be safely replaced.
+setup-tool-space = Not enough free disk space for installation.
+setup-tool-dependency = A required component could not be installed.
+setup-tool-failed = Installation failed: { $reason }
+settings-deno = Deno executable or folder
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = Study tools
+sub-select-shown = Select shown lines
+sub-selection-clear = Clear line selection
+sub-export-selected = Export selected lines as SRT…
+sub-select-line = Select line
+
+sub-copy-shown = Copy shown transcript
+sub-copy-selected = Copy selected transcript
+sub-transcript-copied = Transcript copied
+
+sub-vtt-shown = Export shown as WebVTT…
+sub-vtt-selected = Export selected as WebVTT…
+sub-vtt-filter = WebVTT subtitles
+
+sub-bilingual-shown = Export shown bilingual transcript…
+sub-bilingual-selected = Export selected bilingual transcript…
+
+sub-window-from = From current time
+sub-window-to = Until current time
+sub-window-reset = Reset time window
+
+vocabulary-min-count = Minimum occurrences
+vocabulary-max-count = Maximum occurrences
+vocabulary-reset-counts = Reset occurrence limits
+
+vocabulary-shown-words = Shown words
+vocabulary-selected-words = Selected words
+vocabulary-occurrences = Occurrences
+
+vocabulary-lookup = Look up in dictionary
+
+vocabulary-examples = Examples in subtitles
+vocabulary-examples-clear = Clear word examples
+vocabulary-examples-unavailable = Examples are unavailable until the complete current subtitle has been analysed.
+
+frequency-export-shown = Export shown frequency dictionary…
+frequency-export-selected = Export selected frequency dictionary…
+frequency-export-invalid = The frequency export needs unique nonempty words and positive supported counts.
+
+vocabulary-exact = Exact word or reading
+
+sub-speed-tools = Reading speed (characters/s)
+sub-speed-min = Minimum characters/s
+sub-speed-max = Maximum characters/s
+sub-speed-reset = Reset reading speed
+
+sub-stats-title = Scope statistics
+sub-stats-shown = Shown
+sub-stats-selected = Selected
+sub-stats-lines = lines
+sub-stats-characters = characters
+sub-stats-dialogue = Dialogue
+
+sub-bilingual-srt-shown = Export shown bilingual SRT…
+sub-bilingual-srt-selected = Export selected bilingual SRT…
+
+sub-previous-match = Previous matching line
+sub-next-match = Next matching line
+
+vocabulary-presets = Reusable study filters
+vocabulary-preset-save = Remember filters
+vocabulary-preset-apply = Apply remembered filters
+vocabulary-preset-clear = Forget remembered filters
+vocabulary-preset-hint = Remembered only for this session. Selections remain specific to each view.
+vocabulary-preset-too-long = The search is too long to remember (4096-byte limit).
+
+vocabulary-named-presets = Named study presets
+vocabulary-preset-name = Preset name
+vocabulary-preset-store = Save named preset
+vocabulary-preset-delete = Delete preset
+
+vocabulary-script-any = Any script
+vocabulary-script-kanji = Contains kanji
+vocabulary-script-kana = Contains kana
+vocabulary-script-latin = Contains Latin letters
+
+vocabulary-length-min = Minimum headword length
+vocabulary-length-max = Maximum headword length
+vocabulary-length-reset = Reset length
+
+sub-duration-tools = Cue duration
+sub-duration-min = Minimum duration (ms)
+sub-duration-max = Maximum duration (ms)
+sub-duration-reset = Reset duration
+
+sub-mask-text = Hide subtitle text for listening
+sub-reveal-shown = Reveal shown lines
+sub-mask-again = Hide revealed lines again
+sub-reveal-line = Reveal line
+
+sub-vocabulary-shown = Study vocabulary of shown lines
+sub-vocabulary-selected = Study vocabulary of selected lines
+sub-vocabulary-all = Return to full subtitle vocabulary
+
+sub-html-shown = Export shown as HTML study sheet
+sub-html-selected = Export selected as HTML study sheet
+sub-html-translation = Reveal translation
+sub-html-filter = HTML study sheet
+
+sub-invert-shown = Invert shown line selection
+
+vocabulary-batch-tools = Vocabulary study batches
+vocabulary-batch-next = Select next batch
+vocabulary-batch-clear = Clear shown selection
+vocabulary-batch-invert = Invert shown selection
+vocabulary-batch-size = Words per batch
+
+sub-practice-current = Repeat current line
+sub-practice-stop = Stop repetition
+sub-practice-remaining = Passes remaining: { $count }
+
+sub-practice-tools = Sentence repetition
+sub-vocabulary-tools = Vocabulary from these lines
+sub-html-tools = HTML study sheets
+
+sub-text-tools = Caption text filters
+sub-text-min = Minimum characters
+sub-text-max = Maximum characters
+sub-text-reset = Reset character bounds
+
+sub-unique-captions = First occurrence of each caption only
+
+sub-shape-any = Any line structure
+sub-shape-single = Single-line captions
+sub-shape-multiple = Multiline captions
+
+vocabulary-reading-tools = Reading and coverage filters
+vocabulary-reading-any = Any reading
+vocabulary-reading-distinct = Has a distinct reading
+vocabulary-reading-same = No distinct reading
+
+vocabulary-coverage-target = Keep top words covering this occurrence percentage
+vocabulary-coverage-reset = Reset coverage target
+
+sub-presets = Saved subtitle study presets
+
+vocabulary-html-tools = Vocabulary HTML study sheets
+vocabulary-html-shown = Export shown vocabulary as HTML
+vocabulary-html-selected = Export selected vocabulary as HTML
+vocabulary-html-reading = Reveal reading
+
+sub-context-exact = Exact examples only
+sub-context-one = One neighbouring line
+sub-context-two = Two neighbouring lines
+sub-context-hit = Exact word example
+
+action-study-previous = Previous matching subtitle
+action-study-next = Next matching subtitle
+action-study-reveal = Reveal current study line
+action-study-select = Toggle current study line selection
+
+sub-practice-shown = Repeat shown lines
+sub-practice-selected = Repeat selected lines
+sub-practice-passes = Passes per line
+sub-practice-cues = Lines remaining: { $count }
+sub-practice-unavailable = A complete queue of 1–1000 valid subtitle lines within the media is required.
+
+sub-search-exact = Match the whole caption
+
+sub-order-source = Source order
+sub-order-short = Shortest duration
+sub-order-long = Longest duration
+sub-order-text = Shortest text
+
+sub-time-edit = Enter study time bounds
+sub-time-from = From (seconds or H:MM:SS.mmm)
+sub-time-to = Until (seconds or H:MM:SS.mmm)
+sub-time-apply = Apply time bounds
+sub-time-invalid = Enter valid times with the end after the start; leave empty for no bound.
+
+sub-copy-export = Copy and export
+
+sub-preview-title = Subtitle translation
+sub-preview-show = Show translation for line
+sub-preview-empty = No overlapping translation.
+
+vocabulary-practice-mask = Practice recalling words from readings
+vocabulary-practice-reveal = Reveal shown words
+vocabulary-practice-hide = Hide words again
+vocabulary-practice-word = Reveal word
+
+vocabulary-practice-select = Select practice word
+
+vocabulary-undo-status = Undo word status
+vocabulary-undo-unavailable = The previous status change can no longer be undone.
+
+sub-practice-pause = Pause between passes (ms)
+sub-practice-wait = Waiting: { $count } ms
+
+sub-practice-skip = Skip current line
+sub-practice-restart = Restart current line
+
+vocabulary-examples-export-shown = Export examples of shown words
+vocabulary-examples-export-selected = Export examples of selected words
+
+study-presets-import = Import study presets…
+study-presets-export = Export study presets…
+study-presets-filter = Study presets (JSON)
+study-presets-invalid = The preset file is invalid or contains unsupported filter keys.
+study-presets-too-large = The preset file or merged collection exceeds its size limits.
+study-presets-unsupported = This preset file format version is not supported.
+study-presets-import-failed = Could not read or save presets: { $reason }
+
+recall-title = Vocabulary recall
+recall-reveal = Reveal answer
+recall-skip = Skip word
+recall-complete = Round complete
+recall-no-reading = No separate reading. Reveal the word when ready.
+recall-remaining = Words remaining
+recall-start-shown = Recall shown vocabulary
+recall-start-selected = Recall selected vocabulary
+recall-unavailable = Choose 1–1000 unique words with bounded, valid headwords and readings.
+
+recall-again = Again
+recall-good = Good
+recall-good-total = Words rated Good
+recall-again-total = Again ratings
+recall-skipped-total = Skipped words
+recall-attempts-total = Attempts
+
+action-recall-reveal = Reveal recall answer
+action-recall-again = Recall: Again
+action-recall-good = Recall: Good
+
+shortcuts-recall = Vocabulary recall
+
+recall-hints-capture = Capture current subtitle examples
+recall-hints-reveal = Reveal sentence hints
+recall-hints-unavailable = Complete analysed primary subtitles are required; hints must fit the capture limits.
+
+recall-restart-original = Restart original order
+recall-restart-reverse = Restart reversed
+recall-restart-shuffle = Restart shuffled
+
+recall-save = Save recall progress…
+recall-load = Open saved recall…
+recall-file-filter = Recall progress (JSON)
+recall-file-invalid = The recall file is invalid or contains inconsistent progress.
+recall-file-too-large = The recall file exceeds its size limits.
+recall-file-version = This recall file version is not supported.
+recall-file-error = Could not read or save recall progress: { $reason }
+
+recall-results-export = Export recall results…
+
+recall-followup-difficult = Start difficult-word round
+recall-followup-skipped = Start skipped-word round
+recall-followup-unavailable = Finish the round first and choose a category containing words.
+
+recall-history = Recall summary history
+recall-history-record = Record this summary
+recall-history-clear = Clear saved summaries
+recall-history-remove = Remove summary
+recall-history-empty = No recall summaries saved.
+recall-history-words = Words
+recall-history-error = Could not save recall history: { $reason }
+recall-history-unsaved = The latest history changes have not been saved.
+recall-history-retry = Retry saving
+
+books-paste = Paste text…
+books-paste-title = Title
+books-paste-content = Text
+books-paste-markdown = Interpret as Markdown
+books-paste-read = Read text
+books-paste-hint = Saved locally for reopening. Maximum 4 MiB. Markdown keeps headings and ruby; links and images are not opened.
+error-book-invalid-text = This text document cannot be read. Use UTF-8, a title of at most 256 characters and plain text or supported Markdown.
+
+error-book-mokuro = This Mokuro volume is unsupported or has invalid local images or text coordinates.
+mokuro-ready = Text is already available. Select a text region on the page.
+mokuro-empty-page = This page has no imported text regions.
+mokuro-region = Read region { $number } on page { $page }
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = Phrase notebook
+phrases-new = New phrase
+phrases-capture = Capture current source
+phrases-text = Phrase
+phrases-definition = Meaning / definition
+phrases-context = Original sentence
+phrases-language = Study language
+phrases-save = Save phrase
+phrases-cancel = Cancel
+phrases-search = Search phrases
+phrases-export = Export shown phrases
+phrases-edit = Edit phrase
+phrases-delete = Delete phrase
+phrases-source = Open source
+phrases-readonly = The library is read-only or unavailable.
+phrases-error = Cannot save: invalid phrase, duplicate, or notebook limit reached.
+phrases-invalid = Enter a phrase contained literally in its context (or leave context empty). Maximum: 4 KiB phrase/definition, 16 KiB context.
+phrases-source-missing = The original source is unavailable.
+phrases-status = Phrase status
+
+# CLO-001…CLO-004: explicit cloze exercises and opt-in schedules.
+cloze-title = Cloze practice
+cloze-preview = Preview cloze
+cloze-create = Create exercise
+cloze-close = Close cloze practice
+cloze-scheduled = Scheduled practice
+cloze-finite = Finite practice · schedules unchanged
+cloze-correct = Correct
+cloze-incorrect = Incorrect
+cloze-answer = Your answer
+cloze-submit = Check answer
+cloze-next = Next exercise
+cloze-skip = Skip exercise
+cloze-complete = Round complete
+cloze-skipped = Skipped
+cloze-undo = Undo previous exercise
+cloze-cancel = Return to exercises
+cloze-instructions = Create exercises from the phrase notebook. Practice uses up to the first 100 shown exercises; filter to narrow the selection. Enrolling a schedule is a separate explicit action.
+cloze-rules = Answers use NFC and trim outer whitespace. Case, punctuation, kana and readings remain distinct. Choices require a distinct same-language answer.
+cloze-start-typed = Practice shown: typed
+cloze-start-choice = Practice shown: choices
+cloze-start-due = Review due exercises
+cloze-enrol = Enrol in scheduled review
+cloze-delete = Delete exercise and schedule
+cloze-error = The operation was refused: duplicate/invalid exercise, notebook limit or outdated schedule. Refresh and retry.
+cloze-unavailable = No eligible exercises, context is missing, or distinct same-language choices are unavailable.
+cloze-start-due-choice = Review due: choices
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = Sentence bank
+bank-close = Close sentence bank
+bank-instructions = Index your own current book or complete primary text track, or import an owned JSON pack. Search exact dictionary expression and reading; cached examples remain available offline.
+bank-index-book = Index current book
+bank-index-track = Index primary subtitles
+bank-import = Import owned sentences
+bank-indexing = Preparing / committing sentences…
+bank-cancel = Cancel indexing
+bank-expression = Expression
+bank-reading = Reading
+bank-search = Find exact examples
+bank-snapshot = Saved examples · sources verified when opened
+bank-export = Export shown examples
+bank-sources = Indexed sources
+bank-delete = Delete source snapshot
+bank-error = Cannot index this source: check dictionaries, language, format and limits. No partial batch was saved.
+bank-cancelled = Sentence indexing cancelled.
+bank-source-missing = The original source is unavailable; the saved example is retained.
+bank-source-changed = The original source text changed. Its saved location was not opened.
+bank-filter = Owned sentence pack JSON
+bank-examples = Examples across sources
+
+# BMG-001…BMG-004: validated batch exporter/recovery.
+batch-invalid = This batch is invalid or exceeds its limits.
+batch-schema-needed = For an offline batch, use Lapis or define explicit field mappings for this note type.
+batch-identity-field = Batch duplicate checks require a nonempty first field built only from the word or reading. Use the single-card composer for other mappings.
+batch-source-changed = A captured source is missing or changed. Capture it and preview again.
+batch-stale-preview = Settings, dictionaries, note fields or a captured source changed. Preview the batch again.
+batch-reconcile-ambiguous = The operation could not be identified uniquely in Anki. No card was resent.
+batch-unknown = The note may already exist. Resolve its exact operation identity before sending it again.
+batch-title = Batch cards
+batch-close = Close batch page
+batch-new = New batch
+batch-stop = Stop after current card
+batch-instructions = Add selected primary vocabulary, a lookup or a saved example. Choose contexts and media, inspect text previews, then start explicitly. Unknown outcomes require exact-operation reconciliation.
+batch-details = Inspect preview
+batch-retry = Retry certain failure
+batch-context = Original context
+batch-audio = Sentence audio
+batch-image = Picture
+batch-media-planned = Text fields are rendered below. Chosen media are planned and will be extracted only after Start.
+batch-preview = Prepare text previews
+batch-start = Start reviewed batch
+batch-continue = Continue remaining cards
+batch-history = Batch history
+batch-reconcile = Check exact operation in Anki
+batch-delete-journal = Delete resolved journal
+batch-selected = Add selected words to batch
+batch-add-lookup = Add this word to batch
+batch-add-context = Use this context in batch
+batch-new-required = This batch is busy or has already started. Finish it or create a new batch before editing.
+batch-journal-error = Cannot commit the batch journal: check capacity, duplicate/unresolved operations or writable-library availability. No new export was authorized.
+batch-planned = Not sent
+batch-sending = Sending
+batch-created = Created
+batch-kept = Kept for later
+batch-duplicate = Duplicate skipped
+batch-unresolved = Outcome unresolved
+batch-failed = Failed before commit
+batch-cancelled = Cancelled
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = Mining profiles
+mining-profiles-hint = Profiles contain destination, deck, note type, tags and templates. Save settings to retain edits.
+mining-profile-name = Profile name
+mining-profile-save = Save new profile
+mining-profile-apply = Apply profile: { $name }
+mining-profile-delete = Delete profile: { $name }
+mining-profile-invalid = The profile is invalid, already exists or exceeds the limit of 16 profiles.
+composer-fields = Override and pin fields
+composer-fields-hint = Enable a field to replace its template with literal text. Pins last for this session; quick and batch mining ignore them.
+composer-field-value = Literal text: { $name }
+composer-pin = Pin field: { $name }
+composer-senses = Choose dictionary senses
+composer-profile-hint = Applying a profile closes this draft and clears all pinned fields. Open a new composer afterwards.
+composer-fields-invalid = A field is missing, empty or exceeds the composer limits. Review the note type and overrides.
+composer-senses-stale = Select at least one unchanged dictionary sense. Reopen the composer after dictionary changes.
+composer-source-stale = The original source or lookup has changed. Close this draft and open a new composer.
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = Look up when paused
+settings-pause-off = Off
+settings-pause-unknown = First unknown word
+settings-pause-kanji = First kanji
+settings-pause-hint = Uses the first active primary text cue. Unknown words use installed dictionaries and your word statuses; kanji is a separate rule.
+action-lookup-first-kanji = Look up first kanji
+action-peek-translation = Hold to reveal secondary translation
+
+# M110 — Additional local documents
+error-book-document = This document is invalid, unsupported or exceeds its structural limits.
+error-book-pdf-helper = PDF text extraction needs Poppler pdftotext. Select its executable in Advanced settings or install it through Setup where supported.
+error-book-document-tool = Document extraction failed: { $reason }
+settings-pdftotext = Poppler pdftotext executable or folder
+setup-tool-system-package = System package (administrator authentication)
+setup-tool-system-package-hint = Poppler uses your Linux package manager and its repository/network settings. Install may request administrator authentication. Stop prevents later jobs while the OS completes its current transaction. Installation is unavailable with a custom app proxy or inside a sandbox; installed tools can still be reused.
+setup-tool-system-proxy = Install Poppler with your system package manager or choose an existing executable. System package installation cannot bypass the app proxy setting.
+reader-tools-title = Annotations and search
+reader-tools-close = Close
+annotations-title = Annotations
+annotations-error = The annotation could not be saved: it is invalid, a duplicate or over the limits.
+annotations-no-book = Open a text book to annotate it.
+annotations-export = Export shown (TSV)
+annotations-search = Filter annotations
+annotations-this-book = Only this book
+annotations-chapter = chapter
+annotations-stale = The text changed: this place is not shown
+annotations-go = Open in the book
+annotations-cover = Covers:
+annotations-cover-word = Word
+annotations-cover-sentence = Sentence
+annotations-cover-paragraph = Paragraph
+annotations-quote = Quoted text
+annotations-name = Name
+annotations-note = Note
+annotations-invalid = A bookmark needs a name; names have no line breaks; quote, name and note must stay within their limits.
+annotation-kind-bookmark = Bookmark
+annotation-kind-highlight = Highlight
+annotation-kind-note = Note
+annotation-new-bookmark = Add bookmark
+annotation-new-highlight = Highlight
+annotation-new-note = Add note
+search-title = Search books
+search-instructions = Search the text of every added book for literal text (case and Unicode composition ignored). Manga are not searched.
+search-query = Text to find
+search-run = Search
+search-cancel = Stop
+search-invalid = Type 1–256 bytes of text without control characters.
+search-failed = The search failed or was stopped.
+search-summary = { $hits } results in { $books } books
+search-truncated = More results were left out: refine the text.
+search-unreadable = Not searched (missing or changed): { $books }
+books-mode = Reading mode
+books-mode-scroll = Scroll
+books-mode-pages = Pages
+books-mode-sentence = Sentence
+books-page-of = Page { $page } of { $pages }
+books-sentence-of = Sentence { $sentence } of { $sentences } · paragraph { $paragraph }
+books-previous-sentence = Previous sentence
+books-next-sentence = Next sentence
+podcasts-title = Podcasts
+podcasts-close = Close
+podcasts-instructions = Add a podcast by its RSS feed address (HTTPS). Nothing is fetched or downloaded unless you ask; downloaded episodes play offline with their transcript or your own timed text.
+podcasts-url = Feed address
+podcasts-add = Add or refresh
+podcasts-fetching = Reading the feed…
+podcasts-stop = Stop
+podcasts-downloading = Downloading: { $done } of { $total } MiB
+podcasts-empty = No podcasts yet.
+podcasts-refresh = Refresh
+podcasts-feed-page = Web page
+podcasts-remove = Remove with downloads
+podcasts-unlisted = (no longer in the feed)
+podcasts-play = Play
+podcasts-delete = Delete download
+podcasts-import = Use timed text file…
+podcasts-has-text = With timed text
+podcasts-no-text = No timed text
+podcasts-resume = Resume download
+podcasts-download = Download
+podcasts-episode-page = Episode page
+podcasts-error = Podcasts: { $reason }
+podcasts-bad-url = Enter an HTTPS feed address.
+podcasts-transcript-unsupported = Downloaded. Its transcript type is not supported ({ $kind }); you can use your own timed text file.
+podcasts-transcript-saved = Downloaded with its transcript.
+podcasts-transcript-none = Downloaded. The feed offers no transcript; you can use your own timed text file.
+podcasts-cancelled = stopped; Resume continues from where it stopped
+podcasts-download-failed = The download did not finish: { $reason }
+podcasts-missing-file = The downloaded file is missing: download it again.
+shortcut-map-export = Export shortcuts…
+shortcut-map-import = Import shortcuts…
+shortcut-map-filter = Nikomiru shortcut maps
+shortcut-map-preview = Imported shortcuts: check them, then Apply
+shortcut-map-no-changes = The map changes nothing.
+shortcut-map-change = { $action }: { $before } → { $after }
+shortcut-map-unknown = Ignored, unknown here: { $actions }
+shortcut-map-invalid-key = { $action }: “{ $key }” is not a key
+shortcut-map-apply = Apply
+shortcut-map-cancel = Cancel
+shortcut-map-failed = The shortcut map was not read: { $reason }
+shortcut-map-invalid = it is not a Nikomiru shortcut map.
+shortcut-map-newer = it was written by a newer Nikomiru.
+shortcut-map-too-large = it is over the limits (64 KiB, 512 actions, 8 keys each).
+settings-study = Study language
+settings-study-language = Language studied
+settings-study-segmentation = Words
+settings-study-segmentation-dictionary = Longest dictionary match
+settings-study-segmentation-words = Whole words between spaces
+settings-study-readings = Readings
+settings-study-readings-on = Show readings over words
+settings-study-dictionaries-auto = Dictionaries: automatic (those of this language and those that declare none)
+settings-study-dictionaries-hint = Uncheck to choose the dictionaries of this language yourself. Word statuses, phrases, exercises and review cards are kept separately for each language.
+servers-kind = Server:
+servers-kind-jellyfin = Jellyfin
+servers-kind-emby = Emby
+settings-palette = Palette
+settings-palette-default = Default
+settings-palette-oled = OLED black
+settings-palette-high-contrast = High contrast
+settings-shaders = Video shaders
+settings-shaders-preset = Shader preset
+settings-shaders-off = Off
+settings-shaders-fast = Anime4K fast
+settings-shaders-quality = Anime4K quality
+settings-shaders-hint = Anime4K (MIT license, by bloc97) sharpens and upscales anime with your GPU. Download its shaders (0.8 MB) to use a preset; nothing is downloaded otherwise. Quality needs a stronger GPU.
+settings-shaders-download = Download Anime4K shaders
+settings-shaders-remove = Remove Anime4K shaders
+settings-shaders-overridden = Your own mpv options set shaders: they are used and the presets are off.
+settings-shaders-installed = Anime4K shaders installed.
+settings-shaders-removed = Anime4K shaders removed.
+settings-shaders-failed = The Anime4K shaders could not be installed or removed: { $reason }
+settings-shaders-refused = The video cannot use these shaders ({ $reason }); the preset was turned off.
+updates-title = Updates
+updates-channel = Release channel
+updates-channel-stable = Stable
+updates-channel-beta = Beta
+updates-check = Check for updates
+updates-unconfigured = This build has no signing key: updates are not published for it. Get new versions from the release page or your package manager.
+updates-up-to-date = Nikomiru is up to date.
+updates-available = Version { $version } is available ({ $date }).
+updates-notes = What is new
+updates-download = Download ({ $size } MB)
+updates-downloading = Downloading: { $done } of { $total } MB
+updates-install = Install
+updates-installed = Version { $version } is installed: it starts the next time you open Nikomiru.
+updates-flatpak = Update with Flatpak (your software center or `flatpak update`).
+updates-package = Update with your system's package manager.
+updates-read-only = This install's folder cannot be written: get the new version from the release page.
+updates-not-portable = Only a portable install can be updated by Nikomiru.
+updates-no-artifact = The release has no download for this system.
+updates-failed = The update failed: { $reason }

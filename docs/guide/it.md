@@ -56,7 +56,7 @@ Nikomiru legge gli stessi file ZIP di Yomitan: termini (JMdict, Jitendex…), ka
 3. Ogni tipo ha il suo elenco, ordinato per priorità; per spostare un dizionario trascinalo dalla sua maniglia.
 4. **CSS** ti permette di cambiare lo stile delle voci di un dizionario. Si applica solo un sottoinsieme sicuro del CSS.
 
-Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.ifo`), DSL (`.dsl`, `.dsl.dz`) e MDict (`.mdx`). Le definizioni appaiono come testo semplice, senza immagini. Un MDict legato a un utente non si può leggere.
+Oltre ai file ZIP di Yomitan, l'import accetta dizionari StarDict (scegli il `.ifo`), DSL (`.dsl`, `.dsl.dz`) e MDict (`.mdx`). Le definizioni StarDict e DSL appaiono come testo semplice, senza immagini. Le definizioni MDict conservano grassetto, corsivo, elenchi, tabelle e furigana, e i collegamenti ad altre parole aprono una ricerca; script, stili e altro markup vengono scartati (sviluppo M114). Tieni i file `.mdd` accanto al `.mdx` (`nome.mdd`, `nome.1.mdd`…): le immagini e i suoni usati dalle definizioni vengono importati con esso. Un collegamento sonoro (▶) suona solo quando lo clicchi, e le carte conservano le immagini e i suoni che Anki riproduce (MP3, Ogg, WAV, M4A, FLAC). Senza `.mdd`, le immagini mostrano il loro testo alternativo. Un MDict legato a un utente non si può leggere.
 
 I sottotitoli a immagini letti come testo ora compaiono progressivamente: la lettura parte vicino alla posizione corrente e le righe non ancora lette mantengono le immagini. Puoi cercare le parole del testo già pronto mentre il lavoro continua. Comprensione dell’intera traccia, accelerazione delle pause ed esportazione dell’audio condensato attendono il completamento; cambiare o disattivare i sottotitoli annulla la lettura precedente.
 
@@ -166,9 +166,9 @@ Per leggere un fumetto, trascina sopra di esso. La prima volta la pagina propone
 
 Con l'audiolibro in riproduzione, apri il suo libro nella pagina dei libri e premi **Leggi ascoltando**: la pagina segue ciò che senti, con il paragrafo evidenziato, e **Ascolta da qui** riproduce dal paragrafo in cima alla pagina.
 
-### Jellyfin e Plex
+### Jellyfin, Emby e Plex
 
-Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione.
+Aggiungi un server in Impostazioni → Server multimediali: per Jellyfin o Emby (scegli quale) indirizzo, utente e password (la password non viene conservata); per Plex accedi su plex.tv dal browser. Ogni server ha una scheda nella pagina della libreria. I video partono dal file originale, con gli stessi sottotitoli, ricerche e carte di un file locale, e posizione e stato di visione tornano al server. Nikomiru si collega a un server solo mentre la sua scheda è aperta o uno dei suoi video è in riproduzione. Prima dell’accesso si verifica che un Emby sia davvero tale; un file che non può riprodurre direttamente mostra un errore invece di essere convertito (sviluppo M116).
 
 **Apri video dal web**, nella Libreria o nella barra del player, accetta l'indirizzo della pagina di un video. Puoi anche trascinare l'indirizzo o passarlo dalla riga di comando. Installa `yt-dlp`; se non è nel PATH, imposta l'eseguibile in Impostazioni → Avanzate oppure con `NIKOMIRU_YT_DLP`. Le lingue preferite si applicano ai sottotitoli caricati dall'autore e a quelli automatici. Ricerca e carte funzionano come per i file locali; i collegamenti delle carte riaprono la pagina originale alla scena. Sono supportati video su richiesta disponibili come file HTTP, anche con audio separato; dirette, DRM e flussi disponibili solo a segmenti restano esclusi.
 
@@ -200,6 +200,8 @@ Con una cartella WebDAV (Nextcloud e simili, con una password per app), "Sincron
 ## 9. Tastiera
 
 Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio e Spazio comandano i controlli. Ogni scorciatoia è elencata, e si può cambiare, in Impostazioni → Scorciatoie.
+
+**Esporta scorciatoie…** salva i tasti di ogni azione in un piccolo file JSON (tasti fisici, quindi gli stessi con qualunque disposizione della tastiera); **Importa scorciatoie…** ne legge uno e mostra cosa cambierebbe, le azioni che non conosce (ignorate), i tasti non riconosciuti e i conflitti. Nulla cambia prima di **Applica**, disponibile solo senza tasti non validi o conflitti, che salva subito; **Annulla** scarta l’anteprima. **Ripristina** riporta ancora i valori predefiniti. Mentre scrivi in un campo di testo le scorciatoie a tasto singolo restano inattive. (sviluppo M113)
 
 | Tasto | Azione |
 |---|---|
@@ -259,3 +261,207 @@ Il menu principale e la lista sottotitoli offrono Esporta testo corrente come SR
 Statistiche mostra numero di file e byte dei conteggi di analisi persistenti. Aggiorna utilizzo cache legge una nuova fotografia; Svuota cache conteggi rimuove i file riconosciuti di libri/episodi e i temporanei di scritture interrotte. Analisi correnti, cronologia, dizionari e cache sottotitoli/OCR restano disponibili. Il lavoro completato in seguito può riempire di nuovo la cache.
 
 Libri e serie locali offrono Esporta riepiloghi analizzati per le analisi completate conservate. Il TSV acquisisce totali e percentuali correnti di parole/unità testuali, più copertura analizzati/totali/falliti delle serie. Include tutte le analisi completate di quella vista, indipendentemente dai filtri visibili; percentuali non definite e copertura dei libri restano vuote. Cambiamenti successivi agli stati non riscrivono la fotografia salvata.
+
+Nell’assistente di configurazione seleziona **Strumenti di supporto** per installare FFmpeg/ffprobe, yt-dlp (con la dipendenza Deno) o il modello OCR locale. Gli strumenti locali funzionanti vengono riutilizzati. L’assistente sceglie il pacchetto Linux/Windows x86_64 o ARM64, verifica lo SHA-256 e salva i percorsi, subito utilizzabili. I download iniziano solo dopo **Installa**, usano il proxy configurato e possono essere interrotti. Gli strumenti risiedono nella cartella dati privata di Nikomiru e non richiedono privilegi di amministratore. Le librerie di riproduzione e grafica sono fornite dal pacchetto o dal sistema operativo.
+
+## Strumenti di studio dei sottotitoli e vocabolario
+
+Nella lista dei sottotitoli spunta le singole righe o usa Seleziona righe visibili.
+Le spunte nascoste restano selezionate cambiando ricerca e filtri temporali,
+lessicali o di velocità; una nuova versione della traccia primaria le azzera.
+Gli strumenti di studio copiano trascrizioni TSV con i tempi ed esportano SRT
+selezionati, WebVTT visibili/selezionati, trascrizioni bilingui o SRT bilingui.
+L’uscita bilingue richiede due tracce complete: abbina le sovrapposizioni positive
+considerando i due offset e conserva le righe primarie senza traduzione. Il
+salvataggio usa la fotografia di testo e tempi acquisita al clic. L’OCR parziale
+non può esportare un file di sottotitoli completo.
+
+Dal/Fino al tempo corrente restringono lo studio senza spostare la riproduzione.
+I limiti opzionali di lettura contano i caratteri Unicode non bianchi al secondo.
+Le statistiche contano righe/caratteri e uniscono il tempo di dialogo sovrapposto
+senza contarlo due volte. Riga corrispondente precedente/successiva navigano
+fra le righe filtrate conservando la pausa. Ogni azzeramento rimuove solo il
+proprio limite.
+
+Le viste del vocabolario combinano ricerca esatta/parziale per parola o lettura,
+stato, presenza di scheda e limiti di occorrenze. La copertura distingue parole
+diverse da occorrenze; i totali selezionati includono le spunte nascoste. Il
+pulsante del dizionario apre una ricerca senza associarla a una frase estranea.
+Nella scheda Parole dei sottotitoli, Esempi cerca le identità lessicali segmentate,
+comprese le flessioni, e mostra le righe originali. Azzera il filtro degli esempi
+per tornare alla lista intera; sorgenti o analisi sostituite invalidano gli esempi.
+
+Esporta il dizionario di frequenza visibile/selezionato per ottenere uno ZIP
+Yomitan importabile, con conteggi esatti e letture distinte. L’importazione resta
+esplicita. I filtri riutilizzabili memorizzano/applicano/dimenticano una sola
+combinazione di ricerca e filtri fra viste nella sessione corrente: non includono
+le selezioni e non sopravvivono al riavvio.
+
+## Altri strumenti di studio (sorgenti 2.80.0)
+
+I preset salvati conservano ricerca, corrispondenza esatta, scrittura, lunghezza della parola, stato, schede, occorrenze e ordine del vocabolario. Apri Preset di studio salvati, inserisci un nome e salva. Premi un nome per applicarlo oppure elimina il preset. Puoi salvarne sedici; le selezioni restano nella vista corrente. Attendi l’esito del salvataggio prima di chiudere. Sono ancora disponibili anche i preset della sola sessione.
+
+Gli strumenti dei sottotitoli aggiungono limiti di durata in millisecondi. La modalità di ascolto della lista sottotitoli nasconde il testo finché riveli una riga o quelle visibili. Cambiando sorgente il testo viene nascosto nuovamente. Copia ed esportazione contengono comunque il testo originale. Maiusc-clic sulla casella seleziona o deseleziona un intervallo nell’ordine delle righe visibili; l’inversione conserva le selezioni nascoste.
+
+Vocabolario di queste righe raccoglie le parole delle righe visibili o selezionate dopo l’analisi completa, comprese le forme flesse ricondotte al dizionario. Aggiorna stati e schede senza modificare il punteggio dei sottotitoli. Puoi tornare al vocabolario completo; cambiare sorgente o dizionari annulla la cattura. I gruppi di studio selezionano le prossime parole non ancora spuntate nell’ordine corrente: venti per impostazione iniziale, da una a mille. Deselezionare o invertire le parole visibili conserva le selezioni nascoste.
+
+Con una traccia secondaria completa puoi esportare una scheda HTML bilingue autonoma tramite la finestra di salvataggio. Aprila localmente e rivela ogni traduzione quando desideri. L’esportazione rispetta i filtri e le righe scelte.
+
+La ripetizione riproduce la battuta corrente due, tre o cinque volte e poi resta in pausa, sospendendo pausa automatica e accelerazione degli intervalli. Ferma ripetizione, i controlli manuali di riproduzione, posizione, tempi o velocità e il cambio della sorgente principale annullano l’esercizio. La sezione mostra le ripetizioni rimanenti.
+
+## Filtri estesi e code di studio (sorgenti 2.90.0)
+
+I filtri sul testo combinano limiti inclusivi di caratteri Unicode, escludendo gli spazi, battute su una o più righe e Solo la prima occorrenza. Le righe vuote non contano nella struttura. Le ripetizioni vengono riconosciute uniformando gli spazi, conservando maiuscole e punteggiatura: resta la prima battuta originale dopo gli altri filtri. Le selezioni nascoste restano spuntate. Esportazioni visibili, statistiche e navigazione condividono lo stesso ambito.
+
+I filtri di lettura distinguono parole con una lettura separata non vuota da quelle senza. L’obiettivo di copertura conserva le parole più frequenti necessarie per raggiungere dall’1 al 100 per cento delle occorrenze attualmente filtrate. Le parole a pari frequenza sul limite sono tutte incluse: il risultato può superare la percentuale richiesta. L’ordine di visualizzazione viene applicato dopo. Entrambi i tipi di preset del vocabolario conservano queste scelte.
+
+I preset dei sottotitoli salvano ricerca, limiti temporali, velocità di lettura, durata, caratteri, struttura, ripetizioni e contesto. Premi un nome per applicarlo oppure eliminalo esplicitamente. Puoi salvarne sedici e riutilizzarli dopo il riavvio, attendendo l’esito del salvataggio. Selezioni, testo nascosto, righe rivelate, parola degli esempi e identità della sorgente restano esclusi.
+
+Le schede HTML del vocabolario esportano parole visibili o selezionate tramite la finestra di salvataggio. Mostra lettura rivela la pronuncia; occorrenze, stati e presenza di schede restano visibili. Sono documenti autonomi consultabili senza rete e senza risorse esterne. L’esportazione delle selezionate include anche le parole nascoste dai filtri.
+
+Gli esempi di una parola possono mostrare una o due battute originali precedenti e successive. Le corrispondenze esatte hanno un contorno e un nome accessibile; gli altri filtri si applicano comunque al contesto ampliato. La parola cercata rimane la stessa.
+
+Con la lista aperta, Alt+Su/Giù naviga fra le battute corrispondenti, Alt+R rivela quella corrente nella modalità di ascolto e Alt+T ne cambia la selezione. Puoi configurare i tasti nelle scorciatoie. Digitazione, pagine sovrapposte, lista chiusa o ambiti scaduti impediscono queste azioni. La navigazione conserva la pausa.
+
+La ripetizione può acquisire una coda delle battute visibili o selezionate, fino a mille battute uniche nell’ordine della sorgente. Scegli due, tre o cinque passaggi per battuta: al termine resta in pausa. Tutti gli intervalli devono essere completi, validi e compresi nella durata del video prima dell’avvio. Sono mostrati passaggi e battute rimanenti. Cambiare i filtri non riscrive la coda acquisita; controlli manuali, cambio dei tempi o della sorgente principale e Ferma ripetizione annullano l’intera coda.
+
+## Esercizi guidati e filtri portabili (sorgenti 2.100.0)
+
+La ricerca può corrispondere all’intera battuta normalizzata. I filtri sul testo offrono ordine della sorgente, durata crescente/decrescente e testo più breve. L’evidenziazione mantiene la battuta corrente originale; la navigazione precedente/successiva segue ancora i tempi. Gli intervalli di selezione seguono l’ordine visualizzato, esportazioni e code di pratica quello della sorgente. Ricerca esatta e ordine vengono conservati nei preset.
+
+Inserisci intervallo di studio accetta secondi non negativi, M:SS oppure H:MM:SS, con massimo tre cifre decimali e punto o virgola. Un campo vuoto rimuove quel limite. Applica verifica entrambi i campi e rifiuta una fine precedente o uguale all’inizio. Le bozze non modificano i filtri finché non vengono applicate. Gli strumenti scorrono internamente, lasciando spazio alle battute; copia ed esportazione hanno una sezione richiudibile.
+
+Il pulsante di traduzione accanto alla battuta apre il testo secondario sovrapposto in una finestra di sola lettura, considerando entrambi i ritardi. L’indizio non rivela il testo principale nascosto e non cambia la riproduzione. Cambiare sorgente o ritardo chiude l’anteprima precedente. Il testo interattivo è limitato a 64 KiB.
+
+Esercita le parole a partire dalle letture nasconde i lemmi del vocabolario anche nei nomi accessibili. Mostra una parola o tutte quelle visibili; dizionario ed esempi si abilitano dopo la rivelazione. Le letture distinte forniscono indizi. Cambiare sorgente o conteggi nasconde nuovamente le parole; aggiornare solo lo stato conserva le rivelazioni. Copia ed esportazione esplicite salvano ancora i testi originali. La modalità resta nella vista e non entra nei preset.
+
+Annulla stato parole ripristina una modifica singola o multipla nelle viste di studio, dopo aver verificato dizionario e valori correnti attesi. Le selezioni rimangono. La cattura conserva al massimo diecimila identità e otto MiB di testo. Modifiche incompatibili successive rendono l’azione non disponibile; la cronologia degli incontri non viene riscritta.
+
+La ripetizione offre una pausa di sessione da zero a diecimila millisecondi tra passaggi o battute. L’interfaccia resta utilizzabile e mostra l’attesa; arresto, comandi manuali e cambio sorgente annullano anche i riavvii programmati. Un’attesa già avviata conserva la scadenza acquisita quando cambi l’impostazione. Salta battuta corrente avanza subito nella coda e mette in pausa se non restano battute. Ricomincia battuta corrente ripristina il numero originale di passaggi e conserva il resto della coda, anche dopo il completamento.
+
+Nel vocabolario dei sottotitoli, la sezione HTML/esportazione salva in TSV gli esempi delle parole visibili o selezionate. Lemma e lettura analizzati corrispondono esattamente; ogni battuta produce una riga con tempi effettivi in millisecondi e testo originale. Servono analisi complete; i limiti sono mille parole, centomila corrispondenze e sedici MiB. Richieste scadute o incomplete non scrivono un file parziale.
+
+I pannelli dei preset importano ed esportano entrambe le raccolte dei filtri in JSON. Il file versionato, limitato a un MiB, contiene solo filtri, senza percorsi, servizi o segreti. L’importazione verifica l’intero file e unisce per nome, sostituendo i nomi corrispondenti e mantenendo gli altri; ciascuna raccolta conserva il limite di sedici voci. Filtri ignoti, dati invalidi o capacità superata non modificano la configurazione. Una configurazione in sola lettura rifiuta l’importazione; l’esito del salvataggio usa il normale sistema di configurazione.
+
+## Ripasso finito del vocabolario (sorgenti 2.110.0)
+
+Apri Lettura e copertura in una vista del vocabolario per avviare il ripasso delle parole mostrate o selezionate, comprese le selezioni nascoste dai filtri. La sessione acquisisce fino a mille identità uniche parola/lettura nell’ordine mostrato. I cambiamenti successivi alla fonte o ai filtri non la riscrivono. La lettura distinta funge da indizio; altrimenti un messaggio generico mantiene nascosta la parola. Rivela la risposta, poi scegli Ancora o Bene; Salta passa oltre senza valutazione. Ancora rimette la parola in coda per un massimo di tre tentativi. Le valutazioni appartengono alla sessione e non modificano gli stati globali di apprendimento.
+
+Spazio rivela, 1 valuta Ancora e 2 valuta Bene quando il ripasso ha la priorità. Puoi modificarli in Scorciatoie → Richiamo del vocabolario. I campi di testo e le impostazioni mantengono i propri comandi; i popup del dizionario hanno la precedenza. Indietro chiude prima il popup, poi il ripasso. La ricerca nel dizionario si abilita dopo aver rivelato la risposta. Avanzare, riavviare o sostituire la sessione chiude i vecchi risultati.
+
+Acquisisci indizi dalle frasi usa facoltativamente l’analisi completa dei sottotitoli principali correnti e copia fino a tre brevi esempi distinti con corrispondenza esatta della parola analizzata. Gli indizi si rivelano separatamente dalla risposta. Mantengono il titolo della fonte, non spostano la riproduzione e non seguono i cambiamenti successivi dei sottotitoli. I riavvii in ordine originale, inverso o casuale conservano parole e indizi, azzerando i progressi con una nuova identità di sessione.
+
+Salva progressi del ripasso crea un file JSON con versione. Apri ripasso salvato è disponibile nella sessione e nella Libreria, anche senza un video aperto. Il file viene validato interamente ricostruendo le valutazioni prima di sostituire la sessione; un file non valido lascia intatti i progressi aperti. Alla ripresa risposte e indizi sono nascosti. Il file contiene parole, ordine, indizi e valutazioni, escludendo gli stati globali e i percorsi dei video. Esporta risultati del ripasso salva un’istantanea TSV indipendente con una riga per parola, tentativi, voti Ancora, ultima valutazione e completamento.
+
+Al termine puoi avviare una nuova sessione delle parole valutate Ancora, comprese quelle poi valutate Bene, oppure delle parole saltate. Le categorie vuote sono disabilitate. Registra questo riepilogo aggiunge esplicitamente conteggi e titolo della fonte alla cronologia locale, una volta per identità di sessione. La cronologia conserva gli ultimi cento riepiloghi dopo il riavvio e consente rimozione, cancellazione e un nuovo tentativo in caso di errore di salvataggio. Non contiene le parole acquisite e non aumenta le statistiche del tempo di studio. Le sessioni attive si riprendono aprendo il relativo JSON salvato.
+
+## TXT, Markdown e testo incollato (sviluppo M102)
+
+Libri → Aggiungi accetta file UTF-8 `.txt`, `.md` e `.markdown`, fino a quattro MiB. Il titolo deriva dal nome del file. Il testo semplice conserva letteralmente parentesi angolari ed entità, con ogni riga non vuota come paragrafo; sono gestiti i fine riga Windows e il BOM UTF-8 facoltativo. Markdown usa la struttura CommonMark per titoli, paragrafi, elenchi, citazioni, collegamenti e codice. Collegamenti e immagini non si aprono e non vengono scaricati. I furigana inline sono conservati; l’altro HTML resta testo visibile inerte. Stili avanzati, tabelle e immagini Markdown non vengono renderizzati.
+
+Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 caratteri, incolla il testo, scegli eventualmente Markdown e premi Leggi testo. Il documento viene conservato localmente e può essere riaperto dalla lista dopo il riavvio. La bozza rimane disponibile se il salvataggio fallisce. Titolo, formato e contenuto identici riusano la stessa fonte; contenuti diversi mantengono posizioni indipendenti anche con titolo e lunghezza uguali. Spostare un file senza cambiarne nome e contenuto conserva la sua identità.
+
+Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
+
+## Aggiornamenti (sviluppo M119)
+
+Impostazioni → Informazioni → **Aggiornamenti** cerca una nuova versione solo quando fai clic su **Cerca aggiornamenti**; Nikomiru non controlla, scarica né installa mai da solo. Scegli il canale **Stabile** o **Beta**. Una versione è accettata solo se l’elenco del suo canale è firmato con la chiave inclusa in Nikomiru ed è più recente sia della versione in uso sia di qualsiasi versione già vista, così un elenco vecchio non può essere riproposto. Per un’installazione portatile (una cartella in cui puoi scrivere), **Scarica** prende la versione (riprendendo se interrotto, poi verificata per dimensione e SHA-256) e **Installa** la estrae accanto alla cartella attuale, verifica che il nuovo programma risponda con quella versione e scambia le cartelle, tenendo la vecchia come `.previous`; la nuova versione parte alla prossima apertura. Flatpak e pacchetti delle distribuzioni si aggiornano con i propri strumenti e non vengono mai sostituiti. Le build senza chiave di firma (per ora tutte: l’elenco firmato non è ancora pubblicato) lo dicono e rimandano alla pagina delle release.
+
+## Tavolozze e shader video (sviluppo M118)
+
+Impostazioni → Generali → **Tavolozza** offre Predefinita, **Nero OLED** (superfici nere pure, sempre scura) e **Alto contrasto** (nero su bianco o bianco su nero, con tutti i testi principali a 7:1 o più). Il colore d’accento resta, reso leggibile.
+
+Gli **shader video** possono rendere più nitidi e ingrandire gli anime con [Anime4K](https://github.com/bloc97/Anime4K) (licenza MIT, di bloc97). Fai clic una volta su **Scarica gli shader Anime4K** (0,8 MB, una release fissa verificata prima dell’uso), poi scegli **Anime4K veloce** o **Anime4K qualità** (per GPU più potenti); **Spenti** è la resa predefinita. Durante la riproduzione non si scarica nulla. Se le tue opzioni di mpv impostano `glsl-shaders`, si usano quelle e i preset restano spenti. Se il video non può usare gli shader, il preset viene spento e se ne mostra il motivo. **Rimuovi gli shader Anime4K** li elimina.
+
+## Touch (sviluppo M117)
+
+Su uno schermo touch un tocco fa ciò che fa un clic: cerca una parola, avvia o mette in pausa, preme i pulsanti. Scorri rapidamente un dito a sinistra o a destra sul video per tornare indietro o andare avanti del passo di ricerca. Nelle modalità Pagine e Frase del lettore, scorri a sinistra per la pagina o frase successiva e a destra per la precedente; nella scrittura verticale e nei manga, che si leggono da destra a sinistra, scorri a destra per proseguire. I trascinamenti verticali continuano a scorrere. I port per Windows, Android e macOS sono seguiti in `docs/qa/ports.md`; per ora è rilasciato solo Linux.
+
+## Lingue di studio (sviluppo M115)
+
+Impostazioni → Generali → **Lingua di studio** sceglie la lingua che studi: giapponese (predefinita) o una delle altre lingue con regole di deflessione (arabo, tedesco, greco, inglese, esperanto, spagnolo, basco, francese, irlandese, greco antico, georgiano, coreano, latino, antico irlandese, albanese, tagalog, yiddish). Ogni lingua ha le sue impostazioni: **Parole** divide il testo con la corrispondenza più lunga nel dizionario (adatta al giapponese) o in **parole intere tra gli spazi** (adatta alle lingue scritte con spazi); **Letture** mostra o nasconde le letture sopra le parole; i **dizionari** si scelgono in automatico (quelli che dichiarano la lingua e quelli che non ne dichiarano una) o a mano. Salvando, tutto si applica subito.
+
+Stati delle parole, parole note lette da Anki, frasi, esercizi cloze e carte di ripasso sono tenuti separati per ogni lingua: segnare una parola come nota in inglese non cambia nulla in giapponese, e la scheda Ripasso mostra le carte create mentre si studiava quella lingua. Stati e frasi di prima di questa versione appartengono al giapponese. Le statistiche del ripasso contano ancora tutte le lingue.
+
+## Podcast e lezioni con i testi delle canzoni (sviluppo M112)
+
+Libri → **Podcast** aggiunge un podcast con l’indirizzo del suo feed RSS (HTTPS) tramite **Aggiungi o aggiorna**. Nulla viene letto o scaricato senza che tu lo chieda: **Aggiorna** rilegge il feed, **Scarica** salva un episodio alla volta per l’ascolto offline e **Ascolta** lo apre come un audiolibro, con elenco dei sottotitoli, ricerca delle parole, ripetizione della battuta e carte con l’audio della battuta. Se un download si interrompe (Ferma, un errore di rete o la chiusura), **Riprendi il download** continua da dove si era fermato se il server lo consente, altrimenti ricomincia. Sono accettati episodi fino a 2 GiB.
+
+Se il feed offre una trascrizione SRT o WebVTT (`podcast:transcript`), viene scaricata con l’episodio e si apre con esso. Gli altri tipi (HTML, JSON) sono segnalati come non supportati. **Usa un file di testo sincronizzato…** prende invece un tuo file SRT, WebVTT, ASS o LRC per un episodio. Per le canzoni, tieni un file `.lrc` accanto al file audio (stesso nome) e apri la canzone: le sue righe si cercano, si ripetono e diventano carte allo stesso modo. Nikomiru non trascrive mai il parlato.
+
+I dati di feed ed episodi sono nei backup locali; i file scaricati no (si riscaricano). **Rimuovi con i download** elimina un feed e i suoi file; un aggiornamento conserva gli episodi scaricati che il feed non elenca più. Le pagine web di feed ed episodi si aprono nel browser solo quando le clicchi. I podcast non vengono sincronizzati da WebDAV.
+
+## Annotazioni, ricerca nei libri e modalità di lettura (sviluppo M111)
+
+In un libro di testo aperto, **Aggiungi segnalibro**, **Evidenzia** e **Aggiungi nota** creano una bozza; nulla viene salvato prima di **Salva**. Evidenziazioni e note partono dall’ultima parola cercata; scegli **Parola**, **Frase** o **Paragrafo** per coprire di più. Un segnalibro segna il paragrafo in cima alla pagina e deve avere un nome. Evidenziazioni e note sono disegnate dietro al testo. **Annotazioni** elenca le annotazioni di tutti i libri (o solo di questo) con un filtro, modifica ed eliminazione esplicite, **Apri nel libro** ed esportazione TSV delle righe mostrate. Se il testo di un libro cambia, le annotazioni restano ma sono segnate come cambiate e non vengono mai mostrate in un punto spostato. Restano su questo computer: sono nei backup locali ma non vengono unite da WebDAV. Non cambiano mai stati delle parole, frasi o posizione di lettura.
+
+**Cerca nei libri** trova un testo letterale in tutti i libri aggiunti (esclusi i manga), senza distinguere maiuscole e composizione Unicode. Fino a 200 risultati (20 per libro) mostrano libro, capitolo e contesto; aprirne uno verifica che il testo sia ancora lì prima di spostare il lettore. Il testo viene letto una volta per sessione e riletto quando un file cambia; i libri cambiati o mancanti sono elencati come non cercati. La ricerca non sposta nessuna posizione di lettura.
+
+Per la scrittura orizzontale scegli **Scorrimento** (predefinito), **Pagine** o **Frase** nella barra del lettore. Pagine mostra paragrafi interi una pagina alla volta; Frase mostra una frase più grande del suo paragrafo. Si gira con i pulsanti Precedente/Successiva o con Pagina su/Pagina giù. Dizionario, carte, sottolineature degli stati e lettura accompagnata funzionano in tutte le modalità; la scelta viene salvata. La scrittura verticale e i manga mantengono le loro pagine.
+
+## Altri documenti locali (sviluppo M110)
+
+Libri → Aggiungi accetta anche file `.htmlz`, `.rtf`, `.docx` e `.pdf` con testo. Usano ricerca delle parole, carte, frasi, indice delle frasi, analisi e posizione salvata del lettore. I file originali restano dove sono; i contenuti non vengono copiati nei backup o su WebDAV. Spostare un file conservandone nome e contenuto mantiene la sua identità; cambiare il contenuto crea una fonte diversa. Un’importazione fallita lascia aperto il libro attuale.
+
+- **HTMLZ** legge `index.html`/`index.htm` nella radice, oppure l’unico documento HTML non ambiguo. Conserva paragrafi e furigana; ignora script, stili, immagini e risorse esterne.
+- **RTF** legge Unicode e le codifiche legacy dichiarate supportate, compreso il giapponese. Conserva paragrafi, a capo, tabulazioni e risultati dei campi. Ignora formattazione, immagini, oggetti e istruzioni dei campi, senza eseguirli.
+- **DOCX** legge paragrafi, sequenze di testo e tabelle del corpo WordprocessingML senza macro, nell’ordine del documento, comprese aggiunte e intestazioni di base. Ignora testo eliminato, disegni e istruzioni dei campi. Non riproduce l’impaginazione Word e non segue collegamenti esterni.
+- **PDF** richiede Poppler `pdftotext` installato. Imposta l’eseguibile o la cartella in Impostazioni → Avanzate, oppure seleziona esplicitamente Poppler nella configurazione per riusare un’installazione rilevata. Sulle distribuzioni Linux native supportate la configurazione può installare Poppler e i dati CMap con il gestore pacchetti del sistema, richiedendo l’autenticazione amministratore ordinaria. Usa repository e rete del sistema; l’installazione di pacchetti mancanti è disabilitata con un proxy personalizzato dell’app o in una sandbox. Interrompi evita le attività successive mentre il sistema conclude la transazione corrente. Leggere non installa nulla. I PDF conservano l’ordine delle pagine, comprese quelle vuote, ed estraggono solo testo: scansioni, documenti che richiedono una password o non validi producono un errore. Non sono previsti ricostruzione dell’ordine visivo complesso e OCR dei PDF.
+
+Archivi e PDF hanno un limite di 16 MiB; RTF e documenti selezionati negli archivi di 4 MiB. L’importazione ammette al massimo 2.048 voci nell’archivio, 64 MiB dichiarati dopo decompressione, 8.192 paragrafi, 4 MiB di testo pulito e 64 KiB per paragrafo. Per i PDF valgono anche 512 pagine e 30 secondi di estrazione. L’analisi completa conserva i limiti più restrittivi. Percorsi non sicuri, strutture malformate e codifiche non supportate vengono rifiutati. Le verifiche native Windows/macOS/Android e dei pacchetti helper nelle sandbox restano nel lavoro sulle piattaforme.
+
+## Manga Mokuro (sviluppo M103)
+
+Libri → Aggiungi accetta file JSON `.mokuro` 0.2.x con immagini locali in una cartella omonima accanto al file, oppure accanto al manifest se la cartella non esiste. Seleziona un riquadro nella pagina: il testo originale diventa cliccabile e il ritaglio JPEG esatto è disponibile per le carte, senza OCR o installazione del modello. Ordine e posizione delle pagine sono conservati. Immagini mancanti, percorsi non sicuri e coordinate non valide rifiutano l’importazione prima di sostituire un libro. Piccoli sconfinamenti dei riquadri OCR vengono ritagliati. I lettori HTML eseguibili precedenti e gli URL di immagini remote non vengono usati.
+
+### Quaderno delle frasi
+
+Apri **Quaderno delle frasi** dalla Libreria o dai Libri. **Cattura fonte attuale** prepara una bozza dalla selezione del lettore (o dal paragrafo attuale), oppure dal sottotitolo primario attuale. Inserisci una frase presente nel contesto originale, aggiungi il significato e scegli il suo stato, poi premi **Salva frase**. **Nuova frase** funziona anche senza fonte. Il salvataggio è esplicito; duplicati ed errori lasciano disponibile la bozza.
+
+La ricerca comprende frase, significato, contesto e titolo della fonte. Puoi modificare o eliminare una voce; **Apri fonte** torna al paragrafo originale o alla scena video in pausa, se ancora disponibili. **Esporta frasi mostrate** conserva le voci visualizzate in TSV UTF-8, neutralizzando le formule dei fogli di calcolo. Lo stato di una frase non modifica colori, conteggi di comprensione o ripassi delle parole. Le frasi locali sono incluse nei backup ordinari; il quaderno non viene ancora unito tramite WebDAV.
+
+### Esercizi cloze
+
+Nel quaderno delle frasi scegli **Anteprima cloze**, controlla il contesto mascherato e conferma **Crea esercizio**. L'esercizio conserva una copia di frase, significato e fonte; modificare o eliminare la frase nel quaderno non lo riscrive.
+
+Apri **Esercizi cloze**, filtra le voci e pratica i primi 100 esercizi mostrati, con risposte scritte o scelte. La scrittura usa Unicode NFC e ignora gli spazi esterni; maiuscole, punteggiatura e letture giapponesi restano distinti. Le scelte richiedono un'altra risposta distinta nella stessa lingua. Risposte e significati appaiono dopo l'invio; avanzamento, salto e annullamento dell'ultimo esercizio sono espliciti. Le pagine sorgente restano nascoste durante l'esercizio.
+
+La pratica finita non cambia calendari o stati di frasi e parole. **Attiva ripasso programmato** iscrive esplicitamente il singolo esercizio a FSRS. **Ripassa esercizi in scadenza** usa le impostazioni del ripasso esistente, con quattro valutazioni esplicite dopo il controllo e annullamento dell'ultima valutazione. Esercizi, fonti e calendari persistono dopo riavvio e backup. Eliminare un esercizio elimina anche il suo calendario, lasciando intatta la frase nel quaderno.
+
+### Banco delle frasi ed esempi esatti
+
+Apri **Banco delle frasi** dal quaderno, oppure **Esempi fra le fonti** da una voce del dizionario. Indicizza esplicitamente il libro attuale o il testo completo dei sottotitoli primari. Il banco conserva frasi, posizioni originali e intervalli video, usando i dizionari installati per identificare espressioni e letture. Una nuova indicizzazione sostituisce in modo atomico la copia precedente della stessa fonte. Puoi annullare la preparazione; il salvataggio atomico finale non ha un pulsante di annullamento.
+
+Cerca espressione e lettura esatte, ad esempio `食べる` / `たべる`: anche la forma flessa `食べました。` può comparire fra gli esempi. Il banco mostra fino a 50 frasi salvate, evidenzia le parti originali e indica la provenienza. Gli esempi restano disponibili offline. **Apri fonte** verifica il contesto originale prima di spostare il lettore; un file modificato o mancante non elimina l’esempio. L’esportazione TSV comprende solo i risultati mostrati e neutralizza le formule. Eliminare una copia della fonte elimina il suo indice, lasciando intatti libro, sottotitoli e stati di apprendimento. Il banco è incluso nei backup ordinari; non viene unito tramite WebDAV.
+
+L’importazione accetta un pacchetto JSON UTF-8 locale, fino a 8 MiB, nella lingua di studio attuale:
+
+```json
+{"version":1,"title":"I miei esempi","entries":[{"text":"食べました。","language":"ja"}]}
+```
+
+Ogni voce può contenere anche un riferimento `source` a una fonte già presente nella libreria. Percorsi, URL e collegamenti eseguibili vengono rifiutati. Il testo resta un dato locale; non vengono scaricati metadati o esempi da fornitori esterni. Limiti del banco: 256 fonti/pacchetti, 10.000 frasi e 32 MiB di dati serializzati; ogni frase può contenere fino a 16 KiB e 256 parole riconosciute. Installa i dizionari prima di indicizzare.
+
+### Creazione di carte in serie con anteprima
+
+Apri **Carte in serie** dal taccuino, acquisisci una voce del dizionario, aggiungi un esempio della banca frasi oppure seleziona fino a 20 parole del vocabolario principale corrente. I contesti acquisiti restano fissi: scegli fra un massimo di cinque per parola e abilita esplicitamente audio o immagine. **Anteprima** verifica campi, mazzo, tipo di nota ed etichette senza estrarre media o aggiungere note. Controlla i campi prima di **Avvia**. Cambiamenti a impostazioni, dizionari o media richiedono una nuova anteprima. Per Anki il primo campo deve dipendere dall’identità della parola, così da controllare i duplicati.
+
+Le carte vengono elaborate una alla volta. Interrompere conclude quella corrente e annulla le successive; riprendi esplicitamente quelle mai inviate. I duplicati vengono saltati. Un errore certo permette un nuovo tentativo esplicito con la stessa identità dell’operazione. Un esito Anki incerto interrompe la serie: **Riconcilia** cerca soltanto l’etichetta esatta e adotta una nota trovata univocamente. Nessun risultato o più risultati lasciano l’esito irrisolto e impediscono l’invio automatico. Il riavvio conserva il registro senza riprendere gli invii. Puoi eliminare i registri risolti; quelli incerti restano protetti.
+
+I backup ordinari del database conservano i registri, non i media delle carte preparate per dopo. L’esportatore delle carte conservate mantiene le etichette dell’operazione e la protezione dagli esiti incerti. I limiti sono 20 carte, 8 MiB di contenuti acquisiti, 100 registri e 32 MiB di registro; quando sono pieni elimina esplicitamente la cronologia risolta.
+
+### Profili di mining e campi del compositore
+
+In Impostazioni → Anki inserisci un nome e scegli **Salva nuovo profilo**. Il profilo acquisisce destinazione, mazzo, tipo di nota, etichette e modelli di quel tipo di nota; non contiene indirizzo di connessione, chiave API o impostazioni dei media. Applica o elimina i profili esplicitamente, poi **Salva** le impostazioni per conservare le modifiche. L’applicazione verifica mazzi e tipi di nota esistenti senza creare quelli mancanti. Puoi conservare 16 nomi fra riavvii e backup ordinari della configurazione. I modelli esistenti restano disponibili.
+
+In **Mining avanzato** espandi **Modifica e fissa i campi**. Abilita un campo e inserisci testo letterale per sostituirne il modello nella carta corrente; HTML e parentesi graffe restano testo. I campi non abilitati conservano modelli e media ordinari. **Fissa campo** riutilizza esplicitamente quella modifica nei successivi compositori durante questa esecuzione. Togliere la fissazione interrompe il riuso futuro e conserva la modifica nella bozza; disabilitare il campo ripristina il modello. Il mining rapido e in serie ignora questi campi fissati. Le modifiche sono disponibili per Anki e carte conservate, mentre il ripasso locale mantiene il proprio schema fisso. Ogni valore è limitato a 16 KiB, con 128 campi/256 KiB complessivi; campi sconosciuti o un primo campo vuoto impediscono il caricamento su Anki. Le carte conservate mantengono le modifiche anche dopo riavvio ed esportazione.
+
+Espandi **Scegli i significati del dizionario** per includere soltanto le definizioni selezionate. Inizialmente sono tutte selezionate; deselezionale esplicitamente. Una voce di definizione può contenere più significati collegati. Selezioni vuote, voci con oltre 128 definizioni e contenuti del dizionario cambiati vengono rifiutati. Solo le definizioni scelte forniscono testo e immagini. Ogni nuovo compositore riparte con scelte nuove per definizioni e media. Le azioni rapide dei profili chiudono esplicitamente la bozza e rimuovono i campi fissati. Cambiare libro, video o ricerca durante la modifica non sostituisce silenziosamente la fonte acquisita: se è cambiata, riapri il compositore.
+
+### Ricerca guidata alla pausa e traduzione temporanea
+
+Impostazioni → Ricerca → **Ricerca alla pausa** è inizialmente disattivata. Scegli **Prima parola sconosciuta** per usare il primo sottotitolo principale attivo e le identità e gli stati dei dizionari installati. Le parole note, in apprendimento e ignorate, la punteggiatura e il testo senza una voce del dizionario vengono saltati. La ricerca attende la segmentazione già disponibile e si apre una sola volta per passaggio alla pausa. Chiudere questo popup lascia la riproduzione in pausa. Riprendere il video, cambiare fonte o dizionari, aprire un altro popup o coprire il lettore annulla una ricerca in attesa. Tracce disattivate e OCR ancora parziali non avviano questa regola. Gli stati delle parole restano invariati.
+
+**Primo kanji** è una regola indipendente, senza ripiego sulle parole sconosciute: cerca il primo carattere kanji originale. La scorciatoia separata **Cerca il primo kanji** è inizialmente senza tasto; puoi assegnarla in Scorciatoie. Cambiare le impostazioni da solo non apre una ricerca.
+
+Tieni premuto il tasto fisico **T**, configurabile come **Tieni premuto per rivelare la traduzione secondaria**, per mostrare la traccia di testo secondaria già selezionata nel menu. Rilascialo per ripristinare le regole correnti di oscuramento. Non mette in pausa, non sposta il video, non cambia la traccia principale e non traduce né scarica nulla. Le ripetizioni non bloccano la visualizzazione; puoi cambiare modificatori prima del rilascio. Perdita del focus, input di testo, pagine sovrapposte, popup e cambi di fonte interrompono la visualizzazione temporanea. Se assegni più tasti, il primo premuto mantiene il controllo fino al rilascio. Le preferenze salvate restano invariate e il riavvio non conserva alcun tasto premuto.

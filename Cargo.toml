@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "2.53.0"
+version = "2.120.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-only"
@@ -72,6 +72,8 @@ postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 lz4_flex = "0.14"
 tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
 zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz"] }
+tar = { version = "0.4.46", default-features = false }
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
 icu_normalizer = "2.3"
@@ -85,6 +87,13 @@ fluent-bundle = "0.16"
 unic-langid = "0.9"
 uuid = "1.28"
 sha2 = "0.11"
+# Update manifest signatures (UPD-001, §4): minisign/Ed25519 verification, MIT, no dependencies
+minisign-verify = "0.3"
+# Signing in the update tests only (UPD-001): MIT, without default features
+ed25519-compact = { version = "2.6", default-features = false }
+pulldown-cmark = { version = "0.13.6", default-features = false }
+# Inert namespace-aware DOCX body parsing (DOC-003); already in the graph.
+quick-xml = { version = "0.41.0", default-features = false }
 crc32fast = "1.5"
 # the manga model, in pure Rust (D-30)
 tract-onnx = "0.23"

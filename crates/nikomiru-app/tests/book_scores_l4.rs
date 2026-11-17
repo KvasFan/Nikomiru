@@ -47,7 +47,9 @@ fn manager(root: &Path) -> DictionaryManager {
 fn request(path: &Path) -> Request {
     let book = nikomiru_books::read(path).unwrap();
     Request {
-        uid: nikomiru_library::books::book_uid(&book.title, &book.author, book.chars()),
+        uid: book.identity.clone().unwrap_or_else(|| {
+            nikomiru_library::books::book_uid(&book.title, &book.author, book.chars())
+        }),
         path: path.into(),
         generation: 0,
         serial: 1,
@@ -238,4 +240,39 @@ fn persistent_book_counts_survive_restart_and_validate_sources_and_dictionaries(
         nikomiru_app::book_scores::count_cached(&manager, &request, &cancel, &tr(), &store)
             .is_err()
     );
+}
+
+// T-BOK-011, T-BOK-014: loose Markdown and managed sources share real whole-book segmentation and identity guards.
+#[test]
+fn loose_documents_are_counted_without_changing_source_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let manager = manager(dir.path());
+    let path = dir.path().join("Study.md");
+    std::fs::write(&path, "# 読書\n\n食べました\n\n食べる").unwrap();
+    let query = request(&path);
+    let Outcome::Counted(counted) =
+        nikomiru_app::book_scores::count(&manager, &query, &Cancel::new(), &tr()).unwrap()
+    else {
+        panic!("expected words");
+    };
+    let i = counted
+        .words
+        .iter()
+        .position(|(e, r)| e == "食べる" && r == "たべる")
+        .unwrap();
+    assert_eq!(counted.occurrences()[i], 2);
+    let (saved, _) = nikomiru_books::text::save(
+        &dir.path().join("text"),
+        "Study",
+        "食べる",
+        nikomiru_books::text::Format::Plain,
+    )
+    .unwrap();
+    assert!(matches!(
+        nikomiru_app::book_scores::count(&manager, &request(&saved), &Cancel::new(), &tr())
+            .unwrap(),
+        Outcome::Counted(_)
+    ));
+    std::fs::write(&path, "猫を見ました").unwrap();
+    assert!(nikomiru_app::book_scores::count(&manager, &query, &Cancel::new(), &tr()).is_err());
 }

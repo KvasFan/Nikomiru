@@ -8,20 +8,29 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+/// Reader bookmarks, highlights and notes.
+pub mod annotations;
 pub mod backup;
+pub mod batches;
 pub mod books;
 pub mod cards;
+pub mod cloze;
 pub mod db;
 pub mod dictionaries;
 pub mod encounters;
 pub mod grouping;
 pub mod home;
 pub mod import;
+/// Independent local phrase vocabulary.
+pub mod phrases;
+/// Podcast feeds and episodes.
+pub mod podcasts;
 pub mod policy;
 pub mod progress;
 pub mod review;
 pub mod review_log;
 pub mod scan;
+pub mod sentences;
 pub mod series_info;
 pub mod server_items;
 pub mod stats;

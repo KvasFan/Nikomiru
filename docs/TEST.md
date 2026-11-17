@@ -639,6 +639,23 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-INS-004 | A library downloaded | Resumed from a `.part`, asking only what is missing; a part that fails asked of the whole pack; a CRC-32 that does not match refused and nothing kept; a compressed entry refused before any request; a file that is not an audio database refused (L4) | L4 |
 | T-INS-005 | Cards | kittest: Lapis found and chosen in one click, made when missing; Anki away: try again or "Anki, later"; the review chosen | L3 |
 | T-INS-006 | Progress | The events move the rows, an import waiting keeps the assistant busy (L1); Stop keeps the `.part` (L4) | L1, L4 |
+| T-INS-007 | Selected support tools | Platform/dependency catalog, offline inventory, bounds/hash/archive hostility, cancellation and rollback, actual executable probes and immediate worker reconfiguration (L1/L4); pinned upstream bundles (opt-in L7); selected-only setup UI (L3), configured paths persisted across application restarts (L6) | L1, L3, L4, L6, L7 |
+| T-SUB-035 | Selected subtitle SRT | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M46) | L1, L3, L6 |
+| T-SUB-036 | Copy subtitle transcripts | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M47) | L1, L3, L6 |
+| T-SUB-037 | WebVTT subtitle export | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M48) | L1, L3, L6 |
+| T-SUB-038 | Bilingual study transcript | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M49) | L1, L3, L6 |
+| T-SUB-039 | Subtitle study time window | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M50) | L1, L3, L6 |
+| T-KNW-034 | Vocabulary frequency ranges | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M51) | L1, L3, L6 |
+| T-KNW-035 | Vocabulary coverage summary | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M52) | L1, L3, L6 |
+| T-KNW-036 | Dictionary lookup from study vocabulary | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M53) | L1, L3, L6 |
+| T-KNW-037 | Subtitle word concordance | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M54) | L1, L3, L6 |
+| T-KNW-038 | Study frequency dictionary export | Requirement edge cases, invalidation, bounded snapshots and accessible explicit actions; actual application/file checks where relevant (M55) | L1, L3, L6 |
+| T-KNW-039 | Exact vocabulary search | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M56) | L1, L3, L6 |
+| T-SUB-040 | Subtitle reading-speed filters | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M57) | L1, L3, L6 |
+| T-SUB-041 | Subtitle study statistics | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M58) | L1, L3, L6 |
+| T-SUB-042 | Bilingual SRT export | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M59) | L1, L3, L6 |
+| T-SUB-043 | Navigate matching subtitle lines | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M60) | L1, L3, L6 |
+| T-KNW-040 | Reusable session study filters | Boundaries, empty/invalid cases, scope identity and accessible explicit actions (M61) | L1, L3, L6 |
 | T-KNW-001 | Word statuses | Kept by headword and reading, the last one set, no migration; the newer mark wins, ties alike everywhere; synced to another device, set back to unknown later (L1); a card makes a word learning; the four statuses in a popup entry, a click sends the new one, the one it has sends nothing (L3); marked known from the popup and still known after a restart (L6) | L1/L3/L6 |
 | T-KNW-002 | Words coloured by status | Unknown and learning words marked, known and ignored not, the colours in the place of the mined underline (L1); underlines drawn in the overlay and both reader writing directions (L3); a word not known underlined in real subtitles, EPUB and web-page text, learning then known updates the marks; off leaves reader analysis empty (L6) | L1/L3/L6 |
 | T-KNW-003 | Lines with one new word | One word not known makes the line i+1, two do not (L1); `+1` in the subtitle list (L3); a real line with one new word (L6) | L1/L3/L6 |
@@ -811,3 +828,220 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 
 
 **L6 tests never run on the developer's graphical session.** A covered window does not receive the compositor's frame callbacks and does not render (ADR 0001). An off-screen compositor is always used: headless Weston, virtual KWin or Xvfb.
+
+## M62–M71 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-KNW-041 | Named persistent study presets | Save up to sixteen named vocabulary filter presets in configuration; validate names and bounded queries, explicitly apply/delete, preserve ticks and report save failures. | L1, L3 |
+| T-KNW-042 | Vocabulary script filters | Filter headwords by kanji, kana or Latin presence with explicit Unicode ranges; compose with other filters and retain both session and persistent presets. | L1, L3 |
+| T-KNW-043 | Vocabulary expression length | Inclusive non-whitespace Unicode scalar length bounds compose with filters, selections and both preset types; reversed bounds show no rows. | L1, L3 |
+| T-SUB-044 | Subtitle duration filters | Inclusive millisecond duration bounds compose with time/speed/search/concordance; cache and all shown exports use the same predicate. | L1, L3 |
+| T-SUB-045 | Listening text masking | Explicitly hide subtitle-list text and reveal individual or shown cues; hidden text is absent from rendering and accessible labels; source changes reset reveals. | L1, L3 |
+| T-KNW-044 | Vocabulary from subtitle study scopes | Explicitly capture shown/selected complete segmented cue vocabulary; retain headword counts, rescore statuses, invalidate on source/dictionary replacement and return to full scope. | L1, L3 |
+| T-SUB-046 | Bilingual HTML study sheets | Export a bounded standalone escaped bilingual HTML snapshot with translations behind details, no external resources and atomic native saving. | L1, L3 |
+| T-SUB-047 | Subtitle range selection | Shift-select ranges in shown order and invert shown ticks, preserve hidden selections, clear range anchors on source changes. | L1, L3 |
+| T-KNW-045 | Vocabulary study batches | Select next N unticked shown words in chosen order (1–1000, default 20); clear/invert shown only and retain hidden ticks. | L1, L3 |
+| T-SUB-048 | Finite subtitle repetition | Repeat an explicitly chosen cue two, three or five times then pause; cancel on manual playback/source/delay actions and prevent gap-speed/auto-pause conflicts. | L1, L3 |
+
+## M72–M81 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-SUB-049 | Subtitle text-length bounds | Inclusive non-whitespace Unicode scalar bounds compose with all existing subtitle scopes, cached rows and shown exports; reset only their own limits. | L1, L3, L6 |
+| T-SUB-050 | Unique subtitle captions | Optionally keep the first caption with identical whitespace-collapsed case-sensitive text within the already-filtered shown scope; preserve hidden ticks and original export indices. | L1, L3, L6 |
+| T-SUB-051 | Single or multiline captions | Filter captions by one or multiple nonempty text lines; combine with search and all other scope controls without changing source text. | L1, L3, L6 |
+| T-KNW-046 | Vocabulary reading filters | Filter headwords by a distinct nonempty reading or its absence; compose with other filters and include the choice in session and persistent presets. | L1, L3, L6 |
+| T-KNW-047 | Vocabulary coverage targets | Optionally keep the most frequent currently matching words needed to reach an inclusive 1–100 percent occurrence target, including boundary ties; use exact wide arithmetic before applying display order and save the choice in presets. | L1, L3, L6 |
+| T-SUB-052 | Persistent subtitle study presets | Save/apply/delete up to sixteen named bounded subtitle query and filter snapshots in configuration. Exclude selections, masking/reveals and source identities; preserve ticks, report persistence outcomes and support restart. | L1, L3, L6 |
+| T-KNW-048 | Vocabulary HTML study sheets | Export complete shown/selected headword snapshots as bounded standalone escaped HTML, with readings behind details and occurrence/status/card fields; freeze before atomic native saving. | L1, L3, L6 |
+| T-SUB-053 | Context around word examples | Expand exact subtitle concordances by zero, one or two neighbouring original cues on each side; identify exact hits, deduplicate overlaps, compose other filters and preserve source/revision invalidation. | L1, L3, L6 |
+| T-SUB-054 | Subtitle study keyboard actions | Offer configurable shortcuts for previous/next matching line, current-line reveal and current-line selection. Respect typing focus and page coverage, preserve pause and use the same current rendered scope as buttons. | L1, L3, L6 |
+| T-SUB-055 | Finite cue practice queues | Capture a bounded complete shown/selected queue of original cues, repeat each 2/3/5 times then pause after the final cue. Reject stale/invalid scopes without partial playback, show remaining cues and cancel on manual controls, primary source/timing changes or explicit stop. | L1, L3, L6 |
+
+## M82–M91 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-SUB-056 | Exact subtitle search | Offer whole-caption normalised exact matching alongside contains search; compose with all filters, cached scopes, exports and persistent subtitle presets. | L1, L3, L6 |
+| T-SUB-057 | Subtitle study row ordering | Offer source order, duration ascending/descending and text length. Filter/deduplicate before sorting; keep current-row highlighting, matching-time navigation, range selection and chronological exports/queues correct. Save order in presets. | L1, L3, L6 |
+| T-SUB-058 | Editable subtitle study time bounds | Enter bounded nonnegative seconds, minutes:seconds or hours:minutes:seconds with up to millisecond precision. Explicit Apply validates both bounds atomically, empty means unbounded, invalid/reversed input changes no scope. | L1, L3, L6 |
+| T-SUB-059 | Cue translation preview | Explicitly preview overlap-aligned secondary text for an original primary cue in a read-only window; use independent delays and complete bounded tracks, preserve primary masking and invalidate on primary/secondary source or delay changes. | L1, L3, L6 |
+| T-KNW-049 | Practice vocabulary from readings | Optionally hide headwords until explicit per-word/shown reveal in shared vocabulary lists. Readings provide clues only when distinct. Mask accessible names and disable lookup/example actions until revealed; source/data changes reset reveals, explicit exports remain original snapshots. | L1, L3, L6 |
+| T-KNW-050 | Undo word-status changes | Retain one bounded transient snapshot of the last actual single/bulk word-status change. Undo only when dictionary generation and expected current statuses still match, restore atomically through the library writer and expose the action in shared study views. | L1, L3, L6 |
+| T-SUB-060 | Pauses between practice passes | Offer a session-only pause of zero to ten seconds between finite passes/cues. Wait without blocking the UI, display waiting state and cancel pending resumes on explicit stop, manual controls or source/timing changes. | L1, L3, L6 |
+| T-SUB-061 | Skip and restart practice cues | Allow explicit skip to the next captured cue and restart of the current cue with its original finite pass count. Preserve the remaining queue, reject stale sources, and pause when skipping the final cue. | L1, L3, L6 |
+| T-KNW-051 | Vocabulary sentence concordance export | Export bounded complete exact headword/reading examples for shown/selected primary vocabulary as TSV with original caption text and effective timings. Index segmentation once, deduplicate per-cue hits, reject stale/partial scopes and freeze before atomic native saving. | L1, L3, L6 |
+| T-KNW-052 | Portable study presets | Export/import only vocabulary/subtitle named filter presets as versioned bounded JSON. Validate the entire file, duplicate names, choices and merged capacities before any mutation; merge by name without deleting unrelated presets, respect read-only configuration and use the serial writer. | L1, L3, L6 |
+
+## M92–M101 continuation
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-KNW-053 | Finite vocabulary recall sessions | Start a frozen recall session from shown or selected vocabulary, at most one thousand unique identities and bounded text. Hide answers until explicit reveal, skip explicitly, keep selection scope/order and leave playback/global word statuses unchanged. | L1, L3, L6 |
+| T-KNW-054 | Bounded self-rated recall | Offer Again/Good only after reveal, requeue Again at most three attempts per card, retain finite history/counters and show completion summaries. Ratings affect the recall round only. | L1, L3, L6 |
+| T-KNW-055 | Recall keyboard controls | Provide configurable reveal/Again/Good shortcuts in a dedicated recall context; preserve typing focus, settings coverage and dictionary popup priority, close recall with Back and prevent accidental playback shortcuts. | L1, L3, L6 |
+| T-KNW-056 | Dictionary lookup from recall | Explicitly look up a revealed recall headword without an unrelated cue; show results above library/recall views and preserve queue progress. Hidden answers do not appear in disabled action names. | L1, L3, L6 |
+| T-KNW-057 | Sentence hints for recall | Optionally capture up to three short distinct exact segmented examples per card from the complete current primary subtitle. Bound all source/work/output, prepare hints atomically and reveal them explicitly without seeking or changing the frozen word queue. | L1, L3, L6 |
+| T-KNW-058 | Restart recall in varied orders | Explicitly restart the captured cards in original, reversed or seeded shuffled order. Preserve identities/hints, reset round progress and guarantee each initial card appears exactly once before self-rating repeats. | L1, L3, L6 |
+| T-KNW-059 | Portable recall resume files | Save/load a bounded versioned recall session containing captured cards, order and self-rating history. Validate the whole file by replaying finite history before replacing a round; resume with the current answer hidden and never import global word statuses or media paths. | L1, L3, L6 |
+| T-KNW-060 | Recall results export | Freeze one TSV row per captured word with attempts, ratings and completion state, neutralising spreadsheet fields and enforcing output bounds before atomic native saving. Exporting changes no round or library state. | L1, L3, L6 |
+| T-KNW-061 | Focused recall follow-up rounds | At completion explicitly create a fresh round from cards rated Again or skipped cards, preserving captured hints/identities. Show unavailable categories disabled and retain finite bounds without modifying global statuses. | L1, L3, L6 |
+| T-KNW-062 | Local recall summary history | Explicitly record a completed round summary in bounded local configuration history, once per round, without word text or changes to library learning-time statistics. Show recent summaries, allow explicit removal/clear and report asynchronous persistence failures. | L1, L3, L6 |
+
+
+## M102 text reading
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-BOK-011 | Loose text documents | UTF-8/BOM/CRLF, literal markup, empty/invalid/control input and byte/paragraph limits; normal/analysis parity and cancellation. | L1, L6 |
+| T-BOK-012 | Markdown reading | Nested inline syntax, links/image labels without network, headings/lists/code, literal HTML and safe ruby with byte-correct ranges. | L1, L3, L6 |
+| T-BOK-013 | Paste and read | Editor explicit submission, bounded managed source save/read, duplicate reuse, invalid version and partial-write failure; restart and backup retention. | L1, L3, L6 |
+| T-BOK-014 | Identity and reader integration | Equal-title/length different-content isolation, moved-file identity, saved positions, lookup/mining/word analysis and replacement failures without playback changes. | L1, L6 |
+
+
+## M103 Mokuro
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-MNG-007 | Mokuro import | Maintained fixture shape, page/region order, source identity, normal page progress, empty art pages and fail-atomic missing images; bounded nested sequences. | L1, L6 |
+| T-MNG-008 | Imported region selection | Actual scaled targets, exact stored text and JPEG crop without OCR, paired-page identity, lookup/mining and stale-result isolation. | L1, L3, L6 |
+| T-MNG-009 | Untrusted local volume | Traversal/absolute/network/duplicate/symlink image paths; versions, metadata/dimension mismatch, decoded size and clipped/invalid boxes; HTML stays data. | L1, L6 |
+
+
+## M104 phrases
+
+| Test | Requirement | Checks | Levels |
+| --- | --- | --- | --- |
+| T-PHR-001 | Phrase records | Validation, duplicate refusal, isolated status/update/delete, bounds and restart persistence in real redb. | L1, L6 |
+| T-PHR-002 | Phrase notebook | Explicit draft submission, typing focus, search/edit/delete/source reopening and frozen formula-neutralised TSV; readonly/errors. | L1, L3, L6 |
+| T-PHR-003 | Isolation | Reader/caption capture snapshots, global word statuses unchanged, source positions, restart and backup retention; no unintended seek. | L1, L6 |
+
+## M105 cloze
+
+| Test | Requirements | Evidence | Level |
+|---|---|---|---|
+| T-CLO-001 | CLO-001, CLO-002 | Literal masks, repeated/composed Unicode, distinct scripts/readings, duplicates/bounds and safe distractors; accessible concealed UI and explicit answer. | L1, L3 |
+| T-CLO-002 | CLO-003 | Finite progress/summary, explicit submit/advance/skip/cancel and undo; typing focus and unchanged phrases/words/schedules in the actual app. | L1, L6 |
+| T-CLO-003 | CLO-003 | Finite progress/summary, explicit advance/skip/cancel and one-step undo independent of schedules. | L1, L6 |
+| T-CLO-004 | CLO-004 | Real redb enrol/rating/stale comparison/undo, existing FSRS outputs, due queues and persistence/backup; actual-app scheduled restart. | L1, L6 |
+
+## M106 sentence bank
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-SEN-001 | Explicit bounded indexing | Real dictionary inflection/identity/ranges, sentence boundaries, bounded packs and cancellation; failed batches retain the previous snapshot. | L1, L6 |
+| T-SEN-002 | Exact offline examples | Distinct expression/readings and language, repeated hits, bounded stable results and stale-reply rejection; actual cross-book/primary-track results without status/playback changes. | L1, L3, L6 |
+| T-SEN-003 | Sources and persistence | Original Japanese byte offsets, missing/replaced source navigation, safe shown TSV, explicit batch deletion, restart and backup retention. | L1, L6 |
+
+## M107 batch mining
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-BMG-001 | Explicit bounded selection | Exact identity deduplication, selected contexts/original offsets, bounds and source changes; actual selected vocabulary and lookup capture. | L1, L3, L6 |
+| T-BMG-002 | Preview before export | Effective mappings and visible planned media, whole-batch validation, no add/media extraction before Start and stale-preview rejection. | L1, L3, L6 |
+| T-BMG-003 | Sequential execution | One export at a time, duplicate skips, per-item outcomes, stop-after-current cancellation and coexistence with single/pending mining. | L1, L6 |
+| T-BMG-004 | Safe recovery | Durable operation identity, exact-tag reconciliation, unknown commit without resend, certain retry, restart and backup retention against fake Anki fault modes. | L1, L4, L6 |
+
+## M108 mining profiles and composer
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-MCP-001 | Named profiles | Bounded config roundtrip, legacy defaults, invalid/duplicate names, credential isolation and explicit apply/delete/restart; missing Anki models. | L1, L3, L6 |
+| T-MCP-002 | Field pins | Explicit edit/pin/unpin scope, literal HTML/braces escaping, fresh media/source per card, unknown/empty fields before uploads and pending roundtrip. | L1, L4, L6 |
+| T-MCP-003 | Sense selection | Stable exact record fingerprints, selected-only definitions/images, empty/stale refusal before mutation; visible dictionary-labelled controls. | L1, L3, L6 |
+| T-MCP-004 | Draft ownership | Changed popup/source/profile cannot dispatch stale frames/context; ordinary advanced clip controls and double-submit isolation. | L1, L6 |
+
+## M109 guided lookup and translation peek
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-GDL-001 | Optional paused lookup | Default-off config, exact segmented unknown identity/UTF-8 offsets, skip known/learning/ignored/unrecognised, no candidate and single pause transition; actual paused popup/status isolation. | L1, L3, L6 |
+| T-GDL-002 | Kanji and ownership | Separate first-kanji rule/manual shortcut, original character query, stale source/dictionary/cue/pause/config cancellation and explicit-popup priority. | L1, L6 |
+| T-GDL-003 | Held secondary peek | Physical key release despite modifier/focus/binding changes; no latch on repeats, focus loss/page/popup/source clears and saved obscuring unchanged; actual secondary rendering. | L1, L3, L6 |
+| T-GDL-004 | Configuration/isolation | Accessible translated settings/actions, legacy/restart config, no hold persistence, unchanged word statuses/playback/source selection and no translation/provider request. | L1, L6 |
+
+## M110 document imports
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-DOC-001 | HTMLZ | Real ZIP/HTML/ruby reading order; unsafe/duplicate paths, ambiguous roots, compressed/decoded quotas, inert links/scripts and invalid import isolation. | L1, L6 |
+| T-DOC-002 | RTF | Real control/group parsing, scoped legacy/Unicode/fallback/surrogate cases, escaped/binary/ignored destinations, malformed nesting and invalid decoding; Japanese reader lookup. | L1, L4, L6 |
+| T-DOC-003 | DOCX | Actual WordprocessingML namespaces, body/run/table order, headings/Unicode/entities, revisions/field results, external parts, invalid/duplicate/undeclared attributes, text outside the root and ZIP/XML/depth limits. | L1, L6 |
+| T-DOC-004 | PDF | Actual installed Poppler extraction with page/Unicode identity, no-text/encrypted/invalid/missing cases; fake-process over-limit/timeout/cancellation/argument safety, inherited pipes after wrapper exit, explicit setup package-manager hooks and installed-helper adoption/configuration across restart. | L1, L4, L6 |
+| T-DOC-005 | Integration | Original source indices and content invalidation; mining/phrase/index/score/restart using the same support adapter, accessible translated controls, failed imports retaining the open book and whole regression CI. | L1, L3, L6 |
+
+## M111 reader modes, annotations and search
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-RDR-001 | Annotations | Real redb validation, duplicates, bounds, edit/delete, restart, read-only and backup retention; unchanged word/phrase/progress tables; actual reader creation over word/sentence/paragraph. | L1, L6 |
+| T-RDR-002 | Display and staleness | Current/stale classification after source replacement, no seek to stale locations, drawn highlights, validated reopen, formula-safe TSV of shown rows. | L1, L3, L6 |
+| T-RDR-003 | Library search | NFC/case-folded literal matching, Japanese byte offsets, per-book/total result limits, cache invalidation by size/mtime/identity, unreadable books, cancellation and stale replies; actual cross-book result opening. | L1, L6 |
+| T-RDR-004 | Reading modes | Deterministic page groups and sentence ranges, explicit page/sentence turns, lookup offsets, saved mode across restart and accessible translated controls. | L1, L3, L6 |
+
+## M112 podcasts and lyrics
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-POD-001 | Feeds | Real RSS/namespaces, GUID/enclosure identities, duplicate items, bounds, DTD/entity/malformed refusal, refresh merge retaining downloads and failed refresh isolation; real redb records/backup. | L1, L4, L6 |
+| T-POD-002 | Offline audio | Fake host whole/range answers, interrupted transfer resume from `.part`, 200-instead-of-206 restart, length mismatch, cancellation, size/type bounds, atomic rename; actual playback/resume of a downloaded episode. | L1, L4, L6 |
+| T-POD-003 | Transcripts/lyrics | SRT/VTT transcript sidecars, unsupported/missing transcripts, explicit local LRC import; actual lookup, line replay and card audio clip for an episode and a song with LRC. | L1, L4, L6 |
+| T-POD-004 | Page/persistence | Accessible translated page controls, stale replies, explicit external links, restart and backup retention. | L1, L3, L6 |
+
+## M113 shortcut maps
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-KEY-008 | Export | Versioned JSON of every action's physical chords, roundtrip through import with no change, atomic file. | L1, L6 |
+| T-KEY-009 | Import preview | Bounds, other format/newer version/malformed refusal, normalization/duplicates, unknown actions, invalid chords, conflicts and changed-action listing; absent actions kept. | L1, L3 |
+| T-KEY-010 | Apply/reset | Apply only without conflicts/invalid chords, live bindings and config after restart, Cancel and Reset, text-focus priority of imported single keys. | L1, L3, L6 |
+
+## M114 rich MDict
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-DIC-036 | Rich definitions | Allowlisted tags/styles, dropped scripts/attributes/CSS, entry/bword/http/sound/other links, nesting/node bounds, redirects; safe popup model. | L1, L3 |
+| T-DIC-037 | `.mdd` resources | Real generated `.mdx`+`.mdd` (v1.2/v2.0, zlib), numbered parts, referenced-only media, unsafe paths, missing `.mdd`, malformed `.mdd` failing atomically. | L1, L4 |
+| T-DIC-038 | Audio and cards | Popup image and sound link from an imported MDict, click-only playback, card with image and `[sound:]` media; actual app import/lookup/card. | L1, L4, L6 |
+
+## M115 study-language profiles
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-LNG-001 | Profiles | Config bounds/roundtrip/invalid fallback, automatic/explicit dictionary selection, whole-word segmentation, readings switch, live switch without restart. | L1, L3, L6 |
+| T-LNG-002 | Isolation | Real redb per-language statuses/Anki words/stats with legacy Japanese keys, review language table and queues, filtered phrases/cloze/bank. | L1, L6 |
+| T-LNG-003 | English end to end | Generated English Yomitan dictionary, deinflected lookup, segmentation, book statuses/counts, card/review and restart, Japanese data unchanged. | L4, L6 |
+| T-LNG-004 | Settings | Accessible translated controls and saved profiles. | L1, L3 |
+
+## M116 Emby
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-SRV-014 | Emby login | Fake Emby identity/header/prefix checks, Jellyfin refused as Emby, wrong password, token-only record; accessible Emby choice. | L3, L4 |
+| T-SRV-015 | Emby library/playback | Per-user views/items with paging, search, cover, direct-play refusal, subtitles, reports and played mark; actual relay playback with resume and stop report. | L4, L6 |
+| T-SRV-016 | Emby expiry | Expired token as Unauthorized; actual app message. | L4 |
+
+## M117 ports
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-PORT-004 | Touch gestures | Recognizer: swipe thresholds, direction, timing, vertical drags, second finger and cancel; video seek and reader turns from injected touch events; actual app with injected touches. | L1, L3, L6 |
+| T-PORT-005 | Per-platform tracking | `docs/qa/ports.md` states each platform's evidence and open native checks; Windows cross build still checked by CI (T-PORT-003). | review |
+
+## M118 palettes and shaders
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-THM-001 | Palettes | Contrast of every text/popup pair for each palette, light/dark and five accents (7:1 main texts in High contrast), config fallback, accessible choice. | L1, L3 |
+| T-THM-002 | Pack | Generated archive: hash/size refusal, only known `.glsl` names, bounds, atomic publish and removal; real pinned download as an L7 test. | L1, L7 |
+| T-THM-003 | Presets | Preset file lists, raw override, missing pack; actual app with a local test pack setting and clearing `glsl-shaders`, refusal fallback. | L1, L6 |
+
+## M119 updates
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-UPD-001 | Signed manifests | Generated minisign key/signatures: valid, tampered manifest, wrong key, malformed signature, other channel/format, bounds and HTTPS rules. | L1, L4 |
+| T-UPD-002 | No rollback | Older/equal releases and replayed older manifests refused; accepted floor kept. | L1, L6 |
+| T-UPD-003 | Ownership | Flatpak, package and read-only installs only link outside; accessible translated About controls. | L1, L3 |
+| T-UPD-004 | Install | Fake host: interrupted resumable download, size/hash refusal, unsafe archive names, failed `--version`, atomic swap with the previous folder kept; actual app check/download/install of a test release into a portable test root. | L1, L4, L6 |

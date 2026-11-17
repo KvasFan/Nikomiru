@@ -21,14 +21,22 @@ fn fold(text: &str) -> String {
 #[derive(Debug)]
 pub struct Query {
     terms: Vec<String>,
+    exact: String,
 }
 
 impl Query {
     /// Fold widths, composition, lowercase and basic kana script.
     pub fn new(query: &str) -> Self {
+        let normal = fold(query);
         Self {
-            terms: fold(query).split_whitespace().map(str::to_string).collect(),
+            terms: normal.split_whitespace().map(str::to_string).collect(),
+            exact: normal.trim().to_string(),
         }
+    }
+
+    /// Match the whole normalised query against one whole display field.
+    pub fn matches_exact(&self, fields: &[&str]) -> bool {
+        self.terms.is_empty() || fields.iter().any(|field| fold(field).trim() == self.exact)
     }
 
     /// Match across original display fields without changing their bytes/identity.
@@ -46,6 +54,18 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // T-KNW-039: exact field matching shares kana/width/case folding but never combines separate fields.
+    #[test]
+    fn exact_search_matches_whole_fields_without_changing_spelling() {
+        assert!(Query::new(" ﾀﾍﾞﾙ ").matches_exact(&["食べる", "たべる"]));
+        assert!(Query::new("ＡＢＣ").matches_exact(&["abc"]));
+        assert!(!Query::new("たべ").matches_exact(&["食べる", "たべる"]));
+        assert!(Query::new("たべ").matches(&["食べる", "たべる"]));
+        assert!(!Query::new("hello world").matches_exact(&["hello", "world"]));
+        assert!(Query::new("hello world").matches_exact(&["Hello World"]));
+        assert!(Query::new(" \t").matches_exact(&["anything"]));
+    }
+
     // T-KNW-026: original spelling/offsets are never a product of search folding.
     #[test]
     fn width_kana_case_composition_and_terms_share_one_matching_rule() {

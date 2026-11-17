@@ -7,19 +7,38 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+mod batch_mining;
 mod book_scores;
+mod cloze;
 mod condense;
+mod documents;
 mod drag;
 mod dvb_subtitles;
 mod encounters;
 mod episode_scores;
 mod gaps;
+mod guided_lookup;
+mod languages;
+mod mining_profiles;
+mod mokuro;
 mod perf;
+mod phrases;
+mod podcasts;
 mod progressive_ocr;
+mod reader_tools;
 mod reader_words;
+mod recall;
+mod rich_mdict;
+mod sentence_bank;
 mod series_scores;
 mod servers;
+mod shaders;
+mod shortcut_maps;
+mod subtitle_study;
 mod support;
+mod text_reading;
+mod touch;
+mod updates;
 mod vobsub_pairs;
 mod web_video;
 
@@ -275,6 +294,48 @@ fn the_setup_assistant_opens_at_the_first_start() {
     let (mut app, mut h) = desk.launch();
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(h.state()["setup_open"], false, "only the first time");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-INS-007: a selected locally managed tool is adopted and persisted by the live assistant.
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn selected_setup_tools_are_configured_and_survive_restart() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut desk = Desktop::start();
+    let tool = nikomiru_online::setup::tools::catalog()
+        .into_iter()
+        .find(|t| t.id == "deno")
+        .unwrap();
+    let program = desk
+        .data_file("tools")
+        .join("deno")
+        .join(tool.version)
+        .join(nikomiru_online::setup::tools::platform())
+        .join("deno");
+    std::fs::create_dir_all(program.parent().unwrap()).unwrap();
+    std::fs::write(&program, "#!/bin/sh\nprintf 'deno 2.9.8\\n'\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.cmd(serde_json::json!({"cmd":"setup", "action":"open"}));
+    h.cmd(serde_json::json!({"cmd":"setup", "action":"clear"}));
+    h.cmd(serde_json::json!({"cmd":"setup", "action":"tick", "id":"deno"}));
+    h.cmd(serde_json::json!({"cmd":"setup", "action":"install"}));
+    h.state_until("tool configured and saved", |s| {
+        s["setup"]["items"]["deno"] == "Done"
+    });
+    assert_eq!(
+        h.state()["setup"]["paths"]["deno"],
+        program.to_string_lossy().as_ref()
+    );
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+    let (mut app, mut h) = desk.launch();
+    assert_eq!(
+        h.state()["setup"]["paths"]["deno"],
+        program.to_string_lossy().as_ref()
+    );
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }

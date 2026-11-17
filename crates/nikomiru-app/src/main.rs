@@ -398,7 +398,17 @@ fn run(
             clock,
             &config.general.study_language,
         ) {
-            Ok(m) => Some(Arc::new(m)),
+            Ok(m) => {
+                // LNG-001: the active profile's dictionaries and segmentation
+                let profile = config.language_profile();
+                m.set_profile(
+                    &config.general.study_language,
+                    profile.dictionaries,
+                    profile.segmentation == "words",
+                );
+                library.set_active_language(&config.general.study_language);
+                Some(Arc::new(m))
+            }
             Err(e) => {
                 tracing::error!("{e}");
                 notices.push(translator.error(&e));
@@ -522,11 +532,18 @@ fn run(
         proxy: config.network.proxy.clone(),
         cache_dir: paths.cache_dir.join("setup"),
         audio_dir: paths.data_dir.join("audio"),
+        tools_dir: paths.data_dir.join("tools"),
+        model_dir: paths.ocr_model_dir(),
+        tool_catalog: nikomiru_online::setup::tools::catalog(),
         manifest_urls: nikomiru_app::setup::Parts::manifest_urls(),
         translator: translator.clone(),
         catalog: nikomiru_online::setup::catalog::catalog(),
     });
+    let book_support: Arc<dyn nikomiru_books::documents::Support> = Arc::new(
+        nikomiru_app::document_support::NativeSupport::new(config.paths.pdftotext.clone()),
+    );
     let services = Services {
+        book_support: Arc::clone(&book_support),
         player: player.handle(),
         config,
         library,
@@ -538,15 +555,19 @@ fn run(
         inhibitor: Box::new(inhibitor),
         subtitle_source: Box::new(subtitle_source),
         dictionaries: match dictionaries {
-            Some(manager) => Box::new(nikomiru_app::dictionaries::Dictionaries::start(
-                manager,
-                translator.clone(),
-                Arc::clone(&max_results),
-                paths.cache_dir.join("episode-scores"),
-            )),
+            Some(manager) => Box::new(
+                nikomiru_app::dictionaries::Dictionaries::start_with_support(
+                    manager,
+                    translator.clone(),
+                    Arc::clone(&max_results),
+                    paths.cache_dir.join("episode-scores"),
+                    Arc::clone(&book_support),
+                ),
+            ),
             None => Box::new(NoDictionaries(no_dictionaries)),
         },
         screenshots_dir: paths.screenshots_dir(),
+        text_dir: paths.data_dir.join("text"),
         anki: Box::new(anki),
         online: Box::new(online),
         web_video: Box::new(nikomiru_app::web_video::Worker::start(translator.clone())),
@@ -555,6 +576,10 @@ fn run(
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
         ocr: Box::new(ocr),
         setup: Box::new(setup),
+        updates: Box::new(nikomiru_app::updates::Updater::new(
+            paths.data_dir.clone(),
+            translator.clone(),
+        )),
         catalog,
         word_audio: Box::new(word_audio),
         // PLY-014

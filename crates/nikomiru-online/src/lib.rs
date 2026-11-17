@@ -26,11 +26,14 @@ pub mod jimaku;
 pub mod language;
 pub mod metadata;
 pub mod opensubtitles;
+pub mod podcast;
 pub mod rank;
 pub mod search;
 pub mod servers;
 pub mod setup;
+pub mod shaders;
 pub mod store;
+pub mod updates;
 pub mod web_video;
 pub mod webdav;
 

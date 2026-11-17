@@ -222,6 +222,9 @@ pub struct DictionaryManager {
     dir: PathBuf,
     clock: Arc<dyn Clock>,
     study_language: Mutex<String>,
+    /// The active profile (LNG-001): its explicit dictionaries (empty:
+    /// automatic) and whether words are whole.
+    profile: Mutex<(Vec<String>, bool)>,
     stores: Mutex<HashMap<String, Arc<RedbStore>>>,
     lookup: Mutex<Option<Arc<Lookup>>>,
 }
@@ -286,6 +289,7 @@ impl DictionaryManager {
             dir,
             clock,
             study_language: Mutex::new(study_language.to_string()),
+            profile: Mutex::new((Vec::new(), false)),
             stores: Mutex::new(HashMap::new()),
             lookup: Mutex::new(None),
         })
@@ -305,7 +309,12 @@ impl DictionaryManager {
             .map(|s| s.clone())
             .unwrap_or_default();
         let records = self.list()?;
-        Ok(postcard::to_stdvec(&(language, records)).map_err(LibraryError::from)?)
+        let profile = self.profile.lock().map(|p| p.clone()).unwrap_or_default();
+        // the legacy identity stays for the default profile (LNG-001)
+        if profile == (Vec::new(), false) {
+            return Ok(postcard::to_stdvec(&(language, records)).map_err(LibraryError::from)?);
+        }
+        Ok(postcard::to_stdvec(&(language, records, profile)).map_err(LibraryError::from)?)
     }
 
     /// What importing `zip` would do (DIC-016).
@@ -497,6 +506,36 @@ impl DictionaryManager {
         Ok(())
     }
 
+    /// Changes the study language and its profile (LNG-001): the explicit
+    /// dictionaries (empty: automatic) and whole-word segmentation.
+    pub fn set_profile(&self, language: &str, dictionaries: Vec<String>, whole_words: bool) {
+        if let Ok(mut l) = self.study_language.lock() {
+            *l = language.to_string();
+        }
+        if let Ok(mut p) = self.profile.lock() {
+            *p = (dictionaries, whole_words);
+        }
+        self.invalidate();
+    }
+
+    /// Whether a dictionary serves `language` under the profile `explicit`
+    /// (LNG-001): listed, or, with no list, declaring that language or none.
+    pub fn serves(
+        explicit: &[String],
+        id: &str,
+        record: &DictionaryRecord,
+        language: &str,
+    ) -> bool {
+        if explicit.is_empty() {
+            record
+                .language
+                .as_deref()
+                .is_none_or(|l| l.is_empty() || l == language)
+        } else {
+            explicit.iter().any(|e| e == id)
+        }
+    }
+
     /// Changes the study language (LKP-012).
     pub fn set_study_language(&self, language: &str) {
         if let Ok(mut l) = self.study_language.lock() {
@@ -536,9 +575,15 @@ impl DictionaryManager {
         if let Some(l) = self.lookup.lock().ok().and_then(|l| l.clone()) {
             return Ok(l);
         }
+        let language = self
+            .study_language
+            .lock()
+            .map(|l| l.clone())
+            .unwrap_or_default();
+        let (explicit, whole_words) = self.profile.lock().map(|p| p.clone()).unwrap_or_default();
         let mut dictionaries = Vec::new();
         for (id, rec) in self.library.dictionaries()? {
-            if !rec.enabled {
+            if !rec.enabled || !Self::serves(&explicit, &id, &rec, &language) {
                 continue;
             }
             let store = self.store(&id)?;
@@ -548,12 +593,7 @@ impl DictionaryManager {
                 store,
             });
         }
-        let language = self
-            .study_language
-            .lock()
-            .map(|l| l.clone())
-            .unwrap_or_default();
-        let lookup = Arc::new(Lookup::new(dictionaries, &language));
+        let lookup = Arc::new(Lookup::new(dictionaries, &language).with_whole_words(whole_words));
         if let Ok(mut l) = self.lookup.lock() {
             *l = Some(Arc::clone(&lookup));
         }

@@ -46,6 +46,8 @@ const TEXT_SIZE: f32 = 22.0;
 const COLUMN: f32 = 860.0;
 /// Behind the word looked up.
 pub(super) const MARK: Color32 = Color32::from_rgba_premultiplied(40, 70, 120, 150);
+/// Behind highlights and notes (RDR-002).
+const ANNOTATED: Color32 = Color32::from_rgba_premultiplied(120, 96, 16, 110);
 
 /// A character's cell in vertical writing, as a share of the text's size.
 const CELL: f32 = 1.12;
@@ -53,6 +55,9 @@ const CELL: f32 = 1.12;
 const COLUMN_WIDTH: f32 = 1.9;
 /// The smallest selection on a manga's page, in points.
 const MIN_SELECTION: f32 = 8.0;
+
+/// A chapter's pages are laid out for: book, chapter, width and height.
+type PagesKey = (String, usize, u32, u32);
 
 /// What the page keeps between frames.
 #[derive(Default)]
@@ -70,12 +75,23 @@ pub(crate) struct State {
     columns: Option<((String, usize, usize, usize), Columns)>,
     /// The first column of the page shown.
     column: usize,
+    /// A page turn asked by Page Up/Down: forward or not (RDR-004).
+    pub(crate) turn: Option<bool>,
+    /// A swipe on the page (PORT-003), taken by the reader drawn.
+    pub(crate) swipe: Option<crate::gestures::Gesture>,
+    /// The chapter's horizontal pages: its book, number, width and height,
+    /// and its paragraphs by page (RDR-004).
+    pages: Option<(PagesKey, Vec<std::ops::Range<usize>>)>,
     /// An audiobook is to be chosen (ABK-001).
     audiobook: bool,
     /// A folder of pages is to be chosen (MNG-001).
     folder: bool,
     /// The address of a web page, as typed (WEB-001).
     address: String,
+    paste_open: bool,
+    paste_title: String,
+    paste_text: String,
+    paste_markdown: bool,
     /// The book those pictures are of, and the pictures drawn so far, by
     /// their key (BOK-010).
     book: String,
@@ -107,13 +123,20 @@ pub(crate) struct Scene<'a> {
     pub double: bool,
     /// Something with timed text plays: the book can read along (ABK-005).
     pub can_read_along: bool,
+    /// The horizontal reading mode: `scroll`, `pages` or `sentence` (RDR-004).
+    pub mode: &'a str,
+    /// The open chapter's current highlights and notes (RDR-002).
+    pub annotated: &'a [(usize, std::ops::Range<usize>)],
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
 
 pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut Vec<Command>) {
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
+    let annotated = s.chapter_annotations();
     let scene = Scene {
+        mode: s.book_mode(),
+        annotated: &annotated,
         marks: &|text| s.book_marks(text),
         colours: s.word_colors_on(),
         page: &s.books_page,
@@ -203,39 +226,20 @@ fn draw_picture(ui: &Ui, area: egui::Rect, texture: &egui::TextureHandle) {
 }
 
 /// A paragraph: its offset in bytes, if clicked, and the rect it took.
+#[allow(clippy::too_many_arguments)]
 fn paragraph(
     ui: &mut Ui,
     item: &Paragraph,
     name: &str,
     marked: Option<std::ops::Range<usize>>,
+    annotated: &[std::ops::Range<usize>],
     heard: bool,
     marks: Option<&Marks>,
+    scale: f32,
 ) -> (Option<(usize, egui::Rect)>, egui::Rect, DrawnMarks) {
-    let size = if item.heading {
-        TEXT_SIZE * 1.3
-    } else {
-        TEXT_SIZE
-    };
+    let galley = paragraph_galley(ui, item, ui.available_width(), scale);
+    let size = paragraph_size(item) * scale;
     let color = palette::current().text;
-    let family = if item.heading {
-        theme::bold()
-    } else {
-        egui::FontFamily::Proportional
-    };
-    let format = TextFormat {
-        font_id: FontId::new(size, family),
-        color,
-        // room for the furigana between the rows
-        line_height: Some(size * 2.0),
-        valign: egui::Align::BOTTOM,
-        ..TextFormat::default()
-    };
-    let mut job = LayoutJob::single_section(item.text.clone(), format);
-    job.wrap = TextWrapping {
-        max_width: ui.available_width(),
-        ..TextWrapping::default()
-    };
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
     let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
     // the paragraph being heard (ABK-005)
@@ -245,6 +249,12 @@ fn paragraph(
             4.0,
             palette::current().accent.gamma_multiply(0.15),
         );
+    }
+    for range in annotated {
+        for row in range_rects(&galley, &item.text, range.clone()) {
+            ui.painter()
+                .rect_filled(row.translate(rect.min.to_vec2()), 3.0, ANNOTATED);
+        }
     }
     if let Some(range) = marked {
         for row in range_rects(&galley, &item.text, range) {
@@ -305,6 +315,44 @@ fn paragraph(
         (offset, rect)
     });
     (clicked, rect, drawn)
+}
+
+/// A paragraph's text size, before any mode's scale.
+fn paragraph_size(item: &Paragraph) -> f32 {
+    if item.heading {
+        TEXT_SIZE * 1.3
+    } else {
+        TEXT_SIZE
+    }
+}
+
+/// A paragraph laid out at `width`.
+fn paragraph_galley(
+    ui: &Ui,
+    item: &Paragraph,
+    width: f32,
+    scale: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let size = paragraph_size(item) * scale;
+    let family = if item.heading {
+        theme::bold()
+    } else {
+        egui::FontFamily::Proportional
+    };
+    let format = TextFormat {
+        font_id: FontId::new(size, family),
+        color: palette::current().text,
+        // room for the furigana between the rows
+        line_height: Some(size * 2.0),
+        valign: egui::Align::BOTTOM,
+        ..TextFormat::default()
+    };
+    let mut job = LayoutJob::single_section(item.text.clone(), format);
+    job.wrap = TextWrapping {
+        max_width: width,
+        ..TextWrapping::default()
+    };
+    ui.fonts_mut(|fonts| fonts.layout_job(job))
 }
 
 /// Where a cell goes on the page: its centre.
@@ -475,10 +523,21 @@ fn manga_reader(
     else {
         return;
     };
-    reading_line(ui, s, out);
+    if let Some(imported) = open.book.manga_regions.get(&open.chapter) {
+        ui.label(tr(
+            s,
+            if imported.regions.is_empty() {
+                "mokuro-empty-page"
+            } else {
+                "mokuro-ready"
+            },
+        ));
+    } else {
+        reading_line(ui, s, out);
+    }
     if !item.text.is_empty() {
         let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
-        let (clicked, _, _) = paragraph(ui, item, &item.text, marked, false, None);
+        let (clicked, _, _) = paragraph(ui, item, &item.text, marked, &[], false, None, 1.0);
         if let Some((offset, rect)) = clicked {
             out.push(Command::BookClicked {
                 paragraph: 0,
@@ -541,11 +600,60 @@ fn manga_reader(
         }
         None => place(open.chapter, &handle, rect, Align2::CENTER_CENTER),
     }
+    for (page, drawn) in &pages {
+        if let Some(imported) = open.book.manga_regions.get(page) {
+            for (index, region) in imported.regions.iter().enumerate() {
+                let [l, t, r, b] = region.bounds;
+                let at = egui::Rect::from_min_max(
+                    drawn.min
+                        + vec2(
+                            l as f32 / imported.width as f32 * drawn.width(),
+                            t as f32 / imported.height as f32 * drawn.height(),
+                        ),
+                    drawn.min
+                        + vec2(
+                            r as f32 / imported.width as f32 * drawn.width(),
+                            b as f32 / imported.height as f32 * drawn.height(),
+                        ),
+                );
+                let hit = ui.interact(
+                    at,
+                    Id::unique(("mokuro-region", &open.uid, *page, index)),
+                    Sense::click(),
+                );
+                let label = (s.tr)(
+                    "mokuro-region",
+                    &[
+                        ("number", (index + 1).to_string()),
+                        ("page", (page + 1).to_string()),
+                    ],
+                );
+                hit.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::Role::Button, !s.page.ocr.reading, &label)
+                });
+                if hit.hovered() {
+                    ui.painter().rect_stroke(
+                        at,
+                        0.0,
+                        egui::Stroke::new(1.5, palette::current().good),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                if hit.clicked() && !s.page.ocr.reading {
+                    out.push(Command::MokuroSelect {
+                        page: *page,
+                        region: index,
+                    });
+                }
+            }
+        }
+    }
     if s.page.ocr.installed && response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
     let pointer = ui.input(|i| (i.pointer.press_origin(), i.pointer.latest_pos()));
-    if response.drag_started()
+    if open.book.manga_regions.is_empty()
+        && response.drag_started()
         && let (Some(start), Some(now)) = pointer
     {
         state.selection = Some((start, now));
@@ -567,7 +675,13 @@ fn manga_reader(
         }
     }
     let step = pages.len();
-    let (forward, back) = turns(ui, response.hovered());
+    let (mut forward, mut back) = turns(ui, response.hovered());
+    // PORT-003: right to left, a swipe to the right goes on
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeRight) => forward = true,
+        Some(crate::gestures::Gesture::SwipeLeft) => back = true,
+        None => {}
+    }
     if forward && open.chapter + step < open.book.chapters.len() {
         out.push(Command::BookChapter(open.chapter + step));
     } else if back && open.chapter > 0 {
@@ -731,7 +845,13 @@ fn vertical_reader(
             });
         }
     }
-    let (forward, back) = turns(ui, response.hovered());
+    let (mut forward, mut back) = turns(ui, response.hovered());
+    // PORT-003: right to left, a swipe to the right goes on
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeRight) => forward = true,
+        Some(crate::gestures::Gesture::SwipeLeft) => back = true,
+        None => {}
+    }
     let total = columns.columns;
     if forward {
         if state.column + per_page < total {
@@ -772,6 +892,45 @@ fn reader(
         state.book.clone_from(&open.uid);
         state.textures.clear();
     }
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(tr(s, "phrases-title")).clicked() {
+            out.push(Command::PhrasesOpen);
+        }
+        if ui.button(tr(s, "search-title")).clicked() {
+            out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
+        }
+        if !open.book.manga {
+            use nikomiru_library::annotations::Kind;
+            if ui.button(tr(s, "annotations-title")).clicked() {
+                out.push(Command::ReaderToolsOpen(
+                    crate::reader_tools::Tab::Annotations,
+                ));
+            }
+            for kind in [Kind::Bookmark, Kind::Highlight, Kind::Note] {
+                if ui
+                    .button(tr(s, super::reader_tools::new_label(kind)))
+                    .clicked()
+                {
+                    out.push(Command::AnnotationNew(kind));
+                }
+            }
+            if !s.vertical {
+                ui.separator();
+                ui.label(tr(s, "books-mode"));
+                for (mode, label) in [
+                    ("scroll", "books-mode-scroll"),
+                    ("pages", "books-mode-pages"),
+                    ("sentence", "books-mode-sentence"),
+                ] {
+                    let chosen = s.mode == mode;
+                    let button = ui.selectable_label(chosen, tr(s, label));
+                    if button.clicked() && !chosen {
+                        out.push(Command::BookMode(mode.into()));
+                    }
+                }
+            }
+        }
+    });
     let manga = open.book.manga;
     let (next, previous) = if manga {
         ("books-next-page", "books-previous-page")
@@ -880,11 +1039,13 @@ fn reader(
             ui.add(egui::TextEdit::singleline(&mut state.word_query).desired_width(320.0))
                 .labelled_by(label.id);
             if let Some(words) = &s.page.study.words {
-                let labels = super::word_list::Labels::translated(s.tr, state.words.ticked.len());
+                let mut labels =
+                    super::word_list::Labels::translated(s.tr, state.words.ticked.len());
+                labels.source = open.book.title.clone();
                 super::word_list::show(
                     ui,
                     words,
-                    &state.word_query,
+                    &mut state.word_query,
                     &labels,
                     &mut state.words,
                     out,
@@ -902,83 +1063,415 @@ fn reader(
     let Some(chapter) = open.book.chapters.get(open.chapter) else {
         return close;
     };
+    match s.mode {
+        "pages" => paged_reader(ui, s, open, chapter, state, out),
+        "sentence" => sentence_reader(ui, s, open, chapter, state, out),
+        _ => {
+            // a scrolled chapter has no pages to turn
+            state.swipe = None;
+            scroll_reader(ui, s, open, chapter, state, out);
+        }
+    }
+    close
+}
+
+/// The paragraph's marks: the word looked up (or the text an annotation or
+/// a search led to) and its current highlights and notes.
+fn paragraph_marks(
+    s: &Scene<'_>,
+    index: usize,
+) -> (Option<std::ops::Range<usize>>, Vec<std::ops::Range<usize>>) {
+    let marked = s
+        .page
+        .highlight
+        .as_ref()
+        .or(s.page.found.as_ref())
+        .filter(|(at, _)| *at == index)
+        .map(|(_, range)| range.clone());
+    let annotated = s
+        .annotated
+        .iter()
+        .filter(|(at, _)| *at == index)
+        .map(|(_, range)| range.clone())
+        .collect();
+    (marked, annotated)
+}
+
+/// Paragraphs `range` of the chapter, one under the other: those shown, and
+/// the first whose bottom is under the top of the view.
+fn draw_paragraphs(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    chapter: &nikomiru_books::Chapter,
+    range: std::ops::Range<usize>,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) -> (Vec<usize>, Option<usize>) {
+    let mut shown = Vec::new();
+    let width = ui.available_width().min(COLUMN);
+    let mut reached = None;
+    ui.vertical_centered(|ui| {
+        ui.set_max_width(width);
+        ui.with_layout(Layout::top_down(Align::Min), |ui| {
+            ui.spacing_mut().item_spacing.y = TEXT_SIZE * 0.6;
+            let top = ui.clip_rect().top();
+            for (index, item) in chapter.paragraphs.iter().enumerate() {
+                if !range.contains(&index) {
+                    continue;
+                }
+                if let Some(key) = &item.image {
+                    if let Some(handle) = texture(ui.ctx(), state, open, key) {
+                        let size = handle.size_vec2();
+                        let scale = (ui.available_width() / size.x).min(1.0);
+                        let (rect, _) = ui.allocate_exact_size(size * scale, Sense::hover());
+                        draw_picture(ui, rect, &handle);
+                    }
+                    continue;
+                }
+                let name = format!("{index}: {}", item.text);
+                let (marked, annotated) = paragraph_marks(s, index);
+                let heard =
+                    s.page.along.as_ref().and_then(|a| a.heard) == Some((open.chapter, index));
+                let marks = (s.marks)(&item.text);
+                let (clicked, rect, drawn) = paragraph(
+                    ui,
+                    item,
+                    &name,
+                    marked,
+                    &annotated,
+                    heard,
+                    marks.as_ref(),
+                    1.0,
+                );
+                state.drawn_marks.unknown += drawn.unknown;
+                state.drawn_marks.learning += drawn.learning;
+                if s.colours && ui.clip_rect().intersects(rect) {
+                    shown.push(index);
+                }
+                if open.jump && index == open.paragraph && s.mode == "scroll" {
+                    ui.scroll_to_rect(rect, Some(Align::Min));
+                }
+                if reached.is_none() && rect.bottom() > top {
+                    reached = Some(index);
+                }
+                if let Some((offset, rect)) = clicked {
+                    out.push(clicked_at(index, offset, rect));
+                }
+            }
+        });
+    });
+    (shown, reached)
+}
+
+fn clicked_at(paragraph: usize, offset: usize, rect: egui::Rect) -> Command {
+    Command::BookClicked {
+        paragraph,
+        offset,
+        anchor: popup::Rect {
+            x: f64::from(rect.min.x),
+            y: f64::from(rect.min.y),
+            w: f64::from(rect.width()),
+            h: f64::from(rect.height()),
+        },
+    }
+}
+
+/// The whole chapter in one scrolling column (BOK-006).
+fn scroll_reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    chapter: &nikomiru_books::Chapter,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
     let mut area = ScrollArea::vertical()
         .id_salt(("book", open.chapter))
         .auto_shrink([false, false]);
     if open.jump && open.paragraph == 0 {
         area = area.vertical_scroll_offset(0.0);
     }
-    let mut shown = Vec::new();
-    area.show(ui, |ui| {
-        let width = ui.available_width().min(COLUMN);
-        ui.vertical_centered(|ui| {
-            ui.set_max_width(width);
-            ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                ui.spacing_mut().item_spacing.y = TEXT_SIZE * 0.6;
-                let top = ui.clip_rect().top();
-                let mut reached = None;
-                for (index, item) in chapter.paragraphs.iter().enumerate() {
-                    if let Some(key) = &item.image {
-                        if let Some(handle) = texture(ui.ctx(), state, open, key) {
-                            let size = handle.size_vec2();
-                            let scale = (ui.available_width() / size.x).min(1.0);
-                            let (rect, _) = ui.allocate_exact_size(size * scale, Sense::hover());
-                            draw_picture(ui, rect, &handle);
-                        }
-                        continue;
-                    }
-                    let name = format!("{index}: {}", item.text);
-                    let marked = s
-                        .page
-                        .highlight
-                        .as_ref()
-                        .filter(|(at, _)| *at == index)
-                        .map(|(_, range)| range.clone());
-                    let heard =
-                        s.page.along.as_ref().and_then(|a| a.heard) == Some((open.chapter, index));
-                    let marks = (s.marks)(&item.text);
-                    let (clicked, rect, drawn) =
-                        paragraph(ui, item, &name, marked, heard, marks.as_ref());
-                    state.drawn_marks.unknown += drawn.unknown;
-                    state.drawn_marks.learning += drawn.learning;
-                    if s.colours && ui.clip_rect().intersects(rect) {
-                        shown.push(index);
-                    }
-                    if open.jump && index == open.paragraph {
-                        ui.scroll_to_rect(rect, Some(Align::Min));
-                    }
-                    if reached.is_none() && rect.bottom() > top {
-                        reached = Some(index);
-                    }
-                    if let Some((offset, rect)) = clicked {
-                        out.push(Command::BookClicked {
-                            paragraph: index,
-                            offset,
-                            anchor: popup::Rect {
-                                x: f64::from(rect.min.x),
-                                y: f64::from(rect.min.y),
-                                w: f64::from(rect.width()),
-                                h: f64::from(rect.height()),
-                            },
-                        });
-                    }
-                }
-                if let Some(index) = reached
-                    && (open.jump || index != open.paragraph)
-                {
-                    out.push(Command::BookAt(if open.jump {
-                        open.paragraph
-                    } else {
-                        index
-                    }));
-                }
-            });
-        });
-    });
+    let (shown, reached) = area
+        .show(ui, |ui| {
+            draw_paragraphs(ui, s, open, chapter, 0..usize::MAX, state, out)
+        })
+        .inner;
+    if let Some(index) = reached
+        && (open.jump || index != open.paragraph)
+    {
+        out.push(Command::BookAt(if open.jump {
+            open.paragraph
+        } else {
+            index
+        }));
+    }
     if s.colours {
         out.push(Command::BookRows(open.uid.clone(), open.chapter, shown));
     }
-    close
+}
+
+/// Whole paragraphs grouped into pages of `height` (RDR-004): a paragraph
+/// taller than a page has a page of its own.
+pub(crate) fn pages(heights: &[f32], height: f32, gap: f32) -> Vec<std::ops::Range<usize>> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut used = 0.0;
+    for (index, h) in heights.iter().enumerate() {
+        let need = if index == start { *h } else { used + gap + h };
+        if index > start && need > height {
+            out.push(start..index);
+            start = index;
+            used = *h;
+        } else {
+            used = need;
+        }
+    }
+    if start < heights.len() || out.is_empty() {
+        out.push(start..heights.len());
+    }
+    out
+}
+
+/// The navigation row of a page or a sentence: previous, where, next.
+fn turn_row(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    labels: (&str, &str),
+    place: String,
+    can: (bool, bool),
+) -> (bool, bool) {
+    let mut turned = (false, false);
+    ui.horizontal(|ui| {
+        turned.0 = ui
+            .add_enabled(can.0, Button::new(tr(s, labels.0)))
+            .clicked();
+        ui.label(RichText::new(place).color(palette::current().details));
+        turned.1 = ui
+            .add_enabled(can.1, Button::new(tr(s, labels.1)))
+            .clicked();
+    });
+    turned
+}
+
+/// The chapter a page at a time (RDR-004).
+fn paged_reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    chapter: &nikomiru_books::Chapter,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let room = ui.available_rect_before_wrap();
+    let width = room.width().min(COLUMN);
+    let height = (room.height() - TEXT_SIZE * 3.0).max(TEXT_SIZE * 4.0);
+    let key = (open.uid.clone(), open.chapter, width as u32, height as u32);
+    if state.pages.as_ref().map(|(k, _)| k) != Some(&key) {
+        let heights: Vec<f32> = chapter
+            .paragraphs
+            .iter()
+            .map(|item| match &item.image {
+                Some(key) => texture(ui.ctx(), state, open, key).map_or(0.0, |h| {
+                    let size = h.size_vec2();
+                    size.y * (width / size.x).min(1.0)
+                }),
+                None => paragraph_galley(ui, item, width, 1.0).size().y,
+            })
+            .collect();
+        state.pages = Some((key, pages(&heights, height, TEXT_SIZE * 0.6)));
+    }
+    let Some((_, groups)) = state.pages.as_ref() else {
+        return;
+    };
+    let groups = groups.clone();
+    let page = groups
+        .iter()
+        .position(|g| g.contains(&open.paragraph))
+        .unwrap_or(groups.len().saturating_sub(1));
+    let last_chapter = open.book.chapters.len().saturating_sub(1);
+    let place = (s.tr)(
+        "books-page-of",
+        &[
+            ("page", (page + 1).to_string()),
+            ("pages", groups.len().to_string()),
+        ],
+    );
+    let can = (
+        page > 0 || open.chapter > 0,
+        page + 1 < groups.len() || open.chapter < last_chapter,
+    );
+    let (mut back, mut forward) = turn_row(
+        ui,
+        s,
+        ("books-previous-page", "books-next-page"),
+        place,
+        can,
+    );
+    // Page Up/Down, through the shortcut layer; a swipe (PORT-003)
+    match state.turn.take() {
+        Some(true) => forward |= can.1,
+        Some(false) => back |= can.0,
+        None => {}
+    }
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeLeft) => forward |= can.1,
+        Some(crate::gestures::Gesture::SwipeRight) => back |= can.0,
+        None => {}
+    }
+    if forward {
+        match groups.get(page + 1) {
+            Some(next) => out.push(Command::BookTurn(next.start)),
+            None => out.push(Command::BookChapter(open.chapter + 1)),
+        }
+    } else if back {
+        match page.checked_sub(1).and_then(|p| groups.get(p)) {
+            Some(previous) => out.push(Command::BookTurn(previous.start)),
+            None => out.push(Command::BookChapter(open.chapter.saturating_sub(1))),
+        }
+    }
+    if open.jump {
+        out.push(Command::BookAt(open.paragraph));
+    }
+    let shown_range = groups.get(page).cloned().unwrap_or(0..0);
+    let (shown, _) = ScrollArea::vertical()
+        .id_salt(("book-page", open.chapter, page))
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            draw_paragraphs(ui, s, open, chapter, shown_range, state, out)
+        })
+        .inner;
+    if s.colours {
+        out.push(Command::BookRows(open.uid.clone(), open.chapter, shown));
+    }
+}
+
+/// One sentence at a time, larger, in its original paragraph (RDR-004).
+fn sentence_reader(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    open: &OpenBook,
+    chapter: &nikomiru_books::Chapter,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let index = open
+        .paragraph
+        .min(chapter.paragraphs.len().saturating_sub(1));
+    let item = chapter.paragraphs.get(index);
+    let sentences = item
+        .filter(|p| p.image.is_none())
+        .map(|p| nikomiru_text::sentence::sentences(&p.text))
+        .unwrap_or_default();
+    let at = open.sentence.min(sentences.len().saturating_sub(1));
+    let last_chapter = open.book.chapters.len().saturating_sub(1);
+    let more_here = chapter
+        .paragraphs
+        .iter()
+        .skip(index + 1)
+        .any(|p| p.image.is_none() && !p.text.trim().is_empty());
+    let place = (s.tr)(
+        "books-sentence-of",
+        &[
+            ("sentence", (at + 1).to_string()),
+            ("sentences", sentences.len().max(1).to_string()),
+            ("paragraph", (index + 1).to_string()),
+        ],
+    );
+    let can = (
+        at > 0 || index > 0 || open.chapter > 0,
+        at + 1 < sentences.len() || more_here || open.chapter < last_chapter,
+    );
+    let (mut back, mut forward) = turn_row(
+        ui,
+        s,
+        ("books-previous-sentence", "books-next-sentence"),
+        place,
+        can,
+    );
+    match state.swipe.take() {
+        Some(crate::gestures::Gesture::SwipeLeft) => forward |= can.1,
+        Some(crate::gestures::Gesture::SwipeRight) => back |= can.0,
+        None => {}
+    }
+    if forward {
+        out.push(Command::BookSentence(true));
+    } else if back {
+        out.push(Command::BookSentence(false));
+    }
+    if open.jump {
+        out.push(Command::BookAt(index));
+    }
+    let Some(item) = item else {
+        return;
+    };
+    if item.image.is_some() {
+        draw_paragraphs(ui, s, open, chapter, index..index + 1, state, out);
+        return;
+    }
+    let Some(range) = sentences.get(at).cloned() else {
+        return;
+    };
+    // the sentence as a paragraph of its own, its marks moved with it
+    let shift = |r: &std::ops::Range<usize>| -> Option<std::ops::Range<usize>> {
+        let start = r.start.max(range.start);
+        let end = r.end.min(range.end);
+        (start < end).then(|| start - range.start..end - range.start)
+    };
+    let part = Paragraph {
+        text: item.text[range.clone()].to_string(),
+        ruby: item
+            .ruby
+            .iter()
+            .filter(|r| r.range.start >= range.start && r.range.end <= range.end)
+            .map(|r| nikomiru_books::Ruby {
+                range: r.range.start - range.start..r.range.end - range.start,
+                text: r.text.clone(),
+            })
+            .collect(),
+        heading: item.heading,
+        image: None,
+    };
+    let (marked, annotated) = paragraph_marks(s, index);
+    let marked = marked.as_ref().and_then(shift);
+    let annotated: Vec<_> = annotated.iter().filter_map(shift).collect();
+    let heard = s.page.along.as_ref().and_then(|a| a.heard) == Some((open.chapter, index));
+    let marks = (s.marks)(&part.text);
+    let name = format!("{index}: {}", part.text);
+    ScrollArea::vertical()
+        .id_salt(("book-sentence", open.chapter, index, at))
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.add_space(TEXT_SIZE * 2.0);
+            let width = ui.available_width().min(COLUMN);
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(width);
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    let (clicked, _, drawn) = paragraph(
+                        ui,
+                        &part,
+                        &name,
+                        marked,
+                        &annotated,
+                        heard,
+                        marks.as_ref(),
+                        1.4,
+                    );
+                    state.drawn_marks.unknown += drawn.unknown;
+                    state.drawn_marks.learning += drawn.learning;
+                    if let Some((offset, rect)) = clicked {
+                        out.push(clicked_at(index, range.start + offset, rect));
+                    }
+                });
+            });
+        });
+    if s.colours {
+        out.push(Command::BookRows(
+            open.uid.clone(),
+            open.chapter,
+            vec![index],
+        ));
+    }
 }
 
 fn whole_book_score(
@@ -1073,8 +1566,19 @@ fn list(
             if ui.button(tr(s, "books-audiobook")).clicked() {
                 state.audiobook = true;
             }
+            if ui.button(tr(s, "podcasts-title")).clicked() {
+                out.push(Command::PodcastsOpen);
+            }
             if ui.button(tr(s, "books-folder")).clicked() {
                 state.folder = true;
+            }
+            if ui.button(tr(s, "annotations-title")).clicked() {
+                out.push(Command::ReaderToolsOpen(
+                    crate::reader_tools::Tab::Annotations,
+                ));
+            }
+            if ui.button(tr(s, "search-title")).clicked() {
+                out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
             }
             if ui
                 .add_enabled(!s.page.busy, Button::new(tr(s, "books-add")))
@@ -1127,6 +1631,15 @@ fn list(
             palette::current().bad
         };
         ui.add(egui::Label::new(RichText::new(text).color(shade)).wrap());
+    }
+    if ui
+        .add_enabled(!s.page.busy, Button::new(tr(s, "books-paste")))
+        .clicked()
+    {
+        state.paste_open = true;
+    }
+    if ui.button(tr(s, "phrases-title")).clicked() {
+        out.push(Command::PhrasesOpen);
     }
     // WEB-001: a web page, read as a book
     ui.horizontal(|ui| {
@@ -1191,6 +1704,58 @@ fn list(
         });
 }
 
+fn paste_editor(ctx: &egui::Context, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    if !state.paste_open {
+        return;
+    }
+    let mut open = true;
+    let mut submitted = false;
+    egui::Window::new(tr(s, "books-paste"))
+        .id(Id::unique("paste-book-editor"))
+        .open(&mut open)
+        .default_width(560.0)
+        .show(ctx, |ui| {
+            let label = ui.label(tr(s, "books-paste-title"));
+            ui.add(egui::TextEdit::singleline(&mut state.paste_title).char_limit(256))
+                .labelled_by(label.id);
+            ui.checkbox(&mut state.paste_markdown, tr(s, "books-paste-markdown"));
+            ui.label(tr(s, "books-paste-hint"));
+            let label = ui.label(tr(s, "books-paste-content"));
+            egui::ScrollArea::vertical()
+                .max_height(ctx.content_rect().height() * 0.45)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut state.paste_text)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(12)
+                            .char_limit(nikomiru_books::text::MAX_BYTES),
+                    )
+                    .labelled_by(label.id);
+                });
+            let ready = !s.page.busy
+                && !state.paste_title.trim().is_empty()
+                && !state.paste_title.chars().any(char::is_control)
+                && !state.paste_text.trim().is_empty()
+                && state.paste_text.len() <= nikomiru_books::text::MAX_BYTES;
+            if ui
+                .add_enabled(ready, Button::new(tr(s, "books-paste-read")))
+                .clicked()
+            {
+                out.push(Command::BookPaste(crate::books::Paste {
+                    title: state.paste_title.trim().into(),
+                    text: state.paste_text.clone(),
+                    format: if state.paste_markdown {
+                        nikomiru_books::text::Format::Markdown
+                    } else {
+                        nikomiru_books::text::Format::Plain
+                    },
+                }));
+                submitted = true;
+            }
+        });
+    state.paste_open = open && !submitted;
+}
+
 /// Draws the page; whether it closes, and whether a file is to be chosen.
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -1229,6 +1794,7 @@ pub(crate) fn draw(
                     }
                 });
         });
+    paste_editor(ctx, s, state, out);
     (close, add)
 }
 
@@ -1252,6 +1818,8 @@ mod tests {
         add: bool,
         /// Something with timed text plays (ABK-005).
         can_read_along: bool,
+        mode: &'static str,
+        annotated: Vec<(usize, std::ops::Range<usize>)>,
     }
 
     fn harness<'a>(page: BooksPage) -> Harness<'a, Test> {
@@ -1272,6 +1840,8 @@ mod tests {
                         vertical: t.vertical,
                         double: t.double,
                         can_read_along: t.can_read_along,
+                        mode: t.mode,
+                        annotated: &t.annotated,
                         tr: &tr,
                     };
                     t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
@@ -1286,6 +1856,8 @@ mod tests {
                     out: Vec::new(),
                     add: false,
                     can_read_along: false,
+                    mode: "scroll",
+                    annotated: Vec::new(),
                 },
             )
     }
@@ -1448,6 +2020,8 @@ mod tests {
         OpenBook {
             uid: "book/a".into(),
             book: Book {
+                identity: None,
+                manga_regions: Default::default(),
                 title: "本".into(),
                 author: String::new(),
                 right_to_left: false,
@@ -1459,6 +2033,7 @@ mod tests {
             paragraph: 0,
             jump: false,
             started: (0, 0),
+            sentence: 0,
         }
     }
 
@@ -1584,6 +2159,164 @@ mod tests {
         let (paragraph, offset) = clicked.expect("a click");
         assert_eq!(paragraph, 0);
         assert_eq!(offset % 3, 0, "on a character");
+    }
+
+    // T-RDR-004: pages group whole paragraphs; a tall one stands alone.
+    #[test]
+    fn paragraphs_group_into_pages() {
+        assert_eq!(pages(&[10.0, 10.0, 10.0], 25.0, 2.0), vec![0..2, 2..3]);
+        assert_eq!(
+            pages(&[10.0, 50.0, 10.0], 25.0, 2.0),
+            vec![0..1, 1..2, 2..3]
+        );
+        assert_eq!(pages(&[], 25.0, 2.0), vec![0..0]);
+        assert_eq!(pages(&[5.0; 4], 100.0, 1.0), vec![0..4]);
+    }
+
+    fn long_chapter() -> OpenBook {
+        let mut book = open();
+        book.book.chapters[0].paragraphs = (0..40)
+            .map(|i| Paragraph {
+                text: format!("第{i}段落。二つ目の文。"),
+                ..Paragraph::default()
+            })
+            .collect();
+        book
+    }
+
+    // T-RDR-004: pages turn explicitly, by button and key, to whole paragraphs.
+    #[test]
+    fn pages_turn_explicitly() {
+        let mut h = harness(BooksPage {
+            open: Some(long_chapter()),
+            ..BooksPage::default()
+        });
+        h.state_mut().mode = "pages";
+        h.run();
+        assert!(h.query_by_label("0: 第0段落。二つ目の文。").is_some());
+        assert!(
+            h.query_by_label("39: 第39段落。二つ目の文。").is_none(),
+            "a page, not the chapter"
+        );
+        h.get_by_label("books-next-page").click();
+        h.run();
+        let next = h.state().out.iter().find_map(|c| match c {
+            Command::BookTurn(p) => Some(*p),
+            _ => None,
+        });
+        assert!(next.is_some_and(|p| p > 0), "{next:?}");
+        h.state_mut().out.clear();
+        h.state_mut().state.turn = Some(true);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookTurn(_)))
+        );
+        assert_eq!(h.state().state.turn, None);
+        assert!(h.query_by_label("books-page-of").is_some());
+    }
+
+    // T-PORT-004: a swipe turns pages left to right, and does nothing to a scroll.
+    #[test]
+    fn swipes_turn_pages() {
+        let mut h = harness(BooksPage {
+            open: Some(long_chapter()),
+            ..BooksPage::default()
+        });
+        h.state_mut().mode = "pages";
+        h.run();
+        h.state_mut().state.swipe = Some(crate::gestures::Gesture::SwipeLeft);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookTurn(p) if *p > 0))
+        );
+        assert!(h.state().state.swipe.is_none());
+        h.state_mut().out.clear();
+        h.state_mut().mode = "scroll";
+        h.state_mut().state.swipe = Some(crate::gestures::Gesture::SwipeLeft);
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookTurn(_)))
+        );
+        assert!(
+            h.state().state.swipe.is_none(),
+            "dropped, not kept for later"
+        );
+    }
+
+    // T-RDR-004: sentence focus shows one sentence; clicks keep original offsets.
+    #[test]
+    fn sentence_focus_keeps_original_offsets() {
+        let mut book = long_chapter();
+        book.paragraph = 2;
+        book.sentence = 1;
+        let mut h = harness(BooksPage {
+            open: Some(book),
+            ..BooksPage::default()
+        });
+        h.state_mut().mode = "sentence";
+        h.run();
+        let rect = h.get_by_label("2: 二つ目の文。").rect();
+        let at = Pos2::new(rect.min.x + 4.0, rect.center().y);
+        h.hover_at(at);
+        h.drag_at(at);
+        h.drop_at(at);
+        h.run();
+        let clicked = h.state().out.iter().find_map(|c| match c {
+            Command::BookClicked {
+                paragraph, offset, ..
+            } => Some((*paragraph, *offset)),
+            _ => None,
+        });
+        // "第2段落。" is 13 bytes: the second sentence starts there
+        assert_eq!(clicked, Some((2, 13)));
+        h.get_by_label("books-next-sentence").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookSentence(true)))
+        );
+        h.get_by_label("books-previous-sentence").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookSentence(false)))
+        );
+    }
+
+    // T-RDR-001, T-RDR-004: the reader offers annotations and modes by name.
+    #[test]
+    fn the_reader_offers_annotations_and_modes() {
+        let mut h = harness(BooksPage {
+            open: Some(open()),
+            ..BooksPage::default()
+        });
+        h.run();
+        h.get_by_label("annotation-new-highlight").click();
+        h.run();
+        h.get_by_label("books-mode-pages").click();
+        h.run();
+        let out = &h.state().out;
+        assert!(out.iter().any(|c| matches!(
+            c,
+            Command::AnnotationNew(nikomiru_library::annotations::Kind::Highlight)
+        )));
+        assert!(
+            out.iter()
+                .any(|c| matches!(c, Command::BookMode(m) if m == "pages"))
+        );
     }
 
     // T-BOK-009: the first column is on the right, and a click finds its
@@ -1721,6 +2454,7 @@ mod tests {
             paragraph: 0,
             jump: false,
             started: (0, 0),
+            sentence: 0,
         }
     }
 
@@ -1945,5 +2679,58 @@ mod tests {
                 .any(|c| matches!(c, Command::BookChoose(u) if u == "book/a"))
         );
         let _ = h.get_by_label("50 %");
+    }
+    // T-BOK-013: an explicit editor submission is required, empty input is disabled and the draft survives submission.
+    #[test]
+    fn pasted_text_editor_emits_an_explicit_bounded_document() {
+        let mut h = harness(BooksPage::default());
+        h.run();
+        h.get_by_label("books-paste").click();
+        h.run();
+        h.get_by_label("books-paste-read").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        {
+            let state = &mut h.state_mut().state;
+            state.paste_title = "読書".into();
+            state.paste_text = "# 猫\n\n本文".into();
+            state.paste_markdown = true;
+        }
+        h.run();
+        h.get_by_label("books-paste-read").click();
+        h.run();
+        assert!(h.state().out.iter().any(|c|matches!(c,Command::BookPaste(p) if p.title=="読書"&&p.text=="# 猫\n\n本文"&&p.format==nikomiru_books::text::Format::Markdown)));
+        assert!(!h.state().state.paste_open);
+        assert_eq!(h.state().state.paste_text, "# 猫\n\n本文");
+    }
+    // T-MNG-008: imported text has an accessible target without model installation or an OCR offer.
+    #[test]
+    fn imported_manga_region_emits_only_an_explicit_selection() {
+        let mut open = manga();
+        open.book.manga_regions.insert(
+            0,
+            nikomiru_books::mokuro::Page {
+                width: 100,
+                height: 200,
+                regions: vec![nikomiru_books::mokuro::Region {
+                    bounds: [10, 10, 80, 100],
+                    text: "猫です".into(),
+                }],
+            },
+        );
+        let mut h = harness(BooksPage {
+            open: Some(open),
+            ..Default::default()
+        });
+        h.run();
+        assert!(h.query_by_label("manga-fetch").is_none());
+        h.get_by_label("mokuro-region").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::MokuroSelect { page: 0, region: 0 }))
+        );
     }
 }

@@ -60,6 +60,10 @@ pub struct Data {
     pub dav_files: std::collections::BTreeMap<String, Vec<u8>>,
     /// The password of the fake WebDAV, Basic-encoded for `dav`:`pass`.
     pub dav_full: bool,
+    /// The fake Emby's token has expired: every request but a login is refused.
+    pub emby_expired: bool,
+    /// The fake Emby cannot play the files directly.
+    pub emby_no_direct_play: bool,
 }
 
 struct Shared {
@@ -125,6 +129,11 @@ impl FakeServers {
     /// The fake Jellyfin's address.
     pub fn jellyfin_url(&self) -> String {
         format!("http://127.0.0.1:{}/jf/", self.port)
+    }
+
+    /// The fake Emby's address, without its `/emby` (SRV-014).
+    pub fn emby_url(&self) -> String {
+        format!("http://127.0.0.1:{}/em/", self.port)
     }
 
     /// The fake Plex's address.
@@ -241,6 +250,8 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
     let path = request.target.split('?').next().unwrap_or("").to_string();
     if let Some(path) = path.strip_prefix("/jf/") {
         jellyfin(stream, &request, path, shared);
+    } else if let Some(path) = path.strip_prefix("/em/emby/") {
+        emby(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/px/") {
         plex(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/tv/") {
@@ -328,6 +339,12 @@ fn jellyfin_item(item: &FakeItem) -> Value {
 
 fn jellyfin(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared) {
     let data = lock(&shared.data).clone();
+    if path == "System/Info/Public" {
+        return send_json(
+            stream,
+            &json!({ "ServerName": "Fake", "ProductName": "Jellyfin Server", "Id": "jf-1" }),
+        );
+    }
     if path == "Users/AuthenticateByName" {
         let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
         return if body["Username"] == USER && body["Pw"] == PASSWORD {
@@ -392,6 +409,84 @@ fn jellyfin(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shar
         ["Videos", _, "stream"] => send_file(stream, request, shared),
         ["Videos", _, _, "Subtitles", _, _] => respond(stream, 200, "", &data.subtitle),
         ["Sessions", ..] | ["UserPlayedItems", _] => respond(stream, 204, "", b""),
+        _ => respond(stream, 404, "", b""),
+    }
+}
+
+/// The fake Emby: its own prefix, headers and per-user routes (SRV-014).
+fn emby(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared) {
+    let data = lock(&shared.data).clone();
+    if path == "System/Info/Public" {
+        return send_json(
+            stream,
+            &json!({ "ServerName": "Fake Emby", "Version": "4.8.0.0", "Id": "emby-1" }),
+        );
+    }
+    if path == "Users/AuthenticateByName" {
+        let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+        let named = request
+            .header("x-emby-authorization")
+            .is_some_and(|h| h.starts_with("Emby ") && h.contains("Client=\"Nikomiru\""));
+        return if named && body["Username"] == USER && body["Pw"] == PASSWORD {
+            send_json(
+                stream,
+                &json!({ "AccessToken": TOKEN, "User": { "Id": "user-1" } }),
+            );
+        } else {
+            respond(stream, 401, "", b"");
+        };
+    }
+    if data.emby_expired || request.header("x-emby-token") != Some(TOKEN) {
+        return respond(stream, 401, "", b"");
+    }
+    let segments: Vec<&str> = path.split('/').collect();
+    let item_json = |item: &FakeItem| {
+        let mut v = jellyfin_item(item);
+        v["MediaSources"][0]["SupportsDirectPlay"] = json!(!data.emby_no_direct_play);
+        v["MediaSources"][0]["SupportsDirectStream"] = json!(!data.emby_no_direct_play);
+        v
+    };
+    match segments.as_slice() {
+        ["Users", "user-1", "Views"] => {
+            let items: Vec<Value> = data
+                .libraries
+                .iter()
+                .map(|(id, name)| json!({ "Id": id, "Name": name, "CollectionType": "tvshows" }))
+                .collect();
+            send_json(stream, &json!({ "Items": items }));
+        }
+        ["Users", "user-1", "Items"] => {
+            let parent = query(&request.target, "ParentId").unwrap_or_default();
+            let term = query(&request.target, "searchTerm");
+            let matching: Vec<Value> = data
+                .items
+                .iter()
+                .filter(|i| {
+                    term.as_ref()
+                        .map_or(i.parent == parent, |t| i.title.contains(t.as_str()))
+                })
+                .map(item_json)
+                .collect();
+            let start = query(&request.target, "StartIndex")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let limit = query(&request.target, "Limit")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(usize::MAX);
+            let page: Vec<&Value> = matching.iter().skip(start).take(limit).collect();
+            send_json(
+                stream,
+                &json!({ "TotalRecordCount": matching.len(), "Items": page }),
+            );
+        }
+        ["Users", "user-1", "Items", id] => match data.items.iter().find(|i| i.id == *id) {
+            Some(item) => send_json(stream, &item_json(item)),
+            None => respond(stream, 404, "", b""),
+        },
+        ["Items", _, "Images", "Primary"] => respond(stream, 200, "", b"cover"),
+        ["Videos", _, "stream"] => send_file(stream, request, shared),
+        ["Videos", _, _, "Subtitles", _, _] => respond(stream, 200, "", &data.subtitle),
+        ["Sessions", ..] | ["Users", "user-1", "PlayedItems", _] => respond(stream, 204, "", b""),
         _ => respond(stream, 404, "", b""),
     }
 }

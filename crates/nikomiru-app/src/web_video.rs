@@ -173,6 +173,20 @@ pub fn job(program: &Path, r: &Request) -> Job {
             .join("subtitle.%(language)s.%(ext)s")
             .into_os_string(),
     );
+    if !r.ffmpeg.is_empty() {
+        job.args.push("--ffmpeg-location".into());
+        job.args.push(r.ffmpeg.clone().into());
+    }
+    if !r.javascript.is_empty() {
+        let path = PathBuf::from(&r.javascript);
+        let path = if path.is_dir() {
+            path.join(format!("deno{}", std::env::consts::EXE_SUFFIX))
+        } else {
+            path
+        };
+        job.args.push("--js-runtimes".into());
+        job.args.push(format!("deno:{}", path.display()).into());
+    }
     job.args.push("--".into());
     job.args.push(r.page.clone().into());
     job.timeout = Duration::from_secs(120);

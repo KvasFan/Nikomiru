@@ -294,6 +294,83 @@ impl Http {
         Ok(answer.body)
     }
 
+    /// `GET url` from byte `from` (RANGE `bytes=from-` when `from` > 0), at
+    /// most `limit` bytes in all (POD-002). `start` learns where the answer
+    /// begins: `from` for a `206` that starts there, `0` for a whole `200`;
+    /// and the file's whole length when the server says it. Other answers
+    /// fail before any piece.
+    pub fn stream_from(
+        &self,
+        url: &Url,
+        provider: &str,
+        from: u64,
+        limit: u64,
+        start: &mut dyn FnMut(u64, Option<u64>) -> Result<(), OnlineError>,
+        piece: &mut dyn FnMut(&[u8]) -> Result<(), OnlineError>,
+    ) -> Result<(), OnlineError> {
+        let mut request = self.files.get(url.clone());
+        if from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
+        }
+        let mut response = request.send().map_err(|e| failure(url, &e))?;
+        let status = response.status().as_u16();
+        let protocol = |reason: &str| OnlineError::Protocol {
+            provider: provider.to_string(),
+            reason: reason.into(),
+        };
+        let (offset, total) = match status {
+            206 if from > 0 => {
+                let range = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.strip_prefix("bytes "))
+                    .ok_or_else(|| protocol("no Content-Range"))?;
+                let (span, total) = range.split_once('/').ok_or_else(|| protocol("bad range"))?;
+                let first = span
+                    .split_once('-')
+                    .and_then(|(a, _)| a.parse::<u64>().ok())
+                    .ok_or_else(|| protocol("bad range"))?;
+                if first != from {
+                    return Err(protocol("range from another offset"));
+                }
+                (from, total.parse::<u64>().ok())
+            }
+            200..=299 if status != 206 => (0, response.content_length()),
+            _ => {
+                return Err(OnlineError::Http {
+                    provider: provider.to_string(),
+                    status,
+                });
+            }
+        };
+        let too_large = OnlineError::TooLarge {
+            limit_mib: limit >> 20,
+        };
+        if total.is_some_and(|n| n > limit) {
+            return Err(too_large);
+        }
+        start(offset, total)?;
+        let mut buffer = vec![0u8; 64 << 10];
+        let mut seen = offset;
+        loop {
+            let read = response
+                .read(&mut buffer)
+                .map_err(|e| OnlineError::Unreachable {
+                    host: host_of(url),
+                    reason: e.to_string(),
+                })?;
+            if read == 0 {
+                return Ok(());
+            }
+            seen += read as u64;
+            if seen > limit {
+                return Err(too_large);
+            }
+            piece(&buffer[..read])?;
+        }
+    }
+
     /// `GET url` of a large file, at most `limit` bytes, each piece handed to
     /// `piece` as it arrives (MNG-004). The answer must be 2xx.
     pub fn stream(

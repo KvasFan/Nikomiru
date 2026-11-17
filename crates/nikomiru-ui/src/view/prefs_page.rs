@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{ComboBox, Grid, Response, RichText, Slider, TextEdit, Ui, vec2};
+use egui::{Button, ComboBox, Grid, Response, RichText, Slider, TextEdit, Ui, vec2};
 use nikomiru_core::Config;
 use nikomiru_core::config::{General, SubtitlesConfig, parse_rgba, rgba_text};
 
@@ -73,6 +73,16 @@ pub(crate) struct Scene<'a> {
     pub licenses: Option<PathBuf>,
     /// Whether the session waits for a shortcut's key, and the chord it got.
     pub capture: (bool, Option<&'a str>),
+    /// An imported shortcut map waiting for Apply (KEY-009).
+    pub shortcut_preview: Option<&'a crate::shortcut_maps::Preview>,
+    /// The installed dictionaries, for the language profile (LNG-004).
+    pub dictionaries: &'a [(String, nikomiru_library::DictionaryRecord)],
+    /// The Anime4K pack: installed, busy, and shaders set by the user's own
+    /// mpv options (THM-002, THM-003).
+    pub shaders: (bool, bool, bool),
+    /// Updates: their state, who owns this install, and whether this build
+    /// can check (UPD-001…UPD-004).
+    pub updates: Option<(&'a crate::updates::State, crate::updates::Owner, bool)>,
     pub tr: &'a Translate<'a>,
 }
 
@@ -89,6 +99,14 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         logs_dir: s.logs_dir(),
         licenses: third_party_licenses(),
         capture: s.capture(),
+        shortcut_preview: s.shortcut_preview.as_ref(),
+        dictionaries: &s.dict_page.rows,
+        shaders: (
+            s.shader_pack_installed(),
+            s.shader_pack_busy(),
+            s.shaders_overridden(),
+        ),
+        updates: Some((&s.updates, s.update_owner(), s.updates_configured())),
         tr: &tr,
     };
     let leave = draw(ctx, &scene, &mut view.prefs, out);
@@ -163,7 +181,23 @@ pub(crate) fn draw(
             SettingsTab::Lookup => lookup(ui, s, draft),
             SettingsTab::Shortcuts => {
                 let shortcuts = &mut state.shortcuts;
-                shortcuts_page::body(ui, s.tr, &mut draft.shortcuts, shortcuts, s.capture, out);
+                let preview = s.shortcut_preview;
+                let applied = shortcuts_page::body(
+                    ui,
+                    s.tr,
+                    &mut draft.shortcuts,
+                    shortcuts,
+                    (s.capture, preview),
+                    out,
+                );
+                // KEY-010: the map replaced the draft; the usual save applies it
+                if applied {
+                    out.push(Command::SettingsSave(
+                        section_shortcuts(),
+                        Box::new(draft.clone()),
+                    ));
+                    out.push(Command::ShortcutsPreviewClose);
+                }
             }
             SettingsTab::Advanced => advanced(ui, s, draft),
             SettingsTab::About => about(ui, s, out),
@@ -175,6 +209,10 @@ pub(crate) fn draw(
         out.push(Command::ShortcutCapture(false));
     }
     leave
+}
+
+fn section_shortcuts() -> nikomiru_core::config::Section {
+    nikomiru_core::config::Section::Shortcuts
 }
 
 fn section(ui: &mut Ui, text: &str) {
@@ -229,6 +267,7 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
 
 fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
     general_form(ui, s, draft);
+    shaders(ui, s, draft, out);
     let tr = |id: &str| (s.tr)(id, &[]);
     // INS-001
     section(ui, &tr("setup-title"));
@@ -239,6 +278,159 @@ fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command
     section(ui, &tr("settings-keys"));
     ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
     hint(ui, &tr("settings-keyring-hint"));
+}
+
+/// The shader presets and their pack (THM-002, THM-003).
+fn shaders(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
+    let tr = |id: &str| (s.tr)(id, &[]);
+    let (installed, busy, overridden) = s.shaders;
+    section(ui, &tr("settings-shaders"));
+    if overridden {
+        hint(ui, &tr("settings-shaders-overridden"));
+    }
+    ui.add_enabled_ui(installed && !overridden, |ui| {
+        form(ui, "settings-shaders", |ui| {
+            row(ui, &tr("settings-shaders-preset"), |ui| {
+                choice(
+                    ui,
+                    "settings-shaders-preset",
+                    &mut draft.player.shader_preset,
+                    &[
+                        ("", tr("settings-shaders-off")),
+                        ("anime4k-fast", tr("settings-shaders-fast")),
+                        ("anime4k-quality", tr("settings-shaders-quality")),
+                    ],
+                )
+            });
+        });
+    });
+    hint(ui, &tr("settings-shaders-hint"));
+    ui.horizontal(|ui| {
+        if installed {
+            if ui
+                .add_enabled(!busy, Button::new(tr("settings-shaders-remove")))
+                .clicked()
+            {
+                out.push(Command::ShaderPack(false));
+            }
+        } else if ui
+            .add_enabled(!busy, Button::new(tr("settings-shaders-download")))
+            .clicked()
+        {
+            out.push(Command::ShaderPack(true));
+        }
+        if busy {
+            ui.spinner();
+        }
+    });
+}
+
+/// The study language and its profile (LNG-001, LNG-004).
+fn study_language(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+    let tr = |id: &str| (s.tr)(id, &[]);
+    section(ui, &tr("settings-study"));
+    let mut profile = draft.language_profile();
+    form(ui, "settings-study", |ui| {
+        row(ui, &tr("settings-study-language"), |ui| {
+            let options: Vec<(&str, String)> = nikomiru_core::config::STUDY_LANGUAGES
+                .iter()
+                .map(|code| (*code, language_name(code)))
+                .collect();
+            let before = draft.general.study_language.clone();
+            let response = choice(
+                ui,
+                "settings-study-language",
+                &mut draft.general.study_language,
+                &options,
+            );
+            if draft.general.study_language != before {
+                profile = draft.language_profile();
+            }
+            response
+        });
+        row(ui, &tr("settings-study-segmentation"), |ui| {
+            choice(
+                ui,
+                "settings-study-segmentation",
+                &mut profile.segmentation,
+                &[
+                    ("dictionary", tr("settings-study-segmentation-dictionary")),
+                    ("words", tr("settings-study-segmentation-words")),
+                ],
+            )
+        });
+        row(ui, &tr("settings-study-readings"), |ui| {
+            ui.checkbox(&mut profile.readings, tr("settings-study-readings-on"))
+        });
+    });
+    let automatic = profile.dictionaries.is_empty();
+    let mut auto = automatic;
+    ui.checkbox(&mut auto, tr("settings-study-dictionaries-auto"));
+    hint(ui, &tr("settings-study-dictionaries-hint"));
+    if auto != automatic {
+        profile.dictionaries = if auto {
+            Vec::new()
+        } else {
+            // start from what the automatic choice uses
+            s.dictionaries
+                .iter()
+                .filter(|(_, r)| {
+                    r.language
+                        .as_deref()
+                        .is_none_or(|l| l.is_empty() || l == draft.general.study_language)
+                })
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+    }
+    if !auto {
+        for (id, record) in s.dictionaries {
+            let mut on = profile.dictionaries.contains(id);
+            let label = match &record.language {
+                Some(l) if !l.is_empty() => format!("{} ({l})", record.name()),
+                _ => record.name().to_string(),
+            };
+            if ui.checkbox(&mut on, label).changed() {
+                if on {
+                    profile.dictionaries.push(id.clone());
+                } else {
+                    profile.dictionaries.retain(|d| d != id);
+                }
+            }
+        }
+    }
+    let language = draft.general.study_language.clone();
+    if profile == nikomiru_core::config::LanguageProfile::default() {
+        draft.languages.remove(&language);
+    } else {
+        draft.languages.insert(language, profile);
+    }
+}
+
+/// A study language's name in its own language, with its code.
+fn language_name(code: &str) -> String {
+    let name = match code {
+        "ar" => "العربية",
+        "de" => "Deutsch",
+        "el" => "Ελληνικά",
+        "en" => "English",
+        "eo" => "Esperanto",
+        "es" => "Español",
+        "eu" => "Euskara",
+        "fr" => "Français",
+        "ga" => "Gaeilge",
+        "grc" => "Ἀρχαία ἑλληνική",
+        "ja" => "日本語",
+        "ka" => "ქართული",
+        "ko" => "한국어",
+        "la" => "Latina",
+        "sga" => "Goídelc",
+        "sq" => "Shqip",
+        "tl" => "Tagalog",
+        "yi" => "ייִדיש",
+        _ => code,
+    };
+    format!("{name} ({code})")
 }
 
 fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
@@ -271,6 +463,19 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
                 ],
             )
         });
+        // THM-001
+        row(ui, &tr("settings-palette"), |ui| {
+            choice(
+                ui,
+                "settings-palette",
+                &mut g.palette,
+                &[
+                    ("", tr("settings-palette-default")),
+                    ("oled", tr("settings-palette-oled")),
+                    ("high-contrast", tr("settings-palette-high-contrast")),
+                ],
+            )
+        });
         row(ui, &tr("settings-accent"), |ui| {
             let mut rgb = g.accent_rgb().unwrap_or([0x35, 0x84, 0xe4]);
             let response = ui.color_edit_button_srgb(&mut rgb);
@@ -287,6 +492,7 @@ fn general_form(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    study_language(ui, s, draft);
     section(ui, &tr("settings-playback"));
     form(ui, "settings-playback", |ui| {
         row(ui, &tr("settings-seek"), |ui| {
@@ -575,6 +781,23 @@ fn look(
 fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     form(ui, "settings-lookup", |ui| {
+        row(ui, &tr("settings-pause-lookup"), |ui| {
+            let result = egui::ComboBox::from_id_salt("pause-lookup-rule")
+                .selected_text(tr(&format!("settings-pause-{}", draft.lookup.pause_lookup)))
+                .show_ui(ui, |ui| {
+                    for (value, key) in [
+                        ("off", "settings-pause-off"),
+                        ("unknown", "settings-pause-unknown"),
+                        ("kanji", "settings-pause-kanji"),
+                    ] {
+                        ui.selectable_value(&mut draft.lookup.pause_lookup, value.into(), tr(key));
+                    }
+                });
+            result.response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::ComboBox, true, tr("settings-pause-lookup"))
+            });
+            result.response
+        });
         row(ui, &tr("settings-lookup-results"), |ui| {
             ui.add(Slider::new(&mut draft.lookup.max_results, 1..=50))
         });
@@ -599,6 +822,7 @@ fn lookup(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    ui.label(tr("settings-pause-hint"));
     ui.checkbox(
         &mut draft.lookup.hover_without_modifier,
         tr("settings-lookup-hover"),
@@ -626,6 +850,9 @@ fn path_row(ui: &mut Ui, label: &str, path: &Path, copy: &str) {
 fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     let tr = |id: &str| (s.tr)(id, &[]);
     form(ui, "settings-advanced", |ui| {
+        row(ui, &tr("settings-pdftotext"), |ui| {
+            ui.add(TextEdit::singleline(&mut draft.paths.pdftotext).desired_width(360.0))
+        });
         row(ui, &tr("settings-ffmpeg"), |ui| {
             ui.add(
                 TextEdit::singleline(&mut draft.paths.ffmpeg)
@@ -643,6 +870,11 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             )
         });
     });
+    form(ui, "settings-deno", |ui| {
+        row(ui, &tr("settings-deno"), |ui| {
+            ui.add(TextEdit::singleline(&mut draft.paths.deno).desired_width(360.0))
+        });
+    });
     hint(ui, &tr("settings-next-start"));
     section(ui, &tr("settings-folders"));
     form(ui, "settings-folders", |ui| {
@@ -653,6 +885,109 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
     hint(ui, &tr("settings-mpv-hint"));
 }
 
+/// The updates of the About tab (UPD-001…UPD-004): asked for, never by
+/// themselves.
+fn update_section(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    (state, owner, configured): (&crate::updates::State, crate::updates::Owner, bool),
+    out: &mut Vec<Command>,
+) {
+    use crate::updates::Owner;
+    let tr = |id: &str| (s.tr)(id, &[]);
+    section(ui, &tr("updates-title"));
+    let mut channel = s.saved.updates.channel.clone();
+    form(ui, "updates", |ui| {
+        row(ui, &tr("updates-channel"), |ui| {
+            choice(
+                ui,
+                "updates-channel",
+                &mut channel,
+                &[
+                    ("stable", tr("updates-channel-stable")),
+                    ("beta", tr("updates-channel-beta")),
+                ],
+            )
+        });
+    });
+    if channel != s.saved.updates.channel {
+        out.push(Command::UpdateChannel(channel));
+    }
+    let busy = state.checking || state.downloading.is_some() || state.installing;
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(configured && !busy, Button::new(tr("updates-check")))
+            .clicked()
+        {
+            out.push(Command::UpdateCheck);
+        }
+        if busy {
+            ui.spinner();
+        }
+    });
+    if !configured {
+        hint(ui, &tr("updates-unconfigured"));
+    }
+    if state.up_to_date {
+        ui.label(tr("updates-up-to-date"));
+    }
+    if let Some(a) = &state.available {
+        ui.label((s.tr)(
+            "updates-available",
+            &[
+                ("version", a.release.clone()),
+                ("date", a.published.clone()),
+            ],
+        ));
+        if ui.link(tr("updates-notes")).clicked() {
+            out.push(Command::OpenExternal(a.notes_url.clone()));
+        }
+        match owner {
+            Owner::Portable if state.installed.is_none() => {
+                ui.horizontal(|ui| {
+                    if state.downloaded.is_none() {
+                        let size = a.artifact.as_ref().map_or(0, |x| x.bytes >> 20);
+                        if ui
+                            .add_enabled(
+                                a.artifact.is_some() && !busy,
+                                Button::new((s.tr)(
+                                    "updates-download",
+                                    &[("size", size.to_string())],
+                                )),
+                            )
+                            .clicked()
+                        {
+                            out.push(Command::UpdateDownload);
+                        }
+                    } else if ui
+                        .add_enabled(!busy, Button::new(tr("updates-install")))
+                        .clicked()
+                    {
+                        out.push(Command::UpdateInstall);
+                    }
+                });
+                if let Some((done, total)) = state.downloading {
+                    let total = total.map_or_else(|| "?".into(), |t| (t >> 20).to_string());
+                    ui.label((s.tr)(
+                        "updates-downloading",
+                        &[("done", (done >> 20).to_string()), ("total", total)],
+                    ));
+                }
+            }
+            Owner::Portable => {}
+            Owner::Flatpak => hint(ui, &tr("updates-flatpak")),
+            Owner::Package => hint(ui, &tr("updates-package")),
+            Owner::ReadOnly => hint(ui, &tr("updates-read-only")),
+        }
+    }
+    if let Some(version) = &state.installed {
+        ui.label((s.tr)("updates-installed", &[("version", version.clone())]));
+    }
+    if let Some(error) = &state.error {
+        ui.colored_label(palette::current().bad, error);
+    }
+}
+
 fn about(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     let tr = |id: &str| (s.tr)(id, &[]);
     ui.label(
@@ -661,6 +996,9 @@ fn about(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
             .family(theme::bold()),
     );
     hint(ui, &tr("about-tagline"));
+    if let Some(updates) = s.updates {
+        update_section(ui, s, updates, out);
+    }
     ui.horizontal(|ui| {
         ui.label(tr("about-license"));
         if ui.link("GPL-3.0-only").clicked() {
@@ -703,6 +1041,7 @@ mod tests {
         state: State,
         out: Vec<Command>,
         leave: Leave,
+        updates: Option<(crate::updates::State, crate::updates::Owner, bool)>,
     }
 
     fn harness(tab: SettingsTab, saved: Config) -> Harness<'static, Test> {
@@ -721,6 +1060,10 @@ mod tests {
                         logs_dir: Path::new("/home/u/.local/state/nikomiru/logs"),
                         licenses: t.licenses.clone(),
                         capture: (false, None),
+                        shortcut_preview: None,
+                        dictionaries: &[],
+                        shaders: (false, false, false),
+                        updates: t.updates.as_ref().map(|(st, o, c)| (st, *o, *c)),
                         tr: &tr,
                     };
                     let leave = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -735,8 +1078,46 @@ mod tests {
                     state: State::default(),
                     out: Vec::new(),
                     leave: Leave::Stay,
+                    updates: None,
                 },
             )
+    }
+
+    // T-GDL-001, T-GDL-004: the accessible optional rule remains a draft until explicit Save.
+    #[test]
+    fn paused_lookup_rule_is_named_and_saved_explicitly() {
+        let mut h = harness(SettingsTab::Lookup, Config::default());
+        h.run();
+        h.get_by_label("settings-pause-lookup").click();
+        h.run();
+        h.get_by_label("settings-pause-unknown").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.get_by_label("settings-save").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(),[Command::SettingsSave(Section::Lookup,c)] if c.lookup.pause_lookup=="unknown")
+        );
+    }
+
+    // T-LNG-004: the active language's profile is edited in the draft and saved explicitly.
+    #[test]
+    fn the_study_profile_is_saved_explicitly() {
+        let mut saved = Config::default();
+        saved.general.study_language = "en".into();
+        let mut h = harness(SettingsTab::General, saved);
+        h.run();
+        h.get_by_label("settings-study-readings").click();
+        h.run();
+        assert!(h.state().out.is_empty());
+        h.get_by_label("settings-save").click();
+        h.run();
+        let [Command::SettingsSave(Section::General, draft)] = &h.state().out[..] else {
+            panic!("{:?}", h.state().out);
+        };
+        assert!(!draft.languages["en"].readings);
+        assert_eq!(draft.languages["en"].segmentation, "dictionary");
+        assert!(!draft.languages.contains_key("ja"));
     }
 
     // T-SET-006: Reset puts the tab's keys back in the draft, Save sends them
@@ -770,6 +1151,46 @@ mod tests {
         h.get_by_label("settings-shortcuts").click();
         h.run();
         assert_eq!(h.state().leave, Leave::To(SettingsTab::Shortcuts));
+    }
+
+    // T-UPD-003: checks are explicit; a package-owned install only gets directions.
+    #[test]
+    fn updates_are_explicit_and_respect_packages() {
+        use crate::updates::{Available, Owner, State as U};
+        let mut h = harness(SettingsTab::About, Config::default());
+        h.state_mut().updates = Some((U::default(), Owner::Package, true));
+        h.run();
+        assert!(h.state().out.is_empty(), "nothing by itself");
+        h.get_by_label("updates-check").click();
+        h.run();
+        assert!(matches!(h.state().out[..], [Command::UpdateCheck]));
+        h.state_mut().out.clear();
+        let available = Available {
+            release: "9.0.0".into(),
+            published: "2026-11-16".into(),
+            notes_url: "https://example.org".into(),
+            artifact: None,
+        };
+        h.state_mut().updates = Some((
+            U {
+                available: Some(available),
+                ..U::default()
+            },
+            Owner::Package,
+            true,
+        ));
+        h.run();
+        h.get_by_label("updates-package");
+        assert!(h.query_by_label("updates-install").is_none());
+        // a build without a key cannot check
+        h.state_mut().updates = Some((U::default(), Owner::Portable, false));
+        h.run();
+        use egui_kittest::kittest::NodeT;
+        assert!(
+            h.get_by_label("updates-check")
+                .accesskit_node()
+                .is_disabled()
+        );
     }
 
     #[test]

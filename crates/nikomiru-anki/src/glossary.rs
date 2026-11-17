@@ -81,6 +81,13 @@ fn is_link(v: &Value) -> bool {
     node.and_then(|n| n.get("tag")).and_then(Value::as_str) == Some("a")
 }
 
+/// Whether an attached media file is a sound Anki plays.
+fn is_sound_file(name: &str) -> bool {
+    ["mp3", "ogg", "wav", "m4a", "flac", "opus"]
+        .iter()
+        .any(|ext| name.ends_with(&format!(".{ext}")))
+}
+
 /// A name usable as an attribute: letters (any script), digits, `-`, `_`.
 fn is_name(s: &str) -> bool {
     !s.is_empty()
@@ -282,6 +289,16 @@ impl Writer<'_> {
         match tag.as_str() {
             "br" => return self.out.push_str("<br>"),
             "img" => return self.img(o),
+            "a" => {
+                // DIC-038: a dictionary's sound goes with the card
+                if let Some(path) = o
+                    .get("href")
+                    .and_then(Value::as_str)
+                    .and_then(|h| h.strip_prefix("sound:"))
+                {
+                    return self.sound(o, path);
+                }
+            }
             _ => {}
         }
         let class = if is_name(&tag) {
@@ -348,6 +365,22 @@ impl Writer<'_> {
         if written == "table" {
             self.out.push_str("</div>");
         }
+    }
+
+    /// A sound link: `[sound:…]` when its file goes with the card, else
+    /// its text.
+    fn sound(&mut self, o: &Map<String, Value>, path: &str) {
+        let text = plain(o.get("content"));
+        let mut node = Map::new();
+        node.insert("path".into(), Value::String(path.into()));
+        if let Some(sound) = structured::image(&node)
+            && let Some(file) = (self.image)(&sound)
+            && is_sound_file(&file)
+        {
+            self.out.push_str(&format!("[sound:{}]", escape(&file)));
+            return;
+        }
+        self.out.push_str(&escape(&text));
     }
 
     fn img(&mut self, o: &Map<String, Value>) {
@@ -480,6 +513,30 @@ mod tests {
              <tr class=\"gloss-sc-tr\"><td class=\"gloss-sc-td\" colspan=\"2\" style=\"border-style:solid;padding:0.25em;vertical-align:top;border-width:1px;border-color:currentColor;\">cell</td></tr>\
              </table></div></span>"
         );
+    }
+
+    // T-DIC-038: a dictionary sound goes with the card; an unknown one stays text.
+    #[test]
+    fn dictionary_sounds_become_card_audio() {
+        let g = json!([{"type": "structured-content", "content": [
+            {"tag": "a", "href": "sound:snd/neko.mp3", "content": "▶"},
+            {"tag": "a", "href": "sound:snd/x.spx", "content": "spx"},
+            {"tag": "a", "href": "sound:../evil.mp3", "content": "bad"},
+        ]}]);
+        let mut asked = Vec::new();
+        let out = definitions(&g, &mut |media| {
+            asked.push(media.path.clone());
+            media
+                .path
+                .ends_with(".mp3")
+                .then(|| "nikomiru_1.mp3".to_string())
+        });
+        assert_eq!(asked, ["snd/neko.mp3", "snd/x.spx"]);
+        assert!(out.contains("[sound:nikomiru_1.mp3]"), "{out}");
+        assert!(out.contains("spx") && out.contains("bad"));
+        assert_eq!(crate::compose::sound_extension(b"ID3\x03"), Some("mp3"));
+        assert_eq!(crate::compose::sound_extension(b"OggS\0"), Some("ogg"));
+        assert_eq!(crate::compose::sound_extension(b"Speex   "), None);
     }
 
     // T-SEC-001 for cards

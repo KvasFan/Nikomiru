@@ -193,7 +193,7 @@ settings-lookup-hover = Cerca le parole al passaggio del puntatore, senza Shift
 settings-lookup-resume = Riprendi la riproduzione quando il puntatore lascia il popup
 settings-ffmpeg = Programma ffmpeg
 settings-ffmpeg-hint = vuoto: ffmpeg dal PATH
-settings-next-start = Un cambio del programma ffmpeg vale dal prossimo avvio di Nikomiru.
+settings-next-start = I cambiamenti ai percorsi degli strumenti valgono dalle operazioni successive, senza riavviare Nikomiru.
 settings-folders = File e cartelle
 settings-config-file = File delle impostazioni
 settings-logs = Log
@@ -744,7 +744,7 @@ stats-delete-session = Cancella la sessione del { $date }, { $name }
 settings-servers = Server multimediali
 servers-added = Server aggiunti
 servers-none = Ancora nessun server. Nikomiru si collega a un server solo dopo che lo aggiungi.
-servers-add-jellyfin = Aggiungi un server Jellyfin
+servers-add-jellyfin = Aggiungi un server Jellyfin o Emby
 servers-name = Nome
 servers-address = Indirizzo
 servers-address-hint = http://192.168.1.10:8096
@@ -806,10 +806,10 @@ hooker-no-clipboard = Nessun programma per leggere gli appunti: installa wl-past
 books-title = Libri
 books-add = Aggiungi un libro o un manga…
 books-folder = Aggiungi una cartella di pagine…
-books-none = Ancora nessun libro. Aggiungi un EPUB, un CBZ o una pagina HTML: il file resta dov'è. Oppure apri una pagina web dal suo indirizzo.
+books-none = Ancora nessun libro. Aggiungi un EPUB, manga, HTML, TXT, Markdown, HTMLZ, RTF, DOCX o PDF con testo, incolla un testo oppure apri una pagina web dal suo indirizzo. I file originali restano dove sono.
 books-audiobook = Apri un audiolibro…
 books-audio-filter = File audio
-books-filter = Libri EPUB, manga CBZ e pagine HTML
+books-filter = Libri, manga, HTML/TXT/Markdown, Mokuro, HTMLZ/RTF/DOCX/PDF
 books-remove = Rimuovi { $title }
 books-back = ← Libri
 books-vertical = Verticale
@@ -948,10 +948,10 @@ books-listen = Ascolta da qui
 # Setup assistant (INS-001…INS-006)
 setup-title = Assistente di configurazione
 setup-close = Chiudi
-setup-open = Configura dizionari, audio e carte…
-setup-open-hint = Scarica dizionari liberi e l'audio delle parole, e imposta come si fanno le carte, come al primo avvio.
-setup-first-steps = Dizionari, audio delle parole e carte in un posto solo:
-setup-intro = Scegli cosa installare. Nulla viene scaricato prima di premere Installa; i download continuano mentre usi Nikomiru e riprendono dopo un riavvio.
+setup-open = Configura dizionari, audio, carte e strumenti…
+setup-open-hint = Scarica dizionari liberi, audio delle parole e strumenti di supporto, e scegli come creare le carte.
+setup-first-steps = Dizionari, audio delle parole, carte e strumenti in un posto solo:
+setup-intro = Scegli cosa installare. Nulla viene scaricato prima di premere Installa; i download continuano mentre usi Nikomiru. I download incompleti degli strumenti ricominciano al nuovo tentativo.
 setup-dictionaries = Dizionari
 setup-dictionaries-hint = Scaricati da dove li pubblicano i loro autori, poi importati come un file scelto da te.
 setup-license-unstated = condizioni della fonte, non dichiarate
@@ -1099,3 +1099,577 @@ study-report-export = Esporta riepiloghi analizzati…
 study-report-empty = Non ci sono analisi completate disponibili per questo riepilogo.
 study-report-saved = Riepilogo di comprensione salvato in { $path }.
 study-report-failed = Impossibile salvare il riepilogo: { $reason }
+
+# Strumenti di supporto privati selezionati (INS-007).
+setup-tools = Strumenti di supporto
+setup-tools-hint = Seleziona gli strumenti da installare. Quelli già funzionanti vengono riutilizzati. yt-dlp richiede anche FFmpeg e Deno. I download vengono verificati e installati per questa applicazione senza privilegi di amministratore.
+setup-runtime-ready = Le librerie di riproduzione, grafica e TLS sono fornite dal pacchetto dell’applicazione o dal sistema operativo.
+setup-tools-refresh = Controlla strumenti installati
+setup-tool-required = Richiesto dalla selezione
+setup-tool-available = Disponibile localmente; verrà riutilizzato
+setup-tool-model = Modello OCR locale
+setup-tool-checking = Estrazione e verifica…
+setup-tool-unsupported = Nessun programma di installazione per questa piattaforma
+setup-tool-cancelled = Installazione annullata
+setup-tool-invalid = Lo strumento o il piano di installazione non è valido.
+setup-tool-missing = Strumento non trovato.
+setup-tool-archive = L’archivio è incompleto o contiene elementi non sicuri.
+setup-tool-too-large = Il download o i file estratti superano il limite di dimensione.
+setup-tool-damaged = La posizione di installazione non può essere sostituita in sicurezza.
+setup-tool-space = Spazio libero insufficiente per l’installazione.
+setup-tool-dependency = Impossibile installare un componente richiesto.
+setup-tool-failed = Installazione non riuscita: { $reason }
+settings-deno = Eseguibile o cartella di Deno
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = Strumenti di studio
+sub-select-shown = Seleziona righe visibili
+sub-selection-clear = Svuota selezione righe
+sub-export-selected = Esporta righe selezionate come SRT…
+sub-select-line = Seleziona riga
+
+sub-copy-shown = Copia trascrizione visibile
+sub-copy-selected = Copia trascrizione selezionata
+sub-transcript-copied = Trascrizione copiata
+
+sub-vtt-shown = Esporta visibili come WebVTT…
+sub-vtt-selected = Esporta selezionate come WebVTT…
+sub-vtt-filter = Sottotitoli WebVTT
+
+sub-bilingual-shown = Esporta trascrizione bilingue visibile…
+sub-bilingual-selected = Esporta trascrizione bilingue selezionata…
+
+sub-window-from = Dal tempo corrente
+sub-window-to = Fino al tempo corrente
+sub-window-reset = Azzera intervallo temporale
+
+vocabulary-min-count = Occorrenze minime
+vocabulary-max-count = Occorrenze massime
+vocabulary-reset-counts = Azzera limiti di occorrenze
+
+vocabulary-shown-words = Parole visibili
+vocabulary-selected-words = Parole selezionate
+vocabulary-occurrences = Occorrenze
+
+vocabulary-lookup = Cerca nel dizionario
+
+vocabulary-examples = Esempi nei sottotitoli
+vocabulary-examples-clear = Azzera esempi della parola
+vocabulary-examples-unavailable = Gli esempi richiedono l’analisi completa dei sottotitoli correnti.
+
+frequency-export-shown = Esporta dizionario frequenze visibile…
+frequency-export-selected = Esporta dizionario frequenze selezionato…
+frequency-export-invalid = L’esportazione richiede parole uniche non vuote e conteggi positivi supportati.
+
+vocabulary-exact = Parola o lettura esatta
+
+sub-speed-tools = Velocità di lettura (caratteri/s)
+sub-speed-min = Caratteri/s minimi
+sub-speed-max = Caratteri/s massimi
+sub-speed-reset = Azzera velocità di lettura
+
+sub-stats-title = Statistiche delle righe
+sub-stats-shown = Visibili
+sub-stats-selected = Selezionate
+sub-stats-lines = righe
+sub-stats-characters = caratteri
+sub-stats-dialogue = Dialogo
+
+sub-bilingual-srt-shown = Esporta SRT bilingue visibile…
+sub-bilingual-srt-selected = Esporta SRT bilingue selezionato…
+
+sub-previous-match = Riga corrispondente precedente
+sub-next-match = Riga corrispondente successiva
+
+vocabulary-presets = Filtri di studio riutilizzabili
+vocabulary-preset-save = Memorizza filtri
+vocabulary-preset-apply = Applica filtri memorizzati
+vocabulary-preset-clear = Dimentica filtri
+vocabulary-preset-hint = Memorizzati solo per questa sessione. Le selezioni restano proprie di ogni vista.
+vocabulary-preset-too-long = La ricerca è troppo lunga da memorizzare (limite di 4096 byte).
+
+vocabulary-named-presets = Preset di studio salvati
+vocabulary-preset-name = Nome del preset
+vocabulary-preset-store = Salva preset
+vocabulary-preset-delete = Elimina preset
+
+vocabulary-script-any = Tutte le scritture
+vocabulary-script-kanji = Contiene kanji
+vocabulary-script-kana = Contiene kana
+vocabulary-script-latin = Contiene lettere latine
+
+vocabulary-length-min = Lunghezza minima della parola
+vocabulary-length-max = Lunghezza massima della parola
+vocabulary-length-reset = Azzera lunghezza
+
+sub-duration-tools = Durata delle battute
+sub-duration-min = Durata minima (ms)
+sub-duration-max = Durata massima (ms)
+sub-duration-reset = Azzera durata
+
+sub-mask-text = Nascondi il testo per esercitare l’ascolto
+sub-reveal-shown = Mostra righe visibili
+sub-mask-again = Nascondi di nuovo le righe
+sub-reveal-line = Mostra riga
+
+sub-vocabulary-shown = Studia parole delle righe visibili
+sub-vocabulary-selected = Studia parole delle righe selezionate
+sub-vocabulary-all = Torna al vocabolario completo
+
+sub-html-shown = Esporta righe visibili come scheda HTML
+sub-html-selected = Esporta selezione come scheda HTML
+sub-html-translation = Mostra traduzione
+sub-html-filter = Scheda di studio HTML
+
+sub-invert-shown = Inverti selezione delle righe visibili
+
+vocabulary-batch-tools = Gruppi di parole da studiare
+vocabulary-batch-next = Seleziona prossimo gruppo
+vocabulary-batch-clear = Deseleziona parole visibili
+vocabulary-batch-invert = Inverti selezione visibile
+vocabulary-batch-size = Parole per gruppo
+
+sub-practice-current = Ripeti battuta corrente
+sub-practice-stop = Ferma ripetizione
+sub-practice-remaining = Ripetizioni rimanenti: { $count }
+
+sub-practice-tools = Ripetizione delle battute
+sub-vocabulary-tools = Vocabolario di queste righe
+sub-html-tools = Schede di studio HTML
+
+sub-text-tools = Filtri sul testo delle battute
+sub-text-min = Caratteri minimi
+sub-text-max = Caratteri massimi
+sub-text-reset = Azzera limiti di caratteri
+
+sub-unique-captions = Solo la prima occorrenza di ogni battuta
+
+sub-shape-any = Qualsiasi struttura
+sub-shape-single = Battute su una riga
+sub-shape-multiple = Battute su più righe
+
+vocabulary-reading-tools = Filtri per lettura e copertura
+vocabulary-reading-any = Qualsiasi lettura
+vocabulary-reading-distinct = Con lettura distinta
+vocabulary-reading-same = Senza lettura distinta
+
+vocabulary-coverage-target = Parole più frequenti che coprono questa percentuale di occorrenze
+vocabulary-coverage-reset = Azzera obiettivo di copertura
+
+sub-presets = Preset salvati per lo studio dei sottotitoli
+
+vocabulary-html-tools = Schede HTML del vocabolario
+vocabulary-html-shown = Esporta parole visibili in HTML
+vocabulary-html-selected = Esporta parole selezionate in HTML
+vocabulary-html-reading = Mostra lettura
+
+sub-context-exact = Solo esempi esatti
+sub-context-one = Una battuta di contesto
+sub-context-two = Due battute di contesto
+sub-context-hit = Esempio esatto della parola
+
+action-study-previous = Sottotitolo corrispondente precedente
+action-study-next = Sottotitolo corrispondente successivo
+action-study-reveal = Mostra battuta di studio corrente
+action-study-select = Seleziona o deseleziona battuta corrente
+
+sub-practice-shown = Ripeti battute visibili
+sub-practice-selected = Ripeti battute selezionate
+sub-practice-passes = Ripetizioni per battuta
+sub-practice-cues = Battute rimanenti: { $count }
+sub-practice-unavailable = Serve una selezione completa di 1–1000 battute valide comprese nella durata del video.
+
+sub-search-exact = Corrispondenza dell’intera battuta
+
+sub-order-source = Ordine della sorgente
+sub-order-short = Durata crescente
+sub-order-long = Durata decrescente
+sub-order-text = Testo più breve
+
+sub-time-edit = Inserisci intervallo di studio
+sub-time-from = Da (secondi o H:MM:SS.mmm)
+sub-time-to = Fino a (secondi o H:MM:SS.mmm)
+sub-time-apply = Applica intervallo
+sub-time-invalid = Inserisci tempi validi con la fine dopo l’inizio; lascia vuoto per nessun limite.
+
+sub-copy-export = Copia ed esportazione
+
+sub-preview-title = Traduzione della battuta
+sub-preview-show = Mostra traduzione della riga
+sub-preview-empty = Nessuna traduzione sovrapposta.
+
+vocabulary-practice-mask = Esercita le parole a partire dalle letture
+vocabulary-practice-reveal = Mostra parole visibili
+vocabulary-practice-hide = Nascondi nuovamente le parole
+vocabulary-practice-word = Mostra parola
+
+vocabulary-practice-select = Seleziona parola di studio
+
+vocabulary-undo-status = Annulla stato parole
+vocabulary-undo-unavailable = La modifica precedente non può più essere annullata.
+
+sub-practice-pause = Pausa tra ripetizioni (ms)
+sub-practice-wait = Attesa: { $count } ms
+
+sub-practice-skip = Salta battuta corrente
+sub-practice-restart = Ricomincia battuta corrente
+
+vocabulary-examples-export-shown = Esporta esempi delle parole visibili
+vocabulary-examples-export-selected = Esporta esempi delle parole selezionate
+
+study-presets-import = Importa preset di studio…
+study-presets-export = Esporta preset di studio…
+study-presets-filter = Preset di studio (JSON)
+study-presets-invalid = Il file non è valido o contiene filtri non supportati.
+study-presets-too-large = Il file o la raccolta risultante supera i limiti previsti.
+study-presets-unsupported = Questa versione del formato dei preset non è supportata.
+study-presets-import-failed = Impossibile leggere o salvare i preset: { $reason }
+
+recall-title = Richiamo del vocabolario
+recall-reveal = Mostra risposta
+recall-skip = Salta parola
+recall-complete = Sessione completata
+recall-no-reading = Nessuna lettura distinta. Mostra la parola quando desideri.
+recall-remaining = Parole rimanenti
+recall-start-shown = Esercita vocabolario visibile
+recall-start-selected = Esercita vocabolario selezionato
+recall-unavailable = Scegli da 1 a 1000 parole uniche con lemmi e letture validi e di lunghezza limitata.
+
+recall-again = Ancora
+recall-good = Bene
+recall-good-total = Parole valutate Bene
+recall-again-total = Valutazioni Ancora
+recall-skipped-total = Parole saltate
+recall-attempts-total = Tentativi
+
+action-recall-reveal = Mostra risposta del ripasso
+action-recall-again = Ripasso: Ancora
+action-recall-good = Ripasso: Bene
+
+shortcuts-recall = Richiamo del vocabolario
+
+recall-hints-capture = Acquisisci esempi dai sottotitoli correnti
+recall-hints-reveal = Mostra indizi dalle frasi
+recall-hints-unavailable = Servono sottotitoli principali analizzati completamente e indizi entro i limiti previsti.
+
+recall-restart-original = Ricomincia nell’ordine originale
+recall-restart-reverse = Ricomincia in ordine inverso
+recall-restart-shuffle = Ricomincia in ordine casuale
+
+recall-save = Salva progressi del ripasso…
+recall-load = Apri ripasso salvato…
+recall-file-filter = Progressi del ripasso (JSON)
+recall-file-invalid = Il file del ripasso non è valido o contiene progressi incoerenti.
+recall-file-too-large = Il file del ripasso supera i limiti previsti.
+recall-file-version = Questa versione del file del ripasso non è supportata.
+recall-file-error = Impossibile leggere o salvare i progressi: { $reason }
+
+recall-results-export = Esporta risultati del ripasso…
+
+recall-followup-difficult = Avvia ripasso delle parole difficili
+recall-followup-skipped = Avvia ripasso delle parole saltate
+recall-followup-unavailable = Completa prima la sessione e scegli una categoria che contiene parole.
+
+recall-history = Cronologia dei ripassi
+recall-history-record = Registra questo riepilogo
+recall-history-clear = Cancella riepiloghi salvati
+recall-history-remove = Rimuovi riepilogo
+recall-history-empty = Nessun riepilogo di ripasso salvato.
+recall-history-words = Parole
+recall-history-error = Impossibile salvare la cronologia: { $reason }
+recall-history-unsaved = Le ultime modifiche alla cronologia non sono state salvate.
+recall-history-retry = Riprova salvataggio
+
+books-paste = Incolla testo…
+books-paste-title = Titolo
+books-paste-content = Testo
+books-paste-markdown = Interpreta come Markdown
+books-paste-read = Leggi testo
+books-paste-hint = Salvato localmente per riaprirlo. Massimo 4 MiB. Markdown conserva titoli e furigana; collegamenti e immagini non vengono aperti.
+error-book-invalid-text = Impossibile leggere questo documento. Usa UTF-8, un titolo di massimo 256 caratteri e testo semplice o Markdown supportato.
+
+error-book-mokuro = Questo volume Mokuro non è supportato oppure contiene immagini locali o coordinate non valide.
+mokuro-ready = Il testo è già disponibile. Seleziona un riquadro nella pagina.
+mokuro-empty-page = Questa pagina non contiene riquadri di testo importati.
+mokuro-region = Leggi riquadro { $number } della pagina { $page }
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = Quaderno delle frasi
+phrases-new = Nuova frase
+phrases-capture = Cattura fonte attuale
+phrases-text = Frase
+phrases-definition = Significato / definizione
+phrases-context = Frase originale
+phrases-language = Lingua di studio
+phrases-save = Salva frase
+phrases-cancel = Annulla
+phrases-search = Cerca frasi
+phrases-export = Esporta frasi mostrate
+phrases-edit = Modifica frase
+phrases-delete = Elimina frase
+phrases-source = Apri fonte
+phrases-readonly = La libreria è in sola lettura o non disponibile.
+phrases-error = Salvataggio impossibile: frase non valida, duplicato o limite del quaderno raggiunto.
+phrases-invalid = Inserisci una frase presente nel contesto (oppure lascia vuoto il contesto). Massimo: 4 KiB per frase/definizione, 16 KiB per contesto.
+phrases-source-missing = La fonte originale non è disponibile.
+phrases-status = Stato della frase
+
+# CLO-001…CLO-004: explicit cloze exercises and opt-in schedules.
+cloze-title = Esercizi cloze
+cloze-preview = Anteprima cloze
+cloze-create = Crea esercizio
+cloze-close = Chiudi esercizi cloze
+cloze-scheduled = Ripasso programmato
+cloze-finite = Pratica finita · calendari invariati
+cloze-correct = Corretto
+cloze-incorrect = Errato
+cloze-answer = La tua risposta
+cloze-submit = Controlla risposta
+cloze-next = Prossimo esercizio
+cloze-skip = Salta esercizio
+cloze-complete = Sessione completata
+cloze-skipped = Saltati
+cloze-undo = Annulla esercizio precedente
+cloze-cancel = Torna agli esercizi
+cloze-instructions = Crea esercizi dal quaderno delle frasi. La pratica comprende fino ai primi 100 esercizi mostrati; usa la ricerca per restringere la selezione. Il ripasso programmato si attiva separatamente.
+cloze-rules = Le risposte usano NFC e ignorano gli spazi esterni. Maiuscole, punteggiatura, kana e letture restano distinti. Le scelte richiedono una risposta diversa nella stessa lingua.
+cloze-start-typed = Pratica mostrati: scrittura
+cloze-start-choice = Pratica mostrati: scelte
+cloze-start-due = Ripassa esercizi in scadenza
+cloze-enrol = Attiva ripasso programmato
+cloze-delete = Elimina esercizio e calendario
+cloze-error = Operazione rifiutata: esercizio duplicato/non valido, limite del quaderno o calendario non aggiornato. Riapri e riprova.
+cloze-unavailable = Nessun esercizio disponibile, contesto mancante o scelte distinte nella stessa lingua non disponibili.
+cloze-start-due-choice = Ripassa in scadenza: scelte
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = Banco delle frasi
+bank-close = Chiudi banco delle frasi
+bank-instructions = Indicizza il libro attuale o il testo completo dei sottotitoli primari, oppure importa un pacchetto JSON di tua proprietà. Cerca espressione e lettura esatte del dizionario; gli esempi salvati restano disponibili offline.
+bank-index-book = Indicizza libro attuale
+bank-index-track = Indicizza sottotitoli primari
+bank-import = Importa frasi proprie
+bank-indexing = Preparazione / salvataggio delle frasi…
+bank-cancel = Annulla indicizzazione
+bank-expression = Espressione
+bank-reading = Lettura
+bank-search = Trova esempi esatti
+bank-snapshot = Esempi salvati · fonti verificate all’apertura
+bank-export = Esporta esempi mostrati
+bank-sources = Fonti indicizzate
+bank-delete = Elimina copia della fonte
+bank-error = Impossibile indicizzare: controlla dizionari, lingua, formato e limiti. Nessun salvataggio parziale.
+bank-cancelled = Indicizzazione delle frasi annullata.
+bank-source-missing = La fonte originale non è disponibile; l’esempio salvato resta nel banco.
+bank-source-changed = Il testo originale è cambiato. La posizione salvata non è stata aperta.
+bank-filter = Pacchetto JSON di frasi proprie
+bank-examples = Esempi fra le fonti
+
+# BMG-001…BMG-004: validated batch exporter/recovery.
+batch-invalid = Il lotto non è valido o supera i limiti.
+batch-schema-needed = Per un lotto offline usa Lapis oppure definisci esplicitamente i campi di questo tipo di nota.
+batch-identity-field = Il controllo dei duplicati richiede un primo campo non vuoto basato solo su parola o lettura. Per altre configurazioni usa il compositore singolo.
+batch-source-changed = Una fonte catturata è mancante o modificata. Catturala e ripeti l’anteprima.
+batch-stale-preview = Impostazioni, dizionari, campi o fonte sono cambiati. Ripeti l’anteprima del lotto.
+batch-reconcile-ambiguous = Impossibile identificare univocamente l’operazione in Anki. Nessuna carta è stata reinviata.
+batch-unknown = La nota potrebbe già esistere. Verifica l’identità esatta dell’operazione prima di reinviarla.
+batch-title = Lotti di carte
+batch-close = Chiudi pagina del lotto
+batch-new = Nuovo lotto
+batch-stop = Ferma dopo la carta attuale
+batch-instructions = Aggiungi vocaboli primari selezionati, una voce cercata o un esempio salvato. Scegli contesti e media, controlla le anteprime e avvia esplicitamente. Gli esiti incerti richiedono una verifica dell’operazione.
+batch-details = Esamina anteprima
+batch-retry = Riprova errore certo
+batch-context = Contesto originale
+batch-audio = Audio della frase
+batch-image = Immagine
+batch-media-planned = Qui sotto sono mostrati i campi testuali. I media scelti sono previsti ed estratti solo dopo l’avvio.
+batch-preview = Prepara anteprime testuali
+batch-start = Avvia lotto verificato
+batch-continue = Continua carte rimanenti
+batch-history = Cronologia dei lotti
+batch-reconcile = Verifica operazione esatta in Anki
+batch-delete-journal = Elimina registro risolto
+batch-selected = Aggiungi parole selezionate al lotto
+batch-add-lookup = Aggiungi questa parola al lotto
+batch-add-context = Usa questo contesto nel lotto
+batch-new-required = Il lotto è occupato o già avviato. Terminalo o creane uno nuovo prima di modificare.
+batch-journal-error = Impossibile salvare il registro: controlla limiti, operazioni duplicate/non risolte e disponibilità della libreria in scrittura. Nessun nuovo invio è stato autorizzato.
+batch-planned = Non inviata
+batch-sending = Invio in corso
+batch-created = Creata
+batch-kept = Conservata per dopo
+batch-duplicate = Duplicato saltato
+batch-unresolved = Esito non risolto
+batch-failed = Errore prima del salvataggio
+batch-cancelled = Annullata
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = Profili di mining
+mining-profiles-hint = I profili contengono destinazione, mazzo, tipo di nota, etichette e modelli dei campi. Salva le impostazioni per conservarli.
+mining-profile-name = Nome del profilo
+mining-profile-save = Salva nuovo profilo
+mining-profile-apply = Applica profilo: { $name }
+mining-profile-delete = Elimina profilo: { $name }
+mining-profile-invalid = Il profilo non è valido, esiste già o supera il limite di 16 profili.
+composer-fields = Modifica e fissa i campi
+composer-fields-hint = Abilita un campo per sostituire il modello con testo letterale. I campi fissati durano per questa sessione; il mining rapido e in serie li ignorano.
+composer-field-value = Testo letterale: { $name }
+composer-pin = Fissa campo: { $name }
+composer-senses = Scegli i significati del dizionario
+composer-profile-hint = Applicare un profilo chiude questa bozza e rimuove tutti i campi fissati. Apri poi un nuovo compositore.
+composer-fields-invalid = Un campo manca, è vuoto o supera i limiti del compositore. Controlla il tipo di nota e le modifiche.
+composer-senses-stale = Seleziona almeno un significato invariato del dizionario. Dopo aver cambiato i dizionari riapri il compositore.
+composer-source-stale = La fonte o la ricerca originale è cambiata. Chiudi la bozza e apri un nuovo compositore.
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = Ricerca alla pausa
+settings-pause-off = Disattivata
+settings-pause-unknown = Prima parola sconosciuta
+settings-pause-kanji = Primo kanji
+settings-pause-hint = Usa il primo sottotitolo principale attivo. Le parole sconosciute dipendono dai dizionari installati e dai tuoi stati; il kanji è una regola separata.
+action-lookup-first-kanji = Cerca il primo kanji
+action-peek-translation = Tieni premuto per rivelare la traduzione secondaria
+
+# M110 — Additional local documents
+error-book-document = Il documento non è valido, non è supportato o supera i limiti della sua struttura.
+error-book-pdf-helper = Per estrarre il testo PDF serve Poppler pdftotext. Seleziona l’eseguibile nelle impostazioni avanzate o installalo dalla configurazione, dove supportato.
+error-book-document-tool = Estrazione del documento non riuscita: { $reason }
+settings-pdftotext = Eseguibile o cartella di Poppler pdftotext
+setup-tool-system-package = Pacchetto di sistema (autenticazione amministratore)
+setup-tool-system-package-hint = Poppler usa il gestore pacchetti Linux e le sue impostazioni di rete e repository. Installare può richiedere l’autenticazione amministratore. Interrompi evita le attività successive mentre il sistema conclude la transazione corrente. L’installazione non è disponibile con un proxy personalizzato dell’app o in una sandbox; gli strumenti già installati restano riutilizzabili.
+setup-tool-system-proxy = Installa Poppler con il gestore pacchetti del sistema o scegli un eseguibile esistente. L’installazione di sistema non può ignorare il proxy dell’app.
+reader-tools-title = Annotazioni e ricerca
+reader-tools-close = Chiudi
+annotations-title = Annotazioni
+annotations-error = Impossibile salvare l'annotazione: non è valida, è un doppione o supera i limiti.
+annotations-no-book = Apri un libro di testo per annotarlo.
+annotations-export = Esporta quelle mostrate (TSV)
+annotations-search = Filtra le annotazioni
+annotations-this-book = Solo questo libro
+annotations-chapter = capitolo
+annotations-stale = Il testo è cambiato: questo punto non viene mostrato
+annotations-go = Apri nel libro
+annotations-cover = Copre:
+annotations-cover-word = Parola
+annotations-cover-sentence = Frase
+annotations-cover-paragraph = Paragrafo
+annotations-quote = Testo citato
+annotations-name = Nome
+annotations-note = Nota
+annotations-invalid = Un segnalibro deve avere un nome; i nomi non vanno a capo; citazione, nome e nota devono restare nei limiti.
+annotation-kind-bookmark = Segnalibro
+annotation-kind-highlight = Evidenziazione
+annotation-kind-note = Nota
+annotation-new-bookmark = Aggiungi segnalibro
+annotation-new-highlight = Evidenzia
+annotation-new-note = Aggiungi nota
+search-title = Cerca nei libri
+search-instructions = Cerca un testo letterale in tutti i libri aggiunti (senza distinguere maiuscole e composizione Unicode). I manga non vengono cercati.
+search-query = Testo da trovare
+search-run = Cerca
+search-cancel = Ferma
+search-invalid = Scrivi da 1 a 256 byte di testo senza caratteri di controllo.
+search-failed = La ricerca non è riuscita o è stata fermata.
+search-summary = { $hits } risultati in { $books } libri
+search-truncated = Altri risultati sono stati esclusi: precisa il testo.
+search-unreadable = Non cercati (mancanti o cambiati): { $books }
+books-mode = Modalità di lettura
+books-mode-scroll = Scorrimento
+books-mode-pages = Pagine
+books-mode-sentence = Frase
+books-page-of = Pagina { $page } di { $pages }
+books-sentence-of = Frase { $sentence } di { $sentences } · paragrafo { $paragraph }
+books-previous-sentence = Frase precedente
+books-next-sentence = Frase successiva
+podcasts-title = Podcast
+podcasts-close = Chiudi
+podcasts-instructions = Aggiungi un podcast con l'indirizzo del suo feed RSS (HTTPS). Nulla viene letto o scaricato senza che tu lo chieda; gli episodi scaricati si ascoltano offline con la loro trascrizione o un tuo file di testo sincronizzato.
+podcasts-url = Indirizzo del feed
+podcasts-add = Aggiungi o aggiorna
+podcasts-fetching = Lettura del feed…
+podcasts-stop = Ferma
+podcasts-downloading = Download: { $done } di { $total } MiB
+podcasts-empty = Ancora nessun podcast.
+podcasts-refresh = Aggiorna
+podcasts-feed-page = Pagina web
+podcasts-remove = Rimuovi con i download
+podcasts-unlisted = (non più nel feed)
+podcasts-play = Ascolta
+podcasts-delete = Elimina download
+podcasts-import = Usa un file di testo sincronizzato…
+podcasts-has-text = Con testo sincronizzato
+podcasts-no-text = Senza testo sincronizzato
+podcasts-resume = Riprendi il download
+podcasts-download = Scarica
+podcasts-episode-page = Pagina dell'episodio
+podcasts-error = Podcast: { $reason }
+podcasts-bad-url = Inserisci un indirizzo HTTPS del feed.
+podcasts-transcript-unsupported = Scaricato. Il tipo di trascrizione non è supportato ({ $kind }); puoi usare un tuo file di testo sincronizzato.
+podcasts-transcript-saved = Scaricato con la trascrizione.
+podcasts-transcript-none = Scaricato. Il feed non offre trascrizioni; puoi usare un tuo file di testo sincronizzato.
+podcasts-cancelled = fermato; Riprendi continua da dove si era fermato
+podcasts-download-failed = Il download non è finito: { $reason }
+podcasts-missing-file = Il file scaricato manca: scaricalo di nuovo.
+shortcut-map-export = Esporta scorciatoie…
+shortcut-map-import = Importa scorciatoie…
+shortcut-map-filter = Mappe di scorciatoie di Nikomiru
+shortcut-map-preview = Scorciatoie importate: controllale, poi Applica
+shortcut-map-no-changes = La mappa non cambia nulla.
+shortcut-map-change = { $action }: { $before } → { $after }
+shortcut-map-unknown = Ignorate, sconosciute qui: { $actions }
+shortcut-map-invalid-key = { $action }: «{ $key }» non è un tasto
+shortcut-map-apply = Applica
+shortcut-map-cancel = Annulla
+shortcut-map-failed = La mappa di scorciatoie non è stata letta: { $reason }
+shortcut-map-invalid = non è una mappa di scorciatoie di Nikomiru.
+shortcut-map-newer = è stata scritta da un Nikomiru più recente.
+shortcut-map-too-large = supera i limiti (64 KiB, 512 azioni, 8 tasti ciascuna).
+settings-study = Lingua di studio
+settings-study-language = Lingua studiata
+settings-study-segmentation = Parole
+settings-study-segmentation-dictionary = Corrispondenza più lunga nel dizionario
+settings-study-segmentation-words = Parole intere tra gli spazi
+settings-study-readings = Letture
+settings-study-readings-on = Mostra le letture sopra le parole
+settings-study-dictionaries-auto = Dizionari: automatici (quelli di questa lingua e quelli che non ne dichiarano una)
+settings-study-dictionaries-hint = Togli la spunta per scegliere tu i dizionari di questa lingua. Stati delle parole, frasi, esercizi e carte di ripasso sono tenuti separati per ogni lingua.
+servers-kind = Server:
+servers-kind-jellyfin = Jellyfin
+servers-kind-emby = Emby
+settings-palette = Tavolozza
+settings-palette-default = Predefinita
+settings-palette-oled = Nero OLED
+settings-palette-high-contrast = Alto contrasto
+settings-shaders = Shader video
+settings-shaders-preset = Preset degli shader
+settings-shaders-off = Spenti
+settings-shaders-fast = Anime4K veloce
+settings-shaders-quality = Anime4K qualità
+settings-shaders-hint = Anime4K (licenza MIT, di bloc97) rende più nitidi e ingrandisce gli anime con la GPU. Scarica i suoi shader (0,8 MB) per usare un preset; altrimenti non si scarica nulla. Qualità richiede una GPU più potente.
+settings-shaders-download = Scarica gli shader Anime4K
+settings-shaders-remove = Rimuovi gli shader Anime4K
+settings-shaders-overridden = Le tue opzioni di mpv impostano degli shader: si usano quelli e i preset sono spenti.
+settings-shaders-installed = Shader Anime4K installati.
+settings-shaders-removed = Shader Anime4K rimossi.
+settings-shaders-failed = Impossibile installare o rimuovere gli shader Anime4K: { $reason }
+settings-shaders-refused = Il video non può usare questi shader ({ $reason }); il preset è stato spento.
+updates-title = Aggiornamenti
+updates-channel = Canale delle versioni
+updates-channel-stable = Stabile
+updates-channel-beta = Beta
+updates-check = Cerca aggiornamenti
+updates-unconfigured = Questa build non ha una chiave di firma: per lei non si pubblicano aggiornamenti. Prendi le nuove versioni dalla pagina delle release o dal gestore pacchetti.
+updates-up-to-date = Nikomiru è aggiornato.
+updates-available = È disponibile la versione { $version } ({ $date }).
+updates-notes = Novità
+updates-download = Scarica ({ $size } MB)
+updates-downloading = Download: { $done } di { $total } MB
+updates-install = Installa
+updates-installed = La versione { $version } è installata: parte alla prossima apertura di Nikomiru.
+updates-flatpak = Aggiorna con Flatpak (il centro software o `flatpak update`).
+updates-package = Aggiorna con il gestore pacchetti del sistema.
+updates-read-only = Nella cartella di questa installazione non si può scrivere: prendi la nuova versione dalla pagina delle release.
+updates-not-portable = Solo un'installazione portatile può essere aggiornata da Nikomiru.
+updates-no-artifact = La versione non ha un download per questo sistema.
+updates-failed = L'aggiornamento non è riuscito: { $reason }

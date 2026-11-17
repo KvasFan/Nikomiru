@@ -101,6 +101,7 @@ fn setup_in(dir: tempfile::TempDir, config: impl FnOnce(&mut AnkiConfig)) -> Set
 
 fn request(video: &str, audio: Option<i64>, action: CardAction) -> MineRequest {
     MineRequest {
+        composition: Default::default(),
         picture: None,
         query: "食べました".into(),
         entry: 0,

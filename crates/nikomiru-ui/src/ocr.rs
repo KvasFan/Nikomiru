@@ -30,6 +30,10 @@ pub struct OcrJob {
     pub picture: Vec<u8>,
     /// Left, top, width and height, as shares of the page.
     pub area: [f32; 4],
+    /// Imported text skips OCR; the worker only prepares its image crop.
+    pub preset_text: Option<String>,
+    /// Original imported integer crop coordinates, when supplied.
+    pub pixel_bounds: Option<[u32; 4]>,
 }
 
 /// What was read.

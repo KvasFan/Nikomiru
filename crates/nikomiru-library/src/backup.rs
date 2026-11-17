@@ -33,6 +33,8 @@ const PRESETS: &str = "mpv";
 pub const REVIEW: &str = "review";
 /// The web pages read as books (WEB-003).
 pub const WEB: &str = "web";
+/// Durable pasted sources (BOK-013).
+pub const TEXT: &str = "text";
 const PENDING: &str = "restore-pending";
 const BEFORE: &str = "before-restore";
 /// Marks an unpacked backup as whole.
@@ -183,6 +185,7 @@ pub fn create(contents: &Contents<'_>, out: &Path) -> Result<Manifest, BackupErr
         add_folder(&mut zip, contents.presets_dir, PRESETS)?;
         add_folder(&mut zip, &contents.data_dir.join(REVIEW), REVIEW)?;
         add_folder(&mut zip, &contents.data_dir.join(WEB), WEB)?;
+        add_folder(&mut zip, &contents.data_dir.join(TEXT), TEXT)?;
         if contents.dictionaries {
             add_folder(&mut zip, &contents.data_dir.join(DICTS), DICTS)?;
         }
@@ -242,7 +245,7 @@ pub fn unpack(archive: &Path, data_dir: &Path) -> Result<PathBuf, BackupError> {
             let root = name.components().next().map(|c| c.as_os_str().to_owned());
             let known = root.as_deref().is_some_and(|r| {
                 [
-                    MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW, WEB,
+                    MANIFEST, CONFIG, LIBRARY, DICTS, SUBTITLES, PRESETS, REVIEW, WEB, TEXT,
                 ]
                 .iter()
                 .any(|k| r == std::ffi::OsStr::new(k))
@@ -318,6 +321,11 @@ pub fn finish(data_dir: &Path, config_file: &Path, presets_dir: &Path) -> std::i
     )?;
     replace(&pending.join(WEB), &data_dir.join(WEB), &before.join(WEB))?;
     replace(
+        &pending.join(TEXT),
+        &data_dir.join(TEXT),
+        &before.join(TEXT),
+    )?;
+    replace(
         &pending.join(DICTS),
         &data_dir.join(DICTS),
         &before.join(DICTS),
@@ -351,6 +359,12 @@ mod tests {
         std::fs::write(data.join("review/nikomiru_00.m4a"), "audio").unwrap();
         std::fs::create_dir_all(data.join(WEB)).unwrap();
         std::fs::write(data.join("web/nikomiru_00.html"), "page").unwrap();
+        std::fs::create_dir_all(data.join(TEXT)).unwrap();
+        std::fs::write(
+            data.join("text/local.nikomiru-text"),
+            r#"{"version":1,"title":"Study","format":"plain","text":"猫"}"#,
+        )
+        .unwrap();
         std::fs::write(presets.join("a.conf"), "preset").unwrap();
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         let record = VideoRecord {
@@ -409,6 +423,8 @@ mod tests {
             "review/nikomiru_00.m4a",
             // T-WEB-003 the pages saved
             "web/nikomiru_00.html",
+            // T-BOK-013: pasted sources belong to ordinary backups.
+            "text/local.nikomiru-text",
         ] {
             assert!(list.iter().any(|n| n == name), "{name}: {list:?}");
         }
@@ -437,7 +453,114 @@ mod tests {
         f.library
             .record_encounters("video/ep", &[("猫".into(), "ねこ".into())], 10)
             .unwrap();
+        // T-PHR-003: additive phrase tables are part of the ordinary database snapshot.
+        let phrase = crate::phrases::Phrase {
+            id: "00000000-0000-4000-8000-000000000001".into(),
+            language: "ja".into(),
+            text: "猫が好き".into(),
+            definition: "like cats".into(),
+            context: "猫が好きです。".into(),
+            status: crate::words::WordStatus::Known,
+            source: None,
+            created_ms: 1,
+            changed_ms: 1,
+        };
+        assert!(f.library.put_phrase(&phrase).unwrap());
+        // T-CLO-004: frozen exercises and their opt-in schedules share the snapshot.
+        assert!(f.library.create_cloze(&phrase).unwrap());
+        f.library
+            .change_cloze(&phrase.id, None, crate::cloze::Change::Enrol)
+            .unwrap()
+            .unwrap();
+        // T-SEN-003: exact sentence indexes are restored with the complete database.
+        let batch = crate::sentences::Batch {
+            key: "pack/owned".into(),
+            title: "Owned".into(),
+            dictionary: "a".repeat(64),
+            sentences: vec![crate::sentences::Sentence {
+                text: "猫です。".into(),
+                language: "ja".into(),
+                source: None,
+                tokens: vec![crate::sentences::Token {
+                    expression: "猫".into(),
+                    reading: "ねこ".into(),
+                    start: 0,
+                    end: 3,
+                }],
+            }],
+        };
+        assert!(f.library.put_sentence_batch(&batch).unwrap());
+        // T-BMG-004: unresolved Sending markers survive an ordinary backup/restore.
+        let journal = crate::batches::Journal {
+            id: "00000000-0000-4000-8000-000000000003".into(),
+            created_ms: 1,
+            items: vec![crate::batches::Item {
+                operation: "00000000-0000-4000-8000-000000000004".into(),
+                expression: "猫".into(),
+                reading: "ねこ".into(),
+                sentence: "猫です。".into(),
+                source_uid: None,
+                source_book: false,
+                start_ms: 0,
+                end_ms: 0,
+                title: "Owned".into(),
+                destination: "anki".into(),
+                deck: "Lapis".into(),
+                note_type: "Lapis".into(),
+                status: crate::batches::Status::Planned,
+            }],
+        };
+        assert!(f.library.start_batch(&journal).unwrap());
+        assert!(
+            f.library
+                .change_batch_item(
+                    &journal.id,
+                    &journal.items[0].operation,
+                    &crate::batches::Status::Planned,
+                    &crate::batches::Status::Sending
+                )
+                .unwrap()
+        );
+        // T-RDR-001: annotations are part of the ordinary database snapshot.
+        let annotation = crate::annotations::Annotation {
+            id: "00000000-0000-4000-8000-000000000005".into(),
+            kind: crate::annotations::Kind::Bookmark,
+            book: "book/abc".into(),
+            title: "猫".into(),
+            chapter: 0,
+            paragraph: 0,
+            start: 0,
+            end: 3,
+            quote: "猫".into(),
+            name: "start".into(),
+            note: String::new(),
+            created_ms: 1,
+            changed_ms: 1,
+        };
+        assert!(f.library.put_annotation(&annotation).unwrap());
+        // T-POD-004: podcast records are in the snapshot; their audio is not.
+        let podcast = crate::podcasts::Feed {
+            id: "f".repeat(32),
+            url: "https://x/feed".into(),
+            title: "Feed".into(),
+            ..Default::default()
+        };
+        assert!(f.library.put_podcast_feed(&podcast).unwrap());
         let out = backup(&f, false);
+        assert!(f.library.remove_podcast_feed(&podcast.id).unwrap());
+        assert!(f.library.remove_annotation(&annotation.id).unwrap());
+        assert!(
+            f.library
+                .change_batch_item(
+                    &journal.id,
+                    &journal.items[0].operation,
+                    &crate::batches::Status::Sending,
+                    &crate::batches::Status::Created(42)
+                )
+                .unwrap()
+        );
+        assert!(f.library.delete_sentence_batch(&batch.key).unwrap());
+        assert!(f.library.remove_phrase(&phrase.id).unwrap());
         f.library
             .record_encounters("video/ep", &[("犬".into(), "いぬ".into())], 20)
             .unwrap();
@@ -466,11 +589,32 @@ mod tests {
         assert!(data.join("dicts/one/dict.redb").exists());
         assert!(data.join("review/nikomiru_00.m4a").exists());
         assert!(data.join("web/nikomiru_00.html").exists());
+        // T-BOK-013: restore retains the exact local source text.
+        assert!(
+            std::fs::read_to_string(data.join("text/local.nikomiru-text"))
+                .unwrap()
+                .contains("猫")
+        );
         assert!(!data.join("restore-pending").exists());
         let library = Library::open(&data.join(LIBRARY)).unwrap();
         assert_eq!(
             library.video("video/ep").unwrap().unwrap().last_position_ms,
             1234
+        );
+        assert_eq!(library.phrases().unwrap(), vec![phrase.clone()]);
+        assert_eq!(library.annotations().unwrap(), vec![annotation]);
+        assert_eq!(library.podcast_feeds().unwrap(), vec![podcast]);
+        let clozes = library.clozes().unwrap();
+        assert_eq!(clozes.len(), 1);
+        assert_eq!(clozes[0].phrase, phrase);
+        assert_eq!(clozes[0].memory, Some(crate::review::Memory::default()));
+        assert_eq!(
+            library.sentence_examples("猫", "ねこ", "ja").unwrap()[0].sentence,
+            batch.sentences[0]
+        );
+        assert_eq!(
+            library.batch_journals().unwrap()[0].items[0].status,
+            crate::batches::Status::Sending
         );
         let encounters = library.word_encounters().unwrap();
         assert_eq!(encounters["video/ep"].len(), 1);

@@ -7,6 +7,20 @@
 
 pub mod dnd;
 
+/// Stop a helper group created with `CommandExt::process_group(0)`, including
+/// wrappers whose children still hold extraction pipes open (DOC-004).
+pub(crate) fn kill_process_group(id: u32) {
+    if let Ok(id) = i32::try_from(id)
+        && id > 1
+    {
+        // SAFETY: kill takes only integer IDs; the caller owns the helper group
+        // with this positive child ID. Negation selects that group, never ours.
+        unsafe {
+            libc::kill(-id, libc::SIGKILL);
+        }
+    }
+}
+
 use std::fs::File;
 use std::io::Read;
 use std::os::fd::FromRawFd;

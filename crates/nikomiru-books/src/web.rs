@@ -188,6 +188,8 @@ pub fn page(text: &str) -> Result<Book, BookError> {
         .or_else(|| chapter.title.clone())
         .unwrap_or_else(|| host.clone());
     Ok(Book {
+        identity: None,
+        manga_regions: Default::default(),
         title,
         author: host,
         right_to_left: false,

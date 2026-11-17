@@ -14,8 +14,10 @@ mod anki_page;
 mod audio_page;
 mod backup_page;
 mod bar;
+mod batch_mining;
 mod books_page;
 mod chrome;
+mod cloze;
 mod condense;
 mod dict_page;
 mod hooker_page;
@@ -27,10 +29,15 @@ mod ocr_progress;
 mod online_page;
 mod overlay;
 pub(crate) mod palette;
+mod phrases;
 mod player_page;
+mod podcasts;
 mod popups;
 mod prefs_page;
+mod reader_tools;
+mod recall;
 mod review_view;
+mod sentence_bank;
 mod servers_page;
 mod services_page;
 pub(crate) mod settings;
@@ -51,6 +58,20 @@ use crate::ui::Command;
 /// The file dialogs of the interface, opened by the app through the XDG portal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialog {
+    /// Explicit owned sentence-pack JSON.
+    SentencesImport,
+    /// Frozen shown exact sentence examples.
+    SentencesExport,
+    /// Frozen shown phrase notebook TSV.
+    PhrasesExport,
+    /// Shown reader annotations as TSV (RDR-002).
+    AnnotationsExport,
+    /// Timed text for a podcast episode (POD-003).
+    PodcastTranscript,
+    /// A shortcut map to write (KEY-008).
+    ShortcutsExport,
+    /// A shortcut map to read (KEY-009).
+    ShortcutsImport,
     /// A video to play (LIB-001).
     Video,
     /// A subtitle file for the open video (SUB-006).
@@ -87,10 +108,34 @@ pub enum Dialog {
     WordsExport,
     /// A completed media vocabulary snapshot (KNW-022).
     AnalysisWordsExport,
+    /// Complete Yomitan frequency dictionary ZIP.
+    FrequencyExport,
+    /// Standalone vocabulary HTML practice sheet.
+    VocabularyHtml,
+    /// Exact primary word example TSV.
+    ConcordanceExport,
+    /// Import only portable named filter presets.
+    StudyPresetsImport,
+    /// Saved finite recall progress.
+    RecallSave,
+    /// Captured recall self-rating results.
+    RecallResults,
+    /// Resume a saved finite recall round.
+    RecallLoad,
+    /// Save both named filter collections as JSON.
+    StudyPresetsExport,
     /// Full per-episode encounter history.
     EncounterExport,
     /// Current complete primary text subtitles as SRT.
     SubtitleExport,
+    /// Complete selected primary text in WebVTT format.
+    SubtitleVtt,
+    /// Overlap-aligned primary/secondary study TSV.
+    SubtitleBilingual,
+    /// Combined primary/secondary plain SRT.
+    SubtitleBilingualSrt,
+    /// Bilingual standalone HTML study sheet.
+    SubtitleHtml,
     /// Completed comprehension summaries for a library view.
     StudyReport,
 }
@@ -131,6 +176,24 @@ impl FileDialog {
             Dialog::Video => (
                 tr("open-file"),
                 vec![(tr("file-filter-video"), VIDEO_PATTERNS.to_vec()), all],
+            ),
+            Dialog::ShortcutsExport => (
+                tr("shortcut-map-export"),
+                vec![(tr("shortcut-map-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::ShortcutsImport => (
+                tr("shortcut-map-import"),
+                vec![(tr("shortcut-map-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::PodcastTranscript => (
+                tr("podcasts-import"),
+                vec![
+                    (
+                        tr("file-filter-subtitles"),
+                        vec!["*.srt", "*.vtt", "*.ass", "*.ssa", "*.lrc"],
+                    ),
+                    all,
+                ],
             ),
             Dialog::Subtitles => (
                 tr("subtitle-open-file"),
@@ -178,7 +241,20 @@ impl FileDialog {
                 vec![
                     (
                         tr("books-filter"),
-                        vec!["*.epub", "*.cbz", "*.html", "*.htm"],
+                        vec![
+                            "*.epub",
+                            "*.cbz",
+                            "*.html",
+                            "*.htm",
+                            "*.txt",
+                            "*.md",
+                            "*.markdown",
+                            "*.mokuro",
+                            "*.htmlz",
+                            "*.rtf",
+                            "*.docx",
+                            "*.pdf",
+                        ],
                     ),
                     all,
                 ],
@@ -195,6 +271,54 @@ impl FileDialog {
                 tr("words-import"),
                 vec![(tr("words-filter"), vec!["*.csv", "*.txt", "*.tsv"]), all],
             ),
+            Dialog::RecallResults => (
+                tr("recall-results-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::RecallSave => (
+                tr("recall-save"),
+                vec![(tr("recall-file-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::RecallLoad => (
+                tr("recall-load"),
+                vec![(tr("recall-file-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::StudyPresetsImport => (
+                tr("study-presets-import"),
+                vec![(tr("study-presets-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::StudyPresetsExport => (
+                tr("study-presets-export"),
+                vec![(tr("study-presets-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::SentencesImport => (
+                tr("bank-import"),
+                vec![(tr("bank-filter"), vec!["*.json"]), all],
+            ),
+            Dialog::SentencesExport => (
+                tr("bank-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::PhrasesExport => (
+                tr("phrases-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::AnnotationsExport => (
+                tr("annotations-export"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::ConcordanceExport => (
+                tr("vocabulary-examples-export-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::VocabularyHtml => (
+                tr("vocabulary-html-shown"),
+                vec![(tr("sub-html-filter"), vec!["*.html"]), all],
+            ),
+            Dialog::FrequencyExport => (
+                tr("frequency-export-shown"),
+                vec![(tr("dict-import-filter"), vec!["*.zip"]), all],
+            ),
             Dialog::AnalysisWordsExport => (
                 tr("analysis-export-shown"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
@@ -202,6 +326,22 @@ impl FileDialog {
             Dialog::EncounterExport => (
                 tr("encounter-export"),
                 vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::SubtitleHtml => (
+                tr("sub-html-shown"),
+                vec![(tr("sub-html-filter"), vec!["*.html"]), all],
+            ),
+            Dialog::SubtitleBilingualSrt => (
+                tr("sub-bilingual-srt-shown"),
+                vec![(tr("sub-export-filter"), vec!["*.srt"]), all],
+            ),
+            Dialog::SubtitleBilingual => (
+                tr("sub-bilingual-shown"),
+                vec![(tr("words-filter"), vec!["*.tsv"]), all],
+            ),
+            Dialog::SubtitleVtt => (
+                tr("sub-vtt-shown"),
+                vec![(tr("sub-vtt-filter"), vec!["*.vtt"]), all],
             ),
             Dialog::SubtitleExport => (
                 tr("sub-export"),
@@ -224,8 +364,22 @@ impl FileDialog {
                 Dialog::MpvExport => Some("mpv.conf".to_string()),
                 Dialog::StatsExport => Some("nikomiru-sessions.csv".to_string()),
                 Dialog::BackupSave => Some("nikomiru.nikomiru-backup".to_string()),
+                Dialog::RecallResults => Some("nikomiru-recall-results.tsv".into()),
+                Dialog::RecallSave => Some("nikomiru-recall.json".into()),
+                Dialog::StudyPresetsExport => Some("nikomiru-study-presets.json".into()),
+                Dialog::SentencesExport => Some("nikomiru-sentence-examples.tsv".into()),
+                Dialog::PhrasesExport => Some("nikomiru-phrases.tsv".into()),
+                Dialog::AnnotationsExport => Some("nikomiru-annotations.tsv".into()),
+                Dialog::ShortcutsExport => Some("nikomiru-shortcuts.json".into()),
+                Dialog::ConcordanceExport => Some("nikomiru-word-examples.tsv".into()),
+                Dialog::VocabularyHtml => Some("nikomiru-vocabulary.html".into()),
+                Dialog::FrequencyExport => Some("nikomiru-frequency.zip".into()),
                 Dialog::AnalysisWordsExport => Some("nikomiru-study.tsv".into()),
                 Dialog::EncounterExport => Some("nikomiru-history.tsv".into()),
+                Dialog::SubtitleHtml => Some("nikomiru-study.html".into()),
+                Dialog::SubtitleBilingualSrt => Some("nikomiru-bilingual.srt".into()),
+                Dialog::SubtitleBilingual => Some("nikomiru-bilingual.tsv".into()),
+                Dialog::SubtitleVtt => Some("nikomiru-subtitles.vtt".into()),
                 Dialog::SubtitleExport => Some("nikomiru-subtitles.srt".into()),
                 Dialog::StudyReport => Some("nikomiru-comprehension.tsv".into()),
                 Dialog::WordsExport => Some("nikomiru-words.csv".to_string()),
@@ -246,6 +400,17 @@ impl FileDialog {
 /// What the view keeps between frames.
 #[derive(Debug, Default)]
 pub(crate) struct View {
+    pub phrases_open: bool,
+    pub phrase_query: String,
+    /// Touch gestures (PORT-003).
+    pub gestures: crate::gestures::Tracker,
+    pub cloze_query: String,
+    pub reader_tools: reader_tools::Query,
+    pub podcast_url: String,
+    pub bank_expression: String,
+    pub bank_reading: String,
+    pub batch_detail: usize,
+    pub recall_history_open: bool,
     /// Bring the window forward (second launch, APP-001).
     pub activate: bool,
     /// The dictionaries page is shown.
@@ -339,11 +504,15 @@ impl View {
     /// What the session asks of the window (from a key or a button).
     pub fn effect(&mut self, effect: UiEffect) {
         match effect {
-            UiEffect::None => {}
+            UiEffect::None | UiEffect::SubtitleStudy(_) => {}
             UiEffect::ToggleFullscreen => self.fullscreen_request = Some(!self.fullscreen),
             UiEffect::Back => {
                 // popups were closed by the session already (POP-012)
-                if self.online_page_open {
+                if self.phrases_open {
+                    self.phrases_open = false;
+                } else if self.recall_history_open {
+                    self.recall_history_open = false;
+                } else if self.online_page_open {
                     self.close_online_page();
                 } else if self.hooker_page_open {
                     self.hooker_closing = true;
@@ -551,13 +720,45 @@ impl View {
         self.dict = dict_page::State::default();
     }
 
+    /// Whether a touch is under way: its end must reach a frame.
+    fn gestures_pending(&self, events: &[egui::Event]) -> bool {
+        events
+            .iter()
+            .any(|e| matches!(e, egui::Event::Touch { .. }))
+    }
+
     /// The popups drawn since the last call, by level, once per popup.
     pub fn take_presented_popups(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.presented)
     }
 
+    pub(crate) fn recall_covered(&self, s: &Session) -> bool {
+        s.batch.open
+            || s.reader.open
+            || s.podcasts.open
+            || s.bank.open
+            || s.clozes.open
+            || self.phrases_open
+            || self.recall_history_open
+            || self.dict_page_open
+            || self.anki_page_open
+            || self.online_page_open
+            || self.player_page_open
+            || self.services_page_open
+            || self.servers_page_open
+            || self.backup_page_open
+            || self.audio_page_open
+            || self.prefs_open.is_some()
+            || self.web_url_open
+            || s.setup_page.open
+            || s.advanced_card().is_some()
+    }
+
     /// Draws the window.
     pub fn frame(&mut self, ui: &mut egui::Ui, s: &Session) -> Vec<Command> {
+        word_list::sync_undo(ui.ctx(), s.word_status_undo_available());
+        word_list::sync_presets(ui.ctx(), &s.config().lookup.study_presets);
+        list::sync_study_presets(ui.ctx(), &s.config().subtitles.study_presets);
         // a file opened, from the page or anywhere else: the video shows
         if s.opened() != self.opened {
             self.opened = s.opened();
@@ -569,6 +770,74 @@ impl View {
         }
         let ctx = ui.ctx().clone();
         let mut out = Vec::new();
+        // PORT-003: a swipe seeks the video or turns the reader's page
+        let events = ctx.input(|i| i.events.clone());
+        if let Some(gesture) = self.gestures.feed(&events, ctx.input(|i| i.time)) {
+            let pages = s.batch.open
+                || s.bank.open
+                || s.clozes.open
+                || s.reader.open
+                || s.podcasts.open
+                || self.recall_covered(s);
+            if self.books_page_open && !pages {
+                self.books.swipe = Some(gesture);
+            } else if !pages
+                && !self.library_page_open
+                && !self.hooker_page_open
+                && !s.popups.is_open()
+                && !ctx.egui_wants_keyboard_input()
+                && s.view.loaded
+            {
+                out.push(Command::Action(match gesture {
+                    crate::gestures::Gesture::SwipeRight => crate::shortcuts::Action::SeekForward,
+                    crate::gestures::Gesture::SwipeLeft => crate::shortcuts::Action::SeekBack,
+                }));
+            }
+        }
+        if self.gestures_pending(&events) {
+            ctx.request_repaint();
+        }
+        if s.batch.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            batch_mining::show(ui, s, &mut self.batch_detail, &mut out);
+            return out;
+        }
+        if s.podcasts.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            podcasts::show(ui, s, &mut self.podcast_url, &mut out);
+            return out;
+        }
+        if s.reader.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            reader_tools::show(ui, s, &mut self.reader_tools, &mut out);
+            return out;
+        }
+        if s.bank.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            sentence_bank::show(
+                ui,
+                s,
+                &mut self.bank_expression,
+                &mut self.bank_reading,
+                &mut out,
+            );
+            return out;
+        }
+        if s.clozes.open {
+            self.window(&ctx, s);
+            ui.painter()
+                .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill.to_opaque());
+            cloze::show(ui, s, &mut self.cloze_query, &mut out);
+            return out;
+        }
         if std::mem::take(&mut self.hooker_closing) {
             self.close_hooker_page(&mut out);
         }
@@ -629,7 +898,9 @@ impl View {
             bar::show(&ctx, s, self, opacity, &mut out);
         }
         // the settings pages cover the popups: they wait under them
-        let drawn = if self.dict_page_open
+        let study_popup = s.study_popup_open();
+        let covered = (self.phrases_open && !study_popup)
+            || self.dict_page_open
             || self.anki_page_open
             || self.online_page_open
             || self.player_page_open
@@ -638,9 +909,9 @@ impl View {
             || self.backup_page_open
             || self.audio_page_open
             || self.prefs_open.is_some()
-            || self.library_page_open
-            || s.advanced_card().is_some()
-        {
+            || (self.library_page_open && !study_popup)
+            || s.advanced_card().is_some();
+        let drawn = if covered || study_popup {
             self.popups.rects.clear();
             Vec::new()
         } else {
@@ -689,6 +960,31 @@ impl View {
         if self.online_page_open {
             online_page::show(&ctx, s, self, &mut out);
         }
+        if !self.recall_covered(s)
+            && let Some(round) = s.recall()
+        {
+            let mut labels = recall::Labels::translated(&|key, args| s.translator().tr(key, args));
+            labels.hints_ready = s.recall_hints_ready();
+            labels.can_record = s.recall_can_record();
+            recall::show(&ctx, round, &labels, &mut out);
+        }
+        if self.phrases_open {
+            phrases::show(&ctx, s, self, &mut out);
+        }
+        if self.recall_history_open {
+            self.recall_history_open = recall::history(
+                &ctx,
+                &s.config().lookup.recall_history,
+                s.recall_history_writable(),
+                s.recall_history_failed(),
+                &|key, args| s.translator().tr(key, args),
+                &mut out,
+            );
+        }
+        if study_popup && !covered {
+            let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);
+            self.mark_presented(s, &drawn);
+        }
         if s.setup_page.open {
             setup_page::show(&ctx, s, &mut out);
         }
@@ -716,7 +1012,12 @@ impl View {
         if self.look != Some(look) {
             self.look = Some(look);
             let [r, g, b] = look.accent;
-            palette::apply(ctx, look.dark, egui::Color32::from_rgb(r, g, b));
+            palette::apply_named(
+                ctx,
+                look.palette,
+                look.dark,
+                egui::Color32::from_rgb(r, g, b),
+            );
             ctx.set_zoom_factor(f32::from(look.scale) / 100.0);
         }
         self.zoom = ctx.zoom_factor();

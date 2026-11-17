@@ -79,6 +79,20 @@ fn run(command: &Value) -> Result<Value, String> {
             let timeout = Duration::from_millis(command["timeout_ms"].as_u64().unwrap_or(10_000));
             harness::wait(text(command, "event")?, timeout)
         }
+        Some("focus-lost") => harness::focus_lost().map(|()| Value::Null),
+        Some("key-event") => harness::key_event(
+            text(command, "code")?,
+            command["mods"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            command["pressed"].as_bool().unwrap_or(true),
+            command["repeat"].as_bool().unwrap_or(false),
+            command["text_focus"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("key") => {
             let mods: Vec<String> = command["mods"]
                 .as_array()
@@ -87,7 +101,13 @@ fn run(command: &Value) -> Result<Value, String> {
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
             let repeats = command["repeat"].as_u64().unwrap_or(0);
-            harness::key(text(command, "code")?, &mods, repeats).map(|()| Value::Null)
+            harness::key(
+                text(command, "code")?,
+                &mods,
+                repeats,
+                command["text_focus"].as_bool().unwrap_or(false),
+            )
+            .map(|()| Value::Null)
         }
         Some("drop") => {
             let paths: Vec<String> = command["paths"]
@@ -111,6 +131,111 @@ fn run(command: &Value) -> Result<Value, String> {
         }
         Some("popup_button") => {
             harness::popup_button(text(command, "button")?).map(|()| Value::Null)
+        }
+        Some("practice-control") => {
+            harness::practice_control(text(command, "action")?).map(|()| Value::Null)
+        }
+        Some("practice-pause") => harness::practice_pause(
+            command["ms"]
+                .as_u64()
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or("missing pause milliseconds")?,
+        )
+        .map(|()| Value::Null),
+        Some("word-status") => harness::study_word_status(
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+            command["status"].as_str().unwrap_or("unknown").to_string(),
+        )
+        .map(|()| Value::Null),
+        Some("word-examples-export") => harness::word_examples_export(
+            text(command, "path")?,
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
+        Some("preset-file") => harness::preset_file(
+            text(command, "path")?,
+            command["export"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
+        Some("recall") => harness::recall(
+            command["action"].as_str().unwrap_or("start").to_string(),
+            command.clone(),
+        )
+        .map(|()| Value::Null),
+        Some("practice-queue") => harness::practice_queue(
+            command["indices"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| n.as_u64().map(|i| i as usize))
+                .collect(),
+            command["passes"]
+                .as_u64()
+                .and_then(|n| u8::try_from(n).ok())
+                .unwrap_or(2),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
+        Some("vocabulary-html") => {
+            harness::vocabulary_html(text(command, "path")?).map(|()| Value::Null)
+        }
+        Some("subtitle-preset") => harness::subtitle_preset(
+            text(command, "name")?.to_string(),
+            if command["preset"].is_null() {
+                None
+            } else {
+                Some(serde_json::from_value(command["preset"].clone()).map_err(|e| e.to_string())?)
+            },
+        )
+        .map(|()| Value::Null),
+        Some("practice") => harness::practice(
+            command["cue"].as_u64().map(|i| i as usize),
+            command["passes"]
+                .as_u64()
+                .and_then(|n| u8::try_from(n).ok())
+                .unwrap_or(0),
+        )
+        .map(|()| Value::Null),
+        Some("vocabulary-scope") => {
+            harness::vocabulary_scope(command["indices"].as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().map(|i| i as usize))
+                    .collect()
+            }))
+            .map(|()| Value::Null)
+        }
+        Some("study-preset") => harness::study_preset(
+            text(command, "name")?.to_string(),
+            command["query"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
+        Some("subtitle-study") => harness::subtitle_study(
+            command["query"].as_str().map(str::to_string),
+            command["forward"].as_bool(),
+            if command["filters"].is_null() {
+                None
+            } else {
+                Some(
+                    serde_json::from_value(command["filters"].clone())
+                        .map_err(|e| e.to_string())?,
+                )
+            },
+            command["mask"].as_bool(),
+        )
+        .map(|()| Value::Null),
+        Some("frequency-export") => {
+            harness::frequency_export(text(command, "path")?).map(|()| Value::Null)
+        }
+        Some("vocabulary-examples") => harness::vocabulary_examples(
+            command["text"].as_str().map(str::to_string),
+            command["reading"].as_str().unwrap_or_default().to_string(),
+        )
+        .map(|()| Value::Null),
+        Some("vocabulary-lookup") => {
+            harness::vocabulary_lookup(text(command, "text")?).map(|()| Value::Null)
         }
         Some("lookup") => harness::lookup(text(command, "text")?).map(|()| Value::Null),
         Some("popup_content") => {
@@ -158,13 +283,26 @@ fn run(command: &Value) -> Result<Value, String> {
             harness::study_report(text(command, "scope")?, text(command, "path")?)
                 .map(|()| Value::Null)
         }
-        Some("subtitle-export") => {
-            harness::subtitle_export(text(command, "path")?).map(|()| Value::Null)
-        }
+        Some("subtitle-export") => harness::subtitle_export(
+            text(command, "path")?,
+            command["indices"].as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().and_then(|n| usize::try_from(n).ok()))
+                    .collect()
+            }),
+            command["format"].as_str().unwrap_or("srt"),
+            command["version"].as_u64(),
+        )
+        .map(|()| Value::Null),
         Some("graphic-cancel") => harness::graphic_read_cancel().map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
         Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),
-        Some("setup") => harness::setup(text(command, "action")?).map(|()| Value::Null),
+        Some("setup") => harness::setup(
+            text(command, "action")?,
+            command["id"].as_str().map(str::to_string),
+            command["on"].as_bool().unwrap_or(true),
+        )
+        .map(|()| Value::Null),
         Some("mpv_property") => harness::mpv_property(text(command, "name")?)
             .map(|v| v.map_or(Value::Null, Value::String)),
         Some("mouse_moved") => harness::mouse_moved().map(|()| Value::Null),
@@ -176,6 +314,19 @@ fn run(command: &Value) -> Result<Value, String> {
         .map(|()| Value::Null),
         Some("wheel") => harness::wheel(command["y"].as_f64().ok_or("missing \"y\"")? as f32)
             .map(|()| Value::Null),
+        Some("mining-profile") => harness::mining_profile(
+            text(command, "action")?.into(),
+            text(command, "name")?.into(),
+        )
+        .map(|()| Value::Null),
+        Some("composer") => harness::composer(
+            text(command, "action")?.into(),
+            command["field"].as_str().unwrap_or_default().into(),
+            command["text"].as_str().unwrap_or_default().into(),
+            command["index"].as_u64().unwrap_or(0) as usize,
+            command["on"].as_bool().unwrap_or(false),
+        )
+        .map(|()| Value::Null),
         Some("advanced") => harness::advanced(text(command, "edit")?, command["value"].as_i64())
             .map(|()| Value::Null),
         Some("settings") => {
@@ -186,6 +337,57 @@ fn run(command: &Value) -> Result<Value, String> {
             command["level"].as_u64().unwrap_or(0) as usize,
             command["entry"].as_u64().unwrap_or(0) as usize,
             command["url"].as_str().map(str::to_string),
+        )
+        .map(|()| Value::Null),
+        Some("batch-mining") => {
+            harness::batch_mining(text(command, "action")?.into(), command.clone())
+                .map(|()| Value::Null)
+        }
+        Some("sentence-bank") => {
+            harness::sentence_bank(text(command, "action")?.into(), command.clone())
+                .map(|()| Value::Null)
+        }
+        Some("cloze") => {
+            harness::cloze(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
+        }
+        Some("popup_sound") => {
+            harness::popup_sound(command["level"].as_u64().unwrap_or(0) as usize)
+                .map(|()| Value::Null)
+        }
+        Some("touch") => {
+            let point = |key: &str| -> Result<(f32, f32), String> {
+                let p = &command[key];
+                Ok((
+                    p[0].as_f64().ok_or("x")? as f32,
+                    p[1].as_f64().ok_or("y")? as f32,
+                ))
+            };
+            harness::touch(point("from")?, point("to")?).map(|()| Value::Null)
+        }
+        Some("shader-pack-local") => harness::shader_pack_local(
+            text(command, "path")?.into(),
+            text(command, "sha256")?.into(),
+            command["bytes"].as_u64().unwrap_or(0),
+        )
+        .map(|()| Value::Null),
+        Some("updates") => {
+            harness::updates(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
+        }
+        Some("shortcuts") => harness::shortcuts(text(command, "action")?.into(), command.clone())
+            .map(|()| Value::Null),
+        Some("podcasts") => harness::podcasts(text(command, "action")?.into(), command.clone())
+            .map(|()| Value::Null),
+        Some("reader-tools") => {
+            harness::reader_tools(text(command, "action")?.into(), command.clone())
+                .map(|()| Value::Null)
+        }
+        Some("phrases") => {
+            harness::phrases(text(command, "action")?.into(), command.clone()).map(|()| Value::Null)
+        }
+        Some("books-paste") => harness::book_paste(
+            text(command, "title")?.into(),
+            text(command, "text")?.into(),
+            command["markdown"].as_bool().unwrap_or(false),
         )
         .map(|()| Value::Null),
         Some("books") => harness::books(

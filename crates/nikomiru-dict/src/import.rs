@@ -544,13 +544,20 @@ fn write_foreign(
         entries: 0,
     };
     progress(state);
-    let terms = crate::foreign::read_terms(path, kind, cancel)?;
+    let (terms, media) = crate::foreign::read_all(path, kind, cancel)?;
     if terms.is_empty() {
         return Err(ImportError::Empty);
     }
     state.entries = terms.len() as u64;
     let mut writer = StoreWriter::create(&staging.join(DB_FILE))?;
     write_rows(terms, cancel, |rows| writer.add_terms(rows))?;
+    // DIC-037: the `.mdd` resources the definitions use
+    for (name, bytes) in media {
+        if cancel.is_cancelled() {
+            return Err(ImportError::Cancelled);
+        }
+        writer.add_media(&name, &bytes)?;
+    }
     state.files_done = 1;
     progress(state);
     let kinds = yomitan::detect_kinds(yomitan::Rows {

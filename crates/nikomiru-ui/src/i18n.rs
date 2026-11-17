@@ -248,7 +248,9 @@ mod tests {
                 "stats-review-day",
                 "stats-review-due",
                 "review-answers",
-                "setup-cards-anki"
+                "setup-cards-anki",
+                "servers-kind-jellyfin",
+                "servers-kind-emby"
             ]
         );
         assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");

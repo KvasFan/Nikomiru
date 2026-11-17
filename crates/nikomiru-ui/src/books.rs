@@ -25,6 +25,8 @@ pub struct OpenBook {
     pub jump: bool,
     /// When reading started (monotonic ms), and how far along.
     pub started: (i64, u64),
+    /// The sentence of the paragraph shown in sentence focus (RDR-004).
+    pub sentence: usize,
 }
 
 /// The Books page.
@@ -40,6 +42,9 @@ pub struct BooksPage {
     pub open: Option<OpenBook>,
     /// The word looked up: its paragraph and bytes (BOK-006).
     pub highlight: Option<(usize, std::ops::Range<usize>)>,
+    /// The text an annotation or a search result led to: its paragraph and
+    /// bytes (RDR-002, RDR-003).
+    pub found: Option<(usize, std::ops::Range<usize>)>,
     /// A book is being read.
     pub busy: bool,
     /// The page's message, and whether it is good news.
@@ -68,17 +73,53 @@ pub type Read = Result<Book, String>;
 pub fn start_read(
     path: PathBuf,
     translator: Translator,
+    support: std::sync::Arc<dyn nikomiru_books::documents::Support>,
     done: Box<dyn FnOnce(PathBuf, Read) + Send>,
 ) {
     let spawned = std::thread::Builder::new()
         .name("book".into())
         .spawn(move || {
-            let read = nikomiru_books::read(&path).map_err(|e| translator.error(&e));
+            let read =
+                nikomiru_books::read_with_support(&path, &*support, &nikomiru_core::Cancel::new())
+                    .map_err(|e| translator.error(&e));
             done(path, read);
         });
     if let Err(e) = spawned {
         tracing::error!("cannot start the book thread: {e}");
     }
+}
+
+/// A pasted document captured by the explicit editor submission.
+#[derive(Debug, Clone)]
+pub struct Paste {
+    /// Display title, bounded by the document reader.
+    pub title: String,
+    /// Original text; never rendered as executable HTML.
+    pub text: String,
+    /// Explicit plain-text or Markdown interpretation.
+    pub format: nikomiru_books::text::Format,
+}
+/// A validated, retained source or translated failure.
+pub type Pasted = Result<(PathBuf, Book), String>;
+
+/// Validate, atomically save and parse a pasted source off the UI thread.
+pub fn start_paste(
+    dir: PathBuf,
+    paste: Paste,
+    translator: Translator,
+    done: Box<dyn FnOnce(Pasted) + Send>,
+) -> Result<(), String> {
+    let errors = translator.clone();
+    std::thread::Builder::new()
+        .name("paste-book".into())
+        .spawn(move || {
+            done(
+                nikomiru_books::text::save(&dir, &paste.title, &paste.text, paste.format)
+                    .map_err(|e| translator.error(&e)),
+            );
+        })
+        .map(|_| ())
+        .map_err(|e| errors.tr("error-book-io", &[("reason", e.to_string())]))
 }
 
 /// The share of a book read, in percent.

@@ -187,7 +187,7 @@ settings-lookup-hover = Shift なしで、ポインターを重ねて単語を�
 settings-lookup-resume = ポインターがポップアップから離れたら再生を再開する
 settings-ffmpeg = ffmpeg プログラム
 settings-ffmpeg-hint = 空欄: PATH の ffmpeg
-settings-next-start = ffmpeg プログラムの変更は、次に Nikomiru を起動したときに反映されます。
+settings-next-start = ツールのパスの変更は、Nikomiru を再起動せずに次の処理から反映されます。
 settings-folders = ファイルとフォルダー
 settings-config-file = 設定ファイル
 settings-logs = ログ
@@ -731,7 +731,7 @@ stats-delete-session = { $date } の { $name } のセッションを削除
 settings-servers = メディアサーバー
 servers-added = 追加済みのサーバー
 servers-none = サーバーはまだありません。Nikomiru は追加されたサーバーにのみ接続します。
-servers-add-jellyfin = Jellyfin サーバーを追加
+servers-add-jellyfin = Jellyfin または Emby サーバーを追加
 servers-name = 名前
 servers-address = アドレス
 servers-address-hint = http://192.168.1.10:8096
@@ -790,10 +790,10 @@ hooker-no-clipboard = クリップボードを読み取るプログラムがあ�
 books-title = 本
 books-add = 本またはマンガを追加…
 books-folder = ページのフォルダーを追加…
-books-none = 本がまだありません。EPUB、CBZ、HTML ページを追加してください。ファイルは元の場所に残ります。アドレスからウェブページを開くこともできます。
+books-none = 本がまだありません。EPUB、漫画、HTML、TXT、Markdown、HTMLZ、RTF、DOCX、テキスト付きPDFを追加するか、テキストを貼り付けるか、アドレスからウェブページを開いてください。元のファイルは移動しません。
 books-audiobook = オーディオブックを開く…
 books-audio-filter = 音声ファイル
-books-filter = EPUB の本、CBZ のマンガ、HTML ページ
+books-filter = 本・マンガ・HTML/TXT/Markdown・Mokuro・HTMLZ/RTF/DOCX/PDF
 books-remove = { $title } を削除
 books-back = ← 本
 books-vertical = 縦書き
@@ -931,10 +931,10 @@ books-listen = ここから聞く
 # Setup assistant (INS-001…INS-006)
 setup-title = セットアップアシスタント
 setup-close = 閉じる
-setup-open = 辞書・音声・カードを設定…
-setup-open-hint = 無料の辞書と単語の音声をダウンロードし、カードの作り方を設定します（初回起動時と同じ）。
-setup-first-steps = 辞書・単語の音声・カードをまとめて設定：
-setup-intro = インストールするものを選んでください。「インストール」を押すまで何もダウンロードしません。ダウンロードは Nikomiru を使っている間も続き、再起動後に再開します。
+setup-open = 辞書・音声・カード・ツールを設定…
+setup-open-hint = 無料の辞書、単語の音声、補助ツールをダウンロードし、カードの作り方を設定します。
+setup-first-steps = 辞書・単語の音声・カード・補助ツールをまとめて設定：
+setup-intro = インストールするものを選んでください。「インストール」を押すまで何もダウンロードしません。ダウンロードは Nikomiru を使っている間も続きます。未完了の補助ツールのダウンロードは、再試行時に最初から開始します。
 setup-dictionaries = 辞書
 setup-dictionaries-hint = 作者が公開している場所からダウンロードし、手動で選んだファイルと同じようにインポートします。
 setup-license-unstated = 配布元の条件（明記なし）
@@ -1082,3 +1082,577 @@ study-report-export = 分析済みの概要を出力…
 study-report-empty = このレポートに使える完了済みの分析がありません。
 study-report-saved = 理解度レポートを { $path } に保存しました。
 study-report-failed = レポートを保存できませんでした：{ $reason }
+
+# 選択した補助ツール (INS-007)。
+setup-tools = 補助ツール
+setup-tools-hint = インストールするツールを選択してください。動作する既存のツールは再利用します。yt-dlp は FFmpeg と Deno も必要です。ダウンロードを検証し、管理者権限なしでこのアプリ用にインストールします。
+setup-runtime-ready = 再生・描画・TLS ライブラリはアプリのパッケージまたは OS が提供します。
+setup-tools-refresh = インストール済みツールを確認
+setup-tool-required = 選択したツールに必要
+setup-tool-available = ローカルで利用可能・再利用します
+setup-tool-model = ローカル OCR モデル
+setup-tool-checking = 展開・検証中…
+setup-tool-unsupported = このプラットフォーム用のインストーラーはありません
+setup-tool-cancelled = インストールをキャンセルしました
+setup-tool-invalid = ツールまたはインストール計画が無効です。
+setup-tool-missing = ツールが見つかりません。
+setup-tool-archive = アーカイブが不完全か、安全でない項目を含んでいます。
+setup-tool-too-large = ダウンロードまたは展開後のファイルがサイズ制限を超えています。
+setup-tool-damaged = インストール先を安全に置き換えられません。
+setup-tool-space = インストールに必要な空き容量がありません。
+setup-tool-dependency = 必要なコンポーネントをインストールできませんでした。
+setup-tool-failed = インストールに失敗しました: { $reason }
+settings-deno = Deno の実行ファイルまたはフォルダー
+
+# Subtitle study selections (SUB-035).
+sub-study-tools = 学習ツール
+sub-select-shown = 表示中の行を選択
+sub-selection-clear = 行の選択を解除
+sub-export-selected = 選択した行を SRT で保存…
+sub-select-line = 行を選択
+
+sub-copy-shown = 表示中の書き起こしをコピー
+sub-copy-selected = 選択した書き起こしをコピー
+sub-transcript-copied = 書き起こしをコピーしました
+
+sub-vtt-shown = 表示中の行を WebVTT で保存…
+sub-vtt-selected = 選択した行を WebVTT で保存…
+sub-vtt-filter = WebVTT 字幕
+
+sub-bilingual-shown = 表示中の対訳を書き出す…
+sub-bilingual-selected = 選択した対訳を書き出す…
+
+sub-window-from = 現在位置から
+sub-window-to = 現在位置まで
+sub-window-reset = 時間範囲をリセット
+
+vocabulary-min-count = 最小出現回数
+vocabulary-max-count = 最大出現回数
+vocabulary-reset-counts = 出現回数の制限をリセット
+
+vocabulary-shown-words = 表示中の語数
+vocabulary-selected-words = 選択した語数
+vocabulary-occurrences = 出現回数
+
+vocabulary-lookup = 辞書で調べる
+
+vocabulary-examples = 字幕内の用例
+vocabulary-examples-clear = 用例フィルターを解除
+vocabulary-examples-unavailable = 現在の字幕の解析が完了するまで用例は利用できません。
+
+frequency-export-shown = 表示中の頻度辞書を書き出す…
+frequency-export-selected = 選択した頻度辞書を書き出す…
+frequency-export-invalid = 空でない一意の語と対応する正の出現回数が必要です。
+
+vocabulary-exact = 表記・読みの完全一致
+
+sub-speed-tools = 読速（文字/秒）
+sub-speed-min = 最小文字数/秒
+sub-speed-max = 最大文字数/秒
+sub-speed-reset = 読速の制限をリセット
+
+sub-stats-title = 範囲の統計
+sub-stats-shown = 表示中
+sub-stats-selected = 選択中
+sub-stats-lines = 行
+sub-stats-characters = 文字
+sub-stats-dialogue = 発話時間
+
+sub-bilingual-srt-shown = 表示中の対訳を SRT で保存…
+sub-bilingual-srt-selected = 選択した対訳を SRT で保存…
+
+sub-previous-match = 前の一致行
+sub-next-match = 次の一致行
+
+vocabulary-presets = 再利用できる学習フィルター
+vocabulary-preset-save = フィルターを記憶
+vocabulary-preset-apply = 記憶したフィルターを適用
+vocabulary-preset-clear = フィルターを忘れる
+vocabulary-preset-hint = このセッション中のみ記憶します。語の選択は各画面に保持します。
+vocabulary-preset-too-long = 検索が長すぎます（4096 バイトまで）。
+
+vocabulary-named-presets = 学習プリセット
+vocabulary-preset-name = プリセット名
+vocabulary-preset-store = プリセットを保存
+vocabulary-preset-delete = プリセットを削除
+
+vocabulary-script-any = すべての文字種
+vocabulary-script-kanji = 漢字を含む
+vocabulary-script-kana = かなを含む
+vocabulary-script-latin = ラテン文字を含む
+
+vocabulary-length-min = 見出し語の最小文字数
+vocabulary-length-max = 見出し語の最大文字数
+vocabulary-length-reset = 文字数をリセット
+
+sub-duration-tools = 字幕の長さ
+sub-duration-min = 最短時間（ミリ秒）
+sub-duration-max = 最長時間（ミリ秒）
+sub-duration-reset = 時間条件をリセット
+
+sub-mask-text = 聞き取り練習のため字幕を隠す
+sub-reveal-shown = 表示範囲の字幕を開く
+sub-mask-again = 字幕を再び隠す
+sub-reveal-line = 字幕を開く
+
+sub-vocabulary-shown = 表示中の字幕の語彙を学習
+sub-vocabulary-selected = 選択した字幕の語彙を学習
+sub-vocabulary-all = 字幕全体の語彙に戻る
+
+sub-html-shown = 表示範囲をHTML学習シートに出力
+sub-html-selected = 選択範囲をHTML学習シートに出力
+sub-html-translation = 翻訳を表示
+sub-html-filter = HTML学習シート
+
+sub-invert-shown = 表示範囲の選択を反転
+
+vocabulary-batch-tools = 語彙学習グループ
+vocabulary-batch-next = 次のグループを選択
+vocabulary-batch-clear = 表示範囲の選択を解除
+vocabulary-batch-invert = 表示範囲の選択を反転
+vocabulary-batch-size = グループの語数
+
+sub-practice-current = 現在の字幕を繰り返す
+sub-practice-stop = 繰り返しを停止
+sub-practice-remaining = 残りの再生回数：{ $count }
+
+sub-practice-tools = 字幕の繰り返し練習
+sub-vocabulary-tools = この範囲の語彙
+sub-html-tools = HTML学習シート
+
+sub-text-tools = 字幕テキストの条件
+sub-text-min = 最小文字数
+sub-text-max = 最大文字数
+sub-text-reset = 文字数条件をリセット
+
+sub-unique-captions = 同じ字幕は最初の出現だけ表示
+
+sub-shape-any = 行数の指定なし
+sub-shape-single = 一行の字幕
+sub-shape-multiple = 複数行の字幕
+
+vocabulary-reading-tools = 読みとカバー率の条件
+vocabulary-reading-any = すべての読み
+vocabulary-reading-distinct = 異なる読みがある語
+vocabulary-reading-same = 異なる読みがない語
+
+vocabulary-coverage-target = 出現回数の指定割合をカバーする頻出語
+vocabulary-coverage-reset = カバー率の条件をリセット
+
+sub-presets = 保存した字幕学習プリセット
+
+vocabulary-html-tools = 語彙のHTML学習シート
+vocabulary-html-shown = 表示中の語彙をHTMLに出力
+vocabulary-html-selected = 選択した語彙をHTMLに出力
+vocabulary-html-reading = 読みを表示
+
+sub-context-exact = 一致する字幕だけ
+sub-context-one = 前後一字幕
+sub-context-two = 前後二字幕
+sub-context-hit = 単語が一致する字幕
+
+action-study-previous = 前の一致する字幕
+action-study-next = 次の一致する字幕
+action-study-reveal = 現在の学習字幕を表示
+action-study-select = 現在の学習字幕の選択を切り替え
+
+sub-practice-shown = 表示中の字幕を繰り返す
+sub-practice-selected = 選択した字幕を繰り返す
+sub-practice-passes = 字幕ごとの再生回数
+sub-practice-cues = 残りの字幕数：{ $count }
+sub-practice-unavailable = 動画の範囲内にある有効な字幕を1～1000件選んでください。
+
+sub-search-exact = 字幕全体と一致
+
+sub-order-source = 元の字幕順
+sub-order-short = 短い時間から
+sub-order-long = 長い時間から
+sub-order-text = 短い文章から
+
+sub-time-edit = 学習時間の範囲を入力
+sub-time-from = 開始（秒またはH:MM:SS.mmm）
+sub-time-to = 終了（秒またはH:MM:SS.mmm）
+sub-time-apply = 時間範囲を適用
+sub-time-invalid = 終了は開始より後にしてください。空欄は制限なしです。
+
+sub-copy-export = コピーと書き出し
+
+sub-preview-title = 字幕の翻訳
+sub-preview-show = この字幕の翻訳を表示
+sub-preview-empty = 重なる翻訳はありません。
+
+vocabulary-practice-mask = 読みから単語を思い出す練習
+vocabulary-practice-reveal = 表示範囲の単語を開く
+vocabulary-practice-hide = 単語を再び隠す
+vocabulary-practice-word = 単語を表示
+
+vocabulary-practice-select = 学習する単語を選択
+
+vocabulary-undo-status = 単語の状態を元に戻す
+vocabulary-undo-unavailable = 前の状態変更は元に戻せません。
+
+sub-practice-pause = 繰り返しの間の休止（ミリ秒）
+sub-practice-wait = 待機中：{ $count } ミリ秒
+
+sub-practice-skip = 現在の字幕をスキップ
+sub-practice-restart = 現在の字幕を最初から繰り返す
+
+vocabulary-examples-export-shown = 表示中の単語の例文を出力
+vocabulary-examples-export-selected = 選択した単語の例文を出力
+
+study-presets-import = 学習プリセットを読み込む…
+study-presets-export = 学習プリセットを書き出す…
+study-presets-filter = 学習プリセット（JSON）
+study-presets-invalid = 無効なファイルか、対応していない条件が含まれています。
+study-presets-too-large = ファイルまたは統合後の件数が上限を超えています。
+study-presets-unsupported = このプリセット形式のバージョンには対応していません。
+study-presets-import-failed = プリセットを読み書きできません：{ $reason }
+
+recall-title = 語彙の想起練習
+recall-reveal = 答えを表示
+recall-skip = 単語をスキップ
+recall-complete = ラウンド完了
+recall-no-reading = 異なる読みはありません。準備ができたら単語を表示してください。
+recall-remaining = 残りの単語
+recall-start-shown = 表示中の語彙で練習
+recall-start-selected = 選択した語彙で練習
+recall-unavailable = 有効な見出し語と読みを持つ単語を1～1000件選んでください。
+
+recall-again = もう一度
+recall-good = できた
+recall-good-total = できた単語
+recall-again-total = もう一度の評価数
+recall-skipped-total = スキップした単語
+recall-attempts-total = 回答回数
+
+action-recall-reveal = 想起練習の答えを表示
+action-recall-again = 想起練習：もう一度
+action-recall-good = 想起練習：できた
+
+shortcuts-recall = 語彙の想起練習
+
+recall-hints-capture = 現在の字幕から例文を取得
+recall-hints-reveal = 例文のヒントを表示
+recall-hints-unavailable = 解析済みの主字幕と、上限内の例文が必要です。
+
+recall-restart-original = 元の順序でやり直す
+recall-restart-reverse = 逆順でやり直す
+recall-restart-shuffle = 順序を混ぜてやり直す
+
+recall-save = 想起練習の進捗を保存…
+recall-load = 保存した想起練習を開く…
+recall-file-filter = 想起練習の進捗（JSON）
+recall-file-invalid = ファイルが無効か、進捗の整合性がありません。
+recall-file-too-large = 想起練習ファイルが上限を超えています。
+recall-file-version = この想起練習ファイルのバージョンには対応していません。
+recall-file-error = 進捗を読み書きできません：{ $reason }
+
+recall-results-export = 想起練習の結果を書き出す…
+
+recall-followup-difficult = 難しかった単語で新しい練習
+recall-followup-skipped = スキップした単語で新しい練習
+recall-followup-unavailable = ラウンドを完了して、単語がある分類を選んでください。
+
+recall-history = 想起練習の履歴
+recall-history-record = この集計を記録
+recall-history-clear = 保存した集計をすべて削除
+recall-history-remove = 集計を削除
+recall-history-empty = 保存された集計はありません。
+recall-history-words = 単語数
+recall-history-error = 履歴を保存できません：{ $reason }
+recall-history-unsaved = 履歴の最新の変更は保存されていません。
+recall-history-retry = 保存を再試行
+
+books-paste = テキストを貼り付け…
+books-paste-title = タイトル
+books-paste-content = テキスト
+books-paste-markdown = Markdown として読む
+books-paste-read = テキストを読む
+books-paste-hint = 再度開けるようにローカルに保存します。上限 4 MiB。Markdown の見出しとルビを保持し、リンクや画像は開きません。
+error-book-invalid-text = このテキスト文書は読めません。UTF-8、256 文字以内のタイトル、プレーンテキストまたは対応する Markdown を使用してください。
+
+error-book-mokuro = 未対応の Mokuro ファイル、無効なローカル画像、またはテキスト座標です。
+mokuro-ready = テキストは処理済みです。ページ上のテキスト領域を選択してください。
+mokuro-empty-page = このページにはテキスト領域がありません。
+mokuro-region = { $page } ページの領域 { $number } を読む
+
+# PHR-001…PHR-003: independent local phrase notebook.
+phrases-title = フレーズノート
+phrases-new = 新しいフレーズ
+phrases-capture = 現在の文章を取り込む
+phrases-text = フレーズ
+phrases-definition = 意味・定義
+phrases-context = 元の文
+phrases-language = 学習言語
+phrases-save = フレーズを保存
+phrases-cancel = キャンセル
+phrases-search = フレーズを検索
+phrases-export = 表示中のフレーズを書き出す
+phrases-edit = フレーズを編集
+phrases-delete = フレーズを削除
+phrases-source = 出典を開く
+phrases-readonly = ライブラリは読み取り専用、または利用できません。
+phrases-error = 保存できません。入力の不備、重複、またはノートの上限を確認してください。
+phrases-invalid = 文中と同じフレーズを入力してください（文は空欄でも可）。フレーズ・意味は各4 KiB、文は16 KiBまでです。
+phrases-source-missing = 元の出典を利用できません。
+phrases-status = フレーズの状態
+
+# CLO-001…CLO-004: explicit cloze exercises and opt-in schedules.
+cloze-title = 穴埋め練習
+cloze-preview = 穴埋めのプレビュー
+cloze-create = 問題を作成
+cloze-close = 穴埋め練習を閉じる
+cloze-scheduled = 予定された復習
+cloze-finite = 有限練習・復習予定は変更しません
+cloze-correct = 正解
+cloze-incorrect = 不正解
+cloze-answer = 回答
+cloze-submit = 回答を確認
+cloze-next = 次の問題
+cloze-skip = 問題をスキップ
+cloze-complete = 練習終了
+cloze-skipped = スキップ済み
+cloze-undo = 前の問題を元に戻す
+cloze-cancel = 問題一覧に戻る
+cloze-instructions = フレーズノートから問題を作成します。表示中の先頭100件まで練習できます。検索で絞り込めます。復習予定への登録は別途行います。
+cloze-rules = 回答はNFCと前後の空白除去のみで比較します。大文字・記号・仮名・読み方は区別します。選択式には同じ学習言語の異なる回答が必要です。
+cloze-start-typed = 表示中を入力式で練習
+cloze-start-choice = 表示中を選択式で練習
+cloze-start-due = 期限の来た問題を復習
+cloze-enrol = 復習予定に登録
+cloze-delete = 問題と復習予定を削除
+cloze-error = 操作できません。問題の重複・入力・件数上限、または古い復習予定を確認し、再読み込みしてください。
+cloze-unavailable = 対象の問題がないか、文または同じ学習言語の異なる選択肢がありません。
+cloze-start-due-choice = 期限の来た問題を選択式で復習
+
+# SEN-001…SEN-003: exact local sentence examples.
+bank-title = 例文バンク
+bank-close = 例文バンクを閉じる
+bank-instructions = 現在の自分の本、読み込み済みの主字幕全体、または所有するJSON例文パックを登録します。辞書の表記と読みで完全一致検索できます。保存済みの例文はオフラインでも利用できます。
+bank-index-book = 現在の本を登録
+bank-index-track = 主字幕を登録
+bank-import = 所有する例文を取り込む
+bank-indexing = 例文を準備・保存中…
+bank-cancel = 登録を中止
+bank-expression = 表記
+bank-reading = 読み
+bank-search = 完全一致の例文を検索
+bank-snapshot = 保存済み例文・出典は開くときに確認します
+bank-export = 表示中の例文を書き出す
+bank-sources = 登録済みの出典
+bank-delete = 保存済みの出典を削除
+bank-error = 登録できません。辞書・言語・形式・上限を確認してください。一部のみの保存は行いません。
+bank-cancelled = 例文の登録を中止しました。
+bank-source-missing = 元の出典を利用できません。保存済みの例文は保持します。
+bank-source-changed = 元の文章が変更されています。保存した位置は開きませんでした。
+bank-filter = 所有する例文パックJSON
+bank-examples = 出典をまたいだ例文
+
+# BMG-001…BMG-004: validated batch exporter/recovery.
+batch-invalid = バッチの入力または上限を確認してください。
+batch-schema-needed = オフラインのバッチにはLapisを使用するか、このノートタイプのフィールドを明示的に設定してください。
+batch-identity-field = バッチの重複確認には単語・読みだけを含む空でない先頭フィールドが必要です。他の設定では単一カードの作成を使用してください。
+batch-source-changed = 保存した出典が見つからないか変更されています。取り込みとプレビューをやり直してください。
+batch-stale-preview = 設定・辞書・フィールド・出典が変更されています。バッチのプレビューをやり直してください。
+batch-reconcile-ambiguous = Anki内の操作を一意に確認できません。カードは再送信しませんでした。
+batch-unknown = ノートは既に作成されている可能性があります。同じ操作IDで確認してから対応してください。
+batch-title = カードのバッチ作成
+batch-close = バッチ画面を閉じる
+batch-new = 新しいバッチ
+batch-stop = 現在のカードの後で停止
+batch-instructions = 選択した主字幕の語彙、検索結果、保存済み例文から追加します。文とメディアを選び、テキストのプレビューを確認してから明示的に開始してください。不明な結果は操作IDで確認します。
+batch-details = プレビューを確認
+batch-retry = 確定した失敗を再試行
+batch-context = 元の文
+batch-audio = 文の音声
+batch-image = 画像
+batch-media-planned = 以下は描画済みのテキストフィールドです。選択したメディアの抽出は開始後に行います。
+batch-preview = テキストのプレビューを準備
+batch-start = 確認済みのバッチを開始
+batch-continue = 残りのカードを続行
+batch-history = バッチ履歴
+batch-reconcile = Ankiで同じ操作を確認
+batch-delete-journal = 解決済みの記録を削除
+batch-selected = 選択語をバッチに追加
+batch-add-lookup = この語をバッチに追加
+batch-add-context = この文をバッチに使用
+batch-new-required = 処理中、または開始済みです。終了するか、新しいバッチを作成してから編集してください。
+batch-journal-error = 記録を保存できません。上限、重複・未解決の操作、ライブラリの書き込み可否を確認してください。新しい送信は開始しませんでした。
+batch-planned = 未送信
+batch-sending = 送信中
+batch-created = 作成済み
+batch-kept = 後で送信するため保存
+batch-duplicate = 重複のためスキップ
+batch-unresolved = 結果が未解決
+batch-failed = 保存前の失敗
+batch-cancelled = キャンセル済み
+
+# M108 — Named profiles and explicit composer controls
+mining-profiles = カード作成プロファイル
+mining-profiles-hint = 保存先、デッキ、ノートタイプ、タグ、フィールドのテンプレートを保存します。変更を保持するには設定を保存してください。
+mining-profile-name = プロファイル名
+mining-profile-save = 新しいプロファイルを保存
+mining-profile-apply = プロファイルを適用：{ $name }
+mining-profile-delete = プロファイルを削除：{ $name }
+mining-profile-invalid = 無効または重複したプロファイル、もしくは上限の16件を超えています。
+composer-fields = フィールドの編集と固定
+composer-fields-hint = 有効にしたフィールドはテンプレートの代わりに入力した文字列を使用します。固定は今回の起動中のみ有効で、通常の作成や一括作成には適用されません。
+composer-field-value = 入力文字列：{ $name }
+composer-pin = フィールドを固定：{ $name }
+composer-senses = 辞書の語義を選択
+composer-profile-hint = プロファイルを適用すると下書きを閉じ、固定したフィールドをすべて解除します。その後、作成画面を開き直してください。
+composer-fields-invalid = フィールドが存在しないか、空、または上限を超えています。ノートタイプと編集内容を確認してください。
+composer-senses-stale = 変更されていない語義を少なくとも1つ選択してください。辞書の変更後は作成画面を開き直してください。
+composer-source-stale = 元のソースまたは検索が変更されました。下書きを閉じて作成画面を開き直してください。
+
+# M109 — Guided lookup and held secondary peek
+settings-pause-lookup = 一時停止時の検索
+settings-pause-off = 無効
+settings-pause-unknown = 最初の未知語
+settings-pause-kanji = 最初の漢字
+settings-pause-hint = 最初の表示中の主字幕を使用します。未知語はインストール済み辞書と単語の状態で判定します。漢字の検索は別のルールです。
+action-lookup-first-kanji = 最初の漢字を検索
+action-peek-translation = 押している間だけ副字幕の訳を表示
+
+# M110 — Additional local documents
+error-book-document = この文書は無効、未対応、または構造上の上限を超えています。
+error-book-pdf-helper = PDFのテキスト抽出にはPopplerのpdftotextが必要です。詳細設定で実行ファイルを選択するか、対応する環境ではセットアップからインストールしてください。
+error-book-document-tool = 文書の抽出に失敗しました：{ $reason }
+settings-pdftotext = Poppler pdftotextの実行ファイルまたはフォルダー
+setup-tool-system-package = システムパッケージ（管理者認証）
+setup-tool-system-package-hint = PopplerはLinuxのパッケージ管理とそのリポジトリ・ネットワーク設定を使用します。インストールには管理者認証が必要な場合があります。停止すると後続の処理を止め、実行中のシステム処理は完了を待ちます。アプリの独自プロキシ設定時やサンドボックス内ではインストールできません。既存のツールは引き続き使用できます。
+setup-tool-system-proxy = システムのパッケージ管理でPopplerをインストールするか、既存の実行ファイルを指定してください。システムインストールでアプリのプロキシ設定を回避することはできません。
+reader-tools-title = 注釈と検索
+reader-tools-close = 閉じる
+annotations-title = 注釈
+annotations-error = 注釈を保存できませんでした。無効か、重複しているか、上限を超えています。
+annotations-no-book = 注釈を付けるにはテキストの本を開いてください。
+annotations-export = 表示中を書き出す（TSV）
+annotations-search = 注釈を絞り込む
+annotations-this-book = この本だけ
+annotations-chapter = 章
+annotations-stale = 本文が変わりました。この位置は表示しません
+annotations-go = 本で開く
+annotations-cover = 範囲：
+annotations-cover-word = 単語
+annotations-cover-sentence = 文
+annotations-cover-paragraph = 段落
+annotations-quote = 引用した本文
+annotations-name = 名前
+annotations-note = メモ
+annotations-invalid = しおりには名前が必要です。名前に改行は使えません。引用・名前・メモは上限内にしてください。
+annotation-kind-bookmark = しおり
+annotation-kind-highlight = ハイライト
+annotation-kind-note = メモ
+annotation-new-bookmark = しおりを追加
+annotation-new-highlight = ハイライト
+annotation-new-note = メモを追加
+search-title = 本を検索
+search-instructions = 追加したすべての本の本文から文字列をそのまま検索します（大文字小文字とUnicodeの合成は区別しません）。漫画は検索しません。
+search-query = 検索する文字列
+search-run = 検索
+search-cancel = 中止
+search-invalid = 制御文字を含まない1〜256バイトの文字列を入力してください。
+search-failed = 検索に失敗したか、中止されました。
+search-summary = { $books }冊で{ $hits }件
+search-truncated = ほかの結果は省略しました。文字列を絞り込んでください。
+search-unreadable = 検索できなかった本（見つからないか変更済み）：{ $books }
+books-mode = 読み方
+books-mode-scroll = スクロール
+books-mode-pages = ページ
+books-mode-sentence = 一文ずつ
+books-page-of = { $page } / { $pages }ページ
+books-sentence-of = { $sentences }文中{ $sentence }文目・{ $paragraph }段落
+books-previous-sentence = 前の文
+books-next-sentence = 次の文
+podcasts-title = ポッドキャスト
+podcasts-close = 閉じる
+podcasts-instructions = RSSフィードのアドレス（HTTPS）でポッドキャストを追加します。指示しない限り取得もダウンロードもしません。ダウンロードしたエピソードは、文字起こしや自分のタイミング付きテキストと一緒にオフラインで聴けます。
+podcasts-url = フィードのアドレス
+podcasts-add = 追加または更新
+podcasts-fetching = フィードを読み込み中…
+podcasts-stop = 中止
+podcasts-downloading = ダウンロード中：{ $total } MiB 中 { $done } MiB
+podcasts-empty = ポッドキャストはまだありません。
+podcasts-refresh = 更新
+podcasts-feed-page = ウェブページ
+podcasts-remove = ダウンロードごと削除
+podcasts-unlisted = （フィードにはもうありません）
+podcasts-play = 再生
+podcasts-delete = ダウンロードを削除
+podcasts-import = タイミング付きテキストを使う…
+podcasts-has-text = テキストあり
+podcasts-no-text = テキストなし
+podcasts-resume = ダウンロードを再開
+podcasts-download = ダウンロード
+podcasts-episode-page = エピソードのページ
+podcasts-error = ポッドキャスト：{ $reason }
+podcasts-bad-url = HTTPSのフィードアドレスを入力してください。
+podcasts-transcript-unsupported = ダウンロードしました。この文字起こしの形式（{ $kind }）には対応していません。自分のタイミング付きテキストを使えます。
+podcasts-transcript-saved = 文字起こしと一緒にダウンロードしました。
+podcasts-transcript-none = ダウンロードしました。フィードに文字起こしはありません。自分のタイミング付きテキストを使えます。
+podcasts-cancelled = 中止しました。再開すると続きからダウンロードします
+podcasts-download-failed = ダウンロードが完了しませんでした：{ $reason }
+podcasts-missing-file = ダウンロードしたファイルがありません。もう一度ダウンロードしてください。
+shortcut-map-export = ショートカットを書き出す…
+shortcut-map-import = ショートカットを読み込む…
+shortcut-map-filter = Nikomiru のショートカット設定
+shortcut-map-preview = 読み込んだショートカット：確認してから「適用」してください
+shortcut-map-no-changes = この設定で変わるものはありません。
+shortcut-map-change = { $action }：{ $before } → { $after }
+shortcut-map-unknown = このバージョンにない操作は無視します：{ $actions }
+shortcut-map-invalid-key = { $action }：「{ $key }」はキーではありません
+shortcut-map-apply = 適用
+shortcut-map-cancel = キャンセル
+shortcut-map-failed = ショートカット設定を読み込めませんでした：{ $reason }
+shortcut-map-invalid = Nikomiru のショートカット設定ではありません。
+shortcut-map-newer = 新しい Nikomiru で書かれています。
+shortcut-map-too-large = 上限（64 KiB、512 操作、各 8 キー）を超えています。
+settings-study = 学習言語
+settings-study-language = 学習する言語
+settings-study-segmentation = 単語の区切り
+settings-study-segmentation-dictionary = 辞書の最長一致
+settings-study-segmentation-words = 空白で区切られた単語
+settings-study-readings = 読み
+settings-study-readings-on = 単語の上に読みを表示
+settings-study-dictionaries-auto = 辞書：自動（この言語の辞書と、言語を宣言していない辞書）
+settings-study-dictionaries-hint = チェックを外すと、この言語で使う辞書を自分で選べます。単語の状態・フレーズ・練習・復習カードは言語ごとに別々に保存されます。
+servers-kind = サーバー：
+servers-kind-jellyfin = Jellyfin
+servers-kind-emby = Emby
+settings-palette = 配色
+settings-palette-default = 標準
+settings-palette-oled = OLED ブラック
+settings-palette-high-contrast = ハイコントラスト
+settings-shaders = 映像シェーダー
+settings-shaders-preset = シェーダーのプリセット
+settings-shaders-off = オフ
+settings-shaders-fast = Anime4K 高速
+settings-shaders-quality = Anime4K 高画質
+settings-shaders-hint = Anime4K（MIT ライセンス、bloc97 作）は GPU でアニメを鮮明にし拡大します。プリセットを使うにはシェーダー（0.8 MB）をダウンロードしてください。それ以外では何もダウンロードしません。高画質には性能の高い GPU が必要です。
+settings-shaders-download = Anime4K シェーダーをダウンロード
+settings-shaders-remove = Anime4K シェーダーを削除
+settings-shaders-overridden = mpv の独自オプションでシェーダーが設定されています。そちらを使い、プリセットはオフになります。
+settings-shaders-installed = Anime4K シェーダーをインストールしました。
+settings-shaders-removed = Anime4K シェーダーを削除しました。
+settings-shaders-failed = Anime4K シェーダーをインストールまたは削除できませんでした：{ $reason }
+settings-shaders-refused = この映像ではシェーダーを使えません（{ $reason }）。プリセットをオフにしました。
+updates-title = アップデート
+updates-channel = リリースチャンネル
+updates-channel-stable = 安定版
+updates-channel-beta = ベータ版
+updates-check = アップデートを確認
+updates-unconfigured = このビルドには署名鍵がないため、アップデートは配信されません。新しいバージョンはリリースページかパッケージマネージャーから入手してください。
+updates-up-to-date = Nikomiru は最新です。
+updates-available = バージョン { $version } が利用できます（{ $date }）。
+updates-notes = 変更点
+updates-download = ダウンロード（{ $size } MB）
+updates-downloading = ダウンロード中：{ $total } MB 中 { $done } MB
+updates-install = インストール
+updates-installed = バージョン { $version } をインストールしました。次に Nikomiru を開いたときに起動します。
+updates-flatpak = Flatpak で更新してください（ソフトウェアセンターまたは `flatpak update`）。
+updates-package = システムのパッケージマネージャーで更新してください。
+updates-read-only = このインストール先のフォルダーには書き込めません。リリースページから新しいバージョンを入手してください。
+updates-not-portable = Nikomiru が更新できるのはポータブル版だけです。
+updates-no-artifact = このシステム向けのダウンロードがありません。
+updates-failed = アップデートに失敗しました：{ $reason }

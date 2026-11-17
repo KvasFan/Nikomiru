@@ -13,10 +13,15 @@
 pub mod align;
 pub mod analysis;
 mod cbz;
+pub mod documents;
 mod epub;
 mod markup;
+/// Offline data-only Mokuro volumes and original text regions.
+pub mod mokuro;
 #[cfg(feature = "test-support")]
 pub mod sample;
+/// Bounded TXT, Markdown and durable pasted documents (BOK-011…BOK-014).
+pub mod text;
 pub mod vertical;
 pub mod web;
 
@@ -32,9 +37,35 @@ pub fn read(path: &Path) -> Result<Book, BookError> {
     }
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     match extension.as_deref() {
+        Some("htmlz" | "docx" | "rtf" | "pdf") => {
+            documents::read(path, &documents::Builtin, &nikomiru_core::Cancel::new())
+        }
         Some("cbz" | "zip") => cbz::read(path),
+        Some("mokuro") => mokuro::read(path),
         Some("html" | "htm" | "xhtml") => web::read(path),
+        Some("txt" | "md" | "markdown" | "nikomiru-text") => text::read(path, None),
         _ => epub::read(path),
+    }
+}
+
+/// Read with native legacy/PDF support, retaining ordinary EPUB/manga behaviour.
+pub fn read_with_support(
+    path: &Path,
+    support: &dyn documents::Support,
+    cancel: &nikomiru_core::Cancel,
+) -> Result<Book, BookError> {
+    analysis::check_cancel(cancel)?;
+    if path.extension().is_some_and(|e| {
+        matches!(
+            e.to_string_lossy().to_ascii_lowercase().as_str(),
+            "htmlz" | "docx" | "rtf" | "pdf"
+        )
+    }) {
+        documents::read(path, support, cancel)
+    } else {
+        let book = read(path)?;
+        analysis::check_cancel(cancel)?;
+        Ok(book)
     }
 }
 
@@ -72,6 +103,8 @@ pub struct Chapter {
 /// A book.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Book {
+    /// Content-derived identity for loose documents; legacy books retain their existing identity.
+    pub identity: Option<String>,
     /// Its title.
     pub title: String,
     /// Its author.
@@ -82,6 +115,8 @@ pub struct Book {
     /// It is made of pages: each chapter is one picture, and a position
     /// counts pages (MNG-001).
     pub manga: bool,
+    /// Imported text regions by original manga page; absent for ordinary comics.
+    pub manga_regions: BTreeMap<usize, mokuro::Page>,
     /// Its chapters, in reading order.
     pub chapters: Vec<Chapter>,
     /// The bytes of its pictures, by their place in the archive.
@@ -142,6 +177,21 @@ pub enum BookError {
     /// (WEB-001).
     #[error("the page is not UTF-8")]
     NotPage,
+    /// Invalid UTF-8, controls, title or managed document format/version.
+    #[error("invalid text document")]
+    InvalidText,
+    /// Malformed or unsupported inert document structure/encoding.
+    #[error("invalid document")]
+    InvalidDocument,
+    /// Native PDF text extraction is unavailable.
+    #[error("PDF text extraction is unavailable")]
+    PdfUnavailable,
+    /// The selected native document helper failed.
+    #[error("document helper: {0}")]
+    DocumentTool(String),
+    /// An unsupported, unsafe or inconsistent Mokuro volume.
+    #[error("invalid Mokuro volume")]
+    InvalidMokuro,
 }
 
 impl nikomiru_core::Localized for BookError {
@@ -154,15 +204,30 @@ impl nikomiru_core::Localized for BookError {
             Self::NotCbz(_) => "error-book-cbz",
             Self::NoPages => "error-book-no-pages",
             Self::NotPage => "error-book-not-page",
+            Self::InvalidText => "error-book-invalid-text",
+            Self::InvalidMokuro => "error-book-mokuro",
+            Self::InvalidDocument => "error-book-document",
+            Self::PdfUnavailable => "error-book-pdf-helper",
+            Self::DocumentTool(_) => "error-book-document-tool",
         }
     }
 
     fn message_args(&self) -> Vec<(&'static str, String)> {
         match self {
-            Self::Io(reason) | Self::NotEpub(reason) | Self::NotCbz(reason) => {
+            Self::Io(reason)
+            | Self::NotEpub(reason)
+            | Self::NotCbz(reason)
+            | Self::DocumentTool(reason) => {
                 vec![("reason", reason.clone())]
             }
-            Self::TooLarge | Self::NoText | Self::NoPages | Self::NotPage => Vec::new(),
+            Self::TooLarge
+            | Self::NoText
+            | Self::NoPages
+            | Self::NotPage
+            | Self::InvalidText
+            | Self::InvalidMokuro
+            | Self::InvalidDocument
+            | Self::PdfUnavailable => Vec::new(),
         }
     }
 }
@@ -182,6 +247,8 @@ mod tests {
             BookError::NotCbz("r".into()),
             BookError::NoPages,
             BookError::NotPage,
+            BookError::InvalidText,
+            BookError::InvalidMokuro,
         ];
         let refs: Vec<&dyn nikomiru_core::Localized> = errors
             .iter()

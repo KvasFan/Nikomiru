@@ -12,6 +12,7 @@ pub mod clock;
 pub mod config;
 pub mod error;
 pub mod fs;
+pub mod mining_profiles;
 pub mod paths;
 pub mod secrets;
 

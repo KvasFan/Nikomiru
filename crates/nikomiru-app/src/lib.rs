@@ -23,6 +23,7 @@ pub mod condense;
 #[cfg(target_os = "linux")]
 pub mod dbus;
 pub mod dictionaries;
+pub mod document_support;
 pub mod graphic;
 #[cfg(feature = "test-harness")]
 pub mod harness;
@@ -44,16 +45,20 @@ pub mod online;
 #[cfg_attr(target_os = "linux", path = "linux/mod.rs")]
 #[cfg_attr(windows, path = "windows/mod.rs")]
 pub mod platform;
+pub mod poppler_setup;
 #[cfg_attr(windows, path = "windows/portal.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod portal;
 pub mod score_subtitles;
+pub mod sentence_bank;
 pub mod servers;
 pub mod setup;
+pub mod setup_tools;
 pub mod shell;
 pub mod subtitles;
 pub mod sync;
 pub mod thumbnails;
+pub mod updates;
 pub mod vobsub_pair;
 pub mod web_video;
 #[allow(unsafe_code)]

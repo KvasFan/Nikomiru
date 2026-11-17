@@ -245,6 +245,83 @@ impl Palette {
     }
 }
 
+/// The named palettes (THM-001).
+#[cfg(test)]
+const NAMES: [&str; 3] = ["", "oled", "high-contrast"];
+
+impl Palette {
+    /// A named palette: `oled` (always dark, pure black surfaces),
+    /// `high-contrast`, or the default for anything else (THM-001).
+    pub(crate) fn named(name: &str, dark: bool, accent: Color32) -> Palette {
+        match name {
+            "oled" => {
+                let mut p = Palette::new(true, accent);
+                let black = Color32::BLACK;
+                p.backdrop = rgba(0, 0, 0, 0xe0);
+                p.page = black;
+                p.card = rgba(0, 0, 0, 0xfa);
+                p.dialog = black;
+                p.placeholder = rgb(0x1c, 0x1c, 0x1f);
+                p.popup.panel = rgba(0, 0, 0, 0xfa);
+                p.popup.section = rgb(0x1c, 0x1c, 0x1f);
+                p.popup.header_cell = rgb(0x1c, 0x1c, 0x1f);
+                p.popup.chip = rgb(0x26, 0x26, 0x2a);
+                let tile = over(p.row, p.page);
+                p.accent_text = readable(accent, &[p.card, tile], true);
+                p
+            }
+            "high-contrast" => {
+                let mut p = Palette::new(dark, accent);
+                if dark {
+                    p.backdrop = rgba(0, 0, 0, 0xf0);
+                    p.page = Color32::BLACK;
+                    p.card = rgba(0, 0, 0, 0xfc);
+                    p.dialog = Color32::BLACK;
+                    p.text = Color32::WHITE;
+                    p.details = rgb(0xe0, 0xe0, 0xe0);
+                    p.off = rgb(0xc8, 0xc8, 0xc8);
+                    p.good = rgb(0x9f, 0xff, 0xb0);
+                    p.bad = rgb(0xff, 0xc0, 0x80);
+                    p.card_border = rgba(0xff, 0xff, 0xff, 0xa0);
+                    p.popup.panel = rgba(0, 0, 0, 0xfc);
+                    p.popup.panel_border = Color32::WHITE;
+                    p.popup.text = Color32::WHITE;
+                    p.popup.weak = rgb(0xe0, 0xe0, 0xe0);
+                    p.popup.marker = rgb(0xe0, 0xe0, 0xe0);
+                    p.popup.link = rgb(0xa8, 0xd0, 0xff);
+                    p.popup.reading = rgb(0xc0, 0xdc, 0xff);
+                    p.popup.section_text = Color32::WHITE;
+                } else {
+                    p.backdrop = rgba(0, 0, 0, 0xa0);
+                    p.page = Color32::WHITE;
+                    p.card = rgba(0xff, 0xff, 0xff, 0xfe);
+                    p.dialog = Color32::WHITE;
+                    p.text = Color32::BLACK;
+                    p.details = rgb(0x2a, 0x2a, 0x2e);
+                    p.off = rgb(0x40, 0x40, 0x46);
+                    p.good = rgb(0x0b, 0x4a, 0x24);
+                    p.bad = rgb(0x6c, 0x2c, 0x00);
+                    p.card_border = rgba(0, 0, 0, 0xa0);
+                    p.popup.panel = rgba(0xff, 0xff, 0xff, 0xfe);
+                    p.popup.panel_border = Color32::BLACK;
+                    p.popup.text = Color32::BLACK;
+                    p.popup.headword = Color32::BLACK;
+                    p.popup.weak = rgb(0x2a, 0x2a, 0x2e);
+                    p.popup.marker = rgb(0x2a, 0x2a, 0x2e);
+                    p.popup.link = rgb(0x0b, 0x3d, 0x7a);
+                    p.popup.reading = rgb(0x0b, 0x2c, 0x60);
+                    p.popup.section_text = Color32::BLACK;
+                }
+                let tile = over(p.row, p.page);
+                let card = worst_background(p.card, p.backdrop, dark);
+                p.accent_text = readable_at(accent, &[card, tile], dark, 7.0);
+                p
+            }
+            _ => Palette::new(dark, accent),
+        }
+    }
+}
+
 /// `top` over the opaque `bottom`.
 pub(crate) fn over(top: Color32, bottom: Color32) -> Color32 {
     let a = f32::from(top.a()) / 255.0;
@@ -292,10 +369,15 @@ fn worst_background(card: Color32, backdrop: Color32, dark: bool) -> Color32 {
 /// `accent` made lighter (dark theme) or darker (light) until it reads on
 /// every one of `backgrounds` at 4.5:1.
 fn readable(accent: Color32, backgrounds: &[Color32], dark: bool) -> Color32 {
+    readable_at(accent, backgrounds, dark, 4.5)
+}
+
+/// `accent` made lighter or darker until it reads at `ratio`.
+fn readable_at(accent: Color32, backgrounds: &[Color32], dark: bool, ratio: f32) -> Color32 {
     let toward = if dark { Color32::WHITE } else { Color32::BLACK };
     let mut color = Color32::from_rgb(accent.r(), accent.g(), accent.b());
     let mut t = 1.0;
-    while backgrounds.iter().any(|b| contrast(color, *b) < 4.5) && t > 0.0 {
+    while backgrounds.iter().any(|b| contrast(color, *b) < ratio) && t > 0.0 {
         t -= 0.05;
         color = mix(accent, toward, t);
     }
@@ -314,7 +396,13 @@ pub(crate) fn current() -> Palette {
 /// Puts the theme `dark` or light with `accent` in use: the palette, and
 /// egui's own widgets.
 pub(crate) fn apply(ctx: &egui::Context, dark: bool, accent: Color32) {
-    let palette = Palette::new(dark, accent);
+    apply_named(ctx, "", dark, accent);
+}
+
+/// Puts a named palette in use (THM-001); OLED is always dark.
+pub(crate) fn apply_named(ctx: &egui::Context, name: &str, dark: bool, accent: Color32) {
+    let palette = Palette::named(name, dark, accent);
+    let dark = palette.dark;
     CURRENT.with(|c| c.set(palette));
     let theme = if dark {
         egui::Theme::Dark
@@ -482,9 +570,9 @@ mod tests {
             rgb(0xe0, 0x40, 0x40),
             rgb(0x80, 0x80, 0x80),
         ];
-        for dark in [true, false] {
+        for (name, dark) in NAMES.iter().flat_map(|n| [(*n, true), (*n, false)]) {
             for accent in accents {
-                let p = Palette::new(dark, accent);
+                let p = Palette::named(name, dark, accent);
                 let card = [p.backdrop, p.card];
                 let row = [p.backdrop, p.card, p.row];
                 let row_off = [p.backdrop, p.card, p.row_off];
@@ -525,11 +613,26 @@ mod tests {
                     ("header cell", q.text, panel(q.header_cell)),
                     ("selected text", q.text, panel(q.selection)),
                 ];
-                for (name, text, layers) in pairs.into_iter().chain(popup) {
+                // THM-001: the main texts of High contrast read at 7:1
+                let main = [
+                    "text/card",
+                    "details/card",
+                    "text/page",
+                    "text/dialog",
+                    "text/panel",
+                    "headword/panel",
+                    "accent/card",
+                ];
+                for (what, text, layers) in pairs.into_iter().chain(popup) {
                     let ratio = worst(text, &layers);
+                    let needed = if name == "high-contrast" && main.contains(&what) {
+                        7.0
+                    } else {
+                        4.5
+                    };
                     assert!(
-                        ratio >= 4.5,
-                        "{name}, dark {dark}, accent {accent:?}: {ratio:.2}"
+                        ratio >= needed,
+                        "{name} {what}, dark {dark}, accent {accent:?}: {ratio:.2}"
                     );
                 }
             }

@@ -68,8 +68,68 @@ fn pitch_of(e: &Entry) -> Option<Category> {
         })
 }
 
-/// Splits `text` into words (LKP-060).
+/// The characters of a whole word (LNG-001): letters, digits, marks, and
+/// apostrophes or hyphens inside it.
+fn in_word(c: char) -> bool {
+    !starts_no_word(c) || matches!(c, '\'' | '’' | '-')
+}
+
+/// A text split into whole words, each looked up whole (LNG-001): a word
+/// the dictionaries do not know as a whole stays one piece.
+fn segment_words(lookup: &Lookup, text: &str) -> Result<Vec<Word>, StoreError> {
+    let mut words: Vec<Word> = Vec::new();
+    let mut at = 0;
+    while let Some(c) = text[at..].chars().next() {
+        if starts_no_word(c) {
+            let end = at + c.len_utf8();
+            match words.last_mut() {
+                Some(w) if w.headword.is_none() && !text[w.range.clone()].chars().any(in_word) => {
+                    w.range.end = end;
+                }
+                _ => words.push(Word {
+                    range: at..end,
+                    headword: None,
+                }),
+            }
+            at = end;
+            continue;
+        }
+        let mut end = at;
+        for (i, ch) in text[at..].char_indices() {
+            if !in_word(ch) {
+                break;
+            }
+            end = at + i + ch.len_utf8();
+        }
+        // a word does not end with an apostrophe or a hyphen
+        while end > at && text[..end].ends_with(['\'', '’', '-']) {
+            end -= text[..end].chars().next_back().map_or(1, char::len_utf8);
+        }
+        let end = end.max(at + c.len_utf8());
+        let word = &text[at..end];
+        let headword = lookup
+            .first(word)?
+            .filter(|e| e.matched == word)
+            .map(|e| Headword {
+                pitch: pitch_of(&e),
+                expression: e.expression,
+                reading: e.reading,
+            });
+        words.push(Word {
+            range: at..end,
+            headword,
+        });
+        at = end;
+    }
+    Ok(words)
+}
+
+/// Splits `text` into words (LKP-060), or into whole words when the lookup
+/// says so (LNG-001).
 pub fn segment(lookup: &Lookup, text: &str) -> Result<Vec<Word>, StoreError> {
+    if lookup.whole_words() {
+        return segment_words(lookup, text);
+    }
     let mut words: Vec<Word> = Vec::new();
     let mut at = 0;
     while let Some(c) = text[at..].chars().next() {

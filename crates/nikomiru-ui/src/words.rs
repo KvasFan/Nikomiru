@@ -19,6 +19,55 @@ pub use nikomiru_library::words::{Counted, Score, WordStatus};
 use nikomiru_text::furigana::distribute_inflected;
 use nikomiru_text::kana::is_kanji;
 
+/// One bounded transient status change; source generation and expected values guard undo (KNW-050).
+#[derive(Debug, Clone)]
+pub(crate) struct StatusUndo {
+    generation: u64,
+    before: Vec<(String, String, WordStatus)>,
+    after: Vec<WordStatus>,
+}
+impl StatusUndo {
+    pub(crate) fn capture(words: &Words, changes: &[(String, String, WordStatus)]) -> Option<Self> {
+        if changes.is_empty() || changes.len() > 10_000 {
+            return None;
+        }
+        let mut before = Vec::new();
+        let mut after = Vec::new();
+        let mut seen = HashSet::new();
+        let mut bytes = 0usize;
+        for (e, r, status) in changes {
+            bytes = bytes.saturating_add(e.len()).saturating_add(r.len());
+            if bytes > 8 << 20 {
+                return None;
+            }
+            if !seen.insert(word_key(e, r)) {
+                return None;
+            }
+            let old = words.status(e, r);
+            if old != *status {
+                before.push((e.clone(), r.clone(), old));
+                after.push(*status);
+            }
+        }
+        (!before.is_empty()).then_some(Self {
+            generation: words.generation(),
+            before,
+            after,
+        })
+    }
+    pub(crate) fn available(&self, words: &Words) -> bool {
+        self.generation == words.generation()
+            && self
+                .before
+                .iter()
+                .zip(&self.after)
+                .all(|((e, r, _), expected)| words.status(e, r) == *expected)
+    }
+    pub(crate) fn restore(self, words: &Words) -> Option<Vec<(String, String, WordStatus)>> {
+        self.available(words).then_some(self.before)
+    }
+}
+
 /// Texts kept split; beyond, the cache starts again (an episode has a few
 /// hundred cues).
 pub(crate) const KEPT: usize = 4096;
@@ -287,6 +336,29 @@ impl Words {
         Some(Counted::from_lines(lines))
     }
 
+    /// Capture unique original cue rows only when every selected line is segmented.
+    pub fn counted_cues(
+        &self,
+        cues: &[nikomiru_subs::Cue],
+        indices: &[usize],
+    ) -> Result<Counted, &'static str> {
+        if indices.is_empty() || indices.len() > 100_000 {
+            return Err("vocabulary-examples-unavailable");
+        }
+        let unique: std::collections::BTreeSet<_> = indices.iter().copied().collect();
+        let mut texts = Vec::with_capacity(unique.len());
+        let mut bytes = 0usize;
+        for i in unique {
+            let cue = cues.get(i).ok_or("vocabulary-examples-unavailable")?;
+            bytes = bytes.saturating_add(cue.plain_text.len());
+            if bytes > 16 << 20 {
+                return Err("sub-export-too-large");
+            }
+            texts.push(cue.plain_text.as_str());
+        }
+        self.counted(texts).ok_or("vocabulary-examples-unavailable")
+    }
+
     /// No text is being split nor waits to be.
     pub fn idle(&self) -> bool {
         self.asked.is_empty() && self.queue.is_empty()
@@ -334,6 +406,40 @@ impl Words {
     /// The words of `text`, once split.
     pub fn get(&self, text: &str) -> Option<&[Word]> {
         self.split.get(text).map(|w| w.as_slice())
+    }
+
+    /// Exact segmented headword/reading concordance; unavailable text never yields a partial result.
+    pub fn examples(
+        &self,
+        cues: &[nikomiru_subs::Cue],
+        expression: &str,
+        reading: &str,
+    ) -> Result<Vec<usize>, &'static str> {
+        if cues.len() > 100_000
+            || cues
+                .iter()
+                .fold(0usize, |n, c| n.saturating_add(c.plain_text.len()))
+                > 16 << 20
+        {
+            return Err("vocabulary-examples-unavailable");
+        }
+        let mut indices = Vec::new();
+        for (i, cue) in cues.iter().enumerate() {
+            if cue.plain_text.trim().is_empty() {
+                continue;
+            }
+            let words = self
+                .get(&cue.plain_text)
+                .ok_or("vocabulary-examples-unavailable")?;
+            if words.iter().any(|w| {
+                w.headword
+                    .as_ref()
+                    .is_some_and(|h| h.expression == expression && h.reading == reading)
+            }) {
+                indices.push(i);
+            }
+        }
+        Ok(indices)
     }
 
     /// The headwords of the cards made (from the library).
@@ -469,6 +575,145 @@ mod tests {
                 reading: r.into(),
             }),
         }
+    }
+
+    // T-KNW-057: hints require complete segmentation, preserve exact inflected identities and deduplicate text.
+    #[test]
+    fn recall_hints_are_complete_exact_and_bounded_per_word() {
+        let mut words = Words::default();
+        let cues=nikomiru_subs::parse(nikomiru_subs::Format::Srt,"1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べた\n").cues;
+        let cards = vec![crate::recall::Card {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            count: 2,
+            hints: Vec::new(),
+        }];
+        assert!(crate::recall::sentence_hints(&words, &cues, &cards).is_err());
+        words.done(
+            0,
+            "食べた".into(),
+            Ok(vec![word("食べた", 0..9, Some(("食べる", "たべる")))]),
+        );
+        assert_eq!(
+            crate::recall::sentence_hints(&words, &cues, &cards).unwrap(),
+            [vec!["食べた".to_string()]]
+        );
+        let mut other = cards;
+        other[0].reading = "other".into();
+        assert!(crate::recall::sentence_hints(&words, &cues, &other).unwrap()[0].is_empty());
+        words.forget();
+        assert!(crate::recall::sentence_hints(&words, &cues, &other).is_err());
+    }
+
+    // T-KNW-051: reports use inflected identities, deduplicate repeated tokens and reject partial caches/readings.
+    #[test]
+    fn concordance_report_uses_complete_segmentation_and_original_timings() {
+        let mut words = Words::default();
+        let cues=nikomiru_subs::parse(nikomiru_subs::Format::Srt,"1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べる\n").cues;
+        let mut row = ListedWord {
+            expression: "食べる".into(),
+            reading: "たべる".into(),
+            count: 2,
+            status: WordStatus::Unknown,
+            card: false,
+        };
+        assert!(crate::word_export::concordance_tsv(&words, &cues, &[row.clone()], 250).is_err());
+        for cue in &cues {
+            let text = &cue.plain_text;
+            let token = word(text, 0..text.len(), Some(("食べる", "たべる")));
+            words.done(0, text.clone(), Ok(vec![token.clone(), token]));
+        }
+        let report =
+            crate::word_export::concordance_tsv(&words, &cues, std::slice::from_ref(&row), 250)
+                .unwrap();
+        assert_eq!(
+            report,
+            "expression\treading\tstart_ms\tend_ms\ttext\n食べる\tたべる\t1250\t2250\t食べた\n食べる\tたべる\t3250\t4250\t食べる\n"
+        );
+        row.reading = "other".into();
+        assert!(crate::word_export::concordance_tsv(&words, &cues, &[row], 0).is_err());
+    }
+
+    // T-KNW-050: undo guards all rows before returning a restore plan, never a partial restoration.
+    #[test]
+    fn status_undo_checks_expected_values_and_dictionary_generation() {
+        let mut words = Words::default();
+        let changes = vec![
+            ("猫".into(), "ねこ".into(), WordStatus::Known),
+            ("犬".into(), "いぬ".into(), WordStatus::Learning),
+        ];
+        let undo = StatusUndo::capture(&words, &changes).unwrap();
+        for (e, r, status) in &changes {
+            words.set_status(e, r, *status);
+        }
+        assert!(undo.available(&words));
+        let restored = undo.clone().restore(&words).unwrap();
+        assert!(restored.iter().all(|(_, _, s)| *s == WordStatus::Unknown));
+        words.set_status("猫", "ねこ", WordStatus::Ignored);
+        assert!(!undo.available(&words));
+        assert!(undo.clone().restore(&words).is_none());
+        words.set_status("猫", "ねこ", WordStatus::Known);
+        words.forget();
+        assert!(!undo.available(&words));
+        assert!(StatusUndo::capture(&words, &vec![changes[0].clone(); 10_001]).is_none());
+    }
+
+    // T-KNW-044: subset counts retain headwords, deduplicate rows and reject partial captures.
+    #[test]
+    fn scoped_vocabulary_is_complete_and_rescores_retained_counts() {
+        let mut words = Words::default();
+        let cues = nikomiru_subs::parse(
+            nikomiru_subs::Format::Srt,
+            "1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n猫\n",
+        )
+        .cues;
+        words.done(
+            0,
+            "食べた".into(),
+            Ok(vec![word("食べた", 0..9, Some(("食べる", "たべる")))]),
+        );
+        let counted = words.counted_cues(&cues, &[0, 0]).unwrap();
+        assert_eq!(words.listed_counted(&counted)[0].count, 1);
+        assert_eq!(words.listed_counted(&counted)[0].expression, "食べる");
+        words.set_status("食べる", "たべる", WordStatus::Known);
+        assert_eq!(words.listed_counted(&counted)[0].status, WordStatus::Known);
+        assert!(words.counted_cues(&cues, &[0, 1]).is_err());
+        assert!(words.counted_cues(&cues, &[9]).is_err());
+        assert!(words.counted_cues(&cues, &[]).is_err());
+        words.forget();
+        assert!(words.counted_cues(&cues, &[0]).is_err());
+        assert_eq!(counted.occurrences(), [1]);
+    }
+
+    // T-KNW-037: inflections match headword identities; different readings and unsplit cues do not guess.
+    #[test]
+    fn examples_use_segmented_identities_and_reject_partial_segmentation() {
+        let mut words = Words::default();
+        let cues = nikomiru_subs::parse(nikomiru_subs::Format::Srt, "1\n00:00:01,000 --> 00:00:02,000\n食べた\n\n2\n00:00:03,000 --> 00:00:04,000\n食べる\n\n3\n00:00:05,000 --> 00:00:06,000\n猫\n").cues;
+        assert!(words.examples(&cues, "食べる", "たべる").is_err());
+        for cue in &cues {
+            let text = &cue.plain_text;
+            let head = if text == "猫" {
+                ("猫", "ねこ")
+            } else {
+                ("食べる", "たべる")
+            };
+            words.done(
+                0,
+                text.clone(),
+                Ok(vec![word(text, 0..text.len(), Some(head))]),
+            );
+        }
+        assert_eq!(words.examples(&cues, "食べる", "たべる").unwrap(), [0, 1]);
+        assert!(
+            words
+                .examples(&cues, "食べる", "other reading")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(words.examples(&cues, "食べ", "たべる").unwrap().is_empty());
+        words.forget();
+        assert!(words.examples(&cues, "食べる", "たべる").is_err());
     }
 
     /// `「猫が食べた」`, split as the dictionaries would.
