@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.162.1] - 2026-11-18
+
+### Changed
+
+- A manga's balloons are no longer framed in blue: the text is written over them, and the pointer becomes a hand over the text to click (MNG-010).
+
 ## [2.162.0] - 2026-11-18
 
 ### Added
