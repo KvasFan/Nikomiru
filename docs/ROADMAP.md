@@ -1369,7 +1369,7 @@ Every item requires a change to SPECIFICATION.md before work starts. The [M102�
 
 | Item | Notes on licenses and dependencies |
 |---|---|
-| AniDB ed2k identification (MET-006) | Register an AniDB client; `md4`/`ed2k` (MIT/Apache) |
+| AniDB ed2k identification (MET-006) | Done in M120 (2026-11-18); the AniDB client registration remains the maintainer's |
 
 Done outside the backlog on 2026-11-03, for 2.10.0: the look of Adwaita asked by the maintainer (SET-009, T-SET-009, D-40).
 
@@ -1548,6 +1548,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M117 | P2 / XL | **Deliver the existing Windows/macOS/Android ports track.** Complete native packaging and actual device checks, platform tool installation, touch/gestures and Android AnkiDroid integration. Track each platform separately: Windows cross-compilation/Wine is not native release validation. This implements D-16; iOS is not added by implication. | [Fushi][src-fushi], [jidoujisho][src-jidoujisho], [Mizune][src-mizune] | partial: touch done, native checks open |
 | M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | done in development |
 | M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | done in development (feed not published) |
+| M120 | P3 / M | **AniDB file identification.** Identify a series from an episode's ed2k hash and size through AniDB's UDP API with the user's account, then find AniDB's title on the metadata source. Check hashing vectors, protocol errors, pacing, proxy refusal and that only the size and hash are sent. The client registration is the maintainer's. | Backlog MET-006 | done in development (client registration open) |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
 
@@ -1770,3 +1771,13 @@ Explicit update checks against a minisign-signed channel manifest pinning artifa
 M119 is complete in development except for publishing: fast CI passed **1,100 tests** and the actual-app signed-update case passed. Creating the maintainer's minisign key, setting `PRODUCTION_KEY` and publishing signed channel manifests remain open. See [M119 QA](qa/m103-m119.md#m119--signed-application-updates).
 
 M102–M119 are complete in development, with M117 partial (native ports and AnkiDroid) and M119's production key and signed feed unpublished. Full regression passed 1,159 workspace/integration tests and 138 actual GUI cases. See [source QA 2.120.0](qa/2.120.0.md).
+
+## M120 — AniDB file identification
+
+**Requirements**: MET-006. Dependency: `md4` (MIT OR Apache-2.0, already listed in §4).
+
+From the backlog, requested on 2026-11-18 with the rest of the remaining work (D-66). "Identify by file (AniDB)" on a series hashes one of its episodes (ed2k), asks AniDB's UDP API with the user's account and then searches AniDB's titles on AniList or Jikan, reusing MET-001's choice.
+
+**Exit criteria**: ed2k vectors, protocol tests against a fake UDP AniDB, component tests and an actual-app identification. A check against the real AniDB needs a registered client.
+
+M120 is complete in development: the unit, L4, component and actual-app tests pass. **Open**: registering Nikomiru's AniDB client and setting `CLIENT`, then a check against the real AniDB with a real file.

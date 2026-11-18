@@ -19,6 +19,7 @@ serde_json.workspace = true
 crc32fast.workspace = true
 serde.workspace = true
 sha2.workspace = true
+md4.workspace = true
 thiserror.workspace = true
 tungstenite.workspace = true
 # RSS feeds (POD-001), already in the graph through nikomiru-books (ADR 0010)

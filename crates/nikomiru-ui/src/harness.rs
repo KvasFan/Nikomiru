@@ -1571,6 +1571,7 @@ pub fn library(
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"
             "identify" => Command::LibraryIdentify(id()?),
+            "identify-file" => Command::LibraryIdentifyFile(id()?),
             "choose" => Command::LibraryIdentifyChoose(id().ok().map(|i| i as usize)),
             "forget" => Command::LibraryForget(id()?),
             "play" => Command::LibraryPlay(path()?),

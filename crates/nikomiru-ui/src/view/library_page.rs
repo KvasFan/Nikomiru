@@ -137,6 +137,8 @@ pub(crate) struct Scene<'a> {
     pub exporting: bool,
     /// Word-status colours enable explicit series scores (KNW-017).
     pub colours: bool,
+    /// An AniDB account is in the settings (MET-006).
+    pub anidb: bool,
     /// The score of an episode, by uid, while the words are coloured
     /// (KNW-008).
     pub episode_score: &'a dyn Fn(&str) -> Option<crate::scores::EpisodeScore>,
@@ -161,6 +163,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         to_review: s.config().anki.to_review(),
         exporting: s.audio_export.running.is_some(),
         colours: s.config().subtitles.word_colors,
+        anidb: s.anidb_ready(),
         episode_score: &|uid: &str| s.episode_score(uid),
         tr: &tr,
     };
@@ -936,6 +939,23 @@ fn online_details(
     parts.join(" · ")
 }
 
+/// MET-006: identify the series from one of its files through AniDB; enabled
+/// once an AniDB account is in Settings → Subtitle services.
+fn anidb_button(ui: &mut Ui, s: &Scene<'_>, id: u64, free: bool, out: &mut Vec<Command>) {
+    let hint = if s.anidb {
+        "library-identify-file-hint"
+    } else {
+        "library-identify-file-setup"
+    };
+    let button = ui
+        .add_enabled(free && s.anidb, Button::new(tr(s, "library-identify-file")))
+        .on_hover_text(tr(s, hint))
+        .on_disabled_hover_text(tr(s, hint));
+    if button.clicked() {
+        out.push(Command::LibraryIdentifyFile(id));
+    }
+}
+
 /// MET-001, MET-002: what AniList or Jikan said of the series, or the way
 /// to ask them; the results to choose from when none has exactly its title.
 fn online(ui: &mut Ui, s: &Scene<'_>, id: u64, out: &mut Vec<Command>) {
@@ -974,18 +994,22 @@ fn online(ui: &mut Ui, s: &Scene<'_>, id: u64, out: &mut Vec<Command>) {
                 {
                     out.push(Command::LibraryIdentify(id));
                 }
+                anidb_button(ui, s, id, identify.is_none(), out);
                 if ui.button(tr(s, "library-forget")).clicked() {
                     out.push(Command::LibraryForget(id));
                 }
             });
         }
         None if identify.is_none() => {
-            let button = ui
-                .button(tr(s, "library-identify"))
-                .on_hover_text(tr(s, "library-identify-hint"));
-            if button.clicked() {
-                out.push(Command::LibraryIdentify(id));
-            }
+            ui.horizontal_wrapped(|ui| {
+                let button = ui
+                    .button(tr(s, "library-identify"))
+                    .on_hover_text(tr(s, "library-identify-hint"));
+                if button.clicked() {
+                    out.push(Command::LibraryIdentify(id));
+                }
+                anidb_button(ui, s, id, true, out);
+            });
         }
         None => {}
     }
@@ -1314,7 +1338,7 @@ mod tests {
     use crate::catalog::Home;
     use egui::Id;
     use egui_kittest::Harness;
-    use egui_kittest::kittest::Queryable;
+    use egui_kittest::kittest::{NodeT, Queryable};
     use nikomiru_library::home::SeriesSummary;
     use nikomiru_library::{FolderRecord, SeriesRecord};
     use nikomiru_online::servers::Item;
@@ -1330,6 +1354,7 @@ mod tests {
         /// The episodes' scores (KNW-008).
         scores: HashMap<String, crate::scores::EpisodeScore>,
         colours: bool,
+        anidb: bool,
     }
 
     fn harness(page: LibraryPage) -> Harness<'static, Test> {
@@ -1355,6 +1380,7 @@ mod tests {
                         to_review: false,
                         exporting: false,
                         colours: t.colours,
+                        anidb: t.anidb,
                         episode_score: &|uid: &str| t.scores.get(uid).copied(),
                         tr: &tr,
                     };
@@ -1370,6 +1396,7 @@ mod tests {
                     closed: false,
                     scores: HashMap::new(),
                     colours: false,
+                    anidb: false,
                 },
             )
     }
@@ -1871,7 +1898,7 @@ mod tests {
         assert!(matches!(out.as_slice(), [Command::ServerMore]));
     }
 
-    // T-MET-001: a series asked online, the result chosen, forgotten
+    // T-MET-001, T-MET-006: a series asked online, the result chosen, forgotten
     #[test]
     fn a_series_is_identified_from_its_page() {
         use crate::catalog::Identify;
@@ -1886,6 +1913,20 @@ mod tests {
             series: Some((1, Some(episodes.clone()))),
             ..LibraryPage::default()
         });
+        h.run();
+        // T-MET-006: by file only once an AniDB account is set
+        assert!(
+            h.get_by_label("library-identify-file")
+                .accesskit_node()
+                .is_disabled()
+        );
+        h.state_mut().anidb = true;
+        h.run();
+        assert!(matches!(
+            click(&mut h, "library-identify-file")[..],
+            [Command::LibraryIdentifyFile(1)]
+        ));
+        h.state_mut().anidb = false;
         h.run();
         assert!(matches!(
             click(&mut h, "library-identify")[..],
