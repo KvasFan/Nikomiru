@@ -69,7 +69,7 @@
 
 ## What works today
 
-The latest release is [2.130.0](https://github.com/KvasFan/Nikomiru/releases/tag/v2.130.0): a Flatpak and native archives for Linux x86_64, an Arch `PKGBUILD`, and a Windows x86_64 preview as an MSI installer or a portable ZIP, so far checked only under Wine. It includes milestones M45…M120, with local documents, annotations, podcasts, MDict media, study languages beyond Japanese, Emby, signed update checks and AniDB identification. Source tag v2.140.0 adds subtitles generated from the speech with whisper.cpp, and line tools to translate (DeepL), explain (Claude), shadow and read text from the picture (M121…M125). The status of each area follows the [ROADMAP](docs/ROADMAP.md).
+The latest release is [2.150.0](https://github.com/KvasFan/Nikomiru/releases/tag/v2.150.0): a Flatpak and native archives for Linux x86_64, an Arch `PKGBUILD`, and a Windows x86_64 preview as an MSI installer or a portable ZIP, so far checked only under Wine. It has a main page in tabs (collection, videos with a history and saved links, books, manga, websites), subtitles generated from the speech with whisper.cpp, line tools to translate (DeepL), explain (Claude), shadow and read text from the picture, one-click lookups on manga pages, and furigana kept on their line in web pages. The status of each area follows the [ROADMAP](docs/ROADMAP.md).
 
 Books also read local HTMLZ, RTF, DOCX and text-layer PDF files in Books (M110). PDF needs installed Poppler `pdftotext`; Setup can explicitly reuse it or offer a supported Linux system-package installation. See the [document guide](docs/guide/en.md#additional-local-documents-m110-development) for supported structures and limits.
 
