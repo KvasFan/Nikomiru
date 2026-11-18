@@ -850,6 +850,7 @@ books-previous = Capitolo precedente
 books-next-page = Pagina successiva
 books-previous-page = Pagina precedente
 manga-double = Due pagine
+manga-text = Testo sulla pagina
 manga-page = Pagina { $number }
 manga-bad-page = Questa pagina non si può mostrare.
 manga-offer = Per leggere il testo di una pagina, Nikomiru ha bisogno di un modello di lettura da { $size } MB, scaricato una volta sola da Hugging Face. Funziona su questo computer: le pagine non vanno da nessuna parte.

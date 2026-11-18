@@ -268,6 +268,15 @@ fn l7_the_real_models_read_a_page_ahead() {
         s["books"],
         desk.log()
     );
+    // for review by eye (MNG-012): the text written over the balloons
+    let shots = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from);
+    let shot = |name: &str| {
+        if let Some(dir) = &shots {
+            std::thread::sleep(Duration::from_millis(500));
+            desk.capture(&dir.join(name));
+        }
+    };
+    shot("manga-text.png");
     // the second balloon read, its 食 clicked
     h.cmd(json!({"cmd":"books","action":"region-at","paragraph":1,"offset":9}));
     let s = h.state_until("looked up", |s| {
@@ -278,6 +287,7 @@ fn l7_the_real_models_read_a_page_ahead() {
         .unwrap_or_default()
         .to_string();
     assert!(text.contains("食べ"), "{text}");
+    shot("manga-lookup.png");
     eprintln!("read ahead: {text}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());

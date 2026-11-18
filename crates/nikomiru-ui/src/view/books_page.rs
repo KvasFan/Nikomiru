@@ -159,6 +159,8 @@ pub(crate) struct Scene<'a> {
     pub annotated: &'a [(usize, std::ops::Range<usize>)],
     /// The size of a book's text, as a share of the usual one (RDR-005).
     pub zoom: f32,
+    /// A manga's text is written over its balloons (MNG-012).
+    pub manga_text: bool,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -176,6 +178,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         double: s.book_double(),
         can_read_along: s.book_can_read_along(),
         zoom: s.book_zoom(),
+        manga_text: s.manga_text(),
         tr: &tr,
     };
     let (close, add) = draw(ctx, &scene, &mut view.books, out);
@@ -450,31 +453,128 @@ fn cell_centre(area: egui::Rect, first: usize, cell: &Cell) -> egui::Pos2 {
 }
 
 fn draw_cell(ui: &Ui, area: egui::Rect, first: usize, cell: &Cell) {
-    let color = palette::current().text;
-    let font = FontId::proportional(text_size());
     let centre = cell_centre(area, first, cell);
-    let text = cell.ch.to_string();
-    match cell.stance {
+    draw_glyph(
+        ui.painter(),
+        centre,
+        cell.ch,
+        cell.stance,
+        text_size(),
+        palette::current().text,
+    );
+}
+
+/// A character of `size` centred on `centre`, standing as vertical writing
+/// wants it.
+fn draw_glyph(
+    painter: &egui::Painter,
+    centre: egui::Pos2,
+    ch: char,
+    stance: Stance,
+    size: f32,
+    color: Color32,
+) {
+    let font = FontId::proportional(size);
+    let text = ch.to_string();
+    match stance {
         Stance::Upright => {
-            ui.painter()
-                .text(centre, Align2::CENTER_CENTER, text, font, color);
+            painter.text(centre, Align2::CENTER_CENTER, text, font, color);
         }
         Stance::Corner => {
-            let at = centre + vec2(text_size() * 0.3, -text_size() * 0.3);
-            ui.painter()
-                .text(at, Align2::CENTER_CENTER, text, font, color);
+            let at = centre + vec2(size * 0.3, -size * 0.3);
+            painter.text(at, Align2::CENTER_CENTER, text, font, color);
         }
         Stance::Turned => {
-            let galley = ui.fonts_mut(|f| f.layout_no_wrap(text, font, color));
-            let size = galley.size();
+            let galley = painter.layout_no_wrap(text, font, color);
+            let turned = galley.size();
             // a quarter turn around the cell's centre
-            let at = centre + vec2(size.y / 2.0, -size.x / 2.0);
-            ui.painter().add(
+            let at = centre + vec2(turned.y / 2.0, -turned.x / 2.0);
+            painter.add(
                 egui::epaint::TextShape::new(at, galley, color)
                     .with_angle(std::f32::consts::FRAC_PI_2),
             );
         }
     }
+}
+
+/// Behind a manga's text written over its balloon: the balloon's white.
+const OVER_BALLOON: Color32 = Color32::from_rgb(250, 250, 250);
+/// A manga's text written over its balloon, dark whatever the theme.
+const BALLOON_INK: Color32 = Color32::from_rgb(24, 24, 24);
+
+/// A character of a manga's text, where it is written over its balloon.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Glyph {
+    /// Its byte in the region's text.
+    offset: usize,
+    ch: char,
+    centre: egui::Pos2,
+}
+
+/// Where a region's characters are written over a page of `size` pixels
+/// drawn at `drawn` (MNG-012): at one size for the whole balloon, as wide
+/// as its narrowest line (as tall, across) and no longer than every line
+/// holds, so it is about the picture's; each line from its top (vertical)
+/// or its left, its characters spread along it as the picture's are, at
+/// most a fifth of a character apart.
+fn region_glyphs(
+    region: &nikomiru_books::mokuro::Region,
+    size: (u32, u32),
+    drawn: egui::Rect,
+) -> (f32, Vec<Glyph>) {
+    let sx = drawn.width() / size.0.max(1) as f32;
+    let sy = drawn.height() / size.1.max(1) as f32;
+    let lines: Vec<(usize, &str, egui::Rect, usize)> = region
+        .lines
+        .iter()
+        .filter_map(|(range, [l, t, r, b])| {
+            let text = region.text.get(range.clone())?;
+            let count = text.chars().count();
+            let at = egui::Rect::from_min_max(
+                drawn.min + vec2(*l as f32 * sx, *t as f32 * sy),
+                drawn.min + vec2(*r as f32 * sx, *b as f32 * sy),
+            );
+            (count > 0).then_some((range.start, text, at, count))
+        })
+        .collect();
+    let along = |at: &egui::Rect| {
+        if region.vertical {
+            (at.width(), at.height())
+        } else {
+            (at.height(), at.width())
+        }
+    };
+    let fits = |at: &egui::Rect, count: usize| {
+        let (across, long) = along(at);
+        across.min(long / count as f32)
+    };
+    let size = lines
+        .iter()
+        .map(|(_, _, at, count)| fits(at, *count))
+        .fold(f32::INFINITY, f32::min);
+    if !size.is_finite() || size <= 0.0 {
+        return (0.0, Vec::new());
+    }
+    let glyphs = lines
+        .iter()
+        .flat_map(|(start, text, at, count)| {
+            let step = (along(at).1 / *count as f32).min(size * 1.2);
+            text.char_indices().enumerate().map(move |(i, (byte, ch))| {
+                let along = (i as f32 + 0.5) * step;
+                let centre = if region.vertical {
+                    egui::pos2(at.center().x, at.top() + along)
+                } else {
+                    egui::pos2(at.left() + along, at.center().y)
+                };
+                Glyph {
+                    offset: start + byte,
+                    ch,
+                    centre,
+                }
+            })
+        })
+        .collect();
+    (size, glyphs)
 }
 
 /// The readings of the paragraphs on the page, beside their bases.
@@ -733,6 +833,13 @@ fn manga_reader(
         painter.image(handle.id(), *drawn, uv, Color32::WHITE);
         pages.push((*page, *drawn));
     }
+    let page_text = open
+        .book
+        .chapters
+        .get(open.chapter)
+        .and_then(|c| c.paragraphs.first())
+        .map(|p| &p.text)
+        .filter(|t| !t.is_empty());
     for (page, drawn) in &pages {
         // imported text, else what was found reading ahead (MNG-011)
         let regions = open
@@ -755,6 +862,33 @@ fn manga_reader(
                             b as f32 / imported.height as f32 * drawn.height(),
                         ),
                 );
+                // its text written over it, at about the size of the picture's
+                // (MNG-012), the word looked up marked on it
+                let glyphs = region_glyphs(region, (imported.width, imported.height), *drawn);
+                if s.manga_text && !glyphs.1.is_empty() {
+                    painter.rect_filled(at.expand(2.0), 4.0, OVER_BALLOON);
+                    let chosen = open.chapter == *page && page_text == Some(&region.text);
+                    let marked = s
+                        .page
+                        .highlight
+                        .as_ref()
+                        .filter(|(paragraph, _)| chosen && *paragraph == 0)
+                        .map(|(_, range)| range.clone());
+                    let (size, cells) = &glyphs;
+                    for glyph in cells {
+                        if marked.as_ref().is_some_and(|r| r.contains(&glyph.offset)) {
+                            let cell =
+                                egui::Rect::from_center_size(glyph.centre, vec2(*size, *size));
+                            painter.rect_filled(cell.expand(1.0), 2.0, MARK);
+                        }
+                        let stance = if region.vertical {
+                            nikomiru_books::vertical::stance(glyph.ch)
+                        } else {
+                            Stance::Upright
+                        };
+                        draw_glyph(&painter, glyph.centre, glyph.ch, stance, *size, BALLOON_INK);
+                    }
+                }
                 // enlarged, a balloon may be partly or wholly out of view
                 let at = at.intersect(rect);
                 if !at.is_positive() {
@@ -789,7 +923,19 @@ fn manga_reader(
                     let point = hit.interact_pointer_pos().unwrap_or(at.center());
                     let x = (point.x - drawn.min.x) / drawn.width() * imported.width as f32;
                     let y = (point.y - drawn.min.y) / drawn.height() * imported.height as f32;
-                    match region.offset_at(x, y) {
+                    // the character written under the pointer, else the
+                    // share of the line of the picture's
+                    let written = glyphs
+                        .1
+                        .iter()
+                        .min_by(|a, b| {
+                            a.centre
+                                .distance_sq(point)
+                                .total_cmp(&b.centre.distance_sq(point))
+                        })
+                        .filter(|_| s.manga_text)
+                        .map(|glyph| glyph.offset);
+                    match written.or_else(|| region.offset_at(x, y)) {
                         Some(offset) => out.push(Command::MokuroLookup {
                             page: *page,
                             region: index,
@@ -1216,6 +1362,13 @@ fn reader(
                     .clicked()
             {
                 out.push(Command::MangaDouble(!s.double));
+            }
+            if manga
+                && ui
+                    .selectable_label(s.manga_text, tr(s, "manga-text"))
+                    .clicked()
+            {
+                out.push(Command::MangaText(!s.manga_text));
             }
             if !manga
                 && ui
@@ -2148,6 +2301,7 @@ mod tests {
         mode: &'static str,
         annotated: Vec<(usize, std::ops::Range<usize>)>,
         zoom: f32,
+        manga_text: bool,
     }
 
     fn harness<'a>(page: BooksPage) -> Harness<'a, Test> {
@@ -2171,6 +2325,7 @@ mod tests {
                         mode: t.mode,
                         annotated: &t.annotated,
                         zoom: t.zoom,
+                        manga_text: t.manga_text,
                         tr: &tr,
                     };
                     t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
@@ -2188,6 +2343,7 @@ mod tests {
                     mode: "scroll",
                     annotated: Vec::new(),
                     zoom: 1.0,
+                    manga_text: true,
                 },
             )
     }
@@ -3274,5 +3430,102 @@ mod tests {
             "{:?}",
             h.state().out
         );
+    }
+
+    // T-MNG-012: a balloon's text written in its lines, columns from the
+    // right, at one size each line holds, about the picture's
+    #[test]
+    fn a_balloon_is_written_where_it_is() {
+        // two columns of 4 in a block 100×200, the page drawn at half size
+        let region = nikomiru_books::mokuro::Region::guessed(
+            [0, 0, 100, 200],
+            "今日は晴れです！".into(),
+            true,
+        );
+        let drawn = egui::Rect::from_min_size(Pos2::new(10.0, 20.0), vec2(200.0, 400.0));
+        let (size, glyphs) = region_glyphs(&region, (400, 800), drawn);
+        // each column 25 wide and 100 tall for 4 (25 each)
+        assert_eq!(size, 25.0);
+        assert_eq!(glyphs.len(), 8);
+        assert_eq!(glyphs[0].ch, '今');
+        assert_eq!(glyphs[0].centre, Pos2::new(10.0 + 37.5, 20.0 + 12.5));
+        assert_eq!(glyphs[4].ch, 'れ');
+        assert_eq!(glyphs[4].offset, 12);
+        assert_eq!(glyphs[4].centre, Pos2::new(10.0 + 12.5, 20.0 + 12.5));
+        // a row, left to right, as tall as it, a fifth apart at most
+        let wide = nikomiru_books::mokuro::Region::guessed([0, 0, 400, 40], "ここ".into(), false);
+        let (size, glyphs) = region_glyphs(&wide, (400, 800), drawn);
+        assert_eq!(size, 20.0);
+        assert_eq!(glyphs[1].centre, Pos2::new(10.0 + 36.0, 20.0 + 10.0));
+        let empty = nikomiru_books::mokuro::Region::guessed([0, 0, 10, 10], String::new(), true);
+        assert!(region_glyphs(&empty, (400, 800), drawn).1.is_empty());
+    }
+
+    // T-MNG-012: a click looks up the character written under it; the text
+    // over the balloons is switched off and on from the reader's line
+    #[test]
+    fn a_written_character_is_clicked() {
+        let mut open = manga();
+        open.book.manga_regions.insert(
+            0,
+            nikomiru_books::mokuro::Page {
+                width: 100,
+                height: 200,
+                regions: vec![nikomiru_books::mokuro::Region::guessed(
+                    [10, 10, 90, 190],
+                    "猫です".into(),
+                    true,
+                )],
+            },
+        );
+        let mut h = harness(BooksPage {
+            open: Some(open),
+            ..Default::default()
+        });
+        h.run();
+        let region = h.get_by_label("mokuro-region").rect();
+        // the region holds one column of 3: its last character near the bottom
+        let (_, glyphs) = region_glyphs(
+            &nikomiru_books::mokuro::Region::guessed([10, 10, 90, 190], "猫です".into(), true),
+            (100, 200),
+            // the page as drawn: the region's rect scaled back out
+            {
+                let sx = region.width() / 80.0;
+                let sy = region.height() / 180.0;
+                egui::Rect::from_min_size(
+                    region.min - vec2(10.0 * sx, 10.0 * sy),
+                    vec2(100.0 * sx, 200.0 * sy),
+                )
+            },
+        );
+        let at = glyphs[1].centre;
+        h.hover_at(at);
+        h.run();
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run();
+        }
+        assert!(
+            h.state().out.iter().any(|c| matches!(
+                c,
+                Command::MokuroLookup {
+                    page: 0,
+                    region: 0,
+                    offset: 3,
+                    ..
+                }
+            )),
+            "{:?}",
+            h.state().out
+        );
+        h.state_mut().out.clear();
+        h.get_by_label("manga-text").click();
+        h.run();
+        assert!(matches!(h.state().out[..], [Command::MangaText(false)]));
     }
 }

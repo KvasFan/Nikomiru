@@ -76,7 +76,8 @@ impl Columns {
     }
 }
 
-fn stance(c: char) -> Stance {
+/// How a character stands in vertical writing.
+pub fn stance(c: char) -> Stance {
     match c {
         '、' | '。' | '，' | '．' => Stance::Corner,
         'ー' | '—' | '―' | '–' | '－' | '〜' | '～' | '…' | '‥' | '「' | '」' | '『' | '』'
