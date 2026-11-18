@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.150.0] - 2026-11-18
+
+The main page in tabs, manga words looked up in one click, and furigana kept on their line (M127).
+
 ### Added
 
 - The main page has tabs: Collection (the imported series and films), Videos, Books, Manga and Websites, then Statistics, the Review and media servers. The Videos tab keeps a history of the videos opened on their own (files, web videos, media servers) and saved links to watch later (VID-001, VID-002). The tools (Texthooker, phrase notebook, recall, podcasts, annotations, search) are in one Tools menu.
