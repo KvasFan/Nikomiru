@@ -56,6 +56,9 @@ pub trait OcrService: Send {
     fn install(&self, proxy: String, translator: Translator, reports: Reports);
     /// Reads a part of a page, off this thread.
     fn read(&self, job: OcrJob, translator: Translator, done: Box<dyn FnOnce(Reading) + Send>);
+    /// Loads the model off this thread, when it is installed and not loaded
+    /// yet, so that the first reading does not wait for it (MNG-003).
+    fn warm(&self) {}
 }
 
 /// No reader: for the tests of the interface.

@@ -32,6 +32,20 @@ pub const CHUNK: u64 = 16 << 20;
 /// The tries of a request at each address.
 const ATTEMPTS: u32 = 3;
 
+/// The rounds of tries of a piece of the pack at every address (INS-004):
+/// a library takes hundreds of requests, and a server that slows down or
+/// answers an error for a while must not end a download of gigabytes.
+/// The waits double: 2, 4, 8, 16 and 32 s, about a minute in all.
+const PACK_ROUNDS: u32 = 6;
+
+/// Waits `d`, but no longer than until `cancel`.
+fn pause(d: Duration, cancel: &Cancel) {
+    let end = std::time::Instant::now() + d;
+    while !cancel.is_cancelled() && std::time::Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(50).min(d));
+    }
+}
+
 /// The largest dictionary downloaded (INS-002).
 pub const MAX_DICTIONARY: u64 = 512 << 20;
 
@@ -94,7 +108,7 @@ impl<'a> Pack<'a> {
     }
 
     /// `len` bytes of the pack from `from`, a request per part and chunk,
-    /// each tried at every address that has it, three rounds.
+    /// each tried at every address that has it, six rounds, the waits doubling.
     pub fn read(&self, from: u64, len: u64, cancel: &Cancel) -> Result<Vec<u8>, OnlineError> {
         let mut out = Vec::with_capacity(usize::try_from(len).unwrap_or(0).min(64 << 20));
         for span in self.manifest.spans(from, len, CHUNK) {
@@ -110,7 +124,7 @@ impl<'a> Pack<'a> {
         cancel: &Cancel,
     ) -> Result<Vec<u8>, OnlineError> {
         let mut last = bad("no address for this part");
-        for round in 0..ATTEMPTS {
+        for round in 0..PACK_ROUNDS {
             for (url, at) in sources {
                 if cancel.is_cancelled() {
                     return Err(OnlineError::Cancelled);
@@ -123,8 +137,8 @@ impl<'a> Pack<'a> {
                     }
                 }
             }
-            if round + 1 < ATTEMPTS {
-                std::thread::sleep(self.backoff * (round + 1));
+            if round + 1 < PACK_ROUNDS {
+                pause(self.backoff * (1 << round), cancel);
             }
         }
         Err(last)

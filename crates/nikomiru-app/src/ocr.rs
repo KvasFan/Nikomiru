@@ -63,6 +63,14 @@ impl SharedEngine {
         test_text().is_some() || nikomiru_ocr::installed(&self.dir)
     }
 
+    /// Whether the model is loaded already.
+    pub fn loaded(&self) -> bool {
+        self.engine
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
     /// The model, loaded.
     pub fn get(&self) -> Result<Arc<Engine>, nikomiru_ocr::OcrError> {
         let mut engine = self.engine.lock().unwrap_or_else(|e| e.into_inner());
@@ -192,6 +200,23 @@ impl OcrService for OcrWorker {
             });
         if let Err(e) = spawned {
             tracing::error!("cannot start the model's thread: {e}");
+        }
+    }
+
+    fn warm(&self) {
+        let engine = self.shared();
+        if test_text().is_some() || !nikomiru_ocr::installed(&engine.dir) || engine.loaded() {
+            return;
+        }
+        let spawned = std::thread::Builder::new()
+            .name("ocr-warm".into())
+            .spawn(move || {
+                if let Err(e) = engine.get() {
+                    tracing::warn!("loading the reading model: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::error!("cannot start the model's loading: {e}");
         }
     }
 
