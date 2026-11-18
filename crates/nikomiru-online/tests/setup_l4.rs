@@ -250,8 +250,16 @@ fn l7_the_real_pack_is_read_by_range() {
 #[ignore = "L7: reads 128 MiB of Fushi's pack on the network"]
 fn l7_the_audio_library_reads_past_its_first_parts() {
     use nikomiru_online::setup::fetch::{CHUNK, MANIFEST_URLS};
-    let http = Http::with_timeouts("", std::time::Duration::from_secs(10), std::time::Duration::from_secs(300)).unwrap();
-    let urls: Vec<Url> = MANIFEST_URLS.iter().map(|u| Url::parse(u).unwrap()).collect();
+    let http = Http::with_timeouts(
+        "",
+        std::time::Duration::from_secs(10),
+        std::time::Duration::from_secs(300),
+    )
+    .unwrap();
+    let urls: Vec<Url> = MANIFEST_URLS
+        .iter()
+        .map(|u| Url::parse(u).unwrap())
+        .collect();
     let pack = Pack::new(&http, manifest(&http, &urls).unwrap());
     let cancel = Cancel::new();
     let entries = pack.directory(&cancel).unwrap();
@@ -259,18 +267,26 @@ fn l7_the_audio_library_reads_past_its_first_parts() {
         eprintln!("{} {} bytes", e.name, e.size);
     }
     for db in entries.iter().filter(|e| e.name.starts_with("localAudio/")) {
-    let at = pack.data_offset(db, &cancel).unwrap();
-    eprintln!("{} at {at}, {} bytes", db.name, db.size);
-    for start in (512u64 << 20..640 << 20).step_by(CHUNK as usize) {
-        let spans = pack.manifest.spans(at + start, CHUNK, CHUNK);
-        for span in &spans {
-            eprintln!("  {start}: {} bytes from {:?}", span.len, span.sources.first());
+        let at = pack.data_offset(db, &cancel).unwrap();
+        eprintln!("{} at {at}, {} bytes", db.name, db.size);
+        for start in (512u64 << 20..640 << 20).step_by(CHUNK as usize) {
+            let spans = pack.manifest.spans(at + start, CHUNK, CHUNK);
+            for span in &spans {
+                eprintln!(
+                    "  {start}: {} bytes from {:?}",
+                    span.len,
+                    span.sources.first()
+                );
+            }
+            let started = std::time::Instant::now();
+            let bytes = pack.read(at + start, CHUNK, &cancel).unwrap();
+            assert_eq!(bytes.len() as u64, CHUNK);
+            eprintln!(
+                "  {} MiB read in {:?}",
+                (start + CHUNK) >> 20,
+                started.elapsed()
+            );
         }
-        let started = std::time::Instant::now();
-        let bytes = pack.read(at + start, CHUNK, &cancel).unwrap();
-        assert_eq!(bytes.len() as u64, CHUNK);
-        eprintln!("  {} MiB read in {:?}", (start + CHUNK) >> 20, started.elapsed());
-    }
     }
 }
 
