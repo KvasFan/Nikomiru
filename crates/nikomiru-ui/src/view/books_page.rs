@@ -909,13 +909,8 @@ fn manga_reader(
                 hit.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::Role::Button, !s.page.ocr.reading, &label)
                 });
-                // the page's own text: faintly framed, clicked like a subtitle
-                let stroke = if hit.hovered() {
-                    egui::Stroke::new(1.5, palette::current().accent)
-                } else {
-                    egui::Stroke::new(1.0, palette::current().accent.gamma_multiply(0.35))
-                };
-                painter.rect_stroke(at, 2.0, stroke, egui::StrokeKind::Inside);
+                // the page's own text, clicked like a subtitle: no frame
+                // over the drawing, the pointer shows it
                 if hit.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
