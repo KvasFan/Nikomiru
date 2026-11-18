@@ -1773,3 +1773,4 @@ manga-none = No manga yet. Add a CBZ, a Mokuro volume or a folder of pages.
 web-none = No web pages yet. Type a page's address above to read it.
 books-open = Read
 books-continue = Continue ({ $percent } %)
+address-hint = https://

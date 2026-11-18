@@ -1756,3 +1756,4 @@ manga-none = まだマンガがありません。CBZ、Mokuro の巻、または
 web-none = まだウェブページがありません。上にページのアドレスを入力すると読めます。
 books-open = 読む
 books-continue = 続きから（{ $percent } %）
+address-hint = https://

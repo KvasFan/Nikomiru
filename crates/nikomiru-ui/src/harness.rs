@@ -1523,7 +1523,7 @@ pub fn library(
                 ui.view.close_library_page();
                 return Ok(());
             }
-            // VID-001, BOK-004: `path` names the shelf
+            // VID-001, BOK-015: `path` names the shelf
             "shelf" => {
                 use crate::view::library_page::Shelf;
                 let name = path()

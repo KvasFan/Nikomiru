@@ -72,7 +72,7 @@ pub(crate) struct State {
     /// A tab of the settings a first step asked for (LIB-013).
     pub(crate) open_settings: Option<super::settings::SettingsTab>,
     /// The shelf shown when neither the statistics, the review nor a media
-    /// server is (VID-001, BOK-004).
+    /// server is (VID-001, BOK-015).
     pub(crate) shelf: Shelf,
     /// The link being typed on the Video shelf, and its name (VID-002).
     link_url: String,
@@ -93,7 +93,7 @@ pub(crate) enum Shelf {
     Collection,
     /// Videos opened on their own and links kept (VID-001, VID-002).
     Videos,
-    /// Books, documents and pasted text (BOK-004).
+    /// Books, documents and pasted text (BOK-015).
     Books,
     /// Manga: CBZ, folders of pages, Mokuro volumes (MNG-001).
     Manga,
@@ -228,7 +228,7 @@ pub(crate) struct Scene<'a> {
     /// The score of an episode, by uid, while the words are coloured
     /// (KNW-008).
     pub episode_score: &'a dyn Fn(&str) -> Option<crate::scores::EpisodeScore>,
-    /// The books, manga and web pages added (BOK-004), and their page's state.
+    /// The books, manga and web pages added (BOK-015), and their page's state.
     pub books: &'a crate::books::BooksPage,
     /// The links kept (VID-002).
     pub links: &'a [nikomiru_core::config::SavedLink],
@@ -267,7 +267,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     }
     if let Some(action) = view.library.books_action.take() {
         let shelf = view.library.shelf;
-        // the reader shows on the Books page, and comes back here (BOK-004)
+        // the reader shows on the Books page, and comes back here (BOK-015)
         view.open_books_page(out);
         view.books.from_library = Some(shelf);
         view.books.settle = 3;
@@ -449,7 +449,7 @@ fn tab(ui: &mut Ui, chosen: bool, text: &str) -> bool {
 fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: &mut Vec<Command>) {
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new("Nikomiru")
+            RichText::new(tr(s, "app-title"))
                 .size(26.0)
                 .family(theme::bold())
                 .color(palette::current().accent),
@@ -651,7 +651,7 @@ fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: 
                     let field = ui
                         .add(
                             TextEdit::singleline(&mut state.web_address)
-                                .hint_text("https://")
+                                .hint_text(tr(s, "address-hint"))
                                 .desired_width(ui.available_width().clamp(160.0, 420.0)),
                         )
                         .labelled_by(label.id);
@@ -678,7 +678,7 @@ fn videos(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>)
         let label = ui.label(tr(s, "videos-link-url"));
         ui.add(
             TextEdit::singleline(&mut state.link_url)
-                .hint_text("https://")
+                .hint_text(tr(s, "address-hint"))
                 .desired_width(ui.available_width().clamp(160.0, 360.0)),
         )
         .labelled_by(label.id);
@@ -1972,7 +1972,7 @@ mod tests {
         }
     }
 
-    // T-VID-001, T-VID-002, T-BOK-004: the shelves are tabs; videos opened on
+    // T-VID-001, T-VID-002, T-BOK-015: the shelves are tabs; videos opened on
     // their own and links kept are on the Video shelf, books, manga and web
     // pages each on their own, and nothing of a shelf shows on another
     #[test]
