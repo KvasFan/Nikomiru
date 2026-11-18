@@ -895,6 +895,9 @@ pub(crate) enum Command {
     MangaDouble(bool),
     /// A manga's text written over its balloons, or not (MNG-012).
     MangaText(bool),
+    /// Where a manga's dictionary opens, as shares of the window, or next
+    /// to its word (MNG-014).
+    MangaPopupAt(Option<[f32; 2]>),
     /// The reading model is to be fetched.
     OcrFetch,
     /// A click on a paragraph.
@@ -2412,6 +2415,7 @@ impl Ui {
             } => s.mokuro_lookup(page, region, offset, anchor),
             Command::MangaDouble(double) => s.manga_double(double),
             Command::MangaText(shown) => s.manga_text_set(shown),
+            Command::MangaPopupAt(at) => s.manga_popup_set(at),
             Command::OcrFetch => s.ocr_fetch(),
             Command::BookClicked {
                 paragraph,

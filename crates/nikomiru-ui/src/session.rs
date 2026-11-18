@@ -7398,6 +7398,33 @@ impl Session {
         }
     }
 
+    /// Where a manga's dictionary opens once moved, as shares of the
+    /// window (MNG-014).
+    pub fn manga_popup(&self) -> Option<[f32; 2]> {
+        self.services
+            .config
+            .books
+            .manga_popup
+            .filter(|at| at.iter().all(|v| v.is_finite()))
+    }
+
+    /// The dictionary was moved, or put back next to its word: kept.
+    pub fn manga_popup_set(&mut self, at: Option<[f32; 2]>) {
+        let at = at.map(|a| {
+            a.map(|v| {
+                if v.is_finite() {
+                    v.clamp(0.0, 1.0)
+                } else {
+                    0.0
+                }
+            })
+        });
+        self.services.config.books.manga_popup = at;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// Whether a manga shows two pages.
     pub fn book_double(&self) -> bool {
         self.services.config.books.double_pages
@@ -7652,11 +7679,17 @@ impl Session {
     }
 
     /// The pages of the open manga to read ahead, when they changed
-    /// (MNG-011): those shown, then the next turn's, so that a page's text
-    /// is there to click when it comes. A page with imported text, or read
+    /// (MNG-011, MNG-013): those shown, then as many after them as set, so
+    /// that a page's text is there to click when it comes. A page with imported text, or read
     /// already, is not read again.
     /// A manga closed empties the queue: nothing is asked for then.
     pub fn take_ocr_pages(&mut self) -> Option<Vec<crate::ocr::PageJob>> {
+        // pages forgotten for want of memory wait for a turn of the page
+        if let Some(chapter) = self.books_page.open.as_ref().map(|o| o.chapter)
+            && chapter != self.books_page.ocr.forgotten.0
+        {
+            self.books_page.ocr.forgotten = (chapter, Default::default());
+        }
         let double = self.book_double();
         let ocr = &self.books_page.ocr;
         let open = self
@@ -7664,12 +7697,20 @@ impl Session {
             .open
             .as_ref()
             .filter(|o| o.book.manga && ocr.installed && ocr.pages);
+        let books = &self.services.config.books;
+        // the pages after those shown, as many as set, while their text fits
+        // in the memory set for it (MNG-013)
+        let full = crate::ocr::pages_bytes(&ocr.found) >= books.ocr_memory_bytes();
+        let ahead = if full { 0 } else { books.ocr_ahead() as usize };
+        let forgotten = &ocr.forgotten.1;
         let jobs: Vec<crate::ocr::PageJob> = open.map_or_else(Vec::new, |open| {
             let step = if double && open.chapter > 0 { 2 } else { 1 };
-            (open.chapter..open.chapter + 2 * step)
+            let shown = open.chapter..open.chapter + step;
+            (open.chapter..open.chapter + step + ahead.max(step) * usize::from(!full))
                 .filter(|page| {
                     !open.book.manga_regions.contains_key(page) && !ocr.found.contains_key(page)
                 })
+                .filter(|page| shown.contains(page) || !forgotten.contains(page))
                 .filter_map(|page| {
                     let key = open
                         .book
@@ -7706,6 +7747,15 @@ impl Session {
         if self.books_page.open.as_ref().is_none_or(|o| o.uid != uid) {
             return;
         }
+        let shown = self.books_page.open.as_ref().map_or(0..0, |open| {
+            let step = if self.book_double() && open.chapter > 0 {
+                2
+            } else {
+                1
+            };
+            open.chapter..open.chapter + step
+        });
+        let limit = self.services.config.books.ocr_memory_bytes();
         let ocr = &mut self.books_page.ocr;
         ocr.preparing.remove(&page);
         let found = read.unwrap_or_else(|e| {
@@ -7717,6 +7767,9 @@ impl Session {
             }
         });
         ocr.found.insert(page, found);
+        ocr.forgotten.1.remove(&page);
+        let gone = crate::ocr::forget_far(&mut ocr.found, shown, limit);
+        ocr.forgotten.1.extend(gone);
     }
 
     /// The reader answered: the text goes under the page, where it is

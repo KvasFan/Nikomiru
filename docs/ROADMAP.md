@@ -1555,7 +1555,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M124 | P2 / S | **Shadowing.** Record the microphone with ffmpeg, read it with whisper.cpp and score it against the line; play it back. | D-74, SHD-001, SHD-002 | done in development (real-microphone check open) |
 | M125 | P2 / S | **Text read from the picture.** A dragged part of the frame read by the manga OCR model, looked up as a Texthooker line. | D-75, OCR-001 | done in development |
 | M127 | P1 / M | **Main page shelves, manga lookups and furigana.** Tabs for the collection, videos (history and saved links), books, manga and websites; no overlapping text; one-click lookups on Mokuro pages and a dictionary opened after a dragged box is read; furigana kept on their base in web pages. | D-77, VID-001, VID-002, BOK-015, MNG-010, WEB-004 | done in development |
-| M128 | P1 / S | **Manga pages read ahead, and zoom.** A text detector finds a page's balloons; the page shown and the next are read in the background and clicked like a Mokuro volume. Ctrl and the wheel zoom books' text and manga pages; the text found is written over the balloons. | D-78, D-79, D-80, MNG-011, MNG-012, RDR-005 | done in development |
+| M128 | P1 / S | **Manga pages read ahead, and zoom.** A text detector finds a page's balloons; the page shown and the next are read in the background and clicked like a Mokuro volume. Ctrl and the wheel zoom books' text and manga pages; the text found is written over the balloons; pages read further ahead within a set memory, and a manga dictionary that stays where it is put. | D-78…D-81, MNG-011…MNG-014, RDR-005 | done in development |
 | M126 | P3 / L | **Live device linking.** Host on the local network, QR pairing, phone browser remote with lookups and mining on the host, then hand-off and streaming. | D-76, [ADR 0011](adr/0011-device-linking.md) | proposed, waiting for the maintainer |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
@@ -1812,9 +1812,9 @@ Asked by the maintainer on 2026-11-18 (D-77).
 
 ## M128 — Manga pages read ahead, and zoom
 
-**Requirements**: MNG-011, RDR-005, MNG-012. One new model file, comic-text-detector (GPL-3.0), fetched with the reader; no new crate; a JSON cache of pages read.
+**Requirements**: MNG-011, RDR-005, MNG-012, MNG-013, MNG-014. One new model file, comic-text-detector (GPL-3.0), fetched with the reader; no new crate; a JSON cache of pages read.
 
-Asked by the maintainer on 2026-11-18 (D-78): OCR was still slow, so the page shown and the next should be read before the reader asks. Then (D-79): Ctrl and the wheel zoom in manga and books. Then (D-80, 2.161.0): the text found written in its place, at about its size.
+Asked by the maintainer on 2026-11-18 (D-78): OCR was still slow, so the page shown and the next should be read before the reader asks. Then (D-79): Ctrl and the wheel zoom in manga and books. Then (D-80, 2.161.0): the text found written in its place, at about its size. Then (D-81, 2.162.0): pages read further ahead within a memory set in the options, and the manga dictionary moved where it does not cover the text, remembered.
 
 **Exit criteria**: unit tests of the blocks kept, the guessed lines, the cache and the text zoom's range; component tests of the read-ahead regions and of zooming text and manga pages; an actual-app test of the page shown and the next read ahead and clicked; an L7 check with the real detector and reader.
 

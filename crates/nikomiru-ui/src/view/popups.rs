@@ -73,6 +73,9 @@ struct Panel {
     entry: Option<usize>,
     /// The border being dragged (POP-006).
     drag: Option<Drag>,
+    /// The panel being moved by its handle: where the pointer and the panel
+    /// were when it started (MNG-014).
+    moving: Option<(Pos2, Pos2)>,
     /// The side of its word the panel keeps once resized: a new size must
     /// not throw it across the word.
     side: Option<Side>,
@@ -233,6 +236,10 @@ pub(crate) struct Scene<'a> {
     /// What the learner knows of a word, while the words are coloured: the
     /// entries can change it (KNW-001).
     pub word_status: Option<StatusOf<'a>>,
+    /// A manga is read: the first panel has a handle to move it (MNG-014).
+    pub movable: bool,
+    /// Where it was moved to: its top left corner, as shares of the window.
+    pub pinned: Option<[f32; 2]>,
 }
 
 /// Draws the popups; returns the levels drawn with their content.
@@ -240,6 +247,7 @@ pub(crate) fn show(
     ctx: &egui::Context,
     s: &Session,
     state: &mut State,
+    movable: bool,
     out: &mut Vec<Command>,
 ) -> Vec<usize> {
     let tr = |id: &str, args: &[(&str, String)]| s.translator().tr(id, args);
@@ -250,6 +258,8 @@ pub(crate) fn show(
         tr: &tr,
         word_audio: s.word_audio_on(),
         word_status: s.word_colors_on().then_some(&status as StatusOf<'_>),
+        movable,
+        pinned: s.manga_popup(),
     };
     draw(ctx, &scene, state, out)
 }
@@ -428,7 +438,22 @@ pub(crate) fn draw(
         }
         let word = word(p, window);
         let dragged = resize(ctx, panel, word, scene.size, screen, layer.id, out);
-        let (rect, side) = place(word, panel, scene.size, dragged, screen);
+        let (mut rect, side) = place(word, panel, scene.size, dragged, screen);
+        // in a manga, the first panel where it was moved to, or is being
+        // moved, inside the window (MNG-014)
+        let movable = scene.movable && level == 0;
+        if movable {
+            let target = match (panel.moving, pointer) {
+                (Some((origin, start)), Some(now)) => Some(start + (now - origin)),
+                _ => scene
+                    .pinned
+                    .map(|[x, y]| screen.min + vec2(x * screen.width(), y * screen.height())),
+            };
+            if let Some(target) = target {
+                let max = (screen.max - rect.size()).max(screen.min);
+                rect = Rect::from_min_size(target.clamp(screen.min, max), rect.size());
+            }
+        }
         let mut measured = None;
         Area::new(layer.id)
             .order(Order::Foreground)
@@ -447,6 +472,14 @@ pub(crate) fn draw(
                         // held to the area's size in the last frame
                         ui.set_width((rect.width() - 2.0 * PAD - 2.0).max(0.0));
                         ui.set_height((rect.height() - 2.0 * PAD - 2.0).max(0.0));
+                        let handle = if movable {
+                            let row = ui.horizontal(|ui| {
+                                move_handle(ui, scene, panel, rect, screen, pointer, out);
+                            });
+                            row.response.rect.height() + ui.spacing().item_spacing.y
+                        } else {
+                            0.0
+                        };
                         let mut scroll = ScrollArea::vertical()
                             .id_salt("popup-scroll")
                             .auto_shrink([false, false]);
@@ -466,7 +499,7 @@ pub(crate) fn draw(
                             };
                             body(ui, &mut d, p, level);
                         });
-                        measured = Some(scroll.content_size.y);
+                        measured = Some(scroll.content_size.y + handle);
                     });
                 grips(ui, panel, rect, side, layer.id, &resize_name);
             });
@@ -502,6 +535,51 @@ pub(crate) fn draw(
         drawn.clear();
     }
     drawn
+}
+
+/// The handle a manga's dictionary is moved by, and the button that puts it
+/// back next to its word (MNG-014). Let go, its place is kept as shares of
+/// the window, so it stays put when the window changes size.
+fn move_handle(
+    ui: &mut Ui,
+    scene: &Scene<'_>,
+    panel: &mut Panel,
+    rect: Rect,
+    screen: Rect,
+    pointer: Option<Pos2>,
+    out: &mut Vec<Command>,
+) {
+    let colors = popup_colors();
+    let handle = ui
+        .add(
+            egui::Label::new(RichText::new((scene.tr)("popup-move", &[])).color(colors.weak))
+                .sense(Sense::drag())
+                .selectable(false),
+        )
+        .on_hover_text((scene.tr)("popup-move-hint", &[]));
+    if handle.hovered() || handle.dragged() {
+        ui.ctx().set_cursor_icon(CursorIcon::Grab);
+    }
+    if handle.drag_started()
+        && let Some(at) = pointer
+    {
+        panel.moving = Some((at, rect.min));
+    }
+    if handle.drag_stopped() && panel.moving.take().is_some() {
+        let at = rect.min - screen.min;
+        out.push(Command::MangaPopupAt(Some([
+            at.x / screen.width().max(1.0),
+            at.y / screen.height().max(1.0),
+        ])));
+    }
+    if scene.pinned.is_some() {
+        let reset = ui
+            .small_button((scene.tr)("popup-move-reset", &[]))
+            .on_hover_text((scene.tr)("popup-move-reset-hint", &[]));
+        if reset.clicked() {
+            out.push(Command::MangaPopupAt(None));
+        }
+    }
 }
 
 /// The drawing of one panel.
@@ -2000,6 +2078,9 @@ mod tests {
         word_audio: bool,
         /// The words are coloured: the status of every word (KNW-001).
         word_status: Option<WordStatus>,
+        /// A manga is read, and where its dictionary was moved (MNG-014).
+        movable: bool,
+        pinned: Option<[f32; 2]>,
     }
 
     fn word() -> popup::Rect {
@@ -2088,6 +2169,8 @@ mod tests {
                         tr: &tr,
                         word_audio: t.word_audio,
                         word_status: known.is_some().then_some(&status as StatusOf<'_>),
+                        movable: t.movable,
+                        pinned: t.pinned,
                     };
                     t.drawn = draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
                     // the session's part: the next popups take a dragged size
@@ -2127,6 +2210,8 @@ mod tests {
                     nested: Vec::new(),
                     word_audio: false,
                     word_status: None,
+                    movable: false,
+                    pinned: None,
                 },
             )
     }
@@ -2875,6 +2960,67 @@ mod tests {
             image_size(&image(None, None, Units::Px), [1000, 500], 400.0),
             vec2(400.0, 200.0),
             "never wider than the flow"
+        );
+    }
+
+    // T-MNG-014: in a manga the dictionary is moved by its handle; let go,
+    // its place is kept as shares of the window, and the next one opens
+    // there, whatever its word; ↺ puts it back next to the word
+    #[test]
+    fn a_manga_dictionary_stays_where_it_was_moved() {
+        let mut h = harness(vec![popup(1, Some(vec![entry("猫", json!(["cat"]))]))]);
+        h.run();
+        assert!(h.query_by_label("popup-move").is_none(), "only in a manga");
+        h.state_mut().movable = true;
+        h.run();
+        let before = panel(&h, 0);
+        let grip = h.get_by_label("popup-move").rect().center();
+        h.hover_at(grip);
+        h.run();
+        let press = |pressed: bool, pos: Pos2| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        h.event(press(true, grip));
+        h.run();
+        let to = grip + vec2(-300.0, -150.0);
+        for step in 1..=5 {
+            h.hover_at(grip + vec2(-60.0, -30.0) * step as f32);
+            h.run();
+        }
+        h.event(press(false, to));
+        h.run();
+        h.run();
+        let at = h.state().out.iter().find_map(|c| match c {
+            Command::MangaPopupAt(Some(at)) => Some(*at),
+            _ => None,
+        });
+        let moved = before.min + vec2(-300.0, -150.0);
+        let expected = [moved.x / 1280.0, moved.y / 720.0];
+        let at = at.expect("kept");
+        assert!(
+            (at[0] - expected[0]).abs() < 0.01 && (at[1] - expected[1]).abs() < 0.01,
+            "{at:?} {expected:?}"
+        );
+        // the session keeps it; a new lookup opens there
+        h.state_mut().pinned = Some(at);
+        h.state_mut().out.clear();
+        h.state_mut().stack = vec![popup(2, Some(vec![entry("犬", json!(["dog"]))]))];
+        h.run();
+        h.run();
+        let next = panel(&h, 0);
+        assert!((next.min - moved).length() < 2.0, "{next:?} {moved:?}");
+        h.get_by_label("popup-move-reset").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::MangaPopupAt(None))),
+            "{:?}",
+            h.state().out
         );
     }
 }

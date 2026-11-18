@@ -268,6 +268,7 @@ fn form(ui: &mut Ui, id: &str, rows: impl FnOnce(&mut Ui)) {
 fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command>) {
     general_form(ui, s, draft);
     shaders(ui, s, draft, out);
+    manga(ui, s, draft);
     let tr = |id: &str| (s.tr)(id, &[]);
     // INS-001
     section(ui, &tr("setup-title"));
@@ -278,6 +279,35 @@ fn general(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config, out: &mut Vec<Command
     section(ui, &tr("settings-keys"));
     ui.checkbox(&mut draft.general.keyring, tr("settings-keyring"));
     hint(ui, &tr("settings-keyring-hint"));
+}
+
+/// How far a manga is read ahead, and the memory its text may take
+/// (MNG-013).
+fn manga(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
+    use nikomiru_core::config::BooksConfig;
+    let tr = |id: &str| (s.tr)(id, &[]);
+    let books = &mut draft.books;
+    let (mut ahead, mut memory) = (books.ocr_ahead(), (books.ocr_memory_bytes() >> 20) as u32);
+    section(ui, &tr("settings-manga"));
+    form(ui, "settings-manga-form", |ui| {
+        row(ui, &tr("settings-ocr-ahead"), |ui| {
+            ui.add(Slider::new(&mut ahead, BooksConfig::OCR_AHEAD).logarithmic(true))
+        });
+        row(ui, &tr("settings-ocr-memory"), |ui| {
+            ui.add(
+                Slider::new(&mut memory, BooksConfig::OCR_MEMORY)
+                    .logarithmic(true)
+                    .suffix(" MB"),
+            )
+        });
+    });
+    hint(ui, &tr("settings-ocr-hint"));
+    if ahead != books.ocr_ahead() {
+        books.ocr_ahead = Some(ahead);
+    }
+    if memory as usize != books.ocr_memory_bytes() >> 20 {
+        books.ocr_memory_mb = Some(memory);
+    }
 }
 
 /// The shader presets and their pack (THM-002, THM-003).
