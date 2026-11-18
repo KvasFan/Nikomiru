@@ -223,6 +223,27 @@ pub fn runs_as(stage: &Path, release: &str) -> Result<(), String> {
     }
 }
 
+/// Unpacks `archive` into `stage`. Release archives keep everything in one
+/// top folder (`Nikomiru-<release>/`): when the program is not at the top but
+/// that single folder is all there is, its content becomes the stage.
+fn unpack(archive: &Path, kind: &str, stage: &Path, cancel: &Cancel) -> Result<(), String> {
+    let unpacked = stage.with_extension("unpack");
+    let _ = std::fs::remove_dir_all(&unpacked);
+    let result = extract(archive, kind, &unpacked, cancel).and_then(|()| {
+        let entries: Vec<_> = std::fs::read_dir(&unpacked)
+            .map_err(fail)?
+            .collect::<Result<_, _>>()
+            .map_err(fail)?;
+        let content = match entries.as_slice() {
+            [only] if !unpacked.join(program()).exists() && only.path().is_dir() => only.path(),
+            _ => unpacked.clone(),
+        };
+        std::fs::rename(&content, stage).map_err(fail)
+    });
+    let _ = std::fs::remove_dir_all(&unpacked);
+    result
+}
+
 /// Installs `archive` over the portable install at `root` (UPD-004): into
 /// `<root>.update`, checked to run as `release`, then swapped in, the old
 /// folder kept as `<root>.previous`. Any failure leaves `root` as it was.
@@ -240,7 +261,7 @@ pub fn install(
     let stage = root.with_file_name(format!("{name}.update"));
     let previous = root.with_file_name(format!("{name}.previous"));
     let _ = std::fs::remove_dir_all(&stage);
-    let checked = extract(archive, kind, &stage, cancel).and_then(|()| runs_as(&stage, release));
+    let checked = unpack(archive, kind, &stage, cancel).and_then(|()| runs_as(&stage, release));
     if let Err(e) = checked {
         let _ = std::fs::remove_dir_all(&stage);
         return Err(e);
@@ -519,6 +540,65 @@ mod tests {
         );
         assert!(!root.join("old.txt").exists());
         assert!(dir.path().join("Nikomiru.previous/old.txt").exists());
+        assert!(!dir.path().join("Nikomiru.update").exists());
+    }
+
+    // T-UPD-004: a Linux release archive (.tar.xz) in its top folder.
+    #[cfg(unix)]
+    #[test]
+    fn a_tar_xz_release_is_swapped_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = portable(dir.path());
+        let archive = dir.path().join("r.tar.xz");
+        let xz = lzma_rust2::XzWriter::new(
+            std::fs::File::create(&archive).unwrap(),
+            lzma_rust2::XzOptions::with_preset(6),
+        )
+        .unwrap();
+        let mut tar = tar::Builder::new(xz);
+        let program = b"#!/bin/sh\necho 'nikomiru 9.0.0'\n";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(program.len() as u64);
+        header.set_mode(0o755);
+        tar.append_data(&mut header, "nikomiru-9.0.0/nikomiru", &program[..])
+            .unwrap();
+        let mut header = tar::Header::new_gnu();
+        header.set_size(3);
+        header.set_mode(0o644);
+        tar.append_data(&mut header, "nikomiru-9.0.0/LICENSE", &b"GPL"[..])
+            .unwrap();
+        tar.into_inner().unwrap().finish().unwrap();
+        install(&archive, "tar.xz", &root, "9.0.0", &Cancel::new()).unwrap();
+        assert_eq!(std::fs::read(root.join("LICENSE")).unwrap(), b"GPL");
+        assert!(dir.path().join("Nikomiru.previous/old.txt").exists());
+    }
+
+    // T-UPD-004: published archives keep everything in one top folder.
+    #[cfg(unix)]
+    #[test]
+    fn a_release_in_its_top_folder_is_swapped_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = portable(dir.path());
+        let archive = dir.path().join("r.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        let exec = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+        zip.add_directory("Nikomiru-9.0.0/", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.start_file("Nikomiru-9.0.0/nikomiru", exec).unwrap();
+        zip.write_all(b"#!/bin/sh\necho 'nikomiru 9.0.0'\n")
+            .unwrap();
+        zip.start_file(
+            "Nikomiru-9.0.0/LICENSE",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"GPL").unwrap();
+        zip.finish().unwrap();
+        install(&archive, "zip", &root, "9.0.0", &Cancel::new()).unwrap();
+        assert_eq!(std::fs::read(root.join("LICENSE")).unwrap(), b"GPL");
+        assert!(!root.join("Nikomiru-9.0.0").exists());
+        assert!(dir.path().join("Nikomiru.previous/old.txt").exists());
+        assert!(!dir.path().join("Nikomiru.unpack").exists());
         assert!(!dir.path().join("Nikomiru.update").exists());
     }
 

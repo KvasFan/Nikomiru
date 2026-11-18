@@ -278,12 +278,41 @@ pub fn markers_in_comment(comment: &str) -> Vec<String> {
         .trim_start_matches('/')
         .trim_start_matches('!')
         .trim_start();
-    let mut out = Vec::new();
+    let mut out: Vec<String> = Vec::new();
+    // the ID read before was followed by `…`: this one ends a range
+    let mut range_open = false;
     while let Some(m) = re.find(rest) {
-        out.push(m.as_str().to_string());
+        let id = m.as_str();
+        match out.last() {
+            Some(first) if range_open => {
+                let between = range(first, id);
+                out.extend(between);
+            }
+            _ => out.push(id.to_string()),
+        }
         rest = rest[m.end()..].trim_start_matches([',', ' ']);
+        range_open = false;
+        if let Some(after) = rest.strip_prefix('…').or_else(|| rest.strip_prefix("...")) {
+            rest = after.trim_start();
+            range_open = true;
+        }
     }
     out
+}
+
+/// The IDs after `first` up to `last` (`T-ABK-001…T-ABK-004` → 002, 003,
+/// 004), when both share their prefix; otherwise `last` alone.
+fn range(first: &str, last: &str) -> Vec<String> {
+    let parts = |id: &str| {
+        let (prefix, n) = id.rsplit_once('-')?;
+        Some((prefix.to_string(), n.len(), n.parse::<u32>().ok()?))
+    };
+    match (parts(first), parts(last)) {
+        (Some((p, width, a)), Some((q, _, b))) if p == q && a < b && b - a <= 100 => {
+            (a + 1..=b).map(|n| format!("{p}-{n:0width$}")).collect()
+        }
+        _ => vec![last.to_string()],
+    }
 }
 
 /// Looks for markers in source comments.
@@ -570,6 +599,18 @@ Text that mentions SUB-001 without defining it.
         assert_eq!(
             markers_in_comment("/// T-LKP-011-a katakana"),
             ["T-LKP-011-a"]
+        );
+        assert_eq!(
+            markers_in_comment("// T-ABK-001…T-ABK-004: a file of sound"),
+            ["T-ABK-001", "T-ABK-002", "T-ABK-003", "T-ABK-004"]
+        );
+        assert_eq!(
+            markers_in_comment("// T-LNG-001...T-LNG-003, T-SRV-016 text"),
+            ["T-LNG-001", "T-LNG-002", "T-LNG-003", "T-SRV-016"]
+        );
+        assert_eq!(
+            markers_in_comment("// T-LKP-011-a…T-POP-004"),
+            ["T-LKP-011-a", "T-POP-004"]
         );
         assert!(markers_in_comment("// copies for EXT-002 and T-SEC-005").is_empty());
         assert!(markers_in_comment("/// The marker (`T-PLY-012`).").is_empty());

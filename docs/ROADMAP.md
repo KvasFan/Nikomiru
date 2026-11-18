@@ -1606,9 +1606,9 @@ The maintainer requested development of the whole planned roadmap after M102. Ex
 
 | Work | State | Evidence |
 | --- | --- | --- |
-| M103–M119 implementation | in progress | Starts from M102 commit `1107ae6` on `development/m103-m119` |
+| M103–M119 implementation | done | From M102 commit `1107ae6` on `development/m103-m119`; merged as PR #92, source tag v2.120.0, binaries published with 2.120.0 |
 | Native Windows/macOS/Android verification | pending | Maintainer confirmed Linux only for now; native Windows/macOS/Android checks remain open; cross checks alone never close M117 |
-| Production signing/feed deployment | pending | Prepare/test the updater and delivery contract before publishing signed artifacts |
+| Production signing/feed deployment | pending (maintainer's key) | `cargo xtask linux` makes the `.tar.xz` the updater installs, `cargo xtask update-manifest` writes the channel manifest; signing and uploading follow [RELEASING](RELEASING.md) once the key exists |
 
 
 ## M103 — Offline Mokuro manga import

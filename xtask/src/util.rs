@@ -68,6 +68,20 @@ pub fn display(cmd: &Command) -> String {
 }
 
 /// True if `name` is an executable reachable from `PATH`.
+/// `RUSTFLAGS` for release programs: the caller's, with this machine's paths
+/// (workspace, home) remapped so that none ends up in the program.
+pub fn release_rustflags(root: &Path) -> String {
+    let mut flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+    flags.push_str(&format!(" --remap-path-prefix={}=/build", root.display()));
+    if let Some(home) = std::env::var_os("HOME") {
+        flags.push_str(&format!(
+            " --remap-path-prefix={}=/home",
+            Path::new(&home).display()
+        ));
+    }
+    flags.trim().to_string()
+}
+
 pub fn have_program(name: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
