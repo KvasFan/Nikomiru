@@ -4,6 +4,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.151.0] - 2026-11-18
+
+### Fixed
+
+- Reading a manga balloon or text in the picture is about twice as fast: the model's decoder is optimised once instead of being worked out again at every character, its matrix products run on several cores, and the model loads in the background when the reading page or the line tools open, so the first balloon no longer waits for it (MNG-003).
+- Downloading a word-audio library from Fushi's pack no longer gives up after a server slows down or errs for a few seconds: each piece is tried in six rounds at every address, with waits doubling up to about a minute in all; a download that still stops goes on from where it was (INS-004).
+
 ## [2.150.0] - 2026-11-18
 
 The main page in tabs, manga words looked up in one click, and furigana kept on their line (M127).

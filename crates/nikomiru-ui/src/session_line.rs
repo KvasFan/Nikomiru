@@ -65,6 +65,7 @@ impl Session {
     /// Opens or closes the panel; opened, it holds the current line.
     pub fn line_tools_toggle(&mut self, open: bool) {
         if open {
+            self.services.ocr.warm();
             self.line_take_current();
         } else {
             self.line_tools.open = false;
@@ -188,6 +189,8 @@ impl Session {
             return;
         }
         let _ = self.services.player.set_pause(true);
+        // loaded while the part is chosen
+        self.services.ocr.warm();
         self.line_tools.open = true;
         self.line_tools.reading = Reading::Choosing;
     }

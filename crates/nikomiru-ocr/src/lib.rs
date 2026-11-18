@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use image::{DynamicImage, GenericImageView, ImageReader, imageops::FilterType};
 use tract_onnx::prelude::*;
-use tract_onnx::tract_hir::infer::InferenceSimplePlan;
 
 /// The side of the square the model sees.
 const SIDE: usize = 224;
@@ -238,8 +237,10 @@ fn full_width(text: String) -> String {
 #[derive(Debug)]
 pub struct Engine {
     encoder: Arc<TypedSimplePlan>,
-    decoder: Arc<InferenceSimplePlan>,
+    decoder: Arc<TypedSimplePlan>,
     vocabulary: Vec<String>,
+    /// Matrix products on half the processor's cores, as the other readers.
+    threads: tract_linalg::multithread::Executor,
 }
 
 impl Engine {
@@ -259,10 +260,18 @@ impl Engine {
             .and_then(|m| m.into_runnable())
             .map_err(model_err)?;
         let hidden = tvec!(1, HIDDEN.0, HIDDEN.1);
+        // the tokens so far are a symbolic length: the decoder is typed and
+        // optimised once, instead of having its shapes worked out again at
+        // every token (MNG-003)
         let decoder = onnx()
             .model_for_path(dir.join("decoder.onnx"))
-            .and_then(|m| m.with_input_fact(0, InferenceFact::dt(i64::datum_type())))
+            .map_err(model_err)?;
+        let length = decoder.symbols.sym("L");
+        let tokens: TVec<TDim> = tvec!(1.into(), length.into());
+        let decoder = decoder
+            .with_input_fact(0, i64::fact(&tokens).into())
             .and_then(|m| m.with_input_fact(1, f32::fact(&hidden).into()))
+            .and_then(|m| m.into_optimized())
             .and_then(|m| m.into_runnable())
             .map_err(model_err)?;
         let vocabulary = std::fs::read_to_string(dir.join("vocab.txt"))
@@ -270,15 +279,32 @@ impl Engine {
             .lines()
             .map(str::to_string)
             .collect();
+        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
         Ok(Self {
             encoder,
             decoder,
             vocabulary,
+            threads: tract_linalg::multithread::Executor::multithread((cores / 2).clamp(1, 8)),
         })
     }
 
     /// The text in `picture`: one balloon or line, not a page.
     pub fn read(&self, picture: &DynamicImage) -> Result<String, OcrError> {
+        tract_linalg::multithread::multithread_tract_scope(self.threads.clone(), || {
+            self.read_here(picture)
+        })
+    }
+
+    /// The same on this thread alone, for callers that already read many
+    /// pictures at once on threads of their own (SUB-028).
+    pub fn read_alone(&self, picture: &DynamicImage) -> Result<String, OcrError> {
+        tract_linalg::multithread::multithread_tract_scope(
+            tract_linalg::multithread::Executor::SingleThread,
+            || self.read_here(picture),
+        )
+    }
+
+    fn read_here(&self, picture: &DynamicImage) -> Result<String, OcrError> {
         let hidden = self
             .encoder
             .run(tvec!(pixel_values(picture).into()))

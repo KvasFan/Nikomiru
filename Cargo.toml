@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "2.150.0"
+version = "2.151.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-only"
@@ -97,6 +97,8 @@ quick-xml = { version = "0.41.0", default-features = false }
 crc32fast = "1.5"
 # the manga model, in pure Rust (D-30)
 tract-onnx = "0.23"
+# the same version as tract-onnx's: matrix products on several threads (MNG-003)
+tract-linalg = { version = "=0.23.9", features = ["multithread-mm"] }
 md4 = "0.11"
 regex = "1.13"
 libc = "0.2.191"

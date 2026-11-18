@@ -243,3 +243,65 @@ fn l7_the_real_pack_is_read_by_range() {
     let bytes = pack.small(db, 8 << 20, &cancel).unwrap();
     assert!(bytes.starts_with(b"SQLite format 3\0"));
 }
+
+// T-INS-004 against Fushi's real pack: where `android.db` lies and its bytes
+// from 512 MiB to 640 MiB, across the part it starts the next one in
+#[test]
+#[ignore = "L7: reads 128 MiB of Fushi's pack on the network"]
+fn l7_the_audio_library_reads_past_its_first_parts() {
+    use nikomiru_online::setup::fetch::{CHUNK, MANIFEST_URLS};
+    let http = Http::with_timeouts("", std::time::Duration::from_secs(10), std::time::Duration::from_secs(300)).unwrap();
+    let urls: Vec<Url> = MANIFEST_URLS.iter().map(|u| Url::parse(u).unwrap()).collect();
+    let pack = Pack::new(&http, manifest(&http, &urls).unwrap());
+    let cancel = Cancel::new();
+    let entries = pack.directory(&cancel).unwrap();
+    for e in entries.iter().filter(|e| e.name.starts_with("localAudio/")) {
+        eprintln!("{} {} bytes", e.name, e.size);
+    }
+    for db in entries.iter().filter(|e| e.name.starts_with("localAudio/")) {
+    let at = pack.data_offset(db, &cancel).unwrap();
+    eprintln!("{} at {at}, {} bytes", db.name, db.size);
+    for start in (512u64 << 20..640 << 20).step_by(CHUNK as usize) {
+        let spans = pack.manifest.spans(at + start, CHUNK, CHUNK);
+        for span in &spans {
+            eprintln!("  {start}: {} bytes from {:?}", span.len, span.sources.first());
+        }
+        let started = std::time::Instant::now();
+        let bytes = pack.read(at + start, CHUNK, &cancel).unwrap();
+        assert_eq!(bytes.len() as u64, CHUNK);
+        eprintln!("  {} MiB read in {:?}", (start + CHUNK) >> 20, started.elapsed());
+    }
+    }
+}
+
+// T-INS-004: a server that errs for a while does not end the download: a
+// piece failing at every address for five rounds still comes in the sixth
+#[test]
+fn a_library_survives_a_server_erring_for_a_while() {
+    let host = FakeFiles::start().unwrap();
+    let library = audio(250_000);
+    let (http, url) = pack(&host, &library);
+    let mut pack = Pack::new(
+        &http,
+        manifest(&http, &[Url::parse(&url).unwrap()]).unwrap(),
+    );
+    pack.backoff = Duration::ZERO;
+    let cancel = Cancel::new();
+    let entry = pack.directory(&cancel).unwrap().pop().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("android.db");
+    for _ in 0..5 {
+        host.then_status("/parts/pack.zip.004", 502);
+        host.then_status("/whole.zip", 503);
+    }
+    pack.download(&entry, &dest, &cancel, &mut |_| {}).unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), library);
+    // a sixth failure in a row ends it, the `.part` kept to go on from
+    std::fs::remove_file(&dest).unwrap();
+    for _ in 0..6 {
+        host.then_status("/parts/pack.zip.004", 502);
+        host.then_status("/whole.zip", 503);
+    }
+    assert!(pack.download(&entry, &dest, &cancel, &mut |_| {}).is_err());
+    assert!(part_path(&dest).exists());
+}

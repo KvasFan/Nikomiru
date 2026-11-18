@@ -7098,6 +7098,8 @@ impl Session {
     pub fn books_open(&mut self) {
         self.books_page.status = None;
         self.books_page.ocr.installed = self.services.ocr.installed();
+        // a manga's first balloon then does not wait for the model to load
+        self.services.ocr.warm();
         self.books_reload();
     }
 

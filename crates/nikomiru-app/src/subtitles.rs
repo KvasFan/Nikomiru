@@ -479,7 +479,8 @@ impl Worker {
             };
             let picture = nikomiru_ocr::grey(line.width, line.height, line.grey.clone())
                 .ok_or_else(|| "a line of no size".to_string())?;
-            engine.read(&picture).map_err(|e| e.to_string())
+            // already one picture per thread on half the cores
+            engine.read_alone(&picture).map_err(|e| e.to_string())
         };
         let started = std::time::Instant::now();
         let threads = crate::graphic::threads();
