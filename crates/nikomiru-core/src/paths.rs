@@ -168,6 +168,11 @@ impl Paths {
         self.data_dir.join("models/manga-ocr")
     }
 
+    /// Folder of whisper.cpp's models (INS-008).
+    pub fn speech_model_dir(&self) -> PathBuf {
+        self.data_dir.join("models/whisper")
+    }
+
     /// Folder of the imported dictionaries.
     pub fn dicts_dir(&self) -> PathBuf {
         self.data_dir.join("dicts")

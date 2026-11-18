@@ -20,6 +20,7 @@ mod episode_scores;
 mod gaps;
 mod guided_lookup;
 mod languages;
+mod line_tools;
 mod mining_profiles;
 mod mokuro;
 mod perf;

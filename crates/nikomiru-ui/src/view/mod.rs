@@ -22,6 +22,7 @@ mod condense;
 mod dict_page;
 mod hooker_page;
 mod library_page;
+mod line_tools;
 mod link;
 mod list;
 mod mining_dialog;
@@ -476,6 +477,8 @@ pub(crate) struct View {
     pub library: library_page::State,
     /// The subtitle list is shown (SUB-015).
     pub sub_list_open: bool,
+    /// Where the drag choosing a part of the picture started (OCR-001).
+    pub line_drag: Option<egui::Pos2>,
     /// Give the keyboard to the list's search field (Ctrl+F).
     pub sub_search_focus: bool,
     /// The window is fullscreen, as of the last frame.
@@ -891,6 +894,15 @@ impl View {
                 bar_height,
                 &mut out,
             );
+        }
+        // M121…M125: the line tools, and the choice of a part of the picture
+        if s.line_tools.open {
+            line_tools::show(&ctx, s, &mut out);
+        }
+        if s.line_tools.reading == crate::line_tools::Reading::Choosing {
+            line_tools::choose(&ctx, s, &mut self.line_drag, &mut out);
+        } else {
+            self.line_drag = None;
         }
         // the bar fades in and out over 150 ms (PLY-004)
         let opacity = ctx.animate_bool_with_time(Id::unique("bar-fade"), controls, 0.15);

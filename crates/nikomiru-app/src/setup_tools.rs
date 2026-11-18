@@ -58,6 +58,7 @@ pub fn detect(
     let setting = match tool.id.as_str() {
         "ffmpeg" => &settings.ffmpeg,
         "yt-dlp" => &settings.yt_dlp,
+        "whisper" => &settings.whisper,
         _ => &settings.deno,
     };
     let program = &artifact.programs[0];
@@ -141,6 +142,7 @@ fn validate(id: &str, program: &Path, cancel: &Cancel) -> Result<(), String> {
         let text = output(&job, cancel).map_err(fail)?;
         if (id == "deno" && !text.starts_with("deno 2."))
             || (id == "yt-dlp" && !text.trim().starts_with("20"))
+            || (id == "whisper" && !text.trim().starts_with("whisper.cpp version: 1."))
         {
             return Err("setup-tool-invalid".into());
         }
@@ -180,6 +182,13 @@ pub fn inventory(
         id: "ocr-model".into(),
         detail: String::new(),
         path: nikomiru_ocr::installed(&parts.model_dir).then(|| parts.model_dir.clone()),
+        supported: true,
+    });
+    rows.push(ToolStatus {
+        id: "speech-model".into(),
+        detail: String::new(),
+        path: nikomiru_online::setup::speech::installed(&parts.speech_dir)
+            .then(|| parts.speech_dir.clone()),
         supported: true,
     });
     rows
@@ -258,6 +267,18 @@ impl<R: Read> Read for LimitedReader<'_, R> {
     }
 }
 
+/// The name an archive member is installed under: its own, or the one the
+/// catalog gives it (a library's soname, INS-008).
+fn installed_name(artifact: &Artifact, name: String) -> String {
+    artifact.rename.get(&name).cloned().unwrap_or(name)
+}
+
+/// A link the catalog replaces: the archive's own `libx.so.1 → libx.so.1.2`,
+/// whose name the renamed library takes (INS-008).
+fn replaced_link(artifact: &Artifact, member: &str) -> bool {
+    artifact.rename.values().any(|to| to == member) && !artifact.rename.contains_key(member)
+}
+
 /// Extract allowlisted regular members only, never archive-provided output paths.
 pub fn unpack(
     file: &Path,
@@ -293,21 +314,28 @@ pub fn unpack(
                     return Err("setup-tool-too-large".into());
                 }
                 let mode = entry.unix_mode().unwrap_or(0) & 0o170000;
-                if mode != 0 && mode != 0o100000 && mode != 0o040000 {
-                    return Err("setup-tool-archive".into());
-                }
-                if !artifact.programs.contains(&name) {
+                let regular = mode == 0 || mode == 0o100000 || mode == 0o040000;
+                if !regular && replaced_link(artifact, &name) {
                     continue;
                 }
-                if entry.is_dir() || !found.insert(name.clone()) {
+                let name = installed_name(artifact, name);
+                if !artifact.programs.contains(&name) {
+                    // a link or device is never written, so one not asked for is left
+                    continue;
+                }
+                if !regular || entry.is_dir() || !found.insert(name.clone()) {
                     return Err("setup-tool-archive".into());
                 }
                 copy(&mut entry, &stage.join(name), cancel)?;
             }
         }
-        "tar.xz" => {
+        "tar.xz" | "tar.gz" => {
             let file = std::fs::File::open(file).map_err(fail)?;
-            let decoder = lzma_rust2::XzReader::new_mem_limit(file, false, 128 << 10);
+            let decoder: Box<dyn Read> = if artifact.format == "tar.gz" {
+                Box::new(flate2::read::GzDecoder::new(file))
+            } else {
+                Box::new(lzma_rust2::XzReader::new_mem_limit(file, false, 128 << 10))
+            };
             let mut archive = tar::Archive::new(LimitedReader {
                 inner: decoder,
                 cancel,
@@ -322,16 +350,18 @@ pub fn unpack(
                     return Err("setup-tool-cancelled".into());
                 }
                 let mut entry = entry.map_err(fail)?;
-                let name = safe_name(&entry.path().map_err(fail)?)?;
+                let member = safe_name(&entry.path().map_err(fail)?)?;
                 let kind = entry.header().entry_type();
-                if !kind.is_file() && !kind.is_dir() {
-                    return Err("setup-tool-archive".into());
+                if !kind.is_file() && !kind.is_dir() && replaced_link(artifact, &member) {
+                    continue;
                 }
+                let name = installed_name(artifact, member);
                 total = total.saturating_add(entry.size());
                 if total > UNPACKED_LIMIT {
                     return Err("setup-tool-too-large".into());
                 }
                 if !artifact.programs.contains(&name) {
+                    // a link or device is never written, so one not asked for is left
                     continue;
                 }
                 if !kind.is_file() || !found.insert(name.clone()) {
@@ -471,6 +501,63 @@ pub fn install(
     result
 }
 
+/// One pinned model file: name, address, SHA-256 and size.
+type Pinned<'a> = (&'a str, &'a str, &'a str, u64);
+
+/// Download pinned model files into `dir` as a complete staged directory,
+/// reported as `id`.
+fn pinned(
+    http: &Http,
+    events: &dyn Fn(SetupEvent),
+    cancel: &Cancel,
+    id: &str,
+    dir: &Path,
+    files: &[Pinned<'_>],
+) -> Result<(), String> {
+    let total: u64 = files.iter().map(|f| f.3).sum();
+    let parent = dir.parent().ok_or("setup-tool-invalid")?;
+    std::fs::create_dir_all(parent).map_err(fail)?;
+    if crate::platform::free_space(parent).is_some_and(|n| n < total + (64 << 20)) {
+        return Err("setup-tool-space".into());
+    }
+    let stage = parent.join(format!(".model-install-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&stage).map_err(fail)?;
+    let result = (|| {
+        let mut before = 0;
+        for (name, url, sha256, bytes) in files {
+            download_file(
+                http,
+                &Url::parse(url).map_err(fail)?,
+                Some(sha256),
+                &stage.join(name),
+                Duration::ZERO,
+                cancel,
+                &mut |done| {
+                    events(SetupEvent::Progress {
+                        id: id.into(),
+                        done: before + done,
+                        total,
+                    })
+                },
+            )
+            .map_err(fail)?;
+            if std::fs::metadata(stage.join(name)).map_err(fail)?.len() != *bytes {
+                return Err("setup-tool-invalid".into());
+            }
+            before += bytes;
+        }
+        if cancel.is_cancelled() {
+            return Err("setup-tool-cancelled".into());
+        }
+        publish(&stage, dir)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(stage);
+    }
+    result
+}
+
 /// Download the existing pinned OCR model as a complete staged directory.
 pub fn model(
     parts: &crate::setup::Parts,
@@ -481,53 +568,36 @@ pub fn model(
     if nikomiru_ocr::installed(&parts.model_dir) {
         return Ok(());
     }
-    let parent = parts.model_dir.parent().ok_or("setup-tool-invalid")?;
-    std::fs::create_dir_all(parent).map_err(fail)?;
-    if crate::platform::free_space(parent)
-        .is_some_and(|n| n < nikomiru_ocr::model_bytes() + (64 << 20))
-    {
-        return Err("setup-tool-space".into());
+    let files: Vec<Pinned<'_>> = nikomiru_ocr::MODEL
+        .iter()
+        .map(|f| (f.name, f.url, f.sha256, f.bytes))
+        .collect();
+    pinned(http, events, cancel, "ocr-model", &parts.model_dir, &files)
+}
+
+/// Download whisper.cpp's pinned models (INS-008).
+pub fn speech_model(
+    parts: &crate::setup::Parts,
+    http: &Http,
+    events: &dyn Fn(SetupEvent),
+    cancel: &Cancel,
+) -> Result<(), String> {
+    use nikomiru_online::setup::speech;
+    if speech::installed(&parts.speech_dir) {
+        return Ok(());
     }
-    let stage = parent.join(format!(".ocr-install-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir(&stage).map_err(fail)?;
-    let result = (|| {
-        let mut before = 0;
-        for file in nikomiru_ocr::MODEL {
-            download_file(
-                http,
-                &Url::parse(file.url).map_err(fail)?,
-                Some(file.sha256),
-                &stage.join(file.name),
-                Duration::ZERO,
-                cancel,
-                &mut |done| {
-                    events(SetupEvent::Progress {
-                        id: "ocr-model".into(),
-                        done: before + done,
-                        total: nikomiru_ocr::model_bytes(),
-                    })
-                },
-            )
-            .map_err(fail)?;
-            if std::fs::metadata(stage.join(file.name))
-                .map_err(fail)?
-                .len()
-                != file.bytes
-            {
-                return Err("setup-tool-invalid".into());
-            }
-            before += file.bytes;
-        }
-        if cancel.is_cancelled() {
-            return Err("setup-tool-cancelled".into());
-        }
-        publish(&stage, &parts.model_dir)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(stage);
-    }
-    result
+    let files: Vec<Pinned<'_>> = speech::MODEL
+        .iter()
+        .map(|f| (f.name, f.url, f.sha256, f.bytes))
+        .collect();
+    pinned(
+        http,
+        events,
+        cancel,
+        "speech-model",
+        &parts.speech_dir,
+        &files,
+    )
 }
 
 #[cfg(test)]
@@ -575,7 +645,11 @@ mod tests {
         let http =
             Http::with_timeouts("", Duration::from_secs(15), Duration::from_secs(300)).unwrap();
         let cancel = Cancel::new();
-        for tool in nikomiru_online::setup::tools::catalog() {
+        // system packages (Poppler) come from the distribution, not from here
+        for tool in nikomiru_online::setup::tools::catalog()
+            .into_iter()
+            .filter(|t| !t.system_package)
+        {
             let artifact = tool
                 .artifacts
                 .iter()

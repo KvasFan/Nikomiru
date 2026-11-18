@@ -89,6 +89,8 @@ pub struct Config {
     pub servers: Vec<ServerConfig>,
     /// `[updates]`: the release channel (UPD-001).
     pub updates: UpdatesConfig,
+    /// `[speech]`: whisper.cpp's model and the microphone (SUB-062, SHD-001).
+    pub speech: SpeechConfig,
     /// `[languages.<code>]`: the study-language profiles (LNG-001).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub languages: BTreeMap<String, LanguageProfile>,
@@ -933,6 +935,37 @@ impl Default for UpdatesConfig {
     }
 }
 
+/// `[speech]` (SUB-062, SHD-001): reading speech on this computer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SpeechConfig {
+    /// A ggml model for whisper.cpp; empty: the one the setup assistant
+    /// installed (INS-008).
+    pub model: String,
+    /// The spoken language (`ja`), or `auto`.
+    pub language: String,
+    /// Threads; 0: half the processor's cores.
+    pub threads: u32,
+    /// The microphone, as ffmpeg's `<input format>:<device>`
+    /// (`pulse:default`); empty: the system's usual one.
+    pub microphone: String,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl Default for SpeechConfig {
+    fn default() -> Self {
+        Self {
+            model: String::new(),
+            language: "ja".into(),
+            threads: 0,
+            microphone: String::new(),
+            other: toml::Table::new(),
+        }
+    }
+}
+
 /// `[sync]`: the WebDAV folder (BAK-004).
 #[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -1152,6 +1185,19 @@ pub struct OnlineConfig {
     /// AniDB's UDP API (`host:port`), another one for the tests.
     #[serde(skip_serializing_if = "is_anidb_address")]
     pub anidb_address: String,
+    /// The user's DeepL API key, for translating a line (TRN-001).
+    pub deepl_key: String,
+    /// Another DeepL address, for the tests; empty: the key's own (Free or Pro).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub deepl_address: String,
+    /// The user's Anthropic API key, for explaining a line (AIX-001).
+    pub claude_key: String,
+    /// The Claude model; empty: Nikomiru's choice.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub claude_model: String,
+    /// Another Anthropic API address, for the tests; empty: Anthropic's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub claude_address: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -1177,6 +1223,11 @@ impl Default for OnlineConfig {
             anidb_client: String::new(),
             anidb_client_version: 0,
             anidb_address: ANIDB_ADDRESS.into(),
+            deepl_key: String::new(),
+            deepl_address: String::new(),
+            claude_key: String::new(),
+            claude_model: String::new(),
+            claude_address: String::new(),
             other: toml::Table::new(),
         }
     }
@@ -1207,6 +1258,9 @@ impl std::fmt::Debug for OnlineConfig {
             .field("metadata", &self.metadata)
             .field("anidb_user", &self.anidb_user)
             .field("anidb_password", &set(&self.anidb_password))
+            .field("deepl_key", &set(&self.deepl_key))
+            .field("claude_key", &set(&self.claude_key))
+            .field("claude_model", &self.claude_model)
             .finish_non_exhaustive()
     }
 }
@@ -1270,6 +1324,9 @@ pub struct PathsConfig {
     pub yt_dlp: String,
     /// Optional Deno executable/folder for yt-dlp bundled JavaScript challenges.
     pub deno: String,
+    /// whisper.cpp's `whisper-cli`, or its folder; empty: the one the setup
+    /// assistant installed, then `PATH` (SUB-062).
+    pub whisper: String,
     /// The ffmpeg executable, or its folder; empty = `NIKOMIRU_FFMPEG`, then
     /// `PATH` (EXT-001). ffprobe is looked for next to it.
     pub ffmpeg: String,
@@ -1340,6 +1397,7 @@ impl Default for Config {
             servers: Vec::new(),
             languages: BTreeMap::new(),
             updates: UpdatesConfig::default(),
+            speech: SpeechConfig::default(),
             other: toml::Table::new(),
         }
     }
@@ -1552,7 +1610,10 @@ impl Config {
                 self.network = from.network.clone();
             }
             Section::Shortcuts => self.shortcuts = from.shortcuts.clone(),
-            Section::Advanced => self.paths = from.paths.clone(),
+            Section::Advanced => {
+                self.paths = from.paths.clone();
+                self.speech = from.speech.clone();
+            }
         }
     }
 
@@ -1614,6 +1675,8 @@ impl Config {
             Section::Advanced => {
                 let other = std::mem::take(&mut self.paths.other);
                 self.paths = PathsConfig { other, ..d.paths };
+                let other = std::mem::take(&mut self.speech.other);
+                self.speech = SpeechConfig { other, ..d.speech };
             }
         }
     }
@@ -1644,6 +1707,8 @@ impl Config {
                 "online.anidb_password".to_string(),
                 &mut self.online.anidb_password,
             ),
+            ("online.deepl_key".to_string(), &mut self.online.deepl_key),
+            ("online.claude_key".to_string(), &mut self.online.claude_key),
             ("sync.password".to_string(), &mut self.sync.password),
         ];
         out.extend(
@@ -2045,6 +2110,8 @@ Expression = "{expression}"
         config.online.opensubtitles_api_key = "s3cret-c".into();
         config.online.opensubtitles_password = "s3cret-d".into();
         config.online.anidb_password = "s3cret-g".into();
+        config.online.deepl_key = "s3cret-h".into();
+        config.online.claude_key = "s3cret-i".into();
         config.sync.password = "s3cret-e".into();
         config.servers.push(ServerConfig {
             id: "a".into(),
@@ -2073,6 +2140,8 @@ opensubtitles_username = "me"
 opensubtitles_password = "pw-s3cret"
 anidb_user = "me"
 anidb_password = "adb-s3cret"
+deepl_key = "dl-s3cret:fx"
+claude_key = "sk-ant-s3cret"
 "#,
         )
         .unwrap();
@@ -2080,13 +2149,22 @@ anidb_password = "adb-s3cret"
         assert_eq!(c.online.jimaku_url, JIMAKU_URL);
         assert_eq!(c.online.opensubtitles_url, OPENSUBTITLES_URL);
         let shown = format!("{c:?}");
-        for secret in ["jk-s3cret", "os-s3cret", "pw-s3cret", "pw0", "adb-s3cret"] {
+        for secret in [
+            "jk-s3cret",
+            "os-s3cret",
+            "pw-s3cret",
+            "pw0",
+            "adb-s3cret",
+            "dl-s3cret",
+            "sk-ant-s3cret",
+        ] {
             assert!(!shown.contains(secret), "{secret}");
         }
         // the addresses are written only when they are not the services'
         let text = toml::to_string_pretty(&c).unwrap();
         assert!(!text.contains("jimaku_url"), "{text}");
         assert!(!text.contains("anidb_address") && !text.contains("anidb_client"));
+        assert!(!text.contains("deepl_address") && !text.contains("claude_model"));
         assert_eq!(c.online.anidb_address, ANIDB_ADDRESS);
         let mut test = c.clone();
         test.online.jimaku_url = "http://127.0.0.1:9/api".into();

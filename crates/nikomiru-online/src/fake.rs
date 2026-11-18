@@ -67,6 +67,14 @@ pub struct Data {
     pub cover: Vec<u8>,
     /// Web pages, by name, at `/pages/<name>` (WEB-001).
     pub pages: BTreeMap<String, Vec<u8>>,
+    /// The DeepL key it accepts (TRN-001).
+    pub deepl_key: String,
+    /// DeepL's translations, by line.
+    pub translations: BTreeMap<String, String>,
+    /// The Anthropic key it accepts (AIX-001).
+    pub claude_key: String,
+    /// The explanation Claude gives.
+    pub explanation: String,
 }
 
 /// A series of the fake AniList and Jikan.
@@ -159,6 +167,8 @@ impl FakeOnline {
         {
             let mut d = lock(&shared.data);
             d.jimaku_key = "jimaku-key".into();
+            d.deepl_key = "deepl-key:fx".into();
+            d.claude_key = "claude-key".into();
             d.os_key = "os-key".into();
             d.remaining = 10;
         }
@@ -201,6 +211,16 @@ impl FakeOnline {
     /// The AniList URL, for `[online] anilist_url`.
     pub fn anilist_url(&self) -> String {
         format!("http://127.0.0.1:{}/anilist", self.port)
+    }
+
+    /// DeepL's address, for `[online] deepl_address`.
+    pub fn deepl_url(&self) -> String {
+        format!("http://127.0.0.1:{}/deepl", self.port)
+    }
+
+    /// The Anthropic API's address, for `[online] claude_address`.
+    pub fn claude_url(&self) -> String {
+        format!("http://127.0.0.1:{}/claude", self.port)
     }
 
     /// The Jikan base URL, for `[online] jikan_url`.
@@ -520,6 +540,60 @@ fn answer(shared: &Shared, r: &Request, port: u16) -> (u16, Vec<u8>) {
             (200, json_body(&json!({"data": data})))
         }
         ("GET", ["covers", _]) => (200, d.cover.clone()),
+        // DeepL (TRN-001): the URL path is the API's, under /deepl
+        ("POST", ["deepl", "v2", "translate"]) => {
+            if r.header("authorization") != Some(format!("DeepL-Auth-Key {}", d.deepl_key).as_str())
+            {
+                return (403, json_body(&json!({"message": "Wrong key"})));
+            }
+            let body: Value = serde_json::from_str(&r.body).unwrap_or_default();
+            let text = body["text"][0].as_str().unwrap_or_default();
+            match d.translations.get(text) {
+                Some(t) => (
+                    200,
+                    json_body(
+                        &json!({"translations": [{"detected_source_language": "JA", "text": t}]}),
+                    ),
+                ),
+                None => (456, json_body(&json!({"message": "Quota exceeded"}))),
+            }
+        }
+        // Claude (AIX-001)
+        ("POST", ["claude", "v1", "messages"]) => {
+            if r.header("x-api-key") != Some(d.claude_key.as_str()) {
+                return (
+                    401,
+                    json_body(
+                        &json!({"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}}),
+                    ),
+                );
+            }
+            let body: Value = serde_json::from_str(&r.body).unwrap_or_default();
+            if body["model"].as_str().is_none_or(str::is_empty)
+                || r.header("anthropic-version").is_none()
+            {
+                return (
+                    400,
+                    json_body(
+                        &json!({"type": "error", "error": {"type": "invalid_request_error", "message": "model and version required"}}),
+                    ),
+                );
+            }
+            (
+                200,
+                json_body(&json!({
+                    "id": "msg_fake",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": body["model"],
+                    "stop_reason": "end_turn",
+                    "content": [
+                        {"type": "thinking", "thinking": "", "signature": "x"},
+                        {"type": "text", "text": d.explanation},
+                    ],
+                })),
+            )
+        }
         ("GET", ["pages", name]) => match d.pages.get(*name) {
             Some(bytes) => (200, bytes.clone()),
             None => (404, Vec::new()),

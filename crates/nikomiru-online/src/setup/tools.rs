@@ -3,6 +3,7 @@
 //! Pinned optional executable downloads (INS-007); loading this does no I/O.
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// One platform-specific, verified upstream release artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -15,10 +16,15 @@ pub struct Artifact {
     pub sha256: String,
     /// Exact compressed/downloaded bytes.
     pub bytes: u64,
-    /// raw, zip or tar.xz.
+    /// raw, zip, tar.xz or tar.gz.
     pub format: String,
     /// Exact allowed executable basenames, never archive-provided destinations.
     pub programs: Vec<String>,
+    /// Archive basenames installed under another of `programs`: a shared
+    /// library under the name programs load it by, since links are never
+    /// extracted.
+    #[serde(default)]
+    pub rename: BTreeMap<String, String>,
 }
 
 /// An optional support program, with its explicit dependencies and provenance.
@@ -90,7 +96,7 @@ mod tests {
     #[test]
     fn pinned_platforms_and_dependency_order() {
         let c = catalog();
-        assert_eq!(c.len(), 4);
+        assert_eq!(c.len(), 5);
         assert_eq!(
             resolve(&c, &["yt-dlp".into()]).unwrap(),
             ["ffmpeg", "deno", "yt-dlp"]
@@ -116,6 +122,11 @@ mod tests {
                 assert!(!a.url.contains("/latest/"));
                 assert_eq!(a.sha256.len(), 64);
                 assert!(a.bytes > 0 && a.bytes < 512 << 20);
+                // a renamed member lands on one of the allowed names, once
+                for to in a.rename.values() {
+                    assert!(a.programs.contains(to), "{to}");
+                    assert_eq!(a.rename.values().filter(|t| *t == to).count(), 1);
+                }
             }
         }
         assert!(resolve(&c, &["unknown".into()]).is_none());

@@ -34,12 +34,14 @@ pub struct ToolPaths {
     pub yt_dlp: String,
     /// Configured Deno path.
     pub deno: String,
+    /// Configured whisper.cpp `whisper-cli` path (INS-008).
+    pub whisper: String,
 }
 
 /// Offline discovery result for one optional component.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolStatus {
-    /// Catalog id, or ocr-model.
+    /// Catalog id, ocr-model or speech-model.
     pub id: String,
     /// Validated working executable; model uses its installed directory.
     pub path: Option<PathBuf>,
@@ -256,10 +258,10 @@ impl SetupPage {
             .collect();
         let mut tools =
             nikomiru_online::setup::tools::resolve(&self.tools, &requested).unwrap_or(requested);
-        if self.ticked.contains("ocr-model")
-            && self.items.get("ocr-model") != Some(&ItemState::Done)
-        {
-            tools.push("ocr-model".into());
+        for model in ["ocr-model", "speech-model"] {
+            if self.ticked.contains(model) && self.items.get(model) != Some(&ItemState::Done) {
+                tools.push(model.into());
+            }
         }
         Plan {
             tools,

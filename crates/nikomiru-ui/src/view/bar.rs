@@ -208,6 +208,28 @@ fn subtitle_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<
         s.audio_export.running.is_some(),
         out,
     );
+    // SUB-062: subtitles read from the speech by whisper.cpp
+    if let Some((text, fraction)) = s.speech_status() {
+        super::ocr_progress::show_with(
+            ui,
+            &text,
+            fraction,
+            &tr("speech-cancel"),
+            Command::SpeechCancel,
+            out,
+        );
+    } else if ui.button(tr("speech-generate")).clicked() {
+        out.push(Command::SpeechGenerate);
+        ui.close();
+    }
+    // M121…M125
+    if ui
+        .selectable_label(s.line_tools.open, tr("line-tools"))
+        .clicked()
+    {
+        out.push(Command::LineTools(!s.line_tools.open));
+        ui.close();
+    }
     // SUB-018
     if ui
         .add_enabled(!current.is_empty(), egui::Button::new(tr("subtitle-align")))

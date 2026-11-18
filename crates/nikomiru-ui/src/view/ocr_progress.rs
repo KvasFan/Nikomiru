@@ -11,6 +11,18 @@ pub(crate) fn show(
     cancel: &str,
     out: &mut Vec<Command>,
 ) {
+    show_with(ui, text, fraction, cancel, Command::GraphicReadCancel, out);
+}
+
+/// The same, for another job: `command` stops it.
+pub(crate) fn show_with(
+    ui: &mut egui::Ui,
+    text: &str,
+    fraction: Option<f32>,
+    cancel: &str,
+    command: Command,
+    out: &mut Vec<Command>,
+) {
     if let Some(fraction) = fraction {
         ui.add(egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).text(text));
     } else {
@@ -20,7 +32,7 @@ pub(crate) fn show(
         });
     }
     if ui.button(cancel).clicked() {
-        out.push(Command::GraphicReadCancel);
+        out.push(command);
     }
 }
 

@@ -16,6 +16,7 @@ pub mod analysis_cache;
 pub mod anki;
 #[cfg(target_os = "linux")]
 pub mod appearance;
+pub mod assist;
 pub mod book_scores;
 pub mod catalog;
 pub mod cli;

@@ -621,7 +621,12 @@ pub fn state() -> Result<Value, String> {
         state["setup"] = json!({
             "running": s.setup_page.running,
             "items": s.setup_page.items.iter().map(|(id, state)| (id.clone(), format!("{state:?}"))).collect::<std::collections::BTreeMap<_, _>>(),
-            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp, "pdftotext": s.config().paths.pdftotext },
+            "paths": { "ffmpeg": s.config().paths.ffmpeg, "deno": s.config().paths.deno, "yt_dlp": s.config().paths.yt_dlp, "pdftotext": s.config().paths.pdftotext, "whisper": s.config().paths.whisper },
+        });
+        state["line_tools"] = s.line_tools.json();
+        state["speech"] = json!({
+            "running": s.speech_running(),
+            "status": s.speech_status().map(|(text, _)| text),
         });
         state["chapters"] = json!(v.chapters.iter().map(|c| c.time).collect::<Vec<_>>());
         state["batch_mining"] = json!({"open":s.batch.open,"stage":format!("{:?}",s.batch.stage),"active":s.batch.active,"stop_requested":s.batch.stop_requested,"error":s.batch.error,"cursor":s.batch.cursor,"run":s.batch.run,"journals":s.batch.journals,"entries":s.batch.selection.entries.iter().map(|e|json!({"operation":e.operation,"selected":e.selected,"enabled":e.enabled,"audio":e.audio,"image":e.image,"status":e.status,"contexts":e.contexts.iter().map(|c|json!({"expression":c.request.expression,"reading":c.request.reading,"sentence":c.request.sentence,"title":c.request.title,"offset":c.request.offset,"clip":c.request.clip,"source_uid":c.source_uid})).collect::<Vec<_>>(),"preview":e.preview.as_ref().map(|p|json!({"destination":p.destination,"deck":p.deck,"note_type":p.note_type,"tags":p.tags,"fields":p.fields,"audio":p.audio,"image":p.image}))})).collect::<Vec<_>>()});
@@ -1727,6 +1732,37 @@ pub fn align() -> Result<(), String> {
 /// "Move the subtitles" on or off (SUB-027).
 pub fn move_subtitles() -> Result<(), String> {
     call(|ui| ui.run(Command::MoveSubtitles))
+}
+
+/// The line tools (M121…M125): `open`, `close`, `translate`, `explain`,
+/// `shadow`, `play`, `read`, `area` (with `area`: left, top, width, height
+/// as shares of the picture), `cancel-read`, `click` (with `offset`), and
+/// `speech` / `speech-cancel` (SUB-062).
+pub fn line(action: &str, area: Option<[f32; 4]>, offset: Option<usize>) -> Result<(), String> {
+    let command = match action {
+        "open" => Command::LineTools(true),
+        "close" => Command::LineTools(false),
+        "translate" => Command::LineTranslate,
+        "explain" => Command::LineExplain,
+        "shadow" => Command::LineShadow,
+        "play" => Command::LinePlayRecording,
+        "read" => Command::LineRead,
+        "area" => Command::LineReadArea(area.ok_or("missing \"area\"")?),
+        "cancel-read" => Command::LineReadCancel,
+        "click" => Command::LineClicked(
+            offset.ok_or("missing \"offset\"")?,
+            Rect {
+                x: 100.0,
+                y: 100.0,
+                w: 20.0,
+                h: 20.0,
+            },
+        ),
+        "speech" => Command::SpeechGenerate,
+        "speech-cancel" => Command::SpeechCancel,
+        other => return Err(format!("unknown line action {other:?}")),
+    };
+    call(|ui| ui.run(command))
 }
 
 /// The setup assistant (INS-001, INS-007): open/close, tick/clear, install/stop/refresh.

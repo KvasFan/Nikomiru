@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed (2026-10-25): S3 met the speed criterion with `turso` but not the license one; Nikomiru reads the file itself. Waiting for the maintainer, who asked for "the best scenario" |
+| Status | **Accepted** (2026-11-18, D-70): Nikomiru reads the SQLite file itself, as implemented. Proposed on 2026-10-25: S3 met the speed criterion with `turso` but not the license one |
 | Date | 2026-10-25 |
 | Requirements | AUD-003, AUD-004, NFR-SEC-02 |
 | Milestone | M5 (spike S3, decision D-2) |
