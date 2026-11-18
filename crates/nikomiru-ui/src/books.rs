@@ -29,6 +29,18 @@ pub struct OpenBook {
     pub sentence: usize,
 }
 
+/// The smallest and largest size of a book's text, as a share of the usual
+/// one (RDR-005).
+pub const TEXT_ZOOM: std::ops::RangeInclusive<f32> = 0.6..=2.5;
+
+/// A text size kept or asked for, within [`TEXT_ZOOM`], in steps of 5 %;
+/// none, or one that is not a number, is the usual size.
+pub fn text_zoom(zoom: Option<f32>) -> f32 {
+    let zoom = zoom.filter(|z| z.is_finite()).unwrap_or(1.0);
+    let zoom = zoom.clamp(*TEXT_ZOOM.start(), *TEXT_ZOOM.end());
+    (zoom * 20.0).round() / 20.0
+}
+
 /// The Books page.
 #[derive(Debug, Default)]
 pub struct BooksPage {
@@ -145,5 +157,15 @@ mod tests {
         assert_eq!(percent(&record(1, 4)), 25);
         assert_eq!(percent(&record(0, 0)), 0);
         assert_eq!(percent(&record(9, 4)), 100);
+    }
+
+    // T-RDR-005: the text's size kept within its range, in steps of 5 %
+    #[test]
+    fn the_text_zoom_kept() {
+        assert_eq!(text_zoom(None), 1.0);
+        assert_eq!(text_zoom(Some(f32::NAN)), 1.0);
+        assert_eq!(text_zoom(Some(1.2189)), 1.2);
+        assert_eq!(text_zoom(Some(0.1)), 0.6);
+        assert_eq!(text_zoom(Some(9.0)), 2.5);
     }
 }

@@ -172,6 +172,8 @@ To read a balloon, drag a box around it. The first time, the page offers a readi
 
 With the text detector too (90 MB more, offered on the page and fetched with the model in the setup), Nikomiru reads the page you are on and the next one in the background: the line over the page says when it is done, the balloons are framed, and a click on a word looks it up at once, as in a Mokuro volume. Drag a box over any text it missed. A page read is kept, so a manga opened again is ready at once.
 
+Hold Ctrl and turn the wheel (or pinch on a touchpad) to zoom: in a book the text grows or shrinks and stays so; in a manga the page is enlarged about the pointer. An enlarged page is moved with the wheel (Shift for sideways) or by dragging with the middle button; the arrows still turn pages, and a new page opens at its top right.
+
 A Mokuro volume already has its text: its balloons are framed faintly on the page, and a click on a word looks it up directly, as in subtitles.
 
 ### Audiobooks

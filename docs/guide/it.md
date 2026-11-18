@@ -172,6 +172,8 @@ Per leggere un fumetto, trascina un riquadro intorno a esso. La prima volta la p
 
 Con anche il rilevatore di testo (90 MB in più, proposto sulla pagina e scaricato insieme al modello nella configurazione), Nikomiru legge in sottofondo la pagina in cui sei e la successiva: la riga sopra la pagina dice quando ha finito, i fumetti sono incorniciati e un clic su una parola la cerca subito, come in un volume Mokuro. Trascina un riquadro sul testo che è sfuggito. Una pagina letta viene conservata, così un manga riaperto è subito pronto.
 
+Tieni premuto Ctrl e gira la rotellina (o pizzica sul touchpad) per lo zoom: in un libro il testo si ingrandisce o rimpicciolisce e resta così; in un manga la pagina si ingrandisce attorno al puntatore. Una pagina ingrandita si sposta con la rotellina (Maiusc per muoversi in orizzontale) o trascinando col tasto centrale; le frecce girano ancora pagina e una pagina nuova si apre in alto a destra.
+
 Un volume Mokuro ha già il suo testo: i fumetti sono incorniciati leggermente sulla pagina e un clic su una parola la cerca direttamente, come nei sottotitoli.
 
 ### Audiolibri

@@ -7367,6 +7367,24 @@ impl Session {
         }
     }
 
+    /// The size of a book's text, as a share of the usual one (RDR-005).
+    pub fn book_zoom(&self) -> f32 {
+        crate::books::text_zoom(self.services.config.books.text_zoom)
+    }
+
+    /// Ctrl and the wheel over a book's text: its size is kept (RDR-005).
+    pub fn book_zoom_set(&mut self, zoom: f32) {
+        let zoom = crate::books::text_zoom(Some(zoom));
+        let kept = (zoom != 1.0).then_some(zoom);
+        if self.services.config.books.text_zoom == kept {
+            return;
+        }
+        self.services.config.books.text_zoom = kept;
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// Whether a manga shows two pages.
     pub fn book_double(&self) -> bool {
         self.services.config.books.double_pages

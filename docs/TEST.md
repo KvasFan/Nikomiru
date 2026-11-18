@@ -979,6 +979,7 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-RDR-001 | Annotations | Real redb validation, duplicates, bounds, edit/delete, restart, read-only and backup retention; unchanged word/phrase/progress tables; actual reader creation over word/sentence/paragraph. | L1, L6 |
 | T-RDR-002 | Display and staleness | Current/stale classification after source replacement, no seek to stale locations, drawn highlights, validated reopen, formula-safe TSV of shown rows. | L1, L3, L6 |
 | T-RDR-003 | Library search | NFC/case-folded literal matching, Japanese byte offsets, per-book/total result limits, cache invalidation by size/mtime/identity, unreadable books, cancellation and stale replies; actual cross-book result opening. | L1, L6 |
+| T-RDR-005 | Zoom with Ctrl and the wheel | The text size kept in its range and steps (L1); Ctrl and the wheel size a vertical book's text at once without turning, the wheel alone turning; a manga page enlarged about the pointer, moved by the wheel instead of turning, its balloon still clicked, back to whole and turning again (L3) | L1, L3 |
 | T-RDR-004 | Reading modes | Deterministic page groups and sentence ranges, explicit page/sentence turns, lookup offsets, saved mode across restart and accessible translated controls. | L1, L3, L6 |
 
 ## M112 podcasts and lyrics

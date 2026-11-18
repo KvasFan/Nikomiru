@@ -42,6 +42,20 @@ impl DrawnMarks {
 
 /// The size of the text, in points.
 const TEXT_SIZE: f32 = 22.0;
+
+thread_local! {
+    /// The size of a book's text this frame, as a share of the usual one
+    /// (RDR-005): set where the page is drawn, read by every measure of it.
+    static TEXT_ZOOM: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+/// The size of the text, in points, at the zoom chosen (RDR-005).
+fn text_size() -> f32 {
+    TEXT_SIZE * TEXT_ZOOM.with(std::cell::Cell::get)
+}
+
+/// The most a manga's page is enlarged (RDR-005).
+const MANGA_ZOOM: f32 = 4.0;
 /// The widest column of text, in points.
 const COLUMN: f32 = 860.0;
 /// Behind the word looked up.
@@ -57,7 +71,7 @@ const COLUMN_WIDTH: f32 = 1.9;
 const MIN_SELECTION: f32 = 8.0;
 
 /// A chapter's pages are laid out for: book, chapter, width and height.
-type PagesKey = (String, usize, u32, u32);
+type PagesKey = (String, usize, u32, u32, u32);
 
 /// What the page keeps between frames.
 #[derive(Default)]
@@ -106,6 +120,14 @@ pub(crate) struct State {
     textures: HashMap<String, Option<egui::TextureHandle>>,
     /// The corners of the selection on a manga's page, while it is drawn.
     selection: Option<(egui::Pos2, egui::Pos2)>,
+    /// The text's size while Ctrl and the wheel change it, ahead of the
+    /// setting; 0: as set (RDR-005).
+    text_zoom: f32,
+    /// How much a manga's page is enlarged (1 or less: whole), how far it
+    /// is moved, and the book and page that was for (RDR-005).
+    manga_zoom: f32,
+    pan: egui::Vec2,
+    zoomed_page: Option<(String, usize)>,
 }
 
 impl std::fmt::Debug for State {
@@ -135,6 +157,8 @@ pub(crate) struct Scene<'a> {
     pub mode: &'a str,
     /// The open chapter's current highlights and notes (RDR-002).
     pub annotated: &'a [(usize, std::ops::Range<usize>)],
+    /// The size of a book's text, as a share of the usual one (RDR-005).
+    pub zoom: f32,
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -151,6 +175,7 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         vertical: s.book_vertical(),
         double: s.book_double(),
         can_read_along: s.book_can_read_along(),
+        zoom: s.book_zoom(),
         tr: &tr,
     };
     let (close, add) = draw(ctx, &scene, &mut view.books, out);
@@ -382,9 +407,9 @@ fn paragraph(
 /// A paragraph's text size, before any mode's scale.
 fn paragraph_size(item: &Paragraph) -> f32 {
     if item.heading {
-        TEXT_SIZE * 1.3
+        text_size() * 1.3
     } else {
-        TEXT_SIZE
+        text_size()
     }
 }
 
@@ -419,14 +444,14 @@ fn paragraph_galley(
 
 /// Where a cell goes on the page: its centre.
 fn cell_centre(area: egui::Rect, first: usize, cell: &Cell) -> egui::Pos2 {
-    let x = area.right() - ((cell.column - first) as f32 + 0.5) * TEXT_SIZE * COLUMN_WIDTH;
-    let y = area.top() + (cell.row as f32 + 0.5) * TEXT_SIZE * CELL;
+    let x = area.right() - ((cell.column - first) as f32 + 0.5) * text_size() * COLUMN_WIDTH;
+    let y = area.top() + (cell.row as f32 + 0.5) * text_size() * CELL;
     egui::pos2(x, y)
 }
 
 fn draw_cell(ui: &Ui, area: egui::Rect, first: usize, cell: &Cell) {
     let color = palette::current().text;
-    let font = FontId::proportional(TEXT_SIZE);
+    let font = FontId::proportional(text_size());
     let centre = cell_centre(area, first, cell);
     let text = cell.ch.to_string();
     match cell.stance {
@@ -435,7 +460,7 @@ fn draw_cell(ui: &Ui, area: egui::Rect, first: usize, cell: &Cell) {
                 .text(centre, Align2::CENTER_CENTER, text, font, color);
         }
         Stance::Corner => {
-            let at = centre + vec2(TEXT_SIZE * 0.3, -TEXT_SIZE * 0.3);
+            let at = centre + vec2(text_size() * 0.3, -text_size() * 0.3);
             ui.painter()
                 .text(at, Align2::CENTER_CENTER, text, font, color);
         }
@@ -479,20 +504,20 @@ fn draw_readings(
             );
             // a base that breaks across columns: over its start
             let height = if (top.x - bottom.x).abs() < 1.0 {
-                bottom.y - top.y + TEXT_SIZE
+                bottom.y - top.y + text_size()
             } else {
-                TEXT_SIZE
+                text_size()
             };
             let count = ruby.text.chars().count().max(1) as f32;
-            let step = (height / count).min(TEXT_SIZE * 0.6);
-            let start = top.y - TEXT_SIZE / 2.0 + (height - step * count) / 2.0;
+            let step = (height / count).min(text_size() * 0.6);
+            let start = top.y - text_size() / 2.0 + (height - step * count) / 2.0;
             for (i, c) in ruby.text.chars().enumerate() {
-                let at = egui::pos2(top.x + TEXT_SIZE * 0.72, start + (i as f32 + 0.5) * step);
+                let at = egui::pos2(top.x + text_size() * 0.72, start + (i as f32 + 0.5) * step);
                 ui.painter().text(
                     at,
                     Align2::CENTER_CENTER,
                     c,
-                    FontId::proportional(TEXT_SIZE * 0.5),
+                    FontId::proportional(text_size() * 0.5),
                     palette::current().details,
                 );
             }
@@ -505,8 +530,11 @@ fn draw_readings(
 /// popup on it.
 fn turns(ui: &Ui, over_page: bool) -> (bool, bool) {
     ui.input(|i| {
+        // Ctrl and the wheel zoom instead (RDR-005)
         let wheel = i.events.iter().find_map(|e| match e {
-            egui::Event::MouseWheel { delta, .. } if over_page => Some(delta.y),
+            egui::Event::MouseWheel {
+                delta, modifiers, ..
+            } if over_page && !modifiers.command && !modifiers.ctrl => Some(delta.y),
             _ => None,
         });
         let wheel = wheel.unwrap_or(0.0);
@@ -658,7 +686,7 @@ fn manga_reader(
             rect.center(),
             Align2::CENTER_CENTER,
             tr(s, "manga-bad-page"),
-            FontId::proportional(TEXT_SIZE),
+            FontId::proportional(text_size()),
             palette::current().bad,
         );
         return;
@@ -667,23 +695,43 @@ fn manga_reader(
     let second = next
         .and_then(|key| texture(ui.ctx(), state, open, &key))
         .filter(|other| is_upright(other) && is_upright(&handle));
-    let mut pages = Vec::new();
-    let mut place = |page: usize, handle: &egui::TextureHandle, area: egui::Rect, side| {
+    // where each page goes whole, then enlarged and moved (RDR-005)
+    let fit = |handle: &egui::TextureHandle, area: egui::Rect, side: Align2| {
         let size = handle.size_vec2();
         let scale = (area.width() / size.x).min(area.height() / size.y);
-        let drawn = Align2::align_size_within_rect(side, size * scale, area);
-        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-        ui.painter().image(handle.id(), drawn, uv, Color32::WHITE);
-        pages.push((page, drawn));
+        side.align_size_within_rect(size * scale, area)
     };
-    match &second {
+    let mut whole = match &second {
         // read from the right, and meeting in the middle
         Some(other) => {
             let (left, right) = rect.split_left_right_at_x(rect.center().x);
-            place(open.chapter, &handle, right, Align2::LEFT_CENTER);
-            place(open.chapter + 1, other, left, Align2::RIGHT_CENTER);
+            vec![
+                (
+                    open.chapter,
+                    fit(&handle, right, Align2::LEFT_CENTER),
+                    &handle,
+                ),
+                (
+                    open.chapter + 1,
+                    fit(other, left, Align2::RIGHT_CENTER),
+                    other,
+                ),
+            ]
         }
-        None => place(open.chapter, &handle, rect, Align2::CENTER_CENTER),
+        None => vec![(
+            open.chapter,
+            fit(&handle, rect, Align2::CENTER_CENTER),
+            &handle,
+        )],
+    };
+    let zoomed = manga_zoom(ui, open, rect, &whole, &response, state);
+    let painter = ui.painter_at(rect);
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    let mut pages = Vec::new();
+    for (page, drawn, handle) in &mut whole {
+        *drawn = zoomed.place(*drawn);
+        painter.image(handle.id(), *drawn, uv, Color32::WHITE);
+        pages.push((*page, *drawn));
     }
     for (page, drawn) in &pages {
         // imported text, else what was found reading ahead (MNG-011)
@@ -707,6 +755,11 @@ fn manga_reader(
                             b as f32 / imported.height as f32 * drawn.height(),
                         ),
                 );
+                // enlarged, a balloon may be partly or wholly out of view
+                let at = at.intersect(rect);
+                if !at.is_positive() {
+                    continue;
+                }
                 let hit = ui.interact(
                     at,
                     Id::unique(("mokuro-region", &open.uid, *page, index)),
@@ -728,8 +781,7 @@ fn manga_reader(
                 } else {
                     egui::Stroke::new(1.0, palette::current().accent.gamma_multiply(0.35))
                 };
-                ui.painter()
-                    .rect_stroke(at, 2.0, stroke, egui::StrokeKind::Outside);
+                painter.rect_stroke(at, 2.0, stroke, egui::StrokeKind::Inside);
                 if hit.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
@@ -763,7 +815,7 @@ fn manga_reader(
     }
     let pointer = ui.input(|i| (i.pointer.press_origin(), i.pointer.latest_pos()));
     if open.book.manga_regions.is_empty()
-        && response.drag_started()
+        && response.drag_started_by(egui::PointerButton::Primary)
         && let (Some(start), Some(now)) = pointer
     {
         state.selection = Some((start, now));
@@ -771,7 +823,7 @@ fn manga_reader(
     if let (Some(selection), Some(now)) = (&mut state.selection, pointer.1) {
         selection.1 = now;
         let area = egui::Rect::from_two_pos(selection.0, selection.1);
-        ui.painter().rect_filled(area, 2.0, MARK);
+        painter.rect_filled(area, 2.0, MARK);
     }
     if response.drag_stopped()
         && let Some(selection) = state.selection.take()
@@ -795,7 +847,8 @@ fn manga_reader(
         }
     }
     let step = pages.len();
-    let (mut forward, mut back) = turns(ui, response.hovered());
+    // enlarged, the wheel moves the page instead of turning it
+    let (mut forward, mut back) = turns(ui, response.hovered() && !zoomed.on);
     // PORT-003: right to left, a swipe to the right goes on
     match state.swipe.take() {
         Some(crate::gestures::Gesture::SwipeRight) => forward = true,
@@ -806,6 +859,83 @@ fn manga_reader(
         out.push(Command::BookChapter(open.chapter + step));
     } else if back && open.chapter > 0 {
         out.push(Command::BookChapter(open.chapter.saturating_sub(step)));
+    }
+}
+
+/// A manga's view, enlarged: how its pages are moved.
+struct Zoomed {
+    on: bool,
+    centre: egui::Pos2,
+    zoom: f32,
+    pan: egui::Vec2,
+}
+
+impl Zoomed {
+    /// Where a page drawn whole at `whole` is drawn now.
+    fn place(&self, whole: egui::Rect) -> egui::Rect {
+        let at = |p: egui::Pos2| self.centre + (p - self.centre) * self.zoom + self.pan;
+        egui::Rect::from_min_max(at(whole.min), at(whole.max))
+    }
+}
+
+/// Ctrl and the wheel, or a pinch, over a manga's page enlarge it about the
+/// pointer, up to [`MANGA_ZOOM`] times; enlarged, the wheel (with Shift,
+/// across) and the middle button move it, and a new page shows its top
+/// right, where it is read from (RDR-005).
+fn manga_zoom(
+    ui: &Ui,
+    open: &OpenBook,
+    rect: egui::Rect,
+    whole: &[(usize, egui::Rect, &egui::TextureHandle)],
+    response: &egui::Response,
+    state: &mut State,
+) -> Zoomed {
+    let shown = Some((open.uid.clone(), open.chapter));
+    let turned = state.zoomed_page != shown;
+    state.zoomed_page = shown;
+    let centre = rect.center();
+    let mut zoom = state.manga_zoom.max(1.0);
+    // over a balloon too, which lies on the page
+    if response.contains_pointer() {
+        let (delta, scroll, pointer) =
+            ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.pointer.hover_pos()));
+        if delta != 1.0 {
+            let next = (zoom * delta).clamp(1.0, MANGA_ZOOM);
+            // the point under the pointer stays there
+            let p = pointer.unwrap_or(centre) - centre;
+            state.pan = p - (p - state.pan) * (next / zoom);
+            zoom = next;
+        } else if zoom > 1.0 {
+            state.pan += scroll;
+        }
+        if zoom > 1.0 && response.dragged_by(egui::PointerButton::Middle) {
+            state.pan += response.drag_delta();
+        }
+    }
+    if turned && zoom > 1.0 {
+        state.pan = vec2(f32::NEG_INFINITY, f32::INFINITY);
+    }
+    state.manga_zoom = zoom;
+    // kept on the view: never past the pages' edges
+    let bounds = whole
+        .iter()
+        .map(|(_, r, _)| *r)
+        .reduce(|a, b| a.union(b))
+        .unwrap_or(rect);
+    let base = (bounds.center() - centre) * zoom;
+    let room = (bounds.size() * zoom - rect.size()).max(egui::Vec2::ZERO) / 2.0;
+    state.pan = vec2(
+        state.pan.x.clamp(-room.x - base.x, room.x - base.x),
+        state.pan.y.clamp(-room.y - base.y, room.y - base.y),
+    );
+    if zoom <= 1.0 {
+        state.pan = egui::Vec2::ZERO;
+    }
+    Zoomed {
+        on: zoom > 1.0,
+        centre,
+        zoom,
+        pan: state.pan,
     }
 }
 
@@ -836,8 +966,8 @@ fn vertical_reader(
         return;
     };
     let room = ui.available_rect_before_wrap();
-    let rows = ((room.height() / (TEXT_SIZE * CELL)) as usize).max(2);
-    let per_page = ((room.width() / (TEXT_SIZE * COLUMN_WIDTH)) as usize).max(1);
+    let rows = ((room.height() / (text_size() * CELL)) as usize).max(2);
+    let per_page = ((room.width() / (text_size() * COLUMN_WIDTH)) as usize).max(1);
     let key = (open.uid.clone(), open.chapter, rows, per_page);
     if state.columns.as_ref().map(|(k, _)| k) != Some(&key) {
         state.columns = Some((key, lay_out(&chapter.paragraphs, rows, per_page)));
@@ -851,7 +981,7 @@ fn vertical_reader(
         state.column = columns.column_of(open.paragraph) / per_page * per_page;
         out.push(Command::BookAt(open.paragraph));
     }
-    let width = per_page as f32 * TEXT_SIZE * COLUMN_WIDTH;
+    let width = per_page as f32 * text_size() * COLUMN_WIDTH;
     let area = egui::Rect::from_min_size(
         egui::pos2(room.center().x - width / 2.0, room.top()),
         vec2(width, room.height()),
@@ -874,7 +1004,7 @@ fn vertical_reader(
         && chapter == open.chapter
     {
         for cell in cells.iter().filter(|c| c.paragraph == heard) {
-            let box_size = vec2(TEXT_SIZE * 1.1, TEXT_SIZE * CELL);
+            let box_size = vec2(text_size() * 1.1, text_size() * CELL);
             let rect =
                 egui::Rect::from_center_size(cell_centre(area, state.column, cell), box_size);
             ui.painter()
@@ -886,7 +1016,7 @@ fn vertical_reader(
             .iter()
             .filter(|c| c.paragraph == *paragraph && range.contains(&c.offset))
         {
-            let box_size = vec2(TEXT_SIZE * 1.1, TEXT_SIZE * CELL);
+            let box_size = vec2(text_size() * 1.1, text_size() * CELL);
             let rect =
                 egui::Rect::from_center_size(cell_centre(area, state.column, cell), box_size);
             ui.painter().rect_filled(rect, 2.0, MARK);
@@ -914,8 +1044,8 @@ fn vertical_reader(
                         let centre = cell_centre(area, state.column, cell);
                         // Native ruby is to the right; leave it room.
                         let line = egui::Rect::from_center_size(
-                            centre - vec2(TEXT_SIZE * 0.55, 0.0),
-                            vec2(2.0, TEXT_SIZE * CELL),
+                            centre - vec2(text_size() * 0.55, 0.0),
+                            vec2(2.0, text_size() * CELL),
                         );
                         if ui.clip_rect().intersects(line) {
                             ui.painter()
@@ -957,10 +1087,10 @@ fn vertical_reader(
                 paragraph: cell.paragraph,
                 offset: cell.offset,
                 anchor: popup::Rect {
-                    x: f64::from(centre.x - TEXT_SIZE / 2.0),
-                    y: f64::from(centre.y - TEXT_SIZE / 2.0),
-                    w: f64::from(TEXT_SIZE),
-                    h: f64::from(TEXT_SIZE),
+                    x: f64::from(centre.x - text_size() / 2.0),
+                    y: f64::from(centre.y - text_size() / 2.0),
+                    w: f64::from(text_size()),
+                    h: f64::from(text_size()),
                 },
             });
         }
@@ -1240,7 +1370,7 @@ fn draw_paragraphs(
     ui.vertical_centered(|ui| {
         ui.set_max_width(width);
         ui.with_layout(Layout::top_down(Align::Min), |ui| {
-            ui.spacing_mut().item_spacing.y = TEXT_SIZE * 0.6;
+            ui.spacing_mut().item_spacing.y = text_size() * 0.6;
             let top = ui.clip_rect().top();
             for (index, item) in chapter.paragraphs.iter().enumerate() {
                 if !range.contains(&index) {
@@ -1391,8 +1521,15 @@ fn paged_reader(
 ) {
     let room = ui.available_rect_before_wrap();
     let width = room.width().min(COLUMN);
-    let height = (room.height() - TEXT_SIZE * 3.0).max(TEXT_SIZE * 4.0);
-    let key = (open.uid.clone(), open.chapter, width as u32, height as u32);
+    let height = (room.height() - text_size() * 3.0).max(text_size() * 4.0);
+    let zoom = (TEXT_ZOOM.with(std::cell::Cell::get) * 100.0).round() as u32;
+    let key = (
+        open.uid.clone(),
+        open.chapter,
+        width as u32,
+        height as u32,
+        zoom,
+    );
     if state.pages.as_ref().map(|(k, _)| k) != Some(&key) {
         let heights: Vec<f32> = chapter
             .paragraphs
@@ -1405,7 +1542,7 @@ fn paged_reader(
                 None => paragraph_galley(ui, item, width, 1.0).size().y,
             })
             .collect();
-        state.pages = Some((key, pages(&heights, height, TEXT_SIZE * 0.6)));
+        state.pages = Some((key, pages(&heights, height, text_size() * 0.6)));
     }
     let Some((_, groups)) = state.pages.as_ref() else {
         return;
@@ -1568,7 +1705,7 @@ fn sentence_reader(
         .id_salt(("book-sentence", open.chapter, index, at))
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.add_space(TEXT_SIZE * 2.0);
+            ui.add_space(text_size() * 2.0);
             let width = ui.available_width().min(COLUMN);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(width);
@@ -1886,6 +2023,32 @@ fn paste_editor(ctx: &egui::Context, s: &Scene<'_>, state: &mut State, out: &mut
 }
 
 /// Draws the page; whether it closes, and whether a file is to be chosen.
+/// Ctrl and the wheel, or a pinch, over a book's text make it larger or
+/// smaller; the page draws at that size at once, and the setting follows
+/// (RDR-005). A manga's pages are enlarged instead, in its reader.
+fn text_zoom(ui: &Ui, s: &Scene<'_>, open: &OpenBook, state: &mut State, out: &mut Vec<Command>) {
+    let mut zoom = if state.text_zoom > 0.0 {
+        state.text_zoom
+    } else {
+        s.zoom
+    };
+    let over = ui.rect_contains_pointer(ui.max_rect());
+    let delta = ui.input(|i| i.zoom_delta());
+    if over && !open.book.manga && delta != 1.0 {
+        let range = crate::books::TEXT_ZOOM;
+        zoom = (zoom * delta).clamp(*range.start(), *range.end());
+        state.text_zoom = zoom;
+        if crate::books::text_zoom(Some(zoom)) != s.zoom {
+            out.push(Command::BookZoom(zoom));
+        }
+    } else if state.text_zoom > 0.0 && crate::books::text_zoom(Some(state.text_zoom)) == s.zoom {
+        // the setting has caught up
+        state.text_zoom = 0.0;
+        zoom = s.zoom;
+    }
+    TEXT_ZOOM.with(|z| z.set(zoom));
+}
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     s: &Scene<'_>,
@@ -1912,6 +2075,7 @@ pub(crate) fn draw(
                     ui.spacing_mut().item_spacing.y = 10.0;
                     match &s.page.open {
                         Some(open) => {
+                            text_zoom(ui, s, open, state, out);
                             if reader(ui, s, open, state, out) {
                                 out.push(Command::BookClose);
                                 state.reader_closed = true;
@@ -1983,6 +2147,7 @@ mod tests {
         can_read_along: bool,
         mode: &'static str,
         annotated: Vec<(usize, std::ops::Range<usize>)>,
+        zoom: f32,
     }
 
     fn harness<'a>(page: BooksPage) -> Harness<'a, Test> {
@@ -2005,6 +2170,7 @@ mod tests {
                         can_read_along: t.can_read_along,
                         mode: t.mode,
                         annotated: &t.annotated,
+                        zoom: t.zoom,
                         tr: &tr,
                     };
                     t.add |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out).1;
@@ -2021,6 +2187,7 @@ mod tests {
                     can_read_along: false,
                     mode: "scroll",
                     annotated: Vec::new(),
+                    zoom: 1.0,
                 },
             )
     }
@@ -2955,5 +3122,157 @@ mod tests {
         h.get_by_label("manga-pages-fetch").click();
         h.run();
         assert!(matches!(h.state().out[..], [Command::OcrFetch]));
+    }
+
+    /// The wheel turned one line up (`up`) or down over `at`, with Ctrl or not.
+    fn wheel(h: &Harness<'_, Test>, at: Pos2, up: bool, ctrl: bool) {
+        h.hover_at(at);
+        let modifiers = if ctrl {
+            egui::Modifiers::COMMAND
+        } else {
+            egui::Modifiers::NONE
+        };
+        let event = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: vec2(0.0, if up { 1.0 } else { -1.0 }),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers,
+        };
+        h.event_modifiers(event, modifiers);
+    }
+
+    // T-RDR-005: Ctrl and the wheel make a book's text larger or smaller,
+    // at once, and never turn its page
+    #[test]
+    fn ctrl_and_the_wheel_size_the_text() {
+        let mut h = vertical_harness(
+            BooksPage {
+                open: Some(open()),
+                ..BooksPage::default()
+            },
+            true,
+        );
+        h.run();
+        let middle = Pos2::new(500.0, 400.0);
+        wheel(&h, middle, true, true);
+        h.run();
+        let larger = h.state().out.iter().find_map(|c| match c {
+            Command::BookZoom(z) => Some(*z),
+            _ => None,
+        });
+        assert!(larger.is_some_and(|z| z > 1.0), "{:?}", h.state().out);
+        // laid out again at the new size, at the same place
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .all(|c| matches!(c, Command::BookZoom(_) | Command::BookAt(0))),
+            "{:?}",
+            h.state().out
+        );
+        assert!(text_size() > TEXT_SIZE, "drawn larger at once");
+        // the setting caught up, then smaller
+        h.state_mut().zoom = crate::books::text_zoom(larger);
+        h.state_mut().out.clear();
+        for _ in 0..30 {
+            wheel(&h, middle, false, true);
+            h.run();
+        }
+        let last = h.state().out.iter().rev().find_map(|c| match c {
+            Command::BookZoom(z) => Some(*z),
+            _ => None,
+        });
+        assert_eq!(last.map(|z| crate::books::text_zoom(Some(z))), Some(0.6));
+        // the wheel alone still turns
+        h.state_mut().out.clear();
+        wheel(&h, middle, false, false);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(1))),
+            "{:?}",
+            h.state().out
+        );
+    }
+
+    // T-RDR-005: Ctrl and the wheel enlarge a manga's page about the pointer;
+    // enlarged, the wheel moves it instead of turning, and its balloons are
+    // still clicked; back to whole, the wheel turns again
+    #[test]
+    fn ctrl_and_the_wheel_enlarge_a_manga_page() {
+        let mut page = BooksPage {
+            open: Some(manga()),
+            ..Default::default()
+        };
+        page.ocr.installed = true;
+        page.ocr.pages = true;
+        page.ocr.found.insert(
+            0,
+            nikomiru_books::mokuro::Page {
+                width: 100,
+                height: 200,
+                regions: vec![nikomiru_books::mokuro::Region::guessed(
+                    [10, 10, 80, 100],
+                    "猫です".into(),
+                    true,
+                )],
+            },
+        );
+        let mut h = harness(page);
+        h.run_steps(3);
+        let before = h.get_by_label("mokuro-region").rect();
+        let at = before.center();
+        wheel(&h, at, true, true);
+        h.run();
+        wheel(&h, at, true, true);
+        h.run();
+        assert!(h.state().state.manga_zoom > 1.0);
+        let after = h.get_by_label("mokuro-region").rect();
+        assert!(
+            after.width() > before.width() * 1.05,
+            "{before:?} {after:?}"
+        );
+        assert!(after.contains(at), "about the pointer: {after:?} {at:?}");
+        assert!(text_size() == TEXT_SIZE, "a manga's text keeps its size");
+        wheel(&h, at, false, false);
+        h.run();
+        assert!(
+            !h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(_))),
+            "{:?}",
+            h.state().out
+        );
+        h.get_by_label("mokuro-region").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::MokuroLookup { page: 0, .. })),
+            "{:?}",
+            h.state().out
+        );
+        h.state_mut().out.clear();
+        for _ in 0..30 {
+            wheel(&h, at, false, true);
+            h.run();
+        }
+        assert_eq!(h.state().state.manga_zoom, 1.0);
+        assert_eq!(h.state().state.pan, egui::Vec2::ZERO);
+        wheel(&h, at, false, false);
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::BookChapter(1))),
+            "{:?}",
+            h.state().out
+        );
     }
 }

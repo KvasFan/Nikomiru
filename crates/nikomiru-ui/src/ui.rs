@@ -543,6 +543,8 @@ pub(crate) enum Command {
     SearchCancel,
     SearchGo(usize),
     BookMode(String),
+    /// The size of a book's text, as a share of the usual one (RDR-005).
+    BookZoom(f32),
     BookTurn(usize),
     BookSentence(bool),
 
@@ -2031,6 +2033,7 @@ impl Ui {
                 }
             }
             Command::BookMode(mode) => s.book_set_mode(&mode),
+            Command::BookZoom(zoom) => s.book_zoom_set(zoom),
             Command::BookTurn(paragraph) => s.book_turn(paragraph),
             Command::BookSentence(forward) => s.book_sentence(forward),
             Command::PhrasesOpen => {
