@@ -1780,4 +1780,4 @@ From the backlog, requested on 2026-11-18 with the rest of the remaining work (D
 
 **Exit criteria**: ed2k vectors, protocol tests against a fake UDP AniDB, component tests and an actual-app identification. A check against the real AniDB needs a registered client.
 
-M120 is complete in development: the unit, L4, component and actual-app tests pass. **Open**: registering Nikomiru's AniDB client and setting `CLIENT`, then a check against the real AniDB with a real file.
+M120 is complete in development: the unit, L4, component and actual-app tests pass, and the full regression of [source QA 2.130.0](qa/2.130.0.md) is green. **Open**: registering Nikomiru's AniDB client and setting `CLIENT`, then a check against the real AniDB with a real file.

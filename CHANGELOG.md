@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.130.0] - 2026-11-18
+
+AniDB file identification (M120), the Windows installer, local release tooling and a fix for installing signed updates from the published archives.
+
 ### Added
 
 - Identify a series from one of its files through AniDB: the ed2k hash and size of an episode, asked with the user's AniDB account, give AniDB's titles, which are then found on AniList or MyAnimeList (M120, MET-006). A user-registered AniDB client can be entered until Nikomiru's own registration is built in; AniDB is never asked through or around a proxy.
