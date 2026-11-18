@@ -53,8 +53,9 @@ pub(crate) fn decode(text: &str) -> String {
 /// What is being read inside a `<ruby>`.
 #[derive(Default)]
 struct OpenRuby {
-    /// Where the base starts in the paragraph.
-    start: usize,
+    /// Where the base starts in the paragraph; `None` until its first
+    /// character, so that the white space of the markup stays out of it.
+    start: Option<usize>,
     /// In `<rt>`: its text so far.
     reading: Option<String>,
     /// In `<rp>`: dropped.
@@ -69,30 +70,57 @@ struct Builder {
     paragraph: Paragraph,
     ruby: Option<OpenRuby>,
     heading: bool,
+    /// White space of the markup seen since the last character: a space,
+    /// unless the characters on either side of it are Japanese or Chinese.
+    space: bool,
+}
+
+/// A character of a script written without spaces between words.
+fn unspaced(c: char) -> bool {
+    matches!(c as u32,
+        0x3000..=0x30FF // punctuation, hiragana, katakana
+        | 0x3400..=0x4DBF
+        | 0x4E00..=0x9FFF
+        | 0xF900..=0xFAFF
+        | 0xFF00..=0xFFEF // full-width forms
+        | 0x20000..=0x3FFFF)
 }
 
 impl Builder {
     fn text(&mut self, raw: &str) {
         let text = decode(raw);
-        let text: String = text
-            .chars()
-            .filter(|c| !matches!(c, '\n' | '\r' | '\t'))
-            .collect();
         if let Some(ruby) = &mut self.ruby {
             if ruby.fallback {
                 return;
             }
             if let Some(reading) = &mut ruby.reading {
-                reading.push_str(text.trim());
+                reading.extend(text.chars().filter(|c| !c.is_ascii_whitespace()));
                 return;
             }
         }
-        let text = if self.paragraph.text.is_empty() {
-            text.trim_start_matches(' ')
-        } else {
-            &text
-        };
-        self.paragraph.text.push_str(text);
+        // HTML's white space: runs of it are one space, and none between
+        // Japanese characters, where a line break of the source is no word
+        // break; never at the start of a paragraph or of a ruby's base
+        for c in text.chars() {
+            if c.is_ascii_whitespace() {
+                self.space = true;
+                continue;
+            }
+            if std::mem::take(&mut self.space)
+                && let Some(last) = self.paragraph.text.chars().last()
+                && !unspaced(last)
+                && !unspaced(c)
+                && self.ruby.as_ref().is_none_or(|r| r.start.is_some())
+            {
+                self.paragraph.text.push(' ');
+            }
+            if let Some(ruby) = &mut self.ruby
+                && ruby.start.is_none()
+            {
+                ruby.start = Some(self.paragraph.text.len());
+            }
+            self.paragraph.text.push(c);
+        }
     }
 
     /// A picture: a paragraph of its own.
@@ -107,6 +135,7 @@ impl Builder {
     fn end_paragraph(&mut self) {
         let mut paragraph = std::mem::take(&mut self.paragraph);
         self.ruby = None;
+        self.space = false;
         paragraph.text.truncate(paragraph.text.trim_end().len());
         if paragraph.text.trim().is_empty() {
             return;
@@ -119,6 +148,10 @@ impl Builder {
     }
 
     fn open_reading(&mut self) {
+        // `</rt>` may be left out before another `<rt>` (HTML)
+        if self.ruby.as_ref().is_some_and(|r| r.reading.is_some()) {
+            self.close_reading();
+        }
         let end = self.paragraph.text.len();
         if let Some(ruby) = &mut self.ruby {
             ruby.end = end;
@@ -132,15 +165,16 @@ impl Builder {
         };
         if let Some(text) = ruby.reading.take()
             && !text.is_empty()
-            && ruby.start < ruby.end
+            && let Some(start) = ruby.start
+            && start < ruby.end
         {
             self.paragraph.ruby.push(Ruby {
-                range: ruby.start..ruby.end,
+                range: start..ruby.end,
                 text,
             });
         }
-        // the next base of the same `<ruby>` starts here
-        ruby.start = ruby.end;
+        // the next base of the same `<ruby>` starts with its first character
+        ruby.start = None;
     }
 }
 
@@ -225,12 +259,7 @@ pub(crate) fn chapter_of(xhtml: &str) -> Chapter {
                 }
                 rest = &rest[end..];
             }
-            "ruby" if !closing => {
-                b.ruby = Some(OpenRuby {
-                    start: b.paragraph.text.len(),
-                    ..OpenRuby::default()
-                });
-            }
+            "ruby" if !closing => b.ruby = Some(OpenRuby::default()),
             "ruby" => {
                 b.close_reading();
                 b.ruby = None;
@@ -238,6 +267,10 @@ pub(crate) fn chapter_of(xhtml: &str) -> Chapter {
             "rt" if !closing => b.open_reading(),
             "rt" => b.close_reading(),
             "rp" => {
+                // `</rt>` may be left out before `<rp>` too
+                if !closing && b.ruby.as_ref().is_some_and(|r| r.reading.is_some()) {
+                    b.close_reading();
+                }
                 if let Some(ruby) = &mut b.ruby {
                     ruby.fallback = !closing;
                 }
@@ -298,6 +331,31 @@ mod tests {
             .map(|r| (&p.text[r.range.clone()], r.text.as_str()))
             .collect();
         assert_eq!(ruby, [("吾輩", "わがはい"), ("猫", "ねこ"), ("犬", "いぬ")]);
+    }
+
+    // T-BOK-002, T-WEB-004: a web page's indented markup: no stray spaces in
+    // Japanese, one space between Latin words, furigana on their own base
+    // even with `</rt>` left out
+    #[test]
+    fn indented_markup_keeps_the_furigana_on_their_base() {
+        let p = &paragraphs(
+            "<p>\n      今日は\n      <ruby>\n        <rb>吾輩</rb>\n        <rt> わが はい </rt>\n      </ruby>\n      の\n      <ruby>猫<rt>ねこ<rt>?</ruby>です。\n      Hello\n      world\n    </p>",
+        )[0];
+        assert_eq!(p.text, "今日は吾輩の猫です。Hello world");
+        let ruby: Vec<_> = p
+            .ruby
+            .iter()
+            .map(|r| (&p.text[r.range.clone()], r.text.as_str()))
+            .collect();
+        assert_eq!(ruby, [("吾輩", "わがはい"), ("猫", "ねこ")]);
+        let p = &paragraphs("<p><ruby>漢<rt>かん<rp>(</rp>字<rt>じ</ruby></p>")[0];
+        assert_eq!(p.text, "漢字");
+        let ruby: Vec<_> = p
+            .ruby
+            .iter()
+            .map(|r| (r.range.clone(), r.text.as_str()))
+            .collect();
+        assert_eq!(ruby, [(0..3, "かん"), (3..6, "じ")]);
     }
 
     // T-BOK-002, NFR-SEC-01: nothing active survives

@@ -122,6 +122,15 @@ Nothing goes online unless you ask for it.
 
 ## 7. Library
 
+The main page has a row of tabs:
+
+- **Collection**: your imported series and films, and what to continue.
+- **Videos**: the videos you opened on their own (files, web videos, media servers), the last first, with their progress; **✕** takes one out of the history. Above them, **Saved links**: type a video page's address and a name and press **Save link**, then **Play** it whenever you like. A web video of the history is saved with one click.
+- **Books**, **Manga** and **Websites**: what you added of each kind, with how far you read. **Read** (or **Continue**) opens it; closing the reader brings you back to the tab. Each tab has its own buttons under the tabs: add a book, paste text or an audiobook; add a manga or a folder of pages; type a web page's address.
+- **Statistics**, the **Review** once you use it, and each media server.
+
+The **Tools** menu holds the Texthooker, the phrase notebook, the recall history and files, podcasts, annotations, the search through your books and the list of every book.
+
 - **Add folder…** imports your series. Episodes are grouped by their names (seasons, episode numbers), or by folder.
 - **Continue watching** shows what you started.
 - When an episode ends, the next one starts after a 5-second countdown.
@@ -157,9 +166,11 @@ On the Books page, type a page's address next to **Web page** and press **Open**
 
 ### Manga
 
-Add a CBZ or a folder of pictures on the Books page. "Two pages" shows them side by side, the first on the right. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.
+Add a CBZ or a folder of pictures from the Manga tab. "Two pages" shows them side by side, the first on the right. The left arrow, Page Down, Space and the wheel go forward, the right arrow and Page Up back.
 
-To read a balloon, drag across it. The first time, the page offers a reading model of 111 MB: it comes from Hugging Face once, only if you ask, and then runs on your computer, so pages go nowhere. The text appears above the page: click a word to look it up, and a card has the text and the part of the page. The model reads one balloon or line at a time, and takes a few seconds.
+To read a balloon, drag a box around it. The first time, the page offers a reading model of 111 MB: it comes from Hugging Face once, only if you ask, and then runs on your computer, so pages go nowhere. The balloon is read and its first word opens in the dictionary at once; the whole text appears above the page, where you click the other words. A card has the text and the part of the page. The model reads one balloon or line at a time, and takes a second or two.
+
+A Mokuro volume already has its text: its balloons are framed faintly on the page, and a click on a word looks it up directly, as in subtitles.
 
 ### Audiobooks
 

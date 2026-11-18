@@ -122,6 +122,15 @@ Nulla va online se non lo chiedi.
 
 ## 7. Libreria
 
+La pagina principale ha una fila di schede:
+
+- **Collezione**: le serie e i film importati, e cosa continuare.
+- **Video**: i video aperti singolarmente (file, video dal web, server multimediali), l'ultimo per primo, con l'avanzamento; **✕** ne toglie uno dalla cronologia. Sopra c'è **Link salvati**: scrivi l'indirizzo di una pagina video e un nome, premi **Salva link** e poi **Riproduci** quando vuoi. Un video dal web della cronologia si salva con un clic.
+- **Libri**, **Manga** e **Siti web**: ciò che hai aggiunto di ogni tipo, con quanto hai letto. **Leggi** (o **Continua**) lo apre; chiuso il lettore torni alla scheda. Ogni scheda ha i suoi pulsanti sotto le schede: aggiungere un libro, incollare un testo o un audiolibro; aggiungere un manga o una cartella di pagine; scrivere l'indirizzo di una pagina web.
+- **Statistiche**, il **Ripasso** quando lo usi, e ogni server multimediale.
+
+Il menu **Strumenti** contiene il Texthooker, il quaderno delle frasi, la cronologia e i file dei ripassi, i podcast, le annotazioni, la ricerca nei libri e l'elenco di tutti i libri.
+
 - **Aggiungi cartella…** importa le tue serie. Gli episodi vengono raggruppati per nome (stagioni, numeri di episodio), oppure per cartella.
 - **Continua a guardare** mostra quello che hai iniziato.
 - Alla fine di un episodio, il successivo parte dopo un conto alla rovescia di 5 secondi.
@@ -157,9 +166,11 @@ Nella pagina Libri, scrivi l'indirizzo di una pagina accanto a **Pagina web** e 
 
 ### Manga
 
-Aggiungi un CBZ o una cartella di immagini nella pagina dei libri. "Due pagine" le mostra affiancate, la prima a destra. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.
+Aggiungi un CBZ o una cartella di immagini dalla scheda Manga. "Due pagine" le mostra affiancate, la prima a destra. Freccia sinistra, Pagina giù, Spazio e rotellina vanno avanti, freccia destra e Pagina su indietro.
 
-Per leggere un fumetto, trascina sopra di esso. La prima volta la pagina propone un modello di lettura da 111 MB: arriva da Hugging Face una volta sola, solo se lo chiedi, e poi funziona sul tuo computer, quindi le pagine non vanno da nessuna parte. Il testo compare sopra la pagina: clicca una parola per cercarla, e una carta ha il testo e la parte di pagina. Il modello legge un fumetto o una riga alla volta e impiega qualche secondo.
+Per leggere un fumetto, trascina un riquadro intorno a esso. La prima volta la pagina propone un modello di lettura da 111 MB: arriva da Hugging Face una volta sola, solo se lo chiedi, e poi funziona sul tuo computer, quindi le pagine non vanno da nessuna parte. Il fumetto viene letto e la sua prima parola si apre subito nel dizionario; tutto il testo compare sopra la pagina, dove clicchi le altre parole. Una carta ha il testo e la parte di pagina. Il modello legge un fumetto o una riga alla volta e impiega un secondo o due.
+
+Un volume Mokuro ha già il suo testo: i fumetti sono incorniciati leggermente sulla pagina e un clic su una parola la cerca direttamente, come nei sottotitoli.
 
 ### Audiolibri
 

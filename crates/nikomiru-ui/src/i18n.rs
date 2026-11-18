@@ -251,7 +251,8 @@ mod tests {
                 "review-answers",
                 "setup-cards-anki",
                 "servers-kind-jellyfin",
-                "servers-kind-emby"
+                "servers-kind-emby",
+                "address-hint"
             ]
         );
         assert_eq!(Translator::new("ja").tr("pause", &[]), "一時停止");

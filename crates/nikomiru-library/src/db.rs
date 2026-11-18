@@ -536,6 +536,11 @@ impl Library {
         if let Some(mut rec) = self.video(uid)? {
             rec.last_position_ms = position_ms;
             rec.last_played_at = Some(at_ms);
+            // a single video taken out of the history and played again is
+            // back in it (VID-001); an episode stays out of its series
+            if rec.series.is_none() {
+                rec.removed = false;
+            }
             if let Some(d) = duration_ms.filter(|d| *d > 0) {
                 rec.duration_ms = Some(d);
             }

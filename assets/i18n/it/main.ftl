@@ -856,7 +856,8 @@ manga-offer = Per leggere il testo di una pagina, Nikomiru ha bisogno di un mode
 manga-credit = Modello: manga-ocr di kha-white (Apache-2.0), addestrato sul dataset Manga109-s.
 manga-fetch = Scarica il modello
 manga-fetching = Scaricamento del modello: { $percent } %
-manga-hint = Trascina su un fumetto per leggerlo.
+manga-needs-model = Scarica prima il modello di lettura (pulsante qui sopra): poi un riquadro trascinato su un fumetto viene letto.
+manga-hint = Trascina un riquadro intorno a un fumetto: viene letto e la prima parola si apre nel dizionario; le altre si cliccano sotto la pagina.
 manga-reading = Lettura…
 manga-nothing = Lì non è stato trovato testo.
 
@@ -1404,7 +1405,7 @@ books-paste-hint = Salvato localmente per riaprirlo. Massimo 4 MiB. Markdown con
 error-book-invalid-text = Impossibile leggere questo documento. Usa UTF-8, un titolo di massimo 256 caratteri e testo semplice o Markdown supportato.
 
 error-book-mokuro = Questo volume Mokuro non è supportato oppure contiene immagini locali o coordinate non valide.
-mokuro-ready = Il testo è già disponibile. Seleziona un riquadro nella pagina.
+mokuro-ready = La pagina ha il suo testo: clicca una parola sulla pagina per cercarla.
 mokuro-empty-page = Questa pagina non contiene riquadri di testo importati.
 mokuro-region = Leggi riquadro { $number } della pagina { $page }
 
@@ -1746,3 +1747,30 @@ settings-speech-language = Lingua parlata
 settings-speech-threads = Thread (0: metà del processore)
 settings-microphone = Microfono
 settings-speech-hint = Il parlato si legge su questo computer: non si invia nulla. Il microfono è un ingresso di ffmpeg, scritto formato:dispositivo.
+
+## Main page shelves (VID-001, VID-002)
+tab-collection = Collezione
+tab-videos = Video
+tab-books = Libri
+tab-manga = Manga
+tab-web = Siti web
+library-tools = Strumenti
+library-books-page = Tutti i libri e i documenti
+videos-open-file = Apri un file video…
+videos-links = Link salvati
+videos-link-url = Indirizzo
+videos-link-title = Nome
+videos-link-keep = Salva link
+videos-links-none = Nessun link salvato. Salva l'indirizzo di una pagina video per guardarla più tardi.
+videos-link-remove = Dimentica il link { $title }
+videos-play = Riproduci
+videos-history = Visti di recente
+videos-history-none = Qui compaiono i video aperti singolarmente (file, video dal web, server multimediali).
+videos-watched = Visto
+videos-forget = Togli { $title } dalla cronologia
+manga-add = Aggiungi un manga…
+manga-none = Ancora nessun manga. Aggiungi un CBZ, un volume Mokuro o una cartella di pagine.
+web-none = Ancora nessuna pagina web. Scrivi qui sopra l'indirizzo di una pagina per leggerla.
+books-open = Leggi
+books-continue = Continua ({ $percent } %)
+address-hint = https://

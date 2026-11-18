@@ -1060,3 +1060,13 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-SHD-001 | Shadowing | Recording length bounds, the microphone as `<format>:<device>` never an option, the score on comparable text (L1); L6: ffmpeg's test microphone recorded while paused, read by the stand-in whisper-cli and scored 80 % | L1, L6 |
 | T-SHD-002 | Hearing yourself | "Play my recording" offered with the result (L3) | L3 |
 | T-OCR-001 | Text from the picture | The dragged area as shares of the picture, clipped to it (L1); L6: a part of the frame read, made the panel's line and a Texthooker line, then looked up with a click | L1, L6 |
+
+## M127 shelves, manga lookups and furigana
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-VID-001 | Shelves and the video history | The library's history: videos opened on their own, the last first, never an unplayed one or a series' episode, back once played again, an episode taken out staying out (L1); the shelves sort the series, the history, links, books, manga and web pages, each on its own tab, with the tools in one menu (L3); L6: screenshots of every shelf | L1, L3, L6 |
+| T-VID-002 | Saved links | Kept once, the last first, bounded, written only when there are some (L1); Play opens a link, a web video of the history kept with one click (L3) | L1, L3 |
+| T-BOK-015 | Reading shelves | A tab's Read opens the book on the reading page and its actions open the right dialog (L3); L6: the books, manga and web-page tests through the reading page | L3, L6 |
+| T-MNG-010 | One click on a manga's text | A point of a page names its character, from line boxes or the block shared out (L1); a click on a region asks for the word under it (L3); L6: a real drag over a CBZ page is read and its first word looked up at once, a Mokuro word looked up with one click; L7: the real model reads a balloon drawn in Noto CJK | L1, L3, L6, L7 |
+| T-WEB-004 | Furigana on their base | Indented markup leaves no stray spaces and keeps each reading on its base, `</rt>` left out (L1); a base ending its row keeps its reading over its own glyphs on that row (L3) | L1, L3 |

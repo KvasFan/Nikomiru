@@ -205,6 +205,20 @@ impl Library {
         Ok(out)
     }
 
+    /// The videos opened on their own (VID-001): files outside the imported
+    /// folders, web videos and media-server videos, the last played first,
+    /// at most `limit`, watched or not.
+    pub fn history(&self, limit: usize) -> Result<Vec<(String, VideoRecord)>, LibraryError> {
+        let mut out: Vec<(String, VideoRecord)> = self
+            .videos()?
+            .into_iter()
+            .filter(|(_, v)| v.series.is_none() && !v.removed && v.last_played_at.is_some())
+            .collect();
+        out.sort_by_key(|(_, v)| std::cmp::Reverse(v.last_played_at));
+        out.truncate(limit);
+        Ok(out)
+    }
+
     /// "Continue watching" (LIB-005): the videos started and not finished,
     /// the last played first, at most `limit`.
     pub fn continue_watching(
@@ -420,6 +434,55 @@ mod tests {
         assert_eq!(
             (s.episodes, s.watched, s.started, s.last_played_at),
             (3, 1, 2, Some(30))
+        );
+    }
+
+    // T-VID-001: videos opened on their own, the last first; taken out,
+    // and back once played again
+    #[test]
+    fn the_history_lists_videos_opened_on_their_own() {
+        let (_dir, lib) = setup();
+        let single = |uid: &str, path: &str| {
+            lib.put_video(
+                uid,
+                &VideoRecord {
+                    path: path.into(),
+                    ..VideoRecord::default()
+                },
+            )
+            .unwrap();
+        };
+        single("web/a", "https://example.com/watch?v=a");
+        single("video/clip", "/tmp/clip.mkv");
+        single("video/never", "/tmp/never.mkv");
+        lib.save_position("web/a", 1_000, None, 10).unwrap();
+        lib.save_position("video/clip", 95_000, Some(100_000), 20)
+            .unwrap();
+        let alpha = id(&lib, "Alpha");
+        let episode = lib.episodes(alpha).unwrap()[0].0.clone();
+        lib.save_position(&episode, 1_000, None, 30).unwrap();
+        let uids = |lib: &Library| -> Vec<String> {
+            lib.history(10)
+                .unwrap()
+                .into_iter()
+                .map(|(u, _)| u)
+                .collect()
+        };
+        // watched or not, never an episode of a series, never unplayed
+        assert_eq!(uids(&lib), ["video/clip", "web/a"]);
+        assert_eq!(lib.history(1).unwrap().len(), 1);
+        lib.remove_video("web/a").unwrap();
+        assert_eq!(uids(&lib), ["video/clip"]);
+        lib.save_position("web/a", 2_000, None, 40).unwrap();
+        assert_eq!(uids(&lib), ["web/a", "video/clip"]);
+        // an episode taken out stays out
+        lib.remove_video(&episode).unwrap();
+        lib.save_position(&episode, 2_000, None, 50).unwrap();
+        assert!(
+            lib.episodes(alpha)
+                .unwrap()
+                .iter()
+                .all(|(u, _)| *u != episode)
         );
     }
 

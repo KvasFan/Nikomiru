@@ -91,6 +91,9 @@ pub struct Config {
     pub updates: UpdatesConfig,
     /// `[speech]`: whisper.cpp's model and the microphone (SUB-062, SHD-001).
     pub speech: SpeechConfig,
+    /// `[videos]`: the links kept for later (VID-002).
+    #[serde(skip_serializing_if = "VideosConfig::is_empty")]
+    pub videos: VideosConfig,
     /// `[languages.<code>]`: the study-language profiles (LNG-001).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub languages: BTreeMap<String, LanguageProfile>,
@@ -935,6 +938,66 @@ impl Default for UpdatesConfig {
     }
 }
 
+/// A video link kept for later (VID-002).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedLink {
+    /// The page's address.
+    pub url: String,
+    /// A name the user gave it; empty: the address.
+    pub title: String,
+    /// When it was kept (Unix ms).
+    pub added_at: i64,
+}
+
+/// `[videos]` (VID-002).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VideosConfig {
+    /// The links kept, the last kept first; at most [`VideosConfig::MAX_LINKS`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<SavedLink>,
+    /// Keys this version does not know.
+    #[serde(flatten)]
+    pub other: toml::Table,
+}
+
+impl VideosConfig {
+    /// The most links kept.
+    pub const MAX_LINKS: usize = 500;
+
+    fn is_empty(&self) -> bool {
+        self.links.is_empty() && self.other.is_empty()
+    }
+
+    /// Keeps `url` first, with `title`: once, the same address moving up.
+    pub fn keep(&mut self, url: &str, title: &str, now: i64) {
+        let url = url.trim();
+        if url.is_empty() {
+            return;
+        }
+        let title = match title.trim() {
+            "" => self
+                .links
+                .iter()
+                .find(|l| l.url == url)
+                .map(|l| l.title.clone())
+                .unwrap_or_default(),
+            t => t.to_string(),
+        };
+        self.links.retain(|l| l.url != url);
+        self.links.insert(
+            0,
+            SavedLink {
+                url: url.into(),
+                title,
+                added_at: now,
+            },
+        );
+        self.links.truncate(Self::MAX_LINKS);
+    }
+}
+
 /// `[speech]` (SUB-062, SHD-001): reading speech on this computer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -1398,6 +1461,7 @@ impl Default for Config {
             languages: BTreeMap::new(),
             updates: UpdatesConfig::default(),
             speech: SpeechConfig::default(),
+            videos: VideosConfig::default(),
             other: toml::Table::new(),
         }
     }
@@ -2098,6 +2162,34 @@ Expression = "{expression}"
             (d.url.as_str(), d.deck.as_str()),
             ("http://127.0.0.1:8765", "Lapis")
         );
+    }
+
+    // T-VID-002: a link kept once, the last first, bounded; written only when there are some
+    #[test]
+    fn links_are_kept_once_and_bounded() {
+        let mut v = VideosConfig::default();
+        v.keep("https://a.example/1", "One", 1);
+        v.keep(" https://b.example/2 ", "", 2);
+        v.keep("https://a.example/1", "", 3);
+        assert_eq!(
+            v.links
+                .iter()
+                .map(|l| (l.url.as_str(), l.title.as_str()))
+                .collect::<Vec<_>>(),
+            [("https://a.example/1", "One"), ("https://b.example/2", "")]
+        );
+        v.keep("  ", "x", 4);
+        assert_eq!(v.links.len(), 2);
+        for i in 0..VideosConfig::MAX_LINKS + 5 {
+            v.keep(&format!("https://c.example/{i}"), "", 10 + i as i64);
+        }
+        assert_eq!(v.links.len(), VideosConfig::MAX_LINKS);
+        assert!(!Config::default().to_text().unwrap().contains("[videos]"));
+        let mut c = Config::default();
+        c.videos.keep("https://a.example/1", "One", 1);
+        let text = c.to_text().unwrap();
+        assert!(text.contains("[[videos.links]]"), "{text}");
+        assert_eq!(Config::from_toml(&text).unwrap(), c);
     }
 
     // T-MET-005

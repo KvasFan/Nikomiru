@@ -276,7 +276,7 @@ mod tests {
             吾輩は<ruby><rb>猫</rb><rp>（</rp><rt>ねこ</rt><rp>）</rp></ruby>である。<br />
             名前はまだ無い。<nav><nav>x</nav>y</nav>続き</div></body></html>"#;
         let book = page(html).unwrap();
-        assert_eq!(texts(&book), ["吾輩は猫である。", "名前はまだ無い。 続き"]);
+        assert_eq!(texts(&book), ["吾輩は猫である。", "名前はまだ無い。続き"]);
         assert_eq!(book.author, "", "no address");
         assert!(matches!(
             page("<html><nav>menu</nav></html>"),

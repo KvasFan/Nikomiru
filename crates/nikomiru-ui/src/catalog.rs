@@ -25,6 +25,8 @@ pub struct Home {
     pub folders: Vec<(String, FolderRecord)>,
     /// The titles of the media servers' videos (SRV-006), by uid.
     pub server_titles: std::collections::BTreeMap<String, String>,
+    /// The videos opened on their own, the last first (VID-001).
+    pub history: Vec<(String, VideoRecord)>,
 }
 
 impl Home {

@@ -79,6 +79,14 @@ pub(crate) struct State {
     pub(crate) turn: Option<bool>,
     /// A swipe on the page (PORT-003), taken by the reader drawn.
     pub(crate) swipe: Option<crate::gestures::Gesture>,
+    /// Opened from this shelf of the main page: closing the reader, or a
+    /// dialog given up, goes back there.
+    pub(crate) from_library: Option<super::library_page::Shelf>,
+    /// The reader asked to close this frame.
+    reader_closed: bool,
+    /// Frames before an idle page counts as given up: the command that opens
+    /// the book runs after the frame that asked for it.
+    pub(crate) settle: u8,
     /// The chapter's horizontal pages: its book, number, width and height,
     /// and its paragraphs by page (RDR-004).
     pages: Option<(PagesKey, Vec<std::ops::Range<usize>>)>,
@@ -88,7 +96,7 @@ pub(crate) struct State {
     folder: bool,
     /// The address of a web page, as typed (WEB-001).
     address: String,
-    paste_open: bool,
+    pub(crate) paste_open: bool,
     paste_title: String,
     paste_text: String,
     paste_markdown: bool,
@@ -157,6 +165,22 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     }
     if close {
         view.close_books_page(out);
+        view.books.from_library = None;
+    }
+    // back to the shelf the book was opened from
+    view.books.settle = view.books.settle.saturating_sub(1);
+    let idle = view.books.settle == 0
+        && s.books_page.open.is_none()
+        && !s.books_page.busy
+        && s.books_page.status.is_none()
+        && view.dialog.is_none()
+        && !view.books.paste_open;
+    if (std::mem::take(&mut view.books.reader_closed) || idle)
+        && let Some(shelf) = view.books.from_library.take()
+    {
+        view.close_books_page(out);
+        view.open_library_page(out);
+        view.library.shelf = shelf;
     }
 }
 
@@ -172,22 +196,85 @@ pub(super) fn range_rects(
 ) -> Vec<egui::Rect> {
     let start = text[..range.start.min(text.len())].chars().count();
     let length = text.get(range).map_or(0, |part| part.chars().count());
-    let mut rows: Vec<egui::Rect> = Vec::new();
-    for at in start..start + length {
-        let left = galley.pos_from_cursor(egui::text::CCursor::new(at));
-        let right = galley.pos_from_cursor(egui::text::CCursor::new(at + 1));
-        let width = if (left.top() - right.top()).abs() < 1.0 {
-            right.left() - left.left()
-        } else {
-            left.height()
-        };
-        let cell = egui::Rect::from_min_size(left.left_top(), vec2(width, left.height()));
-        match rows.last_mut() {
-            Some(row) if (row.top() - cell.top()).abs() < 1.0 => *row = row.union(cell),
-            _ => rows.push(cell),
+    glyph_rows(galley, start..start + length)
+}
+
+/// The rects of the glyphs of characters `chars` (indices), one per row
+/// they are on, from the glyphs themselves: a row's last character is as wide
+/// as it is, not as the next row's start says, and the rect is the text's own
+/// height, not the row's with the room for furigana.
+pub(super) fn glyph_rows(galley: &egui::Galley, chars: std::ops::Range<usize>) -> Vec<egui::Rect> {
+    let mut rows = Vec::new();
+    let mut index = 0;
+    for placed in &galley.rows {
+        let mut rect: Option<egui::Rect> = None;
+        for glyph in &placed.row.glyphs {
+            if chars.contains(&index) {
+                // from the baseline: the text's own box, whatever the row's height
+                let top = glyph.pos.y - glyph.font_ascent;
+                let cell = egui::Rect::from_min_size(
+                    egui::pos2(glyph.pos.x, top),
+                    vec2(glyph.advance_width, glyph.font_height),
+                )
+                .translate(placed.pos.to_vec2());
+                rect = Some(rect.map_or(cell, |r| r.union(cell)));
+            }
+            index += 1;
+        }
+        if let Some(rect) = rect {
+            rows.push(rect);
+        }
+        if placed.ends_with_newline {
+            index += 1;
+        }
+        if index >= chars.end {
+            break;
         }
     }
     rows
+}
+
+/// Furigana over their base: on each row the base is on, the share of the
+/// reading that falls there, centred, and small enough not to run into the
+/// next base when the reading is long.
+fn draw_readings_over(
+    ui: &Ui,
+    galley: &egui::Galley,
+    origin: egui::Pos2,
+    item: &Paragraph,
+    size: f32,
+) {
+    for ruby in &item.ruby {
+        let rows = range_rects(galley, &item.text, ruby.range.clone());
+        let reading: Vec<char> = ruby.text.chars().collect();
+        if rows.is_empty() || reading.is_empty() {
+            continue;
+        }
+        let total: f32 = rows.iter().map(|r| r.width()).sum::<f32>().max(1.0);
+        let mut taken = 0;
+        for (i, row) in rows.iter().enumerate() {
+            let left = reading.len() - taken;
+            let share = if i + 1 == rows.len() {
+                left
+            } else {
+                ((row.width() / total * reading.len() as f32).round() as usize).min(left)
+            };
+            let part: String = reading[taken..taken + share].iter().collect();
+            taken += share;
+            if part.is_empty() {
+                continue;
+            }
+            let count = part.chars().count() as f32;
+            let font = (row.width() / count).clamp(size * 0.3, size * 0.5);
+            ui.painter().text(
+                origin + vec2(row.center().x, row.top() - size * 0.05),
+                Align2::CENTER_BOTTOM,
+                part,
+                FontId::proportional(font),
+                palette::current().details,
+            );
+        }
+    }
 }
 
 /// A picture of the book, decoded the first time it shows and within the
@@ -279,32 +366,7 @@ fn paragraph(
             }
         }
     }
-    for ruby in &item.ruby {
-        let chars = item.text[..ruby.range.start].chars().count();
-        let length = item.text[ruby.range.clone()].chars().count();
-        let first = galley.pos_from_cursor(egui::text::CCursor::new(chars));
-        let last = galley.pos_from_cursor(egui::text::CCursor::new(chars + length));
-        if (first.top() - last.top()).abs() > 1.0 {
-            // it breaks across rows: over its start
-            ui.painter().text(
-                rect.min + first.left_top().to_vec2(),
-                Align2::LEFT_BOTTOM,
-                &ruby.text,
-                FontId::proportional(size * 0.5),
-                palette::current().details,
-            );
-            continue;
-        }
-        let x = (first.left() + last.left()) / 2.0;
-        let y = first.bottom() - size * 1.05;
-        ui.painter().text(
-            rect.min + vec2(x, y),
-            Align2::CENTER_BOTTOM,
-            &ruby.text,
-            FontId::proportional(size * 0.5),
-            palette::current().details,
-        );
-    }
+    draw_readings_over(ui, &galley, rect.min, item, size);
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -631,19 +693,38 @@ fn manga_reader(
                 hit.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::Role::Button, !s.page.ocr.reading, &label)
                 });
+                // the page's own text: faintly framed, clicked like a subtitle
+                let stroke = if hit.hovered() {
+                    egui::Stroke::new(1.5, palette::current().accent)
+                } else {
+                    egui::Stroke::new(1.0, palette::current().accent.gamma_multiply(0.35))
+                };
+                ui.painter()
+                    .rect_stroke(at, 2.0, stroke, egui::StrokeKind::Outside);
                 if hit.hovered() {
-                    ui.painter().rect_stroke(
-                        at,
-                        0.0,
-                        egui::Stroke::new(1.5, palette::current().good),
-                        egui::StrokeKind::Inside,
-                    );
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
                 if hit.clicked() && !s.page.ocr.reading {
-                    out.push(Command::MokuroSelect {
-                        page: *page,
-                        region: index,
-                    });
+                    let point = hit.interact_pointer_pos().unwrap_or(at.center());
+                    let x = (point.x - drawn.min.x) / drawn.width() * imported.width as f32;
+                    let y = (point.y - drawn.min.y) / drawn.height() * imported.height as f32;
+                    match region.offset_at(x, y) {
+                        Some(offset) => out.push(Command::MokuroLookup {
+                            page: *page,
+                            region: index,
+                            offset,
+                            anchor: popup::Rect {
+                                x: f64::from(point.x - 8.0),
+                                y: f64::from(point.y - 8.0),
+                                w: 16.0,
+                                h: 16.0,
+                            },
+                        }),
+                        None => out.push(Command::MokuroSelect {
+                            page: *page,
+                            region: index,
+                        }),
+                    }
                 }
             }
         }
@@ -671,7 +752,17 @@ fn manga_reader(
         if let Some((page, drawn)) = under
             && let Some(area) = shares(selection, *drawn)
         {
-            out.push(Command::MangaRead { page: *page, area });
+            let boxed = egui::Rect::from_two_pos(selection.0, selection.1);
+            out.push(Command::MangaRead {
+                page: *page,
+                area,
+                anchor: popup::Rect {
+                    x: f64::from(boxed.min.x),
+                    y: f64::from(boxed.min.y),
+                    w: f64::from(boxed.width()),
+                    h: f64::from(boxed.height()),
+                },
+            });
         }
     }
     let step = pages.len();
@@ -943,7 +1034,7 @@ fn reader(
         if ui.button(tr(s, "books-back")).clicked() {
             close = true;
         }
-        ui.add(egui::Label::new(RichText::new(&open.book.title).family(theme::bold())).truncate());
+        // the page turns first, at the right: the title is cut before them
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let last = open.book.chapters.len().saturating_sub(1);
             if ui
@@ -990,6 +1081,12 @@ fn reader(
                     out.push(Command::BookAlong(!along));
                 }
             }
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&open.book.title).family(theme::bold()))
+                        .truncate(),
+                );
+            });
         });
     });
     if manga {
@@ -1563,30 +1660,33 @@ fn list(
             if ui.button(tr(s, "library-close")).clicked() {
                 *close = true;
             }
-            if ui.button(tr(s, "books-audiobook")).clicked() {
-                state.audiobook = true;
-            }
-            if ui.button(tr(s, "podcasts-title")).clicked() {
-                out.push(Command::PodcastsOpen);
-            }
-            if ui.button(tr(s, "books-folder")).clicked() {
-                state.folder = true;
-            }
-            if ui.button(tr(s, "annotations-title")).clicked() {
-                out.push(Command::ReaderToolsOpen(
-                    crate::reader_tools::Tab::Annotations,
-                ));
-            }
-            if ui.button(tr(s, "search-title")).clicked() {
-                out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
-            }
-            if ui
-                .add_enabled(!s.page.busy, Button::new(tr(s, "books-add")))
-                .clicked()
-            {
-                *add = true;
-            }
         });
+    });
+    // the actions on a row of their own, wrapped: never over the title
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .add_enabled(!s.page.busy, palette::suggested(tr(s, "books-add")))
+            .clicked()
+        {
+            *add = true;
+        }
+        if ui.button(tr(s, "books-folder")).clicked() {
+            state.folder = true;
+        }
+        if ui.button(tr(s, "books-audiobook")).clicked() {
+            state.audiobook = true;
+        }
+        if ui.button(tr(s, "podcasts-title")).clicked() {
+            out.push(Command::PodcastsOpen);
+        }
+        if ui.button(tr(s, "annotations-title")).clicked() {
+            out.push(Command::ReaderToolsOpen(
+                crate::reader_tools::Tab::Annotations,
+            ));
+        }
+        if ui.button(tr(s, "search-title")).clicked() {
+            out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
+        }
     });
     if let Some(uid) = state.analysis.clone() {
         if s.colours
@@ -1785,6 +1885,7 @@ pub(crate) fn draw(
                         Some(open) => {
                             if reader(ui, s, open, state, out) {
                                 out.push(Command::BookClose);
+                                state.reader_closed = true;
                             }
                         }
                         None => {
@@ -1806,6 +1907,39 @@ mod tests {
     use nikomiru_books::{Book, Chapter, Ruby};
 
     use super::*;
+
+    // T-BOK-002, T-WEB-004: a base that ends its row keeps its furigana on
+    // that row, over its own glyphs: not over the row above, and not
+    // stretched to the next row's start
+    #[test]
+    fn a_base_at_the_end_of_a_row_keeps_its_reading_there() {
+        let mut h = Harness::builder().allow_missing_glyphs().build_ui(|ui| {
+            let item = Paragraph {
+                text: "あいうえお漢字かきくけこ".into(),
+                ruby: vec![Ruby {
+                    range: 15..21,
+                    text: "かんじ".into(),
+                }],
+                ..Paragraph::default()
+            };
+            // seven characters fit on the first row: the base ends it
+            let one = glyph_rows(&paragraph_galley(ui, &item, 10_000.0, 1.0), 0..1)[0].width();
+            let galley = paragraph_galley(ui, &item, one * 7.2, 1.0);
+            assert!(galley.rows.len() >= 2, "{}", galley.rows.len());
+            let rows = range_rects(&galley, &item.text, 15..21);
+            assert_eq!(rows.len(), 1, "{rows:?}");
+            let base = rows[0];
+            let first = glyph_rows(&galley, 0..1)[0];
+            // on the first row, the text's own height, not the row's
+            assert!((base.top() - first.top()).abs() < 1.0, "{base:?} {first:?}");
+            assert!(base.height() < TEXT_SIZE * 1.6, "{base:?}");
+            // two glyphs wide, not one glyph and a whole row height
+            assert!(base.width() < one * 2.4, "{base:?}");
+            let next = glyph_rows(&galley, 7..8)[0];
+            assert!(next.top() > base.bottom(), "{next:?}");
+        });
+        h.run();
+    }
 
     struct Test {
         page: BooksPage,
@@ -2483,7 +2617,7 @@ mod tests {
         h.drop_at(at(0.75, 0.5));
         h.run();
         let area = h.state().out.iter().find_map(|c| match c {
-            Command::MangaRead { page: 0, area } => Some(*area),
+            Command::MangaRead { page: 0, area, .. } => Some(*area),
             _ => None,
         });
         let area = area.expect("a selection");
@@ -2703,9 +2837,10 @@ mod tests {
         assert!(!h.state().state.paste_open);
         assert_eq!(h.state().state.paste_text, "# 猫\n\n本文");
     }
-    // T-MNG-008: imported text has an accessible target without model installation or an OCR offer.
+    // T-MNG-008, T-MNG-010: imported text has an accessible target without
+    // model installation or an OCR offer; a click looks the word under it up.
     #[test]
-    fn imported_manga_region_emits_only_an_explicit_selection() {
+    fn imported_manga_region_looks_up_the_word_clicked() {
         let mut open = manga();
         open.book.manga_regions.insert(
             0,
@@ -2715,6 +2850,8 @@ mod tests {
                 regions: vec![nikomiru_books::mokuro::Region {
                     bounds: [10, 10, 80, 100],
                     text: "猫です".into(),
+                    vertical: true,
+                    lines: vec![(0..9, [10, 10, 80, 100])],
                 }],
             },
         );
@@ -2730,7 +2867,9 @@ mod tests {
             h.state()
                 .out
                 .iter()
-                .any(|c| matches!(c, Command::MokuroSelect { page: 0, region: 0 }))
+                .any(|c| matches!(c, Command::MokuroLookup { page: 0, region: 0, offset, .. } if *offset < 9)),
+            "{:?}",
+            h.state().out
         );
     }
 }

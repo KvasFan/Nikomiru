@@ -856,7 +856,8 @@ manga-offer = To read the text on a page, Nikomiru needs a reading model of { $s
 manga-credit = Model: manga-ocr by kha-white (Apache-2.0), trained on the Manga109-s dataset.
 manga-fetch = Download the model
 manga-fetching = Downloading the model: { $percent } %
-manga-hint = Drag across a balloon to read it.
+manga-needs-model = Fetch the reading model first (button above): then a box dragged over a balloon is read.
+manga-hint = Drag a box around a balloon: it is read and its first word opens in the dictionary; click the other words under the page.
 manga-reading = Reading…
 manga-nothing = No text was found there.
 
@@ -1404,7 +1405,7 @@ books-paste-hint = Saved locally for reopening. Maximum 4 MiB. Markdown keeps he
 error-book-invalid-text = This text document cannot be read. Use UTF-8, a title of at most 256 characters and plain text or supported Markdown.
 
 error-book-mokuro = This Mokuro volume is unsupported or has invalid local images or text coordinates.
-mokuro-ready = Text is already available. Select a text region on the page.
+mokuro-ready = The page has its text: click a word on the page to look it up.
 mokuro-empty-page = This page has no imported text regions.
 mokuro-region = Read region { $number } on page { $page }
 
@@ -1746,3 +1747,30 @@ settings-speech-language = Spoken language
 settings-speech-threads = Threads (0: half the processor)
 settings-microphone = Microphone
 settings-speech-hint = The speech is read on this computer: nothing is sent. The microphone is an ffmpeg input, written format:device.
+
+## Main page shelves (VID-001, VID-002)
+tab-collection = Collection
+tab-videos = Videos
+tab-books = Books
+tab-manga = Manga
+tab-web = Websites
+library-tools = Tools
+library-books-page = All books and documents
+videos-open-file = Open a video file…
+videos-links = Saved links
+videos-link-url = Address
+videos-link-title = Name
+videos-link-keep = Save link
+videos-links-none = No saved links yet. Save a video page's address to watch it later.
+videos-link-remove = Forget the link { $title }
+videos-play = Play
+videos-history = Watched recently
+videos-history-none = Videos you open on their own (files, web videos, media servers) appear here.
+videos-watched = Watched
+videos-forget = Remove { $title } from the history
+manga-add = Add a manga…
+manga-none = No manga yet. Add a CBZ, a Mokuro volume or a folder of pages.
+web-none = No web pages yet. Type a page's address above to read it.
+books-open = Read
+books-continue = Continue ({ $percent } %)
+address-hint = https://

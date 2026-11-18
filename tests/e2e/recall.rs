@@ -105,7 +105,7 @@ fn recall_hints_and_dictionary_lookup_preserve_playback_and_progress() {
     if h.state()["paused"] == false {
         h.key("Space");
     }
-    let before = h.state_until("paused", |s| s["paused"] == true);
+    let before = h.paused_settled("paused");
     h.cmd(json!({"cmd":"recall","action":"start","text":"食べる"}));
     h.cmd(json!({"cmd":"recall","action":"lookup"}));
     assert!(h.state()["popups"].as_array().unwrap().is_empty());

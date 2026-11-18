@@ -326,6 +326,12 @@ fn run(command: &Value) -> Result<Value, String> {
             command["y"].as_f64().ok_or("missing \"y\"")? as f32,
         )
         .map(|()| Value::Null),
+        Some("button") => harness::button(
+            command["x"].as_f64().ok_or("missing \"x\"")? as f32,
+            command["y"].as_f64().ok_or("missing \"y\"")? as f32,
+            command["pressed"].as_bool().unwrap_or(true),
+        )
+        .map(|()| Value::Null),
         Some("wheel") => harness::wheel(command["y"].as_f64().ok_or("missing \"y\"")? as f32)
             .map(|()| Value::Null),
         Some("mining-profile") => harness::mining_profile(

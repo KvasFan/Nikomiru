@@ -840,7 +840,8 @@ manga-offer = ページの文字を読み取るには、{ $size } MB の文字�
 manga-credit = モデル: kha-white の manga-ocr（Apache-2.0）、Manga109-s データセットで学習。
 manga-fetch = モデルをダウンロード
 manga-fetching = モデルをダウンロード中: { $percent }%
-manga-hint = フキダシの上をドラッグすると読み取ります。
+manga-needs-model = 先に読み取りモデルを取得してください（上のボタン）。その後、フキダシを囲むと読み取ります。
+manga-hint = フキダシを囲むようにドラッグすると読み取り、最初の語を辞書で開きます。ほかの語はページの下のテキストをクリックします。
 manga-reading = 読み取り中…
 manga-nothing = そこに文字は見つかりませんでした。
 
@@ -1387,7 +1388,7 @@ books-paste-hint = 再度開けるようにローカルに保存します。上�
 error-book-invalid-text = このテキスト文書は読めません。UTF-8、256 文字以内のタイトル、プレーンテキストまたは対応する Markdown を使用してください。
 
 error-book-mokuro = 未対応の Mokuro ファイル、無効なローカル画像、またはテキスト座標です。
-mokuro-ready = テキストは処理済みです。ページ上のテキスト領域を選択してください。
+mokuro-ready = このページには文字データがあります。ページ上の語をクリックすると調べられます。
 mokuro-empty-page = このページにはテキスト領域がありません。
 mokuro-region = { $page } ページの領域 { $number } を読む
 
@@ -1729,3 +1730,30 @@ settings-speech-language = 話されている言語
 settings-speech-threads = スレッド数（0：プロセッサーの半分）
 settings-microphone = マイク
 settings-speech-hint = 音声はこのコンピューターで読み取り、何も送信しません。マイクは ffmpeg の入力で、形式:デバイス と書きます。
+
+## Main page shelves (VID-001, VID-002)
+tab-collection = コレクション
+tab-videos = 動画
+tab-books = 本
+tab-manga = マンガ
+tab-web = ウェブサイト
+library-tools = ツール
+library-books-page = すべての本と文書
+videos-open-file = 動画ファイルを開く…
+videos-links = 保存したリンク
+videos-link-url = アドレス
+videos-link-title = 名前
+videos-link-keep = リンクを保存
+videos-links-none = 保存したリンクはまだありません。あとで見る動画ページのアドレスを保存できます。
+videos-link-remove = リンク { $title } を削除
+videos-play = 再生
+videos-history = 最近見たもの
+videos-history-none = 単独で開いた動画（ファイル、ウェブの動画、メディアサーバー）がここに表示されます。
+videos-watched = 視聴済み
+videos-forget = { $title } を履歴から削除
+manga-add = マンガを追加…
+manga-none = まだマンガがありません。CBZ、Mokuro の巻、またはページのフォルダーを追加してください。
+web-none = まだウェブページがありません。上にページのアドレスを入力すると読めます。
+books-open = 読む
+books-continue = 続きから（{ $percent } %）
+address-hint = https://

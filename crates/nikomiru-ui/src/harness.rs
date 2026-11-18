@@ -238,6 +238,21 @@ pub fn pointer(x: f32, y: f32) -> Result<(), String> {
     })
 }
 
+/// Presses or releases the primary button at (`x`, `y`), as a mouse does:
+/// with [`pointer`] in between, a real drag.
+pub fn button(x: f32, y: f32, pressed: bool) -> Result<(), String> {
+    call(move |ui| {
+        ui.run(Command::MouseMoved);
+        ui.inject(egui::Event::PointerMoved(egui::pos2(x, y)));
+        ui.inject(egui::Event::PointerButton {
+            pos: egui::pos2(x, y),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    })
+}
+
 /// Turns the mouse wheel by `y` points where the pointer is: positive
 /// scrolls the page down.
 pub fn wheel(y: f32) -> Result<(), String> {
@@ -1420,6 +1435,14 @@ pub fn books(
             "read" => out.push(Command::MangaRead {
                 page: ui.session.books_page.open.as_ref().map_or(0, |o| o.chapter),
                 area: [0.25, 0.25, 0.5, 0.5],
+                anchor: Rect::default(),
+            }),
+            // MNG-010: a click on region `paragraph`'s text, at byte `offset`
+            "region-at" => out.push(Command::MokuroLookup {
+                page: ui.session.books_page.open.as_ref().map_or(0, |o| o.chapter),
+                region: paragraph.unwrap_or(0),
+                offset: offset.unwrap_or(0),
+                anchor: Rect::default(),
             }),
             "next" => out.push(Command::BookChapter(
                 ui.session
@@ -1498,6 +1521,26 @@ pub fn library(
             }
             "close" => {
                 ui.view.close_library_page();
+                return Ok(());
+            }
+            // VID-001, BOK-015: `path` names the shelf
+            "shelf" => {
+                use crate::view::library_page::Shelf;
+                let name = path()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let shelf = match name.as_str() {
+                    "videos" => Shelf::Videos,
+                    "books" => Shelf::Books,
+                    "manga" => Shelf::Manga,
+                    "web" => Shelf::Web,
+                    _ => Shelf::Collection,
+                };
+                ui.view.library.show_statistics(false);
+                ui.view.library.shelf = shelf;
+                if matches!(shelf, Shelf::Books | Shelf::Manga | Shelf::Web) {
+                    ui.run(Command::BooksOpen);
+                }
                 return Ok(());
             }
             "statistics" | "library" => {

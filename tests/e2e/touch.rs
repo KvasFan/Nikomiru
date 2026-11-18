@@ -23,9 +23,7 @@ fn swipes_seek_the_video_and_turn_pages() {
     if h.state()["paused"] == false {
         h.key("Space");
     }
-    let before = h.state_until("paused", |s| s["paused"] == true)["time_pos"]
-        .as_f64()
-        .unwrap();
+    let before = h.paused_settled("paused")["time_pos"].as_f64().unwrap();
     h.cmd(json!({"cmd":"touch","from":[300.0,300.0],"to":[600.0,310.0]}));
     let forward = h.state_until("a swipe right seeks forward", |s| {
         s["time_pos"].as_f64().is_some_and(|t| t >= before + 4.0)

@@ -23,6 +23,41 @@ pub struct Region {
     pub bounds: [u32; 4],
     /// Recognised text in original block/line order.
     pub text: String,
+    /// Written top to bottom, its lines right to left.
+    pub vertical: bool,
+    /// Each line: its byte range in `text` and its box, from Mokuro's
+    /// `lines_coords` or, without them, the block shared out evenly.
+    pub lines: Vec<(std::ops::Range<usize>, [u32; 4])>,
+}
+
+impl Region {
+    /// The byte of `text` under the point (`x`, `y`) of the original page,
+    /// in pixels: the line under it (else the nearest), then the character
+    /// at that share of the line's length (MNG-010).
+    pub fn offset_at(&self, x: f32, y: f32) -> Option<usize> {
+        let distance = |b: &[u32; 4]| {
+            let dx = (b[0] as f32 - x).max(x - b[2] as f32).max(0.0);
+            let dy = (b[1] as f32 - y).max(y - b[3] as f32).max(0.0);
+            dx * dx + dy * dy
+        };
+        let (range, b) = self
+            .lines
+            .iter()
+            .min_by(|a, b| distance(&a.1).total_cmp(&distance(&b.1)))?;
+        let line = self.text.get(range.clone())?;
+        let count = line.chars().count();
+        if count == 0 {
+            return None;
+        }
+        let share = if self.vertical {
+            (y - b[1] as f32) / (b[3].saturating_sub(b[1]).max(1)) as f32
+        } else {
+            (x - b[0] as f32) / (b[2].saturating_sub(b[0]).max(1)) as f32
+        };
+        let index = ((share.clamp(0.0, 0.999) * count as f32) as usize).min(count - 1);
+        let within = line.char_indices().nth(index).map_or(0, |(i, _)| i);
+        Some(range.start + within)
+    }
 }
 /// Text regions and verified original page dimensions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +133,65 @@ struct Block {
     vertical: bool,
     #[serde(deserialize_with = "limited::<_,_,256>")]
     lines: Vec<String>,
+    /// Each line's four corners, when Mokuro wrote them.
+    #[serde(default, deserialize_with = "limited::<_,_,256>")]
+    lines_coords: Vec<[[f64; 2]; 4]>,
+}
+
+/// The lines' ranges in the joined text and their boxes, in page pixels.
+fn line_boxes(
+    block: &Block,
+    bounds: [u32; 4],
+    size: (f64, f64),
+) -> Vec<(std::ops::Range<usize>, [u32; 4])> {
+    let n = block.lines.len();
+    let joint = usize::from(!block.vertical);
+    let mut at = 0;
+    let mut out = Vec::with_capacity(n);
+    let [l, t, r, b] = bounds.map(f64::from);
+    for (i, line) in block.lines.iter().enumerate() {
+        let range = at..at + line.len();
+        at = range.end + joint;
+        let given = block
+            .lines_coords
+            .get(i)
+            .filter(|_| block.lines_coords.len() == n)
+            .filter(|q| q.iter().flatten().all(|v| v.is_finite()))
+            .map(|q| {
+                let xs = q.iter().map(|p| p[0]);
+                let ys = q.iter().map(|p| p[1]);
+                let (x0, x1) = (
+                    xs.clone().fold(f64::MAX, f64::min),
+                    xs.fold(f64::MIN, f64::max),
+                );
+                let (y0, y1) = (
+                    ys.clone().fold(f64::MAX, f64::min),
+                    ys.fold(f64::MIN, f64::max),
+                );
+                [x0, y0, x1, y1]
+            });
+        let [x0, y0, x1, y1] = given.unwrap_or_else(|| {
+            let part = i as f64 / n.max(1) as f64;
+            let next = (i + 1) as f64 / n.max(1) as f64;
+            if block.vertical {
+                // columns, the first on the right
+                [r - (r - l) * next, t, r - (r - l) * part, b]
+            } else {
+                [l, t + (b - t) * part, r, t + (b - t) * next]
+            }
+        });
+        let clip = |v: f64, max: f64| v.clamp(0.0, max).round() as u32;
+        out.push((
+            range,
+            [
+                clip(x0, size.0),
+                clip(y0, size.1),
+                clip(x1, size.0),
+                clip(y1, size.1),
+            ],
+        ));
+    }
+    out
 }
 fn bytes(path: &Path, limit: u64) -> Result<Vec<u8>, BookError> {
     if !std::fs::metadata(path)
@@ -171,7 +265,13 @@ fn regions(page: &InputPage) -> Result<Vec<Region>, BookError> {
             return Err(BookError::TooLarge);
         }
         if !text.trim().is_empty() {
-            out.push(Region { bounds, text });
+            let lines = line_boxes(block, bounds, (w, h));
+            out.push(Region {
+                bounds,
+                text,
+                vertical: block.vertical,
+                lines,
+            });
         }
     }
     Ok(out)
@@ -330,6 +430,37 @@ mod tests {
             b.identity
         );
     }
+    // T-MNG-010: a point of the page names the character under it, from
+    // Mokuro's line boxes or the block shared out
+    #[test]
+    fn a_point_names_its_character() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = fixture(dir.path());
+        let b = read(&path).unwrap();
+        let region = &b.manga_regions[&0].regions[0];
+        // two columns over [0,10,80,100]: 猫 on the right, です on the left
+        assert!(region.vertical);
+        assert_eq!(region.offset_at(70.0, 50.0), Some(0));
+        assert_eq!(region.offset_at(20.0, 20.0), Some(3));
+        assert_eq!(region.offset_at(20.0, 90.0), Some(6));
+        // given line boxes, horizontal text
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        value["pages"][0]["blocks"][0] = serde_json::json!({
+            "box": [0, 0, 100, 40], "vertical": false, "lines": ["猫です", "犬"],
+            "lines_coords": [[[0,0],[60,0],[60,20],[0,20]], [[0,20],[20,20],[20,40],[0,40]]],
+        });
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let b = read(&path).unwrap();
+        let region = &b.manga_regions[&0].regions[0];
+        assert_eq!(region.text, "猫です\n犬");
+        assert_eq!(region.offset_at(5.0, 5.0), Some(0));
+        assert_eq!(region.offset_at(25.0, 5.0), Some(3));
+        assert_eq!(region.offset_at(55.0, 5.0), Some(6));
+        // below the first line, nearest the second
+        assert_eq!(region.offset_at(25.0, 35.0), Some(10));
+    }
+
     // T-MNG-009: unsafe paths, bad coordinates/versions/dimensions, duplicate and missing images reject atomically.
     #[test]
     fn malformed_or_nonlocal_volumes_reject_as_a_whole() {

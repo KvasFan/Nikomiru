@@ -798,6 +798,10 @@ pub(crate) enum Command {
     LibraryEdit(crate::catalog::LibraryEdit),
     /// An episode played from the page.
     LibraryPlay(PathBuf),
+    /// Keep a video link for later, with a name (VID-002).
+    LinkKeep(String, String),
+    /// Forget a kept link.
+    LinkRemove(String),
     /// The Online subtitles page opened (MET-009).
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
@@ -872,6 +876,15 @@ pub(crate) enum Command {
     MangaRead {
         page: usize,
         area: [f32; 4],
+        /// Where the box was drawn: the dictionary opens there once read.
+        anchor: crate::popup::Rect,
+    },
+    /// A click on a Mokuro region's text, at byte `offset` (MNG-010).
+    MokuroLookup {
+        page: usize,
+        region: usize,
+        offset: usize,
+        anchor: crate::popup::Rect,
     },
     /// Two pages side by side, or one.
     MangaDouble(bool),
@@ -2308,6 +2321,8 @@ impl Ui {
             Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
+            Command::LinkKeep(url, title) => s.link_keep(&url, &title),
+            Command::LinkRemove(url) => s.link_remove(&url),
             Command::ServicesOpen => s.services_open(),
             Command::SettingsOpen => s.settings_open(),
             Command::SettingsSave(section, draft) => s.settings_save(section, &draft),
@@ -2376,7 +2391,13 @@ impl Ui {
             Command::BookAt(paragraph) => s.book_at(paragraph),
             Command::BookClose => s.book_close(),
             Command::MokuroSelect { page, region } => s.mokuro_select(page, region),
-            Command::MangaRead { page, area } => s.manga_read(page, area),
+            Command::MangaRead { page, area, anchor } => s.manga_read(page, area, anchor),
+            Command::MokuroLookup {
+                page,
+                region,
+                offset,
+                anchor,
+            } => s.mokuro_lookup(page, region, offset, anchor),
             Command::MangaDouble(double) => s.manga_double(double),
             Command::OcrFetch => s.ocr_fetch(),
             Command::BookClicked {
