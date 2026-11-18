@@ -7,5 +7,6 @@
 pub mod catalog;
 pub mod fetch;
 pub mod pack;
+pub mod speech;
 
 pub mod tools;

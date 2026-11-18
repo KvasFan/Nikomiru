@@ -264,6 +264,43 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
                 .labelled_by(label.id);
             ui.end_row();
         });
+    // TRN-001, AIX-001: a line translated or explained, only when asked
+    section(ui, &tr(s, "services-assist"));
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "services-assist-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
+    egui::Grid::new("assist-keys")
+        .num_columns(2)
+        .spacing(vec2(12.0, 6.0))
+        .show(ui, |ui| {
+            let label = ui.label(tr(s, "online-deepl-key"));
+            ui.add(
+                TextEdit::singleline(&mut online.deepl_key)
+                    .password(!show)
+                    .desired_width(320.0),
+            )
+            .labelled_by(label.id);
+            ui.end_row();
+            let label = ui.label(tr(s, "online-claude-key"));
+            ui.add(
+                TextEdit::singleline(&mut online.claude_key)
+                    .password(!show)
+                    .desired_width(320.0),
+            )
+            .labelled_by(label.id);
+            ui.end_row();
+            let label = ui.label(tr(s, "online-claude-model"));
+            ui.add(
+                TextEdit::singleline(&mut online.claude_model)
+                    .hint_text(nikomiru_online::claude::MODEL)
+                    .desired_width(320.0),
+            )
+            .labelled_by(label.id);
+            ui.end_row();
+        });
     section(ui, &tr(s, "services-network"));
     ui.horizontal(|ui| {
         let label = ui.label(tr(s, "online-proxy"));
@@ -334,7 +371,7 @@ mod tests {
         }
     }
 
-    // T-MET-011, T-SET-008, T-MET-006
+    // T-MET-011, T-SET-008, T-MET-006, T-TRN-001, T-AIX-001
     #[test]
     fn the_services_are_chosen_ordered_and_saved() {
         let mut h = harness(OnlineConfig::default());
@@ -375,6 +412,14 @@ mod tests {
         h.run();
         h.get_by_label("online-anidb-password").type_text("pw");
         h.run();
+        h.get_by_label("online-deepl-key").focus();
+        h.run();
+        h.get_by_label("online-deepl-key").type_text("dl:fx");
+        h.run();
+        h.get_by_label("online-claude-key").focus();
+        h.run();
+        h.get_by_label("online-claude-key").type_text("sk-ant");
+        h.run();
         let out = click(&mut h, "online-save");
         let online = saved(&out);
         assert_eq!(
@@ -382,6 +427,12 @@ mod tests {
             ("learner", "pw")
         );
         assert!(online.anidb_client.is_empty());
+        // T-TRN-001, T-AIX-001: the keys for translating and explaining a line
+        assert_eq!(
+            (online.deepl_key.as_str(), online.claude_key.as_str()),
+            ("dl:fx", "sk-ant")
+        );
+        assert!(online.claude_model.is_empty());
         // another tab
         h.get_by_label("settings-player").click();
         h.run();

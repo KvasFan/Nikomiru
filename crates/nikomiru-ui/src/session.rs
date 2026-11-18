@@ -219,6 +219,8 @@ pub struct Services {
     pub setup: Box<dyn crate::setup::SetupService>,
     /// Application updates (UPD-001…UPD-004).
     pub updates: Box<dyn crate::updates::UpdateService>,
+    /// The line tools: speech, translation, explanation, shadowing (M121…M125).
+    pub assist: Box<dyn crate::line_tools::AssistService>,
     /// The library worker (LIB-002…LIB-012).
     pub catalog: Box<dyn crate::catalog::LibraryService>,
     /// The word audio worker (AUD-001…AUD-008).
@@ -592,6 +594,13 @@ pub struct Session {
     /// The About section's updates (UPD-001…UPD-004).
     pub updates: crate::updates::State,
     update_jobs: Vec<UpdateJob>,
+    /// The player's line tools (M121…M125).
+    pub line_tools: crate::line_tools::LineTools,
+    /// The cue in the line tools, for its lookups.
+    line_cue: Option<usize>,
+    line_jobs: Vec<line_session::LineJob>,
+    /// The speech being read into subtitles, and its percentage (SUB-062).
+    speech: Option<Option<u8>>,
     /// The Anime4K pack: installed, and a job running (THM-002).
     shader_pack: (bool, bool),
     shader_job: Option<bool>,
@@ -978,6 +987,10 @@ impl Session {
             shader_pack: (shader_installed, false),
             updates: Default::default(),
             update_jobs: Vec::new(),
+            line_tools: Default::default(),
+            line_cue: None,
+            line_jobs: Vec::new(),
+            speech: None,
             shader_job: None,
             shortcut_preview: None,
             shortcut_base: None,
@@ -6002,6 +6015,22 @@ impl Session {
                 Ok(())
             }
             Action::PeekTranslation => Ok(()),
+            Action::TranslateLine => {
+                self.line_translate(true);
+                Ok(())
+            }
+            Action::ExplainLine => {
+                self.line_explain(true);
+                Ok(())
+            }
+            Action::ShadowLine => {
+                self.line_shadow(true);
+                Ok(())
+            }
+            Action::ReadFrame => {
+                self.line_read();
+                Ok(())
+            }
             Action::LookupPrev | Action::LookupNext => {
                 self.step_lookup(action == Action::LookupNext);
                 Ok(())
@@ -6185,6 +6214,10 @@ impl Session {
             Action::Back if self.setup_page.open => {
                 self.setup_close();
                 return UiEffect::None;
+            }
+            Action::Back if self.line_tools.reading == crate::line_tools::Reading::Choosing => {
+                self.line_read_cancel();
+                Ok(())
             }
             Action::Back if self.moving_subtitles => {
                 self.toggle_moving_subtitles();
@@ -9757,6 +9790,7 @@ impl Session {
             ffmpeg: p.ffmpeg.clone(),
             yt_dlp: p.yt_dlp.clone(),
             deno: p.deno.clone(),
+            whisper: p.whisper.clone(),
         }
     }
 
@@ -9818,6 +9852,7 @@ impl Session {
                     "ffmpeg" => config.paths.ffmpeg = path,
                     "yt-dlp" => config.paths.yt_dlp = path,
                     "deno" => config.paths.deno = path,
+                    "whisper" => config.paths.whisper = path,
                     _ => return,
                 }
                 self.settings_save(nikomiru_core::config::Section::Advanced, &config);
@@ -10108,6 +10143,9 @@ mod guided_session;
 
 #[path = "session_reader.rs"]
 mod reader_session;
+
+#[path = "session_line.rs"]
+mod line_session;
 
 #[path = "session_podcasts.rs"]
 pub(crate) mod podcast_session;

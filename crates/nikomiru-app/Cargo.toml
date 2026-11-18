@@ -51,6 +51,7 @@ thiserror.workspace = true
 sha2.workspace = true
 zip.workspace = true
 tar.workspace = true
+flate2.workspace = true
 lzma-rust2.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 tracing.workspace = true

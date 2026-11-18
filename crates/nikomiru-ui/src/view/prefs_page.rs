@@ -875,6 +875,38 @@ fn advanced(ui: &mut Ui, s: &Scene<'_>, draft: &mut Config) {
             ui.add(TextEdit::singleline(&mut draft.paths.deno).desired_width(360.0))
         });
     });
+    // SUB-062, SHD-001: speech read on this computer
+    section(ui, &tr("settings-speech"));
+    form(ui, "settings-speech", |ui| {
+        row(ui, &tr("settings-whisper"), |ui| {
+            ui.add(
+                TextEdit::singleline(&mut draft.paths.whisper)
+                    .hint_text(tr("settings-whisper-hint"))
+                    .desired_width(360.0),
+            )
+        });
+        row(ui, &tr("settings-speech-model"), |ui| {
+            ui.add(
+                TextEdit::singleline(&mut draft.speech.model)
+                    .hint_text(tr("settings-speech-model-hint"))
+                    .desired_width(360.0),
+            )
+        });
+        row(ui, &tr("settings-speech-language"), |ui| {
+            ui.add(TextEdit::singleline(&mut draft.speech.language).desired_width(80.0))
+        });
+        row(ui, &tr("settings-speech-threads"), |ui| {
+            ui.add(egui::DragValue::new(&mut draft.speech.threads).range(0..=64))
+        });
+        row(ui, &tr("settings-microphone"), |ui| {
+            ui.add(
+                TextEdit::singleline(&mut draft.speech.microphone)
+                    .hint_text(nikomiru_media::speech::default_input())
+                    .desired_width(360.0),
+            )
+        });
+    });
+    hint(ui, &tr("settings-speech-hint"));
     hint(ui, &tr("settings-next-start"));
     section(ui, &tr("settings-folders"));
     form(ui, "settings-folders", |ui| {
@@ -1081,6 +1113,35 @@ mod tests {
                     updates: None,
                 },
             )
+    }
+
+    // T-SUB-062, T-SHD-001: whisper.cpp, its model and the microphone are
+    // Advanced settings, saved together with the paths.
+    #[test]
+    fn the_speech_settings_are_saved_with_the_paths() {
+        let mut h = harness(SettingsTab::Advanced, Config::default());
+        h.run();
+        for (label, text) in [
+            ("settings-whisper", "/opt/whisper"),
+            ("settings-speech-model", "/m/ggml-small.bin"),
+            ("settings-microphone", "alsa:hw:1"),
+        ] {
+            h.get_by_label(label).focus();
+            h.run();
+            h.get_by_label(label).type_text(text);
+            h.run();
+        }
+        h.get_by_label("settings-save").click();
+        h.run();
+        match h.state().out.as_slice() {
+            [Command::SettingsSave(Section::Advanced, c)] => {
+                assert_eq!(c.paths.whisper, "/opt/whisper");
+                assert_eq!(c.speech.model, "/m/ggml-small.bin");
+                assert_eq!(c.speech.microphone, "alsa:hw:1");
+                assert_eq!(c.speech.language, "ja");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     // T-GDL-001, T-GDL-004: the accessible optional rule remains a draft until explicit Save.

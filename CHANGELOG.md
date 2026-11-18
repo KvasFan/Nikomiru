@@ -4,6 +4,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.140.0] - 2026-11-18
+
+Speech, translation, explanation, shadowing and text from the picture, one line at a time and only when asked (M121…M125); the remaining open decisions closed (D-70) and a device-linking proposal (ADR 0011).
+
+### Added
+
+- Generate subtitles from an episode's speech on this computer with whisper.cpp: "Generate from the audio (Whisper)" in the subtitle menu, with progress and Stop. The SRT is kept with the episode's subtitles and shown at once. The setup assistant installs whisper.cpp v1.9.5 and the Whisper large-v3-turbo model with its voice-activity model, all MIT and pinned by SHA-256 (M121, SUB-062, INS-008).
+- Line tools in the player, for the line on screen or text read from the picture:
+  - Translate with DeepL using your API key (Shift+T; M122, TRN-001, TRN-002).
+  - Explain with Anthropic's Claude using your API key, the line's parts with reading, meaning and grammar (G; M123, AIX-001, AIX-002).
+  - Shadow: record yourself with the microphone through ffmpeg, then see what whisper.cpp heard and how close it is to the line, and play your recording back (Y; M124, SHD-001, SHD-002).
+  - Read from the picture: drag over burned-in text in the video, read by the local OCR model and looked up like a Texthooker line (O; M125, OCR-001).
+- The setup assistant installs tools shipped as `.tar.gz` with shared libraries, installing each library under the name programs load it by and never writing links.
+- ADR 0011 proposes live device linking for the maintainer's decision: the computer as host on the local network, QR pairing, a phone browser page first (M126).
+
+### Changed
+
+- D-2 (Nikomiru's own SQLite reader for the local audio database, ADR 0004) and D-18 are accepted; the X11 performance measurement stays open as it is (D-70).
+
 ## [2.130.0] - 2026-11-18
 
 AniDB file identification (M120), the Windows installer, local release tooling and a fix for installing signed updates from the published archives.

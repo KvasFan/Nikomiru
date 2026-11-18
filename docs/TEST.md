@@ -1046,3 +1046,17 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-UPD-002 | No rollback | Older/equal releases and replayed older manifests refused; accepted floor kept. | L1, L6 |
 | T-UPD-003 | Ownership | Flatpak, package and read-only installs only link outside; accessible translated About controls. | L1, L3 |
 | T-UPD-004 | Install | Fake host: interrupted resumable download, size/hash refusal, unsafe archive names, failed `--version`, atomic swap with the previous folder kept; actual app check/download/install of a test release into a portable test root. | L1, L4, L6 |
+
+## M121…M125 speech, translation, explanation, shadowing and text from the picture
+
+| Test | Requirement | Checks | Levels |
+|---|---|---|---|
+| T-INS-008 | whisper.cpp and its model | The pinned catalog entry for every platform, its renamed libraries landing on allowed names once; models pinned at fixed Hugging Face revisions, a partial folder not installed (L1); a `.tar.gz` with library links installs the library under its load name and writes no link, a link where a wanted file should be or the library twice fail (L4) | L1, L4 |
+| T-SUB-062 | Subtitles from the speech | ffmpeg's 16 kHz mono WAV of the chosen stream, whisper-cli's arguments, progress lines (L1); the Advanced settings saved (L3); L6: a stand-in whisper-cli reads the video, its SRT is kept with the video's subtitles as `<video>.whisper.ja.srt` and shown, with no request to any service | L1, L3, L6 |
+| T-TRN-001 | DeepL translation | Free/Pro address from the key, target from the interface language, bounded line (L1); against a fake DeepL: the key in its header, the line and target in the body, wrong key, used-up quota, no key sends nothing (L4); the key saved from Settings (L3); L6: the panel's line translated into English | L1, L3, L4, L6 |
+| T-TRN-002 | Line tools | Answers stamped with their line, a new line dropping old answers (L1); the panel's buttons, answers, disabled tools without a line and the clickable line (L3); L6: the panel holds the current cue and its neighbour | L1, L3, L6 |
+| T-AIX-001 | Claude explanation | Request with model, effort, language, context and fallbacks only where taken; text blocks joined, thinking skipped, refusal reported (L1); against a fake Messages API: key, version and beta headers, wrong key, no key sends nothing (L4); L6: the line and its neighbour asked, the explanation shown | L1, L3, L4, L6 |
+| T-AIX-002 | Privacy of the online tools | The keys kept out of `Debug`, backups and `config.toml` with the other secrets (L1); L6: nothing sent before Translate or Explain | L1, L6 |
+| T-SHD-001 | Shadowing | Recording length bounds, the microphone as `<format>:<device>` never an option, the score on comparable text (L1); L6: ffmpeg's test microphone recorded while paused, read by the stand-in whisper-cli and scored 80 % | L1, L6 |
+| T-SHD-002 | Hearing yourself | "Play my recording" offered with the result (L3) | L3 |
+| T-OCR-001 | Text from the picture | The dragged area as shares of the picture, clipped to it (L1); L6: a part of the frame read, made the panel's line and a Texthooker line, then looked up with a click | L1, L6 |

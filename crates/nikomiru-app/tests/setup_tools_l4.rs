@@ -28,6 +28,7 @@ fn parts(root: &Path, tool: Tool) -> Parts {
         audio_dir: root.join("audio"),
         tools_dir: root.join("tools"),
         model_dir: root.join("model"),
+        speech_dir: root.join("speech"),
         tool_catalog: vec![tool],
         manifest_urls: Vec::new(),
         translator: Translator::from_setting("en", |_| None),
@@ -59,6 +60,7 @@ fn tool(host: &FakeFiles, bytes: &[u8]) -> Tool {
             format: "raw".into(),
             // Deliberately absent from PATH; never modify process-wide environment.
             programs: vec!["nikomiru-test-deno".into()],
+            rename: Default::default(),
         }],
     }
 }
@@ -178,6 +180,91 @@ fn archives_only_extract_required_regular_files() {
         }
     }
     assert!(!root.path().join("deno").exists());
+}
+
+// T-INS-008: a tar.gz release with library links: the libraries land under
+// the names programs load them by, links are never written.
+#[test]
+fn a_tar_gz_installs_libraries_under_their_load_names() {
+    let host = FakeFiles::start().unwrap();
+    let mut artifact = tool(&host, b"x").artifacts.remove(0);
+    artifact.format = "tar.gz".into();
+    artifact.programs = vec!["whisper-cli".into(), "libwhisper.so.1".into()];
+    artifact.rename = [(
+        "libwhisper.so.1.9.5".to_string(),
+        "libwhisper.so.1".to_string(),
+    )]
+    .into_iter()
+    .collect();
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("download.tar.gz");
+    let archive = |links: &[(&str, &str)], files: &[(&str, &[u8])]| {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        for (name, bytes) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append_data(&mut header, name, *bytes).unwrap();
+        }
+        for (name, target) in links {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            builder.append_link(&mut header, name, target).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    };
+    let good = archive(
+        &[
+            ("bin/libwhisper.so", "libwhisper.so.1"),
+            ("bin/libwhisper.so.1", "libwhisper.so.1.9.5"),
+        ],
+        &[
+            ("bin/whisper-cli", b"program"),
+            ("bin/libwhisper.so.1.9.5", b"library"),
+            ("bin/README", b"ignored"),
+        ],
+    );
+    std::fs::write(&file, good).unwrap();
+    let stage = root.path().join("stage");
+    std::fs::create_dir(&stage).unwrap();
+    unpack(&file, &artifact, &stage, &Cancel::new()).unwrap();
+    assert_eq!(
+        std::fs::read(stage.join("libwhisper.so.1")).unwrap(),
+        b"library"
+    );
+    assert_eq!(
+        std::fs::read(stage.join("whisper-cli")).unwrap(),
+        b"program"
+    );
+    assert_eq!(std::fs::read_dir(&stage).unwrap().count(), 2);
+    // a link where a wanted file should be fails closed
+    let bad = archive(
+        &[("bin/libwhisper.so.1.9.5", "/etc/passwd")],
+        &[("bin/whisper-cli", b"program")],
+    );
+    std::fs::write(&file, bad).unwrap();
+    let stage = root.path().join("stage-bad");
+    std::fs::create_dir(&stage).unwrap();
+    assert!(unpack(&file, &artifact, &stage, &Cancel::new()).is_err());
+    // the library twice, by its own name and its load name, fails closed too
+    let twice = archive(
+        &[],
+        &[
+            ("bin/whisper-cli", b"program"),
+            ("bin/libwhisper.so.1.9.5", b"library"),
+            ("lib/libwhisper.so.1", b"again"),
+        ],
+    );
+    std::fs::write(&file, twice).unwrap();
+    let stage = root.path().join("stage-twice");
+    std::fs::create_dir(&stage).unwrap();
+    assert!(unpack(&file, &artifact, &stage, &Cancel::new()).is_err());
 }
 
 // T-INS-007: invalidate cached FFmpeg discovery after the assistant supplies a new path.

@@ -159,6 +159,99 @@ pub fn output(job: &Job, cancel: &Cancel) -> Result<String, JobError> {
     execute(job, cancel, true)
 }
 
+/// Like [`run`], and gives `line` each line of its standard error as it
+/// comes, `\r` ending a line too (progress counters rewrite theirs).
+pub fn run_lines(job: &Job, cancel: &Cancel, line: &(dyn Fn(&str) + Sync)) -> Result<(), JobError> {
+    let remove_outputs = || {
+        for o in &job.outputs {
+            let _ = std::fs::remove_file(o);
+        }
+    };
+    let mut child = spawn(
+        Command::new(&job.program)
+            .args(&job.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|source| JobError::Spawn {
+        program: job.program.clone(),
+        source,
+    })?;
+    let stderr = child.stderr.take();
+    std::thread::scope(|scope| {
+        let reader = scope.spawn(move || {
+            let mut tail = Vec::new();
+            let Some(mut s) = stderr else {
+                return String::new();
+            };
+            let mut current = Vec::new();
+            let mut buffer = [0u8; 4096];
+            while let Ok(n) = s.read(&mut buffer) {
+                if n == 0 {
+                    break;
+                }
+                for &b in &buffer[..n] {
+                    if b == b'\n' || b == b'\r' {
+                        if !current.is_empty() {
+                            line(&String::from_utf8_lossy(&current));
+                            current.clear();
+                        }
+                    } else if current.len() < 64 * 1024 {
+                        current.push(b);
+                    }
+                }
+                tail.extend_from_slice(&buffer[..n]);
+                if tail.len() > 2 * STDERR_TAIL {
+                    tail.drain(..tail.len() - STDERR_TAIL);
+                }
+            }
+            if !current.is_empty() {
+                line(&String::from_utf8_lossy(&current));
+            }
+            let start = tail.len().saturating_sub(STDERR_TAIL);
+            String::from_utf8_lossy(&tail[start..]).trim().to_string()
+        });
+        let deadline = Instant::now() + job.timeout;
+        let status = loop {
+            if let Ok(Some(status)) = child.try_wait() {
+                break status;
+            }
+            let stop = if cancel.is_cancelled() {
+                Some(JobError::Cancelled {
+                    program: job.program.clone(),
+                })
+            } else if Instant::now() >= deadline {
+                Some(JobError::Timeout {
+                    program: job.program.clone(),
+                    timeout: job.timeout,
+                })
+            } else {
+                None
+            };
+            if let Some(error) = stop {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                remove_outputs();
+                return Err(error);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let stderr = reader.join().unwrap_or_default();
+        if status.success() {
+            Ok(())
+        } else {
+            remove_outputs();
+            Err(JobError::Failed {
+                program: job.program.clone(),
+                status: status.to_string(),
+                stderr,
+            })
+        }
+    })
+}
+
 fn execute(job: &Job, cancel: &Cancel, capture: bool) -> Result<String, JobError> {
     let remove_outputs = || {
         for o in &job.outputs {

@@ -13,6 +13,8 @@
 pub mod anidb;
 pub mod archive;
 pub mod audio;
+pub mod claude;
+pub mod deepl;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;

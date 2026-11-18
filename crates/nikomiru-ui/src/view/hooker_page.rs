@@ -54,7 +54,7 @@ fn tr(s: &Scene<'_>, id: &str) -> String {
 }
 
 /// One line, each character a target; the byte offset of the click.
-fn line(
+pub(crate) fn line(
     ui: &mut Ui,
     text: &str,
     name: &str,

@@ -16,7 +16,7 @@
 //! `{"cmd":"words","action":"import"|"export"|"anki","path":…}`,
 //! `{"cmd":"locate","path":…}`, `{"cmd":"anki","action":"save","config":"deck = \"x\""}`,
 //! `{"cmd":"online","action":"open"|"search"|"use","title":…,"episode":…,"index":…}`,
-//! `{"cmd":"align"}`, `{"cmd":"move_subtitles"}`, `{"cmd":"setup","action":"open"|"close"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
+//! `{"cmd":"align"}`, `{"cmd":"move_subtitles"}`, `{"cmd":"line","action":…,"area":[…],"offset":…}`, `{"cmd":"setup","action":"open"|"close"}`, `{"cmd":"secondary","key":…,"obscure":…}`, `{"cmd":"player","action":"open"|"import"|"export"|"preview-apply"|"save-preset"|…,"path":…,"name":…}`,
 //! `{"cmd":"settings","tab":"general"|"player"|…|"close","save"?:"<toml>"}`,
 //! `{"cmd":"word_audio","action":"play"|"menu"|"url","level":0,"entry":0,"url":…}`,
 //! `{"cmd":"library","action":"open"|"import"|"series"|"play"|…,"path":…,"grouping":…,"id":…}`,
@@ -297,6 +297,20 @@ fn run(command: &Value) -> Result<Value, String> {
         Some("graphic-cancel") => harness::graphic_read_cancel().map(|()| Value::Null),
         Some("align") => harness::align().map(|()| Value::Null),
         Some("move_subtitles") => harness::move_subtitles().map(|()| Value::Null),
+        Some("line") => harness::line(
+            text(command, "action")?,
+            command["area"].as_array().and_then(|a| {
+                let v: Vec<f32> = a
+                    .iter()
+                    .filter_map(|x| x.as_f64().map(|x| x as f32))
+                    .collect();
+                <[f32; 4]>::try_from(v).ok()
+            }),
+            command["offset"]
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok()),
+        )
+        .map(|()| Value::Null),
         Some("setup") => harness::setup(
             text(command, "action")?,
             command["id"].as_str().map(str::to_string),

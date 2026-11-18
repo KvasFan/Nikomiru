@@ -218,6 +218,7 @@ The whole app works from the keyboard. On pages and dialogs, Tab, the arrows, En
 | F, F11 | Fullscreen |
 | S | Save the frame |
 | Shift+S | Save the frame with its subtitles |
+| Shift+T / G / Y / O | Translate / explain / shadow the line; read text from the picture |
 | Ctrl+O | Open a file |
 | Ctrl+, | Settings |
 | Esc | Back |
@@ -362,6 +363,18 @@ Books → Add accepts UTF-8 `.txt`, `.md` and `.markdown` files, up to four MiB.
 Books → Paste text opens an explicit editor. Enter a title (up to 256 characters), paste the text, optionally choose Markdown, and press Read text. The source is kept locally and reopens from the Books list after restart. The draft remains available if saving fails. Identical title/format/content reuses the source; different content keeps its own reading position even with the same title and length. Moving a file without changing its name/content also retains its identity.
 
 Lookup, word status marks, vocabulary/comprehension and card creation use the same reader as EPUB. Documents are limited to 8,192 nonempty paragraphs and 64 KiB per paragraph. Whole-book analysis keeps its existing stricter text budgets. Pasted sources are included in local backups; source bodies are not uploaded by WebDAV sync. Removing a book leaves its source file, as with other books.
+
+## Line tools: speech, translation, explanation, shadowing and text from the picture (M121…M125 development)
+
+Open **Line tools** from the subtitle menu (CC). The panel holds the line on screen; click a character to look it up. Each tool runs only when you ask, on that line:
+
+- **Generate from the audio (Whisper)**, in the subtitle menu, reads the episode's speech on this computer and makes subtitles from it, for episodes without any. Install **whisper.cpp** and the **Speech model** (about 575 MB) in the setup assistant first. The menu shows the progress and can stop it. The result is kept with the episode's subtitles as `….whisper.ja.srt` and works like any subtitle file. Nothing is sent anywhere. Settings → Advanced → Speech chooses another program or model, the spoken language (`ja` by default, or `auto`) and the threads.
+- **Translate** (Shift+T) sends the line to DeepL with your API key (Settings → Subtitle services → Translations and explanations) and shows it in the interface's language. DeepL API Free keys end in `:fx`.
+- **Explain** (G) sends the line and the lines around it to Anthropic's Claude with your API key. It shows each part's reading, meaning and grammar, then a translation. Another Claude model can be named in the same settings.
+- **Shadow** (Y) pauses and records you saying the line, for about one and a half times its length. With whisper.cpp installed, it shows what it heard and how close that is to the line; **Play my recording** plays it back, and R replays the original. The microphone is an ffmpeg input in Settings → Advanced (`pulse:default` on Linux by default).
+- **Read from the picture** (O) pauses; drag over text in the video, such as burned-in subtitles or a sign, and the OCR model reads it into the panel. It is also added to the Texthooker's lines, so lookups and cards work as for hooked text. Esc gives up.
+
+Only the line you ask about, and for an explanation its two neighbours, leaves the computer, and only to the service on the button.
 
 ## Updates (M119 development)
 

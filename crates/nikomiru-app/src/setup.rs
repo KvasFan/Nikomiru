@@ -33,6 +33,8 @@ pub struct Parts {
     pub tools_dir: PathBuf,
     /// Existing manga OCR model directory.
     pub model_dir: PathBuf,
+    /// whisper.cpp's model directory (INS-008).
+    pub speech_dir: PathBuf,
     /// Pinned platform-specific executable catalog.
     pub tool_catalog: Vec<nikomiru_online::setup::tools::Tool>,
     /// Where the pack's manifest is read, in order.
@@ -185,7 +187,7 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
     let requested: Vec<_> = plan
         .tools
         .iter()
-        .filter(|id| id.as_str() != "ocr-model")
+        .filter(|id| id.as_str() != "ocr-model" && id.as_str() != "speech-model")
         .cloned()
         .collect();
     if let Some(resolved) = nikomiru_online::setup::tools::resolve(&parts.tool_catalog, &requested)
@@ -235,6 +237,20 @@ fn run(parts: &Parts, plan: &Plan, events: &Events, cancel: &Cancel) {
             }
             Err(error) => events(SetupEvent::Failed {
                 id: "ocr-model".into(),
+                message: tool_error(parts, error),
+            }),
+        }
+    }
+    if plan.tools.iter().any(|s| s == "speech-model") {
+        match crate::setup_tools::speech_model(parts, &http, &**events, cancel) {
+            Ok(()) => {
+                completed.insert("speech-model".to_string());
+                events(SetupEvent::Model {
+                    id: "speech-model".into(),
+                });
+            }
+            Err(error) => events(SetupEvent::Failed {
+                id: "speech-model".into(),
                 message: tool_error(parts, error),
             }),
         }

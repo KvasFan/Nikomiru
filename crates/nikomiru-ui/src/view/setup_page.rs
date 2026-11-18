@@ -237,6 +237,27 @@ fn tools(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
     {
         note(ui, &tr("setup-tool-available"));
     }
+    // INS-008: whisper.cpp's model, for subtitles read from the speech
+    item(
+        ui,
+        s,
+        "speech-model",
+        &tr("setup-tool-speech-model"),
+        &format!(
+            "{} · {}",
+            size(nikomiru_online::setup::speech::bytes()),
+            nikomiru_online::setup::speech::LICENSE
+        ),
+        false,
+        out,
+    );
+    if s.page
+        .inventory
+        .get("speech-model")
+        .is_some_and(|r| r.path.is_some())
+    {
+        note(ui, &tr("setup-tool-available"));
+    }
 }
 
 fn buttons(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
@@ -473,9 +494,21 @@ mod tests {
     fn selecting_support_tools_is_explicit() {
         let mut h = harness(test());
         h.run();
-        for name in ["FFmpeg + ffprobe", "yt-dlp", "Deno", "setup-tool-model"] {
+        for name in [
+            "FFmpeg + ffprobe",
+            "yt-dlp",
+            "Deno",
+            "setup-tool-model",
+            // T-INS-008
+            "whisper.cpp",
+            "setup-tool-speech-model",
+        ] {
             assert!(h.query_by_label(name).is_some(), "{name}");
         }
+        assert!(matches!(
+            click(&mut h, "setup-tool-speech-model").as_slice(),
+            [Command::SetupTick { id, on: true }] if id == "speech-model"
+        ));
         let commands = click(&mut h, "yt-dlp");
         assert!(
             matches!(commands.as_slice(), [Command::SetupTick { id, on: true }] if id == "yt-dlp")

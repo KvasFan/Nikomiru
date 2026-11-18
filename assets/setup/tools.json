@@ -157,6 +157,106 @@
     ]
   },
   {
+    "id": "whisper",
+    "name": "whisper.cpp",
+    "version": "v1.9.5 (b5454)",
+    "license": "MIT",
+    "source": "https://github.com/ggml-org/whisper.cpp",
+    "dependencies": [
+      "ffmpeg"
+    ],
+    "artifacts": [
+      {
+        "platform": "linux-x86_64",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-x64.tar.gz",
+        "sha256": "a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c",
+        "bytes": 10364195,
+        "format": "tar.gz",
+        "programs": [
+          "whisper-cli",
+          "libwhisper.so.1",
+          "libggml.so.0",
+          "libggml-base.so.0",
+          "libggml-cpu-alderlake.so",
+          "libggml-cpu-cannonlake.so",
+          "libggml-cpu-cascadelake.so",
+          "libggml-cpu-cooperlake.so",
+          "libggml-cpu-haswell.so",
+          "libggml-cpu-icelake.so",
+          "libggml-cpu-ivybridge.so",
+          "libggml-cpu-piledriver.so",
+          "libggml-cpu-sandybridge.so",
+          "libggml-cpu-sapphirerapids.so",
+          "libggml-cpu-skylakex.so",
+          "libggml-cpu-sse42.so",
+          "libggml-cpu-x64.so",
+          "libggml-cpu-zen4.so"
+        ],
+        "rename": {
+          "libwhisper.so.1.9.5": "libwhisper.so.1",
+          "libggml.so.0.26.0": "libggml.so.0",
+          "libggml-base.so.0.26.0": "libggml-base.so.0"
+        }
+      },
+      {
+        "platform": "linux-aarch64",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-ubuntu-arm64.tar.gz",
+        "sha256": "6b95ebfc60447df48e70ef00a73bdc3f41679ed2d01ef465827206a2ff325149",
+        "bytes": 4608377,
+        "format": "tar.gz",
+        "programs": [
+          "whisper-cli",
+          "libwhisper.so.1",
+          "libggml.so.0",
+          "libggml-base.so.0",
+          "libggml-cpu.so"
+        ],
+        "rename": {
+          "libwhisper.so.1.9.5": "libwhisper.so.1",
+          "libggml.so.0.26.0": "libggml.so.0",
+          "libggml-base.so.0.26.0": "libggml-base.so.0"
+        }
+      },
+      {
+        "platform": "windows-x86_64",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip",
+        "sha256": "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb",
+        "bytes": 8928640,
+        "format": "zip",
+        "programs": [
+          "whisper-cli.exe",
+          "whisper.dll",
+          "ggml.dll",
+          "ggml-base.dll",
+          "ggml-cpu-alderlake.dll",
+          "ggml-cpu-cannonlake.dll",
+          "ggml-cpu-cascadelake.dll",
+          "ggml-cpu-haswell.dll",
+          "ggml-cpu-icelake.dll",
+          "ggml-cpu-sandybridge.dll",
+          "ggml-cpu-skylakex.dll",
+          "ggml-cpu-sse42.dll",
+          "ggml-cpu-x64.dll"
+        ]
+      },
+      {
+        "platform": "windows-aarch64",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-win-cpu-arm64.zip",
+        "sha256": "28c37e7b598c3d9bbfef94f3bd67f2ee6f12b7c86f3da5edcf5e4308d615ff6d",
+        "bytes": 4371193,
+        "format": "zip",
+        "programs": [
+          "whisper-cli.exe",
+          "whisper.dll",
+          "ggml.dll",
+          "ggml-base.dll",
+          "ggml-cpu.dll",
+          "libomp140.aarch64.dll"
+        ]
+      }
+    ]
+  },
+  {
     "id": "pdftotext",
     "name": "Poppler pdftotext",
     "version": "system",

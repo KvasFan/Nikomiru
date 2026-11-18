@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | Living roadmap; M102–M116, M118 and M119 implemented in development, M117 partial (native checks open), signed feed not yet published |
-| Last updated | 2026-11-16 (original roadmap: 2026-10-19) |
+| Status | Living roadmap; M102–M116 and M118…M125 implemented in development, M117 partial (native checks open), M126 proposed (ADR 0011), signed feed not yet published |
+| Last updated | 2026-11-18 (original roadmap: 2026-10-19) |
 | Related documents | [SPECIFICATION.md](SPECIFICATION.md) · [TEST.md](TEST.md) |
 
 The roadmap splits the work into **milestones** (implemented continuations through M110, with original stabilization/manual checks still open). Each one has a goal, the requirements it covers (IDs from [SPECIFICATION.md](SPECIFICATION.md)), the deliverables and verifiable **exit criteria** (IDs from [TEST.md](TEST.md)).
 
-Latest published source baseline: **[v2.110.0](https://github.com/KvasFan/Nikomiru/tree/v2.110.0)**. The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim; [source QA](qa/2.110.0.md) records what was tested. Published Linux binary/package pins remain 2.53.0.
+Latest published release: **[v2.130.0](https://github.com/KvasFan/Nikomiru/releases/tag/v2.130.0)**, with Linux, Flatpak and Windows binaries ([QA](qa/2.130.0.md)). The [six-project comparison and candidate milestones](#comparison-with-fushi-migaku-jidoujisho-mizune-openkoto-and-lector-2026-11-15) record the remaining gaps after M101. Candidate scope is planning, not an implementation or release claim.
 
 There are no dates: a milestone is closed when all its exit criteria pass, not when a deadline expires. The sizes (S/M/L/XL) only give an idea of the relative effort.
 
@@ -1549,6 +1549,12 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M118 | P3 / M | **Named palettes and supported shader presets.** Extend current light/dark/system and accent controls with readable named palettes, including OLED/high contrast, and an optional licensed Anime4K preset pack. Check contrast, unavailable GPU fallback, performance and removal. Preserve raw mpv shader settings and default rendering. | [Mizune][src-mizune], [shader details][src-mizune-details] | done in development |
 | M119 | P3 / L | **Signed application update delivery.** Define release channels and signed manifests/artifacts, then explicit checks/download/install with interruption recovery. Respect distro/Flatpak package ownership and show an external update path where self-update is inappropriate. Check tampering, version rollback and failed installs. Tool installation in M45 is already separate. | [Mizune signed updates][src-mizune-details] | done in development (feed not published) |
 | M120 | P3 / M | **AniDB file identification.** Identify a series from an episode's ed2k hash and size through AniDB's UDP API with the user's account, then find AniDB's title on the metadata source. Check hashing vectors, protocol errors, pacing, proxy refusal and that only the size and hash are sent. The client registration is the maintainer's. | Backlog MET-006 | done in development (client registration open) |
+| M121 | P1 / M | **Subtitles read from the speech.** whisper.cpp and its model in the setup assistant; the current audio track read on this computer into an SRT kept with the video's subtitles and shown. Check pinned artifacts, library links, cancellation, the stored file and that nothing is sent. | D-71, SUB-062, INS-008 | done in development (real-model check open) |
+| M122 | P2 / S | **A line translated.** DeepL with the user's key, one line on request, into the interface language; the line tools panel. | D-72, TRN-001, TRN-002 | done in development (real-key check open) |
+| M123 | P2 / S | **A line explained.** Claude's Messages API with the user's key, the line and its neighbours, in the interface language. | D-73, AIX-001, AIX-002 | done in development (real-key check open) |
+| M124 | P2 / S | **Shadowing.** Record the microphone with ffmpeg, read it with whisper.cpp and score it against the line; play it back. | D-74, SHD-001, SHD-002 | done in development (real-microphone check open) |
+| M125 | P2 / S | **Text read from the picture.** A dragged part of the frame read by the manga OCR model, looked up as a Texthooker line. | D-75, OCR-001 | done in development |
+| M126 | P3 / L | **Live device linking.** Host on the local network, QR pairing, phone browser remote with lookups and mining on the host, then hand-off and streaming. | D-76, [ADR 0011](adr/0011-device-linking.md) | proposed, waiting for the maintainer |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
 
@@ -1558,13 +1564,13 @@ These are recorded gaps, **not scheduled implementation**. SPECIFICATION §1.3 a
 
 | Missing capability / evidence | Current boundary and next decision |
 |---|---|
-| **Speech-generated subtitles**, including raw video and podcasts — [Fushi][src-fushi-features], [Migaku][src-migaku], [OpenKoto][src-openkoto], [Lector][src-lector] | ASR remains excluded. Define a local/remote backend, model provenance/distribution, resource bounds, cancellation and subtitle editing/quality checks before adding a milestone. Existing graphic-subtitle OCR does not transcribe speech. |
-| **Machine translation, context/grammar explanations and text Q&A** — [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-practice] | AI/translation scope needs a decision on providers, explicit requests, retained text and offline behavior. Existing secondary subtitles and dictionary meanings do not provide generated translation. |
-| **TTS, microphone shadowing and pronunciation feedback** — [OpenKoto iOS][src-openkoto], [Migaku][src-migaku], [Lector][src-lector] | TTS remains excluded. Replay/listening practice exists; recording, speech scoring and generated voices need separate audio/privacy/model choices. A desktop microphone coach must not be inferred from an iOS shadowing feature. |
+| **Speech-generated subtitles**, including raw video and podcasts — [Fushi][src-fushi-features], [Migaku][src-migaku], [OpenKoto][src-openkoto], [Lector][src-lector] | **Done in M121 (D-71)**: local whisper.cpp with a pinned MIT model, on request. Subtitle editing stays open. |
+| **Machine translation, context/grammar explanations and text Q&A** — [Migaku][src-migaku-ocr], [OpenKoto][src-openkoto], [Lector][src-lector-practice] | **Done in M122 and M123 (D-72, D-73)**: DeepL for translation and Claude for explanations, one line on request with the user's keys. Free-form text Q&A stays open. |
+| **TTS, microphone shadowing and pronunciation feedback** — [OpenKoto iOS][src-openkoto], [Migaku][src-migaku], [Lector][src-lector] | **Shadowing done in M124 (D-74)**: recording, local reading and a text score. TTS and phoneme-level pronunciation feedback stay excluded. |
 | **Tutor, writing journal/correction and generated exercises** — [Lector][src-lector], [OpenKoto][src-openkoto] | New AI/product scope. M105 covers deterministic cloze only; it does not authorize an AI tutor or generated lesson service. |
-| **Photo/screen OCR and automatic full-page manga regions** — [Migaku photo OCR][src-migaku-ocr], [Fushi manga][src-fushi-features] | Existing manga-region and subtitle OCR are implemented. Define supported local capture sources and any additional page detector/model before adding camera, desktop overlay or automatic panel/balloon detection. Google Lens remains excluded. |
-| **Browser extension and in-page streaming integration** — [Fushi browser tools][src-fushi], [Migaku][src-migaku] | A separate browser bridge/permission and local protocol design is needed. Existing URL opening and web-article import do not integrate arbitrary browser pages or DRM services. No DRM decryption is proposed. |
-| **Live device linking, extra cloud backends and headless/web/API/CLI/MCP access** — [Fushi][src-fushi], [OpenKoto tools][src-openkoto], [OpenKoto sync][src-openkoto-releases], [Lector deployment][src-lector] | WebDAV already syncs progress, vocabulary and review data/media. Pairing/control/streaming, OAuth providers, multi-user hosting and agent access are new architecture scopes; define authentication and data ownership first. A built-in server or MCP endpoint is not authorized by an import feature. |
+| **Photo/screen OCR and automatic full-page manga regions** — [Migaku photo OCR][src-migaku-ocr], [Fushi manga][src-fushi-features] | **A dragged part of the video's frame done in M125 (D-75).** Camera, other programs' windows and automatic panel/balloon detection stay open; Google Lens remains excluded. |
+| **Browser extension and in-page streaming integration** — [Fushi browser tools][src-fushi], [Migaku][src-migaku] | **Not for now (D-76).** A separate browser bridge/permission and local protocol design is needed. No DRM decryption is proposed. |
+| **Live device linking, extra cloud backends and headless/web/API/CLI/MCP access** — [Fushi][src-fushi], [OpenKoto tools][src-openkoto], [OpenKoto sync][src-openkoto-releases], [Lector deployment][src-lector] | **Device linking proposed as M126 in [ADR 0011](adr/0011-device-linking.md) (D-76)**, waiting for the maintainer. WebDAV already syncs progress, vocabulary and review data/media. OAuth providers, multi-user hosting and agent access remain new architecture scopes. |
 | **Anki review feedback beyond current known-word import** — [Lector beta sync][src-lector] | Existing Anki export, pending queue and mature-card knowledge import stay. Decide note identity, conflict/undo behavior and one scheduler's authority before importing review history or synchronizing schedules. Keep D-34's protection against reviewing the same card twice. |
 | **Native game text/voice hooks, game overlay and voice mining** — [Fushi][src-fushi-features] | Native injection remains excluded. M14 can continue using an external WebSocket/clipboard producer; text-only interoperability does not authorize hooking or recording another process. |
 | **Source-extension ecosystems, torrent/download center and subscriptions** — [Fushi][src-fushi] | Remain excluded by §1.3; ordinary local files, requested podcast feeds, URL playback and configured media servers are separate existing/proposed scopes. |
@@ -1781,3 +1787,18 @@ From the backlog, requested on 2026-11-18 with the rest of the remaining work (D
 **Exit criteria**: ed2k vectors, protocol tests against a fake UDP AniDB, component tests and an actual-app identification. A check against the real AniDB needs a registered client.
 
 M120 is complete in development: the unit, L4, component and actual-app tests pass, and the full regression of [source QA 2.130.0](qa/2.130.0.md) is green. **Open**: registering Nikomiru's AniDB client and setting `CLIENT`, then a check against the real AniDB with a real file.
+
+## M121…M125 — Speech, translation, explanation, shadowing and text from the picture
+
+**Requirements**: INS-008, SUB-062, TRN-001, TRN-002, AIX-001, AIX-002, SHD-001, SHD-002, OCR-001. No new Rust dependency: whisper.cpp is an external program installed on request (MIT), DeepL and Claude are reached with the existing HTTP client, recording uses ffmpeg.
+
+Asked by the maintainer on 2026-11-18 (D-71…D-76): whisper.cpp in the installer, a translation service of the agent's choice, an API integration for grammar explanations, and shadowing and OCR at the agent's discretion. Every tool works on one line, only when asked.
+
+**Exit criteria**: unit tests of each request, score and area; L4 tests against fake DeepL and Claude APIs and of the `.tar.gz` library install; component tests of the panel and the settings; one actual-app test that reads a video's speech with a stand-in `whisper-cli`, translates, explains, shadows through ffmpeg's test microphone and reads text from the frame.
+
+**Open**: a check with the real whisper.cpp model on a real episode, real DeepL and Anthropic keys, and a real microphone.
+
+## M126 — Live device linking (proposed)
+
+[ADR 0011](adr/0011-device-linking.md) proposes the computer as host on the local network, QR pairing with pinned self-signed certificates, a phone browser page first (remote, live lines, lookups and mining on the host), then hand-off and streaming. Nothing is implemented until the maintainer decides (D-76).
+

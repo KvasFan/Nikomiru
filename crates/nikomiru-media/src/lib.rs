@@ -15,4 +15,5 @@ pub mod cover;
 pub mod energy;
 pub mod extract;
 pub mod process;
+pub mod speech;
 pub mod tools;

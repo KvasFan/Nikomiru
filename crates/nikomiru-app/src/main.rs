@@ -534,6 +534,7 @@ fn run(
         audio_dir: paths.data_dir.join("audio"),
         tools_dir: paths.data_dir.join("tools"),
         model_dir: paths.ocr_model_dir(),
+        speech_dir: paths.speech_model_dir(),
         tool_catalog: nikomiru_online::setup::tools::catalog(),
         manifest_urls: nikomiru_app::setup::Parts::manifest_urls(),
         translator: translator.clone(),
@@ -576,6 +577,12 @@ fn run(
         hooker: Box::new(nikomiru_app::hooker::HookerWorker::default()),
         ocr: Box::new(ocr),
         setup: Box::new(setup),
+        assist: Box::new(nikomiru_app::assist::Assist::new(
+            translator.clone(),
+            paths.data_dir.join("tools"),
+            paths.speech_model_dir(),
+            paths.cache_dir.join("speech"),
+        )),
         updates: Box::new(nikomiru_app::updates::Updater::new(
             paths.data_dir.clone(),
             translator.clone(),

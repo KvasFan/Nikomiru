@@ -40,6 +40,20 @@ pub enum Inbound {
     },
     /// An ordered local phrase operation completed.
     Phrases(crate::phrases::Answer),
+    /// How far reading the speech is, in percent (SUB-062).
+    SpeechProgress(u8),
+    /// The speech read into subtitles, or why not.
+    SpeechDone(Result<PathBuf, String>),
+    /// A line translated (TRN-001): its stamp and result.
+    LineTranslated(u64, Result<String, String>),
+    /// A line explained (AIX-001).
+    LineExplained(u64, Result<String, String>),
+    /// A line shadowed (SHD-001).
+    LineShadowed(u64, Result<crate::line_tools::Shadowed, String>),
+    /// The frame to read saved (OCR-001): stamp, area and file.
+    LineFrame(u64, [f32; 4], Result<PathBuf, String>),
+    /// The text read from the frame.
+    LineRead(u64, Result<String, String>),
     /// A check ended (UPD-001): a newer release, none, or why not.
     UpdateChecked(Result<Option<crate::updates::Available>, String>),
     /// How far the update download is.
@@ -382,6 +396,13 @@ impl std::fmt::Debug for Inbound {
             Inbound::Podcasts(_) => "Podcasts",
             Inbound::ShaderPack(_) => "ShaderPack",
             Inbound::UpdateChecked(_) => "UpdateChecked",
+            Inbound::SpeechProgress(_) => "SpeechProgress",
+            Inbound::SpeechDone(_) => "SpeechDone",
+            Inbound::LineTranslated(..) => "LineTranslated",
+            Inbound::LineExplained(..) => "LineExplained",
+            Inbound::LineShadowed(..) => "LineShadowed",
+            Inbound::LineFrame(..) => "LineFrame",
+            Inbound::LineRead(..) => "LineRead",
             Inbound::UpdateProgress(..) => "UpdateProgress",
             Inbound::UpdateDownloaded(_) => "UpdateDownloaded",
             Inbound::UpdateInstalled(_) => "UpdateInstalled",
@@ -928,6 +949,28 @@ pub(crate) enum Command {
     ),
     /// "Align with the audio" (SUB-018).
     AlignSubtitles,
+    /// Read the speech into subtitles (SUB-062).
+    SpeechGenerate,
+    /// Stop reading the speech.
+    SpeechCancel,
+    /// Open or close the line tools (M121…M125).
+    LineTools(bool),
+    /// Translate the panel's line (TRN-001).
+    LineTranslate,
+    /// Explain the panel's line (AIX-001).
+    LineExplain,
+    /// Record the panel's line, or stop recording (SHD-001).
+    LineShadow,
+    /// Play the last recording.
+    LinePlayRecording,
+    /// Choose a part of the picture to read (OCR-001).
+    LineRead,
+    /// The part chosen, as shares of the picture.
+    LineReadArea([f32; 4]),
+    /// Choosing given up.
+    LineReadCancel,
+    /// A click on the panel's line: its byte and the clicked rectangle.
+    LineClicked(usize, crate::popup::Rect),
     /// "Move the subtitles" on or off (SUB-027).
     MoveSubtitles,
     /// The setup assistant opened (INS-001).
@@ -1413,6 +1456,35 @@ impl Ui {
             }
             Inbound::UpdateChecked(result) => {
                 self.session.update_checked(result);
+                true
+            }
+            Inbound::SpeechProgress(percent) => {
+                self.session.speech_progress(percent);
+                true
+            }
+            Inbound::SpeechDone(result) => {
+                self.session.speech_done(result);
+                true
+            }
+            Inbound::LineTranslated(serial, result) => {
+                self.session.line_translated(serial, result);
+                true
+            }
+            Inbound::LineExplained(serial, result) => {
+                self.session.line_explained(serial, result);
+                true
+            }
+            Inbound::LineShadowed(serial, result) => {
+                self.session.line_shadowed(serial, result);
+                true
+            }
+            Inbound::LineFrame(serial, area, result) => {
+                let waker = self.waker.clone();
+                self.session.line_frame(serial, area, result, &waker);
+                true
+            }
+            Inbound::LineRead(serial, result) => {
+                self.session.line_read_done(serial, result);
                 true
             }
             Inbound::UpdateProgress(done, total) => {
@@ -2119,6 +2191,17 @@ impl Ui {
             Command::AnkiSave(config) => s.anki_save(config),
             Command::LinkDismiss => s.dismiss_missing_link(),
             Command::AlignSubtitles => s.align_subtitles(false),
+            Command::SpeechGenerate => s.speech_generate(),
+            Command::SpeechCancel => s.speech_cancel(),
+            Command::LineTools(open) => s.line_tools_toggle(open),
+            Command::LineTranslate => s.line_translate(false),
+            Command::LineExplain => s.line_explain(false),
+            Command::LineShadow => s.line_shadow(false),
+            Command::LinePlayRecording => s.line_play_recording(),
+            Command::LineRead => s.line_read(),
+            Command::LineReadArea(area) => s.line_read_area(area),
+            Command::LineReadCancel => s.line_read_cancel(),
+            Command::LineClicked(offset, anchor) => s.line_clicked(offset, anchor),
             Command::MoveSubtitles => s.toggle_moving_subtitles(),
             Command::SetupOpen => s.setup_open(),
             Command::SetupClose => s.setup_close(),
@@ -2379,6 +2462,7 @@ impl Ui {
             );
         }
         self.session.start_update_jobs(&self.waker);
+        self.session.start_line_jobs(&self.waker);
         if let Some(install) = self.session.take_shader_job() {
             let waker = self.waker.clone();
             self.session.start_shader_job(

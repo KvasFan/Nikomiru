@@ -123,6 +123,14 @@ pub enum Action {
     LookupFirstKanji,
     /// Reveal the existing secondary track only while its physical key is held.
     PeekTranslation,
+    /// Translate the current line with DeepL (TRN-001).
+    TranslateLine,
+    /// Explain the current line with Claude (AIX-001).
+    ExplainLine,
+    /// Record yourself saying the current line, or stop recording (SHD-001).
+    ShadowLine,
+    /// Read text from a part of the picture (OCR-001).
+    ReadFrame,
     /// The lookup starts a word earlier in its subtitle (a character while
     /// its words are not known, LKP-060).
     LookupPrev,
@@ -134,7 +142,7 @@ pub enum Action {
 
 impl Action {
     /// Every action, for the editor and the tests.
-    pub const ALL: [Action; 50] = [
+    pub const ALL: [Action; 54] = [
         Action::PlayPause,
         Action::SeekBack,
         Action::SeekForward,
@@ -182,6 +190,10 @@ impl Action {
         Action::LookupSubtitle,
         Action::LookupFirstKanji,
         Action::PeekTranslation,
+        Action::TranslateLine,
+        Action::ExplainLine,
+        Action::ShadowLine,
+        Action::ReadFrame,
         Action::LookupPrev,
         Action::LookupNext,
         Action::Settings,
@@ -238,6 +250,10 @@ impl Action {
             Action::LookupSubtitle => "lookup_subtitle",
             Action::LookupFirstKanji => "lookup_first_kanji",
             Action::PeekTranslation => "peek_translation",
+            Action::TranslateLine => "translate_line",
+            Action::ExplainLine => "explain_line",
+            Action::ShadowLine => "shadow_line",
+            Action::ReadFrame => "read_frame",
             Action::LookupPrev => "lookup_prev",
             Action::LookupNext => "lookup_next",
             Action::Settings => "settings",
@@ -347,6 +363,10 @@ impl Action {
             Action::LookupSubtitle => &["Enter"],
             Action::LookupFirstKanji => &[],
             Action::PeekTranslation => &["KeyT"],
+            Action::TranslateLine => &["Shift+KeyT"],
+            Action::ExplainLine => &["KeyG"],
+            Action::ShadowLine => &["KeyY"],
+            Action::ReadFrame => &["KeyO"],
             Action::LookupPrev => &["ArrowLeft"],
             Action::LookupNext => &["ArrowRight"],
             Action::Settings => &["Ctrl+Comma"],

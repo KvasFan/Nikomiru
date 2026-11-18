@@ -218,6 +218,7 @@ Tutta l'app si usa da tastiera. Nelle pagine e nei dialoghi, Tab, frecce, Invio 
 | F, F11 | Schermo intero |
 | S | Salva il fotogramma |
 | Shift+S | Salva il fotogramma con i sottotitoli |
+| Shift+T / G / Y / O | Traduci / spiega / shadowing della riga; leggi il testo dall'immagine |
 | Ctrl+O | Apri un file |
 | Ctrl+, | Impostazioni |
 | Esc | Indietro |
@@ -363,6 +364,18 @@ Libri → Aggiungi accetta file UTF-8 `.txt`, `.md` e `.markdown`, fino a quattr
 Libri → Incolla testo apre l’editor. Inserisci un titolo di massimo 256 caratteri, incolla il testo, scegli eventualmente Markdown e premi Leggi testo. Il documento viene conservato localmente e può essere riaperto dalla lista dopo il riavvio. La bozza rimane disponibile se il salvataggio fallisce. Titolo, formato e contenuto identici riusano la stessa fonte; contenuti diversi mantengono posizioni indipendenti anche con titolo e lunghezza uguali. Spostare un file senza cambiarne nome e contenuto conserva la sua identità.
 
 Dizionario, stati delle parole, analisi del vocabolario e creazione delle carte usano lo stesso lettore degli EPUB. I documenti sono limitati a 8.192 paragrafi non vuoti e 64 KiB per paragrafo. L’analisi completa mantiene i suoi limiti più restrittivi. I testi incollati sono inclusi nei backup locali; i contenuti delle fonti non vengono caricati dalla sincronizzazione WebDAV. Rimuovere un libro lascia il file della fonte, come per gli altri libri.
+
+## Strumenti della riga: parlato, traduzione, spiegazione, shadowing e testo dall'immagine (sviluppo M121…M125)
+
+Apri **Strumenti della riga** dal menu dei sottotitoli (CC). Il pannello mostra la riga sullo schermo; fai clic su un carattere per cercarlo. Ogni strumento funziona solo quando lo chiedi, su quella riga:
+
+- **Genera dall'audio (Whisper)**, nel menu dei sottotitoli, legge il parlato dell'episodio su questo computer e ne ricava i sottotitoli, per gli episodi che non ne hanno. Prima installa **whisper.cpp** e il **Modello del parlato** (circa 575 MB) dall'assistente di configurazione. Il menu mostra l'avanzamento e permette di fermarlo. Il risultato viene salvato con i sottotitoli dell'episodio come `….whisper.ja.srt` e funziona come qualsiasi file di sottotitoli. Non viene inviato nulla. In Impostazioni → Avanzate → Parlato puoi scegliere un altro programma o modello, la lingua parlata (`ja` di predefinito, oppure `auto`) e i thread.
+- **Traduci** (Shift+T) manda la riga a DeepL con la tua chiave API (Impostazioni → Servizi sottotitoli → Traduzioni e spiegazioni) e la mostra nella lingua dell'interfaccia. Le chiavi di DeepL API Free finiscono con `:fx`.
+- **Spiega** (G) manda la riga, con quelle vicine, a Claude di Anthropic con la tua chiave API. Mostra lettura, significato e grammatica di ogni parte, poi una traduzione. Nelle stesse impostazioni puoi indicare un altro modello Claude.
+- **Shadowing** (Y) mette in pausa e registra la tua voce mentre ripeti la riga, per circa una volta e mezza la sua durata. Con whisper.cpp installato mostra cosa ha sentito e quanto si avvicina alla riga; **Ascolta la mia registrazione** la riproduce, R ripete l'originale. Il microfono è un ingresso di ffmpeg in Impostazioni → Avanzate (`pulse:default` su Linux, di predefinito).
+- **Leggi dall'immagine** (O) mette in pausa; trascina sul testo del video, come sottotitoli impressi o un cartello, e il modello OCR lo legge nel pannello. Viene anche aggiunto alle righe del Texthooker, così ricerche e carte funzionano come per il testo agganciato. Esc annulla.
+
+Esce dal computer solo la riga che chiedi (per una spiegazione anche le due vicine), e solo verso il servizio indicato sul pulsante.
 
 ## Aggiornamenti (sviluppo M119)
 
