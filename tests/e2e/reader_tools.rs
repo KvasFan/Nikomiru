@@ -136,6 +136,11 @@ fn annotations_are_explicit_persist_and_refuse_changed_sources() {
     assert!(changed["books"]["found"].is_null());
     assert_ne!(changed["books"]["uid"], uid);
     h.cmd(json!({"cmd":"reader-tools","action":"open"}));
+    // the list read on opening ends first: a request while busy is ignored,
+    // as the disabled buttons are
+    h.state_until("annotations listed again", |s| {
+        s["reader_tools"]["open"] == true && s["reader_tools"]["busy"] == false
+    });
     h.cmd(json!({"cmd":"reader-tools","action":"delete","id":note["id"]}));
     h.state_until("explicit deletion", |s| {
         s["reader_tools"]["busy"] == false

@@ -129,6 +129,7 @@ Nothing goes online unless you ask for it.
 - With word colours on, each episode shows `80% · 25%`: known word tokens and subtitle lines without a new word. Local embedded text subtitles count too, using the same saved track and language priorities as playback. `…` means counting; graphic subtitles, remote videos and subtitles turned off have no score. Reopen the series to refresh changed subtitle sources.
 - On a series' page you can rename it, merge it, move or remove episodes, or delete it. Your files are never touched.
 - **Identify online** asks AniList (or MyAnimeList) for the series' titles, episodes and cover. If several series match, you choose. Jimaku then finds its subtitles by its AniList id.
+- **Identify by file (AniDB)** works even when folder names say nothing. It sends the size and ed2k hash of one episode file to AniDB with your AniDB account (Settings → Subtitle services), then looks for AniDB's title on AniList or MyAnimeList. AniDB accepts only registered clients: until Nikomiru's registration is built in, register a UDP client at anidb.net and enter its name and version there. AniDB is not asked while a proxy is set, because its UDP API cannot go through one.
 - **Statistics** shows the time watched and the characters read:
   - by day, by series and by session;
   - a calendar of the year;

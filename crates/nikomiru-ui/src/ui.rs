@@ -765,6 +765,8 @@ pub(crate) enum Command {
     LibrarySeries(Option<u64>),
     /// "Identify online" on a series (MET-001).
     LibraryIdentify(u64),
+    /// "Identify by file (AniDB)" on a series (MET-006).
+    LibraryIdentifyFile(u64),
     /// One of its results chosen, or none.
     LibraryIdentifyChoose(Option<usize>),
     /// What was found online of a series forgotten.
@@ -2217,6 +2219,7 @@ impl Ui {
             Command::ReviewDelete => s.review_delete(),
             Command::LibrarySeries(id) => s.library_series(id),
             Command::LibraryIdentify(id) => s.library_identify(id),
+            Command::LibraryIdentifyFile(id) => s.library_identify_file(id),
             Command::LibraryIdentifyChoose(index) => s.library_identify_choose(index),
             Command::LibraryForget(id) => s.library_forget(id),
             Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
@@ -2875,6 +2878,10 @@ impl Ui {
                 }
                 crate::online::OnlineJob::Identify { series, title } => online.identify(
                     title,
+                    Box::new(move |result| waker.wake(Inbound::Identified { series, result })),
+                ),
+                crate::online::OnlineJob::IdentifyFile { series, files } => online.identify_file(
+                    files,
                     Box::new(move |result| waker.wake(Inbound::Identified { series, result })),
                 ),
                 crate::online::OnlineJob::Cover { series, url } => online.cover(

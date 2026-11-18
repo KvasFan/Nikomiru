@@ -10,11 +10,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod anidb;
 pub mod archive;
 pub mod audio;
 pub mod error;
 #[cfg(feature = "test-support")]
 pub mod fake;
+#[cfg(feature = "test-support")]
+pub mod fake_anidb;
 #[cfg(feature = "test-support")]
 pub mod fake_files;
 #[cfg(feature = "test-support")]

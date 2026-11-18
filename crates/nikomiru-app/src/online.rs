@@ -97,6 +97,7 @@ enum Job {
     Automatic(OnlineQuery, Done<Option<Downloaded>>),
     Configure(Box<(OnlineConfig, NetworkConfig)>),
     Identify(String, Done<(Source, Identified)>),
+    IdentifyFile(Vec<PathBuf>, Done<(Source, Identified)>),
     Cover(String, Done<Vec<u8>>),
     Page(PageSource, Done<PathBuf>),
 }
@@ -147,6 +148,9 @@ impl Online {
                         Job::Download(q, c, done) => done(worker.download(&q, &c)),
                         Job::Automatic(q, done) => done(worker.automatic(&q)),
                         Job::Identify(title, done) => done(worker.identify(&title)),
+                        Job::IdentifyFile(files, done) => {
+                            done(worker.identify_file(&files, &stop));
+                        }
                         Job::Cover(url, done) => done(worker.cover(&url)),
                         Job::Page(source, done) => done(worker.page(&source)),
                         Job::Configure(settings) => {
@@ -182,7 +186,9 @@ impl Online {
             Some(Job::Search(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Download(_, _, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Automatic(_, done)) => done(Err(self.unavailable.clone())),
-            Some(Job::Identify(_, done)) => done(Err(self.unavailable.clone())),
+            Some(Job::Identify(_, done) | Job::IdentifyFile(_, done)) => {
+                done(Err(self.unavailable.clone()));
+            }
             Some(Job::Cover(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Page(_, done)) => done(Err(self.unavailable.clone())),
             Some(Job::Configure(_)) | None => {}
@@ -209,6 +215,10 @@ impl OnlineService for Online {
 
     fn identify(&self, title: String, done: Done<(Source, Identified)>) {
         self.send(Job::Identify(title, done));
+    }
+
+    fn identify_file(&self, files: Vec<PathBuf>, done: Done<(Source, Identified)>) {
+        self.send(Job::IdentifyFile(files, done));
     }
 
     fn cover(&self, url: String, done: Done<Vec<u8>>) {
@@ -316,6 +326,93 @@ impl Worker {
         };
         let found = found.map_err(|e| self.message(&e))?;
         Ok((source, identify(title, found)))
+    }
+
+    /// MET-006: the series of one of `files`: the first that exists is
+    /// hashed and asked of AniDB with the user's account, then AniDB's titles
+    /// are searched on the metadata source; one result with exactly one of
+    /// them is the series, otherwise the user chooses among all.
+    fn identify_file(
+        &mut self,
+        files: &[PathBuf],
+        stop: &AtomicBool,
+    ) -> Result<(Source, Identified), String> {
+        use nikomiru_online::anidb::{self, Account, AniDb};
+        let tr = &self.parts.translator;
+        let online = &self.parts.online;
+        // UDP cannot go through the proxy: never around it (PRV-001)
+        if !self.parts.network.proxy.trim().is_empty() {
+            return Err(tr.tr("anidb-proxy", &[]));
+        }
+        if online.anidb_user.trim().is_empty() || online.anidb_password.is_empty() {
+            return Err(tr.tr("anidb-no-account", &[]));
+        }
+        let (client, version) = if online.anidb_client.trim().is_empty() {
+            anidb::CLIENT
+                .map(|(c, v)| (c.to_string(), v))
+                .ok_or_else(|| tr.tr("anidb-no-client", &[]))?
+        } else {
+            (
+                online.anidb_client.trim().to_string(),
+                online.anidb_client_version,
+            )
+        };
+        let path = files
+            .iter()
+            .find(|p| p.is_file())
+            .ok_or_else(|| tr.tr("anidb-no-file", &[]))?;
+        let account = Account {
+            user: online.anidb_user.trim().to_string(),
+            password: online.anidb_password.clone(),
+            client,
+            version,
+        };
+        #[cfg(feature = "test-harness")]
+        let interval = std::env::var("NIKOMIRU_TEST_ANIDB_INTERVAL_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .map_or(anidb::INTERVAL, std::time::Duration::from_millis);
+        #[cfg(not(feature = "test-harness"))]
+        let interval = anidb::INTERVAL;
+        let found = {
+            let mut client = AniDb::new(
+                &online.anidb_address,
+                account,
+                interval,
+                Box::new(std::thread::sleep),
+            )
+            .map_err(|e| self.message(&e))?;
+            anidb::identify(&mut client, path, &|| stop.load(Ordering::SeqCst))
+                .map_err(|e| self.message(&e))?
+            // dropped here: logged out
+        };
+        let info = found.ok_or_else(|| self.parts.translator.tr("anidb-unknown-file", &[]))?;
+        tracing::info!("AniDB: anime {} episode {}", info.aid, info.epno);
+        let mut choices: Vec<nikomiru_online::metadata::SeriesInfo> = Vec::new();
+        let mut source = Source::from_key(&self.parts.online.metadata);
+        for title in info.titles() {
+            let (from, found) = self.identify(&title)?;
+            source = from;
+            match found {
+                Identified::Unique(one) => return Ok((source, Identified::Unique(one))),
+                Identified::Choose(some) => {
+                    for s in some {
+                        if !choices.contains(&s) {
+                            choices.push(s);
+                        }
+                    }
+                }
+                Identified::Nothing => {}
+            }
+        }
+        Ok((
+            source,
+            if choices.is_empty() {
+                Identified::Nothing
+            } else {
+                Identified::Choose(choices)
+            },
+        ))
     }
 
     /// A cover image (MET-001): HTTPS only, at most a few MiB.

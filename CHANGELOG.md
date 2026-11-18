@@ -4,9 +4,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.130.0] - 2026-11-18
+
+AniDB file identification (M120), the Windows installer, local release tooling and a fix for installing signed updates from the published archives.
+
 ### Added
 
+- Identify a series from one of its files through AniDB: the ed2k hash and size of an episode, asked with the user's AniDB account, give AniDB's titles, which are then found on AniList or MyAnimeList (M120, MET-006). A user-registered AniDB client can be entered until Nikomiru's own registration is built in; AniDB is never asked through or around a proxy.
+
+- Make the Linux release archives (`.tar.gz` and the `.tar.xz` the signed updater installs) with `cargo xtask linux`, and write a channel's update manifest for signing with `cargo xtask update-manifest`; the steps are in `docs/RELEASING.md`.
+
 - Build a Windows MSI installer beside the ZIP with `cargo xtask windows` when `wixl` (msitools) is installed: all users under Program Files, a Start menu shortcut, upgrades replacing older releases; the Windows program is built without the build machine's paths.
+
+### Fixed
+
+- Install signed updates from release archives that keep everything in one top folder (`Nikomiru-<version>/`), as the published ZIP and Linux archives do; before, the new program was not found.
+- Count requirement ranges such as `T-ABK-001…T-ABK-004` in test comments for every requirement in between (`cargo xtask trace`), and link the remaining tests of AUD-009, BOK-003, SUB-020 and SRV-016.
 
 ## [2.120.0] - 2026-11-17
 

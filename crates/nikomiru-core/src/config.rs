@@ -1138,6 +1138,20 @@ pub struct OnlineConfig {
     /// Another plex.tv, for the tests (SRV-003).
     #[serde(skip_serializing_if = "is_plex_tv_url")]
     pub plex_tv_url: String,
+    /// AniDB user name, for identifying files (MET-006).
+    pub anidb_user: String,
+    /// AniDB password.
+    pub anidb_password: String,
+    /// A client the user registered at AniDB, instead of Nikomiru's own;
+    /// empty: Nikomiru's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub anidb_client: String,
+    /// That client's version.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub anidb_client_version: u32,
+    /// AniDB's UDP API (`host:port`), another one for the tests.
+    #[serde(skip_serializing_if = "is_anidb_address")]
+    pub anidb_address: String,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -1158,9 +1172,25 @@ impl Default for OnlineConfig {
             anilist_url: ANILIST_URL.into(),
             jikan_url: JIKAN_URL.into(),
             plex_tv_url: PLEX_TV_URL.into(),
+            anidb_user: String::new(),
+            anidb_password: String::new(),
+            anidb_client: String::new(),
+            anidb_client_version: 0,
+            anidb_address: ANIDB_ADDRESS.into(),
             other: toml::Table::new(),
         }
     }
+}
+
+/// AniDB's UDP API (MET-006).
+pub const ANIDB_ADDRESS: &str = "api.anidb.net:9000";
+
+fn is_anidb_address(address: &str) -> bool {
+    address == ANIDB_ADDRESS
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl std::fmt::Debug for OnlineConfig {
@@ -1175,6 +1205,8 @@ impl std::fmt::Debug for OnlineConfig {
             .field("opensubtitles_username", &self.opensubtitles_username)
             .field("opensubtitles_password", &set(&self.opensubtitles_password))
             .field("metadata", &self.metadata)
+            .field("anidb_user", &self.anidb_user)
+            .field("anidb_password", &set(&self.anidb_password))
             .finish_non_exhaustive()
     }
 }
@@ -1608,6 +1640,10 @@ impl Config {
                 "online.opensubtitles_password".to_string(),
                 &mut self.online.opensubtitles_password,
             ),
+            (
+                "online.anidb_password".to_string(),
+                &mut self.online.anidb_password,
+            ),
             ("sync.password".to_string(), &mut self.sync.password),
         ];
         out.extend(
@@ -2008,6 +2044,7 @@ Expression = "{expression}"
         config.online.jimaku_api_key = "s3cret-b".into();
         config.online.opensubtitles_api_key = "s3cret-c".into();
         config.online.opensubtitles_password = "s3cret-d".into();
+        config.online.anidb_password = "s3cret-g".into();
         config.sync.password = "s3cret-e".into();
         config.servers.push(ServerConfig {
             id: "a".into(),
@@ -2034,6 +2071,8 @@ jimaku_api_key = "jk-s3cret"
 opensubtitles_api_key = "os-s3cret"
 opensubtitles_username = "me"
 opensubtitles_password = "pw-s3cret"
+anidb_user = "me"
+anidb_password = "adb-s3cret"
 "#,
         )
         .unwrap();
@@ -2041,12 +2080,14 @@ opensubtitles_password = "pw-s3cret"
         assert_eq!(c.online.jimaku_url, JIMAKU_URL);
         assert_eq!(c.online.opensubtitles_url, OPENSUBTITLES_URL);
         let shown = format!("{c:?}");
-        for secret in ["jk-s3cret", "os-s3cret", "pw-s3cret", "pw0"] {
+        for secret in ["jk-s3cret", "os-s3cret", "pw-s3cret", "pw0", "adb-s3cret"] {
             assert!(!shown.contains(secret), "{secret}");
         }
         // the addresses are written only when they are not the services'
         let text = toml::to_string_pretty(&c).unwrap();
         assert!(!text.contains("jimaku_url"), "{text}");
+        assert!(!text.contains("anidb_address") && !text.contains("anidb_client"));
+        assert_eq!(c.online.anidb_address, ANIDB_ADDRESS);
         let mut test = c.clone();
         test.online.jimaku_url = "http://127.0.0.1:9/api".into();
         let text = toml::to_string_pretty(&test).unwrap();

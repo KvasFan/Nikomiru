@@ -82,6 +82,9 @@ pub trait OnlineService: Send {
     /// The series of `title` on the metadata source of the settings
     /// (MET-001, MET-002), and which source it is.
     fn identify(&self, title: String, done: Done<(Source, Identified)>);
+    /// The series of the first of `files` that exists, identified by AniDB
+    /// from its ed2k hash (MET-006), then found on the metadata source.
+    fn identify_file(&self, files: Vec<std::path::PathBuf>, done: Done<(Source, Identified)>);
     /// A series' cover image, from the source's address.
     fn cover(&self, url: String, done: Done<Vec<u8>>);
     /// A web page, or an HTML file, saved in UTF-8 for the Books page
@@ -118,6 +121,10 @@ impl OnlineService for NoOnline {
     fn configure(&self, _: OnlineConfig, _: NetworkConfig) {}
 
     fn identify(&self, _: String, done: Done<(Source, Identified)>) {
+        done(Err(self.0.clone()));
+    }
+
+    fn identify_file(&self, _: Vec<std::path::PathBuf>, done: Done<(Source, Identified)>) {
         done(Err(self.0.clone()));
     }
 
@@ -159,6 +166,13 @@ pub enum OnlineJob {
     },
     /// New settings.
     Configure(Box<(OnlineConfig, NetworkConfig)>),
+    /// Identify a series of the library from one of its files (MET-006).
+    IdentifyFile {
+        /// The series.
+        series: u64,
+        /// Its local episode files.
+        files: Vec<std::path::PathBuf>,
+    },
     /// Identify a series of the library (MET-001).
     Identify {
         /// The series.

@@ -14,7 +14,7 @@ Released and checked every block by `cargo xtask ci --full` (Wayland through an 
 | Windows layers (dialogs, theme, screen kept on, keyring, single instance, encodings, time, folders) | written; partly tried under Wine | ADR 0009 table: keyring, single instance, encodings, local time and folders tested under Wine 11.21. |
 | Package | published, not tried natively | `cargo xtask windows --libmpv … --ffmpeg …` makes the ZIP with `SOURCES.txt` and, with `wixl` (msitools), an MSI for all users under Program Files with a Start menu shortcut and major upgrades. Both published with 2.120.0; the MSI installs, runs `--version` and uninstalls under Wine 11.21. |
 | Touch gestures | implemented | Shared egui code (PORT-003); not tried on a Windows tablet. |
-| Platform tool installation (INS-007) | open | The setup catalogue lists Linux builds only. |
+| Platform tool installation (INS-007) | catalogued, not tried natively | `assets/setup/tools.json` pins Windows x86_64/aarch64 FFmpeg, yt-dlp and Deno assets (T-INS-007 checks every platform); the Windows ZIP/MSI already carry FFmpeg/ffprobe. |
 | Native checks: start, video with clickable subtitles, lookup, card | **open** | Needs a real Windows machine. |
 | Source offer for libmpv/ffmpeg in a published ZIP | written offer by link | `SOURCES.txt` names each archive, its SHA-256 and the upstream release with the sources; the maintainer asked to publish the ZIP and the installer on 2026-11-17. |
 

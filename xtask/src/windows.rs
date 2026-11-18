@@ -133,17 +133,9 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     let ffmpeg = unpack(&ffmpeg, &work.join("ffmpeg"))?;
     let import = find(&libmpv.dir, "libmpv.dll.a")?;
     let link_dir = import.parent().context("libmpv.dll.a has no folder")?;
-    // no path of the build machine in the program (panic locations)
-    let mut remap = format!("--remap-path-prefix={}=/build", root.display());
-    if let Some(home) = std::env::var_os("HOME") {
-        remap.push_str(&format!(
-            " --remap-path-prefix={}=/home",
-            Path::new(&home).display()
-        ));
-    }
     let rustflags = format!(
-        "{} {remap} -L native={}",
-        std::env::var("RUSTFLAGS").unwrap_or_default(),
+        "{} -L native={}",
+        util::release_rustflags(root),
         link_dir.display()
     );
     util::run(util::cargo().env("RUSTFLAGS", rustflags.trim()).args([

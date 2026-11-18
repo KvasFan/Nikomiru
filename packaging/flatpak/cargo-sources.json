@@ -3134,6 +3134,19 @@
   },
   {
     "archive-type": "tar-gzip",
+    "dest": "cargo/vendor/md4-0.11.0",
+    "sha256": "bd76fb0fd6b2e4be62a73f8e0858ca97f81babcb1af322dcaca196f735f17f80",
+    "type": "archive",
+    "url": "https://static.crates.io/crates/md4/md4-0.11.0.crate"
+  },
+  {
+    "contents": "{\"files\":{},\"package\":\"bd76fb0fd6b2e4be62a73f8e0858ca97f81babcb1af322dcaca196f735f17f80\"}",
+    "dest": "cargo/vendor/md4-0.11.0",
+    "dest-filename": ".cargo-checksum.json",
+    "type": "inline"
+  },
+  {
+    "archive-type": "tar-gzip",
     "dest": "cargo/vendor/memchr-2.8.3",
     "sha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
     "type": "archive",

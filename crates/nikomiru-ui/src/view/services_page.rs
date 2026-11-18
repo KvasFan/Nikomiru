@@ -227,6 +227,43 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
             online.metadata = source.key().to_string();
         }
     }
+    // MET-006: the account for "Identify by file (AniDB)"
+    section(ui, &tr(s, "services-anidb"));
+    ui.add(
+        egui::Label::new(
+            RichText::new(tr(s, "services-anidb-hint")).color(palette::current().details),
+        )
+        .wrap(),
+    );
+    egui::Grid::new("anidb-account")
+        .num_columns(2)
+        .spacing(vec2(12.0, 6.0))
+        .show(ui, |ui| {
+            let label = ui.label(tr(s, "online-anidb-user"));
+            ui.add(TextEdit::singleline(&mut online.anidb_user).desired_width(320.0))
+                .labelled_by(label.id);
+            ui.end_row();
+            let label = ui.label(tr(s, "online-anidb-password"));
+            ui.add(
+                TextEdit::singleline(&mut online.anidb_password)
+                    .password(!show)
+                    .desired_width(320.0),
+            )
+            .labelled_by(label.id);
+            ui.end_row();
+            let label = ui.label(tr(s, "online-anidb-client"));
+            ui.add(
+                TextEdit::singleline(&mut online.anidb_client)
+                    .hint_text(tr(s, "online-anidb-client-hint"))
+                    .desired_width(320.0),
+            )
+            .labelled_by(label.id);
+            ui.end_row();
+            let label = ui.label(tr(s, "online-anidb-client-version"));
+            ui.add(egui::DragValue::new(&mut online.anidb_client_version).range(0..=999))
+                .labelled_by(label.id);
+            ui.end_row();
+        });
     section(ui, &tr(s, "services-network"));
     ui.horizontal(|ui| {
         let label = ui.label(tr(s, "online-proxy"));
@@ -297,7 +334,7 @@ mod tests {
         }
     }
 
-    // T-MET-011, T-SET-008
+    // T-MET-011, T-SET-008, T-MET-006
     #[test]
     fn the_services_are_chosen_ordered_and_saved() {
         let mut h = harness(OnlineConfig::default());
@@ -329,6 +366,22 @@ mod tests {
         // the keys of each service are on its row
         h.get_by_label("online-jimaku-key");
         h.get_by_label("online-os-password");
+        // T-MET-006: the AniDB account
+        h.get_by_label("online-anidb-user").focus();
+        h.run();
+        h.get_by_label("online-anidb-user").type_text("learner");
+        h.run();
+        h.get_by_label("online-anidb-password").focus();
+        h.run();
+        h.get_by_label("online-anidb-password").type_text("pw");
+        h.run();
+        let out = click(&mut h, "online-save");
+        let online = saved(&out);
+        assert_eq!(
+            (online.anidb_user.as_str(), online.anidb_password.as_str()),
+            ("learner", "pw")
+        );
+        assert!(online.anidb_client.is_empty());
         // another tab
         h.get_by_label("settings-player").click();
         h.run();

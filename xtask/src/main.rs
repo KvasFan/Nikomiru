@@ -16,6 +16,7 @@ mod flatpak;
 mod i18n;
 mod install;
 mod licenses;
+mod release;
 mod synth;
 mod trace;
 mod util;
@@ -58,6 +59,11 @@ cargo xtask <command>
                        Nikomiru for Windows as a ZIP in target/windows (ADR 0009):
                        the release built from Linux, libmpv and ffmpeg beside it,
                        the licenses and SOURCES.txt
+  linux                the optimized Linux program in target/dist/ as .tar.gz and
+                       .tar.xz, named after the glibc and OpenSSL it needs
+  update-manifest [--channel stable|beta] ARCHIVE…
+                       target/dist/<channel>.json for the release archives
+                       (.tar.xz, .zip), to sign with minisign (UPD-001)
   install [--prefix DIR]
                        release build in DIR/bin (default ~/.local) and the desktop
                        entry in DIR/share/applications, registered for nikomiru://
@@ -96,6 +102,8 @@ fn run() -> Result<()> {
         "about" => licenses::about(&root).map(|_| ()),
         "install" => install::run(&root, rest),
         "windows" => windows::run(&root, rest),
+        "linux" => release::linux(&root),
+        "update-manifest" => release::update_manifest(&root, rest),
         "test" if rest.iter().any(|a| a == "--anki-e2e") => anki_e2e(&root),
         "help" | "-h" | "--help" => {
             eprint!("{HELP}");

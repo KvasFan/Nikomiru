@@ -241,6 +241,7 @@ mod tests {
                 "error-anki",
                 "dict-size-mb",
                 "dict-size-kb",
+                "services-anidb",
                 "servers-address-hint",
                 "review-total",
                 "anki-destination-anki",

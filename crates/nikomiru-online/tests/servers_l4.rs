@@ -635,7 +635,7 @@ fn emby_logs_in_and_lists_its_library() {
     ));
 }
 
-// T-SRV-015: playing, reporting and marking played on an Emby; expiry and files it
+// T-SRV-015, T-SRV-016: playing, reporting and marking played on an Emby; expiry and files it
 // cannot play directly are reported.
 #[test]
 fn emby_plays_reports_and_expires() {

@@ -107,6 +107,8 @@ nikomiru-subs = { workspace = true, features = ["test-support"] }
 image.workspace = true
 # the L6 tests write a large dictionary for an import to interrupt
 zip.workspace = true
+# the .tar.xz release archives of the update tests (UPD-004)
+lzma-rust2 = { workspace = true, features = ["encoder"] }
 
 # the L6 tests drive a Wayland desktop
 [target.'cfg(target_os = "linux")'.dev-dependencies]

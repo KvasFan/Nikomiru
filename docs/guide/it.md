@@ -129,6 +129,7 @@ Nulla va online se non lo chiedi.
 - Con i colori delle parole attivi, ogni episodio mostra `80% · 25%`: occorrenze di parole note e righe senza parole nuove. Contano anche i sottotitoli di testo incorporati nei video locali, con la stessa traccia salvata e priorità di lingua della riproduzione. `…` indica il conteggio; sottotitoli a immagini, video remoti e sottotitoli disattivati non hanno punteggio. Riapri la serie per aggiornare le sorgenti dei sottotitoli modificate.
 - Nella pagina di una serie puoi rinominarla, unirla a un'altra, spostare o togliere episodi, o eliminarla. I tuoi file non vengono mai toccati.
 - **Identifica online** chiede ad AniList (o a MyAnimeList) titoli, episodi e copertina della serie. Se più serie corrispondono, scegli tu. Jimaku poi trova i sottotitoli dal suo id AniList.
+- **Identifica dal file (AniDB)** funziona anche quando i nomi delle cartelle non dicono nulla. Invia ad AniDB dimensione e hash ed2k di un file di episodio, con il tuo account AniDB (Impostazioni → Servizi sottotitoli), poi cerca il titolo di AniDB su AniList o MyAnimeList. AniDB accetta solo client registrati: finché la registrazione di Nikomiru non è inclusa, registra un client UDP su anidb.net e inseriscine lì nome e versione. Con un proxy impostato AniDB non viene interpellato, perché la sua API UDP non può passare da un proxy.
 - **Statistiche** mostra il tempo guardato e i caratteri letti:
   - per giorno, per serie e per sessione;
   - un calendario dell'anno;

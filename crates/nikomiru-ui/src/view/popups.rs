@@ -2350,7 +2350,8 @@ mod tests {
         );
     }
 
-    // T-AUD-004: ♪ plays, a right click opens the menu, an item plays
+    // T-AUD-004, T-AUD-009: ♪ plays, a right click opens the menu, an item
+    // plays; with no source, ♪? opens the word audio settings instead
     #[test]
     fn the_sound_of_an_entry_plays_and_lists_its_audio() {
         use crate::word_audio::{AudioMenu, WordAudioItem};
@@ -2387,10 +2388,14 @@ mod tests {
         assert!(
             matches!(take(&mut h).as_slice(), [Command::WordAudioPlay(u)] if u == "http://localhost/1.mp3")
         );
-        // no source: no ♪
+        // no source: no ♪, but ♪? leading to the settings
         h.state_mut().word_audio = false;
         h.run();
         assert!(h.query_by_label("word-audio-button").is_none());
+        h.get_by_role_and_label(Role::Button, "word-audio-setup")
+            .click();
+        h.run();
+        assert!(matches!(take(&mut h).as_slice(), [Command::WordAudioSetup]));
     }
     // T-POP-006
     #[test]

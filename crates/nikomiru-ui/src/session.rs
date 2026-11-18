@@ -3145,6 +3145,44 @@ impl Session {
             .push(crate::online::OnlineJob::Identify { series, title });
     }
 
+    /// MET-006: "Identify by file (AniDB)": the series' local episode files
+    /// go to the worker, which hashes the first one there and asks AniDB.
+    pub fn library_identify_file(&mut self, series: u64) {
+        let files: Vec<std::path::PathBuf> = self
+            .library_page
+            .series
+            .as_ref()
+            .filter(|(open, _)| *open == series)
+            .and_then(|(_, episodes)| episodes.as_ref())
+            .map(|episodes| {
+                episodes
+                    .iter()
+                    .map(|(_, v)| std::path::PathBuf::from(&v.path))
+                    .filter(|p| p.is_absolute())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if files.is_empty() {
+            self.library_page.status = Some((self.tr("anidb-no-file", &[]), false));
+            return;
+        }
+        self.library_page.status = None;
+        self.library_page.identify = Some(crate::catalog::Identify {
+            series,
+            source: None,
+            choices: Vec::new(),
+            busy: true,
+        });
+        self.online_jobs
+            .push(crate::online::OnlineJob::IdentifyFile { series, files });
+    }
+
+    /// Whether AniDB can be asked: an account in the settings (MET-006).
+    pub fn anidb_ready(&self) -> bool {
+        let o = &self.config().online;
+        !o.anidb_user.trim().is_empty() && !o.anidb_password.is_empty()
+    }
+
     /// What the source found for a series: one with exactly its title is
     /// taken, otherwise the user chooses.
     pub fn identified(

@@ -106,7 +106,7 @@ pub fn parse(text: &str) -> Track {
 mod tests {
     use super::*;
 
-    // T-ABK-002
+    // T-ABK-002, T-SUB-020
     #[test]
     fn lines_last_until_the_next() {
         let t = parse("[ar:someone]\n[00:01.50]一行目\n[00:03.00]二行目\n");

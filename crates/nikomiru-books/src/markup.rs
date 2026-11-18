@@ -268,7 +268,7 @@ mod tests {
         chapter_of(xhtml).paragraphs
     }
 
-    // T-BOK-002
+    // T-BOK-002, T-BOK-003: the chapter's title is its first heading
     #[test]
     fn blocks_are_paragraphs_and_line_ends_are_nothing() {
         let c = chapter_of(
