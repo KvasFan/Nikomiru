@@ -834,6 +834,7 @@ books-previous = 前の章
 books-next-page = 次のページ
 books-previous-page = 前のページ
 manga-double = 見開き
+manga-text = ページに文字を表示
 manga-page = { $number } ページ
 manga-bad-page = このページを表示できません。
 manga-offer = ページの文字を読み取るには、{ $size } MB の文字認識モデルが必要です。Hugging Face から一度だけダウンロードします。処理はこのコンピューター上で行われ、ページが外部に送信されることはありません。

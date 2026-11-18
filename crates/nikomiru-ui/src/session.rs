@@ -7385,6 +7385,19 @@ impl Session {
         }
     }
 
+    /// Whether a manga's text is written over its balloons (MNG-012).
+    pub fn manga_text(&self) -> bool {
+        self.services.config.books.manga_text.unwrap_or(true)
+    }
+
+    /// The text written over the balloons, or the pictures alone.
+    pub fn manga_text_set(&mut self, shown: bool) {
+        self.services.config.books.manga_text = (!shown).then_some(false);
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// Whether a manga shows two pages.
     pub fn book_double(&self) -> bool {
         self.services.config.books.double_pages

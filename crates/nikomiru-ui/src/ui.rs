@@ -893,6 +893,8 @@ pub(crate) enum Command {
     },
     /// Two pages side by side, or one.
     MangaDouble(bool),
+    /// A manga's text written over its balloons, or not (MNG-012).
+    MangaText(bool),
     /// The reading model is to be fetched.
     OcrFetch,
     /// A click on a paragraph.
@@ -2409,6 +2411,7 @@ impl Ui {
                 anchor,
             } => s.mokuro_lookup(page, region, offset, anchor),
             Command::MangaDouble(double) => s.manga_double(double),
+            Command::MangaText(shown) => s.manga_text_set(shown),
             Command::OcrFetch => s.ocr_fetch(),
             Command::BookClicked {
                 paragraph,

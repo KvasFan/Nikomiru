@@ -854,6 +854,10 @@ pub struct BooksConfig {
     /// Ctrl and the wheel (RDR-005); absent: 1.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_zoom: Option<f32>,
+    /// A manga's text read or imported is written over its balloons
+    /// (MNG-012); absent: yes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manga_text: Option<bool>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,

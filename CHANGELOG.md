@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.161.0] - 2026-11-18
+
+### Added
+
+- The text found on a manga's page, read ahead or imported from Mokuro, is written over each balloon at about the size of the drawing's, in columns from the right when vertical; a click looks up the character under the pointer and the word looked up is marked on the balloon. **Text on the page** turns it off (MNG-012).
+
 ## [2.160.0] - 2026-11-18
 
 Manga pages read ahead, and zoom with Ctrl and the wheel (M128).
