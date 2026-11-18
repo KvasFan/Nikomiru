@@ -182,7 +182,7 @@ fn caption_and_owned_pack_examples_keep_playback_and_reject_invalid_imports_atom
     if h.state()["paused"] == false {
         h.key("Space");
     }
-    let before = h.state_until("source paused", |s| s["paused"] == true);
+    let before = h.paused_settled("source paused");
     h.cmd(json!({"cmd":"sentence-bank","action":"open"}));
     index(&mut h, "track", 1);
     h.cmd(json!({"cmd":"sentence-bank","action":"import","path":pack}));

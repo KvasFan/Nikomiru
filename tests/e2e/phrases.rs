@@ -107,17 +107,7 @@ fn caption_phrase_capture_keeps_playback_and_opens_its_explicit_scene() {
     if h.state()["paused"] == false {
         h.key("Space");
     }
-    h.state_until("paused source", |s| s["paused"] == true);
-    // mpv reports the final position a moment after the pause itself
-    let mut before = h.state();
-    for _ in 0..50 {
-        std::thread::sleep(Duration::from_millis(100));
-        let now = h.state();
-        if now["time_pos"] == before["time_pos"] {
-            break;
-        }
-        before = now;
-    }
+    let before = h.paused_settled("paused source");
     h.cmd(json!({"cmd":"phrases","action":"open"}));
     h.state_until("notebook", |s| s["phrases"]["busy"] == false);
     h.cmd(json!({"cmd":"phrases","action":"capture"}));

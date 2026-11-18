@@ -155,7 +155,7 @@ fn selected_primary_batch_cancels_remaining_after_the_inflight_card() {
     if h.state()["paused"] == false {
         h.key("Space");
     }
-    let before = h.state_until("paused source", |s| s["paused"] == true);
+    let before = h.paused_settled("paused source");
     h.cmd(json!({"cmd":"batch-mining","action":"words","words":[{"expression":"食べる","reading":"たべる"},{"expression":"猫","reading":"ねこ"}]}));
     let prepared = h.state_until("captured exact original contexts", |s| {
         s["batch_mining"]["stage"] == "Idle"

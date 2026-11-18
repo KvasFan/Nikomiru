@@ -810,6 +810,22 @@ impl Harness {
     }
 
     /// Polls the state until `test` accepts it.
+    /// The state once paused and the position settled: mpv reports the
+    /// final position a moment after the pause itself.
+    pub fn paused_settled(&mut self, what: &str) -> Value {
+        self.state_until(what, |s| s["paused"] == true);
+        let mut before = self.state();
+        for _ in 0..50 {
+            std::thread::sleep(Duration::from_millis(100));
+            let now = self.state();
+            if now["time_pos"] == before["time_pos"] {
+                return now;
+            }
+            before = now;
+        }
+        before
+    }
+
     pub fn state_until(&mut self, what: &str, test: impl Fn(&Value) -> bool) -> Value {
         until(Duration::from_secs(10), what, || {
             let s = self.state();
