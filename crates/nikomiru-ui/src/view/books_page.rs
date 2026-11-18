@@ -79,6 +79,14 @@ pub(crate) struct State {
     pub(crate) turn: Option<bool>,
     /// A swipe on the page (PORT-003), taken by the reader drawn.
     pub(crate) swipe: Option<crate::gestures::Gesture>,
+    /// Opened from this shelf of the main page: closing the reader, or a
+    /// dialog given up, goes back there.
+    pub(crate) from_library: Option<super::library_page::Shelf>,
+    /// The reader asked to close this frame.
+    reader_closed: bool,
+    /// Frames before an idle page counts as given up: the command that opens
+    /// the book runs after the frame that asked for it.
+    pub(crate) settle: u8,
     /// The chapter's horizontal pages: its book, number, width and height,
     /// and its paragraphs by page (RDR-004).
     pages: Option<(PagesKey, Vec<std::ops::Range<usize>>)>,
@@ -88,7 +96,7 @@ pub(crate) struct State {
     folder: bool,
     /// The address of a web page, as typed (WEB-001).
     address: String,
-    paste_open: bool,
+    pub(crate) paste_open: bool,
     paste_title: String,
     paste_text: String,
     paste_markdown: bool,
@@ -157,6 +165,22 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
     }
     if close {
         view.close_books_page(out);
+        view.books.from_library = None;
+    }
+    // back to the shelf the book was opened from
+    view.books.settle = view.books.settle.saturating_sub(1);
+    let idle = view.books.settle == 0
+        && s.books_page.open.is_none()
+        && !s.books_page.busy
+        && s.books_page.status.is_none()
+        && view.dialog.is_none()
+        && !view.books.paste_open;
+    if (std::mem::take(&mut view.books.reader_closed) || idle)
+        && let Some(shelf) = view.books.from_library.take()
+    {
+        view.close_books_page(out);
+        view.open_library_page(out);
+        view.library.shelf = shelf;
     }
 }
 
@@ -1010,7 +1034,7 @@ fn reader(
         if ui.button(tr(s, "books-back")).clicked() {
             close = true;
         }
-        ui.add(egui::Label::new(RichText::new(&open.book.title).family(theme::bold())).truncate());
+        // the page turns first, at the right: the title is cut before them
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let last = open.book.chapters.len().saturating_sub(1);
             if ui
@@ -1057,6 +1081,12 @@ fn reader(
                     out.push(Command::BookAlong(!along));
                 }
             }
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&open.book.title).family(theme::bold()))
+                        .truncate(),
+                );
+            });
         });
     });
     if manga {
@@ -1630,30 +1660,33 @@ fn list(
             if ui.button(tr(s, "library-close")).clicked() {
                 *close = true;
             }
-            if ui.button(tr(s, "books-audiobook")).clicked() {
-                state.audiobook = true;
-            }
-            if ui.button(tr(s, "podcasts-title")).clicked() {
-                out.push(Command::PodcastsOpen);
-            }
-            if ui.button(tr(s, "books-folder")).clicked() {
-                state.folder = true;
-            }
-            if ui.button(tr(s, "annotations-title")).clicked() {
-                out.push(Command::ReaderToolsOpen(
-                    crate::reader_tools::Tab::Annotations,
-                ));
-            }
-            if ui.button(tr(s, "search-title")).clicked() {
-                out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
-            }
-            if ui
-                .add_enabled(!s.page.busy, Button::new(tr(s, "books-add")))
-                .clicked()
-            {
-                *add = true;
-            }
         });
+    });
+    // the actions on a row of their own, wrapped: never over the title
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .add_enabled(!s.page.busy, palette::suggested(tr(s, "books-add")))
+            .clicked()
+        {
+            *add = true;
+        }
+        if ui.button(tr(s, "books-folder")).clicked() {
+            state.folder = true;
+        }
+        if ui.button(tr(s, "books-audiobook")).clicked() {
+            state.audiobook = true;
+        }
+        if ui.button(tr(s, "podcasts-title")).clicked() {
+            out.push(Command::PodcastsOpen);
+        }
+        if ui.button(tr(s, "annotations-title")).clicked() {
+            out.push(Command::ReaderToolsOpen(
+                crate::reader_tools::Tab::Annotations,
+            ));
+        }
+        if ui.button(tr(s, "search-title")).clicked() {
+            out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
+        }
     });
     if let Some(uid) = state.analysis.clone() {
         if s.colours
@@ -1852,6 +1885,7 @@ pub(crate) fn draw(
                         Some(open) => {
                             if reader(ui, s, open, state, out) {
                                 out.push(Command::BookClose);
+                                state.reader_closed = true;
                             }
                         }
                         None => {

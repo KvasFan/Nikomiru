@@ -71,6 +71,91 @@ pub(crate) struct State {
     pub(crate) open_hooker: bool,
     /// A tab of the settings a first step asked for (LIB-013).
     pub(crate) open_settings: Option<super::settings::SettingsTab>,
+    /// The shelf shown when neither the statistics, the review nor a media
+    /// server is (VID-001, BOK-004).
+    pub(crate) shelf: Shelf,
+    /// The link being typed on the Video shelf, and its name (VID-002).
+    link_url: String,
+    link_title: String,
+    /// The web page's address typed on the Web shelf (WEB-001).
+    web_address: String,
+    /// What the Books page is to do, asked from a shelf.
+    pub(crate) books_action: Option<BooksAction>,
+    /// The file dialog for a video was asked for.
+    pub(crate) open_video: bool,
+}
+
+/// The shelves of the main page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum Shelf {
+    /// The imported folders: series and films (LIB-002).
+    #[default]
+    Collection,
+    /// Videos opened on their own and links kept (VID-001, VID-002).
+    Videos,
+    /// Books, documents and pasted text (BOK-004).
+    Books,
+    /// Manga: CBZ, folders of pages, Mokuro volumes (MNG-001).
+    Manga,
+    /// Web pages read as books (WEB-001).
+    Web,
+}
+
+impl Shelf {
+    /// Every shelf, in the order of the tabs.
+    pub(crate) const ALL: [Shelf; 5] = [
+        Shelf::Collection,
+        Shelf::Videos,
+        Shelf::Books,
+        Shelf::Manga,
+        Shelf::Web,
+    ];
+
+    /// The shelf a book belongs on, from its path: an address is a web page,
+    /// a CBZ, a Mokuro volume or a folder (no extension) a manga.
+    pub(crate) fn of(path: &str) -> Shelf {
+        if crate::ui::is_web_address(path) {
+            return Shelf::Web;
+        }
+        let extension = Path::new(path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase());
+        match extension.as_deref() {
+            None | Some("cbz" | "zip" | "mokuro") => Shelf::Manga,
+            _ => Shelf::Books,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Shelf::Collection => "tab-collection",
+            Shelf::Videos => "tab-videos",
+            Shelf::Books => "tab-books",
+            Shelf::Manga => "tab-manga",
+            Shelf::Web => "tab-web",
+        }
+    }
+
+    fn is_reading(self) -> bool {
+        matches!(self, Shelf::Books | Shelf::Manga | Shelf::Web)
+    }
+}
+
+/// What a reading shelf asks of the Books page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BooksAction {
+    /// The file dialog for a book or a manga.
+    Add,
+    /// The folder dialog for a manga of loose pages.
+    Folder,
+    /// The audiobook dialog.
+    Audiobook,
+    /// The editor of pasted text.
+    Paste,
+    /// Open this book.
+    Open(String),
+    /// Read this web page.
+    Page(String),
 }
 
 impl State {
@@ -99,6 +184,7 @@ impl State {
     pub(crate) fn reset(&mut self) {
         *self = Self {
             textures: std::mem::take(&mut self.textures),
+            shelf: self.shelf,
             ..Self::default()
         };
     }
@@ -142,6 +228,10 @@ pub(crate) struct Scene<'a> {
     /// The score of an episode, by uid, while the words are coloured
     /// (KNW-008).
     pub episode_score: &'a dyn Fn(&str) -> Option<crate::scores::EpisodeScore>,
+    /// The books, manga and web pages added (BOK-004), and their page's state.
+    pub books: &'a crate::books::BooksPage,
+    /// The links kept (VID-002).
+    pub links: &'a [nikomiru_core::config::SavedLink],
     /// The interface strings.
     pub tr: &'a Translate<'a>,
 }
@@ -165,10 +255,30 @@ pub(crate) fn show(ctx: &egui::Context, s: &Session, view: &mut View, out: &mut 
         colours: s.config().subtitles.word_colors,
         anidb: s.anidb_ready(),
         episode_score: &|uid: &str| s.episode_score(uid),
+        books: &s.books_page,
+        links: &s.config().videos.links,
         tr: &tr,
     };
     if draw(ctx, &scene, &mut view.library, out) {
         view.close_library_page();
+    }
+    if std::mem::take(&mut view.library.open_video) {
+        view.dialog = Some(super::Dialog::Video);
+    }
+    if let Some(action) = view.library.books_action.take() {
+        let shelf = view.library.shelf;
+        // the reader shows on the Books page, and comes back here (BOK-004)
+        view.open_books_page(out);
+        view.books.from_library = Some(shelf);
+        view.books.settle = 3;
+        match action {
+            BooksAction::Add => view.dialog = Some(super::Dialog::Book),
+            BooksAction::Folder => view.dialog = Some(super::Dialog::MangaFolder),
+            BooksAction::Audiobook => view.dialog = Some(super::Dialog::Audiobook),
+            BooksAction::Paste => view.books.paste_open = true,
+            BooksAction::Open(uid) => out.push(Command::BookChoose(uid)),
+            BooksAction::Page(url) => out.push(Command::BookPage(url)),
+        }
     }
     if let Some(tab) = view.library.open_settings.take() {
         view.open_settings(tab, out);
@@ -247,109 +357,20 @@ pub(crate) fn draw(
         );
         ui.visuals_mut().override_text_color = Some(palette::current().text);
         ui.spacing_mut().item_spacing.y = 10.0;
-        ui.horizontal(|ui| {
-            // the library, its statistics (STA-005) or the review (REV-004)
-            let due = s
-                .page
-                .review
-                .review
-                .as_ref()
-                .map_or(0, |r| r.queue.cards.len());
-            let review_title = if due > 0 {
-                (s.tr)("review-title-due", &[("count", due.to_string())])
-            } else {
-                tr(s, "review-title")
-            };
-            // the tab of the review once it is used
-            let with_review = s.to_review
-                || s.page
-                    .review
-                    .review
-                    .as_ref()
-                    .is_some_and(|r| r.queue.total > 0);
-            let tabs = [
-                (false, false, tr(s, "library-title")),
-                (true, false, tr(s, "stats-title")),
-                (false, true, review_title),
-            ];
-            let shown = if with_review { 3 } else { 2 };
-            for (statistics, review, title) in tabs.into_iter().take(shown) {
-                let text = RichText::new(title).size(24.0).family(theme::bold());
-                let chosen = state.server.is_none()
-                    && state.statistics == statistics
-                    && state.review == review;
-                if ui.selectable_label(chosen, text).clicked() {
-                    state.statistics = statistics;
-                    state.review = review;
-                    state.server = None;
-                    if review && !chosen {
-                        out.push(Command::Review(crate::review::ReviewJob::Load));
-                    }
-                    // read again: the review may have answered since (REV-008)
-                    if statistics && !chosen {
-                        out.push(Command::StatsLoad);
-                    }
-                }
-            }
-            for server in s.servers {
-                let text = RichText::new(&server.name).size(24.0).family(theme::bold());
-                let chosen = state.server.as_ref() == Some(&server.id);
-                if ui.selectable_label(chosen, text).clicked() && !chosen {
-                    state.server = Some(server.id.clone());
-                    state.statistics = false;
-                    state.review = false;
-                    state.server_search.clear();
-                    out.push(Command::ServerShow(server.id.clone()));
-                }
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button(tr(s, "library-close")).clicked() {
-                    close = true;
-                }
-                // SET-008
-                let settings = ui
-                    .button(RichText::new("⚙").size(16.0))
-                    .on_hover_text(tr(s, "settings-title"));
-                settings.widget_info(|| {
-                    WidgetInfo::labeled(Role::Button, true, tr(s, "settings-title"))
-                });
-                if settings.clicked() {
-                    state.open_settings = Some(s.settings_tab);
-                }
-                if ui.button(tr(s, "hooker-title")).clicked() {
-                    state.open_hooker = true;
-                }
-                if ui.button(tr(s, "books-title")).clicked() {
-                    state.open_books = true;
-                }
-                if state.server.is_some() || state.review {
-                } else if state.statistics {
-                    if ui.button(tr(s, "stats-export")).clicked() {
-                        out.push(Command::StatsExport);
-                    }
-                } else if ui
-                    .add_enabled(!s.page.busy, Button::new(tr(s, "library-add-folder")))
-                    .clicked()
-                {
-                    out.push(Command::LibraryAddFolder);
-                }
-                if s.page.busy {
-                    ui.spinner();
-                }
-            });
-        });
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(tr(s, "recall-history")).clicked() {
-                out.push(Command::RecallHistoryOpen);
-            }
-            if ui.button(tr(s, "phrases-title")).clicked() {
-                out.push(Command::PhrasesOpen);
-            }
-            if ui.button(tr(s, "recall-load")).clicked() {
-                out.push(Command::RecallLoad);
-            }
-        });
+        header(&mut ui, s, state, &mut close, out);
         if let Some((text, ok)) = &s.page.status {
+            ui.add(
+                egui::Label::new(RichText::new(text).color(if *ok {
+                    palette::current().good
+                } else {
+                    palette::current().bad
+                }))
+                .wrap(),
+            );
+        }
+        if state.shelf.is_reading()
+            && let Some((text, ok)) = &s.books.status
+        {
             ui.add(
                 egui::Label::new(RichText::new(text).color(if *ok {
                     palette::current().good
@@ -381,6 +402,8 @@ pub(crate) fn draw(
                     &mut state.stats,
                     out,
                 ),
+                _ if state.shelf == Shelf::Videos => videos(ui, s, state, out),
+                _ if state.shelf.is_reading() => reading_shelf(ui, s, state, out),
                 Some((id, episodes)) => {
                     // the first episode takes the keyboard once listed
                     state.focus_first = episodes.is_some() && state.focused_view != Some(Some(*id));
@@ -402,6 +425,475 @@ pub(crate) fn draw(
             });
     });
     close
+}
+
+/// A tab of the page: a pill, bold when chosen; whether it was clicked.
+fn tab(ui: &mut Ui, chosen: bool, text: &str) -> bool {
+    let text = RichText::new(text).size(17.0);
+    let text = if chosen {
+        text.family(theme::bold())
+            .color(palette::current().accent_text)
+    } else {
+        text
+    };
+    let button = Button::new(text)
+        .selected(chosen)
+        .corner_radius(16)
+        .min_size(vec2(0.0, 32.0));
+    ui.add(button).clicked()
+}
+
+/// The name, the tools, the settings and the way back; then the tabs, each
+/// on its own row so that nothing overlaps however narrow the window; then
+/// what the tab shown can add.
+fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: &mut Vec<Command>) {
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new("Nikomiru")
+                .size(26.0)
+                .family(theme::bold())
+                .color(palette::current().accent),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button(tr(s, "library-close")).clicked() {
+                *close = true;
+            }
+            // SET-008
+            let settings = ui
+                .button(RichText::new("⚙").size(16.0))
+                .on_hover_text(tr(s, "settings-title"));
+            settings
+                .widget_info(|| WidgetInfo::labeled(Role::Button, true, tr(s, "settings-title")));
+            if settings.clicked() {
+                state.open_settings = Some(s.settings_tab);
+            }
+            ui.menu_button(tr(s, "library-tools"), |ui| {
+                if ui.button(tr(s, "hooker-title")).clicked() {
+                    state.open_hooker = true;
+                    ui.close();
+                }
+                if ui.button(tr(s, "phrases-title")).clicked() {
+                    out.push(Command::PhrasesOpen);
+                    ui.close();
+                }
+                if ui.button(tr(s, "recall-history")).clicked() {
+                    out.push(Command::RecallHistoryOpen);
+                    ui.close();
+                }
+                if ui.button(tr(s, "recall-load")).clicked() {
+                    out.push(Command::RecallLoad);
+                    ui.close();
+                }
+                if ui.button(tr(s, "podcasts-title")).clicked() {
+                    out.push(Command::PodcastsOpen);
+                    ui.close();
+                }
+                if ui.button(tr(s, "annotations-title")).clicked() {
+                    out.push(Command::ReaderToolsOpen(
+                        crate::reader_tools::Tab::Annotations,
+                    ));
+                    ui.close();
+                }
+                if ui.button(tr(s, "search-title")).clicked() {
+                    out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(tr(s, "library-books-page")).clicked() {
+                    state.open_books = true;
+                    ui.close();
+                }
+            });
+            if s.page.busy || (state.shelf.is_reading() && s.books.busy) {
+                ui.spinner();
+            }
+        });
+    });
+    // the review's tab once it is used
+    let due = s
+        .page
+        .review
+        .review
+        .as_ref()
+        .map_or(0, |r| r.queue.cards.len());
+    let with_review = s.to_review
+        || s.page
+            .review
+            .review
+            .as_ref()
+            .is_some_and(|r| r.queue.total > 0);
+    let shelf_shown = state.server.is_none() && !state.statistics && !state.review;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        for shelf in Shelf::ALL {
+            let chosen = shelf_shown && state.shelf == shelf;
+            if tab(ui, chosen, &tr(s, shelf.label())) {
+                state.shelf = shelf;
+                state.statistics = false;
+                state.review = false;
+                state.server = None;
+                if shelf.is_reading() && !chosen {
+                    out.push(Command::BooksOpen);
+                }
+                // a series open stays open on its own shelf only
+                if shelf != Shelf::Collection && s.page.series.is_some() {
+                    out.push(Command::LibrarySeries(None));
+                }
+            }
+        }
+        ui.separator();
+        if tab(
+            ui,
+            state.statistics && state.server.is_none(),
+            &tr(s, "stats-title"),
+        ) {
+            // read again: the review may have answered since (REV-008)
+            if !state.statistics {
+                out.push(Command::StatsLoad);
+            }
+            state.statistics = true;
+            state.review = false;
+            state.server = None;
+        }
+        if with_review {
+            let title = if due > 0 {
+                (s.tr)("review-title-due", &[("count", due.to_string())])
+            } else {
+                tr(s, "review-title")
+            };
+            if tab(ui, state.review && state.server.is_none(), &title) {
+                if !state.review {
+                    out.push(Command::Review(crate::review::ReviewJob::Load));
+                }
+                state.review = true;
+                state.statistics = false;
+                state.server = None;
+            }
+        }
+        for server in s.servers {
+            let chosen = state.server.as_ref() == Some(&server.id);
+            if tab(ui, chosen, &server.name) && !chosen {
+                state.server = Some(server.id.clone());
+                state.statistics = false;
+                state.review = false;
+                state.server_search.clear();
+                out.push(Command::ServerShow(server.id.clone()));
+            }
+        }
+    });
+    ui.separator();
+    // what the tab shown can add
+    ui.horizontal_wrapped(|ui| {
+        if state.server.is_some() || state.review {
+        } else if state.statistics {
+            if ui.button(tr(s, "stats-export")).clicked() {
+                out.push(Command::StatsExport);
+            }
+        } else {
+            match state.shelf {
+                Shelf::Collection => {
+                    if ui
+                        .add_enabled(
+                            !s.page.busy,
+                            palette::suggested(tr(s, "library-add-folder")),
+                        )
+                        .clicked()
+                    {
+                        out.push(Command::LibraryAddFolder);
+                    }
+                }
+                Shelf::Videos => {
+                    if ui
+                        .add(palette::suggested(tr(s, "videos-open-file")))
+                        .clicked()
+                    {
+                        state.open_video = true;
+                    }
+                    if ui.button(tr(s, "webvideo-open")).clicked() {
+                        out.push(Command::WebOpenDialog);
+                    }
+                }
+                Shelf::Books => {
+                    let free = !s.books.busy;
+                    if ui
+                        .add_enabled(free, palette::suggested(tr(s, "books-add")))
+                        .clicked()
+                    {
+                        state.books_action = Some(BooksAction::Add);
+                    }
+                    if ui
+                        .add_enabled(free, Button::new(tr(s, "books-paste")))
+                        .clicked()
+                    {
+                        state.books_action = Some(BooksAction::Paste);
+                    }
+                    if ui.button(tr(s, "books-audiobook")).clicked() {
+                        state.books_action = Some(BooksAction::Audiobook);
+                    }
+                }
+                Shelf::Manga => {
+                    let free = !s.books.busy;
+                    if ui
+                        .add_enabled(free, palette::suggested(tr(s, "manga-add")))
+                        .clicked()
+                    {
+                        state.books_action = Some(BooksAction::Add);
+                    }
+                    if ui
+                        .add_enabled(free, Button::new(tr(s, "books-folder")))
+                        .clicked()
+                    {
+                        state.books_action = Some(BooksAction::Folder);
+                    }
+                }
+                Shelf::Web => {
+                    let label = ui.label(tr(s, "books-web"));
+                    let field = ui
+                        .add(
+                            TextEdit::singleline(&mut state.web_address)
+                                .hint_text("https://")
+                                .desired_width(ui.available_width().clamp(160.0, 420.0)),
+                        )
+                        .labelled_by(label.id);
+                    let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let address = state.web_address.trim().to_string();
+                    let open = ui.add_enabled(
+                        !s.books.busy && !address.is_empty(),
+                        palette::suggested(tr(s, "books-web-open")),
+                    );
+                    if (open.clicked() || enter) && !address.is_empty() {
+                        state.books_action = Some(BooksAction::Page(address));
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// The Video shelf (VID-001, VID-002): the links kept, then the videos
+/// opened on their own, the last first.
+fn videos(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    section(ui, &tr(s, "videos-links"));
+    ui.horizontal_wrapped(|ui| {
+        let label = ui.label(tr(s, "videos-link-url"));
+        ui.add(
+            TextEdit::singleline(&mut state.link_url)
+                .hint_text("https://")
+                .desired_width(ui.available_width().clamp(160.0, 360.0)),
+        )
+        .labelled_by(label.id);
+        let label = ui.label(tr(s, "videos-link-title"));
+        ui.add(TextEdit::singleline(&mut state.link_title).desired_width(180.0))
+            .labelled_by(label.id);
+        let url = state.link_url.trim().to_string();
+        if ui
+            .add_enabled(
+                crate::ui::is_web_address(&url),
+                Button::new(tr(s, "videos-link-keep")),
+            )
+            .clicked()
+        {
+            out.push(Command::LinkKeep(url, state.link_title.trim().to_string()));
+            state.link_url.clear();
+            state.link_title.clear();
+        }
+    });
+    if s.links.is_empty() {
+        ui.label(RichText::new(tr(s, "videos-links-none")).color(palette::current().details));
+    }
+    for link in s.links {
+        let title = if link.title.is_empty() {
+            link.url.as_str()
+        } else {
+            link.title.as_str()
+        };
+        list_row(
+            ui,
+            |ui| {
+                let remove = (s.tr)("videos-link-remove", &[("title", title.to_string())]);
+                if cross(ui, &remove) {
+                    out.push(Command::LinkRemove(link.url.clone()));
+                }
+                if ui.add(palette::suggested(tr(s, "videos-play"))).clicked() {
+                    out.push(Command::WebOpen(link.url.clone()));
+                }
+            },
+            |ui| {
+                ui.add(egui::Label::new(RichText::new(title).family(theme::bold())).truncate());
+                if !link.title.is_empty() {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&link.url).color(palette::current().details),
+                        )
+                        .truncate(),
+                    );
+                }
+            },
+        );
+    }
+    section(ui, &tr(s, "videos-history"));
+    let Some(home) = &s.page.home else {
+        ui.spinner();
+        return;
+    };
+    if home.history.is_empty() {
+        ui.label(RichText::new(tr(s, "videos-history-none")).color(palette::current().details));
+    }
+    for (uid, v) in &home.history {
+        let title = home.server_titles.get(uid).cloned().unwrap_or_else(|| {
+            if crate::ui::is_web_address(&v.path) {
+                v.path.clone()
+            } else {
+                file_title(&v.path)
+            }
+        });
+        list_row(
+            ui,
+            |ui| {
+                let forget = (s.tr)("videos-forget", &[("title", title.clone())]);
+                if cross(ui, &forget) {
+                    out.push(Command::LibraryEdit(LibraryEdit::Remove(vec![uid.clone()])));
+                }
+                if crate::ui::is_web_address(&v.path)
+                    && !s.links.iter().any(|l| l.url == v.path)
+                    && ui.button(tr(s, "videos-link-keep")).clicked()
+                {
+                    out.push(Command::LinkKeep(v.path.clone(), String::new()));
+                }
+                if ui.add(palette::suggested(tr(s, "videos-play"))).clicked() {
+                    out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
+                }
+            },
+            |ui| {
+                ui.add(egui::Label::new(RichText::new(&title).family(theme::bold())).truncate());
+                let watched = Watched::of(v) == Watched::Watched;
+                let detail = if watched {
+                    tr(s, "videos-watched")
+                } else {
+                    v.duration_ms
+                        .map(|d| {
+                            (s.tr)(
+                                "library-left",
+                                &[("time", clock(d.saturating_sub(v.last_position_ms) as i64))],
+                            )
+                        })
+                        .unwrap_or_default()
+                };
+                if !detail.is_empty() {
+                    ui.label(RichText::new(detail).color(palette::current().details));
+                }
+                let share = if watched {
+                    1.0
+                } else {
+                    v.duration_ms
+                        .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32)
+                };
+                progress(
+                    ui,
+                    ui.available_width().min(220.0),
+                    share,
+                    palette::current().accent,
+                );
+            },
+        );
+    }
+}
+
+/// A small ✕ named `name` for screen readers; whether it was clicked.
+fn cross(ui: &mut Ui, name: &str) -> bool {
+    let response = ui.small_button("✕").on_hover_text(name);
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
+    response.clicked()
+}
+
+/// A row of a list, the width of the page: `right`'s buttons first, at the
+/// right, then `left` in what is left, so that its text is cut before them.
+fn list_row(ui: &mut Ui, right: impl FnOnce(&mut Ui), left: impl FnOnce(&mut Ui)) {
+    Frame::new()
+        .fill(palette::current().row)
+        .corner_radius(8)
+        .inner_margin(Margin::symmetric(12, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            // a row's own height: centring in the list's would push the
+            // buttons far below their text
+            ui.horizontal(|ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    right(ui);
+                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        ui.vertical(left);
+                    });
+                });
+            });
+        });
+}
+
+/// A row of controls that wraps, its labels centred on its fields.
+fn toolbar(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+    ui.horizontal_wrapped(body);
+}
+
+/// The Books, Manga or Web shelf: what was added there, the last read first.
+fn reading_shelf(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    let shelf = state.shelf;
+    let items: Vec<_> = s
+        .books
+        .list
+        .iter()
+        .filter(|(_, b)| Shelf::of(&b.path) == shelf)
+        .collect();
+    if items.is_empty() {
+        let none = match shelf {
+            Shelf::Manga => "manga-none",
+            Shelf::Web => "web-none",
+            _ => "books-none",
+        };
+        ui.label(RichText::new(tr(s, none)).color(palette::current().details));
+        return;
+    }
+    for (uid, book) in items {
+        list_row(
+            ui,
+            |ui| {
+                let remove = (s.tr)("books-remove", &[("title", book.title.clone())]);
+                if cross(ui, &remove) {
+                    out.push(Command::BookRemove(uid.clone()));
+                }
+                let percent = crate::books::percent(book);
+                let open = if percent > 0 {
+                    (s.tr)("books-continue", &[("percent", percent.to_string())])
+                } else {
+                    tr(s, "books-open")
+                };
+                if ui.add(palette::suggested(open)).clicked() {
+                    state.books_action = Some(BooksAction::Open(uid.clone()));
+                }
+            },
+            |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&book.title).family(theme::bold())).truncate(),
+                );
+                let detail = if shelf == Shelf::Web {
+                    book.path.clone()
+                } else {
+                    book.author.clone()
+                };
+                if !detail.is_empty() {
+                    ui.add(
+                        egui::Label::new(RichText::new(detail).color(palette::current().details))
+                            .truncate(),
+                    );
+                }
+                let percent = crate::books::percent(book);
+                progress(
+                    ui,
+                    ui.available_width().min(220.0),
+                    percent as f32 / 100.0,
+                    palette::current().good,
+                );
+            },
+        );
+    }
 }
 
 /// A media server's tab (SRV-006): its libraries, then what they hold.
@@ -656,9 +1148,6 @@ fn first_steps(
 }
 
 fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
-    if ui.button(tr(s, "webvideo-open")).clicked() {
-        out.push(Command::WebOpenDialog);
-    }
     let Some(home) = &s.page.home else {
         ui.spinner();
         return;
@@ -696,9 +1185,16 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     if let Some(steps) = s.first_steps {
         first_steps(ui, s, steps, state, out);
     }
-    if !home.continue_watching.is_empty() {
+    // the collection's own: a video opened on its own is on the Video shelf
+    let continuing: Vec<(String, VideoRecord)> = home
+        .continue_watching
+        .iter()
+        .filter(|(_, v)| v.series.is_some())
+        .cloned()
+        .collect();
+    if !continuing.is_empty() {
         section(ui, &tr(s, "library-continue"));
-        rows(ui, WIDE, &home.continue_watching, |ui, (uid, v)| {
+        rows(ui, WIDE, &continuing, |ui, (uid, v)| {
             let series = v.series.and_then(|id| home.series_title(id));
             let title = home
                 .server_titles
@@ -1078,12 +1574,16 @@ fn series(
         .and_then(|h| h.series_title(id))
         .unwrap_or_default()
         .to_string();
-    if ui.button(tr(s, "library-back")).clicked() {
+    let mut back = false;
+    ui.horizontal(|ui| {
+        back = ui.button(tr(s, "library-back")).clicked();
+        ui.add(egui::Label::new(RichText::new(&title).size(22.0).family(theme::bold())).truncate());
+    });
+    if back {
         state.reset();
         out.push(Command::LibrarySeries(None));
         return;
     }
-    ui.label(RichText::new(&title).size(22.0).family(theme::bold()));
     online(ui, s, id, out);
     let others: Vec<(u64, String)> = home
         .map(|h| {
@@ -1094,8 +1594,8 @@ fn series(
                 .collect()
         })
         .unwrap_or_default();
-    // LIB-011: rename, merge; LIB-012: delete
-    ui.horizontal(|ui| {
+    // LIB-011: rename, merge; LIB-012: delete; all on one row, wrapped
+    toolbar(ui, |ui| {
         let name = &mut state.rename.get_or_insert_with(|| (id, title.clone())).1;
         let label = ui.label(tr(s, "library-name"));
         ui.add(TextEdit::singleline(name).desired_width(260.0))
@@ -1112,9 +1612,8 @@ fn series(
                 name.trim().to_string(),
             )));
         }
-    });
-    if !others.is_empty() {
-        ui.horizontal(|ui| {
+        if !others.is_empty() {
+            ui.separator();
             target(ui, s, "library-merge-into", &others, &mut state.merge_into);
             if ui
                 .add_enabled(
@@ -1127,12 +1626,13 @@ fn series(
                 out.push(Command::LibraryEdit(LibraryEdit::Merge { from: id, into }));
                 out.push(Command::LibrarySeries(Some(into)));
             }
-        });
-    }
-    if ui.button(tr(s, "library-delete")).clicked() {
-        out.push(Command::LibraryEdit(LibraryEdit::Delete(id)));
-        out.push(Command::LibrarySeries(None));
-    }
+        }
+        ui.separator();
+        if ui.button(tr(s, "library-delete")).clicked() {
+            out.push(Command::LibraryEdit(LibraryEdit::Delete(id)));
+            out.push(Command::LibrarySeries(None));
+        }
+    });
     let Some(episodes) = episodes else {
         ui.spinner();
         return;
@@ -1174,7 +1674,8 @@ fn series(
                     };
                     ui.label(RichText::new(glyph).color(color));
                     ui.label(RichText::new(episode_label(v)).family(theme::bold()));
-                    ui.add(egui::Label::new(file_title(&v.path)).truncate());
+                    // the buttons first, at the right: the name takes what is
+                    // left and is cut there, never under them
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let play = ui.button(tr(s, "library-play"));
                         if std::mem::take(&mut state.focus_first) {
@@ -1229,6 +1730,9 @@ fn series(
                                 .color(palette::current().details),
                             );
                         }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.add(egui::Label::new(file_title(&v.path)).truncate());
+                        });
                     });
                 });
             });
@@ -1355,6 +1859,8 @@ mod tests {
         scores: HashMap<String, crate::scores::EpisodeScore>,
         colours: bool,
         anidb: bool,
+        books: crate::books::BooksPage,
+        links: Vec<nikomiru_core::config::SavedLink>,
     }
 
     fn harness(page: LibraryPage) -> Harness<'static, Test> {
@@ -1382,6 +1888,8 @@ mod tests {
                         colours: t.colours,
                         anidb: t.anidb,
                         episode_score: &|uid: &str| t.scores.get(uid).copied(),
+                        books: &t.books,
+                        links: &t.links,
                         tr: &tr,
                     };
                     t.closed |= draw(ui.ctx(), &scene, &mut t.state, &mut t.out);
@@ -1397,6 +1905,8 @@ mod tests {
                     scores: HashMap::new(),
                     colours: false,
                     anidb: false,
+                    books: crate::books::BooksPage::default(),
+                    links: Vec::new(),
                 },
             )
     }
@@ -1439,7 +1949,135 @@ mod tests {
             series: vec![summary(1, "Alpha", 3, 1), summary(2, "Beta", 1, 0)],
             folders: vec![("/v".into(), FolderRecord::default())],
             server_titles: Default::default(),
+            history: vec![
+                (
+                    "web/a".into(),
+                    VideoRecord {
+                        path: "https://example.com/watch?v=a".into(),
+                        duration_ms: Some(600_000),
+                        last_position_ms: 60_000,
+                        last_played_at: Some(5),
+                        ..VideoRecord::default()
+                    },
+                ),
+                (
+                    "video/clip".into(),
+                    VideoRecord {
+                        path: "/tmp/clip.mkv".into(),
+                        last_played_at: Some(4),
+                        ..VideoRecord::default()
+                    },
+                ),
+            ],
         }
+    }
+
+    // T-VID-001, T-VID-002, T-BOK-004: the shelves are tabs; videos opened on
+    // their own and links kept are on the Video shelf, books, manga and web
+    // pages each on their own, and nothing of a shelf shows on another
+    #[test]
+    fn the_shelves_sort_what_was_added() {
+        let page = LibraryPage {
+            home: Some(home()),
+            ..LibraryPage::default()
+        };
+        let mut h = harness(page);
+        let book = |path: &str, title: &str| {
+            (
+                format!("uid:{title}"),
+                nikomiru_library::books::BookRecord {
+                    path: path.into(),
+                    title: title.into(),
+                    chars: 100,
+                    read_chars: 50,
+                    ..Default::default()
+                },
+            )
+        };
+        h.state_mut().books.list = vec![
+            book("/b/novel.epub", "Novel"),
+            book("/b/volume.cbz", "Volume"),
+            book("/b/pages", "Pages"),
+            book("https://example.com/story", "Story"),
+        ];
+        h.state_mut().links = vec![nikomiru_core::config::SavedLink {
+            url: "https://example.com/watch?v=b".into(),
+            title: "Later".into(),
+            added_at: 1,
+        }];
+        h.run();
+        // the collection: series, no single video
+        assert!(h.query_all_by_label("Alpha").next().is_some());
+        assert!(h.query_all_by_label("clip").next().is_none());
+        let out = click(&mut h, "tab-videos");
+        assert!(out.is_empty(), "{out:?}");
+        assert!(h.query_all_by_label("clip").next().is_some());
+        assert!(
+            h.query_all_by_label("https://example.com/watch?v=a")
+                .next()
+                .is_some()
+        );
+        assert!(h.query_all_by_label("Later").next().is_some());
+        assert!(h.query_all_by_label("Alpha").next().is_none());
+        // the first Play is the saved link's
+        h.query_all_by_label("videos-play").next().unwrap().click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            matches!(&out[..], [Command::WebOpen(u)] if u == "https://example.com/watch?v=b"),
+            "{out:?}"
+        );
+        // a web video of the history can be kept as a link, then forgotten
+        // the form's own button is first, and off without an address
+        h.query_all_by_label("videos-link-keep")
+            .last()
+            .unwrap()
+            .click();
+        h.run();
+        let out = std::mem::take(&mut h.state_mut().out);
+        assert!(
+            matches!(&out[..], [Command::LinkKeep(u, _)] if u.contains("v=a")),
+            "{out:?}"
+        );
+        h.query_all_by_label("videos-forget")
+            .next()
+            .unwrap()
+            .click();
+        h.run();
+        assert!(matches!(
+            &h.state().out[..],
+            [Command::LibraryEdit(LibraryEdit::Remove(u))] if u == &["web/a".to_string()]
+        ));
+        h.state_mut().out.clear();
+        // reading shelves: each its own kind, opened through the Books page
+        let out = click(&mut h, "tab-manga");
+        assert!(matches!(&out[..], [Command::BooksOpen]), "{out:?}");
+        assert!(h.query_all_by_label("Volume").next().is_some());
+        assert!(h.query_all_by_label("Pages").next().is_some());
+        assert!(h.query_all_by_label("Novel").next().is_none());
+        h.get_by_label("manga-add").click();
+        h.run();
+        assert_eq!(h.state().state.books_action, Some(BooksAction::Add));
+        h.state_mut().state.books_action = None;
+        click(&mut h, "tab-books");
+        assert!(
+            h.query_all_by_label("Novel").next().is_some()
+                && h.query_all_by_label("Volume").next().is_none()
+        );
+        click(&mut h, "books-continue");
+        assert_eq!(
+            h.state().state.books_action,
+            Some(BooksAction::Open("uid:Novel".into()))
+        );
+        click(&mut h, "tab-web");
+        assert!(
+            h.query_all_by_label("Story").next().is_some()
+                && h.query_all_by_label("Novel").next().is_none()
+        );
+        // the tools are in one menu
+        click(&mut h, "library-tools");
+        let out = click(&mut h, "phrases-title");
+        assert!(matches!(&out[..], [Command::PhrasesOpen]), "{out:?}");
     }
 
     // T-KNW-031: episode vocabulary never triggers playback and reuses shared controls.

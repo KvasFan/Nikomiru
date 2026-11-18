@@ -4,6 +4,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- The main page has tabs: Collection (the imported series and films), Videos, Books, Manga and Websites, then Statistics, the Review and media servers. The Videos tab keeps a history of the videos opened on their own (files, web videos, media servers) and saved links to watch later (VID-001, VID-002). The tools (Texthooker, phrase notebook, recall, podcasts, annotations, search) are in one Tools menu.
+- Manga: a click on a word of a Mokuro page looks it up directly, as in subtitles; a box dragged over a page is read and its first word opens in the dictionary at once (MNG-010).
+
+### Fixed
+
+- Text no longer overlaps on the main page and the reading page: buttons are laid out first and long titles are cut before them; the tabs and each tab's actions have rows of their own.
+- Furigana of web pages stay over their own word: a word ending a line kept its reading on the line above, indented page markup put stray spaces into the text and shifted the readings, and a missing `</rt>` was not understood (WEB-004).
+- Dragging a box on a manga page without the reading model installed now says it must be fetched first, instead of doing nothing.
+
 ## [2.140.0] - 2026-11-18
 
 Speech, translation, explanation, shadowing and text from the picture, one line at a time and only when asked (M121…M125); the remaining open decisions closed (D-70) and a device-linking proposal (ADR 0011).

@@ -21,7 +21,7 @@ mod cloze;
 mod condense;
 mod dict_page;
 mod hooker_page;
-mod library_page;
+pub(crate) mod library_page;
 mod line_tools;
 mod link;
 mod list;

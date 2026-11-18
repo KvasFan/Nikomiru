@@ -3478,6 +3478,26 @@ impl Session {
         self.open(path);
     }
 
+    /// Keeps a video link for later (VID-002), saved at once.
+    pub fn link_keep(&mut self, url: &str, title: &str) {
+        if !crate::ui::is_web_address(url.trim()) {
+            return;
+        }
+        let now = self.now_ms();
+        self.services.config.videos.keep(url, title, now);
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
+    /// Forgets a kept link.
+    pub fn link_remove(&mut self, url: &str) {
+        self.services.config.videos.links.retain(|l| l.url != url);
+        if self.services.config_writable {
+            self.config_save = Some(self.services.config.clone());
+        }
+    }
+
     /// What the library worker answered.
     pub fn library_reply(&mut self, reply: crate::catalog::LibraryReply) {
         use crate::catalog::{LibraryJob, LibraryReply};

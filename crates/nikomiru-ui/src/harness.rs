@@ -1523,6 +1523,26 @@ pub fn library(
                 ui.view.close_library_page();
                 return Ok(());
             }
+            // VID-001, BOK-004: `path` names the shelf
+            "shelf" => {
+                use crate::view::library_page::Shelf;
+                let name = path()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let shelf = match name.as_str() {
+                    "videos" => Shelf::Videos,
+                    "books" => Shelf::Books,
+                    "manga" => Shelf::Manga,
+                    "web" => Shelf::Web,
+                    _ => Shelf::Collection,
+                };
+                ui.view.library.show_statistics(false);
+                ui.view.library.shelf = shelf;
+                if matches!(shelf, Shelf::Books | Shelf::Manga | Shelf::Web) {
+                    ui.run(Command::BooksOpen);
+                }
+                return Ok(());
+            }
             "statistics" | "library" => {
                 ui.view.library.show_statistics(action == "statistics");
                 if action == "statistics" {

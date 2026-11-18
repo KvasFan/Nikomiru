@@ -23,6 +23,8 @@ use nikomiru_ui::review::{CardRow, Review, ReviewJob};
 
 /// How many videos "Continue watching" shows.
 const CONTINUE: usize = 12;
+/// The videos of the history shown (VID-001).
+const HISTORY: usize = 200;
 
 /// What the worker needs.
 pub struct Parts {
@@ -126,8 +128,10 @@ impl Worker {
         let lib = &self.parts.library;
         let e = |e| self.message(&e);
         let continue_watching = lib.continue_watching(CONTINUE).map_err(e)?;
+        let history = lib.history(HISTORY).map_err(e)?;
         let server_titles = continue_watching
             .iter()
+            .chain(&history)
             .filter_map(|(uid, _)| {
                 let item = lib.server_item(uid).ok().flatten()?;
                 let title = if item.series.is_empty() {
@@ -143,6 +147,7 @@ impl Worker {
             server_titles,
             series: lib.series_list().map_err(e)?,
             folders: lib.folders().map_err(e)?,
+            history,
         })
     }
 

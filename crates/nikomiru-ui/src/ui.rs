@@ -798,6 +798,10 @@ pub(crate) enum Command {
     LibraryEdit(crate::catalog::LibraryEdit),
     /// An episode played from the page.
     LibraryPlay(PathBuf),
+    /// Keep a video link for later, with a name (VID-002).
+    LinkKeep(String, String),
+    /// Forget a kept link.
+    LinkRemove(String),
     /// The Online subtitles page opened (MET-009).
     OnlineOpen,
     /// The Subtitle services tab of the settings opened (MET-011).
@@ -2317,6 +2321,8 @@ impl Ui {
             Command::LibraryScan(root, grouping) => s.library_import(root, grouping),
             Command::LibraryEdit(edit) => s.library_edit(edit),
             Command::LibraryPlay(path) => s.library_play(&path),
+            Command::LinkKeep(url, title) => s.link_keep(&url, &title),
+            Command::LinkRemove(url) => s.link_remove(&url),
             Command::ServicesOpen => s.services_open(),
             Command::SettingsOpen => s.settings_open(),
             Command::SettingsSave(section, draft) => s.settings_save(section, &draft),

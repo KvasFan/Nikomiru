@@ -845,6 +845,13 @@ fn screenshots_of_the_interface() {
     });
     std::thread::sleep(Duration::from_millis(300));
     desk.capture(&dir.join("library.png"));
+    // VID-001, BOK-004: the other shelves
+    for shelf in ["videos", "books", "manga", "web"] {
+        h.cmd(serde_json::json!({ "cmd": "library", "action": "shelf", "path": shelf }));
+        std::thread::sleep(Duration::from_millis(300));
+        desk.capture(&dir.join(format!("shelf-{shelf}.png")));
+    }
+    h.cmd(serde_json::json!({ "cmd": "library", "action": "shelf", "path": "collection" }));
     h.open(&scene.to_string_lossy());
     h.wait("file-loaded");
     h.wait("cue-shown");
