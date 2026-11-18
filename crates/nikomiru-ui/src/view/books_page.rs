@@ -172,22 +172,85 @@ pub(super) fn range_rects(
 ) -> Vec<egui::Rect> {
     let start = text[..range.start.min(text.len())].chars().count();
     let length = text.get(range).map_or(0, |part| part.chars().count());
-    let mut rows: Vec<egui::Rect> = Vec::new();
-    for at in start..start + length {
-        let left = galley.pos_from_cursor(egui::text::CCursor::new(at));
-        let right = galley.pos_from_cursor(egui::text::CCursor::new(at + 1));
-        let width = if (left.top() - right.top()).abs() < 1.0 {
-            right.left() - left.left()
-        } else {
-            left.height()
-        };
-        let cell = egui::Rect::from_min_size(left.left_top(), vec2(width, left.height()));
-        match rows.last_mut() {
-            Some(row) if (row.top() - cell.top()).abs() < 1.0 => *row = row.union(cell),
-            _ => rows.push(cell),
+    glyph_rows(galley, start..start + length)
+}
+
+/// The rects of the glyphs of characters `chars` (indices), one per row
+/// they are on, from the glyphs themselves: a row's last character is as wide
+/// as it is, not as the next row's start says, and the rect is the text's own
+/// height, not the row's with the room for furigana.
+pub(super) fn glyph_rows(galley: &egui::Galley, chars: std::ops::Range<usize>) -> Vec<egui::Rect> {
+    let mut rows = Vec::new();
+    let mut index = 0;
+    for placed in &galley.rows {
+        let mut rect: Option<egui::Rect> = None;
+        for glyph in &placed.row.glyphs {
+            if chars.contains(&index) {
+                // from the baseline: the text's own box, whatever the row's height
+                let top = glyph.pos.y - glyph.font_ascent;
+                let cell = egui::Rect::from_min_size(
+                    egui::pos2(glyph.pos.x, top),
+                    vec2(glyph.advance_width, glyph.font_height),
+                )
+                .translate(placed.pos.to_vec2());
+                rect = Some(rect.map_or(cell, |r| r.union(cell)));
+            }
+            index += 1;
+        }
+        if let Some(rect) = rect {
+            rows.push(rect);
+        }
+        if placed.ends_with_newline {
+            index += 1;
+        }
+        if index >= chars.end {
+            break;
         }
     }
     rows
+}
+
+/// Furigana over their base: on each row the base is on, the share of the
+/// reading that falls there, centred, and small enough not to run into the
+/// next base when the reading is long.
+fn draw_readings_over(
+    ui: &Ui,
+    galley: &egui::Galley,
+    origin: egui::Pos2,
+    item: &Paragraph,
+    size: f32,
+) {
+    for ruby in &item.ruby {
+        let rows = range_rects(galley, &item.text, ruby.range.clone());
+        let reading: Vec<char> = ruby.text.chars().collect();
+        if rows.is_empty() || reading.is_empty() {
+            continue;
+        }
+        let total: f32 = rows.iter().map(|r| r.width()).sum::<f32>().max(1.0);
+        let mut taken = 0;
+        for (i, row) in rows.iter().enumerate() {
+            let left = reading.len() - taken;
+            let share = if i + 1 == rows.len() {
+                left
+            } else {
+                ((row.width() / total * reading.len() as f32).round() as usize).min(left)
+            };
+            let part: String = reading[taken..taken + share].iter().collect();
+            taken += share;
+            if part.is_empty() {
+                continue;
+            }
+            let count = part.chars().count() as f32;
+            let font = (row.width() / count).clamp(size * 0.3, size * 0.5);
+            ui.painter().text(
+                origin + vec2(row.center().x, row.top() - size * 0.05),
+                Align2::CENTER_BOTTOM,
+                part,
+                FontId::proportional(font),
+                palette::current().details,
+            );
+        }
+    }
 }
 
 /// A picture of the book, decoded the first time it shows and within the
@@ -279,32 +342,7 @@ fn paragraph(
             }
         }
     }
-    for ruby in &item.ruby {
-        let chars = item.text[..ruby.range.start].chars().count();
-        let length = item.text[ruby.range.clone()].chars().count();
-        let first = galley.pos_from_cursor(egui::text::CCursor::new(chars));
-        let last = galley.pos_from_cursor(egui::text::CCursor::new(chars + length));
-        if (first.top() - last.top()).abs() > 1.0 {
-            // it breaks across rows: over its start
-            ui.painter().text(
-                rect.min + first.left_top().to_vec2(),
-                Align2::LEFT_BOTTOM,
-                &ruby.text,
-                FontId::proportional(size * 0.5),
-                palette::current().details,
-            );
-            continue;
-        }
-        let x = (first.left() + last.left()) / 2.0;
-        let y = first.bottom() - size * 1.05;
-        ui.painter().text(
-            rect.min + vec2(x, y),
-            Align2::CENTER_BOTTOM,
-            &ruby.text,
-            FontId::proportional(size * 0.5),
-            palette::current().details,
-        );
-    }
+    draw_readings_over(ui, &galley, rect.min, item, size);
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -1806,6 +1844,39 @@ mod tests {
     use nikomiru_books::{Book, Chapter, Ruby};
 
     use super::*;
+
+    // T-BOK-002, T-WEB-004: a base that ends its row keeps its furigana on
+    // that row, over its own glyphs: not over the row above, and not
+    // stretched to the next row's start
+    #[test]
+    fn a_base_at_the_end_of_a_row_keeps_its_reading_there() {
+        let mut h = Harness::builder().allow_missing_glyphs().build_ui(|ui| {
+            let item = Paragraph {
+                text: "あいうえお漢字かきくけこ".into(),
+                ruby: vec![Ruby {
+                    range: 15..21,
+                    text: "かんじ".into(),
+                }],
+                ..Paragraph::default()
+            };
+            // seven characters fit on the first row: the base ends it
+            let one = glyph_rows(&paragraph_galley(ui, &item, 10_000.0, 1.0), 0..1)[0].width();
+            let galley = paragraph_galley(ui, &item, one * 7.2, 1.0);
+            assert!(galley.rows.len() >= 2, "{}", galley.rows.len());
+            let rows = range_rects(&galley, &item.text, 15..21);
+            assert_eq!(rows.len(), 1, "{rows:?}");
+            let base = rows[0];
+            let first = glyph_rows(&galley, 0..1)[0];
+            // on the first row, the text's own height, not the row's
+            assert!((base.top() - first.top()).abs() < 1.0, "{base:?} {first:?}");
+            assert!(base.height() < TEXT_SIZE * 1.6, "{base:?}");
+            // two glyphs wide, not one glyph and a whole row height
+            assert!(base.width() < one * 2.4, "{base:?}");
+            let next = glyph_rows(&galley, 7..8)[0];
+            assert!(next.top() > base.bottom(), "{next:?}");
+        });
+        h.run();
+    }
 
     struct Test {
         page: BooksPage,
