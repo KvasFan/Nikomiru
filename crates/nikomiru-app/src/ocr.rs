@@ -141,7 +141,10 @@ fn fetch(
 /// The text the end-to-end tests read in place of the model.
 pub(crate) fn test_text() -> Option<String> {
     if cfg!(feature = "test-harness") {
-        std::env::var("NIKOMIRU_TEST_OCR").ok()
+        // empty: the real model, for the L7 check
+        std::env::var("NIKOMIRU_TEST_OCR")
+            .ok()
+            .filter(|t| !t.is_empty())
     } else {
         None
     }

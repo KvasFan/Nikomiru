@@ -856,7 +856,8 @@ manga-offer = Per leggere il testo di una pagina, Nikomiru ha bisogno di un mode
 manga-credit = Modello: manga-ocr di kha-white (Apache-2.0), addestrato sul dataset Manga109-s.
 manga-fetch = Scarica il modello
 manga-fetching = Scaricamento del modello: { $percent } %
-manga-hint = Trascina su un fumetto per leggerlo.
+manga-needs-model = Scarica prima il modello di lettura (pulsante qui sopra): poi un riquadro trascinato su un fumetto viene letto.
+manga-hint = Trascina un riquadro intorno a un fumetto: viene letto e la prima parola si apre nel dizionario; le altre si cliccano sotto la pagina.
 manga-reading = Lettura…
 manga-nothing = Lì non è stato trovato testo.
 
@@ -1404,7 +1405,7 @@ books-paste-hint = Salvato localmente per riaprirlo. Massimo 4 MiB. Markdown con
 error-book-invalid-text = Impossibile leggere questo documento. Usa UTF-8, un titolo di massimo 256 caratteri e testo semplice o Markdown supportato.
 
 error-book-mokuro = Questo volume Mokuro non è supportato oppure contiene immagini locali o coordinate non valide.
-mokuro-ready = Il testo è già disponibile. Seleziona un riquadro nella pagina.
+mokuro-ready = La pagina ha il suo testo: clicca una parola sulla pagina per cercarla.
 mokuro-empty-page = Questa pagina non contiene riquadri di testo importati.
 mokuro-region = Leggi riquadro { $number } della pagina { $page }
 

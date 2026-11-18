@@ -669,19 +669,38 @@ fn manga_reader(
                 hit.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::Role::Button, !s.page.ocr.reading, &label)
                 });
+                // the page's own text: faintly framed, clicked like a subtitle
+                let stroke = if hit.hovered() {
+                    egui::Stroke::new(1.5, palette::current().accent)
+                } else {
+                    egui::Stroke::new(1.0, palette::current().accent.gamma_multiply(0.35))
+                };
+                ui.painter()
+                    .rect_stroke(at, 2.0, stroke, egui::StrokeKind::Outside);
                 if hit.hovered() {
-                    ui.painter().rect_stroke(
-                        at,
-                        0.0,
-                        egui::Stroke::new(1.5, palette::current().good),
-                        egui::StrokeKind::Inside,
-                    );
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
                 if hit.clicked() && !s.page.ocr.reading {
-                    out.push(Command::MokuroSelect {
-                        page: *page,
-                        region: index,
-                    });
+                    let point = hit.interact_pointer_pos().unwrap_or(at.center());
+                    let x = (point.x - drawn.min.x) / drawn.width() * imported.width as f32;
+                    let y = (point.y - drawn.min.y) / drawn.height() * imported.height as f32;
+                    match region.offset_at(x, y) {
+                        Some(offset) => out.push(Command::MokuroLookup {
+                            page: *page,
+                            region: index,
+                            offset,
+                            anchor: popup::Rect {
+                                x: f64::from(point.x - 8.0),
+                                y: f64::from(point.y - 8.0),
+                                w: 16.0,
+                                h: 16.0,
+                            },
+                        }),
+                        None => out.push(Command::MokuroSelect {
+                            page: *page,
+                            region: index,
+                        }),
+                    }
                 }
             }
         }
@@ -709,7 +728,17 @@ fn manga_reader(
         if let Some((page, drawn)) = under
             && let Some(area) = shares(selection, *drawn)
         {
-            out.push(Command::MangaRead { page: *page, area });
+            let boxed = egui::Rect::from_two_pos(selection.0, selection.1);
+            out.push(Command::MangaRead {
+                page: *page,
+                area,
+                anchor: popup::Rect {
+                    x: f64::from(boxed.min.x),
+                    y: f64::from(boxed.min.y),
+                    w: f64::from(boxed.width()),
+                    h: f64::from(boxed.height()),
+                },
+            });
         }
     }
     let step = pages.len();
@@ -2554,7 +2583,7 @@ mod tests {
         h.drop_at(at(0.75, 0.5));
         h.run();
         let area = h.state().out.iter().find_map(|c| match c {
-            Command::MangaRead { page: 0, area } => Some(*area),
+            Command::MangaRead { page: 0, area, .. } => Some(*area),
             _ => None,
         });
         let area = area.expect("a selection");
@@ -2774,9 +2803,10 @@ mod tests {
         assert!(!h.state().state.paste_open);
         assert_eq!(h.state().state.paste_text, "# 猫\n\n本文");
     }
-    // T-MNG-008: imported text has an accessible target without model installation or an OCR offer.
+    // T-MNG-008, T-MNG-010: imported text has an accessible target without
+    // model installation or an OCR offer; a click looks the word under it up.
     #[test]
-    fn imported_manga_region_emits_only_an_explicit_selection() {
+    fn imported_manga_region_looks_up_the_word_clicked() {
         let mut open = manga();
         open.book.manga_regions.insert(
             0,
@@ -2786,6 +2816,8 @@ mod tests {
                 regions: vec![nikomiru_books::mokuro::Region {
                     bounds: [10, 10, 80, 100],
                     text: "猫です".into(),
+                    vertical: true,
+                    lines: vec![(0..9, [10, 10, 80, 100])],
                 }],
             },
         );
@@ -2801,7 +2833,9 @@ mod tests {
             h.state()
                 .out
                 .iter()
-                .any(|c| matches!(c, Command::MokuroSelect { page: 0, region: 0 }))
+                .any(|c| matches!(c, Command::MokuroLookup { page: 0, region: 0, offset, .. } if *offset < 9)),
+            "{:?}",
+            h.state().out
         );
     }
 }

@@ -516,6 +516,9 @@ pub struct Session {
     book_pastes: Vec<crate::books::Paste>,
     /// The part of a page to read (MNG-003).
     ocr_job: Option<crate::ocr::OcrJob>,
+    /// The lookup to open once the manga text being read arrives: its byte
+    /// and where (MNG-005, MNG-010).
+    manga_lookup: Option<(usize, Rect)>,
     /// The reading model is to be fetched (MNG-004).
     ocr_fetch: bool,
     /// A graphic track waits for the reading model, in this load (SUB-028).
@@ -946,6 +949,7 @@ impl Session {
             book_reads: Vec::new(),
             book_pastes: Vec::new(),
             ocr_job: None,
+            manga_lookup: None,
             ocr_fetch: false,
             read_waiting: None,
             hooker_run: None,
@@ -7487,9 +7491,15 @@ impl Session {
     }
 
     /// A part of the page was selected: it is read (MNG-003).
-    pub fn manga_read(&mut self, page: usize, area: [f32; 4]) {
+    pub fn manga_read(&mut self, page: usize, area: [f32; 4], anchor: Rect) {
         let ocr = &self.books_page.ocr;
-        if !ocr.installed || ocr.reading {
+        if ocr.reading {
+            return;
+        }
+        // without the model, the box is not lost: the offer says why
+        if !ocr.installed {
+            let text = self.tr("manga-needs-model", &[]);
+            self.books_page.status = Some((text, false));
             return;
         }
         let job = self.books_page.open.as_ref().and_then(|open| {
@@ -7511,6 +7521,21 @@ impl Session {
             self.books_page.ocr.reading = true;
             self.books_page.status = None;
             self.ocr_job = job;
+            // the first word of what is read, in the dictionary at once
+            self.manga_lookup = Some((0, anchor));
+        }
+    }
+
+    /// A click on a Mokuro region's text (MNG-010): the region becomes the
+    /// page's text, as a selection does, and the word at `offset` is looked
+    /// up as soon as it is there.
+    pub fn mokuro_lookup(&mut self, page: usize, region: usize, offset: usize, anchor: Rect) {
+        if self.books_page.ocr.reading {
+            return;
+        }
+        self.mokuro_select(page, region);
+        if self.books_page.ocr.reading {
+            self.manga_lookup = Some((offset, anchor));
         }
     }
 
@@ -7571,6 +7596,7 @@ impl Session {
     /// clicked like a book's (MNG-005).
     pub fn manga_recognized(&mut self, reading: crate::ocr::Reading) {
         self.books_page.ocr.reading = false;
+        let pending = self.manga_lookup.take();
         let (uid, page, read) = reading;
         let open = self
             .books_page
@@ -7592,6 +7618,9 @@ impl Session {
                 // a popup open on the old text would mark bytes of the new
                 self.close_all_popups();
                 self.books_page.highlight = None;
+                if let Some((offset, anchor)) = pending {
+                    self.book_clicked(0, offset, anchor);
+                }
             }
             Err(e) => self.books_page.status = Some((e, false)),
         }

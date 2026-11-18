@@ -840,7 +840,8 @@ manga-offer = ページの文字を読み取るには、{ $size } MB の文字�
 manga-credit = モデル: kha-white の manga-ocr（Apache-2.0）、Manga109-s データセットで学習。
 manga-fetch = モデルをダウンロード
 manga-fetching = モデルをダウンロード中: { $percent }%
-manga-hint = フキダシの上をドラッグすると読み取ります。
+manga-needs-model = 先に読み取りモデルを取得してください（上のボタン）。その後、フキダシを囲むと読み取ります。
+manga-hint = フキダシを囲むようにドラッグすると読み取り、最初の語を辞書で開きます。ほかの語はページの下のテキストをクリックします。
 manga-reading = 読み取り中…
 manga-nothing = そこに文字は見つかりませんでした。
 
@@ -1387,7 +1388,7 @@ books-paste-hint = 再度開けるようにローカルに保存します。上�
 error-book-invalid-text = このテキスト文書は読めません。UTF-8、256 文字以内のタイトル、プレーンテキストまたは対応する Markdown を使用してください。
 
 error-book-mokuro = 未対応の Mokuro ファイル、無効なローカル画像、またはテキスト座標です。
-mokuro-ready = テキストは処理済みです。ページ上のテキスト領域を選択してください。
+mokuro-ready = このページには文字データがあります。ページ上の語をクリックすると調べられます。
 mokuro-empty-page = このページにはテキスト領域がありません。
 mokuro-region = { $page } ページの領域 { $number } を読む
 
