@@ -858,9 +858,48 @@ pub struct BooksConfig {
     /// (MNG-012); absent: yes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manga_text: Option<bool>,
+    /// How many manga pages are read ahead after those shown (MNG-013);
+    /// absent: [`BooksConfig::OCR_AHEAD_DEFAULT`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_ahead: Option<u32>,
+    /// The memory the text of the pages read may take, in MiB (MNG-013);
+    /// absent: [`BooksConfig::OCR_MEMORY_DEFAULT`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_memory_mb: Option<u32>,
+    /// Where a manga's dictionary opens once moved: its top left corner as
+    /// shares of the window (MNG-014); absent: next to the word.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manga_popup: Option<[f32; 2]>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+impl BooksConfig {
+    /// The pages read ahead, at least and at most (MNG-013).
+    pub const OCR_AHEAD: std::ops::RangeInclusive<u32> = 1..=200;
+    /// The pages read ahead when not set.
+    pub const OCR_AHEAD_DEFAULT: u32 = 10;
+    /// The memory for the pages read, in MiB, at least and at most.
+    pub const OCR_MEMORY: std::ops::RangeInclusive<u32> = 1..=1024;
+    /// The memory for the pages read when not set.
+    pub const OCR_MEMORY_DEFAULT: u32 = 32;
+
+    /// How many pages are read ahead after those shown.
+    pub fn ocr_ahead(&self) -> u32 {
+        self.ocr_ahead
+            .unwrap_or(Self::OCR_AHEAD_DEFAULT)
+            .clamp(*Self::OCR_AHEAD.start(), *Self::OCR_AHEAD.end())
+    }
+
+    /// The memory the pages read may take, in bytes.
+    pub fn ocr_memory_bytes(&self) -> usize {
+        let mib = self
+            .ocr_memory_mb
+            .unwrap_or(Self::OCR_MEMORY_DEFAULT)
+            .clamp(*Self::OCR_MEMORY.start(), *Self::OCR_MEMORY.end());
+        (mib as usize) << 20
+    }
 }
 
 /// `[review]`: the schedule of Nikomiru's own review (REV-003).
@@ -1710,6 +1749,8 @@ impl Config {
                 self.player.fit = d.player.fit;
                 self.player.gap_speed = d.player.gap_speed;
                 self.player.shader_preset = d.player.shader_preset;
+                self.books.ocr_ahead = d.books.ocr_ahead;
+                self.books.ocr_memory_mb = d.books.ocr_memory_mb;
             }
             Section::Subtitles => {
                 let other = std::mem::take(&mut self.subtitles.other);
@@ -2016,6 +2057,32 @@ pub fn check_writable(dir: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    // T-MNG-013: the pages read ahead and their memory, within bounds, kept,
+    // and reset with the General tab
+    #[test]
+    fn manga_reading_ahead_is_bounded_and_reset() {
+        let mut config: Config = toml::from_str(
+            "[books]\nocr_ahead = 900\nocr_memory_mb = 0\nmanga_popup = [0.5, 0.25]\n",
+        )
+        .unwrap();
+        assert_eq!(config.books.ocr_ahead(), 200);
+        assert_eq!(config.books.ocr_memory_bytes(), 1 << 20);
+        assert_eq!(config.books.manga_popup, Some([0.5, 0.25]));
+        let defaults = BooksConfig::default();
+        assert_eq!(defaults.ocr_ahead(), 10);
+        assert_eq!(defaults.ocr_memory_bytes(), 32 << 20);
+        config.reset(Section::General);
+        assert_eq!(
+            (config.books.ocr_ahead, config.books.ocr_memory_mb),
+            (None, None)
+        );
+        assert_eq!(
+            config.books.manga_popup,
+            Some([0.5, 0.25]),
+            "not a setting of the tab"
+        );
+    }
+
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;

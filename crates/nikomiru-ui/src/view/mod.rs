@@ -911,6 +911,9 @@ impl View {
         }
         // the settings pages cover the popups: they wait under them
         let study_popup = s.study_popup_open();
+        // a manga's dictionary can be moved and stays where it was put (MNG-014)
+        let manga_popup =
+            self.books_page_open && s.books_page.open.as_ref().is_some_and(|o| o.book.manga);
         let covered = (self.phrases_open && !study_popup)
             || self.dict_page_open
             || self.anki_page_open
@@ -927,7 +930,7 @@ impl View {
             self.popups.rects.clear();
             Vec::new()
         } else {
-            popups::show(&ctx, s, &mut self.popups, &mut out)
+            popups::show(&ctx, s, &mut self.popups, manga_popup, &mut out)
         };
         self.mark_presented(s, &drawn);
         if self.library_page_open {
@@ -994,7 +997,7 @@ impl View {
             );
         }
         if study_popup && !covered {
-            let drawn = popups::show(&ctx, s, &mut self.popups, &mut out);
+            let drawn = popups::show(&ctx, s, &mut self.popups, manga_popup, &mut out);
             self.mark_presented(s, &drawn);
         }
         if s.setup_page.open {

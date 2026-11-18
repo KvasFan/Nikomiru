@@ -120,6 +120,9 @@ pub struct OcrState {
     pub preparing: std::collections::BTreeSet<usize>,
     /// The worker was given pages that may not all be read yet.
     pub queued: bool,
+    /// Pages forgotten for want of memory, and the page shown then: they are
+    /// not read ahead again until the reader turns a page (MNG-013).
+    pub forgotten: (usize, std::collections::BTreeSet<usize>),
 }
 
 impl OcrState {
@@ -127,7 +130,59 @@ impl OcrState {
     pub fn forget_pages(&mut self) {
         self.found.clear();
         self.preparing.clear();
+        self.forgotten.1.clear();
     }
+}
+
+/// About the memory a page read takes: its text, its lines' boxes, and what
+/// holds them (MNG-013).
+pub fn page_bytes(page: &nikomiru_books::mokuro::Page) -> usize {
+    let regions: usize = page
+        .regions
+        .iter()
+        .map(|r| {
+            std::mem::size_of::<nikomiru_books::mokuro::Region>()
+                + r.text.len()
+                + r.lines.len() * std::mem::size_of::<(std::ops::Range<usize>, [u32; 4])>()
+        })
+        .sum();
+    std::mem::size_of::<nikomiru_books::mokuro::Page>() + regions + 32
+}
+
+/// The memory all the pages read take.
+pub fn pages_bytes(
+    found: &std::collections::BTreeMap<usize, nikomiru_books::mokuro::Page>,
+) -> usize {
+    found.values().map(page_bytes).sum()
+}
+
+/// Pages read are forgotten, the farthest from `shown` first, until they
+/// fit in `limit` bytes; those shown are kept whatever they take (MNG-013).
+/// A page forgotten is in the disk cache still, and read again from there
+/// when the reader comes back to it.
+pub fn forget_far(
+    found: &mut std::collections::BTreeMap<usize, nikomiru_books::mokuro::Page>,
+    shown: std::ops::Range<usize>,
+    limit: usize,
+) -> Vec<usize> {
+    let mut gone = Vec::new();
+    let mut total = pages_bytes(found);
+    while total > limit {
+        let far = found
+            .keys()
+            .copied()
+            .filter(|page| !shown.contains(page))
+            // as far behind as ahead: the one behind, as reading goes on
+            .max_by_key(|page| (page.abs_diff(shown.start), *page < shown.start));
+        let Some(page) = far else {
+            break;
+        };
+        if let Some(read) = found.remove(&page) {
+            total -= page_bytes(&read);
+            gone.push(page);
+        }
+    }
+    gone
 }
 
 /// How much of the model has come, in percent.
@@ -138,6 +193,32 @@ pub fn fetched_percent(bytes: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // T-MNG-013: the pages farthest from those shown go first, the shown
+    // ones never
+    #[test]
+    fn pages_read_fit_in_their_memory() {
+        let page = |text: &str| nikomiru_books::mokuro::Page {
+            width: 10,
+            height: 10,
+            regions: vec![nikomiru_books::mokuro::Region::guessed(
+                [0, 0, 10, 10],
+                text.into(),
+                true,
+            )],
+        };
+        let mut found: std::collections::BTreeMap<_, _> =
+            (0..10).map(|p| (p, page("猫です"))).collect();
+        let one = page_bytes(&found[&0]);
+        assert!(one > 9 && pages_bytes(&found) == 10 * one);
+        assert_eq!(forget_far(&mut found, 3..5, 6 * one), vec![9, 8, 7, 0]);
+        assert_eq!(
+            found.keys().copied().collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5, 6]
+        );
+        forget_far(&mut found, 3..5, 0);
+        assert_eq!(found.keys().copied().collect::<Vec<_>>(), vec![3, 4]);
+    }
 
     // T-MNG-004
     #[test]

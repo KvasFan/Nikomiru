@@ -4,6 +4,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.162.0] - 2026-11-18
+
+### Added
+
+- Manga pages are read further ahead: after the pages shown, as many as set in Settings → General → Manga (default 10), their text kept in memory up to the size set there (default 32 MB), the farthest pages forgotten first and read back from the disk cache (MNG-013).
+- In manga, the dictionary can be moved by its **⠿ Move** handle and opens where it was put from then on, also after a restart, so it does not cover the page's text; ↺ puts it back next to the word (MNG-014).
+
 ## [2.161.0] - 2026-11-18
 
 ### Added

@@ -100,16 +100,19 @@ fn a_word_of_a_mokuro_page_is_looked_up_with_one_click() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
-// T-MNG-011: the page shown and the next are read ahead; a word of either
-// is looked up with one click, no box dragged
+// T-MNG-011, T-MNG-013: the page shown and as many after it as set are
+// read ahead; a word is looked up with one click, no box dragged; a turn
+// reads one more
 #[test]
 #[ignore = "L6: needs kwin_wayland and dbus-daemon"]
 fn the_page_shown_and_the_next_are_read_ahead() {
     let mut desk = Desktop::start();
     desk.import_dictionaries(&["mini-ja"]);
+    desk.write_config("[player]\nmpv_options = { ao = \"null\" }\n[books]\nocr_ahead = 2\n");
     let path = desk.path("見本.cbz");
     let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-    for (name, shade) in [("p1.png", 230), ("p2.png", 200), ("p3.png", 170)] {
+    for page in 1..=6u8 {
+        let (name, shade) = (format!("p{page}.png"), 250 - 30 * page);
         zip.start_file(name, zip::write::SimpleFileOptions::default())
             .unwrap();
         let mut page = Vec::new();
@@ -128,9 +131,9 @@ fn the_page_shown_and_the_next_are_read_ahead() {
     h.state_until("the model", |s| s["books"]["ocr_installed"] == true);
     h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
     h.state_until("the manga", |s| s["books"]["open"] == "見本");
-    // the first page and the second, not the third yet
+    // the page shown and the two after it, no more
     let s = h.state_until("read ahead", |s| {
-        s["books"]["ahead"] == json!({"0": 1, "1": 1})
+        s["books"]["ahead"] == json!({"0": 1, "1": 1, "2": 1})
     });
     assert_eq!(s["books"]["page_text"], "", "nothing chosen yet: {s}");
     // 食, nine bytes in, with one click
@@ -142,11 +145,14 @@ fn the_page_shown_and_the_next_are_read_ahead() {
                 .and_then(|p| p.first())
                 .is_some_and(|p| p["query"].as_str().is_some_and(|q| q.starts_with("食")))
     });
-    // on the next page, the one after is read ahead in its turn
+    // on the next page, one more is read ahead in its turn
     h.cmd(json!({"cmd":"books","action":"next"}));
-    h.state_until("the third page", |s| {
-        s["books"]["chapter"] == 1 && s["books"]["ahead"]["2"] == 1
+    h.state_until("the fourth page", |s| {
+        s["books"]["chapter"] == 1 && s["books"]["ahead"]["3"] == 1
     });
+    std::thread::sleep(Duration::from_millis(500));
+    let s = h.state();
+    assert!(s["books"]["ahead"]["4"].is_null(), "{}", s["books"]);
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
@@ -226,6 +232,10 @@ fn l7_the_real_models_read_a_page_ahead() {
     let mut desk = Desktop::start();
     desk.import_dictionaries(&["mini-ja"]);
     desk.set_env("NIKOMIRU_TEST_OCR", "");
+    // the dictionary moved once to the top right: it opens there (MNG-014)
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[books]\nmanga_popup = [0.66, 0.2]\n",
+    );
     let installed = desk.path("data/nikomiru/models/manga-ocr");
     std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&model, &installed).unwrap();
