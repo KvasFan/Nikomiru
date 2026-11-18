@@ -170,6 +170,10 @@ Aggiungi un CBZ o una cartella di immagini dalla scheda Manga. "Due pagine" le m
 
 Per leggere un fumetto, trascina un riquadro intorno a esso. La prima volta la pagina propone un modello di lettura da 111 MB: arriva da Hugging Face una volta sola, solo se lo chiedi, e poi funziona sul tuo computer, quindi le pagine non vanno da nessuna parte. Il fumetto viene letto e la sua prima parola si apre subito nel dizionario; tutto il testo compare sopra la pagina, dove clicchi le altre parole. Una carta ha il testo e la parte di pagina. Il modello legge un fumetto o una riga alla volta e impiega un secondo o due.
 
+Con anche il rilevatore di testo (90 MB in più, proposto sulla pagina e scaricato insieme al modello nella configurazione), Nikomiru legge in sottofondo la pagina in cui sei e la successiva: la riga sopra la pagina dice quando ha finito, i fumetti sono incorniciati e un clic su una parola la cerca subito, come in un volume Mokuro. Trascina un riquadro sul testo che è sfuggito. Una pagina letta viene conservata, così un manga riaperto è subito pronto.
+
+Tieni premuto Ctrl e gira la rotellina (o pizzica sul touchpad) per lo zoom: in un libro il testo si ingrandisce o rimpicciolisce e resta così; in un manga la pagina si ingrandisce attorno al puntatore. Una pagina ingrandita si sposta con la rotellina (Maiusc per muoversi in orizzontale) o trascinando col tasto centrale; le frecce girano ancora pagina e una pagina nuova si apre in alto a destra.
+
 Un volume Mokuro ha già il suo testo: i fumetti sono incorniciati leggermente sulla pagina e un clic su una parola la cerca direttamente, come nei sottotitoli.
 
 ### Audiolibri

@@ -853,11 +853,15 @@ manga-double = Due pagine
 manga-page = Pagina { $number }
 manga-bad-page = Questa pagina non si può mostrare.
 manga-offer = Per leggere il testo di una pagina, Nikomiru ha bisogno di un modello di lettura da { $size } MB, scaricato una volta sola da Hugging Face. Funziona su questo computer: le pagine non vanno da nessuna parte.
-manga-credit = Modello: manga-ocr di kha-white (Apache-2.0), addestrato sul dataset Manga109-s.
+manga-credit = Modelli: manga-ocr di kha-white (Apache-2.0) e comic-text-detector di dmMaze (GPL-3.0), addestrati sul dataset Manga109-s.
 manga-fetch = Scarica il modello
 manga-fetching = Scaricamento del modello: { $percent } %
 manga-needs-model = Scarica prima il modello di lettura (pulsante qui sopra): poi un riquadro trascinato su un fumetto viene letto.
 manga-hint = Trascina un riquadro intorno a un fumetto: viene letto e la prima parola si apre nel dizionario; le altre si cliccano sotto la pagina.
+manga-ready = La pagina è stata letta: clicca una parola sulla pagina per cercarla, o trascina un riquadro sul testo che è sfuggito.
+manga-preparing = Ricerca del testo in questa pagina…
+manga-pages-offer = Le pagine si possono leggere in anticipo, così le parole si cliccano subito: serve un rilevatore di testo da { $size } MB.
+manga-pages-fetch = Scarica il rilevatore
 manga-reading = Lettura…
 manga-nothing = Lì non è stato trovato testo.
 

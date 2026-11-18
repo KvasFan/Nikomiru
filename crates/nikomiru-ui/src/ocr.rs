@@ -48,6 +48,23 @@ pub struct Recognized {
 /// What reading came to: for that book and page, the text or why not.
 pub type Reading = (String, usize, Result<Recognized, String>);
 
+/// A whole page to find the text on and read, ahead of the reader (MNG-011).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageJob {
+    /// The book it is of.
+    pub uid: String,
+    /// The page.
+    pub page: usize,
+    /// Its file.
+    pub picture: Vec<u8>,
+}
+
+/// A page read ahead: for that book and page, its blocks or why not.
+pub type PageReading = (String, usize, Result<nikomiru_books::mokuro::Page, String>);
+
+/// Where pages read ahead go.
+pub type PageReports = std::sync::Arc<dyn Fn(PageReading) + Send + Sync>;
+
 /// The app's reader.
 pub trait OcrService: Send {
     /// Whether the model is here.
@@ -59,6 +76,17 @@ pub trait OcrService: Send {
     /// Loads the model off this thread, when it is installed and not loaded
     /// yet, so that the first reading does not wait for it (MNG-003).
     fn warm(&self) {}
+    /// Whether whole pages can be read ahead: the detector is here too
+    /// (MNG-011).
+    fn pages_installed(&self) -> bool {
+        false
+    }
+    /// Reads `pages` ahead, in that order, off this thread, in place of the
+    /// pages asked for before and not begun; a part of a page asked for
+    /// with [`OcrService::read`] goes first.
+    fn prepare(&self, pages: Vec<PageJob>, done: PageReports) {
+        let _ = (pages, done);
+    }
 }
 
 /// No reader: for the tests of the interface.
@@ -84,6 +112,22 @@ pub struct OcrState {
     pub reading: bool,
     /// The last part read, its page and its JPEG: a card's picture.
     pub crop: Option<(usize, Vec<u8>)>,
+    /// The detector is here too: pages are read ahead (MNG-011).
+    pub pages: bool,
+    /// The pages of the open manga read ahead, and what was found on them.
+    pub found: std::collections::BTreeMap<usize, nikomiru_books::mokuro::Page>,
+    /// The pages being read ahead.
+    pub preparing: std::collections::BTreeSet<usize>,
+    /// The worker was given pages that may not all be read yet.
+    pub queued: bool,
+}
+
+impl OcrState {
+    /// What reading ahead knew of the manga closed is forgotten.
+    pub fn forget_pages(&mut self) {
+        self.found.clear();
+        self.preparing.clear();
+    }
 }
 
 /// How much of the model has come, in percent.

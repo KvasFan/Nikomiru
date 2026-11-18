@@ -837,11 +837,15 @@ manga-double = 見開き
 manga-page = { $number } ページ
 manga-bad-page = このページを表示できません。
 manga-offer = ページの文字を読み取るには、{ $size } MB の文字認識モデルが必要です。Hugging Face から一度だけダウンロードします。処理はこのコンピューター上で行われ、ページが外部に送信されることはありません。
-manga-credit = モデル: kha-white の manga-ocr（Apache-2.0）、Manga109-s データセットで学習。
+manga-credit = モデル: kha-white の manga-ocr（Apache-2.0）と dmMaze の comic-text-detector（GPL-3.0）、Manga109-s データセットで学習。
 manga-fetch = モデルをダウンロード
 manga-fetching = モデルをダウンロード中: { $percent }%
 manga-needs-model = 先に読み取りモデルを取得してください（上のボタン）。その後、フキダシを囲むと読み取ります。
 manga-hint = フキダシを囲むようにドラッグすると読み取り、最初の語を辞書で開きます。ほかの語はページの下のテキストをクリックします。
+manga-ready = このページは読み取り済みです。ページ上の語をクリックすると辞書で引けます。読み取られなかった文字はドラッグで囲んでください。
+manga-preparing = このページの文字を探しています…
+manga-pages-offer = ページを先に読み取っておくと、語をすぐにクリックできます。そのためには { $size } MB の文字検出モデルが必要です。
+manga-pages-fetch = 検出モデルをダウンロード
 manga-reading = 読み取り中…
 manga-nothing = そこに文字は見つかりませんでした。
 

@@ -448,7 +448,10 @@ fn run(
         platform::follow_theme(move |dark| waker.wake(Inbound::SystemTheme(Some(dark))));
     }
     // one model for the pages and the graphic subtitles (SUB-028)
-    let ocr = nikomiru_app::ocr::OcrWorker::new(paths.ocr_model_dir());
+    let ocr = nikomiru_app::ocr::OcrWorker::with_cache(
+        paths.ocr_model_dir(),
+        paths.cache_dir.join("manga-pages"),
+    );
     let subtitle_source = nikomiru_app::subtitles::Loader::start(
         translator.clone(),
         config.paths.ffmpeg.clone(),

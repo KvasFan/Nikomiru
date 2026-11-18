@@ -133,6 +133,8 @@ pub enum Inbound {
     Ocr(crate::ocr::OcrEvent),
     /// A part of a page was read (MNG-003).
     OcrRead(crate::ocr::Reading),
+    /// A page of a manga read ahead (MNG-011).
+    OcrPage(crate::ocr::PageReading),
     /// A pasted source was validated and saved.
     BookPasted(Result<(PathBuf, nikomiru_books::Book), String>),
     /// A book file was read (BOK-001).
@@ -389,6 +391,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::Hooker(_) => "Hooker",
             Inbound::Ocr(_) => "Ocr",
             Inbound::OcrRead(_) => "OcrRead",
+            Inbound::OcrPage(_) => "OcrPage",
             Inbound::BookRead { .. } => "BookRead",
             Inbound::BookPasted(_) => "BookPasted",
             Inbound::Phrases(_) => "Phrases",
@@ -540,6 +543,8 @@ pub(crate) enum Command {
     SearchCancel,
     SearchGo(usize),
     BookMode(String),
+    /// The size of a book's text, as a share of the usual one (RDR-005).
+    BookZoom(f32),
     BookTurn(usize),
     BookSentence(bool),
 
@@ -1415,6 +1420,10 @@ impl Ui {
                 self.session.manga_recognized(reading);
                 true
             }
+            Inbound::OcrPage(reading) => {
+                self.session.manga_page_read(reading);
+                true
+            }
             Inbound::SeriesWordCount {
                 request,
                 uid,
@@ -2024,6 +2033,7 @@ impl Ui {
                 }
             }
             Command::BookMode(mode) => s.book_set_mode(&mode),
+            Command::BookZoom(zoom) => s.book_zoom_set(zoom),
             Command::BookTurn(paragraph) => s.book_turn(paragraph),
             Command::BookSentence(forward) => s.book_sentence(forward),
             Command::PhrasesOpen => {
@@ -2797,6 +2807,13 @@ impl Ui {
                 job,
                 self.session.translator_clone(),
                 Box::new(move |reading| waker.wake(Inbound::OcrRead(reading))),
+            );
+        }
+        if let Some(pages) = self.session.take_ocr_pages() {
+            let waker = self.waker.clone();
+            self.session.ocr().prepare(
+                pages,
+                std::sync::Arc::new(move |reading| waker.wake(Inbound::OcrPage(reading))),
             );
         }
         if self.session.take_ocr_fetch() {

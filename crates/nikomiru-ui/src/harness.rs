@@ -757,6 +757,9 @@ pub fn state() -> Result<Value, String> {
             "ocr_installed": s.books_page.ocr.installed,
             "region_counts":s.books_page.open.as_ref().map(|o|o.book.manga_regions.iter().map(|(page,data)|(*page,data.regions.len())).collect::<std::collections::BTreeMap<_,_>>()),
             "crop_bytes":s.books_page.ocr.crop.as_ref().map(|(_,bytes)|bytes.len()),
+            // MNG-011: the pages read ahead, the blocks on each, and those under way
+            "ahead": s.books_page.ocr.found.iter().map(|(page, data)| (page.to_string(), data.regions.len())).collect::<std::collections::BTreeMap<_, _>>(),
+            "preparing": s.books_page.ocr.preparing.iter().collect::<Vec<_>>(),
             "paragraph": s.books_page.open.as_ref().map(|o| o.paragraph),
             "along": s.books_page.along.as_ref().map(|a| json!({
                 "found": a.places.iter().flatten().count(),

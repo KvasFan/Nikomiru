@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.160.0] - 2026-11-18
+
+Manga pages read ahead, and zoom with Ctrl and the wheel (M128).
+
+### Added
+
+- Manga pages are read ahead: with the new text detector (comic-text-detector, 90 MB, offered on the reading page and fetched with the reading model in the setup), the page shown and the next one are read in the background, their balloons framed and their words looked up with one click, as in a Mokuro volume. A box dragged by the reader is read first; pages read are kept, so a manga opened again is ready at once (MNG-011).
+- Ctrl and the wheel, or a pinch, zoom in books and manga: a book's text grows or shrinks, from 60 % to 250 %, and keeps its size; a manga's page is enlarged up to 4 times about the pointer and moved with the wheel or the middle button. With Ctrl held, the wheel no longer turns the page (RDR-005).
+
 ## [2.151.0] - 2026-11-18
 
 ### Fixed

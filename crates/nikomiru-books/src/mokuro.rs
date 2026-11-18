@@ -31,6 +31,47 @@ pub struct Region {
 }
 
 impl Region {
+    /// A block found and read on this computer (MNG-011): the reader gives
+    /// its text without line breaks, so its lines are guessed from its shape,
+    /// as square characters filling it: `k` columns (or rows) of `n / k`
+    /// characters fill a `w`×`h` block when `k² ≈ n·w/h`.
+    pub fn guessed(bounds: [u32; 4], text: String, vertical: bool) -> Self {
+        let [l, t, r, b] = bounds;
+        let (w, h) = (r.saturating_sub(l).max(1), b.saturating_sub(t).max(1));
+        let chars: Vec<(usize, char)> = text.char_indices().collect();
+        let n = chars.len();
+        let (across, along) = if vertical { (w, h) } else { (h, w) };
+        let k = ((n as f64 * f64::from(across) / f64::from(along))
+            .sqrt()
+            .round() as usize)
+            .clamp(1, n.max(1));
+        let per = n.div_ceil(k).max(1);
+        let lines = (0..k)
+            .filter_map(|i| {
+                let first = i * per;
+                if first >= n && n > 0 {
+                    return None;
+                }
+                let start = chars.get(first).map_or(text.len(), |c| c.0);
+                let end = chars.get(first + per).map_or(text.len(), |c| c.0);
+                let part = |share: usize| (u64::from(across) * share as u64 / k as u64) as u32;
+                let line = if vertical {
+                    // columns, the first on the right
+                    [r - part(i + 1), t, r - part(i), b]
+                } else {
+                    [l, t + part(i), r, t + part(i + 1)]
+                };
+                Some((start..end, line))
+            })
+            .collect();
+        Self {
+            bounds,
+            text,
+            vertical,
+            lines,
+        }
+    }
+
     /// The byte of `text` under the point (`x`, `y`) of the original page,
     /// in pixels: the line under it (else the nearest), then the character
     /// at that share of the line's length (MNG-010).
@@ -431,6 +472,26 @@ mod tests {
         );
     }
     // T-MNG-010: a point of the page names the character under it, from
+    // T-MNG-011: two columns of a block read here, from the right
+    #[test]
+    fn a_found_block_has_its_lines_guessed() {
+        // 8 characters in a block 100 wide and 200 tall: 2 columns of 4
+        let region = Region::guessed([0, 0, 100, 200], "今日は晴れです！".into(), true);
+        assert_eq!(region.lines.len(), 2);
+        assert_eq!(region.lines[0], (0..12, [50, 0, 100, 200]));
+        assert_eq!(region.lines[1], (12..24, [0, 0, 50, 200]));
+        // the top of the right column, the bottom of the left one
+        assert_eq!(region.offset_at(90.0, 10.0), Some(0));
+        assert_eq!(region.offset_at(10.0, 190.0), Some(21));
+        // one row across a wide block
+        let wide = Region::guessed([10, 10, 210, 40], "ここで".into(), false);
+        assert_eq!(wide.lines, vec![(0..9, [10, 10, 210, 40])]);
+        assert_eq!(wide.offset_at(200.0, 20.0), Some(6));
+        let empty = Region::guessed([0, 0, 10, 10], String::new(), true);
+        assert_eq!(empty.lines, vec![(0..0, [0, 0, 10, 10])]);
+        assert_eq!(empty.offset_at(5.0, 5.0), None);
+    }
+
     // Mokuro's line boxes or the block shared out
     #[test]
     fn a_point_names_its_character() {

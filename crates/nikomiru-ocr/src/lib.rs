@@ -69,9 +69,22 @@ pub const MODEL: [ModelFile<'static>; 3] = [
     },
 ];
 
-/// The size of the whole model.
+/// What finds the text on a whole page, so that pages are read ahead
+/// (MNG-011): dmMaze's comic-text-detector (GPL-3.0, trained on Manga109-s),
+/// its ONNX export, at a fixed revision.
+pub const DETECTOR: ModelFile<'static> = ModelFile {
+    name: "detector.onnx",
+    url: "https://huggingface.co/mayocream/comic-text-detector-onnx/resolve/a5d67ec772adef819ef5b0e7aa701fcf4c8bf74a/comic-text-detector.onnx",
+    sha256: "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
+    bytes: 94_669_756,
+};
+
+/// Every file fetched: the reader, then the detector.
+pub const FILES: [ModelFile<'static>; 4] = [MODEL[0], MODEL[1], MODEL[2], DETECTOR];
+
+/// The size of all the files fetched.
 pub const fn model_bytes() -> u64 {
-    MODEL[0].bytes + MODEL[1].bytes + MODEL[2].bytes
+    MODEL[0].bytes + MODEL[1].bytes + MODEL[2].bytes + DETECTOR.bytes
 }
 
 /// Whether the model is in `dir`, as far as a look can tell: a file is put
@@ -80,6 +93,11 @@ pub fn installed(dir: &Path) -> bool {
     MODEL
         .iter()
         .all(|file| std::fs::metadata(dir.join(file.name)).is_ok_and(|m| m.len() == file.bytes))
+}
+
+/// Whether the detector is in `dir` too (MNG-011).
+pub fn detector_installed(dir: &Path) -> bool {
+    std::fs::metadata(dir.join(DETECTOR.name)).is_ok_and(|m| m.len() == DETECTOR.bytes)
 }
 
 /// Why a picture cannot be read.
@@ -136,6 +154,11 @@ pub fn crop_pixels(page: &[u8], bounds: [u32; 4]) -> Result<DynamicImage, OcrErr
         return Err(OcrError::TooSmall);
     }
     Ok(decoded.crop_imm(l, t, w, h))
+}
+
+/// A page decoded, within the limits a page is held to.
+pub fn decode(page: &[u8]) -> Result<DynamicImage, OcrError> {
+    decode_page(page)
 }
 
 fn decode_page(page: &[u8]) -> Result<DynamicImage, OcrError> {
@@ -233,6 +256,152 @@ fn full_width(text: String) -> String {
     out
 }
 
+/// The side of the square the detector sees.
+const DETECT_SIDE: usize = 1024;
+/// How sure the detector must be of a block.
+const DETECT_CONFIDENCE: f32 = 0.4;
+/// How much two blocks may overlap before the less sure one goes.
+const DETECT_OVERLAP: f32 = 0.35;
+/// The smallest block kept, in pixels of the page.
+const DETECT_MIN: u32 = 8;
+
+/// A block of text found on a page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Block {
+    /// Left, top, right and bottom, in pixels of the page.
+    pub bounds: [u32; 4],
+    /// Written top to bottom: taller than wide.
+    pub vertical: bool,
+}
+
+/// The detector, loaded.
+#[derive(Debug)]
+pub struct Detector {
+    plan: Arc<TypedSimplePlan>,
+    threads: tract_linalg::multithread::Executor,
+}
+
+impl Detector {
+    /// Loads the detector in `dir`.
+    pub fn load(dir: &Path) -> Result<Self, OcrError> {
+        let mut model = tract_onnx::onnx()
+            .with_ignore_output_shapes(true)
+            .model_for_path(dir.join(DETECTOR.name))
+            .and_then(|m| m.with_input_fact(0, f32::fact([1, 3, DETECT_SIDE, DETECT_SIDE]).into()))
+            .map_err(model_err)?;
+        // only the blocks: the masks of the text's pixels are not needed,
+        // and their part of the network is left out
+        let blocks = *model
+            .output_outlets()
+            .map_err(model_err)?
+            .first()
+            .ok_or_else(|| OcrError::Model("the detector has no output".into()))?;
+        model.select_output_outlets(&[blocks]).map_err(model_err)?;
+        let plan = model
+            .into_optimized()
+            .and_then(|m| m.into_runnable())
+            .map_err(model_err)?;
+        Ok(Self {
+            plan,
+            threads: half_the_cores(),
+        })
+    }
+
+    /// The blocks of text on `page`, in the order a manga is read: from the
+    /// right, then from the top.
+    pub fn find(&self, page: &DynamicImage) -> Result<Vec<Block>, OcrError> {
+        let (width, height) = page.dimensions();
+        let side = DETECT_SIDE as u32;
+        let small = image::imageops::resize(&page.to_rgb8(), side, side, FilterType::Triangle);
+        let input: Tensor = tract_ndarray::Array4::from_shape_fn(
+            (1, 3, DETECT_SIDE, DETECT_SIDE),
+            |(_, c, y, x)| f32::from(small[(x as u32, y as u32)].0[c]) / 255.0,
+        )
+        .into();
+        let output =
+            tract_linalg::multithread::multithread_tract_scope(self.threads.clone(), || {
+                self.plan.run(tvec!(input.into()))
+            })
+            .map_err(model_err)?;
+        let found = output
+            .first()
+            .ok_or_else(|| OcrError::Model("the detector gave nothing".into()))?
+            .to_plain_array_view::<f32>()
+            .map_err(model_err)?
+            .into_dimensionality::<tract_ndarray::Ix3>()
+            .map_err(model_err)?
+            .index_axis(tract_ndarray::Axis(0), 0)
+            .rows()
+            .into_iter()
+            .filter(|row| row.len() >= 5)
+            .map(|row| ([row[0], row[1], row[2], row[3]], row[4]))
+            .collect::<Vec<_>>();
+        let scale = (width as f32 / side as f32, height as f32 / side as f32);
+        Ok(blocks(found, scale, (width, height)))
+    }
+}
+
+/// The blocks kept of what the detector gave, centre, size and confidence
+/// in its square: the sure ones, each once, on the page, in reading order.
+fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) -> Vec<Block> {
+    found.retain(|(b, confidence)| {
+        *confidence >= DETECT_CONFIDENCE && b.iter().all(|v| v.is_finite())
+    });
+    found.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let corners = |[cx, cy, w, h]: [f32; 4]| {
+        [
+            (cx - w / 2.0) * scale.0,
+            (cy - h / 2.0) * scale.1,
+            (cx + w / 2.0) * scale.0,
+            (cy + h / 2.0) * scale.1,
+        ]
+    };
+    let overlap = |a: [f32; 4], b: [f32; 4]| {
+        let w = (a[2].min(b[2]) - a[0].max(b[0])).max(0.0);
+        let h = (a[3].min(b[3]) - a[1].max(b[1])).max(0.0);
+        let area = |r: [f32; 4]| (r[2] - r[0]) * (r[3] - r[1]);
+        let union = area(a) + area(b) - w * h;
+        if union > 0.0 { w * h / union } else { 0.0 }
+    };
+    let mut kept: Vec<[f32; 4]> = Vec::new();
+    for (b, _) in found {
+        let b = corners(b);
+        if kept.iter().all(|k| overlap(*k, b) <= DETECT_OVERLAP) {
+            kept.push(b);
+        }
+    }
+    let mut out: Vec<Block> = kept
+        .into_iter()
+        .filter_map(|[l, t, r, b]| {
+            let clip = |v: f32, max: u32| (v.max(0.0).round() as u32).min(max);
+            let bounds = [
+                clip(l, size.0),
+                clip(t, size.1),
+                clip(r, size.0),
+                clip(b, size.1),
+            ];
+            let (w, h) = (
+                bounds[2] - bounds[0].min(bounds[2]),
+                bounds[3] - bounds[1].min(bounds[3]),
+            );
+            (w >= DETECT_MIN && h >= DETECT_MIN).then_some(Block {
+                bounds,
+                vertical: h > w,
+            })
+        })
+        .collect();
+    // from the right, row by row: blocks whose tops are close count as one row
+    let row = (size.1 / 8).max(1);
+    out.sort_by_key(|b| (b.bounds[1] / row, std::cmp::Reverse(b.bounds[2])));
+    out
+}
+
+/// Matrix products on half the processor's cores, as the other readers.
+fn half_the_cores() -> tract_linalg::multithread::Executor {
+    let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+    tract_linalg::multithread::Executor::multithread((cores / 2).clamp(1, 8))
+}
+
 /// The model, loaded.
 #[derive(Debug)]
 pub struct Engine {
@@ -279,12 +448,11 @@ impl Engine {
             .lines()
             .map(str::to_string)
             .collect();
-        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
         Ok(Self {
             encoder,
             decoder,
             vocabulary,
-            threads: tract_linalg::multithread::Executor::multithread((cores / 2).clamp(1, 8)),
+            threads: half_the_cores(),
         })
     }
 
@@ -427,7 +595,46 @@ mod tests {
             std::fs::write(dir.path().join(file.name), bytes).unwrap();
         }
         assert!(!installed(dir.path()), "by their sizes");
-        assert_eq!(model_bytes(), 116_619_775);
+        assert!(!detector_installed(dir.path()));
+        assert_eq!(model_bytes(), 211_289_531);
+        assert_eq!(FILES[3], DETECTOR);
+    }
+
+    // T-MNG-011: the sure blocks, once each, on the page, from the right
+    #[test]
+    fn the_blocks_kept() {
+        let found = vec![
+            // a column on the left, and the same one again, less sure
+            ([100.0, 300.0, 40.0, 200.0], 0.9),
+            ([102.0, 302.0, 40.0, 200.0], 0.8),
+            // one on the right, at the same height
+            ([800.0, 310.0, 60.0, 300.0], 0.7),
+            // too unsure
+            ([500.0, 500.0, 50.0, 50.0], 0.2),
+            // lower down, wide, and past the page's edge
+            ([1000.0, 900.0, 200.0, 50.0], 0.95),
+            // a speck
+            ([10.0, 10.0, 2.0, 2.0], 0.9),
+            ([f32::NAN, 10.0, 2.0, 2.0], 0.9),
+        ];
+        let kept = blocks(found, (2.0, 2.0), (2048, 2048));
+        assert_eq!(
+            kept,
+            vec![
+                Block {
+                    bounds: [1540, 320, 1660, 920],
+                    vertical: true
+                },
+                Block {
+                    bounds: [160, 400, 240, 800],
+                    vertical: true
+                },
+                Block {
+                    bounds: [1800, 1750, 2048, 1850],
+                    vertical: false
+                },
+            ]
+        );
     }
 
     // T-ERR-001

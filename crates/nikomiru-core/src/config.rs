@@ -850,6 +850,10 @@ pub struct BooksConfig {
     /// `sentence` (RDR-004).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub mode: String,
+    /// The size of a book's text, as a share of the usual one, set with
+    /// Ctrl and the wheel (RDR-005); absent: 1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_zoom: Option<f32>,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,

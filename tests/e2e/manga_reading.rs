@@ -100,6 +100,57 @@ fn a_word_of_a_mokuro_page_is_looked_up_with_one_click() {
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
 
+// T-MNG-011: the page shown and the next are read ahead; a word of either
+// is looked up with one click, no box dragged
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn the_page_shown_and_the_next_are_read_ahead() {
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    let path = desk.path("見本.cbz");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    for (name, shade) in [("p1.png", 230), ("p2.png", 200), ("p3.png", 170)] {
+        zip.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        let mut page = Vec::new();
+        image::RgbImage::from_pixel(600, 800, image::Rgb([shade, shade, shade]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut page),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        zip.write_all(&page).unwrap();
+    }
+    zip.finish().unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.state_until("the model", |s| s["books"]["ocr_installed"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the manga", |s| s["books"]["open"] == "見本");
+    // the first page and the second, not the third yet
+    let s = h.state_until("read ahead", |s| {
+        s["books"]["ahead"] == json!({"0": 1, "1": 1})
+    });
+    assert_eq!(s["books"]["page_text"], "", "nothing chosen yet: {s}");
+    // 食, nine bytes in, with one click
+    h.cmd(json!({"cmd":"books","action":"region-at","paragraph":0,"offset":9}));
+    h.state_until("the word under the click", |s| {
+        s["books"]["page_text"] == "明日も食べました"
+            && s["popups"]
+                .as_array()
+                .and_then(|p| p.first())
+                .is_some_and(|p| p["query"].as_str().is_some_and(|q| q.starts_with("食")))
+    });
+    // on the next page, the one after is read ahead in its turn
+    h.cmd(json!({"cmd":"books","action":"next"}));
+    h.state_until("the third page", |s| {
+        s["books"]["chapter"] == 1 && s["books"]["ahead"]["2"] == 1
+    });
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
 // T-MNG-005: the real model reads a balloon drawn in a real Japanese font,
 // and its first word opens in the dictionary (`NIKOMIRU_OCR_DIR`: an
 // installed manga-ocr folder; ImageMagick and Noto CJK draw the page)
@@ -159,6 +210,75 @@ fn l7_the_real_model_reads_a_dragged_balloon() {
         s["popups"].as_array().is_some_and(|p| !p.is_empty())
     });
     eprintln!("read: {text}");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}
+
+// T-MNG-011: the real detector finds the balloons of a page drawn in a real
+// Japanese font, and the real reader reads them ahead (`NIKOMIRU_OCR_DIR`:
+// an installed folder with the detector too)
+#[test]
+#[ignore = "L7: needs the real OCR models, ImageMagick and Noto CJK"]
+fn l7_the_real_models_read_a_page_ahead() {
+    let Some(model) = std::env::var_os("NIKOMIRU_OCR_DIR") else {
+        panic!("set NIKOMIRU_OCR_DIR");
+    };
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.set_env("NIKOMIRU_TEST_OCR", "");
+    let installed = desk.path("data/nikomiru/models/manga-ocr");
+    std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&model, &installed).unwrap();
+    let page = desk.path("page.png");
+    // two balloons, each a column of vertical text
+    let status = std::process::Command::new("magick")
+        .args(["-size", "1200x1700", "xc:white", "-stroke", "black"])
+        .args(["-strokewidth", "4", "-fill", "white"])
+        .args(["-draw", "ellipse 900,300 170,240 0,360"])
+        .args(["-draw", "ellipse 300,1200 200,260 0,360", "-stroke", "none"])
+        .args(["-fill", "black", "-font"])
+        .arg("/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc")
+        .args(["-pointsize", "46", "-interline-spacing", "-6"])
+        .args(["-annotate", "+900+130", "今\n日\nは\n晴\nれ\nで\nす"])
+        .args(["-annotate", "+290+1010", "明\n日\nも\n食\nべ\nま\nし\nた"])
+        .arg(&page)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let path = desk.path("見本.cbz");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zip.start_file("p1.png", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    zip.write_all(&std::fs::read(&page).unwrap()).unwrap();
+    zip.finish().unwrap();
+    let (mut app, mut h) = desk.launch();
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.state_until("the model", |s| s["books"]["ocr_installed"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": path.to_string_lossy() }));
+    h.state_until("the manga", |s| s["books"]["open"] == "見本");
+    // the models run unoptimised in a test build: minutes, not seconds
+    let s = super::support::until(Duration::from_secs(900), "the page read ahead", || {
+        let s = h.state();
+        s["books"]["ahead"]["0"].is_number().then_some(s)
+    });
+    assert_eq!(
+        s["books"]["ahead"]["0"],
+        2,
+        "{}\n{}",
+        s["books"],
+        desk.log()
+    );
+    // the second balloon read, its 食 clicked
+    h.cmd(json!({"cmd":"books","action":"region-at","paragraph":1,"offset":9}));
+    let s = h.state_until("looked up", |s| {
+        s["popups"].as_array().is_some_and(|p| !p.is_empty())
+    });
+    let text = s["books"]["page_text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(text.contains("食べ"), "{text}");
+    eprintln!("read ahead: {text}");
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
