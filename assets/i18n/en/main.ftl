@@ -853,11 +853,15 @@ manga-double = Two pages
 manga-page = Page { $number }
 manga-bad-page = This page cannot be shown.
 manga-offer = To read the text on a page, Nikomiru needs a reading model of { $size } MB, fetched once from Hugging Face. It runs on this computer: pages go nowhere.
-manga-credit = Model: manga-ocr by kha-white (Apache-2.0), trained on the Manga109-s dataset.
+manga-credit = Models: manga-ocr by kha-white (Apache-2.0) and comic-text-detector by dmMaze (GPL-3.0), trained on the Manga109-s dataset.
 manga-fetch = Download the model
 manga-fetching = Downloading the model: { $percent } %
 manga-needs-model = Fetch the reading model first (button above): then a box dragged over a balloon is read.
 manga-hint = Drag a box around a balloon: it is read and its first word opens in the dictionary; click the other words under the page.
+manga-ready = The page has been read: click a word on the page to look it up, or drag a box around text it missed.
+manga-preparing = Finding the text on this page…
+manga-pages-offer = Pages can be read ahead, so that their words are clicked at once: that needs a text detector of { $size } MB.
+manga-pages-fetch = Download the detector
 manga-reading = Reading…
 manga-nothing = No text was found there.
 

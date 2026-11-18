@@ -2,19 +2,25 @@
 
 //! The reader of a manga's pages (MNG-003, MNG-004): the model, fetched once
 //! on request and checked before it goes in its place, then loaded the first
-//! time a page is read and kept for the next.
+//! time a page is read and kept for the next. Pages are read ahead, a whole
+//! page at a time, on a thread of their own (MNG-011).
 
+use std::collections::VecDeque;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+use nikomiru_books::mokuro::{Page, Region};
 use nikomiru_core::Localized;
-use nikomiru_ocr::{Engine, MODEL, ModelFile};
+use nikomiru_ocr::{DETECTOR, Detector, Engine, FILES, MODEL, ModelFile};
 use nikomiru_online::error::OnlineError;
 use nikomiru_online::http::{CONNECT_TIMEOUT, Http, checked_url};
 use nikomiru_ui::i18n::Translator;
-use nikomiru_ui::ocr::{OcrEvent, OcrJob, OcrService, Reading, Recognized, Reports};
+use nikomiru_ui::ocr::{
+    OcrEvent, OcrJob, OcrService, PageJob, PageReports, Reading, Recognized, Reports,
+};
 use sha2::{Digest, Sha256};
 
 /// Who serves the model, for the errors.
@@ -24,11 +30,40 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(3 * 3600);
 /// How often the progress is told.
 const REPORT_EVERY: u64 = 2 << 20;
 
+/// How long the pages' thread waits for more before it ends.
+const PAGES_IDLE: Duration = Duration::from_secs(60);
+
 /// The worker.
 #[derive(Debug)]
 pub struct OcrWorker {
     dir: PathBuf,
     engine: Arc<Mutex<Option<Arc<Engine>>>>,
+    pages: Arc<Pages>,
+}
+
+/// The pages to read ahead, and what reads them (MNG-011).
+#[derive(Default)]
+struct Pages {
+    queue: Mutex<PageQueue>,
+    more: Condvar,
+    detector: Mutex<Option<Arc<Detector>>>,
+    /// Parts of pages asked for by the reader, being read: they go first.
+    asked: AtomicUsize,
+    /// Where pages read are kept, so a manga opened again is clicked at once.
+    cache: Option<PathBuf>,
+}
+
+impl std::fmt::Debug for Pages {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pages").field("cache", &self.cache).finish()
+    }
+}
+
+#[derive(Default)]
+struct PageQueue {
+    jobs: VecDeque<PageJob>,
+    done: Option<PageReports>,
+    running: bool,
 }
 
 impl OcrWorker {
@@ -37,6 +72,18 @@ impl OcrWorker {
         Self {
             dir,
             engine: Arc::default(),
+            pages: Arc::default(),
+        }
+    }
+
+    /// The same, keeping the pages it reads ahead in `cache` (MNG-011).
+    pub fn with_cache(dir: PathBuf, cache: PathBuf) -> Self {
+        Self {
+            pages: Arc::new(Pages {
+                cache: Some(cache),
+                ..Pages::default()
+            }),
+            ..Self::new(dir)
         }
     }
 
@@ -174,9 +221,179 @@ fn recognize(engine: &SharedEngine, job: &OcrJob) -> Result<Recognized, nikomiru
     })
 }
 
+/// The page cache's file for `picture`: the models' revisions in its name,
+/// so other models read again.
+fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
+    let digest: String = Sha256::digest(picture)
+        .iter()
+        .take(16)
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
+    cache.join(format!("{digest}-{models}.json"))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedPage {
+    width: u32,
+    height: u32,
+    regions: Vec<CachedRegion>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedRegion {
+    bounds: [u32; 4],
+    text: String,
+    vertical: bool,
+}
+
+impl CachedPage {
+    fn of(page: &Page) -> Self {
+        Self {
+            width: page.width,
+            height: page.height,
+            regions: page
+                .regions
+                .iter()
+                .map(|r| CachedRegion {
+                    bounds: r.bounds,
+                    text: r.text.clone(),
+                    vertical: r.vertical,
+                })
+                .collect(),
+        }
+    }
+
+    fn page(self) -> Page {
+        Page {
+            width: self.width,
+            height: self.height,
+            regions: self
+                .regions
+                .into_iter()
+                .map(|r| Region::guessed(r.bounds, r.text, r.vertical))
+                .collect(),
+        }
+    }
+}
+
+impl Pages {
+    fn detector(&self, dir: &Path) -> Result<Arc<Detector>, nikomiru_ocr::OcrError> {
+        let mut detector = self.detector.lock().unwrap_or_else(|e| e.into_inner());
+        match &*detector {
+            Some(loaded) => Ok(loaded.clone()),
+            None => Ok(detector.insert(Arc::new(Detector::load(dir)?)).clone()),
+        }
+    }
+
+    /// The blocks of text on a page, and their text (MNG-011).
+    fn read(&self, engine: &SharedEngine, job: &PageJob) -> Result<Page, nikomiru_ocr::OcrError> {
+        let cached = self.cache.as_ref().map(|c| page_cache(c, &job.picture));
+        if let Some(found) = cached
+            .as_ref()
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<CachedPage>(&bytes).ok())
+        {
+            return Ok(found.page());
+        }
+        let picture = nikomiru_ocr::decode(&job.picture)?;
+        let (width, height) = (picture.width(), picture.height());
+        let blocks = match test_text() {
+            // the tests' text, in a block in the middle of the page
+            Some(_) => vec![nikomiru_ocr::Block {
+                bounds: [width / 4, height / 4, width * 3 / 4, height * 3 / 4],
+                vertical: true,
+            }],
+            None => self.detector(&engine.dir)?.find(&picture)?,
+        };
+        let mut regions = Vec::with_capacity(blocks.len());
+        for block in blocks {
+            // a box the reader dragged is read first
+            while self.asked.load(Ordering::Acquire) > 0 {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let [l, t, r, b] = block.bounds;
+            let text = match test_text() {
+                Some(text) => text,
+                None => engine.get()?.read(&picture.crop_imm(l, t, r - l, b - t))?,
+            };
+            if !text.is_empty() {
+                regions.push(Region::guessed(block.bounds, text, block.vertical));
+            }
+        }
+        let page = Page {
+            width,
+            height,
+            regions,
+        };
+        if let Some(path) = cached
+            && let Ok(bytes) = serde_json::to_vec(&CachedPage::of(&page))
+        {
+            let written = path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&path, bytes));
+            if let Err(e) = written {
+                tracing::warn!("keeping a page read: {e}");
+            }
+        }
+        Ok(page)
+    }
+
+    /// Reads the pages queued, one at a time, until none comes for a while.
+    fn run(&self, engine: &SharedEngine) {
+        loop {
+            let next = {
+                let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+                if queue.jobs.is_empty() {
+                    queue = self
+                        .more
+                        .wait_timeout(queue, PAGES_IDLE)
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0;
+                }
+                match (queue.jobs.pop_front(), queue.done.clone()) {
+                    (Some(job), Some(done)) => Some((job, done)),
+                    _ if queue.jobs.is_empty() => {
+                        queue.running = false;
+                        return;
+                    }
+                    _ => None,
+                }
+            };
+            if let Some((job, done)) = next {
+                let read = self.read(engine, &job).map_err(|e| e.to_string());
+                done((job.uid, job.page, read));
+            }
+        }
+    }
+}
+
 impl OcrService for OcrWorker {
     fn installed(&self) -> bool {
         self.shared().available()
+    }
+
+    fn pages_installed(&self) -> bool {
+        test_text().is_some()
+            || (nikomiru_ocr::installed(&self.dir) && nikomiru_ocr::detector_installed(&self.dir))
+    }
+
+    fn prepare(&self, pages: Vec<PageJob>, done: PageReports) {
+        let mut queue = self.pages.queue.lock().unwrap_or_else(|e| e.into_inner());
+        queue.jobs = pages.into();
+        queue.done = Some(done);
+        if !queue.running && !queue.jobs.is_empty() {
+            let (pages, engine) = (self.pages.clone(), self.shared());
+            let spawned = std::thread::Builder::new()
+                .name("ocr-pages".into())
+                .spawn(move || pages.run(&engine));
+            match spawned {
+                Ok(_) => queue.running = true,
+                Err(e) => tracing::error!("cannot start the pages' thread: {e}"),
+            }
+        }
+        self.pages.more.notify_all();
     }
 
     fn install(&self, proxy: String, translator: Translator, reports: Reports) {
@@ -186,7 +403,7 @@ impl OcrService for OcrWorker {
             .spawn(move || {
                 let done =
                     Http::with_timeouts(&proxy, CONNECT_TIMEOUT, FETCH_TIMEOUT).and_then(|http| {
-                        install(&http, &MODEL, &dir, &|bytes| {
+                        install(&http, &FILES, &dir, &|bytes| {
                             reports(OcrEvent::Progress(bytes));
                         })
                     });
@@ -222,6 +439,9 @@ impl OcrService for OcrWorker {
 
     fn read(&self, job: OcrJob, translator: Translator, done: Box<dyn FnOnce(Reading) + Send>) {
         let engine = self.shared();
+        let pages = self.pages.clone();
+        // reading ahead waits for this one
+        pages.asked.fetch_add(1, Ordering::AcqRel);
         let spawned = std::thread::Builder::new()
             .name("ocr".into())
             .spawn(move || {
@@ -229,9 +449,11 @@ impl OcrService for OcrWorker {
                     tracing::warn!("reading a page: {e}");
                     translator.error(&e as &dyn Localized)
                 });
+                pages.asked.fetch_sub(1, Ordering::AcqRel);
                 done((job.uid, job.page, read));
             });
         if let Err(e) = spawned {
+            self.pages.asked.fetch_sub(1, Ordering::AcqRel);
             tracing::error!("cannot start the reading thread: {e}");
         }
     }
@@ -322,6 +544,32 @@ mod tests {
         assert!(matches!(e, OnlineError::TooLarge { .. }), "{e:?}");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
+    // T-MNG-011: a page read is kept, and comes back with its lines; another
+    // picture, or other models, would not find it
+    #[test]
+    fn a_page_read_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = page_cache(dir.path(), b"page one");
+        assert_ne!(path, page_cache(dir.path(), b"page two"));
+        assert!(path.to_string_lossy().contains(&format!(
+            "{}{}",
+            &DETECTOR.sha256[..8],
+            &MODEL[0].sha256[..8]
+        )));
+        let page = Page {
+            width: 100,
+            height: 200,
+            regions: vec![Region::guessed(
+                [0, 0, 100, 200],
+                "今日は晴れです！".into(),
+                true,
+            )],
+        };
+        let bytes = serde_json::to_vec(&CachedPage::of(&page)).unwrap();
+        let back = serde_json::from_slice::<CachedPage>(&bytes).unwrap().page();
+        assert_eq!(back, page);
+    }
+
     // T-MNG-008: original imported text is used even with no model on disk.
     #[test]
     fn imported_region_prepares_its_crop_without_loading_a_model() {

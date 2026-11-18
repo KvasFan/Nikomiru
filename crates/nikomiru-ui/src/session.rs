@@ -7098,6 +7098,7 @@ impl Session {
     pub fn books_open(&mut self) {
         self.books_page.status = None;
         self.books_page.ocr.installed = self.services.ocr.installed();
+        self.books_page.ocr.pages = self.services.ocr.pages_installed();
         // a manga's first balloon then does not wait for the model to load
         self.services.ocr.warm();
         self.books_reload();
@@ -7316,6 +7317,7 @@ impl Session {
                 .map_or(0, |c| c.paragraphs.len().saturating_sub(1)) as u32,
         );
         self.books_page.study.clear();
+        self.books_page.ocr.forget_pages();
         self.books_page.open = Some(crate::books::OpenBook {
             uid,
             chapter,
@@ -7567,7 +7569,11 @@ impl Session {
             return;
         }
         let job = self.books_page.open.as_ref().and_then(|open| {
-            let regions = open.book.manga_regions.get(&page)?;
+            let regions = open
+                .book
+                .manga_regions
+                .get(&page)
+                .or_else(|| self.books_page.ocr.found.get(&page))?;
             let text = regions.regions.get(region)?.text.clone();
             let area = regions.area(region)?;
             let key = open
@@ -7614,6 +7620,74 @@ impl Session {
         self.ocr_job.take()
     }
 
+    /// The pages of the open manga to read ahead, when they changed
+    /// (MNG-011): those shown, then the next turn's, so that a page's text
+    /// is there to click when it comes. A page with imported text, or read
+    /// already, is not read again.
+    /// A manga closed empties the queue: nothing is asked for then.
+    pub fn take_ocr_pages(&mut self) -> Option<Vec<crate::ocr::PageJob>> {
+        let double = self.book_double();
+        let ocr = &self.books_page.ocr;
+        let open = self
+            .books_page
+            .open
+            .as_ref()
+            .filter(|o| o.book.manga && ocr.installed && ocr.pages);
+        let jobs: Vec<crate::ocr::PageJob> = open.map_or_else(Vec::new, |open| {
+            let step = if double && open.chapter > 0 { 2 } else { 1 };
+            (open.chapter..open.chapter + 2 * step)
+                .filter(|page| {
+                    !open.book.manga_regions.contains_key(page) && !ocr.found.contains_key(page)
+                })
+                .filter_map(|page| {
+                    let key = open
+                        .book
+                        .chapters
+                        .get(page)?
+                        .paragraphs
+                        .first()?
+                        .image
+                        .as_ref()?;
+                    Some(crate::ocr::PageJob {
+                        uid: open.uid.clone(),
+                        page,
+                        picture: open.book.images.get(key)?.clone(),
+                    })
+                })
+                .collect()
+        });
+        let wanted: std::collections::BTreeSet<usize> = jobs.iter().map(|j| j.page).collect();
+        // the same pages, or nothing asked for and nothing queued
+        if wanted == ocr.preparing && (!wanted.is_empty() || !ocr.queued) {
+            return None;
+        }
+        let ocr = &mut self.books_page.ocr;
+        ocr.queued = !wanted.is_empty();
+        ocr.preparing = wanted;
+        Some(jobs)
+    }
+
+    /// A page was read ahead (MNG-011): its blocks are clicked like a
+    /// Mokuro volume's. A page that could not be read is not tried again
+    /// until the manga is opened again; a box dragged on it is still read.
+    pub fn manga_page_read(&mut self, reading: crate::ocr::PageReading) {
+        let (uid, page, read) = reading;
+        if self.books_page.open.as_ref().is_none_or(|o| o.uid != uid) {
+            return;
+        }
+        let ocr = &mut self.books_page.ocr;
+        ocr.preparing.remove(&page);
+        let found = read.unwrap_or_else(|e| {
+            tracing::warn!("reading page {page} ahead: {e}");
+            nikomiru_books::mokuro::Page {
+                width: 1,
+                height: 1,
+                regions: Vec::new(),
+            }
+        });
+        ocr.found.insert(page, found);
+    }
+
     /// The reader answered: the text goes under the page, where it is
     /// clicked like a book's (MNG-005).
     pub fn manga_recognized(&mut self, reading: crate::ocr::Reading) {
@@ -7651,7 +7725,7 @@ impl Session {
     /// The user asked for the reading model (MNG-004).
     pub fn ocr_fetch(&mut self) {
         let ocr = &mut self.books_page.ocr;
-        if !ocr.installed && ocr.fetched.is_none() {
+        if (!ocr.installed || !ocr.pages) && ocr.fetched.is_none() {
             ocr.fetched = Some(0);
             self.books_page.status = None;
             self.ocr_fetch = true;
@@ -7682,6 +7756,7 @@ impl Session {
             OcrEvent::Installed => {
                 ocr.fetched = None;
                 ocr.installed = true;
+                ocr.pages = self.services.ocr.pages_installed();
                 // SUB-028: the graphic track that waited for it
                 if self.read_waiting.take() == Some(self.sub_generation)
                     && let Some(source) = self.subs.source.clone().filter(Source::is_graphic_read)
@@ -7748,6 +7823,7 @@ impl Session {
         self.books_page.along = None;
         let moment = self.moment();
         self.books_page.ocr.crop = None;
+        self.books_page.ocr.forget_pages();
         if let (Some(open), Some(w)) = (self.books_page.open.take(), &self.writer) {
             let (start_mono, start_chars) = open.started;
             let duration_ms = (moment.mono_ms - start_mono).max(0);
@@ -9922,6 +9998,7 @@ impl Session {
             }
             SetupEvent::Model { .. } => {
                 self.books_page.ocr.installed = self.services.ocr.installed();
+                self.books_page.ocr.pages = self.services.ocr.pages_installed();
             }
             SetupEvent::Dictionary { .. } => self.setup_next_import(),
             SetupEvent::Audio { path, .. } => self.setup_audio(&path),

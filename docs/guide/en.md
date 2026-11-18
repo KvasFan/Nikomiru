@@ -170,6 +170,8 @@ Add a CBZ or a folder of pictures from the Manga tab. "Two pages" shows them sid
 
 To read a balloon, drag a box around it. The first time, the page offers a reading model of 111 MB: it comes from Hugging Face once, only if you ask, and then runs on your computer, so pages go nowhere. The balloon is read and its first word opens in the dictionary at once; the whole text appears above the page, where you click the other words. A card has the text and the part of the page. The model reads one balloon or line at a time, and takes a second or two.
 
+With the text detector too (90 MB more, offered on the page and fetched with the model in the setup), Nikomiru reads the page you are on and the next one in the background: the line over the page says when it is done, the balloons are framed, and a click on a word looks it up at once, as in a Mokuro volume. Drag a box over any text it missed. A page read is kept, so a manga opened again is ready at once.
+
 A Mokuro volume already has its text: its balloons are framed faintly on the page, and a click on a word looks it up directly, as in subtitles.
 
 ### Audiobooks

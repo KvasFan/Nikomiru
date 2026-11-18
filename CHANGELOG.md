@@ -4,6 +4,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Manga pages are read ahead: with the new text detector (comic-text-detector, 90 MB, offered on the reading page and fetched with the reading model in the setup), the page shown and the next one are read in the background, their balloons framed and their words looked up with one click, as in a Mokuro volume. A box dragged by the reader is read first; pages read are kept, so a manga opened again is ready at once (MNG-011).
+
 ## [2.151.0] - 2026-11-18
 
 ### Fixed

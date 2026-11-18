@@ -533,8 +533,9 @@ fn shares(selection: (egui::Pos2, egui::Pos2), page: egui::Rect) -> Option<[f32;
     })
 }
 
-/// The line over a manga's page: the model to fetch, how it goes, or what to do.
-fn reading_line(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
+/// The line over a manga's page: the model to fetch, how it goes, or what to
+/// do; whether the page shown was read ahead, or is being (MNG-011).
+fn reading_line(ui: &mut Ui, s: &Scene<'_>, page: usize, out: &mut Vec<Command>) {
     let ocr = &s.page.ocr;
     if let Some(bytes) = ocr.fetched {
         let percent = crate::ocr::fetched_percent(bytes).to_string();
@@ -555,8 +556,30 @@ fn reading_line(ui: &mut Ui, s: &Scene<'_>, out: &mut Vec<Command>) {
             ui.spinner();
             ui.label(tr(s, "manga-reading"));
         });
+    } else if ocr.found.get(&page).is_some_and(|f| !f.regions.is_empty()) {
+        ui.label(RichText::new(tr(s, "manga-ready")).color(palette::current().details));
+    } else if ocr.preparing.contains(&page) {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(tr(s, "manga-preparing"));
+        });
     } else {
         ui.label(RichText::new(tr(s, "manga-hint")).color(palette::current().details));
+        if !ocr.pages {
+            let size = (nikomiru_ocr::DETECTOR.bytes >> 20).to_string();
+            ui.horizontal_wrapped(|ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new((s.tr)("manga-pages-offer", &[("size", size)]))
+                            .color(palette::current().details),
+                    )
+                    .wrap(),
+                );
+                if ui.button(tr(s, "manga-pages-fetch")).clicked() {
+                    out.push(Command::OcrFetch);
+                }
+            });
+        }
     }
     if let Some((text, ok)) = &s.page.status {
         let shade = if *ok {
@@ -595,7 +618,7 @@ fn manga_reader(
             },
         ));
     } else {
-        reading_line(ui, s, out);
+        reading_line(ui, s, open.chapter, out);
     }
     if !item.text.is_empty() {
         let marked = s.page.highlight.as_ref().map(|(_, range)| range.clone());
@@ -663,7 +686,13 @@ fn manga_reader(
         None => place(open.chapter, &handle, rect, Align2::CENTER_CENTER),
     }
     for (page, drawn) in &pages {
-        if let Some(imported) = open.book.manga_regions.get(page) {
+        // imported text, else what was found reading ahead (MNG-011)
+        let regions = open
+            .book
+            .manga_regions
+            .get(page)
+            .or_else(|| s.page.ocr.found.get(page));
+        if let Some(imported) = regions {
             for (index, region) in imported.regions.iter().enumerate() {
                 let [l, t, r, b] = region.bounds;
                 let at = egui::Rect::from_min_max(
@@ -2871,5 +2900,60 @@ mod tests {
             "{:?}",
             h.state().out
         );
+    }
+
+    // T-MNG-011: a page being read ahead says so; read, its blocks are
+    // clicked like imported ones, and a box can still be dragged; without
+    // the detector, it is offered alone
+    #[test]
+    fn a_page_read_ahead_is_clicked() {
+        let mut page = BooksPage {
+            open: Some(manga()),
+            ..Default::default()
+        };
+        page.ocr.installed = true;
+        page.ocr.pages = true;
+        page.ocr.preparing.insert(0);
+        let mut h = harness(page);
+        h.run_steps(3);
+        assert!(h.query_by_label("manga-preparing").is_some());
+        assert!(h.query_by_label("mokuro-region").is_none());
+        h.state_mut().page.ocr.preparing.clear();
+        h.state_mut().page.ocr.found.insert(
+            0,
+            nikomiru_books::mokuro::Page {
+                width: 100,
+                height: 200,
+                regions: vec![nikomiru_books::mokuro::Region::guessed(
+                    [10, 10, 80, 100],
+                    "猫です".into(),
+                    true,
+                )],
+            },
+        );
+        h.run();
+        assert!(h.query_by_label("manga-ready").is_some());
+        assert!(h.query_by_label("manga-pages-fetch").is_none());
+        h.get_by_label("mokuro-region").click();
+        h.run();
+        assert!(
+            h.state().out.iter().any(|c| matches!(
+                c,
+                Command::MokuroLookup {
+                    page: 0,
+                    region: 0,
+                    ..
+                }
+            )),
+            "{:?}",
+            h.state().out
+        );
+        h.state_mut().out.clear();
+        h.state_mut().page.ocr.found.clear();
+        h.state_mut().page.ocr.pages = false;
+        h.run();
+        h.get_by_label("manga-pages-fetch").click();
+        h.run();
+        assert!(matches!(h.state().out[..], [Command::OcrFetch]));
     }
 }

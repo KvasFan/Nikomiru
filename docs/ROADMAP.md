@@ -1555,6 +1555,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M124 | P2 / S | **Shadowing.** Record the microphone with ffmpeg, read it with whisper.cpp and score it against the line; play it back. | D-74, SHD-001, SHD-002 | done in development (real-microphone check open) |
 | M125 | P2 / S | **Text read from the picture.** A dragged part of the frame read by the manga OCR model, looked up as a Texthooker line. | D-75, OCR-001 | done in development |
 | M127 | P1 / M | **Main page shelves, manga lookups and furigana.** Tabs for the collection, videos (history and saved links), books, manga and websites; no overlapping text; one-click lookups on Mokuro pages and a dictionary opened after a dragged box is read; furigana kept on their base in web pages. | D-77, VID-001, VID-002, BOK-015, MNG-010, WEB-004 | done in development |
+| M128 | P1 / S | **Manga pages read ahead.** A text detector finds a page's balloons; the page shown and the next are read in the background and clicked like a Mokuro volume. | D-78, MNG-011 | done in development |
 | M126 | P3 / L | **Live device linking.** Host on the local network, QR pairing, phone browser remote with lookups and mining on the host, then hand-off and streaming. | D-76, [ADR 0011](adr/0011-device-linking.md) | proposed, waiting for the maintainer |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
@@ -1808,6 +1809,14 @@ Asked by the maintainer on 2026-11-18 (D-71…D-76): whisper.cpp in the installe
 **Requirements**: VID-001, VID-002, BOK-015, MNG-010, WEB-004. No new dependency and no new library table: the video history is the library's own records of videos without a series, the links are in `config.toml`, the shelves sort books by their path.
 
 Asked by the maintainer on 2026-11-18 (D-77).
+
+## M128 — Manga pages read ahead
+
+**Requirements**: MNG-011. One new model file, comic-text-detector (GPL-3.0), fetched with the reader; no new crate; a JSON cache of pages read.
+
+Asked by the maintainer on 2026-11-18 (D-78): OCR was still slow, so the page shown and the next should be read before the reader asks.
+
+**Exit criteria**: unit tests of the blocks kept, the guessed lines and the cache; an actual-app test of the page shown and the next read ahead and clicked; an L7 check with the real detector and reader.
 
 **Exit criteria**: unit tests of the history, the links, Mokuro's point-to-character mapping, HTML white space and ruby; component tests of the shelves, the series view, the reader header and the furigana placement; actual-app tests of a real pointer drag over a CBZ page and a one-click Mokuro lookup; screenshots of every shelf; an L7 check with the real OCR model.
 

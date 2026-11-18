@@ -565,10 +565,13 @@ pub fn model(
     events: &dyn Fn(SetupEvent),
     cancel: &Cancel,
 ) -> Result<(), String> {
-    if nikomiru_ocr::installed(&parts.model_dir) {
+    if nikomiru_ocr::installed(&parts.model_dir)
+        && nikomiru_ocr::detector_installed(&parts.model_dir)
+    {
         return Ok(());
     }
-    let files: Vec<Pinned<'_>> = nikomiru_ocr::MODEL
+    // the reader, and the detector that reads pages ahead (MNG-011)
+    let files: Vec<Pinned<'_>> = nikomiru_ocr::FILES
         .iter()
         .map(|f| (f.name, f.url, f.sha256, f.bytes))
         .collect();
