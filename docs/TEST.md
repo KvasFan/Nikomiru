@@ -442,6 +442,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-ANK-050/051 | Return link | Round trip; rejection vectors from `card_source_link_test.dart` | L1/L2 |
 | T-ANK-052 | Opening the link | `nikomiru://source?…` passed to the second instance → video opened at `startMs`, paused, cue highlighted (harness) | L6 |
 | T-ANK-053 | Timestamp | Vectors from Fushi `handlebar_clip_timestamp_test.dart`: 754000/758000 → `00:12:34 - 00:12:38`, 1999/2999 → `00:00:01 - 00:00:02`, end ≤ start → empty | L1 |
+| T-ANK-054 | Undo the last card | `deleteNotes` against the fake AnkiConnect, in the request snapshot, and the note gone (L4); the record deleted with a tombstone, which the other device's merge and apply honour (L2); the item only in the menu of `✓↩` (L1) | L1/L2/L4 |
 | T-E2E-ANKI-001 | Real Anki | A running Anki with AnkiConnect on a throwaway profile, its address in `NIKOMIRU_ANKI_URL` (`cargo xtask test --anki-e2e`; the L6 desktop runs Nikomiru) → "Create Lapis deck" twice (the second: already there) → a card from `av_basic.mkv` → `notesInfo` shows the expected fields, the media files exist in `collection.media`. To run against Anki ≤ 26.07 with AnkiConnect 25.11.9.0 and Anki ≥ 26.08 with 26.10.x | L7 |
 
 ### 6.10 Library and word audio
@@ -461,6 +462,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-LIB-011 | Library edits | Renaming, merging, splitting, moving episodes: progress and preferences preserved, also after a scan; kittest: the page's rename, split, remove, delete | L1/L3 |
 | T-LIB-012 | Removal | The file on disk stays; a removed episode stays out after a scan | L1 |
 | T-LIB-013 | First steps | The card with its three steps, each with its button while not done (Dictionaries, Add folder, Anki), "Hide" sends its command (kittest); on a first start with a dictionary imported the first step is done, "Hide" writes `first_steps = false` and after a restart the steps stay hidden (L6) | L3/L6 |
+| T-LIB-014 | Watched by hand | Ticked episodes marked watched keep their position and first time, unwatched start again from 0 and the mark is exported (L2); a mark as unwatched merged with a watch from before it, in either order, leaves the video new, and a watch after it counts (L2, also in the merge properties); the two buttons send their command for the ticked episodes (kittest) | L2/L3 |
 | T-DAT-001/002 | Migrations | A fixture v1 DB → migrated with a `.bak-v1` backup; the videos of schema 1 kept through the migration to schema 2 (0.2), twice; a DB with a future schema → opened read-only | L1 |
 | T-DAT-003 | uid | Stable `sanitize`; two files with the same name in different folders → ` (2)` | L1 |
 | T-AUD-001 | Source list | Order and enabled state saved and read back (`config.toml`, L1); kittest: sources added, moved, turned off, an empty one not saved | L1/L3 |
@@ -548,7 +550,7 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BAK-004 | WebDAV | Fake server: `PROPFIND`, `MKCOL`, `PUT`, `GET`, Basic authentication, the addresses of SRV-005; no request until set up (T-PRV-001) | L2 |
 | T-BAK-005 | What syncs | Only what is listed; settings and keys never in a device file | L2 |
 | T-BAK-006 | Devices | Each writes only its own file; a newer format skipped, a damaged file skipped with the library untouched | L2 |
-| T-BAK-007 | Merge | Properties: idempotent, commutative, position by last played, the earliest watched, unions | L2 |
+| T-BAK-007 | Merge | Properties: idempotent, commutative, associative, position by last played, the latest watched after a mark as unwatched, unions | L2 |
 | T-BAK-008 | Deletions | A deleted session does not return; a tombstone goes after 180 days | L2 |
 | T-BAK-009 | When | By hand; at start and close only if ticked; playback never waits; a failure changes nothing | L2/L6 |
 | T-BAK-010 | Errors | Each failure's message; truncated and random answers never panic | L2 |
