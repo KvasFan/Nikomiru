@@ -89,7 +89,7 @@ Per sentire una parola, Nikomiru ha bisogno di una fonte di pronunce: non ne inc
    - la frase con la parola in grassetto;
    - il fotogramma (oppure, in Impostazioni → Anki → Formato immagine, tutta la battuta come immagine animata o video WebM con audio) e l'audio della battuta;
    - un link che riapre la scena.
-4. **✓** vuol dire che Anki ha già la parola: dal suo menu apri la carta in Anki, oppure ne aggiungi un'altra comunque.
+4. **✓** vuol dire che Anki ha già la parola: dal suo menu apri la carta in Anki, oppure ne aggiungi un'altra comunque. Sulla carta appena creata, **✓↩**, il menu può anche sostituirla o **Annullarla**: la carta viene eliminata da Anki.
 5. **Shift+clic su +** (o Ctrl+Shift+Invio) crea la carta a mano. Puoi:
    - aggiungere le righe prima e dopo;
    - spostare la clip e ascoltarla;
@@ -137,6 +137,7 @@ Il menu **Strumenti** contiene il Texthooker, il quaderno delle frasi, la cronol
 - Una serie ricorda il sottotitolo, il ritardo e la lingua dell'audio.
 - Con i colori delle parole attivi, ogni episodio mostra `80% · 25%`: occorrenze di parole note e righe senza parole nuove. Contano anche i sottotitoli di testo incorporati nei video locali, con la stessa traccia salvata e priorità di lingua della riproduzione. `…` indica il conteggio; sottotitoli a immagini, video remoti e sottotitoli disattivati non hanno punteggio. Riapri la serie per aggiornare le sorgenti dei sottotitoli modificate.
 - Nella pagina di una serie puoi rinominarla, unirla a un'altra, spostare o togliere episodi, o eliminarla. I tuoi file non vengono mai toccati.
+- Spunta degli episodi per **Segnarli come visti** o **come non visti (dall'inizio)**; il segno segue la sincronizzazione sugli altri computer.
 - **Identifica online** chiede ad AniList (o a MyAnimeList) titoli, episodi e copertina della serie. Se più serie corrispondono, scegli tu. Jimaku poi trova i sottotitoli dal suo id AniList.
 - **Identifica dal file (AniDB)** funziona anche quando i nomi delle cartelle non dicono nulla. Invia ad AniDB dimensione e hash ed2k di un file di episodio, con il tuo account AniDB (Impostazioni → Servizi sottotitoli), poi cerca il titolo di AniDB su AniList o MyAnimeList. AniDB accetta solo client registrati: finché la registrazione di Nikomiru non è inclusa, registra un client UDP su anidb.net e inseriscine lì nome e versione. Con un proxy impostato AniDB non viene interpellato, perché la sua API UDP non può passare da un proxy.
 - **Statistiche** mostra il tempo guardato e i caratteri letti:

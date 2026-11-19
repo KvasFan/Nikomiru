@@ -186,6 +186,7 @@ impl Worker {
                 lib.split_series(&uids, &title, self.now()).map(drop)
             }
             LibraryEdit::Remove(uids) => uids.iter().try_for_each(|u| lib.remove_video(u)),
+            LibraryEdit::Watched { uids, watched } => lib.set_watched(&uids, watched, self.now()),
             LibraryEdit::ClearEncounters(uid) => lib.clear_encounters(&uid, self.now()),
             LibraryEdit::DeleteSession(id) => lib.delete_segment(id),
             LibraryEdit::Identify { id, info, cover } => {

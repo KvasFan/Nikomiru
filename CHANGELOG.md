@@ -4,6 +4,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.170.0] - 2026-11-19
+
+What Fushi 3 has and Nikomiru lacked, first part (D-83).
+
+### Added
+
+- Episodes are marked watched, or unwatched, by hand: tick them on the series' page and press **Mark watched** or **Mark unwatched (from the start)**. The mark goes to your other computers with the sync, and a watch from before it no longer counts there (LIB-014).
+- The last card can be undone: the menu of `✓↩` has **Undo: delete this card from Anki**, which deletes the note from Anki and forgets it here and on your other computers (ANK-054).
+
+### Changed
+
+- When two computers watched the same video, sync keeps the later time it was watched instead of the earlier one, so that a mark as unwatched works whatever order the computers sync in (BAK-007).
+
 ## [2.163.0] - 2026-11-19
 
 Checked on 30 pages of a real volume (D-82).

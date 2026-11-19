@@ -520,6 +520,12 @@ impl Client {
         .map(drop)
     }
 
+    /// `deleteNotes`: the notes and their cards (ANK-054).
+    pub fn delete_notes(&self, ids: &[u64]) -> Result<(), AnkiError> {
+        self.call("deleteNotes", Some(json!({ "notes": ids })))
+            .map(drop)
+    }
+
     /// `addTags` (nothing to send for no tags).
     pub fn add_tags(&self, ids: &[u64], tags: &[String]) -> Result<(), AnkiError> {
         if tags.is_empty() {

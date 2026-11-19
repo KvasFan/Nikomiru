@@ -28,6 +28,8 @@ pub const TOMBSTONE_MS: i64 = 180 * 24 * 3600 * 1000;
 
 /// What was deleted, and when (Unix ms), by [`session_key`] or [`video_key`].
 const TOMBSTONES: TableDefinition<&str, i64> = TableDefinition::new("sync_tombstones");
+/// When each video was last marked unwatched by hand (LIB-014), by uid.
+pub(crate) const UNWATCHED: TableDefinition<&str, i64> = TableDefinition::new("unwatched");
 
 /// The tombstone of a study session.
 pub fn session_key(id: u128) -> String {
@@ -37,6 +39,11 @@ pub fn session_key(id: u128) -> String {
 /// The tombstone of a card of the review (REV-006).
 pub fn review_key(id: u64) -> String {
     format!("review:{id:016x}")
+}
+
+/// The tombstone of a card deleted from Anki (ANK-054).
+pub fn card_key(id: u64) -> String {
+    format!("card:{id:016x}")
 }
 
 /// The tombstone of a video.
@@ -120,6 +127,10 @@ pub struct DeviceState {
     /// Persistent per-media reset epochs; absent in older device files (KNW-023).
     #[serde(default)]
     pub encounter_resets: BTreeMap<String, u64>,
+    /// When each video was last marked unwatched by hand, by uid (LIB-014):
+    /// older files have none.
+    #[serde(default)]
+    pub unwatched: BTreeMap<String, i64>,
 }
 
 /// Which of two versions of a review card wins (REV-006): the one answered
@@ -134,7 +145,7 @@ fn review_order(card: &ReviewCard) -> (i64, u32, i64, Vec<u8>) {
     )
 }
 
-fn merge_video(into: &mut VideoState, from: &VideoState) {
+fn merge_video(into: &mut VideoState, from: &VideoState, unwatched: Option<i64>) {
     // the one played last; on a tie the further one, so that the order of
     // the devices changes nothing (BAK-007)
     let theirs = (from.last_played_at, from.position_ms);
@@ -142,11 +153,23 @@ fn merge_video(into: &mut VideoState, from: &VideoState) {
         into.position_ms = from.position_ms;
         into.last_played_at = from.last_played_at;
     }
-    into.completed_at = match (into.completed_at, from.completed_at) {
-        (Some(a), Some(b)) => Some(a.min(b)),
-        (a, b) => a.or(b),
-    };
+    // the latest, so that a mark as unwatched that comes later still finds
+    // a watch made after it, whatever the order of the devices (LIB-014)
+    into.completed_at = into.completed_at.max(from.completed_at);
     into.duration_ms = into.duration_ms.max(from.duration_ms);
+    forget_before(into, unwatched);
+}
+
+/// What was watched before a video was marked unwatched no longer counts
+/// (LIB-014): neither the mark nor the position.
+fn forget_before(video: &mut VideoState, unwatched: Option<i64>) {
+    let Some(u) = unwatched else { return };
+    if video.completed_at.is_some_and(|at| at <= u) {
+        video.completed_at = None;
+    }
+    if video.last_played_at.is_none_or(|at| at <= u) {
+        video.position_ms = 0;
+    }
 }
 
 fn merge_credit(into: &mut CueCredit, from: &CueCredit) {
@@ -177,6 +200,12 @@ fn merge_book(into: &mut BookState, from: &BookState) {
 impl DeviceState {
     /// Takes in what `other` knows (BAK-007).
     pub fn merge(&mut self, other: &DeviceState) {
+        // LIB-014: the latest mark as unwatched, first, as it decides what
+        // the videos keep
+        for (uid, at) in &other.unwatched {
+            let mine = self.unwatched.entry(uid.clone()).or_insert(*at);
+            *mine = (*mine).max(*at);
+        }
         for (uid, book) in &other.books {
             match self.books.get_mut(uid) {
                 Some(mine) => merge_book(mine, book),
@@ -186,11 +215,17 @@ impl DeviceState {
             }
         }
         for (uid, video) in &other.videos {
+            let unwatched = self.unwatched.get(uid).copied();
             match self.videos.get_mut(uid) {
-                Some(mine) => merge_video(mine, video),
+                Some(mine) => merge_video(mine, video, unwatched),
                 None => {
                     self.videos.insert(uid.clone(), video.clone());
                 }
+            }
+        }
+        for (uid, at) in &self.unwatched {
+            if let Some(video) = self.videos.get_mut(uid) {
+                forget_before(video, Some(*at));
             }
         }
         for (uid, coverage) in &other.coverage {
@@ -289,6 +324,8 @@ impl DeviceState {
         let deleted = &self.deleted;
         self.review
             .retain(|id, _| !deleted.contains_key(&review_key(*id)));
+        self.cards
+            .retain(|id, _| !deleted.contains_key(&card_key(*id)));
     }
 
     /// The tombstones older than `now` allows go (BAK-008).
@@ -408,6 +445,16 @@ impl Library {
             collect::<_, WordMark>(tx, WORD_STATUS, |key: &str, m| {
                 state.words.insert(key.to_string(), m);
             })?;
+            match tx.open_table(UNWATCHED) {
+                Ok(t) => {
+                    for row in db_err!(t.iter())? {
+                        let (k, v) = db_err!(row)?;
+                        state.unwatched.insert(k.value().to_string(), v.value());
+                    }
+                }
+                Err(redb::TableError::TableDoesNotExist(_)) => {}
+                Err(e) => return Err(LibraryError::Db(e.into())),
+            }
             collect::<_, BookRecord>(tx, BOOKS, |uid: &str, b| {
                 if b.last_read_at.is_some() {
                     state.books.insert(
@@ -534,6 +581,10 @@ impl Library {
                     db_err!(resets.insert(uid.as_str(), postcard::to_stdvec(&epoch)?.as_slice()))?;
                 }
             }
+            let mut unwatched = db_err!(tx.open_table(UNWATCHED))?;
+            for (uid, at) in &state.unwatched {
+                db_err!(unwatched.insert(uid.as_str(), *at))?;
+            }
             let mut words = db_err!(tx.open_table(WORD_STATUS))?;
             for (key, mark) in &state.words {
                 db_err!(words.insert(key.as_str(), postcard::to_stdvec(mark)?.as_slice()))?;
@@ -557,6 +608,12 @@ impl Library {
                     .and_then(|id| u64::from_str_radix(id, 16).ok())
                 {
                     db_err!(review.remove(id))?;
+                    db_err!(cards.remove(id))?;
+                }
+                if let Some(id) = key
+                    .strip_prefix("card:")
+                    .and_then(|id| u64::from_str_radix(id, 16).ok())
+                {
                     db_err!(cards.remove(id))?;
                 }
                 db_err!(tombstones.insert(key.as_str(), *at))?;
@@ -648,46 +705,53 @@ mod tests {
 
     fn state() -> impl Strategy<Value = DeviceState> {
         let names = prop::sample::select(vec!["a", "b", "c"]);
+        let unwatched = prop::collection::btree_map(names.clone(), 0..60i64, 0..2);
         (
-            prop::collection::btree_map(names.clone(), video(), 0..3),
-            prop::collection::btree_map(
-                names.clone(),
-                prop::collection::vec((0..100i64, 1..50i64), 0..4),
-                0..3,
+            (
+                prop::collection::btree_map(names.clone(), video(), 0..3),
+                prop::collection::btree_map(
+                    names.clone(),
+                    prop::collection::vec((0..100i64, 1..50i64), 0..4),
+                    0..3,
+                ),
+                prop::collection::btree_map(
+                    names.clone(),
+                    ("[xy]", prop::collection::btree_set(0..8u32, 0..4)),
+                    0..3,
+                ),
+                prop::collection::btree_map(names.clone(), session(), 0..3),
+                prop::collection::btree_map(0..3u64, card(), 0..3),
+                prop::collection::btree_map(names.clone(), 0..50i64, 0..2),
+                prop::collection::btree_map(names, book(), 0..3),
+                prop::collection::btree_map(0..3u64, review_card(), 0..3),
+                prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
+                prop::collection::btree_map(0..3u64, 0..4u8, 0..3),
+                prop::collection::btree_map("[ab]", (0..4usize, 0..4i64), 0..3),
+                prop::collection::btree_map(
+                    "[ab]",
+                    prop::collection::btree_map("[xy]", 0..50i64, 0..3),
+                    0..3,
+                ),
             ),
-            prop::collection::btree_map(
-                names.clone(),
-                ("[xy]", prop::collection::btree_set(0..8u32, 0..4)),
-                0..3,
-            ),
-            prop::collection::btree_map(names.clone(), session(), 0..3),
-            prop::collection::btree_map(0..3u64, card(), 0..3),
-            prop::collection::btree_map(names.clone(), 0..50i64, 0..2),
-            prop::collection::btree_map(names, book(), 0..3),
-            prop::collection::btree_map(0..3u64, review_card(), 0..3),
-            prop::collection::btree_map(0..3u64, 0..50i64, 0..2),
-            prop::collection::btree_map(0..3u64, 0..4u8, 0..3),
-            prop::collection::btree_map("[ab]", (0..4usize, 0..4i64), 0..3),
-            prop::collection::btree_map(
-                "[ab]",
-                prop::collection::btree_map("[xy]", 0..50i64, 0..3),
-                0..3,
-            ),
+            unwatched,
         )
             .prop_map(
                 |(
-                    videos,
-                    coverage,
-                    credit,
-                    sessions,
-                    cards,
-                    deleted,
-                    books,
-                    review,
-                    buried,
-                    log,
-                    words,
-                    encounters,
+                    (
+                        videos,
+                        coverage,
+                        credit,
+                        sessions,
+                        cards,
+                        deleted,
+                        books,
+                        review,
+                        buried,
+                        log,
+                        words,
+                        encounters,
+                    ),
+                    unwatched,
                 )| {
                     use crate::words::WordStatus;
                     let statuses = [
@@ -697,6 +761,10 @@ mod tests {
                         WordStatus::Ignored,
                     ];
                     DeviceState {
+                        unwatched: unwatched
+                            .into_iter()
+                            .map(|(k, at)| (k.to_string(), at))
+                            .collect(),
                         encounter_resets: BTreeMap::new(),
                         encounters,
                         words: words
@@ -889,7 +957,7 @@ mod tests {
 
     // T-BAK-007
     #[test]
-    fn the_video_played_last_wins_and_the_first_watched_stays() {
+    fn the_video_played_last_wins_and_the_last_watched_stays() {
         let mut a = VideoState {
             completed_at: Some(50),
             ..video_at(10, 100)
@@ -898,10 +966,51 @@ mod tests {
             completed_at: Some(20),
             ..video_at(20, 200)
         };
-        merge_video(&mut a, &b);
-        assert_eq!((a.position_ms, a.completed_at), (20, Some(20)));
-        merge_video(&mut a, &video_at(30, 150));
+        merge_video(&mut a, &b, None);
+        assert_eq!((a.position_ms, a.completed_at), (20, Some(50)));
+        merge_video(&mut a, &video_at(30, 150), None);
         assert_eq!(a.position_ms, 20);
+    }
+
+    // T-LIB-014
+    #[test]
+    fn a_video_marked_unwatched_stays_so_until_watched_again() {
+        let watched = |at: i64| VideoState {
+            completed_at: Some(at),
+            ..video_at(900, at)
+        };
+        // another device watched it before the mark: it stays unwatched,
+        // from the start, whichever order the devices come in
+        let mut marked = DeviceState::default();
+        marked.unwatched.insert("v".into(), 500);
+        marked.videos.insert(
+            "v".into(),
+            VideoState {
+                position_ms: 0,
+                ..video_at(0, 100)
+            },
+        );
+        let mut old = DeviceState::default();
+        old.videos.insert("v".into(), watched(100));
+        for (mut a, b) in [(marked.clone(), old.clone()), (old.clone(), marked.clone())] {
+            a.merge(&b);
+            let v = &a.videos["v"];
+            assert_eq!((v.completed_at, v.position_ms), (None, 0));
+            assert_eq!(a.unwatched["v"], 500);
+        }
+        // watched again after the mark: that counts, even beside an older
+        // watch that would come first
+        let mut again = DeviceState::default();
+        again.videos.insert("v".into(), watched(800));
+        for (mut a, b) in [
+            (again.clone(), marked.clone()),
+            (marked.clone(), again.clone()),
+        ] {
+            a.merge(&old);
+            a.merge(&b);
+            let v = &a.videos["v"];
+            assert_eq!((v.completed_at, v.position_ms), (Some(800), 900));
+        }
     }
 
     // T-BAK-006

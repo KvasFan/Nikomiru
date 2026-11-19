@@ -89,7 +89,7 @@ To hear a word, Nikomiru needs a source of pronunciations: none comes with it. W
    - the sentence with the word in bold;
    - the frame of the video (or, in Settings → Anki → Image format, the whole line as an animated picture or a WebM video with sound) and the audio of the line;
    - a link that reopens the scene.
-4. **✓** means Anki already has the word: its menu opens the card in Anki, or adds another anyway.
+4. **✓** means Anki already has the word: its menu opens the card in Anki, or adds another anyway. On the card you just made, **✓↩**, the menu can also replace it or **Undo** it: the card is deleted from Anki.
 5. **Shift+click on +** (or Ctrl+Shift+Enter) makes the card by hand. You can:
    - add the lines before and after;
    - move the clip and listen to it;
@@ -137,6 +137,7 @@ The **Tools** menu holds the Texthooker, the phrase notebook, the recall history
 - A series remembers its subtitle, offset and audio language.
 - With word colours on, each episode shows `80% · 25%`: known word tokens and subtitle lines without a new word. Local embedded text subtitles count too, using the same saved track and language priorities as playback. `…` means counting; graphic subtitles, remote videos and subtitles turned off have no score. Reopen the series to refresh changed subtitle sources.
 - On a series' page you can rename it, merge it, move or remove episodes, or delete it. Your files are never touched.
+- Tick episodes to **Mark watched** or **Mark unwatched (from the start)**; the mark follows the sync to your other computers.
 - **Identify online** asks AniList (or MyAnimeList) for the series' titles, episodes and cover. If several series match, you choose. Jimaku then finds its subtitles by its AniList id.
 - **Identify by file (AniDB)** works even when folder names say nothing. It sends the size and ed2k hash of one episode file to AniDB with your AniDB account (Settings → Subtitle services), then looks for AniDB's title on AniList or MyAnimeList. AniDB accepts only registered clients: until Nikomiru's registration is built in, register a UDP client at anidb.net and enter its name and version there. AniDB is not asked while a proxy is set, because its UDP API cannot go through one.
 - **Statistics** shows the time watched and the characters read:
