@@ -519,6 +519,10 @@ pub struct Session {
     /// The lookup to open once the manga text being read arrives: its byte
     /// and where (MNG-005, MNG-010).
     manga_lookup: Option<(usize, Rect)>,
+    /// A server's chapter being read (SRV-021, SRV-022): its pages' folder,
+    /// its uid, the page the server gave, how many pages, and the book's
+    /// uid once it is open.
+    server_reading: Option<(crate::servers::ServerPages, Option<String>)>,
     /// The reading model is to be fetched (MNG-004).
     ocr_fetch: bool,
     /// A graphic track waits for the reading model, in this load (SUB-028).
@@ -964,6 +968,7 @@ impl Session {
             web_generation: 0,
             web_jobs: Vec::new(),
             web_error: None,
+            server_reading: None,
             servers_page: crate::servers::ServersPage::default(),
             online_page: crate::online::OnlinePage::default(),
             services_status: None,
@@ -4628,7 +4633,38 @@ impl Session {
     pub fn server_play(&mut self, item: &str) {
         if let Some(server) = self.servers_page.server.clone() {
             let uid = nikomiru_library::server_items::server_uid(&server, item);
-            self.open(Path::new(&uid));
+            // SRV-021: a Kavita's chapter is read, its pages fetched first
+            let read = self
+                .services
+                .config
+                .servers
+                .iter()
+                .any(|s| s.id == server && s.kind == "kavita");
+            if read {
+                self.servers_page.busy = true;
+                self.servers_page.status = None;
+                self.server_jobs.push(crate::servers::ServerJob::Pages(uid));
+            } else {
+                self.open(Path::new(&uid));
+            }
+        }
+    }
+
+    /// The page of a server's chapter now shown goes back to the server
+    /// (SRV-022).
+    fn server_page_reached(&mut self) {
+        let (Some((pages, Some(book))), Some(open)) = (&self.server_reading, &self.books_page.open)
+        else {
+            return;
+        };
+        if open.uid == *book {
+            self.services.servers.report(
+                pages.uid.clone(),
+                String::new(),
+                nikomiru_online::servers::PlayState::Playing,
+                open.chapter as u64,
+                pages.pages,
+            );
         }
     }
 
@@ -4645,6 +4681,18 @@ impl Session {
                 }
             }
             ServerAnswer::SignIn(Ok(sign_in)) => self.external_links.push(sign_in.url),
+            ServerAnswer::Pages(result) => {
+                page.busy = false;
+                match result {
+                    Ok(pages) => {
+                        let folder = pages.folder.clone();
+                        self.server_reading = Some((pages, None));
+                        self.books_open();
+                        self.book_add(folder);
+                    }
+                    Err(e) => page.status = Some((e, false)),
+                }
+            }
             ServerAnswer::SignIn(Err(e)) => {
                 page.logging_in = false;
                 page.status = Some((e, false));
@@ -7403,6 +7451,16 @@ impl Session {
         );
         self.books_page.study.clear();
         self.books_page.ocr.forget_pages();
+        // SRV-022: a server's chapter opens at the later of its two places
+        let mut chapter = chapter;
+        match &mut self.server_reading {
+            Some((pages, opened)) if pages.folder == path => {
+                *opened = Some(uid.clone());
+                let last = book.chapters.len().saturating_sub(1);
+                chapter = chapter.max((pages.page as usize).min(last));
+            }
+            _ => self.server_reading = None,
+        }
         self.books_page.open = Some(crate::books::OpenBook {
             uid,
             chapter,
@@ -7655,6 +7713,8 @@ impl Session {
             self.books_page.status = None;
             self.books_page.found = None;
         }
+        // SRV-022: the page now shown
+        self.server_page_reached();
     }
 
     /// A part of the page was selected: it is read (MNG-003).
@@ -7957,6 +8017,7 @@ impl Session {
 
     /// The place reached is saved.
     fn book_save(&mut self) {
+        self.server_page_reached();
         let Some(open) = &self.books_page.open else {
             return;
         };

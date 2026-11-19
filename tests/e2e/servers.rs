@@ -749,3 +749,51 @@ fn an_audiobookshelf_book_plays_through_the_relay() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-SRV-020…T-SRV-022: a Kavita chapter's pages fetched, read in the manga
+// reader from the page the server gave, and the page turned to sent back
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn a_kavita_chapter_is_read_in_the_manga_reader() {
+    let mut page = Vec::new();
+    {
+        let picture = image::RgbImage::from_pixel(60, 90, image::Rgb([250, 250, 250]));
+        image::DynamicImage::ImageRgb8(picture)
+            .write_to(
+                &mut std::io::Cursor::new(&mut page),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+    }
+    let fake = FakeServers::start(Data {
+        file: page,
+        // the server says one page was read
+        kavita_progress: [(20, json!({ "chapterId": 20, "pageNum": 1 }))].into(),
+        ..Data::default()
+    })
+    .unwrap();
+    let mut desk = Desktop::start();
+    desk.write_config(&config("kavita", &fake.kavita_url()));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.cmd(json!({ "cmd": "library", "action": "server-show", "title": "home" }));
+    h.cmd(json!({ "cmd": "library", "action": "server-play", "title": "3~7~11~20" }));
+    let s = h.state_until("the chapter", |s| s["books"]["open"].is_string());
+    assert_eq!(
+        s["books"]["chapter"], 1,
+        "from the server's page: {}",
+        s["books"]
+    );
+    assert!(
+        s["books"]["open"].as_str().unwrap().contains("カイジ"),
+        "{}",
+        s["books"]
+    );
+    h.cmd(json!({ "cmd": "books", "action": "next" }));
+    super::support::until(Duration::from_secs(10), "the page sent back", || {
+        (fake.data().kavita_progress[&20]["pageNum"] == 2).then_some(())
+    });
+    assert!(!desk.log().contains(TOKEN), "the key in the log");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

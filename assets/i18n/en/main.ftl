@@ -1689,6 +1689,7 @@ servers-kind = Server:
 servers-kind-jellyfin = Jellyfin
 servers-kind-emby = Emby
 servers-kind-audiobookshelf = Audiobookshelf
+servers-kind-kavita = Kavita
 settings-palette = Palette
 settings-palette-default = Default
 settings-palette-oled = OLED black

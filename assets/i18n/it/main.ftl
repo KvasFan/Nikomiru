@@ -1689,6 +1689,7 @@ servers-kind = Server:
 servers-kind-jellyfin = Jellyfin
 servers-kind-emby = Emby
 servers-kind-audiobookshelf = Audiobookshelf
+servers-kind-kavita = Kavita
 settings-palette = Tavolozza
 settings-palette-default = Predefinita
 settings-palette-oled = Nero OLED

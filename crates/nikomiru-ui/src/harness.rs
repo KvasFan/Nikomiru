@@ -1620,6 +1620,11 @@ pub fn library(
                 path()?.to_string_lossy().into_owned(),
             )),
             "episode-words" => Command::EpisodeWords(title.clone()),
+            // SRV-006, SRV-021: a server's tab, and an item of it played or read
+            "server-show" => {
+                Command::ServerShow(title.clone().ok_or("missing server id in title")?)
+            }
+            "server-play" => Command::ServerPlay(title.clone().ok_or("missing item id in title")?),
             "analyse-series" => Command::SeriesAnalyse(id()?),
             // MET-001: "Identify online", a result chosen (`id` its index,
             // none without), "Forget"

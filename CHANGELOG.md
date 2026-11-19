@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.174.0] - 2026-11-19
+
+What Fushi 3 has and Nikomiru lacked, last part (D-83).
+
+### Added
+
+- Kavita servers: Settings → Media servers adds one with its address, user and password (its API key is kept, not the password). Its manga, comic and image libraries get a tab; a chapter's **Read** fetches its pages and opens them in the manga reader, with the text read ahead and clickable as in any manga, from the page you reached on either side; each page you turn goes back to Kavita (SRV-020…SRV-022).
+
 ## [2.173.1] - 2026-11-19
 
 ### Fixed

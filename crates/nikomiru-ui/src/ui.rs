@@ -2941,11 +2941,18 @@ impl Ui {
                         }
                         crate::servers::PasswordServer::Audiobookshelf => servers
                             .audiobookshelf_login(url, user, password, allow_unencrypted, done),
+                        crate::servers::PasswordServer::Kavita => {
+                            servers.kavita_login(url, user, password, allow_unencrypted, done);
+                        }
                         crate::servers::PasswordServer::Jellyfin => {
                             servers.jellyfin_login(url, user, password, allow_unencrypted, done);
                         }
                     }
                 }
+                crate::servers::ServerJob::Pages(uid) => servers.pages(
+                    uid,
+                    Box::new(move |r| send(crate::servers::ServerAnswer::Pages(r))),
+                ),
                 crate::servers::ServerJob::Plex => {
                     let sent = reply(&self.waker);
                     servers.plex_login(

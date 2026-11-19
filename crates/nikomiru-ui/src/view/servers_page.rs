@@ -108,6 +108,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 PasswordServer::Audiobookshelf,
                 "servers-kind-audiobookshelf",
             ),
+            (PasswordServer::Kavita, "servers-kind-kavita"),
         ] {
             if ui
                 .selectable_label(state.kind == kind, tr(s, label))

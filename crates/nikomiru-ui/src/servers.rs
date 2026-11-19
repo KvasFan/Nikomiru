@@ -80,6 +80,23 @@ pub trait ServerService: Send {
         let _ = (url, user, password, allow_unencrypted);
         done(Err(String::new()));
     }
+    /// Logs in to a Kavita (SRV-020).
+    fn kavita_login(
+        &self,
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+        done: Done<ServerConfig>,
+    ) {
+        let _ = (url, user, password, allow_unencrypted);
+        done(Err(String::new()));
+    }
+    /// Fetches the pages of a chapter to be read (SRV-021).
+    fn pages(&self, uid: String, done: Done<ServerPages>) {
+        let _ = uid;
+        done(Err(String::new()));
+    }
     /// Logs in to an Audiobookshelf (SRV-017).
     fn audiobookshelf_login(
         &self,
@@ -157,6 +174,19 @@ impl ServerService for NoServers {
     }
 }
 
+/// A chapter of a server fetched to be read in the manga reader (SRV-021).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerPages {
+    /// Its uid (SRV-007).
+    pub uid: String,
+    /// The folder of its pages.
+    pub folder: std::path::PathBuf,
+    /// The page the server says was reached.
+    pub page: u64,
+    /// How many there are.
+    pub pages: u64,
+}
+
 /// A server logged in to with a user name and password.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PasswordServer {
@@ -167,6 +197,8 @@ pub enum PasswordServer {
     Emby,
     /// Audiobookshelf (SRV-017).
     Audiobookshelf,
+    /// Kavita (SRV-020).
+    Kavita,
 }
 
 /// A job for the worker, taken by the UI layer: its answer needs the waker.
@@ -174,6 +206,8 @@ pub enum PasswordServer {
 pub enum ServerJob {
     /// Makes this video ready.
     Prepare(String),
+    /// Fetches this chapter's pages (SRV-021).
+    Pages(String),
     /// Logs in to a Jellyfin, an Emby or an Audiobookshelf.
     Jellyfin {
         /// Which (SRV-014, SRV-017).
@@ -237,6 +271,8 @@ pub enum ServerAnswer {
     Listed(String, Result<Listing, String>),
     /// A cover, by item.
     Cover(String, Result<Vec<u8>, String>),
+    /// A chapter's pages fetched (SRV-021).
+    Pages(Result<ServerPages, String>),
 }
 
 /// A place in a server's tab.
