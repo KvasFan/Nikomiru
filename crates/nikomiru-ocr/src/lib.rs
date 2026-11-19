@@ -576,7 +576,7 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
             ..block.clone()
         };
         let block = &split;
-        let mut marked = layout_from_lines(page, block, chars);
+        let mut marked = layout_from_lines(page, block);
         if marked.lines.is_empty() {
             return marked;
         }
@@ -713,7 +713,6 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
         .max(1);
     let mut runs: Vec<(u32, u32, usize)> = Vec::new();
     for (a, &count) in (0..across).zip(&counts) {
-        let a = a as u32;
         if count < least {
             continue;
         }
@@ -876,7 +875,7 @@ fn split_blobs(page: &DynamicImage, block: &Block) -> Vec<[u32; 4]> {
 /// of ink under the mark its text, the strokes beside it alike in ink part
 /// of it, narrow runs with far less ink its furigana; along, the ink from
 /// a character before the mark to one after it, inside the block.
-fn layout_from_lines(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
+fn layout_from_lines(page: &DynamicImage, block: &Block) -> Layout {
     let (pw, ph) = page.dimensions();
     let [l, t, r, b] = block.bounds;
     let (r, b) = (r.min(pw), b.min(ph));
@@ -1080,7 +1079,7 @@ fn layout_from_lines(page: &DynamicImage, block: &Block, chars: usize) -> Layout
                 lines: kept,
                 ..block.clone()
             };
-            let mut second = layout_from_lines(page, &again, chars);
+            let mut second = layout_from_lines(page, &again);
             second.covers.extend(covers);
             return second;
         }
