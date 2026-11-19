@@ -1030,6 +1030,9 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 | T-SRV-017 | Audiobookshelf login | A wrong password refused, the token and user kept (L4 against the fake Audiobookshelf); Audiobookshelf chosen on the page sends its login (kittest) | L3/L4 |
 | T-SRV-018 | Audiobookshelf books | Podcasts left out, books as series with author, search, a book's files in order without the excluded one, each with its part of the position (L1, L4) | L1/L4 |
 | T-SRV-019 | Audiobookshelf listening | A file through the relay; a report 5 s into the second file is 15 s into the 30 s book; the last file heard finishes it (L4); in the real app the second file opens 2 s in from the book's 12 s, through the relay with the token never in mpv's path or the log, and closing sends the book's place (L6) | L4/L6 |
+| T-SRV-020 | Kavita login | A wrong password refused, the API key kept; a later session asks for its token with the key (L4 against the fake Kavita) | L4 |
+| T-SRV-021 | Kavita chapters | Chapters in volume and number order with title, pages read and pages (L1); novels left out, series by library and search, a chapter's three pages fetched with the key, not playable (L4); in the real app a chapter's pages fetched and opened in the manga reader (L6) | L1/L4/L6 |
+| T-SRV-022 | Kavita page reached | The page reported with library, series, volume and chapter, and the last page when marked read (L4); in the real app the chapter opens at the server's page 1 and the next page turned reaches the server as 2, the key never in the log (L6) | L4/L6 |
 
 ## M117 ports
 
