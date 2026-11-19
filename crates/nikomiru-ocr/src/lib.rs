@@ -586,11 +586,74 @@ fn dotted(grey: &image::GrayImage, below: u8, m: &[u32; 4], vertical: bool) -> b
         })
     };
     let n = pieces.len();
+    // the stroke of a ！ or ？ may be followed by its dot
+    let long = pieces.iter().filter(|p| p.1 - p.0 >= longest).count();
     n >= 3
+        && long <= 1
         && pieces
             .iter()
             .enumerate()
-            .all(|(i, p)| (p.1 - p.0 < longest || i + 1 == n) && alone(*p))
+            .all(|(i, p)| (p.1 - p.0 < longest || i + 2 >= n) && alone(*p))
+}
+
+/// Two columns (or rows) measured as one line, set apart by a clear white
+/// gap across it, as two lines: each at least two fifths of its width and
+/// a character and a half long, so that the strokes of い or a line's
+/// furigana are not taken for one (MNG-012).
+fn split_two(
+    grey: &image::GrayImage,
+    below: u8,
+    m: &[u32; 4],
+    vertical: bool,
+) -> Option<[[u32; 4]; 2]> {
+    let ((a0, a1), (g0, g1)) = if vertical {
+        ((m[0], m[2]), (m[1], m[3]))
+    } else {
+        ((m[1], m[3]), (m[0], m[2]))
+    };
+    let inked = |a: u32, g: u32| {
+        let (x, y) = if vertical { (a, g) } else { (g, a) };
+        grey.get_pixel_checked(x, y).is_some_and(|p| p.0[0] < below)
+    };
+    let counts: Vec<u32> = (a0..a1)
+        .map(|a| (g0..g1).filter(|g| inked(a, *g)).count() as u32)
+        .collect();
+    let most = counts.iter().copied().max().unwrap_or(0);
+    let width = a1 - a0;
+    // the widest run of near-white across, away from the edges
+    let (mut best, mut run) = (None::<(u32, u32)>, None::<u32>);
+    for (i, &c) in counts.iter().enumerate() {
+        let i = i as u32;
+        if c * 20 <= most {
+            run.get_or_insert(i);
+        } else if let Some(start) = run.take()
+            && best.is_none_or(|(s, e)| i - start > e - s)
+        {
+            best = Some((start, i));
+        }
+    }
+    let (s, e) = best?;
+    if e - s < 2 || s * 5 < width * 2 || (width - e) * 5 < width * 2 {
+        return None;
+    }
+    let extent = |p0: u32, p1: u32| -> Option<[u32; 4]> {
+        let along: Vec<u32> = (g0..g1)
+            .filter(|g| (p0..p1).any(|a| inked(a, *g)))
+            .collect();
+        let (first, last) = (*along.first()?, *along.last()? + 1);
+        let side = p1 - p0;
+        if (last - first) * 2 < side * 3 {
+            return None;
+        }
+        Some(if vertical {
+            [p0, first, p1, last]
+        } else {
+            [first, p0, last, p1]
+        })
+    };
+    // columns from the right, rows from the top
+    let (near, far) = (extent(a0, a0 + s)?, extent(a0 + e, a1)?);
+    Some(if vertical { [far, near] } else { [near, far] })
 }
 
 /// `b` a pixel wider each way, on a page `pw` by `ph`.
@@ -758,6 +821,28 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
         } else {
             marked.lines.sort_by_key(|m| m[1] + m[3]);
         }
+        // two columns measured as one, far wider than the others, split
+        // where white parts them
+        let widths_now: Vec<u32> = marked
+            .lines
+            .iter()
+            .map(|m| across(m).1 - across(m).0)
+            .collect();
+        let mut sorted = widths_now.clone();
+        sorted.sort_unstable();
+        let typical = sorted[sorted.len() / 2].max(1);
+        let lone = marked.lines.len() == 1;
+        let mut lines = Vec::with_capacity(marked.lines.len());
+        for m in &marked.lines {
+            let w = across(m).1 - across(m).0;
+            let long = along(m).1 - along(m).0;
+            let wide = (w * 10 >= typical * 14 && !lone) || (lone && w * 2 >= long);
+            match wide.then(|| split_two(&grey, below, m, vertical)).flatten() {
+                Some(two) => lines.extend(two),
+                None => lines.push(*m),
+            }
+        }
+        marked.lines = lines;
         // furigana marked as a line of their own: narrower than most, close
         // after a longer line (to its right in columns, above in rows) that
         // spans them; covered, but not read as text
@@ -1761,6 +1846,55 @@ mod tests {
             "{:?}",
             found.lines
         );
+    }
+
+    // T-MNG-012: two columns the detector marked as one, set apart by white,
+    // are two lines; a column of い, its strokes apart, stays one
+    // (AK-BUG-009, Kaiji volume 1, page 18: ベンツじゃ / ないと)
+    #[test]
+    fn two_columns_marked_as_one_are_split() {
+        let mut page = image::GrayImage::from_pixel(220, 220, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        // a long column and a short one, 8 pixels apart, marked as one
+        ink(150, 20, 180, 200);
+        ink(112, 20, 142, 120);
+        // two narrower columns beside them
+        ink(70, 20, 90, 200);
+        ink(30, 20, 50, 200);
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [28, 18, 182, 202],
+            vertical: true,
+            lines: vec![[120, 30, 172, 190], [75, 30, 85, 190], [35, 30, 45, 190]],
+        };
+        let found = layout(&page, &block, 20);
+        assert_eq!(
+            found.lines,
+            vec![
+                [150, 20, 180, 200],
+                [112, 20, 142, 120],
+                [70, 20, 90, 200],
+                [30, 20, 50, 200]
+            ]
+        );
+        // い: two strokes, as long as one character, are not two columns
+        let grey = page.to_luma8();
+        let mut small = image::GrayImage::from_pixel(60, 60, image::Luma([255]));
+        for (x0, x1) in [(10, 18), (28, 36)] {
+            for x in x0..x1 {
+                for y in 10..40 {
+                    small.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        }
+        assert_eq!(split_two(&small, 128, &[10, 10, 36, 40], true), None);
+        assert!(split_two(&grey, 128, &[112, 20, 180, 200], true).is_some());
     }
 
     // T-ERR-001

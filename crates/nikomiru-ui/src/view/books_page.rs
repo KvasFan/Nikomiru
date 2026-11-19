@@ -551,13 +551,26 @@ fn region_glyphs(
     // what each line holds; the balloon's size is what most hold, a line
     // with a character too many packing its own a little closer rather than
     // shrinking them all
-    let mut held: Vec<f32> = lines
+    // lines of dots alone say nothing of the characters' size
+    let dots = |text: &str| {
+        text.chars()
+            .all(|c| "．・…‥。、，.!?！？ー〜～".contains(c))
+    };
+    let text_lines: Vec<_> = lines.iter().filter(|(_, text, _, _)| !dots(text)).collect();
+    let measured: Vec<_> = if text_lines.is_empty() {
+        lines.iter().collect()
+    } else {
+        text_lines
+    };
+    let mut held: Vec<f32> = measured
         .iter()
         .map(|(_, _, at, count)| fits(at, *count))
         .collect();
     held.sort_by(f32::total_cmp);
+    // the size most lines hold: a line's width is its characters' ink, the
+    // size of the font that draws them that wide
     let size = match (held.first(), held.get(held.len() / 2)) {
-        (Some(least), Some(most)) => least.max(most * 0.8),
+        (Some(least), Some(most)) => least.max(*most),
         _ => 0.0,
     };
     if !size.is_finite() || size <= 0.0 {
