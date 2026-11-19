@@ -1688,6 +1688,7 @@ settings-study-dictionaries-hint = Togli la spunta per scegliere tu i dizionari 
 servers-kind = Server:
 servers-kind-jellyfin = Jellyfin
 servers-kind-emby = Emby
+servers-kind-audiobookshelf = Audiobookshelf
 settings-palette = Tavolozza
 settings-palette-default = Predefinita
 settings-palette-oled = Nero OLED

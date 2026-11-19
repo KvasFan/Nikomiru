@@ -5,6 +5,7 @@
 //! tokens away from mpv and ffmpeg (SRV-009). Direct play only: the original
 //! file, never a transcode (SRV-008).
 
+pub mod audiobookshelf;
 pub mod jellyfin;
 pub mod plex;
 pub mod relay;
@@ -28,6 +29,8 @@ pub enum ServerKind {
     Plex,
     /// Emby (SRV-014).
     Emby,
+    /// Audiobookshelf (SRV-017).
+    Audiobookshelf,
 }
 
 impl ServerKind {
@@ -37,6 +40,7 @@ impl ServerKind {
             Self::Jellyfin => "jellyfin",
             Self::Plex => "plex",
             Self::Emby => "emby",
+            Self::Audiobookshelf => "audiobookshelf",
         }
     }
 
@@ -46,6 +50,7 @@ impl ServerKind {
             "jellyfin" => Some(Self::Jellyfin),
             "plex" => Some(Self::Plex),
             "emby" => Some(Self::Emby),
+            "audiobookshelf" => Some(Self::Audiobookshelf),
             _ => None,
         }
     }
@@ -56,6 +61,7 @@ impl ServerKind {
             Self::Jellyfin => "Jellyfin",
             Self::Plex => "Plex",
             Self::Emby => "Emby",
+            Self::Audiobookshelf => "Audiobookshelf",
         }
     }
 }

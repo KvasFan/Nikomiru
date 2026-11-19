@@ -1671,6 +1671,7 @@ settings-study-dictionaries-hint = チェックを外すと、この言語で使
 servers-kind = サーバー：
 servers-kind-jellyfin = Jellyfin
 servers-kind-emby = Emby
+servers-kind-audiobookshelf = Audiobookshelf
 settings-palette = 配色
 settings-palette-default = 標準
 settings-palette-oled = OLED ブラック

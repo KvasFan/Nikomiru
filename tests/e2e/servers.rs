@@ -687,3 +687,65 @@ fn an_audiobook_is_read_along_and_mined() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-SRV-017…T-SRV-019: an Audiobookshelf book's second file plays through
+// the relay from the book's place, and the place goes back as the book's
+#[test]
+#[ignore = "L6: needs kwin_wayland and dbus-daemon"]
+fn an_audiobookshelf_book_plays_through_the_relay() {
+    let fake = FakeServers::start(Data {
+        libraries: vec![("books".into(), "Books".into())],
+        items: vec![FakeItem {
+            id: "li_1".into(),
+            kind: "Book".into(),
+            title: "銀河鉄道の夜".into(),
+            parent: "books".into(),
+            ..FakeItem::default()
+        }],
+        file: std::fs::read(fixture("av_basic.mkv")).unwrap(),
+        // 12 s into the book: 2 s into its second file
+        abs_progress: [(
+            "li_1".to_string(),
+            json!({ "libraryItemId": "li_1", "currentTime": 12.0, "isFinished": false,
+                    "lastUpdate": 4_102_444_800_000_i64 }),
+        )]
+        .into(),
+        ..Data::default()
+    })
+    .unwrap();
+    let mut desk = Desktop::start();
+    desk.write_config(&config("audiobookshelf", &fake.audiobookshelf_url()));
+    let (mut app, mut h) = desk.launch();
+    h.state_until("the library", |s| s["library_page"]["open"] == true);
+    h.open("srv:home:li_1~b");
+    h.wait("first-frame");
+    let state = h.state_until("the file", |s| s["loaded"] == true);
+    assert_eq!(state["title"], "02.mp3");
+    let path = h.cmd(json!({ "cmd": "mpv_property", "name": "path" }));
+    let path = path.as_str().unwrap();
+    assert!(
+        path.starts_with("http://127.0.0.1:") && !path.contains("/abs/") && !path.contains(TOKEN),
+        "{path}"
+    );
+    until(Duration::from_secs(5), "the resume seek", || {
+        let at = h.cmd(json!({ "cmd": "mpv_property", "name": "time-pos" }));
+        let at: f64 = at.as_str()?.parse().ok()?;
+        (at >= 1.9).then_some(())
+    });
+    h.open(&fixture("av_basic.mkv"));
+    h.wait("first-frame");
+    until(Duration::from_secs(5), "the book's place", || {
+        let data = fake.data();
+        let at = data.abs_progress["li_1"]["currentTime"].as_f64()?;
+        (data.abs_progress["li_1"]["duration"] == 30.0 && at >= 11.9).then_some(())
+    });
+    assert!(
+        fake.requests()
+            .iter()
+            .filter(|r| r.target.starts_with("/abs/api/"))
+            .all(|r| r.header("authorization") == Some(&format!("Bearer {TOKEN}")))
+    );
+    assert!(!desk.log().contains(TOKEN), "the token in the log");
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

@@ -64,6 +64,8 @@ pub struct Data {
     pub emby_expired: bool,
     /// The fake Emby cannot play the files directly.
     pub emby_no_direct_play: bool,
+    /// What the fake Audiobookshelf was told of each book (SRV-019), by id.
+    pub abs_progress: std::collections::BTreeMap<String, Value>,
 }
 
 struct Shared {
@@ -134,6 +136,13 @@ impl FakeServers {
     /// The fake Emby's address, without its `/emby` (SRV-014).
     pub fn emby_url(&self) -> String {
         format!("http://127.0.0.1:{}/em/", self.port)
+    }
+
+    /// The fake Audiobookshelf's address (SRV-017): its books are the
+    /// items of kind `Book`, each with two files, `a` of 10 s and `b` of
+    /// 20 s.
+    pub fn audiobookshelf_url(&self) -> String {
+        format!("http://127.0.0.1:{}/abs/", self.port)
     }
 
     /// The fake Plex's address.
@@ -252,6 +261,8 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
         jellyfin(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/em/emby/") {
         emby(stream, &request, path, shared);
+    } else if let Some(path) = path.strip_prefix("/abs/") {
+        audiobookshelf(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/px/") {
         plex(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/tv/") {
@@ -303,6 +314,100 @@ fn webdav(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared
             None => respond(stream, 404, "", b""),
         },
         _ => respond(stream, 405, "", b""),
+    }
+}
+
+fn abs_book(item: &FakeItem) -> Value {
+    json!({
+        "id": item.id,
+        "mediaType": "book",
+        "media": {
+            "metadata": { "title": item.title, "authorName": "An Author" },
+            "duration": 30.0,
+            "audioFiles": [
+                { "ino": "a", "index": 1, "duration": 10.0, "metadata": { "filename": "01.mp3" } },
+                { "ino": "b", "index": 2, "duration": 20.0, "metadata": { "filename": "02.mp3" } },
+            ],
+        },
+    })
+}
+
+fn audiobookshelf(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared) {
+    if path == "login" && request.method == "POST" {
+        let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+        if body["username"] == USER && body["password"] == PASSWORD {
+            return send_json(stream, &json!({ "user": { "id": "u-1", "token": TOKEN } }));
+        }
+        return respond(stream, 401, "", b"");
+    }
+    if request.header("authorization") != Some(&format!("Bearer {TOKEN}")) {
+        return respond(stream, 401, "", b"");
+    }
+    let mut data = lock(&shared.data);
+    let books = |data: &Data| -> Vec<FakeItem> {
+        data.items
+            .iter()
+            .filter(|i| i.kind == "Book")
+            .cloned()
+            .collect()
+    };
+    let parts: Vec<&str> = path.split('/').collect();
+    match (request.method.as_str(), parts.as_slice()) {
+        ("POST", ["logout"]) => respond(stream, 200, "", b""),
+        ("GET", ["api", "libraries"]) => {
+            let mut libraries: Vec<Value> = data
+                .libraries
+                .iter()
+                .map(|(id, name)| json!({ "id": id, "name": name, "mediaType": "book" }))
+                .collect();
+            libraries.push(json!({ "id": "pod", "name": "Podcasts", "mediaType": "podcast" }));
+            send_json(stream, &json!({ "libraries": libraries }));
+        }
+        ("GET", ["api", "libraries", library, "items"]) => {
+            let results: Vec<Value> = books(&data)
+                .iter()
+                .filter(|b| b.parent == *library)
+                .map(abs_book)
+                .collect();
+            send_json(
+                stream,
+                &json!({ "results": results, "total": results.len() }),
+            );
+        }
+        ("GET", ["api", "libraries", library, "search"]) => {
+            let q = query(&request.target, "q").unwrap_or_default();
+            let found: Vec<Value> = books(&data)
+                .iter()
+                .filter(|b| b.parent == *library && b.title.contains(&q))
+                .map(|b| json!({ "libraryItem": abs_book(b) }))
+                .collect();
+            send_json(stream, &json!({ "book": found }));
+        }
+        ("GET", ["api", "items", id]) => match books(&data).iter().find(|b| b.id == *id) {
+            Some(book) => send_json(stream, &abs_book(book)),
+            None => respond(stream, 404, "", b""),
+        },
+        ("GET", ["api", "items", _, "cover"]) => respond(stream, 200, "", b"cover"),
+        ("GET" | "HEAD", ["api", "items", _, "file", _]) => {
+            drop(data);
+            send_file(stream, request, shared);
+        }
+        ("GET", ["api", "me"]) => {
+            let progress: Vec<Value> = data.abs_progress.values().cloned().collect();
+            send_json(stream, &json!({ "id": "u-1", "mediaProgress": progress }));
+        }
+        ("GET", ["api", "me", "progress", id]) => match data.abs_progress.get(*id) {
+            Some(p) => send_json(stream, p),
+            None => respond(stream, 404, "", b""),
+        },
+        ("PATCH", ["api", "me", "progress", id]) => {
+            let mut body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+            body["libraryItemId"] = json!(id);
+            body["lastUpdate"] = json!(1_763_500_000_000_i64);
+            data.abs_progress.insert((*id).to_string(), body);
+            respond(stream, 200, "", b"");
+        }
+        _ => respond(stream, 404, "", b""),
     }
 }
 

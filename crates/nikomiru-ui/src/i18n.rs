@@ -252,6 +252,7 @@ mod tests {
                 "setup-cards-anki",
                 "servers-kind-jellyfin",
                 "servers-kind-emby",
+                "servers-kind-audiobookshelf",
                 "address-hint"
             ]
         );

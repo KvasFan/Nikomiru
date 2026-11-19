@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.173.0] - 2026-11-19
+
+What Fushi 3 has and Nikomiru lacked, fourth part (D-83).
+
+### Added
+
+- Audiobookshelf servers: Settings → Media servers adds one with its address, user and password. Its book libraries get a tab; each book's audio files play one after the other like episodes, through the same relay as Jellyfin's videos, from where you left off, and your place goes back to Audiobookshelf as the book's (SRV-017…SRV-019).
+
 ## [2.172.0] - 2026-11-19
 
 What Fushi 3 has and Nikomiru lacked, third part (D-83).

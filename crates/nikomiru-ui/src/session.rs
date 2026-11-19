@@ -4489,14 +4489,14 @@ impl Session {
         user: String,
         password: String,
         allow: bool,
-        emby: bool,
+        kind: crate::servers::PasswordServer,
     ) {
         self.server_device();
         self.servers_changed();
         self.servers_page.logging_in = true;
         self.servers_page.status = None;
         self.server_jobs.push(crate::servers::ServerJob::Jellyfin {
-            emby,
+            kind,
             url,
             user,
             password,
