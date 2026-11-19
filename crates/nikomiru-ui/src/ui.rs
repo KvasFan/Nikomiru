@@ -936,6 +936,8 @@ pub(crate) enum Command {
     BackupMake,
     /// Asks for a backup to restore.
     BackupChoose,
+    /// A backup made by itself, chosen to restore (BAK-011).
+    BackupInspect(PathBuf),
     /// The backup chosen, confirmed.
     BackupRestore,
     BackupCancel,
@@ -2454,6 +2456,7 @@ impl Ui {
             Command::BackupOptions(options) => s.backup_page.options = options,
             Command::BackupMake => self.view.dialog = Some(Dialog::BackupSave),
             Command::BackupChoose => self.view.dialog = Some(Dialog::BackupOpen),
+            Command::BackupInspect(path) => s.backup_chosen(path),
             Command::BackupRestore => s.backup_restore(),
             Command::BackupCancel => s.backup_page.chosen = None,
             Command::ServersOpen => self.session.servers_open(),
@@ -2893,6 +2896,9 @@ impl Ui {
                     config,
                     Box::new(move |r| send(SyncAnswer::Restored(r))),
                 ),
+                SyncJob::Automatic => {
+                    sync.automatic_backups(Box::new(move |r| send(SyncAnswer::Automatic(r))));
+                }
             }
         }
         for job in self.session.take_server_jobs() {

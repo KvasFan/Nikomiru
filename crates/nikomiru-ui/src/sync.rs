@@ -22,6 +22,9 @@ pub struct Synced {
     pub devices: usize,
     /// Their files that could not be used (BAK-006).
     pub skipped: usize,
+    /// Their files encrypted with another passphrase, or with one while
+    /// none is set here (BAK-012).
+    pub locked: usize,
 }
 
 /// The app's `sync` worker: each call only queues. The answers come back on
@@ -39,6 +42,11 @@ pub trait SyncService: Send {
     fn inspect(&self, path: PathBuf, done: Done<Manifest>);
     /// Unpacks a backup for the next start, these being the settings now.
     fn restore(&self, path: PathBuf, config: Box<Config>, done: Done<()>);
+    /// The backups made by themselves, the newest first, with their time
+    /// (BAK-011).
+    fn automatic_backups(&self, done: Done<Vec<(PathBuf, i64)>>) {
+        done(Ok(Vec::new()));
+    }
 }
 
 /// What goes into a backup.
@@ -86,6 +94,8 @@ pub enum SyncJob {
     Inspect(PathBuf),
     /// See [`SyncService::restore`].
     Restore(PathBuf, Box<Config>),
+    /// See [`SyncService::automatic_backups`].
+    Automatic,
 }
 
 /// What comes back.
@@ -101,6 +111,8 @@ pub enum SyncAnswer {
     Inspected(PathBuf, Result<Manifest, String>),
     /// A backup waits for the next start.
     Restored(Result<(), String>),
+    /// The backups made by themselves (BAK-011).
+    Automatic(Result<Vec<(PathBuf, i64)>, String>),
 }
 
 /// Settings → Backup.
@@ -114,4 +126,6 @@ pub struct BackupPage {
     pub options: Options,
     /// A backup chosen, to confirm.
     pub chosen: Option<(PathBuf, Manifest)>,
+    /// The backups made by themselves, the newest first (BAK-011).
+    pub automatic: Vec<(PathBuf, i64)>,
 }

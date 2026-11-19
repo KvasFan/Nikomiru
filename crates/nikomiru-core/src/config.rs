@@ -1076,8 +1076,14 @@ impl Default for SpeechConfig {
     }
 }
 
-/// `[sync]`: the WebDAV folder (BAK-004).
-#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
+/// How often a backup is made by itself (BAK-011).
+pub const BACKUP_EVERY: [&str; 3] = ["off", "daily", "weekly"];
+/// How many backups made by themselves are kept (BAK-011).
+pub const BACKUPS_KEPT: std::ops::RangeInclusive<u32> = 1..=30;
+
+/// `[sync]`: the WebDAV folder (BAK-004), its passphrase (BAK-012), and the
+/// backups made by themselves (BAK-011).
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SyncConfig {
     /// The folder's address; empty: no sync.
@@ -1090,9 +1096,50 @@ pub struct SyncConfig {
     pub allow_unencrypted: bool,
     /// Sync at start and close (BAK-009).
     pub automatic: bool,
+    /// The passphrase the files on the server are encrypted with; empty:
+    /// not encrypted (BAK-012, MET-005).
+    pub passphrase: String,
+    /// A backup made by itself: `off`, `daily` or `weekly` (BAK-011).
+    pub backup_every: String,
+    /// How many of those are kept (BAK-011).
+    pub backups_kept: u32,
     /// Keys this version does not know.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            user: String::new(),
+            password: String::new(),
+            allow_unencrypted: false,
+            automatic: false,
+            passphrase: String::new(),
+            backup_every: "weekly".into(),
+            backups_kept: 4,
+            other: toml::Table::new(),
+        }
+    }
+}
+
+impl SyncConfig {
+    /// The days between backups made by themselves; `None`: off, or a
+    /// value this version does not know (BAK-011).
+    pub fn backup_days(&self) -> Option<i64> {
+        match self.backup_every.as_str() {
+            "daily" => Some(1),
+            "weekly" => Some(7),
+            _ => None,
+        }
+    }
+
+    /// How many to keep, within [`BACKUPS_KEPT`].
+    pub fn backups_kept(&self) -> usize {
+        self.backups_kept
+            .clamp(*BACKUPS_KEPT.start(), *BACKUPS_KEPT.end()) as usize
+    }
 }
 
 impl std::fmt::Debug for SyncConfig {
@@ -1823,6 +1870,7 @@ impl Config {
             ("online.deepl_key".to_string(), &mut self.online.deepl_key),
             ("online.claude_key".to_string(), &mut self.online.claude_key),
             ("sync.password".to_string(), &mut self.sync.password),
+            ("sync.passphrase".to_string(), &mut self.sync.passphrase),
         ];
         out.extend(
             self.servers
@@ -2280,6 +2328,8 @@ Expression = "{expression}"
         config.online.deepl_key = "s3cret-h".into();
         config.online.claude_key = "s3cret-i".into();
         config.sync.password = "s3cret-e".into();
+        // T-BAK-012: the passphrase is a secret too
+        config.sync.passphrase = "s3cret-j".into();
         config.servers.push(ServerConfig {
             id: "a".into(),
             token: "s3cret-f".into(),
@@ -2290,6 +2340,21 @@ Expression = "{expression}"
         assert!(!text.contains("s3cret"), "{text}");
         blank.fill_secrets(&config);
         assert_eq!(blank, config);
+    }
+
+    // T-BAK-011
+    #[test]
+    fn backups_made_by_themselves_are_weekly_by_default() {
+        let c = Config::default();
+        assert_eq!((c.sync.backup_days(), c.sync.backups_kept()), (Some(7), 4));
+        let c = Config::from_toml("[sync]\nbackup_every = \"daily\"\nbackups_kept = 99\n").unwrap();
+        assert_eq!((c.sync.backup_days(), c.sync.backups_kept()), (Some(1), 30));
+        let c =
+            Config::from_toml("[sync]\nbackup_every = \"monthly\"\nbackups_kept = 0\n").unwrap();
+        assert_eq!((c.sync.backup_days(), c.sync.backups_kept()), (None, 1));
+        // an older file without the keys: weekly
+        let c = Config::from_toml("[sync]\nurl = \"\"\n").unwrap();
+        assert_eq!(c.sync.backup_days(), Some(7));
     }
 
     #[test]

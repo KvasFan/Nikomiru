@@ -4340,6 +4340,8 @@ impl Session {
     pub fn backup_open(&mut self) {
         self.backup_page.status = None;
         self.backup_page.chosen = None;
+        // BAK-011
+        self.sync_jobs.push(crate::sync::SyncJob::Automatic);
     }
 
     /// New settings of the WebDAV folder (BAK-004).
@@ -4407,8 +4409,19 @@ impl Session {
             SyncAnswer::Synced(r) => r.map(|done| {
                 let devices = done.devices.to_string();
                 let skipped = done.skipped.to_string();
-                self.tr("sync-done", &[("devices", devices), ("skipped", skipped)])
+                let text = self.tr("sync-done", &[("devices", devices), ("skipped", skipped)]);
+                // BAK-012
+                if done.locked > 0 {
+                    let locked = self.tr("sync-locked", &[("count", done.locked.to_string())]);
+                    format!("{text} {locked}")
+                } else {
+                    text
+                }
             }),
+            SyncAnswer::Automatic(r) => {
+                self.backup_page.automatic = r.unwrap_or_default();
+                return;
+            }
             SyncAnswer::BackedUp(r) => r.map(|_| self.tr("backup-done", &[])),
             SyncAnswer::Restored(r) => r.map(|()| self.tr("backup-restored", &[])),
             SyncAnswer::Inspected(path, Ok(manifest)) => {

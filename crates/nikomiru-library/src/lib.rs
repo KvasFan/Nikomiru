@@ -15,6 +15,7 @@ pub mod batches;
 pub mod books;
 pub mod cards;
 pub mod cloze;
+pub mod crypt;
 pub mod db;
 pub mod dictionaries;
 pub mod encounters;

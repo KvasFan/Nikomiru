@@ -212,7 +212,9 @@ The subtitle menu and the library's episode/series menus offer **Export condense
 
 Settings → Backup writes your settings, library, statistics and downloaded subtitles to one file, with the dictionaries if you tick them. Keys and passwords stay out unless you tick them too. To restore, choose a backup and reopen Nikomiru: what was there stays in `before-restore`.
 
-With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" keeps progress, statistics and cards, the review's too, the same on your computers. Settings, series and dictionaries stay on each computer, and the files on the server are not encrypted. A video is the same on two computers when its file has the same name.
+Once a week (or every day, or never: **Backups made by themselves**), Nikomiru also makes a backup by itself when it starts, without keys or dictionaries, in the folder `backups` of its data; it keeps the last four, or as many as you choose. Each has **Restore…** with its date, to go back to that day.
+
+With a WebDAV folder (Nextcloud and the like, with an app password), "Sync now" keeps progress, statistics and cards, the review's too, the same on your computers. Settings, series and dictionaries stay on each computer. With a **Passphrase**, the files Nikomiru puts on the server are encrypted, and only computers with the same passphrase can read them: set the same one on each. If you forget it, what is on the server can no longer be read, but nothing on your computers is lost. A video is the same on two computers when its file has the same name.
 
 ## 9. Keyboard
 

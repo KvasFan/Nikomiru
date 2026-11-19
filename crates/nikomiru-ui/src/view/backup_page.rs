@@ -55,6 +55,15 @@ fn section(ui: &mut Ui, text: &str) {
     );
 }
 
+/// The label of `every`: one this version does not know is off.
+fn every_label(every: &str) -> &'static str {
+    match every {
+        "daily" => "backup-every-daily",
+        "weekly" => "backup-every-weekly",
+        _ => "backup-every-off",
+    }
+}
+
 fn hint(ui: &mut Ui, text: String) {
     ui.add(egui::Label::new(RichText::new(text).color(palette::current().details)).wrap());
 }
@@ -139,6 +148,46 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     let Some(draft) = state.draft.as_mut() else {
         return;
     };
+    // BAK-011
+    section(ui, &tr(s, "backup-automatic"));
+    hint(ui, tr(s, "backup-automatic-hint"));
+    ui.horizontal_wrapped(|ui| {
+        let label = ui.label(tr(s, "backup-every"));
+        egui::ComboBox::from_id_salt("backup-every")
+            .selected_text(tr(s, every_label(&draft.backup_every)))
+            .show_ui(ui, |ui| {
+                for every in nikomiru_core::config::BACKUP_EVERY {
+                    ui.selectable_value(
+                        &mut draft.backup_every,
+                        every.to_string(),
+                        tr(s, every_label(every)),
+                    );
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        let label = ui.label(tr(s, "backup-kept"));
+        ui.add(
+            egui::DragValue::new(&mut draft.backups_kept)
+                .range(nikomiru_core::config::BACKUPS_KEPT),
+        )
+        .labelled_by(label.id);
+    });
+    for (path, at) in &s.page.automatic {
+        ui.horizontal(|ui| {
+            let when = crate::sync::date_of(*at);
+            if ui
+                .add_enabled(
+                    !busy,
+                    Button::new(format!("{} {when}", tr(s, "backup-restore"))),
+                )
+                .on_hover_text(path.display().to_string())
+                .clicked()
+            {
+                out.push(Command::BackupInspect(path.clone()));
+            }
+        });
+    }
     section(ui, &tr(s, "sync-title"));
     hint(ui, tr(s, "sync-hint"));
     egui::Grid::new("sync-login").num_columns(2).show(ui, |ui| {
@@ -154,7 +203,13 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         ui.add(TextEdit::singleline(&mut draft.password).password(true))
             .labelled_by(label.id);
         ui.end_row();
+        // BAK-012
+        let label = ui.label(tr(s, "sync-passphrase"));
+        ui.add(TextEdit::singleline(&mut draft.passphrase).password(true))
+            .labelled_by(label.id);
+        ui.end_row();
     });
+    hint(ui, tr(s, "sync-passphrase-hint"));
     ui.checkbox(&mut draft.allow_unencrypted, tr(s, "servers-unencrypted"));
     if draft.allow_unencrypted {
         hint(ui, tr(s, "servers-unencrypted-warning"));
@@ -184,6 +239,7 @@ mod tests {
     use egui_kittest::kittest::Queryable;
 
     use super::*;
+    use std::path::PathBuf;
 
     struct Test {
         saved: SyncConfig,
@@ -214,6 +270,33 @@ mod tests {
                     out: Vec::new(),
                 },
             )
+    }
+
+    // T-BAK-011, T-BAK-012: how often, how many, a backup made by itself
+    // restored, and the passphrase saved with the rest
+    #[test]
+    fn backups_made_by_themselves_and_the_passphrase() {
+        let mut h = harness(SyncConfig::default());
+        h.state_mut().page.automatic =
+            vec![(PathBuf::from("/d/backups/auto-0.nikomiru-backup"), 0)];
+        h.run();
+        h.get_by_label("backup-restore 1970-01-01").click();
+        h.run();
+        assert!(
+            matches!(h.state().out.as_slice(), [Command::BackupInspect(p)] if p.ends_with("auto-0.nikomiru-backup"))
+        );
+        h.state_mut().out.clear();
+        h.get_by_label("backup-every").click();
+        h.run();
+        h.get_by_label("backup-every-daily").click();
+        h.run();
+        h.get_by_label("sync-passphrase").focus();
+        h.get_by_label("sync-passphrase").type_text("segreto");
+        h.run();
+        h.get_by_label("online-save").click();
+        h.run();
+        assert!(matches!(h.state().out.as_slice(),
+            [Command::SyncSave(c)] if c.passphrase == "segreto" && c.backup_every == "daily" && c.backups_kept == 4));
     }
 
     // T-BAK-004: nothing to sync with until it is set up
