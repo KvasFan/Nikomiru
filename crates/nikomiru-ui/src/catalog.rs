@@ -132,6 +132,13 @@ pub enum LibraryEdit {
     },
     /// Episodes removed from the library; their files stay.
     Remove(Vec<String>),
+    /// Episodes marked watched, or unwatched, by hand (LIB-014).
+    Watched {
+        /// The episodes.
+        uids: Vec<String>,
+        /// Watched, or new again.
+        watched: bool,
+    },
     /// A study session deleted (STA-005).
     DeleteSession(u128),
     /// Clear one episode’s historical encounters, retaining its sync reset.

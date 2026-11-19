@@ -51,6 +51,27 @@ impl Library {
         tx.commit().map_err(|e| LibraryError::Db(e.into()))
     }
 
+    /// Forgets the card of `note_id`, deleted from Anki (ANK-054); it does
+    /// not come back from another device.
+    pub fn delete_mined_card(&self, note_id: u64) -> Result<Option<MinedCard>, LibraryError> {
+        let tx = self.write()?;
+        let removed = {
+            let mut t = tx
+                .open_table(MINED_CARDS)
+                .map_err(|e| LibraryError::Db(e.into()))?;
+            let removed = t.remove(note_id).map_err(|e| LibraryError::Db(e.into()))?;
+            match removed {
+                Some(v) => Some(postcard::from_bytes::<MinedCard>(v.value())?),
+                None => None,
+            }
+        };
+        if removed.is_some() {
+            crate::sync::bury(&tx, &crate::sync::card_key(note_id))?;
+        }
+        tx.commit().map_err(|e| LibraryError::Db(e.into()))?;
+        Ok(removed)
+    }
+
     /// The card recorded for `note_id`.
     pub fn mined_card(&self, note_id: u64) -> Result<Option<MinedCard>, LibraryError> {
         self.read(|tx| match tx.open_table(MINED_CARDS) {
@@ -129,5 +150,26 @@ mod tests {
         );
         assert_eq!(lib.mined_card_count().unwrap(), 2);
         assert_eq!(lib.schema(), crate::db::SCHEMA_VERSION, "no migration");
+    }
+
+    // T-ANK-054: a card deleted from Anki is forgotten, here and on the
+    // other devices
+    #[test]
+    fn a_card_undone_is_forgotten_everywhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::open(&dir.path().join("library.redb")).unwrap();
+        let other = Library::open(&dir.path().join("other.redb")).unwrap();
+        lib.put_mined_card(7, &card("食べました")).unwrap();
+        other.put_mined_card(7, &card("食べました")).unwrap();
+        assert_eq!(lib.delete_mined_card(7).unwrap(), Some(card("食べました")));
+        assert_eq!(lib.delete_mined_card(7).unwrap(), None);
+        assert!(lib.mined_expressions().unwrap().is_empty());
+        let mut theirs = other.export_state(1).unwrap();
+        let ours = lib.export_state(1).unwrap();
+        assert!(ours.deleted.contains_key(&crate::sync::card_key(7)));
+        theirs.merge(&ours);
+        assert!(theirs.cards.is_empty());
+        other.apply_state(&theirs).unwrap();
+        assert_eq!(other.mined_card(7).unwrap(), None);
     }
 }

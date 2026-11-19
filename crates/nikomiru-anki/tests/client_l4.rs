@@ -61,6 +61,9 @@ fn the_requests_have_anki_connects_shape() {
     })
     .unwrap();
     c.gui_browse(&format!("nid:{id}")).unwrap();
+    // T-ANK-054
+    c.delete_notes(&[id]).unwrap();
+    assert_eq!(c.find_notes("\"Front:食べ物\"").unwrap(), Vec::<u64>::new());
     let mut text = String::new();
     for r in fake.requests() {
         text.push_str(&serde_json::to_string(&r).unwrap());

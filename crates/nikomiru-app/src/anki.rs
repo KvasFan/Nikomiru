@@ -113,6 +113,7 @@ enum Job {
     Check(CheckRequest, Checked),
     Mine(Box<MineRequest>, Option<PendingFrame>, MineDone),
     Browse(BrowseTarget, Browsed),
+    Undo(u64, Browsed),
     Refresh(Box<AnkiConfig>, Listed),
     CreateLapis(Box<AnkiConfig>, LapisDone),
     Configure(Box<AnkiConfig>),
@@ -175,6 +176,7 @@ impl Anki {
                         Job::Check(request, done) => done(worker.check(&request)),
                         Job::Mine(request, frame, done) => done(worker.mine(&request, frame)),
                         Job::Browse(target, done) => done(worker.browse(&target)),
+                        Job::Undo(id, done) => done(worker.undo(id)),
                         Job::Refresh(config, done) => done(worker.refresh(&config)),
                         Job::CreateLapis(config, done) => done(worker.create_lapis(&config)),
                         Job::ConfigureFfmpeg(path) => {
@@ -226,7 +228,7 @@ impl Anki {
                 message: self.unavailable.clone(),
                 duplicate: false,
             })),
-            Job::Browse(_, done) => done(Err(self.unavailable.clone())),
+            Job::Browse(_, done) | Job::Undo(_, done) => done(Err(self.unavailable.clone())),
             Job::Refresh(_, done) => done(Err(self.unavailable.clone())),
             Job::CreateLapis(_, done) => done(Err(self.unavailable.clone())),
             Job::Configure(_) | Job::ConfigureFfmpeg(_) => {}
@@ -291,6 +293,12 @@ impl AnkiService for Anki {
 
     fn browse(&self, target: BrowseTarget, done: Browsed) {
         if let Some(job) = self.send(Job::Browse(target, done)) {
+            self.refuse(job);
+        }
+    }
+
+    fn undo(&self, note_id: u64, done: Browsed) {
+        if let Some(job) = self.send(Job::Undo(note_id, done)) {
             self.refuse(job);
         }
     }
@@ -1388,6 +1396,20 @@ impl Worker {
     }
 
     /// "Open in Anki" (ANK-038).
+    /// Deletes the last card from Anki, then its record (ANK-054). A
+    /// failure leaves both: the card may still be there.
+    fn undo(&mut self, note_id: u64) -> Result<(), String> {
+        let client = self.client().map_err(|e| self.message(&e))?;
+        self.heard(client.delete_notes(&[note_id]))
+            .map_err(|e| self.message(&e))?;
+        if let Some(library) = &self.parts.library
+            && let Err(e) = library.delete_mined_card(note_id)
+        {
+            tracing::warn!("mined_cards: {e}");
+        }
+        Ok(())
+    }
+
     fn browse(&mut self, target: &BrowseTarget) -> Result<(), String> {
         if self.parts.config.to_review() {
             return Err(self.parts.translator.tr("review-in-library", &[]));

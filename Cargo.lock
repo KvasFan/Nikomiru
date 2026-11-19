@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-anki"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "insta",
  "nikomiru-anki",
@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-app"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "egui",
  "egui-winit",
@@ -2619,7 +2619,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-books"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "flate2",
  "image",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-core"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "serde",
  "tempfile",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-dict"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-library"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "flate2",
  "nikomiru-core",
@@ -2690,7 +2690,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-media"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "insta",
  "nikomiru-core",
@@ -2704,7 +2704,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-ocr"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "image",
  "nikomiru-core",
@@ -2716,7 +2716,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-online"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "crc32fast",
  "ed25519-compact",
@@ -2742,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-player"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "libmpv2",
  "libmpv2-sys",
@@ -2755,7 +2755,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-subs"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -2764,7 +2764,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-text"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "icu_normalizer",
  "proptest",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-ui"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "egui",
  "egui_kittest",
@@ -5783,7 +5783,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "2.163.0"
+version = "2.170.0"
 dependencies = [
  "anyhow",
  "flate2",

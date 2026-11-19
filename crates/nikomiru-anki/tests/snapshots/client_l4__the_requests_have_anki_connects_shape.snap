@@ -19,3 +19,5 @@ expression: text
 {"action":"createDeck","params":{"deck":"Lapis"},"version":6}
 {"action":"createModel","params":{"cardTemplates":[{"Back":"{{B}}","Front":"{{A}}","Name":"Mining"}],"css":".card {}","inOrderFields":["A","B"],"isCloze":false,"modelName":"Mini"},"version":6}
 {"action":"guiBrowse","params":{"query":"nid:1760000000000"},"version":6}
+{"action":"deleteNotes","params":{"notes":[1760000000000]},"version":6}
+{"action":"findNotes","params":{"query":"\"Front:食べ物\""},"version":6}

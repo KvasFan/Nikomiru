@@ -245,6 +245,8 @@ pub enum Inbound {
     },
     /// Anki's browser opened, or not (ANK-038).
     Browsed(Result<(), String>),
+    /// The last card deleted from Anki, or why not (ANK-054).
+    Undone(u64, Result<(), String>),
     /// What Anki has, for the settings page (ANK-006).
     AnkiLists(Result<crate::mining::AnkiLists, String>),
     /// "Create Lapis deck" ended (ANK-011).
@@ -366,6 +368,7 @@ impl std::fmt::Debug for Inbound {
             Inbound::CardStates { .. } => "CardStates",
             Inbound::Mined { .. } => "Mined",
             Inbound::Browsed(_) => "Browsed",
+            Inbound::Undone(..) => "Undone",
             Inbound::AnkiLists(_) => "AnkiLists",
             Inbound::LapisDone(_) => "LapisDone",
             Inbound::Later(_) => "Later",
@@ -1250,6 +1253,10 @@ impl Ui {
             }
             Inbound::Browsed(result) => {
                 self.session.browsed(result);
+                true
+            }
+            Inbound::Undone(note_id, result) => {
+                self.session.card_undone(note_id, result);
                 true
             }
             Inbound::AnkiLists(result) => {
@@ -2621,6 +2628,10 @@ impl Ui {
                     .session
                     .anki()
                     .browse(target, Box::new(move |r| waker.wake(Inbound::Browsed(r)))),
+                crate::mining::AnkiJob::Undo(id) => self
+                    .session
+                    .anki()
+                    .undo(id, Box::new(move |r| waker.wake(Inbound::Undone(id, r)))),
                 crate::mining::AnkiJob::Refresh(config) => self
                     .session
                     .anki()

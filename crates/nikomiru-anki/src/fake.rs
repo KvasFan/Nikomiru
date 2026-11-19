@@ -535,7 +535,8 @@ impl Collection {
                 let note = &p["note"];
                 self.check(note, false)?;
                 let model = self.model(&text(&note["modelName"]))?.clone();
-                let id = FIRST_NOTE_ID + self.notes.len() as u64;
+                // after the last, so that a deleted note's id is not reused
+                let id = self.notes.iter().map(|n| n.id + 1).max().unwrap_or(FIRST_NOTE_ID);
                 self.notes.push(StoredNote {
                     id,
                     deck: text(&note["deckName"]),
@@ -621,6 +622,16 @@ impl Collection {
                         }
                     }
                 }
+                Ok(Value::Null)
+            }
+            "deleteNotes" => {
+                let ids: Vec<u64> = p["notes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_u64)
+                    .collect();
+                self.notes.retain(|n| !ids.contains(&n.id));
                 Ok(Value::Null)
             }
             "addTags" => {

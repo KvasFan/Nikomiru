@@ -4846,7 +4846,34 @@ impl Session {
                     reading,
                 }));
             }
-            (MenuItem::Overwrite, _) => {}
+            (MenuItem::Undo, CardState::Last(id)) => {
+                self.anki_jobs.push(AnkiJob::Undo(id));
+            }
+            (MenuItem::Overwrite | MenuItem::Undo, _) => {}
+        }
+    }
+
+    /// The last card deleted from Anki, or not (ANK-054): its entries can
+    /// make a card again, and its word is no longer underlined.
+    pub fn card_undone(&mut self, note_id: u64, result: Result<(), String>) {
+        use crate::mining::CardState;
+        match result {
+            Ok(()) => {
+                if let Some(last) = self.last_card.take_if(|l| l.note_id == note_id) {
+                    self.words.remove_mined(&last.expression);
+                }
+                for p in self.popups.stack_mut() {
+                    for card in &mut p.cards {
+                        if *card == CardState::Last(note_id) {
+                            *card = CardState::CanAdd;
+                        }
+                    }
+                }
+                let message = self.tr("toast-card-undone", &[]);
+                self.toasts.push(message);
+            }
+            Err(message) if !message.is_empty() => self.toasts.push(message),
+            Err(_) => {}
         }
     }
 

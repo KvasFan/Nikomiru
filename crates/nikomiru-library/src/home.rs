@@ -331,6 +331,39 @@ impl Library {
         db_err!(tx.commit())
     }
 
+    /// Marks videos watched or unwatched by hand (LIB-014). Watched: from
+    /// now, its position kept. Unwatched: new again, from the start; the
+    /// mark is kept and synced, so that a watch made before it on another
+    /// device does not bring it back.
+    pub fn set_watched(
+        &self,
+        uids: &[String],
+        watched: bool,
+        now: i64,
+    ) -> Result<(), LibraryError> {
+        for uid in uids {
+            self.edit_video(uid, |v| {
+                if watched {
+                    v.completed_at = v.completed_at.or(Some(now));
+                } else {
+                    v.completed_at = None;
+                    v.last_position_ms = 0;
+                }
+            })?;
+        }
+        if !watched {
+            let tx = self.write()?;
+            {
+                let mut t = db_err!(tx.open_table(crate::sync::UNWATCHED))?;
+                for uid in uids {
+                    db_err!(t.insert(uid.as_str(), now))?;
+                }
+            }
+            db_err!(tx.commit())?;
+        }
+        Ok(())
+    }
+
     /// Sets what the episodes of a series inherit (LIB-010).
     pub fn set_series_prefs(&self, id: u64, prefs: SeriesPrefs) -> Result<(), LibraryError> {
         self.edit_series(id, |s| s.prefs = prefs)
@@ -435,6 +468,38 @@ mod tests {
             (s.episodes, s.watched, s.started, s.last_played_at),
             (3, 1, 2, Some(30))
         );
+    }
+
+    // T-LIB-014
+    #[test]
+    fn episodes_are_marked_watched_and_unwatched_by_hand() {
+        let (_dir, lib) = setup();
+        let alpha = id(&lib, "Alpha");
+        let eps: Vec<String> = lib
+            .episodes(alpha)
+            .unwrap()
+            .into_iter()
+            .map(|(u, _)| u)
+            .collect();
+        lib.save_position(&eps[0], 1_000, Some(100_000), 10)
+            .unwrap();
+        lib.set_watched(&eps[..2], true, 40).unwrap();
+        let watched = |uid: &str| lib.video(uid).unwrap().unwrap().completed_at;
+        assert_eq!(
+            (watched(&eps[0]), watched(&eps[1]), watched(&eps[2])),
+            (Some(40), Some(40), None)
+        );
+        // marked again: the first time stays
+        lib.set_watched(&eps[..1], true, 50).unwrap();
+        assert_eq!(watched(&eps[0]), Some(40));
+        assert_eq!(lib.video(&eps[0]).unwrap().unwrap().last_position_ms, 1_000);
+        lib.set_watched(&eps[..1], false, 60).unwrap();
+        let v = lib.video(&eps[0]).unwrap().unwrap();
+        assert_eq!((v.completed_at, v.last_position_ms), (None, 0));
+        // the mark goes to the other devices
+        let state = lib.export_state(70).unwrap();
+        assert_eq!(state.unwatched.get(&eps[0]), Some(&60));
+        assert_eq!(state.unwatched.get(&eps[1]), None);
     }
 
     // T-VID-001: videos opened on their own, the last first; taken out,

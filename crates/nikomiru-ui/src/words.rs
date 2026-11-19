@@ -454,6 +454,12 @@ impl Words {
         self.mined.insert(expression);
     }
 
+    /// The card of `expression` was deleted again (ANK-054).
+    pub fn remove_mined(&mut self, expression: &str) {
+        self.revision += 1;
+        self.mined.remove(expression);
+    }
+
     /// The statuses set (from the library).
     pub fn set_statuses(&mut self, statuses: HashMap<String, WordStatus>) {
         self.revision += 1;

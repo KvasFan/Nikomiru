@@ -1777,6 +1777,21 @@ fn series(
             state.split_name.clear();
         }
     });
+    // LIB-014
+    ui.horizontal_wrapped(|ui| {
+        for (key, watched) in [
+            ("library-mark-watched", true),
+            ("library-mark-unwatched", false),
+        ] {
+            if ui.button(tr(s, key)).clicked() {
+                out.push(Command::LibraryEdit(LibraryEdit::Watched {
+                    uids: uids.clone(),
+                    watched,
+                }));
+                state.selected.clear();
+            }
+        }
+    });
     if ui.button(tr(s, "library-remove")).clicked() {
         out.push(Command::LibraryEdit(LibraryEdit::Remove(uids)));
         state.selected.clear();
@@ -2756,6 +2771,20 @@ mod tests {
                 if uids == &["video/Alpha - 01"] && title == "Pilot"),
             "{out:?}"
         );
+        // T-LIB-014: ticked episodes marked watched, then new again
+        for (key, watched) in [
+            ("library-mark-watched", true),
+            ("library-mark-unwatched", false),
+        ] {
+            h.get_by_label("E02 Alpha - 02").click();
+            h.run();
+            let out = click(&mut h, key);
+            assert!(
+                matches!(out.as_slice(), [Command::LibraryEdit(LibraryEdit::Watched { uids, watched: w })]
+                    if uids == &["video/Alpha - 02"] && *w == watched),
+                "{out:?}"
+            );
+        }
         h.get_by_label("E02 Alpha - 02").click();
         h.run();
         let out = click(&mut h, "library-remove");

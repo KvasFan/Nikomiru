@@ -72,6 +72,8 @@ pub enum MenuItem {
     OpenInAnki,
     /// Makes another card although one exists.
     AddAnyway,
+    /// Deletes the last card from Anki (only on `✓↩`, ANK-054).
+    Undo,
 }
 
 impl MenuItem {
@@ -82,6 +84,7 @@ impl MenuItem {
                 MenuItem::Overwrite,
                 MenuItem::OpenInAnki,
                 MenuItem::AddAnyway,
+                MenuItem::Undo,
             ],
             CardState::Exists => &[MenuItem::OpenInAnki, MenuItem::AddAnyway],
             CardState::Kept => &[MenuItem::AddAnyway],
@@ -95,6 +98,7 @@ impl MenuItem {
             MenuItem::Overwrite => "card-overwrite",
             MenuItem::OpenInAnki => "card-open-in-anki",
             MenuItem::AddAnyway => "card-add-anyway",
+            MenuItem::Undo => "card-undo",
         }
     }
 
@@ -104,6 +108,7 @@ impl MenuItem {
             MenuItem::Overwrite => "overwrite",
             MenuItem::OpenInAnki => "open-in-anki",
             MenuItem::AddAnyway => "add-anyway",
+            MenuItem::Undo => "undo",
         }
     }
 
@@ -113,6 +118,7 @@ impl MenuItem {
             MenuItem::Overwrite,
             MenuItem::OpenInAnki,
             MenuItem::AddAnyway,
+            MenuItem::Undo,
         ]
         .into_iter()
         .find(|m| m.name() == name)
@@ -528,6 +534,12 @@ pub trait AnkiService: Send {
     /// Opens Anki's browser.
     fn browse(&self, target: BrowseTarget, done: Box<dyn FnOnce(Result<(), String>) + Send>);
 
+    /// Deletes the note `note_id` from Anki and forgets its record (ANK-054).
+    fn undo(&self, note_id: u64, done: Box<dyn FnOnce(Result<(), String>) + Send>) {
+        let _ = note_id;
+        done(Err(String::new()));
+    }
+
     /// Reads what the AnkiConnect of `config` has (ANK-006): the connection
     /// test of the settings.
     fn refresh(&self, config: AnkiConfig, done: Box<dyn FnOnce(Result<AnkiLists, String>) + Send>);
@@ -618,6 +630,8 @@ pub enum AnkiJob {
     },
     /// Open Anki's browser.
     Browse(BrowseTarget),
+    /// Delete the last card from Anki (ANK-054).
+    Undo(u64),
     /// Read what Anki has, with these settings.
     Refresh(AnkiConfig),
     /// "Create Lapis deck", with these settings.
@@ -706,5 +720,12 @@ mod tests {
         assert_eq!(CardState::Kept.glyph(), "✓");
         assert!(CardState::Kept.has_menu());
         assert_eq!(MenuItem::of(CardState::Kept), [MenuItem::AddAnyway]);
+        // T-ANK-054
+        assert_eq!(
+            MenuItem::of(CardState::Last(7)).last(),
+            Some(&MenuItem::Undo)
+        );
+        assert!(!MenuItem::of(CardState::Exists).contains(&MenuItem::Undo));
+        assert_eq!(MenuItem::from_name("undo"), Some(MenuItem::Undo));
     }
 }
