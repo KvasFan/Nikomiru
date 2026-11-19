@@ -512,9 +512,9 @@ struct Glyph {
 }
 
 /// Where a region's characters are written over a page of `size` pixels
-/// drawn at `drawn` (MNG-012): at one size for the whole balloon, as wide
-/// as its narrowest line (as tall, across) and no longer than every line
-/// holds, so it is about the picture's; each line from its top (vertical)
+/// drawn at `drawn` (MNG-012): at one size for the whole balloon, what most
+/// of its lines hold, as wide as they are (as tall, across) and as long as
+/// their characters leave room for, so it is about the picture's; each line from its top (vertical)
 /// or its left, its characters spread along it as the picture's are, at
 /// most a fifth of a character apart.
 fn region_glyphs(
@@ -548,10 +548,18 @@ fn region_glyphs(
         let (across, long) = along(at);
         across.min(long / count as f32)
     };
-    let size = lines
+    // what each line holds; the balloon's size is what most hold, a line
+    // with a character too many packing its own a little closer rather than
+    // shrinking them all
+    let mut held: Vec<f32> = lines
         .iter()
         .map(|(_, _, at, count)| fits(at, *count))
-        .fold(f32::INFINITY, f32::min);
+        .collect();
+    held.sort_by(f32::total_cmp);
+    let size = match (held.first(), held.get(held.len() / 2)) {
+        (Some(least), Some(most)) => least.max(most * 0.8),
+        _ => 0.0,
+    };
     if !size.is_finite() || size <= 0.0 {
         return (0.0, Vec::new());
     }
@@ -840,6 +848,34 @@ fn manga_reader(
         .and_then(|c| c.paragraphs.first())
         .map(|p| &p.text)
         .filter(|t| !t.is_empty());
+    // first what covers the picture's text, then the text written over it,
+    // so that no balloon's cover hides another's text (MNG-012)
+    if s.manga_text {
+        for (page, drawn) in &pages {
+            let regions = open
+                .book
+                .manga_regions
+                .get(page)
+                .or_else(|| s.page.ocr.found.get(page));
+            for region in regions
+                .iter()
+                .flat_map(|p| p.regions.iter().map(move |r| (p, r)))
+            {
+                let (imported, region) = region;
+                let scale = vec2(
+                    drawn.width() / imported.width.max(1) as f32,
+                    drawn.height() / imported.height.max(1) as f32,
+                );
+                for [cl, ct, cr, cb] in &region.covers {
+                    let cover = egui::Rect::from_min_max(
+                        drawn.min + vec2(*cl as f32, *ct as f32) * scale,
+                        drawn.min + vec2(*cr as f32, *cb as f32) * scale,
+                    );
+                    painter.rect_filled(cover.expand(0.5), 2.0, OVER_BALLOON);
+                }
+            }
+        }
+    }
     for (page, drawn) in &pages {
         // imported text, else what was found reading ahead (MNG-011)
         let regions = open
@@ -865,8 +901,8 @@ fn manga_reader(
                 // its text written over it, at about the size of the picture's
                 // (MNG-012), the word looked up marked on it
                 let glyphs = region_glyphs(region, (imported.width, imported.height), *drawn);
+                // the covers are all down already: a neighbour's never hides it
                 if s.manga_text && !glyphs.1.is_empty() {
-                    painter.rect_filled(at.expand(2.0), 4.0, OVER_BALLOON);
                     let chosen = open.chapter == *page && page_text == Some(&region.text);
                     let marked = s
                         .page
@@ -3199,6 +3235,7 @@ mod tests {
                     text: "猫です".into(),
                     vertical: true,
                     lines: vec![(0..9, [10, 10, 80, 100])],
+                    covers: vec![[10, 10, 80, 100]],
                 }],
             },
         );

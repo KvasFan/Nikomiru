@@ -230,7 +230,8 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .map(|b| format!("{b:02x}"))
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
-    cache.join(format!("{digest}-{models}.json"))
+    // 5: the lines the detector marks, measured on the picture (MNG-012)
+    cache.join(format!("{digest}-{models}-11.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -245,6 +246,13 @@ struct CachedRegion {
     bounds: [u32; 4],
     text: String,
     vertical: bool,
+    #[serde(default)]
+    lines: Vec<[u32; 4]>,
+    #[serde(default)]
+    covers: Vec<[u32; 4]>,
+    /// Each line's own text, when it was read line by line.
+    #[serde(default)]
+    parts: Vec<String>,
 }
 
 impl CachedPage {
@@ -259,6 +267,13 @@ impl CachedPage {
                     bounds: r.bounds,
                     text: r.text.clone(),
                     vertical: r.vertical,
+                    lines: r.lines.iter().map(|(_, b)| *b).collect(),
+                    covers: r.covers.clone(),
+                    parts: r
+                        .lines
+                        .iter()
+                        .map(|(range, _)| r.text.get(range.clone()).unwrap_or_default().to_string())
+                        .collect(),
                 })
                 .collect(),
         }
@@ -271,7 +286,22 @@ impl CachedPage {
             regions: self
                 .regions
                 .into_iter()
-                .map(|r| Region::guessed(r.bounds, r.text, r.vertical))
+                .map(|r| {
+                    let covers = if r.covers.is_empty() {
+                        vec![r.bounds]
+                    } else {
+                        r.covers
+                    };
+                    if r.parts.len() == r.lines.len()
+                        && !r.parts.is_empty()
+                        && r.parts.concat() == r.text
+                    {
+                        let read = r.parts.into_iter().zip(r.lines).collect();
+                        Region::from_lines(r.bounds, r.vertical, read, covers)
+                    } else {
+                        Region::in_lines(r.bounds, r.text, r.vertical, &r.lines, covers)
+                    }
+                })
                 .collect(),
         }
     }
@@ -301,6 +331,7 @@ impl Pages {
         let blocks = match test_text() {
             // the tests' text, in a block in the middle of the page
             Some(_) => vec![nikomiru_ocr::Block {
+                lines: Vec::new(),
                 bounds: [width / 4, height / 4, width * 3 / 4, height * 3 / 4],
                 vertical: true,
             }],
@@ -312,13 +343,56 @@ impl Pages {
             while self.asked.load(Ordering::Acquire) > 0 {
                 std::thread::sleep(Duration::from_millis(20));
             }
-            let [l, t, r, b] = block.bounds;
-            let text = match test_text() {
-                Some(text) => text,
-                None => engine.get()?.read(&picture.crop_imm(l, t, r - l, b - t))?,
-            };
-            if !text.is_empty() {
-                regions.push(Region::guessed(block.bounds, text, block.vertical));
+            // its lines and ink as the picture draws them, then each line
+            // read, all of them together (MNG-012)
+            let drawn =
+                nikomiru_ocr::layout(&picture, &block, nikomiru_ocr::estimated_chars(&block));
+            match test_text() {
+                Some(_) | None if drawn.lines.is_empty() => {
+                    // no line stands out: the block read whole
+                    let [l, t, r, b] = block.bounds;
+                    let text = match test_text() {
+                        Some(text) => text,
+                        None => engine.get()?.read(&picture.crop_imm(l, t, r - l, b - t))?,
+                    };
+                    if !text.is_empty() {
+                        regions.push(Region::in_lines(
+                            block.bounds,
+                            text,
+                            block.vertical,
+                            &[],
+                            drawn.covers,
+                        ));
+                    }
+                }
+                _ => {
+                    let crops: Vec<_> = drawn
+                        .lines
+                        .iter()
+                        .map(|&[l, t, r, b]| {
+                            let (l, t) = (l.saturating_sub(2), t.saturating_sub(2));
+                            let (r, b) = ((r + 2).min(width), (b + 2).min(height));
+                            picture.crop_imm(l, t, r - l, b - t)
+                        })
+                        .collect();
+                    let texts = match test_text() {
+                        Some(text) => vec![text; crops.len()],
+                        None => engine.get()?.read_many(&crops)?,
+                    };
+                    let read: Vec<(String, [u32; 4])> = texts
+                        .into_iter()
+                        .zip(drawn.lines.iter().copied())
+                        .filter(|(text, _)| !text.is_empty())
+                        .collect();
+                    if !read.is_empty() {
+                        regions.push(Region::from_lines(
+                            block.bounds,
+                            block.vertical,
+                            read,
+                            drawn.covers,
+                        ));
+                    }
+                }
             }
         }
         let page = Page {

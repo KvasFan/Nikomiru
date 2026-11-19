@@ -266,12 +266,16 @@ const DETECT_OVERLAP: f32 = 0.35;
 const DETECT_MIN: u32 = 8;
 
 /// A block of text found on a page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Block {
     /// Left, top, right and bottom, in pixels of the page.
     pub bounds: [u32; 4],
-    /// Written top to bottom: taller than wide.
+    /// Written top to bottom, in columns.
     pub vertical: bool,
+    /// Its lines as the detector marks them, thinner than the text, in
+    /// reading order: columns from the right, or rows from the top. Empty
+    /// when it marked none.
+    pub lines: Vec<[u32; 4]>,
 }
 
 /// The detector, loaded.
@@ -289,14 +293,15 @@ impl Detector {
             .model_for_path(dir.join(DETECTOR.name))
             .and_then(|m| m.with_input_fact(0, f32::fact([1, 3, DETECT_SIDE, DETECT_SIDE]).into()))
             .map_err(model_err)?;
-        // only the blocks: the masks of the text's pixels are not needed,
-        // and their part of the network is left out
-        let blocks = *model
-            .output_outlets()
-            .map_err(model_err)?
-            .first()
-            .ok_or_else(|| OcrError::Model("the detector has no output".into()))?;
-        model.select_output_outlets(&[blocks]).map_err(model_err)?;
+        // the blocks and the lines of text: the mask of the text's pixels is
+        // not needed, and its part of the network is left out
+        let outputs = model.output_outlets().map_err(model_err)?.to_vec();
+        let (Some(blocks), Some(lines)) = (outputs.first(), outputs.get(2)) else {
+            return Err(OcrError::Model("the detector lacks an output".into()));
+        };
+        model
+            .select_output_outlets(&[*blocks, *lines])
+            .map_err(model_err)?;
         let plan = model
             .into_optimized()
             .and_then(|m| m.into_runnable())
@@ -337,7 +342,104 @@ impl Detector {
             .map(|row| ([row[0], row[1], row[2], row[3]], row[4]))
             .collect::<Vec<_>>();
         let scale = (width as f32 / side as f32, height as f32 / side as f32);
-        Ok(blocks(found, scale, (width, height)))
+        let mut kept = blocks(found, scale, (width, height));
+        let map = output
+            .get(1)
+            .ok_or_else(|| OcrError::Model("the detector gave no lines".into()))?
+            .to_plain_array_view::<f32>()
+            .map_err(model_err)?
+            .into_dimensionality::<tract_ndarray::Ix4>()
+            .map_err(model_err)?;
+        let map = map
+            .index_axis(tract_ndarray::Axis(0), 0)
+            .index_axis_move(tract_ndarray::Axis(0), 0);
+        let lines: Vec<[u32; 4]> = components(map, LINE_SURE)
+            .into_iter()
+            .map(|[l, t, r, b]| {
+                let x = |v: u32| ((v as f32 * scale.0).round() as u32).min(width);
+                let y = |v: u32| ((v as f32 * scale.1).round() as u32).min(height);
+                [x(l), y(t), x(r), y(b)]
+            })
+            .collect();
+        give_lines(&mut kept, &lines);
+        Ok(kept)
+    }
+}
+
+/// How sure the detector must be that a pixel is in a line of text.
+const LINE_SURE: f32 = 0.3;
+
+/// The boxes of the parts of `map` at least `sure`, each part its pixels
+/// touching side by side: left, top, right and bottom (exclusive).
+fn components(map: tract_ndarray::ArrayView2<'_, f32>, sure: f32) -> Vec<[u32; 4]> {
+    let (h, w) = map.dim();
+    let mut seen = vec![false; w * h];
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+    for y0 in 0..h {
+        for x0 in 0..w {
+            if seen[y0 * w + x0] || map[[y0, x0]] < sure {
+                continue;
+            }
+            seen[y0 * w + x0] = true;
+            stack.push((x0, y0));
+            let mut b = [x0, y0, x0, y0];
+            while let Some((x, y)) = stack.pop() {
+                b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                let next = [
+                    (x.wrapping_sub(1), y),
+                    (x + 1, y),
+                    (x, y.wrapping_sub(1)),
+                    (x, y + 1),
+                ];
+                for (nx, ny) in next {
+                    if nx < w && ny < h && !seen[ny * w + nx] && map[[ny, nx]] >= sure {
+                        seen[ny * w + nx] = true;
+                        stack.push((nx, ny));
+                    }
+                }
+            }
+            out.push([b[0] as u32, b[1] as u32, b[2] as u32 + 1, b[3] as u32 + 1]);
+        }
+    }
+    out
+}
+
+/// Gives each block the lines whose middle is in it, and its writing from
+/// them: in columns when as many of them are at least as tall as wide as
+/// are wider; a block with none keeps the guess from its shape.
+fn give_lines(blocks: &mut [Block], lines: &[[u32; 4]]) {
+    for block in blocks {
+        let [l, t, r, b] = block.bounds;
+        let mut mine: Vec<[u32; 4]> = lines
+            .iter()
+            .copied()
+            .filter(|line| {
+                let (cx, cy) = ((line[0] + line[2]) / 2, (line[1] + line[3]) / 2);
+                cx >= l && cx < r && cy >= t && cy < b
+            })
+            .collect();
+        // specks the detector marked are no lines: far shorter than the
+        // longest, or a few pixels
+        let long = |m: &[u32; 4]| (m[2] - m[0]).max(m[3] - m[1]);
+        let longest = mine.iter().map(long).max().unwrap_or(0);
+        mine.retain(|m| long(m) >= 6 && long(m) * 3 >= longest);
+        if mine.is_empty() {
+            continue;
+        }
+        let tall = mine.iter().filter(|m| m[3] - m[1] >= m[2] - m[0]).count();
+        // one mark alone may be short columns run together: against the
+        // block's shape, the shape decides and the ink is measured instead
+        if mine.len() == 1 && (tall == 1) != block.vertical {
+            continue;
+        }
+        block.vertical = tall * 2 >= mine.len();
+        if block.vertical {
+            mine.sort_by_key(|m| std::cmp::Reverse(m[0] + m[2]));
+        } else {
+            mine.sort_by_key(|m| m[1] + m[3]);
+        }
+        block.lines = mine;
     }
 }
 
@@ -384,9 +486,12 @@ fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) 
                 bounds[2] - bounds[0].min(bounds[2]),
                 bounds[3] - bounds[1].min(bounds[3]),
             );
+            // Japanese is written in columns, even in a block somewhat wider
+            // than tall: only a clearly wide one is a row of text
             (w >= DETECT_MIN && h >= DETECT_MIN).then_some(Block {
                 bounds,
-                vertical: h > w,
+                vertical: w <= 2 * h,
+                lines: Vec::new(),
             })
         })
         .collect();
@@ -394,6 +499,592 @@ fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) 
     let row = (size.1 / 8).max(1);
     out.sort_by_key(|b| (b.bounds[1] / row, std::cmp::Reverse(b.bounds[2])));
     out
+}
+
+/// About how many characters a block holds, before it is read: its lines
+/// (or one) as wide as a character, each as long as the block (MNG-012).
+pub fn estimated_chars(block: &Block) -> usize {
+    let [l, t, r, b] = block.bounds;
+    let (w, h) = (r.saturating_sub(l).max(1), b.saturating_sub(t).max(1));
+    let (across, along) = if block.vertical { (w, h) } else { (h, w) };
+    let lines = (block.lines.len() as u32).max(1);
+    let side = (across / lines).max(1);
+    (lines * along / side).max(1) as usize
+}
+
+/// Below this grey, a pixel is ink, whatever the ground (the tests' ink).
+#[cfg(test)]
+const INK: u8 = 128;
+
+/// The grey below which a pixel of `area` of `grey` is ink: well darker than
+/// the area's usual grey, its ground, so that the thin grey strokes of a
+/// small scan count as well as black ones (MNG-012).
+fn ink_below(grey: &image::GrayImage, area: [u32; 4]) -> u8 {
+    let (w, h) = grey.dimensions();
+    let mut shades = [0u32; 256];
+    for y in area[1].min(h)..area[3].min(h) {
+        for x in area[0].min(w)..area[2].min(w) {
+            shades[usize::from(grey[(x, y)].0[0])] += 1;
+        }
+    }
+    let total: u32 = shades.iter().sum();
+    let mut seen = 0;
+    let median = shades
+        .iter()
+        .position(|n| {
+            seen += n;
+            seen * 2 >= total
+        })
+        .unwrap_or(255) as u8;
+    median.saturating_sub(70).clamp(100, 190)
+}
+
+/// How a block's text is drawn on the page (MNG-012).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layout {
+    /// Its lines: columns from the right (rows from the top when it is not
+    /// vertical), each from its first ink to its last, in pixels of the page.
+    pub lines: Vec<[u32; 4]>,
+    /// What covers its ink: a box for each line with its furigana, and for
+    /// the strokes set apart, a pixel wider; the whole block when its lines
+    /// are only guessed. Left, top, right and bottom in pixels of the page.
+    pub covers: Vec<[u32; 4]>,
+}
+
+/// `b` a pixel wider each way, on a page `pw` by `ph`.
+fn margin(b: [u32; 4], pw: u32, ph: u32) -> [u32; 4] {
+    [
+        b[0].saturating_sub(1),
+        b[1].saturating_sub(1),
+        (b[2] + 1).min(pw),
+        (b[3] + 1).min(ph),
+    ]
+}
+
+/// The lines of a block of `chars` characters as the picture draws them,
+/// and what covers its ink (MNG-012). Ink is counted across the block and a
+/// little beyond it, where furigana may lie; a run of it is a line, runs
+/// that together are no wider than a character make one (the strokes of
+/// い), runs narrower than half a character are furigana when next to a
+/// line, specks otherwise. Without a line that stands out, no lines and the
+/// block itself.
+pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
+    if !block.lines.is_empty() && chars > 0 {
+        let vertical = block.vertical;
+        let split = Block {
+            lines: split_blobs(page, block),
+            ..block.clone()
+        };
+        let block = &split;
+        let mut marked = layout_from_lines(page, block);
+        if marked.lines.is_empty() {
+            return marked;
+        }
+        // a column the detector left unmarked, found in the ink: only one
+        // between two marked lines of the same balloon (across from it),
+        // as wide as they are; the art around the balloons is left alone
+        let measured = layout(
+            page,
+            &Block {
+                lines: Vec::new(),
+                ..block.clone()
+            },
+            chars,
+        );
+        let across = |m: &[u32; 4]| if vertical { (m[0], m[2]) } else { (m[1], m[3]) };
+        let along = |m: &[u32; 4]| if vertical { (m[1], m[3]) } else { (m[0], m[2]) };
+        let overlap = |(a0, a1): (u32, u32), (b0, b1): (u32, u32)| {
+            a1.min(b1).saturating_sub(a0.max(b0)) * 10 >= (a1 - a0).min(b1 - b0).max(1) * 5
+        };
+        let mut widths: Vec<u32> = marked
+            .lines
+            .iter()
+            .map(|m| across(m).1 - across(m).0)
+            .collect();
+        widths.sort_unstable();
+        let width = widths[widths.len() / 2].max(1);
+        let middle = |m: &[u32; 4]| (across(m).0 + across(m).1) / 2;
+        // how much of a box is ink: text is dense, an outline crossing is not
+        let grey = page.to_luma8();
+        let below = ink_below(&grey, block.bounds);
+        let density = |m: &[u32; 4]| {
+            let area = u64::from(m[2] - m[0]) * u64::from(m[3] - m[1]);
+            let inked = (m[1]..m[3])
+                .flat_map(|y| (m[0]..m[2]).map(move |x| (x, y)))
+                .filter(|&(x, y)| grey[(x, y)].0[0] < below)
+                .count() as u64;
+            inked * 1000 / area.max(1)
+        };
+        let mut dense: Vec<u64> = marked.lines.iter().map(density).collect();
+        dense.sort_unstable();
+        let dense = dense[dense.len() / 2];
+        let missed: Vec<[u32; 4]> = measured
+            .lines
+            .iter()
+            .filter(|m| {
+                let w = across(m).1 - across(m).0;
+                let beside: Vec<&[u32; 4]> = marked
+                    .lines
+                    .iter()
+                    .filter(|k| overlap(along(k), along(m)))
+                    .collect();
+                w * 10 >= width * 6
+                    && w * 10 <= width * 16
+                    && density(m) * 10 >= dense * 6
+                    && !marked.lines.iter().any(|k| overlap(across(k), across(m)))
+                    && beside.iter().any(|k| middle(k) < middle(m))
+                    && beside.iter().any(|k| middle(k) > middle(m))
+            })
+            .copied()
+            .collect();
+        let (pw, ph) = page.dimensions();
+        marked
+            .covers
+            .extend(missed.iter().map(|m| margin(*m, pw, ph)));
+        marked.lines.extend(missed);
+        if vertical {
+            marked.lines.sort_by_key(|m| std::cmp::Reverse(m[0] + m[2]));
+        } else {
+            marked.lines.sort_by_key(|m| m[1] + m[3]);
+        }
+        // furigana marked as a line of their own: narrower than most, close
+        // after a longer line (to its right in columns, above in rows) that
+        // spans them; covered, but not read as text
+        let all = marked.lines.clone();
+        marked.lines.retain(|m| {
+            let (m0, m1) = across(m);
+            let (g0, g1) = along(m);
+            let narrow = (m1 - m0) * 100 <= width * 80;
+            !(narrow
+                && all.iter().any(|k| {
+                    let (k0, k1) = across(k);
+                    let (h0, h1) = along(k);
+                    // touching it, as furigana touch their characters
+                    let beside = if vertical {
+                        k1 <= m0 + 2 && m0 <= k1 + 2
+                    } else {
+                        m1 <= k0 + 2 && k0 <= m1 + 2
+                    };
+                    beside && h0 <= g0 + 4 && g1 <= h1 + 4 && (g1 - g0) * 4 <= (h1 - h0) * 3
+                }))
+        });
+        return marked;
+    }
+    let [l, t, r, b] = block.bounds;
+    let (r, b) = (r.min(page.width()), b.min(page.height()));
+    let alone = Layout {
+        lines: Vec::new(),
+        covers: vec![block.bounds],
+    };
+    if chars == 0 || r <= l || b <= t {
+        return alone;
+    }
+    // a character's side, from the block's area and the characters in it
+    let side = (f64::from(r - l) * f64::from(b - t) / chars as f64)
+        .sqrt()
+        .max(4.0);
+    let reach = (side * 0.6) as u32;
+    // across the lines, the block and a furigana's width either side
+    let (wl, wr, wt, wb) = if block.vertical {
+        (l.saturating_sub(reach), (r + reach).min(page.width()), t, b)
+    } else {
+        (
+            l,
+            r,
+            t.saturating_sub(reach),
+            (b + reach).min(page.height()),
+        )
+    };
+    let grey = page.crop_imm(wl, wt, wr - wl, wb - wt).to_luma8();
+    let below = ink_below(&grey, [l - wl, t - wt, r - wl, b - wt]);
+    let (w, h) = grey.dimensions();
+    let (across, along) = if block.vertical { (w, h) } else { (h, w) };
+    let ink = |a: u32, g: u32| {
+        let (x, y) = if block.vertical { (a, g) } else { (g, a) };
+        grey[(x, y)].0[0] < below
+    };
+    // runs of ink across: where they start and end, and how much ink; an
+    // outline or a curve crossing leaves a little ink, no line's
+    let counts: Vec<usize> = (0..across)
+        .map(|a| (0..along).filter(|g| ink(a, *g)).count())
+        .collect();
+    let least = ((f64::from(along) * 0.02) as usize)
+        .max(counts.iter().copied().max().unwrap_or(0) * 15 / 100)
+        .max(1);
+    let mut runs: Vec<(u32, u32, usize)> = Vec::new();
+    for (a, &count) in (0..across).zip(&counts) {
+        if count < least {
+            continue;
+        }
+        match runs.last_mut() {
+            Some(run) if a == run.1 + 1 => {
+                run.1 = a;
+                run.2 += count;
+            }
+            _ => runs.push((a, a, count)),
+        }
+    }
+    // a line's width: the widest run of ink, a whole column of characters
+    // (the count of characters only guessed before they are read, it does
+    // not say how wide they are)
+    let unit = f64::from(runs.iter().map(|r| r.1 - r.0 + 1).max().unwrap_or(1));
+    let narrow = |run: &(u32, u32, usize)| f64::from(run.1 - run.0 + 1) < unit * 0.45;
+    // furigana: a narrow run with far less ink than the one beside it
+    let ruby = |a: &(u32, u32, usize), b: &(u32, u32, usize)| narrow(a) && a.2 * 10 < b.2 * 3;
+    let mut merged: Vec<(u32, u32, usize)> = Vec::new();
+    for run in runs {
+        match merged.last_mut() {
+            // the strokes of one character, much alike and close, make one
+            // line
+            Some(last)
+                if f64::from(run.1 - last.0 + 1) <= unit * 1.25
+                    && f64::from(run.0 - last.1) <= unit * 0.35
+                    && !ruby(&run, last)
+                    && !ruby(last, &run) =>
+            {
+                last.1 = run.1;
+                last.2 += run.2;
+            }
+            _ => merged.push(run),
+        }
+    }
+    let merged: Vec<(u32, u32)> = merged.into_iter().map(|(a, b, _)| (a, b)).collect();
+    // the block's own across range, in the window
+    let (inside_start, inside_end) = if block.vertical {
+        (l - wl, r - wl)
+    } else {
+        (t - wt, b - wt)
+    };
+    let wide = |run: &(u32, u32)| f64::from(run.1 - run.0 + 1) >= unit * 0.45;
+    let text: Vec<(u32, u32)> = merged
+        .iter()
+        .copied()
+        .filter(|run| {
+            wide(run) && (run.0 + run.1) / 2 >= inside_start && (run.0 + run.1) / 2 < inside_end
+        })
+        .collect();
+    if text.is_empty() {
+        return alone;
+    }
+    let near = |run: &(u32, u32)| {
+        text.iter()
+            .any(|t| run.0 <= t.1 + reach && run.1 + reach >= t.0)
+    };
+    let furigana: Vec<(u32, u32)> = merged
+        .iter()
+        .copied()
+        .filter(|run| !wide(run) && near(run))
+        .collect();
+    let extent = |(start, end): (u32, u32)| {
+        let inked: Vec<u32> = (0..along)
+            .filter(|g| (start..=end).any(|a| ink(a, *g)))
+            .collect();
+        let (first, last) = (*inked.first()?, *inked.last()?);
+        Some(if block.vertical {
+            [wl + start, wt + first, wl + end + 1, wt + last + 1]
+        } else {
+            [wl + first, wt + start, wl + last + 1, wt + end + 1]
+        })
+    };
+    // a line of text has ink along most of it; an outline crossing the
+    // block has it only where it crosses, at its ends
+    let filled = |(start, end): (u32, u32)| {
+        let inked: Vec<u32> = (0..along)
+            .filter(|g| (start..=end).any(|a| ink(a, *g)))
+            .collect();
+        match (inked.first(), inked.last()) {
+            (Some(first), Some(last)) => inked.len() * 100 >= (last - first + 1) as usize * 35,
+            _ => false,
+        }
+    };
+    let mut lines: Vec<[u32; 4]> = text
+        .iter()
+        .filter(|run| filled(**run))
+        .filter_map(|run| extent(*run))
+        .collect();
+    // each line and each furigana, a pixel wider for the edges of strokes
+    let covers = lines
+        .iter()
+        .copied()
+        .chain(furigana.iter().filter_map(|run| extent(*run)))
+        .map(|b| margin(b, page.width(), page.height()))
+        .collect();
+    if block.vertical {
+        lines.reverse();
+    }
+    Layout { lines, covers }
+}
+
+/// The detector's marks, a mark over short columns run together (as wide
+/// as a blob, not a line) split into the columns its ink shows.
+fn split_blobs(page: &DynamicImage, block: &Block) -> Vec<[u32; 4]> {
+    let vertical = block.vertical;
+    let across = |m: &[u32; 4]| if vertical { m[2] - m[0] } else { m[3] - m[1] };
+    let along = |m: &[u32; 4]| if vertical { m[3] - m[1] } else { m[2] - m[0] };
+    let mut widths: Vec<u32> = block.lines.iter().map(across).collect();
+    widths.sort_unstable();
+    let median = widths.get(widths.len() / 2).copied().unwrap_or(0);
+    let (pw, ph) = page.dimensions();
+    let mut out = Vec::new();
+    for mark in &block.lines {
+        let (w, length) = (across(mark), along(mark));
+        let blob = w * 10 >= length * 6 || (block.lines.len() >= 2 && w * 10 >= median * 18);
+        if blob {
+            let pad = w / 4 + 2;
+            let sub = Block {
+                bounds: [
+                    mark[0].saturating_sub(pad),
+                    mark[1].saturating_sub(pad),
+                    (mark[2] + pad).min(pw),
+                    (mark[3] + pad).min(ph),
+                ],
+                vertical,
+                lines: Vec::new(),
+            };
+            // characters about half as wide as the blob: two columns
+            let side = u64::from((w / 2).max(6));
+            let [sl, st, sr, sb] = sub.bounds;
+            let area = u64::from(sr - sl) * u64::from(sb - st);
+            let chars = (area / (side * side)).max(1) as usize;
+            let found = layout(page, &sub, chars);
+            if found.lines.len() >= 2 {
+                // each column's middle half, as thin as a mark
+                out.extend(found.lines.iter().map(|line| {
+                    let q = across(line) / 4;
+                    if vertical {
+                        [line[0] + q, line[1], line[2] - q, line[3]]
+                    } else {
+                        [line[0], line[1] + q, line[2], line[3] - q]
+                    }
+                }));
+                continue;
+            }
+        }
+        out.push(*mark);
+    }
+    if vertical {
+        out.sort_by_key(|m| std::cmp::Reverse(m[0] + m[2]));
+    } else {
+        out.sort_by_key(|m| m[1] + m[3]);
+    }
+    out
+}
+
+/// The layout from the lines the detector marked (MNG-012): each line's
+/// ink measured across a band reaching halfway to its neighbours, the run
+/// of ink under the mark its text, the strokes beside it alike in ink part
+/// of it, narrow runs with far less ink its furigana; along, the ink from
+/// a character before the mark to one after it, inside the block.
+fn layout_from_lines(page: &DynamicImage, block: &Block) -> Layout {
+    let (pw, ph) = page.dimensions();
+    let [l, t, r, b] = block.bounds;
+    let (r, b) = (r.min(pw), b.min(ph));
+    let grey = page.to_luma8();
+    let below = ink_below(&grey, [l, t, r, b]);
+    let vertical = block.vertical;
+    // across and along a line, in page pixels
+    let ink = |a: u32, g: u32| {
+        let (x, y) = if vertical { (a, g) } else { (g, a) };
+        x < pw && y < ph && grey[(x, y)].0[0] < below
+    };
+    let mid = |m: &[u32; 4]| {
+        if vertical {
+            (m[0] + m[2]) / 2
+        } else {
+            (m[1] + m[3]) / 2
+        }
+    };
+    // a mark may run past the block's box: its line follows it
+    let (along_start, along_end) = if vertical { (t, b) } else { (l, r) };
+    let along_limit = if vertical { ph } else { pw };
+    let limit = if vertical { pw } else { ph };
+    let mut lines = Vec::new();
+    let mut covers = Vec::new();
+    let grow = |part: [u32; 4], cover: &mut [u32; 4]| {
+        *cover = [
+            cover[0].min(part[0]),
+            cover[1].min(part[1]),
+            cover[2].max(part[2]),
+            cover[3].max(part[3]),
+        ];
+    };
+    let centres: Vec<u32> = block.lines.iter().map(mid).collect();
+    // the marks a line was measured for
+    let mut marks: Vec<[u32; 4]> = Vec::new();
+    for (i, mark) in block.lines.iter().enumerate() {
+        let c = centres[i];
+        let (mark_start, mark_end) = if vertical {
+            (mark[1], mark[3])
+        } else {
+            (mark[0], mark[2])
+        };
+        let mark_width = if vertical {
+            mark[2] - mark[0]
+        } else {
+            mark[3] - mark[1]
+        };
+        // the band: halfway to the nearest line alongside (another balloon
+        // above or below is not beside it), and never more than a
+        // character and its furigana either way: the mark is about half a
+        // character wide
+        let alongside = |o: &[u32; 4]| {
+            let (o0, o1) = if vertical { (o[1], o[3]) } else { (o[0], o[2]) };
+            o1.min(mark_end) > o0.max(mark_start)
+        };
+        let reach_most = (mark_width * 2).max(6);
+        let half = block
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(j, o)| *j != i && alongside(o))
+            .map(|(j, _)| centres[j].abs_diff(c) / 2)
+            .min()
+            .map_or(reach_most, |h| h.clamp(2, reach_most));
+        // and inside the block, with room for furigana past its edges
+        let (a0, a1) = if vertical { (l, r) } else { (t, b) };
+        let pad = (a1 - a0) / 8 + 4;
+        let (band_start, band_end) = (
+            c.saturating_sub(half).max(a0.saturating_sub(pad)),
+            (c + half).min(limit).min(a1 + pad),
+        );
+        // along, a little past the mark (it is drawn shorter than the
+        // text): about a character, judged from the mark's own width
+        let reach = (mark_width * 3).max(4);
+        let (g0, g1) = (
+            mark_start
+                .saturating_sub(reach)
+                .max(along_start.min(mark_start)),
+            (mark_end + reach)
+                .min(along_end.max(mark_end))
+                .min(along_limit),
+        );
+        if g1 <= g0 {
+            continue;
+        }
+        // runs of ink across the band; a balloon's outline crossing it
+        // leaves a little ink everywhere, which is not a line's
+        let counts: Vec<usize> = (band_start..band_end)
+            .map(|a| (g0..g1).filter(|g| ink(a, *g)).count())
+            .collect();
+        let least = (counts.iter().copied().max().unwrap_or(0) * 15 / 100).max(1);
+        let mut runs: Vec<(u32, u32, usize)> = Vec::new();
+        for (a, &count) in (band_start..band_end).zip(&counts) {
+            if count < least {
+                continue;
+            }
+            match runs.last_mut() {
+                Some(run) if a <= run.1 + 2 => {
+                    run.1 = a;
+                    run.2 += count;
+                }
+                _ => runs.push((a, a, count)),
+            }
+        }
+        let Some(core) = runs
+            .iter()
+            .position(|run| run.0 <= c && c <= run.1)
+            .or_else(|| {
+                (0..runs.len()).min_by_key(|k| runs[*k].0.abs_diff(c).min(runs[*k].1.abs_diff(c)))
+            })
+        else {
+            continue;
+        };
+        // the text: the ink the mark lies on (the mark is drawn inside its
+        // line), the runs of it touching the mark's width; a run beside it
+        // that is narrow and faint is its furigana, covered with it; the
+        // rest of the band, another line or the art, is left alone
+        let (m0, m1) = if vertical {
+            (mark[0], mark[2])
+        } else {
+            (mark[1], mark[3])
+        };
+        let on_mark = |run: &(u32, u32, usize)| run.0 <= m1 && m0 <= run.1 + 1;
+        let mut text = runs[core];
+        for run in runs.iter().filter(|run| on_mark(run)) {
+            text = (text.0.min(run.0), text.1.max(run.1), text.2 + run.2);
+        }
+        let text = (
+            text.0,
+            text.1,
+            runs.iter()
+                .filter(|r| r.0 >= text.0 && r.1 <= text.1)
+                .map(|r| r.2)
+                .sum::<usize>(),
+        );
+        let ruby_of = |run: &(u32, u32, usize)| {
+            (run.1 - run.0 + 1) * 10 <= (text.1 - text.0 + 1) * 6 && run.2 * 10 < text.2 * 3
+        };
+        let width = text.1 - text.0 + 1;
+        let ruby: Vec<(u32, u32, usize)> = runs
+            .iter()
+            .filter(|run| run.1 < text.0 || run.0 > text.1)
+            .filter(|run| {
+                let gap = if run.1 < text.0 {
+                    text.0 - run.1
+                } else {
+                    run.0 - text.1
+                };
+                gap <= (width * 6 / 10).max(3) && ruby_of(run)
+            })
+            .copied()
+            .collect();
+        // along, the ink within about a character of the mark's ends
+        let slack = (width * 3 / 4).max(reach);
+        let (g0, g1) = (
+            mark_start
+                .saturating_sub(slack)
+                .max(along_start.min(mark_start)),
+            (mark_end + slack)
+                .min(along_end.max(mark_end))
+                .min(along_limit),
+        );
+        let extent = |(a0, a1): (u32, u32)| {
+            let inked: Vec<u32> = (g0..g1).filter(|g| (a0..=a1).any(|a| ink(a, *g))).collect();
+            let (first, last) = (*inked.first()?, *inked.last()?);
+            Some(if vertical {
+                [a0, first, a1 + 1, last + 1]
+            } else {
+                [first, a0, last + 1, a1 + 1]
+            })
+        };
+        // the line with its furigana, covered together
+        if let Some(line) = extent((text.0, text.1)) {
+            let mut cover = line;
+            for run in &ruby {
+                if let Some(part) = extent((run.0, run.1)) {
+                    grow(part, &mut cover);
+                }
+            }
+            covers.push(margin(cover, pw, ph));
+            lines.push(line);
+            marks.push(*mark);
+        }
+    }
+    // a line far narrower than the others is furigana or a stroke the
+    // detector marked apart: covered, not written in
+    let across = |m: &[u32; 4]| if vertical { m[2] - m[0] } else { m[3] - m[1] };
+    let mut widths: Vec<u32> = lines.iter().map(across).collect();
+    widths.sort_unstable();
+    if let Some(&median) = widths.get(widths.len() / 2) {
+        let kept: Vec<[u32; 4]> = lines
+            .iter()
+            .zip(&marks)
+            .filter(|(m, _)| across(m) * 10 >= median * 6)
+            .map(|(_, mark)| *mark)
+            .collect();
+        // measured again without them, which narrowed their neighbours'
+        // bands, everything found the first time still covered
+        if kept.len() < lines.len() && !kept.is_empty() {
+            let again = Block {
+                lines: kept,
+                ..block.clone()
+            };
+            let mut second = layout_from_lines(page, &again);
+            second.covers.extend(covers);
+            return second;
+        }
+    }
+    Layout { lines, covers }
 }
 
 /// Matrix products on half the processor's cores, as the other readers.
@@ -421,14 +1112,19 @@ impl Engine {
                 .with_ignore_value_info(true)
                 .with_ignore_output_shapes(true)
         };
-        let pixels = tvec!(1, 3, SIDE, SIDE);
+        // pictures read together, as many as given: a batch of a symbolic
+        // size, so that the lines of a balloon cost little more than one
         let encoder = onnx()
             .model_for_path(dir.join("encoder.onnx"))
-            .and_then(|m| m.with_input_fact(0, f32::fact(&pixels).into()))
+            .map_err(model_err)?;
+        let many = encoder.symbols.sym("N");
+        let pixels: TVec<TDim> = tvec!(many.into(), SIDE.into(), SIDE.into(), SIDE.into());
+        let pixels: TVec<TDim> = tvec!(pixels[0].clone(), 3.into(), SIDE.into(), SIDE.into());
+        let encoder = encoder
+            .with_input_fact(0, f32::fact(&pixels).into())
             .and_then(|m| m.into_optimized())
             .and_then(|m| m.into_runnable())
             .map_err(model_err)?;
-        let hidden = tvec!(1, HIDDEN.0, HIDDEN.1);
         // the tokens so far are a symbolic length: the decoder is typed and
         // optimised once, instead of having its shapes worked out again at
         // every token (MNG-003)
@@ -436,7 +1132,9 @@ impl Engine {
             .model_for_path(dir.join("decoder.onnx"))
             .map_err(model_err)?;
         let length = decoder.symbols.sym("L");
-        let tokens: TVec<TDim> = tvec!(1.into(), length.into());
+        let many = decoder.symbols.sym("N");
+        let tokens: TVec<TDim> = tvec!(many.clone().into(), length.into());
+        let hidden: TVec<TDim> = tvec!(many.into(), HIDDEN.0.into(), HIDDEN.1.into());
         let decoder = decoder
             .with_input_fact(0, i64::fact(&tokens).into())
             .and_then(|m| m.with_input_fact(1, f32::fact(&hidden).into()))
@@ -473,15 +1171,43 @@ impl Engine {
     }
 
     fn read_here(&self, picture: &DynamicImage) -> Result<String, OcrError> {
+        Ok(self.read_together(std::slice::from_ref(picture))?.remove(0))
+    }
+
+    /// The text in each of `pictures`, the lines of a balloon (MNG-012),
+    /// read together: one pass of the encoder over them all, then each step
+    /// of the decoder for all of them at once, a text that has ended kept
+    /// going with its end, so that they all stay as long.
+    pub fn read_many(&self, pictures: &[DynamicImage]) -> Result<Vec<String>, OcrError> {
+        tract_linalg::multithread::multithread_tract_scope(self.threads.clone(), || {
+            self.read_together(pictures)
+        })
+    }
+
+    fn read_together(&self, pictures: &[DynamicImage]) -> Result<Vec<String>, OcrError> {
+        let n = pictures.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        let mut pixels = tract_ndarray::Array4::<f32>::zeros((n, 3, SIDE, SIDE));
+        for (i, picture) in pictures.iter().enumerate() {
+            let one = pixel_values(picture);
+            let one = one.to_plain_array_view::<f32>().map_err(model_err)?;
+            pixels
+                .index_axis_mut(tract_ndarray::Axis(0), i)
+                .assign(&one.index_axis(tract_ndarray::Axis(0), 0));
+        }
         let hidden = self
             .encoder
-            .run(tvec!(pixel_values(picture).into()))
+            .run(tvec!(Tensor::from(pixels).into()))
             .map_err(model_err)?
             .remove(0);
-        let mut tokens = vec![START];
-        while tokens.len() < MAX_TOKENS {
-            let length = tokens.len();
-            let input: Tensor = tract_ndarray::Array2::from_shape_vec((1, length), tokens.clone())
+        let mut tokens: Vec<Vec<i64>> = vec![vec![START]; n];
+        let mut ended = vec![false; n];
+        let mut length = 1;
+        while length < MAX_TOKENS && ended.iter().any(|e| !e) {
+            let flat: Vec<i64> = tokens.iter().flatten().copied().collect();
+            let input: Tensor = tract_ndarray::Array2::from_shape_vec((n, length), flat)
                 .map_err(model_err)?
                 .into();
             let output = self
@@ -490,18 +1216,30 @@ impl Engine {
                 .map_err(model_err)?
                 .remove(0);
             let logits = output.to_plain_array_view::<f32>().map_err(model_err)?;
-            let last = logits.index_axis(tract_ndarray::Axis(1), length - 1);
-            let next = last
-                .iter()
-                .enumerate()
-                .max_by(|a, b| a.1.total_cmp(b.1))
-                .map_or(END, |(token, _)| token as i64);
-            if next == END {
-                break;
+            for (i, row) in tokens.iter_mut().enumerate() {
+                let next = if ended[i] {
+                    END
+                } else {
+                    logits
+                        .index_axis(tract_ndarray::Axis(0), i)
+                        .index_axis(tract_ndarray::Axis(0), length - 1)
+                        .iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.total_cmp(b.1))
+                        .map_or(END, |(token, _)| token as i64)
+                };
+                ended[i] |= next == END;
+                row.push(next);
             }
-            tokens.push(next);
+            length += 1;
         }
-        Ok(clean(&tokens, &self.vocabulary))
+        Ok(tokens
+            .iter()
+            .map(|row| {
+                let end = row.iter().position(|t| *t == END).unwrap_or(row.len());
+                clean(&row[..end], &self.vocabulary)
+            })
+            .collect())
     }
 }
 
@@ -623,18 +1361,218 @@ mod tests {
             vec![
                 Block {
                     bounds: [1540, 320, 1660, 920],
-                    vertical: true
+                    vertical: true,
+                    lines: Vec::new(),
                 },
                 Block {
                     bounds: [160, 400, 240, 800],
-                    vertical: true
+                    vertical: true,
+                    lines: Vec::new(),
                 },
                 Block {
                     bounds: [1800, 1750, 2048, 1850],
-                    vertical: false
+                    vertical: false,
+                    lines: Vec::new(),
                 },
             ]
         );
+    }
+
+    // T-MNG-012: the columns of a block as the picture draws them, from the
+    // right; furigana covered but not a line, specks neither
+    #[test]
+    fn the_lines_of_a_block_are_found() {
+        let mut page = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        // a long column on the right, of two strokes with a gap (い)
+        ink(150, 20, 158, 180);
+        ink(160, 20, 168, 180);
+        // its furigana, thin, just past the block's edge
+        ink(171, 30, 174, 60);
+        // a short column on the left
+        ink(110, 20, 128, 80);
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [108, 18, 170, 182],
+            vertical: true,
+            lines: Vec::new(),
+        };
+        let found = layout(&page, &block, 12);
+        assert_eq!(found.lines, vec![[150, 20, 168, 180], [110, 20, 128, 80]]);
+        all_ink_covered(&page, &found.covers);
+        // the same ink read as rows
+        let rows = Block {
+            vertical: false,
+            ..block.clone()
+        };
+        assert!(!layout(&page, &rows, 12).lines.is_empty());
+        assert_eq!(layout(&page, &block, 0).lines, Vec::<[u32; 4]>::new());
+        let blank =
+            DynamicImage::ImageLuma8(image::GrayImage::from_pixel(50, 50, image::Luma([255])));
+        let empty = Block {
+            bounds: [0, 0, 50, 50],
+            vertical: true,
+            lines: Vec::new(),
+        };
+        assert_eq!(
+            layout(&blank, &empty, 3),
+            Layout {
+                lines: Vec::new(),
+                covers: vec![[0, 0, 50, 50]]
+            }
+        );
+    }
+
+    /// Every pixel of ink is under a cover, and the covers leave most of
+    /// the page as it is: not one box over the whole block.
+    fn all_ink_covered(page: &DynamicImage, covers: &[[u32; 4]]) {
+        let grey = page.to_luma8();
+        for (x, y, p) in grey.enumerate_pixels() {
+            if p.0[0] < INK {
+                assert!(
+                    covers
+                        .iter()
+                        .any(|c| c[0] <= x && x < c[2] && c[1] <= y && y < c[3]),
+                    "({x}, {y}) uncovered by {covers:?}"
+                );
+            }
+        }
+        let area = grey
+            .enumerate_pixels()
+            .filter(|(x, y, _)| {
+                covers
+                    .iter()
+                    .any(|c| c[0] <= *x && *x < c[2] && c[1] <= *y && *y < c[3])
+            })
+            .count();
+        assert!(area < 6000, "{area}: {covers:?}");
+    }
+
+    // T-MNG-012: the detector's lines: each part of its map a box, given to
+    // the block it lies in, which they say is in columns or rows
+    #[test]
+    fn the_detector_lines_go_to_their_blocks() {
+        let mut map = tract_ndarray::Array2::<f32>::zeros((20, 30));
+        for y in 2..12 {
+            map[[y, 3]] = 0.9;
+            map[[y, 8]] = 0.9;
+        }
+        for x in 20..28 {
+            map[[15, x]] = 0.5;
+        }
+        map[[0, 29]] = 0.1;
+        let found = components(map.view(), LINE_SURE);
+        assert_eq!(found, vec![[3, 2, 4, 12], [8, 2, 9, 12], [20, 15, 28, 16]]);
+        let mut blocks = vec![
+            Block {
+                bounds: [0, 0, 12, 14],
+                vertical: false,
+                lines: Vec::new(),
+            },
+            Block {
+                bounds: [18, 13, 30, 18],
+                vertical: false,
+                lines: Vec::new(),
+            },
+            Block {
+                bounds: [0, 16, 5, 20],
+                vertical: true,
+                lines: Vec::new(),
+            },
+        ];
+        give_lines(&mut blocks, &found);
+        assert!(blocks[0].vertical, "two columns");
+        // a lone wide mark in a block taller than wide: short columns run
+        // together, the shape decides
+        let mut lone = vec![Block {
+            bounds: [0, 0, 12, 14],
+            vertical: true,
+            lines: Vec::new(),
+        }];
+        give_lines(&mut lone, &[[1, 5, 11, 8]]);
+        assert!(lone[0].vertical && lone[0].lines.is_empty());
+        // a speck beside a line is not a second line
+        let mut specked = vec![Block {
+            bounds: [0, 0, 40, 100],
+            vertical: true,
+            lines: Vec::new(),
+        }];
+        give_lines(&mut specked, &[[10, 10, 30, 90], [32, 80, 33, 81]]);
+        assert_eq!(specked[0].lines, vec![[10, 10, 30, 90]]);
+        assert_eq!(blocks[0].lines, vec![[8, 2, 9, 12], [3, 2, 4, 12]]);
+        assert!(!blocks[1].vertical, "a row");
+        assert!(blocks[2].lines.is_empty() && blocks[2].vertical, "kept");
+    }
+
+    // T-MNG-012: from the detector's marks, each column's ink, its strokes
+    // alike in ink one line, its furigana covered
+    #[test]
+    fn the_lines_are_measured_from_the_marks() {
+        let mut page = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        ink(150, 20, 158, 180);
+        ink(160, 20, 168, 180);
+        ink(171, 30, 174, 60);
+        ink(110, 20, 128, 80);
+        // a stroke the detector marked as a line of its own
+        ink(135, 100, 137, 140);
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [108, 18, 170, 182],
+            vertical: true,
+            lines: vec![
+                [155, 30, 164, 170],
+                [135, 105, 137, 135],
+                [115, 30, 124, 70],
+            ],
+        };
+        let found = layout(&page, &block, 12);
+        assert_eq!(found.lines, vec![[150, 20, 168, 180], [110, 20, 128, 80]]);
+        all_ink_covered(&page, &found.covers);
+    }
+
+    // T-MNG-012: a column the detector left unmarked between two marked
+    // ones is added; a frame's line beside the balloon is not
+    #[test]
+    fn a_missed_column_between_two_is_added() {
+        let mut page = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        ink(20, 20, 38, 180);
+        ink(60, 20, 78, 180);
+        ink(100, 20, 118, 180);
+        // a panel's frame, inside the block's box
+        ink(130, 10, 133, 190);
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [18, 18, 136, 182],
+            vertical: true,
+            lines: vec![[105, 30, 114, 170], [25, 30, 34, 170]],
+        };
+        let found = layout(&page, &block, 24);
+        assert_eq!(
+            found.lines,
+            vec![[100, 20, 118, 180], [60, 20, 78, 180], [20, 20, 38, 180]]
+        );
+        let framed = |c: &[u32; 4]| c[0] <= 131 && 131 < c[2];
+        assert!(!found.covers.iter().any(framed), "{:?}", found.covers);
     }
 
     // T-ERR-001

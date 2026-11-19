@@ -760,6 +760,8 @@ pub fn state() -> Result<Value, String> {
             // MNG-011: the pages read ahead, the blocks on each, and those under way
             "ahead": s.books_page.ocr.found.iter().map(|(page, data)| (page.to_string(), data.regions.len())).collect::<std::collections::BTreeMap<_, _>>(),
             "preparing": s.books_page.ocr.preparing.iter().collect::<Vec<_>>(),
+            // MNG-011, MNG-012: what was read on the page shown, block by block
+            "read_here": s.books_page.open.as_ref().and_then(|o| s.books_page.ocr.found.get(&o.chapter)).map(|page| page.regions.iter().map(|r| json!({"text": r.text, "bounds": r.bounds, "vertical": r.vertical, "covers": r.covers, "lines": r.lines.iter().map(|(range, b)| json!({"chars": r.text.get(range.clone()).map_or(0, |t| t.chars().count()), "box": b})).collect::<Vec<_>>()})).collect::<Vec<_>>()),
             "paragraph": s.books_page.open.as_ref().map(|o| o.paragraph),
             "along": s.books_page.along.as_ref().map(|a| json!({
                 "found": a.places.iter().flatten().count(),

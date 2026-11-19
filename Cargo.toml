@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "2.162.1"
+version = "2.163.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-only"
@@ -135,6 +135,44 @@ debug-assertions = false
 opt-level = 3
 
 [profile.dev.package.postcard]
+opt-level = 3
+
+# The OCR models run on tract: unoptimised, a manga page takes a minute
+# instead of seconds, in the tests and in a development build (MNG-011).
+[profile.dev.package.tract-core]
+opt-level = 3
+
+[profile.dev.package.tract-data]
+opt-level = 3
+
+[profile.dev.package.tract-extra]
+opt-level = 3
+
+[profile.dev.package.tract-hir]
+opt-level = 3
+
+[profile.dev.package.tract-linalg]
+opt-level = 3
+
+[profile.dev.package.tract-nnef]
+opt-level = 3
+
+[profile.dev.package.tract-onnx]
+opt-level = 3
+
+[profile.dev.package.tract-onnx-opl]
+opt-level = 3
+
+[profile.dev.package.tract-transformers]
+opt-level = 3
+
+[profile.dev.package.ndarray]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
 opt-level = 3
 
 [profile.release]

@@ -42,12 +42,27 @@ fn main() {
             }
         };
         println!("{path}: {} blocks in {:?}", blocks.len(), started.elapsed());
+        let (mut reading, mut laying) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
         for block in blocks {
             let [l, t, r, b] = block.bounds;
             let started = Instant::now();
             let text = engine.read(&page.crop_imm(l, t, r - l, b - t));
-            println!("  {:?} {:?} ({:?})", block, text, started.elapsed());
+            reading += started.elapsed();
+            let chars = text.as_ref().map_or(0, |t| t.chars().count());
+            let started = Instant::now();
+            let layout = nikomiru_ocr::layout(&page, &block, chars);
+            laying += started.elapsed();
+            println!(
+                "  {:?} {} {:?}\n    marks {:?}\n    lines {:?}\n    covers {:?}",
+                block.bounds,
+                if block.vertical { "v" } else { "h" },
+                text,
+                block.lines,
+                layout.lines,
+                layout.covers
+            );
         }
+        println!("{path}: reading {reading:?}, layout {laying:?}");
         println!("{path}: whole page {:?}", started.elapsed());
     }
 }
