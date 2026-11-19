@@ -392,6 +392,8 @@ Open **Line tools** from the subtitle menu (CC). The panel holds the line on scr
 
 Only the line you ask about, and for an explanation its two neighbours, leaves the computer, and only to the service on the button.
 
+**✎** on a line of the subtitle list corrects it: its start, its end (`m:ss.mmm`) and its text. **Save** keeps your version, **As in the file** gives the original back. Your file is not changed: the corrections are kept by Nikomiru, come back every time the same subtitle is opened, and are in your backups. It is the way to fix what Whisper misheard.
+
 ## Updates (M119 development)
 
 Settings → About → **Updates** looks for a new version only when you click **Check for updates**; Nikomiru never checks, downloads or installs by itself. Choose the **Stable** or **Beta** channel. A release is accepted only if its channel's list is signed with the key built into Nikomiru and is newer than both the running version and any version already seen, so an old list cannot be replayed. For a portable install (a folder you can write), **Download** fetches the release (resuming if interrupted, then checked by size and SHA-256) and **Install** unpacks it beside the current folder, checks that the new program runs as that version, and swaps the folders, keeping the old one as `.previous`; the new version starts next time. Flatpak and distribution packages are updated by their own tools and are never replaced. Builds without a signing key (for now, all of them: the signed feed is not published yet) say so and point to the release page.

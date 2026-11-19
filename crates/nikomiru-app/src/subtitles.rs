@@ -7,7 +7,7 @@
 //! for an older one.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use nikomiru_media::extract::{Extractor, Stream};
@@ -70,6 +70,7 @@ impl Loader {
         ffmpeg_setting: String,
         cache_dir: PathBuf,
         ocr: SharedEngine,
+        library: Option<Arc<nikomiru_library::Library>>,
     ) -> Self {
         let (jobs, rx) = mpsc::channel::<Job>();
         let spawned = std::thread::Builder::new()
@@ -81,6 +82,7 @@ impl Loader {
                     tools: None,
                     cache_dir,
                     ocr,
+                    library,
                 };
                 for job in rx {
                     match job.task {
@@ -181,6 +183,26 @@ struct Worker {
     tools: Option<Result<Tools, ToolsError>>,
     cache_dir: PathBuf,
     ocr: SharedEngine,
+    /// Where the lines edited by hand are kept (SUB-063).
+    library: Option<Arc<nikomiru_library::Library>>,
+}
+
+/// The key of a track's lines edited by hand (SUB-063): made from the lines
+/// as read, so that the same subtitle finds its edits wherever its file is,
+/// whatever its encoding, and a file changed since does not.
+pub fn edit_key(cues: &[nikomiru_subs::Cue]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    for c in cues {
+        hash.update((c.order as u64).to_le_bytes());
+        hash.update(c.start_ms.to_le_bytes());
+        hash.update(c.end_ms.to_le_bytes());
+        hash.update((c.plain_text.len() as u64).to_le_bytes());
+        hash.update(c.plain_text.as_bytes());
+    }
+    let digest = hash.finalize();
+    let hex: String = digest[..16].iter().map(|b| format!("{b:02x}")).collect();
+    format!("cues:{hex}")
 }
 
 /// The format of a subtitle file from its extension (SRT if unknown).
@@ -219,6 +241,7 @@ pub fn read_file(
         track: parse(format_of(path), &decoded.text),
         encoding: Some(decoded.encoding),
         fonts: Vec::new(),
+        edit_key: None,
     })
 }
 
@@ -254,6 +277,21 @@ impl Worker {
         let mut loaded = loaded;
         if loaded.track.format == Format::Ass {
             loaded.fonts = self.fonts(&request.video, cancel);
+        }
+        // SUB-063: text tracks can be edited; pictures read as text cannot
+        if matches!(request.source, Source::File(_) | Source::Embedded { .. })
+            && !request.source.is_graphic_read()
+        {
+            let key = edit_key(&loaded.track.cues);
+            if let Some(library) = &self.library {
+                match library.subtitle_edits(&key) {
+                    Ok(edits) => {
+                        nikomiru_ui::subtitles::apply_edits(&mut loaded.track.cues, &edits);
+                    }
+                    Err(e) => tracing::warn!("subtitle edits: {e}"),
+                }
+            }
+            loaded.edit_key = Some(key);
         }
         Ok(loaded)
     }
@@ -496,6 +534,7 @@ impl Worker {
                         track: parse(Format::Srt, &nikomiru_subs::srt::write(read)),
                         encoding: None,
                         fonts: Vec::new(),
+                        edit_key: None,
                     },
                     done,
                     total,

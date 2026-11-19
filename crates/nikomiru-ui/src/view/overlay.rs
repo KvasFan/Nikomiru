@@ -1581,6 +1581,7 @@ mod tests {
                 track: nikomiru_subs::parse(format, text),
                 encoding: None,
                 fonts: Vec::new(),
+                edit_key: None,
             },
         );
         subs.update(at_ms);

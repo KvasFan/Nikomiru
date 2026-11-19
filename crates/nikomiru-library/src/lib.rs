@@ -34,6 +34,7 @@ pub mod sentences;
 pub mod series_info;
 pub mod server_items;
 pub mod stats;
+pub mod subtitle_edits;
 pub mod sync;
 pub mod uid;
 pub mod words;

@@ -63,6 +63,7 @@ enum Job {
     ExportCsv(PathBuf, Done<PathBuf>),
     ExportEncounters(String, PathBuf, Done<PathBuf>),
     Review(ReviewJob, Settings, Done<Review>),
+    SubtitleLine(nikomiru_ui::catalog::SubtitleLine, Done<bool>),
     Condense(
         Box<nikomiru_ui::condense::Request>,
         Done<nikomiru_ui::condense::Report>,
@@ -489,6 +490,13 @@ impl Catalog {
                         }
                         Job::ExportCsv(path, done) => done(worker.export_csv(&path)),
                         Job::Review(job, settings, done) => done(worker.review(job, &settings)),
+                        Job::SubtitleLine(line, done) => done(
+                            worker
+                                .parts
+                                .library
+                                .set_subtitle_edit(&line.key, line.order, line.edit)
+                                .map_err(|e| worker.message(&e)),
+                        ),
                     }
                 }
             });
@@ -527,6 +535,7 @@ impl Catalog {
             Some(Job::ExportEncounters(_, _, done)) => done(Err(no)),
             Some(Job::ExportCsv(_, done)) => done(Err(no)),
             Some(Job::Review(_, _, done)) => done(Err(no)),
+            Some(Job::SubtitleLine(_, done)) => done(Err(no)),
             None => {}
         }
     }
@@ -578,6 +587,10 @@ impl LibraryService for Catalog {
 
     fn export_csv(&self, path: PathBuf, done: Done<PathBuf>) {
         self.send(Job::ExportCsv(path, done));
+    }
+
+    fn subtitle_line(&self, line: nikomiru_ui::catalog::SubtitleLine, done: Done<bool>) {
+        self.send(Job::SubtitleLine(line, done));
     }
 
     fn review(&self, job: ReviewJob, settings: Settings, done: Done<Review>) {

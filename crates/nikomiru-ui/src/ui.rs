@@ -593,6 +593,9 @@ pub(crate) enum Command {
         anchor: Rect,
     },
     ListTime(usize),
+    /// A line of the main subtitle edited by hand, or back as in its file
+    /// with `None` (SUB-063).
+    LineEdit(usize, Option<crate::subtitles::LineEdit>),
     /// Exact current-subtitle word examples.
     Practice {
         version: u64,
@@ -2110,6 +2113,7 @@ impl Ui {
             Command::SubtitleHover(inside) => s.subtitle_hover(inside),
             Command::ListText { cue, pos, anchor } => s.select_in_list(cue, pos, anchor),
             Command::ListTime(cue) => s.seek_to_cue(cue),
+            Command::LineEdit(cue, edit) => s.edit_line(cue, edit),
             Command::VocabularyExamples {
                 expression,
                 reading,
@@ -2789,6 +2793,15 @@ impl Ui {
                     settings,
                     Box::new(move |r| reply(LibraryReply::Review(r))),
                 ),
+                LibraryJob::SubtitleLine(line) => {
+                    let restored = line.edit.is_none();
+                    catalog.subtitle_line(
+                        line,
+                        Box::new(move |result| {
+                            reply(LibraryReply::SubtitleLine { restored, result })
+                        }),
+                    );
+                }
             }
         }
         for request in self.session.take_web_jobs() {

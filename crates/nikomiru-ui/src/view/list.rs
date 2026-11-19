@@ -57,7 +57,7 @@ impl Sizes {
             text,
             time: 14.0 * k,
             time_width: 52.0 * k,
-            text_x: 52.0 * k + 54.0,
+            text_x: 52.0 * k + 76.0,
         }
     }
 }
@@ -328,6 +328,44 @@ struct TimeDraft {
     error: bool,
 }
 
+/// A line being edited (SUB-063): what the fields hold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LineEditor {
+    cue: usize,
+    version: u64,
+    start: String,
+    end: String,
+    text: String,
+}
+
+/// The words of the line editor (SUB-063); none when the subtitle cannot
+/// be edited.
+pub(crate) struct EditLabels {
+    pub button: String,
+    pub title: String,
+    pub start: String,
+    pub end: String,
+    pub text: String,
+    pub save: String,
+    pub restore: String,
+    pub invalid: String,
+}
+
+impl EditLabels {
+    fn translated(tr: &dyn Fn(&str) -> String) -> Self {
+        Self {
+            button: tr("subtitle-line-edit"),
+            title: tr("subtitle-line-edit-title"),
+            start: tr("subtitle-line-start"),
+            end: tr("subtitle-line-end"),
+            text: tr("subtitle-line-text"),
+            save: tr("subtitle-line-save"),
+            restore: tr("subtitle-line-restore"),
+            invalid: tr("subtitle-line-invalid"),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct TranslationPreview {
     key: (u64, i64, u64, i64),
@@ -347,6 +385,7 @@ pub(crate) struct State {
     query: String,
     preset_name: String,
     translation: Option<TranslationPreview>,
+    editing: Option<LineEditor>,
     practice_passes: u8,
     rows: Rows,
     selected: BTreeSet<usize>,
@@ -545,6 +584,9 @@ pub(crate) struct Scene<'a> {
     /// (KNW-013), and the words' revision, which changes their marks.
     pub filters: [String; 3],
     pub marks_version: u64,
+    /// The line editor's words, when the main subtitle can be edited
+    /// (SUB-063).
+    pub edit: Option<EditLabels>,
     pub word_scope: Option<u64>,
     pub words: Option<&'a [crate::words::ListedWord]>,
     pub word_labels: super::word_list::Labels,
@@ -771,6 +813,8 @@ pub(crate) fn show(
             tr("subtitle-lines-plus-one"),
         ],
         marks_version: s.words_revision(),
+        edit: (s.subs.edit_key.is_some() && !s.subs.incomplete)
+            .then(|| EditLabels::translated(&tr)),
         word_scope: s.vocabulary_scope_id(),
         words: words.as_deref().map(Vec::as_slice),
         word_labels,
@@ -813,6 +857,85 @@ fn translation_key(scene: &Scene<'_>) -> Option<(u64, i64, u64, i64)> {
         .filter(|s| s.complete && !s.cues.is_empty() && scene.export_ready)?;
     Some((scene.version, scene.timeline.delay_ms, s.version, s.delay))
 }
+/// The window that edits a line of the main subtitle (SUB-063): its start,
+/// end and text; Save, or back as in the file.
+fn line_editor(ctx: &egui::Context, scene: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    let Some(labels) = &scene.edit else {
+        state.editing = None;
+        return;
+    };
+    if state
+        .editing
+        .as_ref()
+        .is_some_and(|e| e.version != scene.version || e.cue >= scene.timeline.cues().len())
+    {
+        state.editing = None;
+    }
+    let Some(editing) = &mut state.editing else {
+        return;
+    };
+    let mut open = true;
+    let mut done = false;
+    egui::Window::new(&labels.title)
+        .id(Id::unique("subtitle-line-editor"))
+        .open(&mut open)
+        .default_width(380.0)
+        .show(ctx, |ui| {
+            egui::Grid::new("subtitle-line-times")
+                .num_columns(2)
+                .show(ui, |ui| {
+                    for (label, value) in [
+                        (&labels.start, &mut editing.start),
+                        (&labels.end, &mut editing.end),
+                    ] {
+                        let l = ui.label(label);
+                        ui.add(TextEdit::singleline(value).desired_width(120.0))
+                            .labelled_by(l.id);
+                        ui.end_row();
+                    }
+                });
+            let l = ui.label(&labels.text);
+            ui.add(
+                TextEdit::multiline(&mut editing.text)
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            )
+            .labelled_by(l.id);
+            let edit = match (
+                crate::subtitles::parse_clock(&editing.start),
+                crate::subtitles::parse_clock(&editing.end),
+            ) {
+                (Some(start_ms), Some(end_ms)) => Some(crate::subtitles::LineEdit {
+                    start_ms,
+                    end_ms,
+                    text: editing.text.trim_end().to_string(),
+                }),
+                _ => None,
+            }
+            .filter(crate::subtitles::LineEdit::is_valid);
+            if edit.is_none() {
+                ui.label(RichText::new(&labels.invalid).color(palette::current().details));
+            }
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(edit.is_some(), egui::Button::new(&labels.save))
+                    .clicked()
+                    && let Some(edit) = edit
+                {
+                    out.push(Command::LineEdit(editing.cue, Some(edit)));
+                    done = true;
+                }
+                if ui.button(&labels.restore).clicked() {
+                    out.push(Command::LineEdit(editing.cue, None));
+                    done = true;
+                }
+            });
+        });
+    if !open || done {
+        state.editing = None;
+    }
+}
+
 fn translation_window(ctx: &egui::Context, scene: &Scene<'_>, state: &mut State) {
     if state
         .translation
@@ -988,6 +1111,7 @@ pub(crate) fn draw(
                 });
         });
     translation_window(ctx, scene, state);
+    line_editor(ctx, scene, state, out);
     open
 }
 
@@ -2036,6 +2160,34 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                     out.push(Command::ListTime(cue));
                 }
 
+                // SUB-063
+                if let Some(labels) = &scene.edit {
+                    let edit = ui.put(
+                        Rect::from_min_size(
+                            rect.min + vec2(sizes.text_x - 44.0, PAD),
+                            vec2(20.0, 20.0),
+                        ),
+                        egui::Button::new("✎"),
+                    );
+                    edit.widget_info(|| {
+                        WidgetInfo::labeled(
+                            Role::Button,
+                            true,
+                            format!("{} {}", labels.button, cue + 1),
+                        )
+                    });
+                    if edit.clicked() {
+                        let c = &timeline.cues()[cue];
+                        state.editing = Some(LineEditor {
+                            cue,
+                            version: scene.version,
+                            start: crate::subtitles::precise_clock(c.start_ms),
+                            end: crate::subtitles::precise_clock(c.end_ms),
+                            text: c.plain_text.clone(),
+                        });
+                    }
+                }
+
                 let available = translation_key(scene).is_some();
                 let translation = ui
                     .add_enabled_ui(available, |ui| {
@@ -2207,6 +2359,55 @@ mod tests {
     }
 
     // T-SUB-035: hidden selections keep original indices and exports are explicit.
+    // T-SUB-063: a line edited in its window, then back as in the file
+    #[test]
+    fn a_line_is_edited_and_restored() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness(timeline(&[(1000, "猫"), (3000, "犬")]), 0, false);
+        h.run();
+        h.get_by_label("subtitle-line-edit 2").click();
+        h.run();
+        assert_eq!(
+            h.get_by_label("subtitle-line-start").value().as_deref(),
+            Some("0:03.000")
+        );
+        h.get_by_label("subtitle-line-text").focus();
+        h.get_by_label("subtitle-line-text").type_text("と猫");
+        h.run();
+        // an end before the start cannot be saved
+        h.get_by_label("subtitle-line-end").focus();
+        h.get_by_label("subtitle-line-end").type_text("x");
+        h.run();
+        h.get_by_label("subtitle-line-invalid");
+        h.state_mut().state.editing.as_mut().unwrap().end = "0:04,5".into();
+        h.run();
+        h.get_by_label("subtitle-line-save").click();
+        h.run();
+        let edit = h.state().out.iter().find_map(|c| match c {
+            Command::LineEdit(1, Some(e)) => Some(e.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            edit,
+            Some(crate::subtitles::LineEdit {
+                start_ms: 3000,
+                end_ms: 4500,
+                text: "犬と猫".into()
+            })
+        );
+        assert!(h.state().state.editing.is_none(), "closed");
+        h.get_by_label("subtitle-line-edit 1").click();
+        h.run();
+        h.get_by_label("subtitle-line-restore").click();
+        h.run();
+        assert!(
+            h.state()
+                .out
+                .iter()
+                .any(|c| matches!(c, Command::LineEdit(0, None)))
+        );
+    }
+
     #[test]
     fn selected_rows_survive_search_and_export_original_indices() {
         use egui_kittest::kittest::Queryable;
@@ -3115,6 +3316,7 @@ mod tests {
                         tabs: t.tabs.then(|| ("Lines".into(), "Words".into())),
                         filters: ["All", "New", "+1"].map(String::from),
                         marks_version: 0,
+                        edit: Some(EditLabels::translated(&|key| key.to_string())),
                         word_scope: None,
                         practice_status: None,
                         practice_pause_ms: 0,

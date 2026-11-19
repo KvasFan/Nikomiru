@@ -214,6 +214,23 @@ pub trait LibraryService: Send {
         settings: Settings,
         done: Done<crate::review::Review>,
     );
+    /// Keeps a subtitle line edited by hand, or forgets its edit (SUB-063);
+    /// `false` when the edit is refused.
+    fn subtitle_line(&self, line: SubtitleLine, done: Done<bool>) {
+        let _ = line;
+        done(Err("library unavailable".into()));
+    }
+}
+
+/// A subtitle line edited by hand, or back as in its file (SUB-063).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubtitleLine {
+    /// The subtitle's key.
+    pub key: String,
+    /// The line's place in the file.
+    pub order: u32,
+    /// The line as edited; `None`: as in the file again.
+    pub edit: Option<crate::subtitles::LineEdit>,
 }
 
 /// No library (it could not be opened): every job fails with the reason.
@@ -282,6 +299,8 @@ pub enum LibraryJob {
     ExportEncounters(String, PathBuf),
     /// A job of the review (REV-004).
     Review(crate::review::ReviewJob, Settings),
+    /// A subtitle line edited, or back as in its file (SUB-063).
+    SubtitleLine(SubtitleLine),
 }
 
 /// What the library worker answers, back on the UI thread.
@@ -309,6 +328,14 @@ pub enum LibraryReply {
     Exported(Result<PathBuf, String>),
     /// The review after a job.
     Review(Result<crate::review::Review, String>),
+    /// A subtitle line kept, refused (`false`) or not (SUB-063); `restored`
+    /// when it went back to the file's.
+    SubtitleLine {
+        /// Back as in the file.
+        restored: bool,
+        /// What the library did.
+        result: Result<bool, String>,
+    },
 }
 
 /// Episodes by uid, in order.

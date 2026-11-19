@@ -4,6 +4,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.171.0] - 2026-11-19
+
+What Fushi 3 has and Nikomiru lacked, second part (D-83).
+
+### Added
+
+- Subtitle lines can be edited: **✎** on a line of the subtitle list opens its start, end and text; **Save** keeps them, **As in the file** goes back. The file itself is never written: the edits are kept in the library, follow the same subtitle wherever its file is, and are in backups. Useful above all for the subtitles made from the speech (SUB-063).
+
 ## [2.170.0] - 2026-11-19
 
 What Fushi 3 has and Nikomiru lacked, first part (D-83).
