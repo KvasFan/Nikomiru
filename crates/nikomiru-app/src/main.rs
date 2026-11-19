@@ -457,6 +457,7 @@ fn run(
         config.paths.ffmpeg.clone(),
         paths.cache_dir.join("subtitles"),
         ocr.shared(),
+        library.clone(),
     );
     let max_results = Arc::new(std::sync::atomic::AtomicUsize::new(
         config.lookup.max_results,

@@ -3587,6 +3587,21 @@ impl Session {
                 self.library_page.status = Some((text, true));
             }
             LibraryReply::Review(result) => page.review.answered(result),
+            // SUB-063: back as in the file: read it again
+            LibraryReply::SubtitleLine {
+                restored,
+                result: Ok(true),
+            } => {
+                if restored && let Some(source) = self.subs.source.clone() {
+                    self.use_subtitles(source);
+                }
+            }
+            LibraryReply::SubtitleLine {
+                result: Ok(false), ..
+            } => {
+                self.toasts.push(self.tr("subtitle-line-invalid", &[]));
+            }
+            LibraryReply::SubtitleLine { result: Err(e), .. } => self.toasts.push(e),
             // a cover that cannot be made: the card keeps its placeholder
             LibraryReply::Cover(id, Err(e)) => tracing::debug!("cover of series {id}: {e}"),
             LibraryReply::Home(Err(e))
@@ -4875,6 +4890,36 @@ impl Session {
             Err(message) if !message.is_empty() => self.toasts.push(message),
             Err(_) => {}
         }
+    }
+
+    /// Line `cue` of the main subtitle edited by hand, or back as in its
+    /// file with `None` (SUB-063). The file is never written: the edit is
+    /// kept in the library and applied each time this subtitle is read.
+    pub fn edit_line(&mut self, cue: usize, edit: Option<crate::subtitles::LineEdit>) {
+        let Some(key) = self.subs.edit_key.clone() else {
+            return;
+        };
+        let Some(order) = self
+            .subs
+            .timeline()
+            .cues()
+            .get(cue)
+            .and_then(|c| u32::try_from(c.order).ok())
+        else {
+            return;
+        };
+        if let Some(edit) = &edit {
+            if self.subs.edit_line(cue, edit).is_none() {
+                self.toasts.push(self.tr("subtitle-line-invalid", &[]));
+                return;
+            }
+            self.subs.update((self.view.time_pos * 1000.0) as i64);
+            self.cues_changed();
+        }
+        self.library_jobs
+            .push(crate::catalog::LibraryJob::SubtitleLine(
+                crate::catalog::SubtitleLine { key, order, edit },
+            ));
     }
 
     /// The reference cue of a card (ANK-031): the one the lookup started from,

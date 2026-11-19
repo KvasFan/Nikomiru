@@ -100,6 +100,35 @@ pub struct Loaded {
     pub encoding: Option<String>,
     /// The fonts attached to the video, for an ASS track (SUB-025).
     pub fonts: Vec<std::path::PathBuf>,
+    /// The key its lines edited by hand are kept under (SUB-063); `None`
+    /// for a track that cannot be edited (read from pictures).
+    pub edit_key: Option<String>,
+}
+
+/// A line as edited by hand (SUB-063).
+pub use nikomiru_library::subtitle_edits::LineEdit;
+
+/// Writes `edit` over `cue`: its times and its text, without the file's
+/// markup.
+fn edit_cue(cue: &mut Cue, edit: &LineEdit) {
+    cue.start_ms = edit.start_ms;
+    cue.end_ms = edit.end_ms;
+    cue.plain_text.clone_from(&edit.text);
+    cue.markup = nikomiru_subs::Markup::default();
+}
+
+/// Applies the lines edited by hand (SUB-063) to `cues`, by their place in
+/// the file, and puts them back in order of time.
+pub fn apply_edits(cues: &mut [Cue], edits: &std::collections::BTreeMap<u32, LineEdit>) {
+    if edits.is_empty() {
+        return;
+    }
+    for cue in cues.iter_mut() {
+        if let Some(edit) = u32::try_from(cue.order).ok().and_then(|o| edits.get(&o)) {
+            edit_cue(cue, edit);
+        }
+    }
+    cues.sort_by_key(|c| (c.start_ms, c.order));
 }
 
 /// Cumulative text from a bounded graphic OCR batch (SUB-030).
@@ -229,6 +258,8 @@ pub struct Subtitles {
     pub source: Option<Source>,
     /// The detected or forced encoding (files).
     pub encoding: Option<String>,
+    /// The key of its lines edited by hand (SUB-063), when it can be edited.
+    pub edit_key: Option<String>,
     /// An encoding forced by the user, applied to the next load.
     pub forced_encoding: Option<String>,
     /// The user's obscuring mode.
@@ -276,6 +307,7 @@ impl Subtitles {
         self.timeline.delay_ms = delay;
         self.source = Some(source);
         self.encoding = loaded.encoding;
+        self.edit_key = loaded.edit_key;
         self.active.clear();
         self.selection = None;
         self.highlight = None;
@@ -292,9 +324,31 @@ impl Subtitles {
         self.play_res = None;
         self.source = source;
         self.encoding = None;
+        self.edit_key = None;
         self.active.clear();
         self.selection = None;
         self.highlight = None;
+    }
+
+    /// Replaces line `i` with `edit` (SUB-063), the lines kept in order of
+    /// time; gives its place in the file, `None` when this track cannot be
+    /// edited or has no such line.
+    pub fn edit_line(&mut self, i: usize, edit: &LineEdit) -> Option<u32> {
+        if self.edit_key.is_none() || self.incomplete || !edit.is_valid() {
+            return None;
+        }
+        let mut cues = self.timeline.cues().to_vec();
+        let cue = cues.get_mut(i)?;
+        let order = u32::try_from(cue.order).ok()?;
+        edit_cue(cue, edit);
+        cues.sort_by_key(|c| (c.start_ms, c.order));
+        let delay = self.timeline.delay_ms;
+        self.timeline = Timeline::new(cues);
+        self.timeline.delay_ms = delay;
+        self.active.clear();
+        self.selection = None;
+        self.highlight = None;
+        Some(order)
     }
 
     /// Updates the active cues; returns the cues that just appeared.
@@ -387,6 +441,36 @@ pub fn clock(ms: i64) -> String {
     } else {
         format!("{m}:{s:02}")
     }
+}
+
+/// A time to the millisecond, as the line editor shows it (SUB-063):
+/// `m:ss.mmm`, or `h:mm:ss.mmm`.
+pub fn precise_clock(ms: i64) -> String {
+    let ms = ms.max(0);
+    format!("{}.{:03}", clock(ms), ms % 1000)
+}
+
+/// A time typed in the line editor (SUB-063): `[[h:]m:]s[.mmm]`, with a
+/// comma for the point too; `None` for anything else.
+pub fn parse_clock(text: &str) -> Option<i64> {
+    let text = text.trim().replace(',', ".");
+    let mut parts: Vec<&str> = text.split(':').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return None;
+    }
+    let seconds = parts.pop()?;
+    let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
+    if whole.is_empty() || fraction.len() > 3 || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let s: i64 = whole.parse().ok().filter(|s| *s >= 0)?;
+    let ms: i64 = format!("{fraction:0<3}").parse().ok()?;
+    let mut total = s.checked_mul(1000)?.checked_add(ms)?;
+    for (unit, part) in [60_000i64, 3_600_000].iter().zip(parts.iter().rev()) {
+        let n: i64 = part.parse().ok().filter(|n| *n >= 0)?;
+        total = total.checked_add(n.checked_mul(*unit)?)?;
+    }
+    Some(total)
 }
 
 /// The byte offset in `text` of the character at index `pos` (egui's text
@@ -517,7 +601,79 @@ mod tests {
             track: nikomiru_subs::parse(format, text),
             encoding: Some("UTF-8".into()),
             fonts: Vec::new(),
+            edit_key: None,
         }
+    }
+
+    // T-SUB-063
+    #[test]
+    fn times_are_typed_to_the_millisecond() {
+        assert_eq!(precise_clock(3_723_045), "1:02:03.045");
+        assert_eq!(precise_clock(4_500), "0:04.500");
+        for (text, ms) in [
+            ("0:04.500", 4_500),
+            ("0:04,5", 4_500),
+            ("4", 4_000),
+            ("1:02:03.045", 3_723_045),
+            (" 12:00 ", 720_000),
+        ] {
+            assert_eq!(parse_clock(text), Some(ms), "{text}");
+        }
+        for text in [
+            "",
+            "x",
+            "1:2:3:4",
+            "0:04.5000",
+            "-1",
+            "1:-2",
+            ":5",
+            "0:04.5a",
+        ] {
+            assert_eq!(parse_clock(text), None, "{text}");
+        }
+        for ms in [0, 999, 61_001, 3_723_045] {
+            assert_eq!(parse_clock(&precise_clock(ms)), Some(ms));
+        }
+    }
+
+    // T-SUB-063: edits by place in the file, the lines kept in time order
+    #[test]
+    fn lines_edited_by_hand_replace_the_files() {
+        let srt = "1\n00:00:01,000 --> 00:00:02,000\n<b>一</b>\n\n2\n00:00:03,000 --> 00:00:04,000\n二\n\n3\n00:00:05,000 --> 00:00:06,000\n三\n";
+        let mut l = loaded(srt, Format::Srt);
+        let second = l.track.cues[1].order as u32;
+        let edits = std::collections::BTreeMap::from([(
+            second,
+            LineEdit {
+                start_ms: 7_000,
+                end_ms: 8_000,
+                text: "に".into(),
+            },
+        )]);
+        apply_edits(&mut l.track.cues, &edits);
+        let texts: Vec<&str> = l.track.cues.iter().map(|c| c.plain_text.as_str()).collect();
+        assert_eq!(texts, ["一", "三", "に"]);
+        // the session edits the shown track, only when it has a key
+        let mut s = Subtitles::default();
+        let edit = LineEdit {
+            start_ms: 0,
+            end_ms: 500,
+            text: "ゼロ".into(),
+        };
+        s.set_track(Source::File("a.srt".into()), loaded(srt, Format::Srt));
+        assert_eq!(s.edit_line(0, &edit), None, "no key");
+        let mut keyed = loaded(srt, Format::Srt);
+        keyed.edit_key = Some("cues:k".into());
+        s.set_track(Source::File("a.srt".into()), keyed);
+        s.timeline_mut().delay_ms = 250;
+        let first = s.timeline().cues()[2].order as u32;
+        assert_eq!(s.edit_line(2, &edit), Some(first));
+        let cues = s.timeline().cues();
+        assert_eq!((cues[0].plain_text.as_str(), cues[0].start_ms), ("ゼロ", 0));
+        assert!(cues[0].markup.runs.is_empty());
+        assert_eq!(s.timeline().delay_ms, 250, "the offset stays");
+        let bad = LineEdit { end_ms: 0, ..edit };
+        assert_eq!(s.edit_line(0, &bad), None);
     }
 
     #[test]

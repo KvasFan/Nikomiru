@@ -391,6 +391,8 @@ Apri **Strumenti della riga** dal menu dei sottotitoli (CC). Il pannello mostra 
 - **Shadowing** (Y) mette in pausa e registra la tua voce mentre ripeti la riga, per circa una volta e mezza la sua durata. Con whisper.cpp installato mostra cosa ha sentito e quanto si avvicina alla riga; **Ascolta la mia registrazione** la riproduce, R ripete l'originale. Il microfono è un ingresso di ffmpeg in Impostazioni → Avanzate (`pulse:default` su Linux, di predefinito).
 - **Leggi dall'immagine** (O) mette in pausa; trascina sul testo del video, come sottotitoli impressi o un cartello, e il modello OCR lo legge nel pannello. Viene anche aggiunto alle righe del Texthooker, così ricerche e carte funzionano come per il testo agganciato. Esc annulla.
 
+**✎** su una riga della lista dei sottotitoli la corregge: inizio, fine (`m:ss.mmm`) e testo. **Salva** tiene la tua versione, **Come nel file** ridà l'originale. Il tuo file non cambia: le correzioni le conserva Nikomiru, tornano ogni volta che apri lo stesso sottotitolo e sono nei backup. È il modo per correggere ciò che Whisper ha sentito male.
+
 Esce dal computer solo la riga che chiedi (per una spiegazione anche le due vicine), e solo verso il servizio indicato sul pulsante.
 
 ## Aggiornamenti (sviluppo M119)
