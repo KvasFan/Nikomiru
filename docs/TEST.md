@@ -554,6 +554,8 @@ Format: **ID** · what is checked · data and expected result · level. Each sec
 | T-BAK-008 | Deletions | A deleted session does not return; a tombstone goes after 180 days | L2 |
 | T-BAK-009 | When | By hand; at start and close only if ticked; playback never waits; a failure changes nothing | L2/L6 |
 | T-BAK-010 | Errors | Each failure's message; truncated and random answers never panic | L2 |
+| T-BAK-011 | Backups made by themselves | Due, listed newest first, a later-dated one ignored, pruned without touching other files (L2); weekly and four by default, bounds and unknown values (L1); at start against the fake WebDAV setup: one made without keys or dictionaries, the oldest pruned, none more the same day (L4); the choices and **Restore… <date>** (kittest) | L1/L2/L3/L4 |
+| T-BAK-012 | Encrypted sync | Sealed and opened only with the passphrase, a new salt and nonce each time, nothing in clear, header and tail authenticated, plain files read as before (L2); the passphrase is a secret left out of backups (L1); against the fake WebDAV: device file and media sealed, a device with the passphrase reads them, one without it or with another counts them as locked (L4); the field saved with the rest (kittest) | L1/L2/L3/L4 |
 | T-BAK-LIVE-* | Real server | With `NIKOMIRU_WEBDAV_URL`, `_USER`, `_PASSWORD`: the folder, then the app syncing with another device's file | L7 |
 
 ### 6.13c Texthooker (M14)

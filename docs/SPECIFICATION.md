@@ -251,6 +251,7 @@ Versions verified on crates.io on 2026-10-19. The lockfile (`Cargo.lock`) is com
 | File dialogs, external links | The XDG portal (`FileChooser`, `OpenURI`) through the own D-Bus client, no crate; `xdg-open` as the fallback for links | — | — |
 | i18n | `fluent-bundle`, `unic-langid` | 0.16 | Apache-2.0 OR MIT |
 | Identifiers and hashes | `uuid`, `sha2`, `md4` (ed2k, M7) | — | MIT OR Apache-2.0 |
+| Encrypted sync (BAK-012) | `chacha20poly1305` (XChaCha20-Poly1305; shares `chacha20` already in the graph), `argon2` (Argon2id, without default features), `getrandom` (already in the graph) from RustCrypto. Alternatives: writing the cipher or the key derivation ourselves (refused: cryptography), `age` (more than a sealed blob needs, and its own file format), `ring`/`aws-lc-rs` (C and assembly to build on every platform) | 0.11, 0.6, 0.3 | MIT OR Apache-2.0 |
 | Update signatures (M119) | `minisign-verify`: verifies minisign (Ed25519) signatures of update manifests; no dependencies. Alternatives: `ed25519-dalek` (BSD-3-Clause, not class A), OpenSSL through the `openssl` crate (Linux only here), or writing Ed25519 ourselves (refused: cryptography) | 0.3 | MIT |
 | Dictionary HTML (post-1.0 only, MDict): sanitized to the POP-009 allowlist, then converted to the popup's view model | `ammonia` | 4.x | MIT OR Apache-2.0 |
 | Tests | `proptest`, `insta`, `criterion`, `wiremock` (online services, M7; AnkiConnect has its own fake), `tempfile`, `egui_kittest` (UI tests through AccessKit, no renderer) | — | MIT/Apache |
@@ -851,6 +852,8 @@ Fushi has no counterpart to follow: its sync goes through other services.
 | BAK-008 | **Deletions**: a study session deleted (STA-005), a video removed (LIB-012) or a card deleted from Anki (ANK-054) leaves a tombstone, kept 180 days and synced, so that it does not return from another device. |
 | BAK-009 | **When**: by hand with "Sync now"; with "Sync at start and close" (off by default) also then, on the `servers` worker's pattern: a worker of its own, so nothing waits for it, at most 30 s at close. Failures are a message, never a loss: the library is written only after everything was read and merged. |
 | BAK-010 | **Errors**: unreachable, refused, full (507), a server that lies about its files: each its own message (ERR-001); answers are untrusted and bounded (64 MiB for a device's file). |
+| BAK-011 | **Backups made by themselves** (2.172.0, D-83): `[sync] backup_every` = `off`, `daily` or `weekly` (the default) and `backups_kept` (1–30, default 4), in Settings → Backup. At start, on the `sync` worker before anything else it does, when the newest is older than that (one dated later than now does not count), a backup as BAK-001 without dictionaries or keys goes to `$XDG_DATA_HOME/nikomiru/backups/auto-<Unix ms>.nikomiru-backup`, then the oldest beyond those kept are removed; other files there are left alone. A failure is only logged. The page lists them, the newest first, each with **Restore… <date>**, which restores it as BAK-003. |
+| BAK-012 | **Encrypted sync** (2.172.0, D-83): `[sync] passphrase`, a secret like the password (MET-005). With one, this device's file (BAK-006) and the review's media it uploads are sealed: `NKMRENC1`, a random 16-byte salt, a random 24-byte nonce, then XChaCha20-Poly1305 of the content with the magic and salt authenticated, under the key Argon2id(passphrase, salt; 64 MiB, 3 passes, 1 lane). Files without the magic are read as before, so devices move over one at a time. A sealed file this device cannot open (no passphrase here, or another one) is skipped and counted: the sync's message says how many. A media file keeps its name, the hash of its plain content (REV-006), which is checked after it is opened. The passphrase never leaves the computer; forgetting it loses nothing on the computers, only what is on the server. |
 
 ### 6.15 Texthooker (HOK) — milestone M14 (D-23)
 
@@ -1168,6 +1171,9 @@ user = ""
 password = ""               # like the API keys (MET-005)
 allow_unencrypted = false   # SRV-005
 automatic = false           # at start and close (BAK-009)
+passphrase = ""             # encrypts the files on the server (BAK-012), like the API keys (MET-005)
+backup_every = "weekly"     # "off" | "daily" | "weekly": a backup made by itself at start (BAK-011)
+backups_kept = 4            # 1–30
 
 [hooker]                    # HOK-001, HOK-003
 url = "ws://127.0.0.1:6677"
