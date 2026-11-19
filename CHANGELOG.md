@@ -4,6 +4,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.174.1] - 2026-11-19
+
+### Fixed
+
+- The text written over a manga is as large as the original's: a balloon's size is the one its lines of text hold, at their width, columns of dots no longer shrinking it (MNG-012, AK-BUG-009).
+- Two columns the detector marks as one are read apart, so each keeps its own text (ベンツじゃ and ないと were read as ・ンツじゃないと); a column of dots ending in ！ or ？ is read too. Pages read before are read again once (MNG-012, AK-BUG-009).
+
 ## [2.174.0] - 2026-11-19
 
 What Fushi 3 has and Nikomiru lacked, last part (D-83).
