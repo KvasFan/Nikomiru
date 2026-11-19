@@ -17,6 +17,7 @@ use nikomiru_core::config::ServerConfig;
 use nikomiru_library::server_items::{parse_server_uid, server_uid};
 use nikomiru_online::OnlineError;
 use nikomiru_online::http::Http;
+use nikomiru_online::servers::audiobookshelf::Audiobookshelf;
 use nikomiru_online::servers::jellyfin::{Flavor, Jellyfin};
 use nikomiru_online::servers::plex::{Plex, PlexTv};
 use nikomiru_online::servers::relay::Relay;
@@ -70,6 +71,7 @@ enum Job {
     MarkPlayed(String),
     JellyfinLogin(String, String, String, bool, Done<ServerConfig>),
     EmbyLogin(String, String, String, bool, Done<ServerConfig>),
+    AudiobookshelfLogin(String, String, String, bool, Done<ServerConfig>),
     PlexPin(Done<SignIn>, Done<Found>),
     Logout(Box<ServerConfig>),
     Libraries(String, Done<Vec<Library>>),
@@ -193,6 +195,22 @@ impl ServerService for Servers {
     ) {
         self.send(Job::EmbyLogin(url, user, password, allow_unencrypted, done));
     }
+    fn audiobookshelf_login(
+        &self,
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+        done: Done<ServerConfig>,
+    ) {
+        self.send(Job::AudiobookshelfLogin(
+            url,
+            user,
+            password,
+            allow_unencrypted,
+            done,
+        ));
+    }
     fn plex_login(&self, started: Done<SignIn>, done: Done<Found>) {
         self.cancel.store(false, Ordering::SeqCst);
         self.send(Job::PlexPin(started, done));
@@ -285,6 +303,9 @@ impl Worker {
             Job::EmbyLogin(url, user, password, allow, done) => {
                 done(self.login_as(Flavor::Emby, &url, &user, &password, allow));
             }
+            Job::AudiobookshelfLogin(url, user, password, allow, done) => {
+                done(self.audiobookshelf_login(&url, &user, &password, allow));
+            }
             Job::JellyfinLogin(url, user, password, allow, done) => {
                 done(self.jellyfin_login(&url, &user, &password, allow));
             }
@@ -367,6 +388,15 @@ impl Worker {
                 device,
             )?));
         }
+        if kind == Some(ServerKind::Audiobookshelf) {
+            let (http, url) = address(&config.url)?;
+            return Ok(Box::new(Audiobookshelf::new(
+                http,
+                url,
+                &config.token,
+                &config.user_id,
+            )));
+        }
         if kind == Some(ServerKind::Jellyfin) {
             let (http, url) = address(&config.url)?;
             return Ok(Box::new(Jellyfin::new(
@@ -439,6 +469,32 @@ impl Worker {
         allow_unencrypted: bool,
     ) -> Result<ServerConfig, String> {
         self.login_as(Flavor::Jellyfin, url, user, password, allow_unencrypted)
+    }
+
+    /// SRV-017: the token kept, never the password.
+    fn audiobookshelf_login(
+        &self,
+        url: &str,
+        user: &str,
+        password: &str,
+        allow_unencrypted: bool,
+    ) -> Result<ServerConfig, String> {
+        let attempt = || {
+            let base = checked_server_url(url, allow_unencrypted)?;
+            let http = http_for(&base, &self.parts.proxy)?;
+            let server = Audiobookshelf::login(http, base.clone(), user, password)?;
+            Ok::<_, OnlineError>(ServerConfig {
+                id: uuid::Uuid::new_v4().simple().to_string(),
+                kind: ServerKind::Audiobookshelf.key().into(),
+                name: base.host_str().unwrap_or_default().to_string(),
+                url: url.trim().to_string(),
+                token: server.token().to_string(),
+                user_id: server.user_id().to_string(),
+                allow_unencrypted,
+                ..ServerConfig::default()
+            })
+        };
+        attempt().map_err(|e| self.message(&e))
     }
 
     fn login_as(

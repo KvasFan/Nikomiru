@@ -218,6 +218,29 @@ impl Http {
         Self::read(url, response, ANSWER_LIMIT)
     }
 
+    /// A request with `method` and a JSON body on the API client
+    /// (Audiobookshelf's `PATCH`, SRV-017).
+    pub fn send_json(
+        &self,
+        method: &str,
+        url: &Url,
+        headers: &[(&str, &str)],
+        body: &Value,
+    ) -> Result<Response, OnlineError> {
+        let method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|_| OnlineError::Io(method.to_string()))?;
+        let mut request = self
+            .api
+            .request(method, url.clone())
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body.to_string());
+        for (k, v) in headers {
+            request = request.header(*k, *v);
+        }
+        let response = request.send().map_err(|e| failure(url, &e))?;
+        Self::read(url, response, ANSWER_LIMIT)
+    }
+
     /// A WebDAV request with Basic authentication, on the API client: no
     /// redirects, which would take the password elsewhere (BAK-004).
     pub fn dav(

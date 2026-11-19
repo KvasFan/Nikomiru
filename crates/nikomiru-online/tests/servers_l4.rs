@@ -672,3 +672,75 @@ fn emby_plays_reports_and_expires() {
         Err(OnlineError::Unauthorized { .. })
     ));
 }
+
+// T-SRV-017…T-SRV-019: an Audiobookshelf logged in with the user's name
+// and password; its book libraries, a book's files as episodes, one played
+// through the relay, and the place heard reported as the whole book's
+#[test]
+fn audiobookshelf_books_are_listened_to_and_their_place_kept() {
+    use nikomiru_online::servers::audiobookshelf::Audiobookshelf;
+    let fake = FakeServers::start(Data {
+        libraries: vec![("books".into(), "Books".into())],
+        items: vec![FakeItem {
+            id: "li_1".into(),
+            kind: "Book".into(),
+            title: "銀河鉄道の夜".into(),
+            parent: "books".into(),
+            ..FakeItem::default()
+        }],
+        file: b"ID3 fake audio".to_vec(),
+        ..Data::default()
+    })
+    .unwrap();
+    let base = Url::parse(&fake.audiobookshelf_url()).unwrap();
+    let http = || Http::new("").unwrap();
+    assert!(matches!(
+        Audiobookshelf::login(http(), base.clone(), USER, "wrong"),
+        Err(OnlineError::Unauthorized { .. })
+    ));
+    let mut abs = Audiobookshelf::login(http(), base.clone(), USER, PASSWORD).unwrap();
+    assert_eq!((abs.token(), abs.user_id()), (TOKEN, "u-1"));
+    let libraries = abs.libraries().unwrap();
+    assert_eq!(libraries.len(), 1, "podcasts left out");
+    let books = abs.children("books", 0, ParentKind::Library).unwrap();
+    assert_eq!(books.items[0].kind, ItemKind::Series);
+    assert_eq!(books.items[0].series.as_deref(), Some("An Author"));
+    assert_eq!(abs.search("books", "銀河", 0).unwrap().items.len(), 1);
+    assert!(abs.search("books", "雪国", 0).unwrap().items.is_empty());
+    let files = abs.children("li_1", 0, ParentKind::Item).unwrap();
+    let ids: Vec<&str> = files.items.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, ["li_1~a", "li_1~b"]);
+    // the second file starts 10 s into the book
+    let playable = abs.playable("li_1~b").unwrap();
+    assert_eq!(playable.source, "10000:30000");
+    assert!(playable.subtitles.is_empty());
+    let relay = Relay::start(playable.stream, "").unwrap();
+    let (address, path) = split(&relay);
+    let body = exchange(&address, &format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n"));
+    assert!(
+        body.ends_with(b"ID3 fake audio"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    // 5 s into the second file: 15 s into the book
+    abs.report("li_1~b", &playable.source, PlayState::Paused, 5_000, 20_000)
+        .unwrap();
+    {
+        let progress = &fake.data().abs_progress["li_1"];
+        assert_eq!(progress["currentTime"], 15.0);
+        assert_eq!(progress["duration"], 30.0);
+        assert_eq!(progress["isFinished"], false);
+    }
+    let files = abs.children("li_1", 0, ParentKind::Item).unwrap();
+    assert_eq!(
+        (files.items[0].played, files.items[1].position_ms),
+        (true, 5_000)
+    );
+    assert_eq!(abs.item("li_1").unwrap().position_ms, 15_000);
+    // the last file heard to its end: the book is finished
+    abs.mark_played("li_1~b").unwrap();
+    assert_eq!(fake.data().abs_progress["li_1"]["isFinished"], true);
+    assert!(abs.children("books", 0, ParentKind::Library).unwrap().items[0].played);
+    assert_eq!(abs.cover("li_1").unwrap(), b"cover");
+    abs.logout().unwrap();
+}

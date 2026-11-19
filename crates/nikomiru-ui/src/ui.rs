@@ -949,8 +949,8 @@ pub(crate) enum Command {
         user: String,
         password: String,
         allow_unencrypted: bool,
-        /// An Emby instead (SRV-014).
-        emby: bool,
+        /// Which (SRV-014, SRV-017).
+        kind: crate::servers::PasswordServer,
     },
     /// A sign-in to Plex (SRV-003).
     ServerPlex,
@@ -2465,10 +2465,10 @@ impl Ui {
                 user,
                 password,
                 allow_unencrypted,
-                emby,
+                kind,
             } => self
                 .session
-                .server_jellyfin(url, user, password, allow_unencrypted, emby),
+                .server_jellyfin(url, user, password, allow_unencrypted, kind),
             Command::ServerPlex => self.session.server_plex(),
             Command::ServerCancel => self.session.server_cancel(),
             Command::ServerRename(id, name) => self.session.server_rename(&id, name),
@@ -2925,7 +2925,7 @@ impl Ui {
                     );
                 }
                 crate::servers::ServerJob::Jellyfin {
-                    emby,
+                    kind,
                     url,
                     user,
                     password,
@@ -2935,10 +2935,15 @@ impl Ui {
                         Box::new(move |r| {
                             send(crate::servers::ServerAnswer::Added(r.map(|s| vec![s])))
                         });
-                    if emby {
-                        servers.emby_login(url, user, password, allow_unencrypted, done);
-                    } else {
-                        servers.jellyfin_login(url, user, password, allow_unencrypted, done);
+                    match kind {
+                        crate::servers::PasswordServer::Emby => {
+                            servers.emby_login(url, user, password, allow_unencrypted, done);
+                        }
+                        crate::servers::PasswordServer::Audiobookshelf => servers
+                            .audiobookshelf_login(url, user, password, allow_unencrypted, done),
+                        crate::servers::PasswordServer::Jellyfin => {
+                            servers.jellyfin_login(url, user, password, allow_unencrypted, done);
+                        }
                     }
                 }
                 crate::servers::ServerJob::Plex => {

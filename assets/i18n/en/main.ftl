@@ -1688,6 +1688,7 @@ settings-study-dictionaries-hint = Uncheck to choose the dictionaries of this la
 servers-kind = Server:
 servers-kind-jellyfin = Jellyfin
 servers-kind-emby = Emby
+servers-kind-audiobookshelf = Audiobookshelf
 settings-palette = Palette
 settings-palette-default = Default
 settings-palette-oled = OLED black

@@ -80,6 +80,18 @@ pub trait ServerService: Send {
         let _ = (url, user, password, allow_unencrypted);
         done(Err(String::new()));
     }
+    /// Logs in to an Audiobookshelf (SRV-017).
+    fn audiobookshelf_login(
+        &self,
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+        done: Done<ServerConfig>,
+    ) {
+        let _ = (url, user, password, allow_unencrypted);
+        done(Err(String::new()));
+    }
     /// Starts a Plex sign-in (SRV-003): `started` gets the page to open, then
     /// `done` the account's servers.
     fn plex_login(&self, started: Done<SignIn>, done: Done<Found>);
@@ -145,15 +157,27 @@ impl ServerService for NoServers {
     }
 }
 
+/// A server logged in to with a user name and password.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PasswordServer {
+    /// Jellyfin (SRV-002).
+    #[default]
+    Jellyfin,
+    /// Emby (SRV-014).
+    Emby,
+    /// Audiobookshelf (SRV-017).
+    Audiobookshelf,
+}
+
 /// A job for the worker, taken by the UI layer: its answer needs the waker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerJob {
     /// Makes this video ready.
     Prepare(String),
-    /// Logs in to a Jellyfin.
+    /// Logs in to a Jellyfin, an Emby or an Audiobookshelf.
     Jellyfin {
-        /// It is an Emby (SRV-014).
-        emby: bool,
+        /// Which (SRV-014, SRV-017).
+        kind: PasswordServer,
         /// Its address.
         url: String,
         /// The user.

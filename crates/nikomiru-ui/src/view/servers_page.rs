@@ -20,8 +20,8 @@ pub(crate) struct State {
     user: String,
     password: String,
     allow_unencrypted: bool,
-    /// The login is to an Emby (SRV-014).
-    emby: bool,
+    /// Which server the login is to (SRV-014, SRV-017).
+    kind: crate::servers::PasswordServer,
     /// The names being edited, by server.
     names: std::collections::HashMap<String, String>,
 }
@@ -100,17 +100,21 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
     section(ui, &tr(s, "servers-add-jellyfin"));
     ui.horizontal(|ui| {
         ui.label(tr(s, "servers-kind"));
-        if ui
-            .selectable_label(!state.emby, tr(s, "servers-kind-jellyfin"))
-            .clicked()
-        {
-            state.emby = false;
-        }
-        if ui
-            .selectable_label(state.emby, tr(s, "servers-kind-emby"))
-            .clicked()
-        {
-            state.emby = true;
+        use crate::servers::PasswordServer;
+        for (kind, label) in [
+            (PasswordServer::Jellyfin, "servers-kind-jellyfin"),
+            (PasswordServer::Emby, "servers-kind-emby"),
+            (
+                PasswordServer::Audiobookshelf,
+                "servers-kind-audiobookshelf",
+            ),
+        ] {
+            if ui
+                .selectable_label(state.kind == kind, tr(s, label))
+                .clicked()
+            {
+                state.kind = kind;
+            }
         }
     });
     egui::Grid::new("server-login")
@@ -145,7 +149,7 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 // kept nowhere after this (SRV-002)
                 password: std::mem::take(&mut state.password),
                 allow_unencrypted: state.allow_unencrypted,
-                emby: state.emby,
+                kind: state.kind,
             });
         }
     });
@@ -286,6 +290,29 @@ mod tests {
         assert!(h.state().state.password.is_empty());
     }
 
+    // T-SRV-017: Audiobookshelf is chosen beside Jellyfin and Emby
+    #[test]
+    fn an_audiobookshelf_is_added_from_the_page() {
+        let state = State {
+            url: "https://abs.home".into(),
+            user: "kana".into(),
+            password: "secret".into(),
+            ..State::default()
+        };
+        let mut h = harness(Vec::new(), state);
+        h.get_by_label("servers-kind-audiobookshelf").click();
+        h.run();
+        h.get_by_label("servers-log-in").click();
+        h.run();
+        assert!(matches!(
+            h.state().out.as_slice(),
+            [Command::ServerJellyfin {
+                kind: crate::servers::PasswordServer::Audiobookshelf,
+                ..
+            }]
+        ));
+    }
+
     // T-SRV-014: Emby is chosen explicitly beside Jellyfin
     #[test]
     fn an_emby_is_added_from_the_page() {
@@ -302,7 +329,10 @@ mod tests {
         h.run();
         assert!(matches!(
             h.state().out.as_slice(),
-            [Command::ServerJellyfin { emby: true, .. }]
+            [Command::ServerJellyfin {
+                kind: crate::servers::PasswordServer::Emby,
+                ..
+            }]
         ));
     }
 
