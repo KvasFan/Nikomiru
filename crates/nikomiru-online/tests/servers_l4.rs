@@ -744,3 +744,72 @@ fn audiobookshelf_books_are_listened_to_and_their_place_kept() {
     assert_eq!(abs.cover("li_1").unwrap(), b"cover");
     abs.logout().unwrap();
 }
+
+// T-SRV-020…T-SRV-022: a Kavita logged in with the user's name and
+// password, its API key kept; manga libraries, a series' chapters, a
+// chapter's pages fetched, and the page reached reported back
+#[test]
+fn kavita_chapters_are_read_and_their_page_kept() {
+    use nikomiru_online::servers::kavita::Kavita;
+    let fake = FakeServers::start(Data {
+        file: b"\xff\xd8\xff fake page".to_vec(),
+        ..Data::default()
+    })
+    .unwrap();
+    let base = Url::parse(&fake.kavita_url()).unwrap();
+    let http = || Http::new("").unwrap();
+    assert!(matches!(
+        Kavita::login(http(), base.clone(), USER, "wrong"),
+        Err(OnlineError::Unauthorized { .. })
+    ));
+    let logged = Kavita::login(http(), base.clone(), USER, PASSWORD).unwrap();
+    assert_eq!(logged.api_key(), TOKEN);
+    // a later session: the API key asks for its token
+    let mut kavita = Kavita::new(http(), base, TOKEN);
+    let libraries = kavita.libraries().unwrap();
+    assert_eq!(libraries.len(), 1, "novels left out");
+    let series = kavita
+        .children(&libraries[0].id, 0, ParentKind::Library)
+        .unwrap();
+    assert_eq!(series.items[0].id, "3~7");
+    assert_eq!(series.items[0].title, "カイジ");
+    assert_eq!(kavita.search("3", "カイ", 0).unwrap().items.len(), 1);
+    assert!(kavita.search("3", "ナナ", 0).unwrap().items.is_empty());
+    let chapters = kavita.children("3~7", 0, ParentKind::Item).unwrap();
+    assert_eq!(chapters.items[0].id, "3~7~11~20");
+    assert_eq!(chapters.items[0].duration_ms, 3, "three pages");
+    assert!(kavita.playable("3~7~11~20").is_err(), "read, not played");
+    let pages = kavita.pages("3~7~11~20").unwrap();
+    assert_eq!(pages.len(), 3);
+    let first = &pages[0];
+    let headers: Vec<(&str, &str)> = first
+        .headers
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let bytes = Http::new("")
+        .unwrap()
+        .file(&first.url, &headers)
+        .unwrap()
+        .body;
+    assert!(bytes.starts_with(b"\xff\xd8\xff"));
+    kavita
+        .report("3~7~11~20", "", PlayState::Paused, 2, 3)
+        .unwrap();
+    {
+        let progress = &fake.data().kavita_progress[&20];
+        assert_eq!(
+            (
+                progress["libraryId"].as_i64(),
+                progress["seriesId"].as_i64(),
+                progress["volumeId"].as_i64(),
+                progress["pageNum"].as_i64()
+            ),
+            (Some(3), Some(7), Some(11), Some(2))
+        );
+    }
+    assert_eq!(kavita.item("3~7~11~20").unwrap().position_ms, 2);
+    kavita.mark_played("3~7~11~20").unwrap();
+    assert!(kavita.item("3~7~11~20").unwrap().played);
+    assert_eq!(kavita.cover("7").unwrap(), b"cover");
+}

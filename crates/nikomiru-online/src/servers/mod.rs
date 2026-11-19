@@ -7,6 +7,7 @@
 
 pub mod audiobookshelf;
 pub mod jellyfin;
+pub mod kavita;
 pub mod plex;
 pub mod relay;
 
@@ -31,6 +32,8 @@ pub enum ServerKind {
     Emby,
     /// Audiobookshelf (SRV-017).
     Audiobookshelf,
+    /// Kavita (SRV-020): its chapters are read, not played.
+    Kavita,
 }
 
 impl ServerKind {
@@ -41,6 +44,7 @@ impl ServerKind {
             Self::Plex => "plex",
             Self::Emby => "emby",
             Self::Audiobookshelf => "audiobookshelf",
+            Self::Kavita => "kavita",
         }
     }
 
@@ -51,6 +55,7 @@ impl ServerKind {
             "plex" => Some(Self::Plex),
             "emby" => Some(Self::Emby),
             "audiobookshelf" => Some(Self::Audiobookshelf),
+            "kavita" => Some(Self::Kavita),
             _ => None,
         }
     }
@@ -62,6 +67,7 @@ impl ServerKind {
             Self::Plex => "Plex",
             Self::Emby => "Emby",
             Self::Audiobookshelf => "Audiobookshelf",
+            Self::Kavita => "Kavita",
         }
     }
 }
@@ -224,6 +230,15 @@ pub trait MediaServer: Send {
     fn mark_played(&mut self, id: &str) -> Result<(), OnlineError>;
     /// Ends the session on the server, where it has one.
     fn logout(&mut self) -> Result<(), OnlineError>;
+    /// The pages of an item read rather than played, in order (SRV-021):
+    /// only Kavita's chapters have them.
+    fn pages(&mut self, id: &str) -> Result<Vec<Stream>, OnlineError> {
+        let _ = id;
+        Err(OnlineError::Protocol {
+            provider: "server".into(),
+            reason: "nothing to read".into(),
+        })
+    }
 }
 
 /// What [`MediaServer::children`] lists.

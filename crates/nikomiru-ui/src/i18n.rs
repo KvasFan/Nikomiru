@@ -253,6 +253,7 @@ mod tests {
                 "servers-kind-jellyfin",
                 "servers-kind-emby",
                 "servers-kind-audiobookshelf",
+                "servers-kind-kavita",
                 "address-hint"
             ]
         );

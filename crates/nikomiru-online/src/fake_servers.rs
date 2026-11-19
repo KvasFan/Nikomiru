@@ -66,6 +66,8 @@ pub struct Data {
     pub emby_no_direct_play: bool,
     /// What the fake Audiobookshelf was told of each book (SRV-019), by id.
     pub abs_progress: std::collections::BTreeMap<String, Value>,
+    /// The pages the fake Kavita was told were reached, by chapter (SRV-022).
+    pub kavita_progress: std::collections::BTreeMap<i64, Value>,
 }
 
 struct Shared {
@@ -143,6 +145,13 @@ impl FakeServers {
     /// 20 s.
     pub fn audiobookshelf_url(&self) -> String {
         format!("http://127.0.0.1:{}/abs/", self.port)
+    }
+
+    /// The fake Kavita's address (SRV-020): library 3 holds series 7, whose
+    /// volume 11 holds chapter 20 of three pages (each the fake's file);
+    /// its API key is [`TOKEN`].
+    pub fn kavita_url(&self) -> String {
+        format!("http://127.0.0.1:{}/kv/", self.port)
     }
 
     /// The fake Plex's address.
@@ -261,6 +270,8 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
         jellyfin(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/em/emby/") {
         emby(stream, &request, path, shared);
+    } else if let Some(path) = path.strip_prefix("/kv/") {
+        kavita(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/abs/") {
         audiobookshelf(stream, &request, path, shared);
     } else if let Some(path) = path.strip_prefix("/px/") {
@@ -314,6 +325,92 @@ fn webdav(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared
             None => respond(stream, 404, "", b""),
         },
         _ => respond(stream, 405, "", b""),
+    }
+}
+
+/// The fake Kavita's session token, given for the API key.
+const KAVITA_JWT: &str = "kavita-jwt-9c2e";
+
+fn kavita(stream: &mut TcpStream, request: &Request, path: &str, shared: &Shared) {
+    let parts: Vec<&str> = path.split('/').collect();
+    let api_key = query(&request.target, "apiKey");
+    match (request.method.as_str(), parts.as_slice()) {
+        ("POST", ["api", "Account", "login"]) => {
+            let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+            if body["username"] == USER && body["password"] == PASSWORD {
+                return send_json(
+                    stream,
+                    &json!({ "username": USER, "token": KAVITA_JWT, "apiKey": TOKEN }),
+                );
+            }
+            return respond(stream, 401, "", b"");
+        }
+        ("POST", ["api", "Plugin", "authenticate"]) => {
+            if api_key.as_deref() == Some(TOKEN) {
+                return send_json(stream, &json!({ "username": USER, "token": KAVITA_JWT }));
+            }
+            return respond(stream, 401, "", b"");
+        }
+        _ => {}
+    }
+    if request.header("authorization") != Some(&format!("Bearer {KAVITA_JWT}")) {
+        return respond(stream, 401, "", b"");
+    }
+    let mut data = lock(&shared.data);
+    let read = |data: &Data| {
+        data.kavita_progress
+            .get(&20)
+            .and_then(|p| p["pageNum"].as_u64())
+            .unwrap_or(0)
+    };
+    let series = |data: &Data| json!({ "id": 7, "name": "カイジ", "libraryId": 3, "pages": 3, "pagesRead": read(data) });
+    match (request.method.as_str(), parts.as_slice()) {
+        ("GET", ["api", "Library", "libraries"]) => send_json(
+            stream,
+            &json!([{ "id": 3, "name": "Manga", "type": 0 }, { "id": 4, "name": "Novels", "type": 4 }]),
+        ),
+        ("POST", ["api", "Series", "all-v2"]) => {
+            let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+            let wanted =
+                body["statements"][0]["field"] == 19 && body["statements"][0]["value"] == "3";
+            send_json(
+                stream,
+                &if wanted {
+                    json!([series(&data)])
+                } else {
+                    json!([])
+                },
+            );
+        }
+        ("GET", ["api", "Series", "7"]) => send_json(stream, &series(&data)),
+        ("GET", ["api", "Series", "volumes"]) => send_json(
+            stream,
+            &json!([{ "id": 11, "minNumber": 1.0, "name": "1", "chapters": [
+                { "id": 20, "range": "1", "minNumber": 1.0, "pages": 3, "pagesRead": read(&data), "title": "" }
+            ] }]),
+        ),
+        ("GET", ["api", "Search", "search"]) => {
+            let q = query(&request.target, "queryString").unwrap_or_default();
+            let found = if "カイジ".contains(q.as_str()) && !q.is_empty() {
+                json!([{ "seriesId": 7, "name": "カイジ", "libraryId": 3 }])
+            } else {
+                json!([])
+            };
+            send_json(stream, &json!({ "series": found }));
+        }
+        ("GET", ["api", "Reader", "image"]) if api_key.as_deref() == Some(TOKEN) => {
+            drop(data);
+            send_file(stream, request, shared);
+        }
+        ("GET", ["api", "Image", "series-cover"]) => respond(stream, 200, "", b"cover"),
+        ("POST", ["api", "Reader", "progress"]) => {
+            let body: Value = serde_json::from_str(&request.body).unwrap_or_default();
+            if let Some(chapter) = body["chapterId"].as_i64() {
+                data.kavita_progress.insert(chapter, body);
+            }
+            respond(stream, 200, "", b"");
+        }
+        _ => respond(stream, 404, "", b""),
     }
 }
 

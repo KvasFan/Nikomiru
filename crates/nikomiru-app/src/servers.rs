@@ -19,6 +19,7 @@ use nikomiru_online::OnlineError;
 use nikomiru_online::http::Http;
 use nikomiru_online::servers::audiobookshelf::Audiobookshelf;
 use nikomiru_online::servers::jellyfin::{Flavor, Jellyfin};
+use nikomiru_online::servers::kavita::Kavita;
 use nikomiru_online::servers::plex::{Plex, PlexTv};
 use nikomiru_online::servers::relay::Relay;
 use nikomiru_online::servers::{
@@ -63,6 +64,9 @@ impl std::fmt::Debug for Parts {
     }
 }
 
+/// The chapters of a server whose pages are kept (SRV-021).
+const KEPT_CHAPTERS: usize = 20;
+
 enum Job {
     Configure(Vec<ServerConfig>, String, String),
     Prepare(String, Done<ServerVideo>),
@@ -72,6 +76,8 @@ enum Job {
     JellyfinLogin(String, String, String, bool, Done<ServerConfig>),
     EmbyLogin(String, String, String, bool, Done<ServerConfig>),
     AudiobookshelfLogin(String, String, String, bool, Done<ServerConfig>),
+    KavitaLogin(String, String, String, bool, Done<ServerConfig>),
+    Pages(String, Done<nikomiru_ui::servers::ServerPages>),
     PlexPin(Done<SignIn>, Done<Found>),
     Logout(Box<ServerConfig>),
     Libraries(String, Done<Vec<Library>>),
@@ -159,6 +165,25 @@ impl ServerService for Servers {
     }
     fn prepare(&self, uid: String, done: Done<ServerVideo>) {
         self.send(Job::Prepare(uid, done));
+    }
+    fn pages(&self, uid: String, done: Done<nikomiru_ui::servers::ServerPages>) {
+        self.send(Job::Pages(uid, done));
+    }
+    fn kavita_login(
+        &self,
+        url: String,
+        user: String,
+        password: String,
+        allow_unencrypted: bool,
+        done: Done<ServerConfig>,
+    ) {
+        self.send(Job::KavitaLogin(
+            url,
+            user,
+            password,
+            allow_unencrypted,
+            done,
+        ));
     }
     fn close(&self) {
         self.send(Job::Close);
@@ -279,6 +304,10 @@ impl Worker {
                 self.connected.clear();
             }
             Job::Prepare(uid, done) => done(self.prepare(&uid)),
+            Job::Pages(uid, done) => done(self.chapter_pages(&uid)),
+            Job::KavitaLogin(url, user, password, allow, done) => {
+                done(self.kavita_login(&url, &user, &password, allow));
+            }
             Job::Close => self.relay = None,
             Job::Report(uid, source, state, at_ms, duration_ms) => {
                 let Some((server, item)) = parse_server_uid(&uid) else {
@@ -388,6 +417,10 @@ impl Worker {
                 device,
             )?));
         }
+        if kind == Some(ServerKind::Kavita) {
+            let (http, url) = address(&config.url)?;
+            return Ok(Box::new(Kavita::new(http, url, &config.token)));
+        }
         if kind == Some(ServerKind::Audiobookshelf) {
             let (http, url) = address(&config.url)?;
             return Ok(Box::new(Audiobookshelf::new(
@@ -469,6 +502,136 @@ impl Worker {
         allow_unencrypted: bool,
     ) -> Result<ServerConfig, String> {
         self.login_as(Flavor::Jellyfin, url, user, password, allow_unencrypted)
+    }
+
+    /// SRV-020: the API key kept, never the password.
+    fn kavita_login(
+        &self,
+        url: &str,
+        user: &str,
+        password: &str,
+        allow_unencrypted: bool,
+    ) -> Result<ServerConfig, String> {
+        let attempt = || {
+            let base = checked_server_url(url, allow_unencrypted)?;
+            let http = http_for(&base, &self.parts.proxy)?;
+            let server = Kavita::login(http, base.clone(), user, password)?;
+            Ok::<_, OnlineError>(ServerConfig {
+                id: uuid::Uuid::new_v4().simple().to_string(),
+                kind: ServerKind::Kavita.key().into(),
+                name: base.host_str().unwrap_or_default().to_string(),
+                url: url.trim().to_string(),
+                token: server.api_key().to_string(),
+                user_id: user.trim().to_string(),
+                allow_unencrypted,
+                ..ServerConfig::default()
+            })
+        };
+        attempt().map_err(|e| self.message(&e))
+    }
+
+    /// SRV-021: a chapter's pages fetched into a folder of their own, named
+    /// by its series and title, then read as a manga folder; pages fetched
+    /// before are kept.
+    fn chapter_pages(&mut self, uid: &str) -> Result<nikomiru_ui::servers::ServerPages, String> {
+        let Some((server, item)) = parse_server_uid(uid) else {
+            return Err(self.message(&OnlineError::BadUrl(uid.to_string())));
+        };
+        let id = server.to_string();
+        let proxy = self.parts.proxy.clone();
+        let root = self.parts.covers_dir.with_file_name("server-pages");
+        let result: Result<_, OnlineError> = (|| {
+            let session = self.server(&id)?;
+            let info = session.item(item)?;
+            let streams = session.pages(item)?;
+            let clean = |text: &str| -> String {
+                text.chars()
+                    .map(|c| {
+                        if matches!(c, '/' | '\\' | '\0') {
+                            '_'
+                        } else {
+                            c
+                        }
+                    })
+                    .collect::<String>()
+                    .trim()
+                    .to_string()
+            };
+            let name = format!(
+                "{} - {} [{}]",
+                clean(info.series.as_deref().unwrap_or_default()),
+                clean(&info.title),
+                item.replace('~', "-")
+            );
+            let folder = root.join(&id).join(name);
+            std::fs::create_dir_all(&folder).map_err(|e| OnlineError::Io(e.to_string()))?;
+            for (n, stream) in streams.iter().enumerate() {
+                if std::fs::read_dir(&folder)
+                    .map_err(|e| OnlineError::Io(e.to_string()))?
+                    .flatten()
+                    .any(|f| {
+                        f.file_name()
+                            .to_string_lossy()
+                            .starts_with(&format!("{n:04}."))
+                    })
+                {
+                    continue;
+                }
+                let http = http_for(&stream.url, &proxy)?;
+                let headers: Vec<(&str, &str)> = stream
+                    .headers
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect();
+                let answer = http.file(&stream.url, &headers)?.ok("Kavita")?;
+                let ext = match answer.body.get(..4) {
+                    Some([0x89, b'P', b'N', b'G']) => "png",
+                    Some([b'R', b'I', b'F', b'F']) => "webp",
+                    Some([b'G', b'I', b'F', _]) => "gif",
+                    _ if answer
+                        .body
+                        .get(4..12)
+                        .is_some_and(|b| b.starts_with(b"ftypavif")) =>
+                    {
+                        "avif"
+                    }
+                    _ => "jpg",
+                };
+                let path = folder.join(format!("{n:04}.{ext}"));
+                let part = path.with_extension("part");
+                std::fs::write(&part, &answer.body)
+                    .and_then(|()| std::fs::rename(&part, &path))
+                    .map_err(|e| OnlineError::Io(e.to_string()))?;
+            }
+            // read now: the folder's time says so, for what is kept
+            let _ = std::fs::write(folder.join(".read"), b"");
+            // the last chapters read are kept, the older ones go
+            let server_root = root.join(&id);
+            let mut kept: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&server_root)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|e| e.path() != folder)
+                .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+                .collect();
+            kept.sort_by_key(|k| std::cmp::Reverse(k.0));
+            for (_, old) in kept.into_iter().skip(KEPT_CHAPTERS - 1) {
+                let _ = std::fs::remove_dir_all(old);
+            }
+            Ok((folder, info.position_ms, streams.len() as u64))
+        })();
+        match result {
+            Ok((folder, page, pages)) => Ok(nikomiru_ui::servers::ServerPages {
+                uid: uid.to_string(),
+                folder,
+                page,
+                pages,
+            }),
+            Err(e) => {
+                self.connected.remove(&id);
+                Err(self.message(&e))
+            }
+        }
     }
 
     /// SRV-017: the token kept, never the password.
