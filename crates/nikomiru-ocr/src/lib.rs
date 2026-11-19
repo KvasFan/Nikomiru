@@ -551,6 +551,48 @@ pub struct Layout {
     pub covers: Vec<[u32; 4]>,
 }
 
+/// Whether the ink in `m` is a column (or row) of dots: three pieces at
+/// least along it, each no longer than about twice its width but the last
+/// (a ！ or ？ after them), and each alone, white just outside the band on
+/// both sides, where an outline or a stroke crossing it would go on
+/// (MNG-012).
+fn dotted(grey: &image::GrayImage, below: u8, m: &[u32; 4], vertical: bool) -> bool {
+    let ((a0, a1), (g0, g1)) = if vertical {
+        ((m[0], m[2]), (m[1], m[3]))
+    } else {
+        ((m[1], m[3]), (m[0], m[2]))
+    };
+    let inked = |a: u32, g: u32| {
+        let (x, y) = if vertical { (a, g) } else { (g, a) };
+        grey.get_pixel_checked(x, y).is_some_and(|p| p.0[0] < below)
+    };
+    let longest = (a1 - a0) * 2 + 2;
+    let mut pieces: Vec<(u32, u32)> = Vec::new();
+    for g in g0..g1 {
+        if (a0..a1).any(|a| inked(a, g)) {
+            match pieces.last_mut() {
+                Some(last) if g <= last.1 + 3 => last.1 = g,
+                _ => pieces.push((g, g)),
+            }
+        }
+    }
+    let alone = |(s, e): (u32, u32)| {
+        (s..=e).all(|g| {
+            // past the edges' antialiasing, a pixel out
+            [a0.saturating_sub(3), a0.saturating_sub(2), a1 + 1, a1 + 2]
+                .into_iter()
+                .filter(|a| *a + 1 < a0 || *a > a1)
+                .all(|a| !inked(a, g))
+        })
+    };
+    let n = pieces.len();
+    n >= 3
+        && pieces
+            .iter()
+            .enumerate()
+            .all(|(i, p)| (p.1 - p.0 < longest || i + 1 == n) && alone(*p))
+}
+
 /// `b` a pixel wider each way, on a page `pw` by `ph`.
 fn margin(b: [u32; 4], pw: u32, ph: u32) -> [u32; 4] {
     [
@@ -580,19 +622,31 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
         if marked.lines.is_empty() {
             return marked;
         }
-        // a column the detector left unmarked, found in the ink: only one
-        // between two marked lines of the same balloon (across from it),
-        // as wide as they are; the art around the balloons is left alone
+        let across = |m: &[u32; 4]| if vertical { (m[0], m[2]) } else { (m[1], m[3]) };
+        let along = |m: &[u32; 4]| if vertical { (m[1], m[3]) } else { (m[0], m[2]) };
+        // a column the detector left unmarked, found in the ink, measured
+        // with a character as wide as the lines found: between two marked
+        // lines of the same balloon, or beside one inside the block's own
+        // box (a first or last column); the art around is left alone
+        let line_width = {
+            let mut w: Vec<u32> = marked
+                .lines
+                .iter()
+                .map(|m| across(m).1 - across(m).0)
+                .collect();
+            w.sort_unstable();
+            w[w.len() / 2].max(4)
+        };
+        let [bl, bt, br, bb] = block.bounds;
+        let area = u64::from(br.saturating_sub(bl)) * u64::from(bb.saturating_sub(bt));
         let measured = layout(
             page,
             &Block {
                 lines: Vec::new(),
                 ..block.clone()
             },
-            chars,
+            (area / u64::from(line_width * line_width)).max(1) as usize,
         );
-        let across = |m: &[u32; 4]| if vertical { (m[0], m[2]) } else { (m[1], m[3]) };
-        let along = |m: &[u32; 4]| if vertical { (m[1], m[3]) } else { (m[0], m[2]) };
         let overlap = |(a0, a1): (u32, u32), (b0, b1): (u32, u32)| {
             a1.min(b1).saturating_sub(a0.max(b0)) * 10 >= (a1 - a0).min(b1 - b0).max(1) * 5
         };
@@ -618,22 +672,79 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
         let mut dense: Vec<u64> = marked.lines.iter().map(density).collect();
         dense.sort_unstable();
         let dense = dense[dense.len() / 2];
-        let missed: Vec<[u32; 4]> = measured
-            .lines
+        // the block's own box across, two pixels' slack
+        let (b0, b1) = if vertical { (bl, br) } else { (bt, bb) };
+        let inside = |m: &[u32; 4]| across(m).0 + 2 >= b0 && across(m).1 <= b1 + 2;
+        // what the ink holds apart from the marked lines: its lines, and
+        // the narrow runs it took for furigana, which may be a column of
+        // dots (covers are a pixel wider than what they cover)
+        let found: Vec<[u32; 4]> = measured
+            .covers
+            .iter()
+            .map(|c| {
+                [
+                    c[0] + 1,
+                    c[1] + 1,
+                    c[2].saturating_sub(1),
+                    c[3].saturating_sub(1),
+                ]
+            })
+            .filter(|c| c[2] > c[0] && c[3] > c[1])
+            .collect();
+        let missed: Vec<[u32; 4]> = found
             .iter()
             .filter(|m| {
                 let w = across(m).1 - across(m).0;
+                let length = along(m).1 - along(m).0;
                 let beside: Vec<&[u32; 4]> = marked
                     .lines
                     .iter()
                     .filter(|k| overlap(along(k), along(m)))
                     .collect();
-                w * 10 >= width * 6
-                    && w * 10 <= width * 16
-                    && density(m) * 10 >= dense * 6
-                    && !marked.lines.iter().any(|k| overlap(across(k), across(m)))
-                    && beside.iter().any(|k| middle(k) < middle(m))
-                    && beside.iter().any(|k| middle(k) > middle(m))
+                let apart = !marked.lines.iter().any(|k| overlap(across(k), across(m)));
+                let between = beside.iter().any(|k| middle(k) < middle(m))
+                    && beside.iter().any(|k| middle(k) > middle(m));
+                // the nearest line beside it, along any part of it: one
+                // column away, no further (furigana touch theirs)
+                let gap = marked
+                    .lines
+                    .iter()
+                    .filter(|k| along(k).1.min(along(m).1) > along(k).0.max(along(m).0))
+                    .map(|k| {
+                        let (k0, k1) = across(k);
+                        let (m0, m1) = across(m);
+                        if m1 <= k0 {
+                            k0 - m1
+                        } else {
+                            m0.saturating_sub(k1)
+                        }
+                    })
+                    .min();
+                // furigana touch their line; a narrow column a third of a
+                // column away is text of its own
+                let narrow = w * 10 < width * 6;
+                let edge = inside(m)
+                    && !beside.is_empty()
+                    && gap.is_some_and(|g| {
+                        g <= width * 2
+                            && if narrow {
+                                g * 3 >= width
+                            } else {
+                                g * 4 >= width
+                            }
+                    })
+                    && length >= width;
+                apart
+                    && ((between
+                        && w * 10 >= width * 6
+                        && w * 10 <= width * 16
+                        && density(m) * 10 >= dense * 6)
+                        // a first or last column, of text or of dots: one
+                        // thinner than most only as dots, not a stroke or
+                        // an outline
+                        || (edge
+                            && w * 10 <= width * 18
+                            && (w * 10 >= width * 6 || dotted(&grey, below, m, vertical))))
             })
             .copied()
             .collect();
@@ -766,9 +877,11 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
     if text.is_empty() {
         return alone;
     }
+    // within about two characters: furigana, or a column of dots the
+    // caller may take as text (MNG-012)
     let near = |run: &(u32, u32)| {
         text.iter()
-            .any(|t| run.0 <= t.1 + reach && run.1 + reach >= t.0)
+            .any(|t| run.0 <= t.1 + reach * 3 && run.1 + reach * 3 >= t.0)
     };
     let furigana: Vec<(u32, u32)> = merged
         .iter()
@@ -1066,10 +1179,27 @@ fn layout_from_lines(page: &DynamicImage, block: &Block) -> Layout {
     let mut widths: Vec<u32> = lines.iter().map(across).collect();
     widths.sort_unstable();
     if let Some(&median) = widths.get(widths.len() / 2) {
+        // apart from the others by a column's gap it is text of its own:
+        // dots, or small characters, read and written in
+        let span = |m: &[u32; 4]| if vertical { (m[0], m[2]) } else { (m[1], m[3]) };
+        let gap = |a: &[u32; 4], b: &[u32; 4]| {
+            let ((a0, a1), (b0, b1)) = (span(a), span(b));
+            if a1 <= b0 {
+                b0 - a1
+            } else {
+                a0.saturating_sub(b1)
+            }
+        };
         let kept: Vec<[u32; 4]> = lines
             .iter()
             .zip(&marks)
-            .filter(|(m, _)| across(m) * 10 >= median * 6)
+            .filter(|(m, _)| {
+                across(m) * 10 >= median * 6
+                    || (dotted(&grey, below, m, vertical)
+                        && !lines
+                            .iter()
+                            .any(|k| k != *m && across(k) > across(m) && gap(k, m) * 3 <= median))
+            })
             .map(|(_, mark)| *mark)
             .collect();
         // measured again without them, which narrowed their neighbours'
@@ -1573,6 +1703,64 @@ mod tests {
         );
         let framed = |c: &[u32; 4]| c[0] <= 131 && 131 < c[2];
         assert!(!found.covers.iter().any(framed), "{:?}", found.covers);
+    }
+
+    // T-MNG-012: a balloon's first column, larger and unmarked, and its last,
+    // a column of dots, are lines too, inside the block's box; a dotted
+    // line marked apart, a column away, is read rather than taken for
+    // furigana (Kaiji volume 1, page 8: 脱税, ・・・・)
+    #[test]
+    fn a_first_column_and_a_column_of_dots_are_lines() {
+        let mut page = image::GrayImage::from_pixel(220, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        ink(140, 20, 160, 70);
+        ink(100, 20, 118, 180);
+        ink(60, 20, 78, 180);
+        // dots, six of them
+        for k in 0..6 {
+            ink(30, 30 + k * 20, 34, 34 + k * 20);
+        }
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [28, 18, 162, 182],
+            vertical: true,
+            lines: vec![[105, 30, 114, 170], [65, 30, 74, 170]],
+        };
+        let found = layout(&page, &block, 10);
+        assert_eq!(
+            found.lines,
+            vec![
+                [140, 20, 160, 70],
+                [100, 20, 118, 180],
+                [60, 20, 78, 180],
+                [30, 30, 34, 134]
+            ]
+        );
+        let grey = page.to_luma8();
+        for (x, y, p) in grey.enumerate_pixels() {
+            let covered = |c: &[u32; 4]| c[0] <= x && x < c[2] && c[1] <= y && y < c[3];
+            assert!(
+                p.0[0] > 128 || found.covers.iter().any(covered),
+                "({x}, {y})"
+            );
+        }
+        // the dots marked by the detector: kept as a line
+        let block = Block {
+            lines: vec![[105, 30, 114, 170], [65, 30, 74, 170], [31, 35, 33, 130]],
+            ..block
+        };
+        let found = layout(&page, &block, 10);
+        assert!(
+            found.lines.contains(&[30, 30, 34, 134]),
+            "{:?}",
+            found.lines
+        );
     }
 
     // T-ERR-001

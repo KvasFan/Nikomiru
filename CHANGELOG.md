@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.173.1] - 2026-11-19
+
+### Fixed
+
+- Manga text read ahead no longer leaves columns unread: a balloon's first or last column the detector missed (such as a large 脱税), short columns (元に) and columns of dots are read and written over the page; dots a column away from the text are no longer taken for furigana and covered without text. Pages read before are read again once (AK-BUG-008, MNG-012).
+
 ## [2.173.0] - 2026-11-19
 
 What Fushi 3 has and Nikomiru lacked, fourth part (D-83).
