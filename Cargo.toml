@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "2.171.0"
+version = "2.172.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-only"
@@ -87,6 +87,10 @@ fluent-bundle = "0.16"
 unic-langid = "0.9"
 uuid = "1.28"
 sha2 = "0.11"
+# Encrypted sync (BAK-012, §4): XChaCha20-Poly1305 and Argon2id from RustCrypto, MIT OR Apache-2.0
+chacha20poly1305 = "0.11"
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
+getrandom = "0.3"
 # Update manifest signatures (UPD-001, §4): minisign/Ed25519 verification, MIT, no dependencies
 minisign-verify = "0.3"
 # Signing in the update tests only (UPD-001): MIT, without default features
@@ -130,6 +134,13 @@ todo = "deny"
 [profile.dev.package.redb]
 opt-level = 3
 debug-assertions = false
+
+# Argon2id (BAK-012): unoptimised, one key would take seconds in the tests
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.dev.package.lz4_flex]
 opt-level = 3

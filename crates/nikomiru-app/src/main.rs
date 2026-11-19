@@ -503,6 +503,7 @@ fn run(
         presets_dir: paths.mpv_presets_dir(),
         translator: translator.clone(),
         clock: Arc::new(SystemClock::new()),
+        start_config: Some(Box::new(config.clone())),
     });
     // LIB-002…LIB-012
     let catalog: Box<dyn nikomiru_ui::catalog::LibraryService> = match &library {

@@ -334,6 +334,55 @@ pub fn finish(data_dir: &Path, config_file: &Path, presets_dir: &Path) -> std::i
     Ok(true)
 }
 
+/// The folder of the backups made by themselves, in the data folder
+/// (BAK-011).
+pub const AUTOMATIC: &str = "backups";
+const AUTOMATIC_PREFIX: &str = "auto-";
+
+/// The name of a backup made by itself at `now` (Unix ms).
+pub fn automatic_name(now: i64) -> String {
+    format!("{AUTOMATIC_PREFIX}{now}.{EXTENSION}")
+}
+
+/// The backups made by themselves in `dir`, the newest first, with when
+/// each was made (Unix ms, from its name). Other files are left alone.
+pub fn automatic_list(dir: &Path) -> Vec<(PathBuf, i64)> {
+    let mut out: Vec<(PathBuf, i64)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let at = name
+                .strip_prefix(AUTOMATIC_PREFIX)?
+                .strip_suffix(&format!(".{EXTENSION}"))?
+                .parse()
+                .ok()?;
+            Some((entry.path(), at))
+        })
+        .collect();
+    out.sort_by_key(|(_, at)| std::cmp::Reverse(*at));
+    out
+}
+
+/// Whether a backup is due at `now`: none yet, or the newest older than
+/// `days` (BAK-011). One from the future (a clock set back) is not counted.
+pub fn automatic_due(dir: &Path, now: i64, days: i64) -> bool {
+    automatic_list(dir)
+        .into_iter()
+        .find(|(_, at)| *at <= now)
+        .is_none_or(|(_, at)| now - at >= days * 86_400_000)
+}
+
+/// Removes the oldest backups made by themselves beyond `keep`.
+pub fn automatic_prune(dir: &Path, keep: usize) {
+    for (path, _) in automatic_list(dir).into_iter().skip(keep.max(1)) {
+        if let Err(e) = std::fs::remove_file(&path) {
+            tracing::warn!("backup {}: {e}", path.display());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,5 +737,38 @@ mod tests {
         assert!(matches!(inspect(&path), Err(BackupError::Newer)));
         std::fs::write(&path, "not a zip").unwrap();
         assert!(matches!(inspect(&path), Err(BackupError::Damaged)));
+    }
+
+    // T-BAK-011
+    #[test]
+    fn backups_made_by_themselves_are_due_listed_and_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let day = 86_400_000;
+        assert!(automatic_due(dir.path(), 10 * day, 7), "none yet");
+        for at in [day, 3 * day, 8 * day] {
+            std::fs::write(dir.path().join(automatic_name(at)), b"zip").unwrap();
+        }
+        std::fs::write(dir.path().join("mine.nikomiru-backup"), b"zip").unwrap();
+        std::fs::write(dir.path().join("auto-x.nikomiru-backup"), b"zip").unwrap();
+        let listed: Vec<i64> = automatic_list(dir.path())
+            .iter()
+            .map(|(_, at)| *at)
+            .collect();
+        assert_eq!(listed, [8 * day, 3 * day, day]);
+        assert!(!automatic_due(dir.path(), 14 * day, 7));
+        assert!(automatic_due(dir.path(), 15 * day, 7));
+        assert!(automatic_due(dir.path(), 9 * day, 1));
+        // the clock set back: the backup "from the future" does not count
+        assert!(!automatic_due(dir.path(), 5 * day, 7), "the one of day 3");
+        automatic_prune(dir.path(), 2);
+        let listed: Vec<i64> = automatic_list(dir.path())
+            .iter()
+            .map(|(_, at)| *at)
+            .collect();
+        assert_eq!(listed, [8 * day, 3 * day]);
+        assert!(
+            dir.path().join("mine.nikomiru-backup").exists(),
+            "the user's own stays"
+        );
     }
 }

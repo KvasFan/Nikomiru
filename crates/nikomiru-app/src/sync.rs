@@ -14,6 +14,7 @@ use nikomiru_core::Clock;
 use nikomiru_core::config::{Config, SyncConfig};
 use nikomiru_library::Library;
 use nikomiru_library::backup::{self, Contents, Manifest};
+use nikomiru_library::crypt::{self, CryptError};
 use nikomiru_library::sync::{DecodeError, DeviceState};
 use nikomiru_online::OnlineError;
 use nikomiru_online::webdav::{WebDav, is_media};
@@ -47,6 +48,9 @@ pub struct Parts {
     pub translator: Translator,
     /// Time source.
     pub clock: Arc<dyn Clock>,
+    /// The settings at start, for a backup made by itself then (BAK-011);
+    /// `None`: none is made.
+    pub start_config: Option<Box<Config>>,
 }
 
 impl std::fmt::Debug for Parts {
@@ -64,6 +68,8 @@ enum Job {
     Backup(PathBuf, Box<Config>, Options, Done<Manifest>),
     Inspect(PathBuf, Done<Manifest>),
     Restore(PathBuf, Box<Config>, Done<()>),
+    /// The backups made by themselves (BAK-011).
+    Automatic(Done<Vec<(PathBuf, i64)>>),
     /// The last sync, if automatic.
     Close(mpsc::Sender<()>),
 }
@@ -108,6 +114,7 @@ impl SyncWorker {
             .name("nikomiru-sync".into())
             .spawn(move || {
                 let mut worker = Worker { parts };
+                worker.automatic_backup();
                 if automatic {
                     worker.automatic();
                 }
@@ -151,6 +158,9 @@ impl SyncService for SyncWorker {
     fn restore(&self, path: PathBuf, config: Box<Config>, done: Done<()>) {
         self.send(Job::Restore(path, config, done));
     }
+    fn automatic_backups(&self, done: Done<Vec<(PathBuf, i64)>>) {
+        self.send(Job::Automatic(done));
+    }
 }
 
 struct Worker {
@@ -182,6 +192,9 @@ impl Worker {
                 done(backup::inspect(&path).map_err(|e| self.parts.translator.error(&e)));
             }
             Job::Restore(path, config, done) => done(self.restore(&path, &config)),
+            Job::Automatic(done) => done(Ok(backup::automatic_list(
+                &self.parts.data_dir.join(backup::AUTOMATIC),
+            ))),
             Job::Close(done) => {
                 if self.parts.sync.automatic {
                     self.automatic();
@@ -220,6 +233,36 @@ impl Worker {
             .map_err(|e| self.message(&e))
     }
 
+    /// A backup made by itself at start, when one is due; the oldest beyond
+    /// those kept go (BAK-011). A failure is only logged.
+    fn automatic_backup(&self) {
+        let (Some(config), Some(days)) = (&self.parts.start_config, self.parts.sync.backup_days())
+        else {
+            return;
+        };
+        if self.parts.library.is_none() {
+            return;
+        }
+        let dir = self.parts.data_dir.join(backup::AUTOMATIC);
+        let now = self.now();
+        if !backup::automatic_due(&dir, now, days) {
+            return;
+        }
+        let made = std::fs::create_dir_all(&dir)
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                self.backup(
+                    dir.join(backup::automatic_name(now)),
+                    config,
+                    Options::default(),
+                )
+            });
+        match made {
+            Ok(_) => backup::automatic_prune(&dir, self.parts.sync.backups_kept()),
+            Err(e) => tracing::warn!("automatic backup: {e}"),
+        }
+    }
+
     fn automatic(&self) {
         if self.parts.sync.url.is_empty() || self.parts.device_id.is_empty() {
             return;
@@ -242,9 +285,24 @@ impl Worker {
         let library_error = |e: nikomiru_library::LibraryError| tr.error(&e);
         let mut merged = library.export_state(now).map_err(library_error)?;
         let devices = dav.devices().map_err(|e| self.message(&e))?;
-        let (mut read, mut skipped) = (0, 0);
+        let (mut read, mut skipped, mut locked) = (0, 0, 0);
+        let passphrase = &self.parts.sync.passphrase;
         for device in devices.iter().filter(|d| **d != self.parts.device_id) {
             let bytes = dav.read(device).map_err(|e| self.message(&e))?;
+            // BAK-012: another passphrase, or none here: skipped, and said
+            let bytes = match crypt::open(passphrase, &bytes) {
+                Ok(bytes) => bytes,
+                Err(e @ (CryptError::NoPassphrase | CryptError::Wrong)) => {
+                    tracing::warn!("{device}: {e}");
+                    locked += 1;
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!("{device}: {e}");
+                    skipped += 1;
+                    continue;
+                }
+            };
             match DeviceState::decode(&bytes) {
                 Ok(state) => {
                     merged.merge(&state);
@@ -265,11 +323,14 @@ impl Worker {
         let bytes = mine
             .encode()
             .map_err(|e| self.message(&OnlineError::Io(e.to_string())))?;
+        let bytes = crypt::seal_if(passphrase, bytes)
+            .map_err(|e| self.message(&OnlineError::Io(e.to_string())))?;
         dav.write(&self.parts.device_id, bytes)
             .map_err(|e| self.message(&e))?;
         Ok(Synced {
             devices: read,
             skipped,
+            locked,
         })
     }
 
@@ -290,11 +351,17 @@ impl Worker {
             let path = dir.join(name);
             let here = path.is_file();
             let there = remote.iter().any(|r| r == name);
+            let passphrase = &self.parts.sync.passphrase;
             if here && !there {
                 let bytes = std::fs::read(&path).map_err(|e| OnlineError::Io(e.to_string()))?;
+                // BAK-012: sealed too; its name is its plain content's hash
+                let bytes = crypt::seal_if(passphrase, bytes)
+                    .map_err(|e| OnlineError::Io(e.to_string()))?;
                 dav.write_media(name, bytes)?;
             } else if !here && there {
-                match dav.read_media(name) {
+                match dav.read_media(name).and_then(|b| {
+                    crypt::open(passphrase, &b).map_err(|e| OnlineError::Io(e.to_string()))
+                }) {
                     Ok(bytes) => {
                         let ext = name.rsplit('.').next().unwrap_or_default();
                         if nikomiru_anki::media::name(&bytes, ext) != *name {

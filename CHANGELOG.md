@@ -4,6 +4,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.172.0] - 2026-11-19
+
+What Fushi 3 has and Nikomiru lacked, third part (D-83).
+
+### Added
+
+- Backups made by themselves: at start, once a week by default (or every day, or never), a backup of your settings without keys, library, progress and subtitles goes to the folder `backups` of Nikomiru's data; the last four are kept. Settings → Backup lists them, each with **Restore…** (BAK-011).
+- Encrypted sync: with a passphrase in Settings → Backup, what Nikomiru writes to the WebDAV folder, the review's media too, is encrypted (XChaCha20-Poly1305, key from Argon2id), and only computers with the same passphrase read it. Files written before stay readable; the sync says how many files it could not open (BAK-012).
+
+### Dependencies
+
+- `chacha20poly1305` 0.11, `argon2` 0.6 and `getrandom` 0.3 (RustCrypto, MIT OR Apache-2.0) for the encrypted sync.
+
 ## [2.171.0] - 2026-11-19
 
 What Fushi 3 has and Nikomiru lacked, second part (D-83).
