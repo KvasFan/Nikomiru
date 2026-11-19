@@ -879,7 +879,7 @@ impl BooksConfig {
     /// The pages read ahead, at least and at most (MNG-013).
     pub const OCR_AHEAD: std::ops::RangeInclusive<u32> = 1..=200;
     /// The pages read ahead when not set.
-    pub const OCR_AHEAD_DEFAULT: u32 = 10;
+    pub const OCR_AHEAD_DEFAULT: u32 = 3;
     /// The memory for the pages read, in MiB, at least and at most.
     pub const OCR_MEMORY: std::ops::RangeInclusive<u32> = 1..=1024;
     /// The memory for the pages read when not set.
@@ -2069,7 +2069,7 @@ mod tests {
         assert_eq!(config.books.ocr_memory_bytes(), 1 << 20);
         assert_eq!(config.books.manga_popup, Some([0.5, 0.25]));
         let defaults = BooksConfig::default();
-        assert_eq!(defaults.ocr_ahead(), 10);
+        assert_eq!(defaults.ocr_ahead(), 3);
         assert_eq!(defaults.ocr_memory_bytes(), 32 << 20);
         config.reset(Section::General);
         assert_eq!(

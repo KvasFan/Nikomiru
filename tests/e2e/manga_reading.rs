@@ -302,3 +302,92 @@ fn l7_the_real_models_read_a_page_ahead() {
     h.quit();
     assert!(exit_status(&mut app, Duration::from_secs(15)).success());
 }
+
+// T-MNG-011…T-MNG-014 on a real volume: a CBZ of a Japanese manga
+// (`NIKOMIRU_REAL_MANGA`), opened at page `NIKOMIRU_REAL_MANGA_PAGE`
+// (default 10), read ahead by the real models (`NIKOMIRU_OCR_DIR`, with the
+// detector), its text written over the balloons and a word looked up in a
+// dictionary kept at the top right; what was read is printed, and with
+// `NIKOMIRU_SCREENSHOTS` the page is captured for review by eye
+#[test]
+#[ignore = "L7: needs a real manga, the real OCR models and the detector"]
+fn l7_a_real_manga_is_read_ahead() {
+    let (Some(model), Some(manga)) = (
+        std::env::var_os("NIKOMIRU_OCR_DIR"),
+        std::env::var_os("NIKOMIRU_REAL_MANGA"),
+    ) else {
+        panic!("set NIKOMIRU_OCR_DIR and NIKOMIRU_REAL_MANGA");
+    };
+    let page: usize = std::env::var("NIKOMIRU_REAL_MANGA_PAGE")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(10);
+    let mut desk = Desktop::start();
+    desk.import_dictionaries(&["mini-ja"]);
+    desk.set_env("NIKOMIRU_TEST_OCR", "");
+    desk.write_config(
+        "[player]\nmpv_options = { ao = \"null\" }\n[books]\nocr_ahead = 3\nmanga_popup = [0.72, 0.15]\n",
+    );
+    let installed = desk.path("data/nikomiru/models/manga-ocr");
+    std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&model, &installed).unwrap();
+    let count: usize = std::env::var("NIKOMIRU_REAL_MANGA_PAGES")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(1);
+    let (mut app, mut h) = desk.launch();
+    let shots = std::env::var_os("NIKOMIRU_SCREENSHOTS").map(std::path::PathBuf::from);
+    let shot = |name: &str| {
+        if let Some(dir) = &shots {
+            std::thread::sleep(Duration::from_millis(500));
+            desk.capture(&dir.join(name));
+        }
+    };
+    h.cmd(json!({ "cmd": "books", "action": "open" }));
+    h.state_until("the model", |s| s["books"]["ocr_installed"] == true);
+    h.cmd(json!({ "cmd": "books", "action": "add", "path": manga.to_string_lossy() }));
+    let s = super::support::until(Duration::from_secs(120), "the manga", || {
+        let s = h.state();
+        (s["books"]["open"].is_string() || !s["books"]["status"].is_null()).then_some(s)
+    });
+    assert!(s["books"]["open"].is_string(), "{}", s["books"]);
+    while h.state()["books"]["chapter"].as_u64() < Some(page as u64) {
+        h.cmd(json!({"cmd":"books","action":"next"}));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let started = std::time::Instant::now();
+    for at in page..page + count {
+        let s = super::support::until(Duration::from_secs(900), "the page read", || {
+            let s = h.state();
+            (s["books"]["chapter"] == at && s["books"]["read_here"].is_array()).then_some(s)
+        });
+        let read = s["books"]["read_here"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        eprintln!(
+            "page {at}: {} blocks, {:?} in",
+            read.len(),
+            started.elapsed()
+        );
+        for (i, region) in read.iter().enumerate() {
+            let v = if region["vertical"] == true { "v" } else { "h" };
+            eprintln!("  {i} {v} {} {}", region["bounds"], region["text"]);
+            // for measuring against the picture (MNG-012)
+            eprintln!("REGION {at} {region}");
+        }
+        shot(&format!("page-{at:03}.png"));
+        if at == page {
+            assert!(!read.is_empty(), "{}\n{}", s["books"], desk.log());
+            // the first block's first word, looked up
+            h.cmd(json!({"cmd":"books","action":"region-at","paragraph":0,"offset":0}));
+            h.state_until("looked up", |s| {
+                s["popups"].as_array().is_some_and(|p| !p.is_empty())
+            });
+            shot("lookup.png");
+        }
+        h.cmd(json!({"cmd":"books","action":"next"}));
+    }
+    h.quit();
+    assert!(exit_status(&mut app, Duration::from_secs(15)).success());
+}

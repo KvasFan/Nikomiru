@@ -28,6 +28,10 @@ pub struct Region {
     /// Each line: its byte range in `text` and its box, from Mokuro's
     /// `lines_coords` or, without them, the block shared out evenly.
     pub lines: Vec<(std::ops::Range<usize>, [u32; 4])>,
+    /// What covers the picture's text when it is written over it, furigana
+    /// included (MNG-012): left, top, right, bottom; the block, without a
+    /// better measure.
+    pub covers: Vec<[u32; 4]>,
 }
 
 impl Region {
@@ -69,6 +73,123 @@ impl Region {
             text,
             vertical,
             lines,
+            covers: vec![bounds],
+        }
+    }
+
+    /// A block read line by line on this computer (MNG-012): each line's text
+    /// and its box, in reading order, the text theirs one after the other.
+    pub fn from_lines(
+        bounds: [u32; 4],
+        vertical: bool,
+        read: Vec<(String, [u32; 4])>,
+        covers: Vec<[u32; 4]>,
+    ) -> Self {
+        let mut text = String::new();
+        let mut lines = Vec::with_capacity(read.len());
+        for (part, at) in read {
+            let start = text.len();
+            text.push_str(&part);
+            lines.push((start..text.len(), at));
+        }
+        Self {
+            bounds,
+            text,
+            vertical,
+            lines,
+            covers,
+        }
+    }
+
+    /// A block found and read on this computer, its lines measured on the
+    /// picture (MNG-012): the characters shared among them by their length,
+    /// as the picture spreads them, every line keeping one at least while
+    /// there are enough; without lines, guessed from the block's shape.
+    pub fn in_lines(
+        bounds: [u32; 4],
+        text: String,
+        vertical: bool,
+        boxes: &[[u32; 4]],
+        covers: Vec<[u32; 4]>,
+    ) -> Self {
+        let chars: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+        let n = chars.len();
+        let length = |b: &[u32; 4]| {
+            u64::from(if vertical {
+                b[3].saturating_sub(b[1])
+            } else {
+                b[2].saturating_sub(b[0])
+            })
+            .max(1)
+        };
+        // as many lines as characters at most: the longest
+        let mut kept: Vec<usize> = (0..boxes.len()).collect();
+        kept.sort_by_key(|i| std::cmp::Reverse(length(&boxes[*i])));
+        kept.truncate(n);
+        kept.sort_unstable();
+        if kept.is_empty() {
+            return Self {
+                covers: [vec![bounds], covers].concat(),
+                ..Self::guessed(bounds, text, vertical)
+            };
+        }
+        // the characters' room along a line: small kana and stops take less
+        let room = |c: char| -> u64 {
+            match c {
+                'ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'っ' | 'ゃ' | 'ゅ' | 'ょ' | 'ゎ' | 'ァ'
+                | 'ィ' | 'ゥ' | 'ェ' | 'ォ' | 'ッ' | 'ャ' | 'ュ' | 'ョ' | 'ヮ' | 'ヵ' | 'ヶ' => {
+                    7
+                }
+                '、' | '。' | '，' | '．' | '・' | '.' | ',' => 5,
+                _ => 10,
+            }
+        };
+        let rooms: Vec<u64> = text.chars().map(room).collect();
+        let whole: u64 = rooms.iter().sum();
+        let total: u64 = kept.iter().map(|i| length(&boxes[*i])).sum();
+        // each line ends where the characters' room so far comes nearest
+        // its share of the lines' length, every line keeping one at least
+        let mut counts: Vec<u64> = Vec::with_capacity(kept.len());
+        let (mut start, mut reach) = (0usize, 0u64);
+        for (k, i) in kept.iter().enumerate() {
+            reach += length(&boxes[*i]);
+            let lines_left = kept.len() - k - 1;
+            let end = if lines_left == 0 {
+                n
+            } else {
+                let target = whole * reach / total;
+                let (mut best, mut so_far) = (start + 1, 0u64);
+                let mut nearest = u64::MAX;
+                for end in start + 1..=n - lines_left {
+                    so_far = rooms[..end].iter().sum::<u64>();
+                    let off = so_far.abs_diff(target);
+                    if off < nearest {
+                        (nearest, best) = (off, end);
+                    }
+                }
+                let _ = so_far;
+                best
+            };
+            counts.push((end - start) as u64);
+            start = end;
+        }
+        let mut at = 0;
+        let lines = kept
+            .iter()
+            .zip(counts)
+            .map(|(i, count)| {
+                let start = chars.get(at).copied().unwrap_or(text.len());
+                at += count as usize;
+                let end = chars.get(at).copied().unwrap_or(text.len());
+                (start..end, boxes[*i])
+            })
+            .collect();
+        Self {
+            bounds,
+            text,
+            vertical,
+            lines,
+            covers,
         }
     }
 
@@ -312,6 +433,7 @@ fn regions(page: &InputPage) -> Result<Vec<Region>, BookError> {
                 text,
                 vertical: block.vertical,
                 lines,
+                covers: vec![bounds],
             });
         }
     }
@@ -490,6 +612,80 @@ mod tests {
         let empty = Region::guessed([0, 0, 10, 10], String::new(), true);
         assert_eq!(empty.lines, vec![(0..0, [0, 0, 10, 10])]);
         assert_eq!(empty.offset_at(5.0, 5.0), None);
+    }
+
+    // T-MNG-012: each line read apart keeps its own text
+    #[test]
+    fn a_block_read_line_by_line() {
+        let region = Region::from_lines(
+            [0, 0, 100, 100],
+            true,
+            vec![
+                ("あそっか".into(), [80, 0, 100, 60]),
+                ("部屋".into(), [0, 50, 20, 100]),
+            ],
+            vec![[0, 0, 100, 100]],
+        );
+        assert_eq!(region.text, "あそっか部屋");
+        assert_eq!(
+            region.lines,
+            vec![(0..12, [80, 0, 100, 60]), (12..18, [0, 50, 20, 100])]
+        );
+        assert_eq!(region.offset_at(10.0, 90.0), Some(15));
+    }
+
+    // T-MNG-012: the characters shared among the lines measured, by length
+    #[test]
+    fn a_block_is_written_in_its_measured_lines() {
+        // 恐怖の大王が / あたしの頭上めがけて / 落ちて来た: 6, 10 and 5 long
+        let text = "恐怖の大王があたしの頭上めがけて落ちて来た";
+        let boxes = [[180, 0, 200, 120], [150, 0, 170, 200], [120, 0, 140, 100]];
+        let region = Region::in_lines(
+            [120, 0, 200, 200],
+            text.into(),
+            true,
+            &boxes,
+            vec![[118, 0, 206, 202]],
+        );
+        let parts: Vec<&str> = region.lines.iter().map(|(r, _)| &text[r.clone()]).collect();
+        assert_eq!(
+            parts,
+            vec!["恐怖の大王が", "あたしの頭上めがけて", "落ちて来た"]
+        );
+        assert_eq!(region.covers, vec![[118, 0, 206, 202]]);
+        // small kana take less room: すまんねぇ / 起きたら勝手に / 帰るだろーよ
+        let text = "すまんねぇ起きたら勝手に帰るだろーよ";
+        let boxes = [[100, 0, 120, 47], [70, 0, 90, 70], [40, 0, 60, 60]];
+        let region = Region::in_lines(
+            [40, 0, 120, 70],
+            text.into(),
+            true,
+            &boxes,
+            vec![[40, 0, 120, 70]],
+        );
+        let parts: Vec<&str> = region.lines.iter().map(|(r, _)| &text[r.clone()]).collect();
+        assert_eq!(parts, vec!["すまんねぇ", "起きたら勝手に", "帰るだろーよ"]);
+        // more lines than characters: the longest kept, in their order
+        let short = Region::in_lines(
+            [0, 0, 90, 90],
+            "あい".into(),
+            true,
+            &[[60, 0, 80, 90], [30, 0, 50, 20], [0, 0, 20, 60]],
+            vec![[0, 0, 90, 90]],
+        );
+        assert_eq!(
+            short.lines,
+            vec![(0..3, [60, 0, 80, 90]), (3..6, [0, 0, 20, 60])]
+        );
+        // no lines measured: guessed
+        let guessed = Region::in_lines(
+            [0, 0, 100, 200],
+            "今日は晴れです！".into(),
+            true,
+            &[],
+            vec![[0, 0, 100, 200]],
+        );
+        assert_eq!(guessed.lines.len(), 2);
     }
 
     // Mokuro's line boxes or the block shared out

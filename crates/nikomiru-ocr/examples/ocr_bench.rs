@@ -20,6 +20,20 @@ fn main() {
         }
     };
     println!("load: {:?}", started.elapsed());
+    let args: Vec<String> = args.collect();
+    let pictures: Vec<_> = args
+        .iter()
+        .filter_map(|path| {
+            nikomiru_ocr::crop(&std::fs::read(path).ok()?, [0.0, 0.0, 1.0, 1.0]).ok()
+        })
+        .collect();
+    for _ in 0..2 {
+        let started = Instant::now();
+        match engine.read_many(&pictures) {
+            Ok(texts) => println!("together: {texts:?} ({:?})", started.elapsed()),
+            Err(e) => eprintln!("together: {e}"),
+        }
+    }
     for path in args {
         let Ok(page) = std::fs::read(&path) else {
             eprintln!("{path}: cannot read");

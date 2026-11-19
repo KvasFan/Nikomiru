@@ -4,6 +4,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.163.0] - 2026-11-19
+
+Checked on 30 pages of a real volume (D-82).
+
+### Changed
+
+- Manga text read ahead is read line by line: the detector's line map gives each balloon's columns, and every column is read on its own (a balloon's columns together, in one pass), so each has its own text even where the detector groups touching balloons into one block; before, a block's text was shared among its lines by length and could lose whole balloons (MNG-011, MNG-012).
+- The text written over a manga's balloons is about the drawing's size in more balloons: the size is the one most of its lines hold, and short columns the detector marked as one are split (MNG-012).
+- Pages read ahead by default: 3 instead of 10, so the processor is busy for less long; Settings → General → Manga still sets it (MNG-013).
+
+### Fixed
+
+- The white behind the text written over a manga no longer covers the art between balloons or around them: each column is covered by its own box, frames and outlines are not taken for text, and a neighbour's box no longer hides a balloon's text (MNG-012).
+- Thin grey strokes of a small scan are taken as ink, so their columns are found whole and covered (MNG-012).
+
 ## [2.162.1] - 2026-11-18
 
 ### Changed
