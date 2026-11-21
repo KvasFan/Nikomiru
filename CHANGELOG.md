@@ -4,6 +4,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.180.0] - 2026-11-21
+
+Installers for Linux, Windows and Android (D-84), and manga compared on more pages.
+
+### Added
+
+- Nikomiru for Android, as a preview: `nikomiru-2.180.0-android.apk` for Android 9 and later (arm64 phones and tablets, x86_64 emulators and Chromebooks). The pages are the desktop's, drawn smaller on an upright phone; files come from Nikomiru's own chooser of the phone's storage, once Android's "all files access" is given; videos play with clickable subtitles through mpv, the screen stays on, and the app comes back from the background where it was. Tried on an emulator, not yet on a phone; AnkiDroid cards, FFmpeg's command line and the keyring are not there yet (PORT-005).
+- `cargo xtask android` builds and signs the APK with the NDK; `cargo xtask ci` checks the Android build (T-PORT-006).
+
+### Fixed
+
+- Manga text is no longer written above its column when a balloon's outline crosses just over it: the column ends before the outline (Kaiji volume 7, これで and 都合10人). Two digits in a column share one cell, side by side, as the picture writes them (10 in 都合10人). Pages read before are read again once (MNG-012, AK-BUG-010).
+
+### Dependencies
+
+- `openssl` 0.10 with `vendored` and `jni` 0.22, for Android only (Apache-2.0; MIT OR Apache-2.0).
+
 ## [2.174.1] - 2026-11-19
 
 ### Fixed

@@ -205,10 +205,22 @@ pub fn canary(root: &Path) -> Result<()> {
 /// Generates `target/THIRD_PARTY_LICENSES.html` for the distributed binary
 /// (`nikomiru-app`) and checks that it lists every crate in its graph.
 pub fn about(root: &Path) -> Result<PathBuf> {
+    about_for(
+        root,
+        "nikomiru-app",
+        "x86_64-unknown-linux-gnu",
+        "THIRD_PARTY_LICENSES.html",
+    )
+}
+
+/// The same for the crates `krate` builds for `target`, into `target/<name>`
+/// (the Android APK's are not the desktop's, D-84).
+pub fn about_for(root: &Path, krate: &str, target: &str, name: &str) -> Result<PathBuf> {
     if !util::have_program("cargo-about") {
         bail!("cargo-about is not installed: cargo install --locked cargo-about --features cli");
     }
-    let out = root.join("target/THIRD_PARTY_LICENSES.html");
+    let out = root.join("target").join(name);
+    let manifest = format!("crates/{krate}/Cargo.toml");
     std::fs::create_dir_all(root.join("target"))?;
     util::run(util::cargo().args([
         "about",
@@ -216,7 +228,9 @@ pub fn about(root: &Path) -> Result<PathBuf> {
         "--locked",
         "--fail",
         "--manifest-path",
-        "crates/nikomiru-app/Cargo.toml",
+        &manifest,
+        "--target",
+        target,
         "--output-file",
         &out.to_string_lossy(),
         "about.hbs",
@@ -229,11 +243,11 @@ pub fn about(root: &Path) -> Result<PathBuf> {
         "tree",
         "--locked",
         "-p",
-        "nikomiru-app",
+        krate,
         "-e",
         "normal,build",
         "--target",
-        "x86_64-unknown-linux-gnu",
+        target,
         "--prefix",
         "none",
         "-f",

@@ -497,6 +497,11 @@ fn draw_glyph(
     }
 }
 
+/// How far each digit of a pair sits from its cell's centre, and its size,
+/// in characters: two half-width digits side by side fill about a cell.
+const PAIR_OFFSET: f32 = 0.24;
+const PAIR_SIZE: f32 = 0.85;
+
 /// Behind a manga's text written over its balloon: the balloon's white.
 const OVER_BALLOON: Color32 = Color32::from_rgb(250, 250, 250);
 /// A manga's text written over its balloon, dark whatever the theme.
@@ -509,6 +514,40 @@ struct Glyph {
     offset: usize,
     ch: char,
     centre: egui::Pos2,
+    /// Written across with its neighbour in one cell of a column (two
+    /// digits, 縦中横): -1 the left one, 1 the right one, 0 alone.
+    pair: i8,
+}
+
+/// Whether `ch` is a digit, half or full width.
+fn digit(ch: char) -> bool {
+    ch.is_ascii_digit() || ('０'..='９').contains(&ch)
+}
+
+/// The cell of each character of a line and its side in it: in a column,
+/// two digits alone together share a cell, as the picture writes them
+/// (縦中横: 10 in 都合10人); three or more go one to a cell.
+fn line_cells(text: &str, vertical: bool) -> Vec<(usize, i8)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::with_capacity(chars.len());
+    let mut cell = 0;
+    let mut i = 0;
+    while i < chars.len() {
+        let run = chars[i..].iter().take_while(|c| digit(**c)).count();
+        if vertical && run == 2 {
+            out.push((cell, -1));
+            out.push((cell, 1));
+            cell += 1;
+        } else {
+            // a run of digits of another length, or not a digit: one each
+            for _ in 0..run.max(1) {
+                out.push((cell, 0));
+                cell += 1;
+            }
+        }
+        i += run.max(1);
+    }
+    out
 }
 
 /// Where a region's characters are written over a page of `size` pixels
@@ -529,7 +568,9 @@ fn region_glyphs(
         .iter()
         .filter_map(|(range, [l, t, r, b])| {
             let text = region.text.get(range.clone())?;
-            let count = text.chars().count();
+            let count = line_cells(text, region.vertical)
+                .last()
+                .map_or(0, |(cell, _)| cell + 1);
             let at = egui::Rect::from_min_max(
                 drawn.min + vec2(*l as f32 * sx, *t as f32 * sy),
                 drawn.min + vec2(*r as f32 * sx, *b as f32 * sy),
@@ -580,19 +621,26 @@ fn region_glyphs(
         .iter()
         .flat_map(|(start, text, at, count)| {
             let step = (along(at).1 / *count as f32).min(size * 1.2);
-            text.char_indices().enumerate().map(move |(i, (byte, ch))| {
-                let along = (i as f32 + 0.5) * step;
-                let centre = if region.vertical {
-                    egui::pos2(at.center().x, at.top() + along)
-                } else {
-                    egui::pos2(at.left() + along, at.center().y)
-                };
-                Glyph {
-                    offset: start + byte,
-                    ch,
-                    centre,
-                }
-            })
+            let cells = line_cells(text, region.vertical);
+            text.char_indices()
+                .zip(cells)
+                .map(move |((byte, ch), (cell, pair))| {
+                    let along = (cell as f32 + 0.5) * step;
+                    let centre = if region.vertical {
+                        egui::pos2(
+                            at.center().x + f32::from(pair) * size * PAIR_OFFSET,
+                            at.top() + along,
+                        )
+                    } else {
+                        egui::pos2(at.left() + along, at.center().y)
+                    };
+                    Glyph {
+                        offset: start + byte,
+                        ch,
+                        centre,
+                        pair,
+                    }
+                })
         })
         .collect();
     (size, glyphs)
@@ -929,6 +977,21 @@ fn manga_reader(
                             let cell =
                                 egui::Rect::from_center_size(glyph.centre, vec2(*size, *size));
                             painter.rect_filled(cell.expand(1.0), 2.0, MARK);
+                        }
+                        if glyph.pair != 0 {
+                            // a digit of a pair, half width and upright
+                            let half = char::from_u32(u32::from(glyph.ch) - 0xFEE0)
+                                .filter(|_| ('０'..='９').contains(&glyph.ch))
+                                .unwrap_or(glyph.ch);
+                            draw_glyph(
+                                &painter,
+                                glyph.centre,
+                                half,
+                                Stance::Upright,
+                                *size * PAIR_SIZE,
+                                BALLOON_INK,
+                            );
+                            continue;
                         }
                         let stance = if region.vertical {
                             nikomiru_books::vertical::stance(glyph.ch)
@@ -3504,6 +3567,27 @@ mod tests {
         assert_eq!(glyphs[1].centre, Pos2::new(10.0 + 36.0, 20.0 + 10.0));
         let empty = nikomiru_books::mokuro::Region::guessed([0, 0, 10, 10], String::new(), true);
         assert!(region_glyphs(&empty, (400, 800), drawn).1.is_empty());
+    }
+
+    // T-MNG-012: two digits in a column share a cell, side by side (縦中横);
+    // three go one to a cell, and in a row nothing is paired
+    #[test]
+    fn two_digits_share_a_cell_of_a_column() {
+        assert_eq!(
+            line_cells("都合１０人", true),
+            vec![(0, 0), (1, 0), (2, -1), (2, 1), (3, 0)]
+        );
+        assert_eq!(line_cells("１００円", true).len(), 4);
+        assert_eq!(line_cells("１００円", true)[3], (3, 0));
+        assert_eq!(line_cells("10人", false), vec![(0, 0), (1, 0), (2, 0)]);
+        let region =
+            nikomiru_books::mokuro::Region::guessed([0, 0, 25, 100], "都合１０人".into(), true);
+        let drawn = egui::Rect::from_min_size(Pos2::ZERO, vec2(25.0, 100.0));
+        let (size, glyphs) = region_glyphs(&region, (25, 100), drawn);
+        assert_eq!(size, 25.0, "four cells of 25");
+        assert_eq!(glyphs[2].centre.y, glyphs[3].centre.y);
+        assert!(glyphs[2].centre.x < glyphs[3].centre.x);
+        assert_eq!(glyphs[4].centre.y, 87.5);
     }
 
     // T-MNG-012: a click looks up the character written under it; the text

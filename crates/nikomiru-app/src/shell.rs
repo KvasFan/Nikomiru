@@ -340,10 +340,9 @@ impl<'a> Shell<'a> {
                 ctx.set_zoom_factor(zoom);
             }
             // the system bars over the window: egui keeps the pages out of them
-            if let Some(insets) = crate::platform::android::safe_area(
-                gl.window.inner_size(),
-                ctx.pixels_per_point(),
-            ) {
+            if let Some(insets) =
+                crate::platform::android::safe_area(gl.window.inner_size(), ctx.pixels_per_point())
+            {
                 egui.egui_winit.egui_input_mut().safe_area_insets = Some(insets);
             }
         }

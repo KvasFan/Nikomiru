@@ -409,7 +409,16 @@ Gli **shader video** possono rendere più nitidi e ingrandire gli anime con [Ani
 
 ## Touch (sviluppo M117)
 
-Su uno schermo touch un tocco fa ciò che fa un clic: cerca una parola, avvia o mette in pausa, preme i pulsanti. Scorri rapidamente un dito a sinistra o a destra sul video per tornare indietro o andare avanti del passo di ricerca. Nelle modalità Pagine e Frase del lettore, scorri a sinistra per la pagina o frase successiva e a destra per la precedente; nella scrittura verticale e nei manga, che si leggono da destra a sinistra, scorri a destra per proseguire. I trascinamenti verticali continuano a scorrere. I port per Windows, Android e macOS sono seguiti in `docs/qa/ports.md`; per ora è rilasciato solo Linux.
+Su uno schermo touch un tocco fa ciò che fa un clic: cerca una parola, avvia o mette in pausa, preme i pulsanti. Scorri rapidamente un dito a sinistra o a destra sul video per tornare indietro o andare avanti del passo di ricerca. Nelle modalità Pagine e Frase del lettore, scorri a sinistra per la pagina o frase successiva e a destra per la precedente; nella scrittura verticale e nei manga, che si leggono da destra a sinistra, scorri a destra per proseguire. I trascinamenti verticali continuano a scorrere. I port per Windows, Android e macOS sono seguiti in `docs/qa/ports.md`.
+
+### Android (anteprima)
+
+Dalla 2.180.0 il rilascio contiene `nikomiru-<versione>-android.apk` per Android 9 e successivi (telefoni e tablet arm64, emulatori e Chromebook x86_64). Permetti l’installazione di app dal browser o dal gestore file, apri l’APK e installalo. È un’anteprima, finora provata solo su un emulatore.
+
+- La prima volta che aggiungi una cartella o apri un file, Android apre le impostazioni su **Accesso a tutti i file**: consentilo a Nikomiru e torna indietro. Nikomiru mostra poi il suo selettore della memoria del telefono (per esempio `/storage/emulated/0/Movies`).
+- Le pagine sono quelle del desktop. In verticale sono disegnate più piccole per entrare; i video si guardano meglio col telefono girato.
+- Non ancora presenti: schede tramite AnkiDroid (AnkiConnect è un componente per il desktop), la riga di comando di FFmpeg (sottotitoli incorporati e media delle schede), il portachiavi di sistema. Le chiavi che inserisci restano nelle impostazioni di Nikomiru.
+- Per segnalare un problema con un log dettagliato, crea un file vuoto `debug-log` nella cartella dell’app (con `adb shell run-as io.github.kvasfan.nikomiru touch files/debug-log` su una build di debug) e leggi `adb logcat`.
 
 ## Lingue di studio (sviluppo M115)
 

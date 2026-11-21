@@ -75,6 +75,26 @@ fn newest(dir: &Path) -> Result<PathBuf> {
         .with_context(|| format!("nothing in {}", dir.display()))
 }
 
+/// The NDK's compilers and archiver for `target`, set on `cmd` as cargo and
+/// the `cc` crate look for them (OpenSSL is built with them).
+pub fn toolchain(cmd: &mut std::process::Command, llvm: &Path, target: &str) {
+    let upper = target.to_uppercase().replace('-', "_");
+    let under = target.replace('-', "_");
+    let clang = llvm.join(format!("{target}{MIN_SDK}-clang"));
+    cmd.env(format!("CARGO_TARGET_{upper}_LINKER"), &clang)
+        .env(format!("CC_{under}"), &clang)
+        .env(
+            format!("CXX_{under}"),
+            llvm.join(format!("{target}{MIN_SDK}-clang++")),
+        )
+        .env(format!("AR_{under}"), llvm.join("llvm-ar"));
+}
+
+/// The NDK's LLVM tools, if an SDK with an NDK is installed.
+pub fn llvm() -> Option<PathBuf> {
+    sdk().ok().map(|s| s.llvm).filter(|l| l.is_dir())
+}
+
 fn sdk() -> Result<Sdk> {
     let home = std::env::var_os("ANDROID_HOME")
         .or_else(|| std::env::var_os("ANDROID_SDK_ROOT"))
@@ -206,23 +226,16 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     // the app, for each ABI
     for (abi, target) in &abis {
         let upper = target.to_uppercase().replace('-', "_");
-        let under = target.replace('-', "_");
-        let clang = sdk.llvm.join(format!("{target}{MIN_SDK}-clang"));
         let rustflags = format!(
             "{} -L native={}",
             util::release_rustflags(root),
             mpv_dir.join(abi).display()
         );
+        let mut cargo = util::cargo();
+        toolchain(&mut cargo, &sdk.llvm, target);
         util::run(
-            util::cargo()
-                .env(format!("CARGO_TARGET_{upper}_LINKER"), &clang)
+            cargo
                 .env(format!("CARGO_TARGET_{upper}_RUSTFLAGS"), rustflags.trim())
-                .env(format!("CC_{under}"), &clang)
-                .env(
-                    format!("CXX_{under}"),
-                    sdk.llvm.join(format!("{target}{MIN_SDK}-clang++")),
-                )
-                .env(format!("AR_{under}"), sdk.llvm.join("llvm-ar"))
                 .args([
                     "build",
                     "--release",
@@ -284,7 +297,12 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             .args(debug.then_some("--debug-mode")),
     )?;
     // the libraries and the licenses into the APK
-    let licenses = crate::licenses::about(root)?;
+    let licenses = crate::licenses::about_for(
+        root,
+        "nikomiru-android",
+        "aarch64-linux-android",
+        "THIRD_PARTY_LICENSES-android.html",
+    )?;
     let notes = sources(&version, &aar, &sha256);
     {
         // a new archive with aapt2's entries copied as they are, then ours

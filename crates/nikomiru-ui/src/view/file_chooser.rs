@@ -60,8 +60,7 @@ fn matches(name: &str, pattern: &str) -> bool {
 fn row(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let size = egui::vec2(ui.available_width(), 40.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
         if response.hovered() || response.has_focus() {
