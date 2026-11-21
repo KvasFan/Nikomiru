@@ -139,12 +139,17 @@ enum Failure {
     Timeout,
 }
 
+/// A reply to a request, made in this process (`bridge`).
+pub type InApp = Box<dyn Fn(&Value) -> Value + Send + Sync>;
+
 /// A client for one AnkiConnect.
 pub struct Client {
-    http: reqwest::blocking::Client,
-    url: reqwest::Url,
+    /// The connection and the address; `None` for a collection in the app.
+    http: Option<(reqwest::blocking::Client, reqwest::Url)>,
     shown: String,
     key: String,
+    /// A collection in the app instead of the network (ANK-055).
+    in_app: Option<InApp>,
 }
 
 impl std::fmt::Debug for Client {
@@ -156,8 +161,27 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     /// A client for the AnkiConnect at `url` with the API key `key` (empty: none).
+    /// [`crate::bridge::ADDRESS`] is the collection installed in the app.
     pub fn new(url: &str, key: &str) -> Result<Self, AnkiError> {
+        if url.trim() == crate::bridge::ADDRESS {
+            let installed = crate::bridge::installed()
+                .ok_or_else(|| AnkiError::BadUrl(url.trim().to_string()))?;
+            return Ok(Self::in_app(Box::new(|request: &Value| {
+                installed.answer(request)
+            })));
+        }
         Self::with_timeouts(url, key, CONNECT_TIMEOUT, REQUEST_TIMEOUT)
+    }
+
+    /// A client whose requests `answer` replies to, in this process
+    /// (ANK-055).
+    pub fn in_app(answer: InApp) -> Self {
+        Self {
+            http: None,
+            shown: crate::bridge::ADDRESS.to_string(),
+            key: String::new(),
+            in_app: Some(answer),
+        }
     }
 
     /// [`Client::new`] with other timeouts, for the tests.
@@ -189,10 +213,10 @@ impl Client {
                 reason: e.to_string(),
             })?;
         Ok(Self {
-            http,
-            url: parsed,
+            http: Some((http, parsed)),
             shown,
             key: key.to_string(),
+            in_app: None,
         })
     }
 
@@ -205,7 +229,14 @@ impl Client {
     /// `::1`): only then is it asked anything without an action of the user
     /// (PRV-001).
     pub fn is_loopback(&self) -> bool {
-        let host = self.url.host_str().unwrap_or_default();
+        if self.in_app.is_some() {
+            return true;
+        }
+        let host = self
+            .http
+            .as_ref()
+            .and_then(|(_, url)| url.host_str())
+            .unwrap_or_default();
         let host = host.trim_start_matches('[').trim_end_matches(']');
         host.eq_ignore_ascii_case("localhost")
             || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
@@ -300,6 +331,9 @@ impl Client {
     /// Sends a body and returns the reply's text, retrying once by the phase
     /// that failed (ANK-003, ADR 0007 §6).
     fn send(&self, action: &str, body: &Value, idempotent: bool) -> Result<String, AnkiError> {
+        if let Some(answer) = &self.in_app {
+            return Ok(answer(body).to_string());
+        }
         let bytes = serde_json::to_vec(body).unwrap_or_default();
         let mut retried = false;
         loop {
@@ -357,9 +391,11 @@ impl Client {
                 Failure::Lost(without_url(&e))
             }
         };
-        let response = self
-            .http
-            .post(self.url.clone())
+        let Some((http, url)) = &self.http else {
+            return Err(Failure::Connect);
+        };
+        let response = http
+            .post(url.clone())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header(reqwest::header::CONNECTION, "close")
             .body(body.to_vec())

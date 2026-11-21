@@ -1109,11 +1109,21 @@ fn first_steps(
             let rows = [
                 ("first-steps-dictionary", "first-steps-dictionary-button"),
                 ("first-steps-folder", "library-add-folder"),
-                ("first-steps-card", "first-steps-card-button"),
+                // ANK-055: on Android the cards go to AnkiDroid
+                (
+                    if cfg!(target_os = "android") {
+                        "first-steps-card-android"
+                    } else {
+                        "first-steps-card"
+                    },
+                    "first-steps-card-button",
+                ),
             ];
+            // a narrow window (a phone upright) wraps the steps and their
+            // buttons instead of cutting them (PLY-024)
             // INS-001: all of it at once
             if !steps[0] || !steps[2] {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(tr(s, "setup-first-steps"));
                     if ui.add(palette::suggested(tr(s, "setup-open"))).clicked() {
                         out.push(Command::SetupOpen);
@@ -1121,7 +1131,7 @@ fn first_steps(
                 });
             }
             for (n, ((text, button), done)) in rows.into_iter().zip(steps).enumerate() {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let mark = if done {
                         "✓".to_string()
                     } else {

@@ -43,8 +43,9 @@ const MPV_LIBS: [&str; 9] = [
     "libc++_shared.so",
 ];
 
-const USAGE: &str = "cargo xtask android --libmpv <libmpv-….aar> [--abi arm64-v8a,x86_64] \
-    [--keystore <release.jks>] [--pass-file <file with its password>] [--debug]";
+const USAGE: &str = "cargo xtask android --libmpv <libmpv-….aar> [--ffmpeg <dir of \
+    packaging/android/ffmpeg.sh>] [--abi arm64-v8a,x86_64] [--keystore <release.jks>] \
+    [--pass-file <file with its password>] [--debug]";
 
 /// The SDK and NDK folders and the tools taken from them.
 struct Sdk {
@@ -223,6 +224,36 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             std::io::copy(&mut entry, &mut std::fs::File::create(&out)?)?;
         }
     }
+    // FFmpeg's programs and libraries (packaging/android/ffmpeg.sh)
+    let ffmpeg = value("--ffmpeg").map(PathBuf::from);
+    match &ffmpeg {
+        Some(dir) => {
+            for (abi, _) in &abis {
+                let from = dir.join(abi);
+                let mut found = false;
+                for entry in std::fs::read_dir(&from).with_context(|| from.display().to_string())? {
+                    let path = entry?.path();
+                    let name = path
+                        .file_name()
+                        .context("no name")?
+                        .to_string_lossy()
+                        .into_owned();
+                    if name.starts_with("lib") && name.ends_with(".so") {
+                        found |= name == "libffmpeg.so";
+                        std::fs::copy(&path, mpv_dir.join(abi).join(&name))?;
+                    }
+                }
+                if !found {
+                    bail!("no libffmpeg.so in {}", from.display());
+                }
+            }
+        }
+        None => {
+            eprintln!("warning: no --ffmpeg: cards and embedded subtitles will not work on Android")
+        }
+    }
+    // the Java part: the provider of the card media (ANK-055)
+    let dex = java(root, &sdk, &work)?;
     // the app, for each ABI
     for (abi, target) in &abis {
         let upper = target.to_uppercase().replace('-', "_");
@@ -303,7 +334,14 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         "aarch64-linux-android",
         "THIRD_PARTY_LICENSES-android.html",
     )?;
-    let notes = sources(&version, &aar, &sha256);
+    let mut notes = sources(&version, &aar, &sha256);
+    if let Some(dir) = &ffmpeg {
+        notes.push('\n');
+        notes.push_str(
+            &std::fs::read_to_string(dir.join("SOURCES.txt"))
+                .with_context(|| format!("no SOURCES.txt in {}", dir.display()))?,
+        );
+    }
     {
         // a new archive with aapt2's entries copied as they are, then ours
         let mut linked = zip::ZipArchive::new(std::fs::File::open(&linked_apk)?)?;
@@ -313,6 +351,8 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         }
         let deflated = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
+        apk.start_file("classes.dex", deflated)?;
+        std::io::copy(&mut std::fs::File::open(&dex)?, &mut apk)?;
         for (abi, _) in &abis {
             let mut libs: Vec<PathBuf> = std::fs::read_dir(mpv_dir.join(abi))?
                 .filter_map(|e| e.ok().map(|e| e.path()))
@@ -361,6 +401,58 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     )?;
     eprintln!("wrote {}", out.display());
     Ok(())
+}
+
+/// Compiles `packaging/android/java` into `classes.dex` (javac, then the
+/// SDK's d8) and returns its path.
+fn java(root: &Path, sdk: &Sdk, work: &Path) -> Result<PathBuf> {
+    let mut sources = Vec::new();
+    let mut folders = vec![root.join("packaging/android/java")];
+    while let Some(dir) = folders.pop() {
+        for entry in std::fs::read_dir(&dir).with_context(|| dir.display().to_string())? {
+            let path = entry?.path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if path.extension().is_some_and(|e| e == "java") {
+                sources.push(path);
+            }
+        }
+    }
+    sources.sort();
+    let classes = work.join("classes");
+    util::run(
+        std::process::Command::new("javac")
+            .args(["--release", "11", "-Xlint:all", "-Werror", "-classpath"])
+            .arg(&sdk.android_jar)
+            .arg("-d")
+            .arg(&classes)
+            .args(&sources),
+    )
+    .context("javac (a JDK 11 or newer) is needed for the APK")?;
+    let mut compiled = Vec::new();
+    let mut folders = vec![classes];
+    while let Some(dir) = folders.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if path.extension().is_some_and(|e| e == "class") {
+                compiled.push(path);
+            }
+        }
+    }
+    compiled.sort();
+    let out = work.join("dex");
+    std::fs::create_dir_all(&out)?;
+    util::run(
+        std::process::Command::new(sdk.build_tools.join("d8"))
+            .args(["--release", "--min-api", &MIN_SDK.to_string(), "--lib"])
+            .arg(&sdk.android_jar)
+            .arg("--output")
+            .arg(&out)
+            .args(&compiled),
+    )?;
+    Ok(out.join("classes.dex"))
 }
 
 #[cfg(test)]

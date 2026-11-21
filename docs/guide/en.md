@@ -415,8 +415,10 @@ On a touchscreen a tap does what a click does: it looks a word up, plays or paus
 From 2.180.0 the release has `nikomiru-<version>-android.apk` for Android 9 and later (phones and tablets with arm64, emulators and Chromebooks with x86_64). Allow installing apps from your browser or file manager, open the APK and install it. It is a preview, so far tried only on an emulator.
 
 - The first time you add a folder or open a file, Android's settings open on **All files access**: allow it for Nikomiru and go back. Nikomiru then shows its own chooser of the phone's storage (for example `/storage/emulated/0/Movies`).
-- The pages are the desktop's. Upright, they are drawn smaller to fit; videos are best watched with the phone turned.
-- Not there yet: cards through AnkiDroid (AnkiConnect is a desktop add-on), FFmpeg's command line (embedded subtitles and the media of cards), the system keyring. Keys you enter stay in Nikomiru's settings.
+- The pages are the desktop's. Upright, they are drawn smaller to fit; the player's bar keeps play, the time and the subtitles, and **⋯** holds the volume, the speed, the tracks, the chapters and the settings. The settings fill the screen, with their tabs in the list at the top left.
+- **Cards go to AnkiDroid** (from 2.181.0): install AnkiDroid and open it once, then in Settings → Anki the address is `ankidroid://` (already there unless you changed it). The first time Nikomiru talks to AnkiDroid, Android asks whether it may use AnkiDroid's collection: allow it, then press **Test the connection** or **Create Lapis deck** again. Cards keep their sentence audio and picture; AnkiDroid names the media files itself.
+- FFmpeg comes with the APK (from 2.181.0): embedded subtitles, thumbnails and card media work as on the desktop.
+- With **Keep them in the system keyring** (Settings → General), keys are sealed by the Android Keystore (from 2.181.0).
 - To report a problem with a detailed log, create an empty file `debug-log` in Nikomiru's app folder (with `adb shell run-as io.github.kvasfan.nikomiru touch files/debug-log` on a debug build) and read `adb logcat`.
 
 ## Study languages (M115 development)

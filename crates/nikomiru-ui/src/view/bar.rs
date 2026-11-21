@@ -30,6 +30,10 @@ pub(crate) struct State {
     pub height: f32,
     /// Where the progress slider was drawn last (the harness points at it).
     pub progress: Option<egui::Rect>,
+    /// Where the "more" button of a narrow bar was drawn last (PLY-024).
+    pub more: Option<egui::Rect>,
+    /// The entries of its menu, by name, while it is open.
+    pub menu: Vec<(String, egui::Rect)>,
     /// The position while the progress slider is dragged: the slider does not
     /// follow mpv meanwhile.
     seek: Option<f64>,
@@ -423,6 +427,209 @@ fn preview(
         });
 }
 
+/// Below this width (in points) the bar keeps only what is used most and
+/// puts the rest in a menu (PLY-024).
+const COMPACT_WIDTH: f32 = 720.0;
+
+/// The buttons at the right end of the bar, right to left.
+#[derive(Debug, Clone, Copy)]
+enum Tool {
+    Fullscreen,
+    Open,
+    WebVideo,
+    Dictionaries,
+    Anki,
+    Settings,
+}
+
+const TOOLS: [Tool; 6] = [
+    Tool::Fullscreen,
+    Tool::Open,
+    Tool::WebVideo,
+    Tool::Dictionaries,
+    Tool::Anki,
+    Tool::Settings,
+];
+
+impl Tool {
+    fn label(self, s: &Session, view: &View) -> (&'static str, String) {
+        let tr = |id: &str| s.translator().tr(id, &[]);
+        match self {
+            Tool::Fullscreen if view.fullscreen => ("🗗", tr("exit-fullscreen")),
+            Tool::Fullscreen => ("⛶", tr("fullscreen")),
+            Tool::Open => ("📂", tr("open-file")),
+            Tool::WebVideo => ("↗", tr("webvideo-open")),
+            Tool::Dictionaries => ("📚", tr("dict-page-title")),
+            Tool::Anki => ("Anki", tr("anki-open")),
+            Tool::Settings => ("⚙", tr("settings-title")),
+        }
+    }
+
+    fn run(self, view: &mut View, out: &mut Vec<Command>) {
+        match self {
+            Tool::Fullscreen => view.effect(crate::session::UiEffect::ToggleFullscreen),
+            Tool::Open => view.dialog = Some(Dialog::Video),
+            Tool::WebVideo => out.push(Command::WebOpenDialog),
+            Tool::Dictionaries => view.open_settings(SettingsTab::Dictionaries, out),
+            Tool::Anki => view.open_settings(SettingsTab::Anki, out),
+            // SET-008: the tab shown last
+            Tool::Settings => view.open_settings(view.settings_tab, out),
+        }
+    }
+}
+
+/// The subtitle list and the subtitle menu (laid out right to left).
+fn subtitle_buttons(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<Command>) {
+    let tr = |id: &str| s.translator().tr(id, &[]);
+    // SUB-015: the list, one click away
+    let list = ui
+        .selectable_label(view.sub_list_open, tr("subtitle-list-short"))
+        .on_hover_text(tr("subtitle-list"));
+    named(&list, true, &tr("subtitle-list"));
+    if list.clicked() {
+        view.sub_list_open = !view.sub_list_open;
+    }
+    let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
+        subtitle_menu(ui, s, view, out);
+    });
+    menu.response.clone().on_hover_text(tr("subtitles"));
+    named(&menu.response, true, &tr("subtitles"));
+}
+
+/// The audio track, when there is more than one.
+fn audio_combo(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Command>) {
+    let v = &s.view;
+    let audio: Vec<_> = v.audio_tracks.iter().collect();
+    if audio.len() < 2 {
+        return;
+    }
+    let selected = audio
+        .iter()
+        .find(|t| Some(t.id) == v.aid)
+        .map(|t| track_label(s, t))
+        .unwrap_or_default();
+    let combo = ComboBox::from_id_salt("audio")
+        .width(200.0)
+        .selected_text(selected)
+        .show_ui(ui, |ui| {
+            for t in &audio {
+                if ui
+                    .selectable_label(Some(t.id) == v.aid, track_label(s, t))
+                    .clicked()
+                {
+                    out.push(Command::SelectAudio(t.id));
+                }
+            }
+        });
+    named(
+        &combo.response,
+        true,
+        &s.translator().tr("audio-track", &[]),
+    );
+}
+
+/// Slower, the speed, faster (`right_to_left`: as laid out in the bar).
+fn speed_buttons(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Command>, right_to_left: bool) {
+    let tr = |id: &str| s.translator().tr(id, &[]);
+    let speed = format!("{:.2}×", s.view.speed);
+    let mut order = [
+        Some(("−", tr("speed-down"), Action::SpeedDown)),
+        None,
+        Some(("+", tr("speed-up"), Action::SpeedUp)),
+    ];
+    if right_to_left {
+        order.reverse();
+    }
+    for item in order {
+        match item {
+            Some((glyph, name, action)) => {
+                if icon(ui, true, glyph, &name) {
+                    out.push(Command::Action(action));
+                }
+            }
+            None => {
+                ui.label(RichText::new(&speed).monospace());
+            }
+        }
+    }
+}
+
+/// The volume and mute (`right_to_left`: as laid out in the bar).
+fn volume_controls(
+    ui: &mut egui::Ui,
+    s: &Session,
+    view: &mut View,
+    out: &mut Vec<Command>,
+    right_to_left: bool,
+) {
+    let tr = |id: &str| s.translator().tr(id, &[]);
+    let v = &s.view;
+    let slider = |ui: &mut egui::Ui, view: &mut View, out: &mut Vec<Command>| {
+        let mut volume = view.bar.volume.unwrap_or(v.volume);
+        ui.spacing_mut().slider_width = 120.0;
+        let slider = ui.add(
+            Slider::new(&mut volume, 0.0..=150.0)
+                .step_by(5.0)
+                .show_value(false),
+        );
+        slider.widget_info(|| WidgetInfo::labeled(Role::Slider, true, tr("volume")));
+        if slider.changed() {
+            view.bar.volume = Some(volume);
+            out.push(Command::SetVolume(volume));
+        }
+        if !slider.dragged() {
+            view.bar.volume = None;
+        }
+    };
+    let mute = |ui: &mut egui::Ui, out: &mut Vec<Command>| {
+        let (glyph, name) = if v.muted {
+            ("🔇", tr("unmute"))
+        } else {
+            ("🔊", tr("mute"))
+        };
+        if icon(ui, true, glyph, &name) {
+            out.push(Command::Action(Action::Mute));
+        }
+    };
+    if right_to_left {
+        slider(ui, view, out);
+        mute(ui, out);
+    } else {
+        mute(ui, out);
+        slider(ui, view, out);
+    }
+}
+
+/// The menu of a narrow bar (PLY-024): what the wide bar shows at its right.
+fn more_menu(ui: &mut egui::Ui, s: &Session, view: &mut View, out: &mut Vec<Command>) {
+    let tr = |id: &str| s.translator().tr(id, &[]);
+    ui.set_min_width(240.0);
+    ui.horizontal(|ui| volume_controls(ui, s, view, out, false));
+    ui.horizontal(|ui| speed_buttons(ui, s, out, false));
+    audio_combo(ui, s, out);
+    if !s.view.chapters.is_empty() {
+        let menu = ui.menu_button(tr("chapters"), |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(320.0)
+                .show(ui, |ui| chapter_menu(ui, s, out));
+        });
+        named(&menu.response, true, &tr("chapters"));
+    }
+    ui.separator();
+    for tool in TOOLS.iter().rev() {
+        let (glyph, name) = tool.label(s, view);
+        let button = ui.add(
+            Button::new(RichText::new(format!("{glyph}  {name}")).size(15.0))
+                .min_size(egui::vec2(220.0, 34.0)),
+        );
+        named(&button, true, &name);
+        view.bar.menu.push((name.clone(), button.rect));
+        if button.clicked() {
+            tool.run(view, out);
+        }
+    }
+}
+
 pub(crate) fn show(
     ctx: &egui::Context,
     s: &Session,
@@ -433,6 +640,8 @@ pub(crate) fn show(
     let screen = ctx.content_rect();
     let tr = |id: &str| s.translator().tr(id, &[]);
     let v = &s.view;
+    view.bar.more = None;
+    view.bar.menu.clear();
     let response = Area::new(Id::unique("bar"))
         .order(Order::Middle)
         .pivot(Align2::LEFT_BOTTOM)
@@ -479,8 +688,9 @@ pub(crate) fn show(
                     }
                     preview(ui.ctx(), s, &mut view.bar, &slider, duration, out);
 
+                    let compact = screen.width() < COMPACT_WIDTH;
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 10.0;
+                        ui.spacing_mut().item_spacing.x = if compact { 6.0 } else { 10.0 };
                         // LIB-005: back to the library, in words
                         let back = ui
                             .add(
@@ -515,35 +725,30 @@ pub(crate) fn show(
                         if time.clicked() {
                             out.push(Command::TimeClicked);
                         }
-                        if let Some(index) = chapter_at(&v.chapters, v.time_pos) {
+                        if !compact && let Some(index) = chapter_at(&v.chapters, v.time_pos) {
                             ui.add(
                                 egui::Label::new(chapter_name(s, &v.chapters, index)).truncate(),
                             );
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (glyph, name) = if view.fullscreen {
-                                ("🗗", tr("exit-fullscreen"))
-                            } else {
-                                ("⛶", tr("fullscreen"))
-                            };
-                            if icon(ui, true, glyph, &name) {
-                                view.effect(crate::session::UiEffect::ToggleFullscreen);
+                            if compact {
+                                // PLY-024: a narrow screen (a phone upright)
+                                // keeps the subtitles at hand and puts the
+                                // rest in one menu
+                                let more = ui.menu_button(RichText::new("⋯").size(18.0), |ui| {
+                                    more_menu(ui, s, view, out);
+                                });
+                                more.response.clone().on_hover_text(tr("player-more"));
+                                named(&more.response, true, &tr("player-more"));
+                                view.bar.more = Some(more.response.rect);
+                                subtitle_buttons(ui, s, view, out);
+                                return;
                             }
-                            if icon(ui, true, "📂", &tr("open-file")) {
-                                view.dialog = Some(Dialog::Video);
-                            }
-                            if icon(ui, true, "↗", &tr("webvideo-open")) {
-                                out.push(Command::WebOpenDialog);
-                            }
-                            if icon(ui, true, "📚", &tr("dict-page-title")) {
-                                view.open_settings(SettingsTab::Dictionaries, out);
-                            }
-                            if icon(ui, true, "Anki", &tr("anki-open")) {
-                                view.open_settings(SettingsTab::Anki, out);
-                            }
-                            // SET-008: the tab shown last
-                            if icon(ui, true, "⚙", &tr("settings-title")) {
-                                view.open_settings(view.settings_tab, out);
+                            for tool in TOOLS {
+                                let (glyph, name) = tool.label(s, view);
+                                if icon(ui, true, glyph, &name) {
+                                    tool.run(view, out);
+                                }
                             }
                             if !v.chapters.is_empty() {
                                 let menu = ui.menu_button(tr("chapters"), |ui| {
@@ -555,76 +760,10 @@ pub(crate) fn show(
                                 });
                                 named(&menu.response, true, &tr("chapters"));
                             }
-                            // SUB-015: the list, one click away
-                            let list = ui
-                                .selectable_label(view.sub_list_open, tr("subtitle-list-short"))
-                                .on_hover_text(tr("subtitle-list"));
-                            named(&list, true, &tr("subtitle-list"));
-                            if list.clicked() {
-                                view.sub_list_open = !view.sub_list_open;
-                            }
-                            let menu = ui.menu_button(RichText::new("字").size(16.0), |ui| {
-                                subtitle_menu(ui, s, view, out);
-                            });
-                            menu.response.clone().on_hover_text(tr("subtitles"));
-                            named(&menu.response, true, &tr("subtitles"));
-                            let audio: Vec<_> = v.audio_tracks.iter().collect();
-                            if audio.len() > 1 {
-                                let selected = audio
-                                    .iter()
-                                    .find(|t| Some(t.id) == v.aid)
-                                    .map(|t| track_label(s, t))
-                                    .unwrap_or_default();
-                                let combo = ComboBox::from_id_salt("audio")
-                                    .width(200.0)
-                                    .selected_text(selected)
-                                    .show_ui(ui, |ui| {
-                                        for t in &audio {
-                                            if ui
-                                                .selectable_label(
-                                                    Some(t.id) == v.aid,
-                                                    track_label(s, t),
-                                                )
-                                                .clicked()
-                                            {
-                                                out.push(Command::SelectAudio(t.id));
-                                            }
-                                        }
-                                    });
-                                named(&combo.response, true, &tr("audio-track"));
-                            }
-                            if icon(ui, true, "+", &tr("speed-up")) {
-                                out.push(Command::Action(Action::SpeedUp));
-                            }
-                            ui.label(RichText::new(format!("{:.2}×", v.speed)).monospace());
-                            if icon(ui, true, "−", &tr("speed-down")) {
-                                out.push(Command::Action(Action::SpeedDown));
-                            }
-                            let mut volume = view.bar.volume.unwrap_or(v.volume);
-                            ui.spacing_mut().slider_width = 120.0;
-                            let slider = ui.add(
-                                Slider::new(&mut volume, 0.0..=150.0)
-                                    .step_by(5.0)
-                                    .show_value(false),
-                            );
-                            slider.widget_info(|| {
-                                WidgetInfo::labeled(Role::Slider, true, tr("volume"))
-                            });
-                            if slider.changed() {
-                                view.bar.volume = Some(volume);
-                                out.push(Command::SetVolume(volume));
-                            }
-                            if !slider.dragged() {
-                                view.bar.volume = None;
-                            }
-                            let (glyph, name) = if v.muted {
-                                ("🔇", tr("unmute"))
-                            } else {
-                                ("🔊", tr("mute"))
-                            };
-                            if icon(ui, true, glyph, &name) {
-                                out.push(Command::Action(Action::Mute));
-                            }
+                            subtitle_buttons(ui, s, view, out);
+                            audio_combo(ui, s, out);
+                            speed_buttons(ui, s, out, true);
+                            volume_controls(ui, s, view, out, true);
                         });
                     });
                 });

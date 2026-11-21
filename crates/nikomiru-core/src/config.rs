@@ -1450,7 +1450,13 @@ impl Default for AnkiConfig {
     fn default() -> Self {
         Self {
             destination: "anki".into(),
-            url: "http://127.0.0.1:8765".into(),
+            // Android has no AnkiConnect: AnkiDroid's collection, answered in
+            // the app (ANK-055)
+            url: if cfg!(target_os = "android") {
+                "ankidroid://".into()
+            } else {
+                "http://127.0.0.1:8765".into()
+            },
             api_key: String::new(),
             deck: "Lapis".into(),
             note_type: "Lapis".into(),
@@ -1624,6 +1630,12 @@ impl Config {
             c.general.accent = General::ACCENT.into();
         }
         c.player.seek_seconds = c.player.seek_seconds.clamp(1, 30);
+        // ANK-055: Android has no Anki desktop; the desktop's address, which
+        // 2.180.0 saved there, is AnkiDroid's collection (an AnkiConnect
+        // app on the phone answers on `localhost` as well)
+        if cfg!(target_os = "android") && c.anki.url == "http://127.0.0.1:8765" {
+            c.anki.url = "ankidroid://".into();
+        }
         // UPD-001
         if !matches!(c.updates.channel.as_str(), "stable" | "beta") {
             c.updates.channel = "stable".into();

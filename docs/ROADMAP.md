@@ -1558,6 +1558,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M128 | P1 / S | **Manga pages read ahead, and zoom.** A text detector finds a page's balloons; the page shown and the next are read in the background and clicked like a Mokuro volume. Ctrl and the wheel zoom books' text and manga pages; the text found is written over the balloons; pages read further ahead within a set memory, and a manga dictionary that stays where it is put. | D-78…D-82, MNG-011…MNG-014, RDR-005 | done in development |
 | M129 | P1 / M | **What Fushi 3 has and Nikomiru lacks.** Episodes marked watched or unwatched by hand and the last card undone (2.170.0); editable subtitle lines; automatic backups; encrypted sync; Audiobookshelf and Kavita. What Nikomiru already has, `.apkg` import, HDR/passthrough, the page curl and §1.3's exclusions are left out. | D-83, LIB-014, ANK-054, SUB-063, BAK-011, BAK-012, SRV-017…SRV-022 | done (checked against fake servers; real Anki, Audiobookshelf and Kavita open) |
 | M130 | P1 / L | **An Android preview.** A signed APK built from Linux with the NDK: the desktop app in a NativeActivity with libmpv-android, its own file chooser, the system bars kept out, a zoom for upright phones, the screen kept on; checked on an emulator. A real phone, AnkiDroid, FFmpeg's command line, the keyring and a phone layout stay open in M117. | D-84, PORT-005 | done in development (emulator only) |
+| M131 | P1 / L | **Android: AnkiDroid, FFmpeg, keyring, a phone layout; manga reading.** Cards into AnkiDroid through its content provider, FFmpeg's programs built for Android, the keyring on the Android Keystore, a narrow bar and narrow settings; a balloon's unsure lines set right by the balloon read whole. | D-85, ANK-055, PLY-024 | done in development (emulator only) |
 | M126 | P3 / L | **Live device linking.** Host on the local network, QR pairing, phone browser remote with lookups and mining on the host, then hand-off and streaming. | D-76, [ADR 0011](adr/0011-device-linking.md) | proposed, waiting for the maintainer |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
@@ -1849,4 +1850,18 @@ Asked by the maintainer on 2026-11-21 (D-84) with Windows and Linux installers i
 5. `cargo xtask android`: the APK with libmpv-android's libraries, the licenses and `SOURCES.txt`, aligned and signed; `cargo xtask ci` checks the Android build with clippy (T-PORT-006).
 
 **Exit criteria**: the chooser's unit and kittest tests; the APK installed on an Android 15 emulator, a folder added to the library, a video with its subtitles played, the app sent to the background and back (T-PORT-007); the full regression green.
+
+## M131 — Android: AnkiDroid, FFmpeg, keyring, a phone layout; manga reading
+
+**Requirements**: ANK-055, PLY-024; the Android parts of the requirements on FFmpeg, the keyring and manga lines belong to their earlier milestones.
+
+Asked by the maintainer on 2026-11-21 (D-85), after the Android preview's known limits:
+
+1. `nikomiru_anki::bridge`: the AnkiConnect requests answered in the app on a `Store`, and `Client` talking to it at `ankidroid://`; on Android the store is AnkiDroid's content provider through JNI (`src/android/ankidroid.rs`), with a small Java provider of the card media (`packaging/android/java`, compiled into the APK's `classes.dex`).
+2. `packaging/android/ffmpeg.sh`: FFmpeg 8.1.3 with LAME, Opus and libwebp for arm64-v8a and x86_64, its programs as `lib*.so` beside the app's libraries; `cargo xtask android --ffmpeg` puts them in the APK, and the app links `ffmpeg`/`ffprobe` to them at start.
+3. The keyring on the Android Keystore (`src/android/keyring.rs`).
+4. A narrow bar, narrow settings and wrapping first steps below 720 points.
+5. Manga: a balloon whose lines have an unsure character is read whole too, and the surer character of each kept (`nikomiru_ocr::reconcile`).
+
+**Exit criteria**: the bridge's unit tests; the narrow bar's GUI test; on the emulator with AnkiDroid, cards with their media, embedded subtitles, a scaled frame equal to Linux's, a key through the Keystore (T-ANK-055, T-PORT-008); the manga sets of 2.180.0 compared block by block; the full regression green.
 
