@@ -70,6 +70,17 @@ wayland-backend.workspace = true
 secret-service.workspace = true
 libc.workspace = true
 
+# Android (D-16): EGL on GLES through winit's NativeActivity backend; OpenSSL
+# built with the app, as Android has none for apps
+[target.'cfg(target_os = "android")'.dependencies]
+egui-winit = { workspace = true, features = ["android-native-activity"] }
+glutin = { workspace = true, features = ["egl"] }
+glutin-winit = { workspace = true, features = ["egl"] }
+winit = { workspace = true, features = ["android-native-activity"] }
+openssl = { workspace = true, features = ["vendored"] }
+jni.workspace = true
+libc.workspace = true
+
 # Windows (spike S6): OpenGL through WGL
 [target.'cfg(windows)'.dependencies]
 glutin = { workspace = true, features = ["wgl"] }

@@ -228,7 +228,8 @@ pub fn parse_mpv_conf(text: &str) -> Vec<Line> {
 /// interop only with NVIDIA's proprietary driver, otherwise probing it prints
 /// `Cannot load libcuda.so.1` on stderr.
 pub fn core_options(nvidia_driver: bool) -> Vec<MpvOption> {
-    if nvidia_driver {
+    // Android has no VA-API: mpv refuses the interop there (D-16)
+    if nvidia_driver || cfg!(target_os = "android") {
         Vec::new()
     } else {
         vec![MpvOption::new("gpu-hwdec-interop", "vaapi")]

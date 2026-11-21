@@ -5,7 +5,15 @@
 //! signals, glibc's `iconv` for subtitle encodings (SUB-005), and drag and drop
 //! on Wayland ([`dnd`]).
 
+#[cfg(target_os = "linux")]
 pub mod dnd;
+// Android is a Linux kernel with bionic: the calls of this module work there
+// too, beside its own (D-16)
+#[cfg(target_os = "android")]
+#[path = "../android/mod.rs"]
+pub mod android;
+#[cfg(target_os = "android")]
+pub use android::dnd;
 
 /// Stop a helper group created with `CommandExt::process_group(0)`, including
 /// wrappers whose children still hold extraction pipes open (DOC-004).
@@ -136,12 +144,34 @@ impl Signals {
     }
 }
 
+// bionic has iconv since Android 9 (API 28), which the libc crate does not
+// declare there (D-16)
+#[cfg(target_os = "android")]
+#[allow(non_camel_case_types)]
+mod libc_iconv {
+    pub use libc::*;
+    pub type iconv_t = *mut c_void;
+    unsafe extern "C" {
+        pub fn iconv_open(to: *const c_char, from: *const c_char) -> iconv_t;
+        pub fn iconv(
+            cd: iconv_t,
+            inbuf: *mut *mut c_char,
+            inbytesleft: *mut size_t,
+            outbuf: *mut *mut c_char,
+            outbytesleft: *mut size_t,
+        ) -> size_t;
+        pub fn iconv_close(cd: iconv_t) -> c_int;
+    }
+}
+
 /// glibc `iconv` as the subtitle decoder of SUB-005.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Iconv;
 
 impl nikomiru_subs::encoding::Decoder for Iconv {
     fn decode(&self, bytes: &[u8], encoding: &str) -> Option<String> {
+        #[cfg(target_os = "android")]
+        use libc_iconv as libc;
         let from = std::ffi::CString::new(encoding).ok()?;
         // UTF-8 needs at most 4 bytes for any input character
         let mut out = vec![0u8; bytes.len() * 4 + 16];

@@ -1811,3 +1811,13 @@ web-none = Ancora nessuna pagina web. Scrivi qui sopra l'indirizzo di una pagina
 books-open = Leggi
 books-continue = Continua ({ $percent } %)
 address-hint = https://
+
+## The app's own file chooser (APP-003, Android)
+chooser-up = Cartella superiore
+chooser-refresh = Aggiorna
+chooser-unreadable = Questa cartella non si può leggere: { $error }
+chooser-empty = Qui non c'è niente
+chooser-cancel = Annulla
+chooser-use-folder = Usa questa cartella
+chooser-filter = Mostra
+chooser-save = Salva

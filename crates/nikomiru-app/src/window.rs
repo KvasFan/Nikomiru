@@ -12,9 +12,10 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use glow::HasContext;
-use glutin::config::{ConfigTemplateBuilder, GlConfig};
+use glutin::config::{ConfigTemplateBuilder, GetGlConfig, GlConfig};
 use glutin::context::{
     ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext,
+    PossiblyCurrentGlContext,
 };
 use glutin::display::{DisplayApiPreference, GetGlDisplay, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SwapInterval, WindowSurface};
@@ -29,7 +30,9 @@ use winit::window::{Window, WindowAttributes};
 /// The window with its OpenGL surface and context. Fields drop in order: the
 /// surface and the context before the window they draw into.
 pub struct GlWindow {
-    surface: Surface<WindowSurface>,
+    /// None while the app is in the background on Android, where the window's
+    /// surface goes away (D-16).
+    surface: Option<Surface<WindowSurface>>,
     context: PossiblyCurrentContext,
     /// The OpenGL functions, shared with egui's painter.
     pub gl: Arc<glow::Context>,
@@ -115,6 +118,27 @@ fn display_and_window(
     Ok((display, config, window))
 }
 
+/// The same on Android (D-16): EGL only, GLES.
+#[cfg(target_os = "android")]
+fn display_and_window(
+    event_loop: &ActiveEventLoop,
+    attributes: WindowAttributes,
+    _token: Option<String>,
+) -> Result<(glutin::display::Display, glutin::config::Config, Window), String> {
+    let raw_display = event_loop
+        .display_handle()
+        .map_err(|e| format!("display handle: {e}"))?
+        .as_raw();
+    // SAFETY: the handle is the event loop's display, which outlives this window
+    // and its context.
+    let display = unsafe { glutin::display::Display::new(raw_display, DisplayApiPreference::Egl) }
+        .map_err(|e| format!("OpenGL display: {e}"))?;
+    let config = config_of(&display, None)?;
+    let window = glutin_winit::finalize_window(event_loop, attributes, &config)
+        .map_err(|e| format!("window: {e}"))?;
+    Ok((display, config, window))
+}
+
 /// The configuration with the fewest samples: egui and mpv need no
 /// multisampling.
 fn config_of(
@@ -125,6 +149,11 @@ fn config_of(
         .with_depth_size(0)
         .with_stencil_size(0)
         .with_transparency(false);
+    // GLES 3 on Android, where mpv draws with it
+    #[cfg(target_os = "android")]
+    {
+        template = template.with_api(glutin::config::Api::GLES3);
+    }
     if let Some(window) = window {
         template = template.compatible_with_native_window(window);
     }
@@ -157,6 +186,8 @@ impl GlWindow {
             glutin::display::Display::Glx(_) => "GLX",
             #[cfg(windows)]
             glutin::display::Display::Wgl(_) => "WGL",
+            #[cfg(target_os = "android")]
+            glutin::display::Display::Egl(_) => "EGL",
         };
         tracing::info!("OpenGL through {api}");
         let raw_window = window
@@ -170,7 +201,8 @@ impl GlWindow {
         // SAFETY: the configuration and the window handle come from the same display.
         let desktop = unsafe { display.create_context(&config, &desktop) };
         let (context, is_gles) = match desktop {
-            Ok(c) => (c, false),
+            // EGL on Android gives GLES whatever is asked
+            Ok(c) => (c, cfg!(target_os = "android")),
             Err(_) => {
                 // SAFETY: as above.
                 let gles = unsafe { display.create_context(&config, &gles) };
@@ -196,7 +228,7 @@ impl GlWindow {
             glow::Context::from_loader_function_cstr(|name| display.get_proc_address(name).cast())
         };
         Ok(Self {
-            surface,
+            surface: Some(surface),
             context,
             gl: Arc::new(gl),
             gles: is_gles,
@@ -229,9 +261,48 @@ impl GlWindow {
 
     /// Resizes the surface with the window.
     pub fn resize(&self, size: PhysicalSize<u32>) {
-        if let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) {
-            self.surface.resize(&self.context, w, h);
+        if let (Some(surface), Some(w), Some(h)) = (
+            &self.surface,
+            NonZeroU32::new(size.width),
+            NonZeroU32::new(size.height),
+        ) {
+            surface.resize(&self.context, w, h);
         }
+    }
+
+    /// Whether there is a surface to draw into (not while suspended).
+    pub fn drawable(&self) -> bool {
+        self.surface.is_some()
+    }
+
+    /// The app goes to the background (Android): the surface goes, the
+    /// context and what it holds (textures, mpv's render context) stay.
+    pub fn suspend(&mut self) {
+        if let Err(e) = self.context.make_not_current_in_place() {
+            tracing::warn!("releasing the context: {e}");
+        }
+        self.surface = None;
+    }
+
+    /// The app is back: a surface for the window's new native one, with the
+    /// context current on it again.
+    pub fn resume(&mut self) -> Result<(), String> {
+        if self.surface.is_some() {
+            return Ok(());
+        }
+        let attributes = self
+            .window
+            .build_surface_attributes(Default::default())
+            .map_err(|e| format!("surface: {e}"))?;
+        let display = self.context.display();
+        // SAFETY: the window outlives the surface (field order of `GlWindow`).
+        let surface = unsafe { display.create_window_surface(&self.context.config(), &attributes) }
+            .map_err(|e| format!("surface: {e}"))?;
+        self.context
+            .make_current(&surface)
+            .map_err(|e| format!("making the context current: {e}"))?;
+        self.surface = Some(surface);
+        Ok(())
     }
 
     /// The framebuffer's size in physical pixels.
@@ -309,8 +380,11 @@ impl GlWindow {
 
     /// Presents the frame.
     pub fn swap(&self) -> Result<(), String> {
-        self.surface
-            .swap_buffers(&self.context)
-            .map_err(|e| format!("swap: {e}"))
+        match &self.surface {
+            Some(surface) => surface
+                .swap_buffers(&self.context)
+                .map_err(|e| format!("swap: {e}")),
+            None => Ok(()),
+        }
     }
 }

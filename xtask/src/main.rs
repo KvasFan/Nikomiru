@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod android;
 mod arch;
 mod ci;
 mod coverage;
@@ -59,6 +60,10 @@ cargo xtask <command>
                        Nikomiru for Windows as a ZIP in target/windows (ADR 0009):
                        the release built from Linux, libmpv and ffmpeg beside it,
                        the licenses and SOURCES.txt
+  android --libmpv <libmpv-….aar> [--abi arm64-v8a,x86_64] [--keystore K] [--pass-file P]
+                       Nikomiru for Android as a signed APK in target/apk (D-16):
+                       built with the NDK (ANDROID_HOME), libmpv-android's
+                       libraries beside it, the licenses and SOURCES.txt
   linux                the optimized Linux program in target/dist/ as .tar.gz and
                        .tar.xz, named after the glibc and OpenSSL it needs
   update-manifest [--channel stable|beta] ARCHIVE…
@@ -102,6 +107,7 @@ fn run() -> Result<()> {
         "about" => licenses::about(&root).map(|_| ()),
         "install" => install::run(&root, rest),
         "windows" => windows::run(&root, rest),
+        "android" => android::run(&root, rest),
         "linux" => release::linux(&root),
         "update-manifest" => release::update_manifest(&root, rest),
         "test" if rest.iter().any(|a| a == "--anki-e2e") => anki_e2e(&root),

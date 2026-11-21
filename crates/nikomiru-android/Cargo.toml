@@ -1,0 +1,33 @@
+[package]
+name = "nikomiru-android"
+description = "Nikomiru on Android: the app as the library its NativeActivity loads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Android loads the app as `libnikomiru_android.so` (D-16); elsewhere this
+# library is empty.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+# the GUI test harness (TEST §2.1), as in nikomiru-app; never in a release
+test-harness = ["nikomiru-app/test-harness"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+nikomiru-app = { path = "../nikomiru-app" }
+nikomiru-books.workspace = true
+nikomiru-core.workspace = true
+nikomiru-dict.workspace = true
+nikomiru-library.workspace = true
+nikomiru-media.workspace = true
+nikomiru-online.workspace = true
+nikomiru-player.workspace = true
+nikomiru-ui.workspace = true
+tracing.workspace = true
+winit = { workspace = true, features = ["android-native-activity"] }

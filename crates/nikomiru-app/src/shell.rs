@@ -20,6 +20,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::ModifiersState;
+#[cfg(not(target_os = "android"))]
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::WindowId;
 
@@ -79,6 +80,103 @@ struct Open {
     /// Drops on Wayland; before `gl` (it uses the event loop's connection).
     drops: Option<Drops>,
     gl: GlWindow,
+}
+
+/// The evdev code of a key (KEY-001 binds keys by it).
+#[cfg(not(target_os = "android"))]
+fn evdev_code(key: &winit::keyboard::PhysicalKey) -> Option<u32> {
+    key.to_scancode()
+}
+
+/// The same on Android (D-16), where winit gives no scancode: the keys of a
+/// keyboard, a remote and the back button (as Escape).
+#[cfg(target_os = "android")]
+fn evdev_code(key: &winit::keyboard::PhysicalKey) -> Option<u32> {
+    use winit::keyboard::{KeyCode as K, PhysicalKey};
+    let PhysicalKey::Code(code) = key else {
+        return None;
+    };
+    let letters = [
+        (K::KeyQ, 16),
+        (K::KeyW, 17),
+        (K::KeyE, 18),
+        (K::KeyR, 19),
+        (K::KeyT, 20),
+        (K::KeyY, 21),
+        (K::KeyU, 22),
+        (K::KeyI, 23),
+        (K::KeyO, 24),
+        (K::KeyP, 25),
+        (K::KeyA, 30),
+        (K::KeyS, 31),
+        (K::KeyD, 32),
+        (K::KeyF, 33),
+        (K::KeyG, 34),
+        (K::KeyH, 35),
+        (K::KeyJ, 36),
+        (K::KeyK, 37),
+        (K::KeyL, 38),
+        (K::KeyZ, 44),
+        (K::KeyX, 45),
+        (K::KeyC, 46),
+        (K::KeyV, 47),
+        (K::KeyB, 48),
+        (K::KeyN, 49),
+        (K::KeyM, 50),
+        (K::Digit1, 2),
+        (K::Digit2, 3),
+        (K::Digit3, 4),
+        (K::Digit4, 5),
+        (K::Digit5, 6),
+        (K::Digit6, 7),
+        (K::Digit7, 8),
+        (K::Digit8, 9),
+        (K::Digit9, 10),
+        (K::Digit0, 11),
+        (K::Escape, 1),
+        (K::BrowserBack, 1),
+        (K::Minus, 12),
+        (K::Equal, 13),
+        (K::Backspace, 14),
+        (K::Tab, 15),
+        (K::BracketLeft, 26),
+        (K::BracketRight, 27),
+        (K::Enter, 28),
+        (K::Semicolon, 39),
+        (K::Quote, 40),
+        (K::Backquote, 41),
+        (K::Backslash, 43),
+        (K::Comma, 51),
+        (K::Period, 52),
+        (K::Slash, 53),
+        (K::Space, 57),
+        (K::F1, 59),
+        (K::F2, 60),
+        (K::F3, 61),
+        (K::F4, 62),
+        (K::F5, 63),
+        (K::F6, 64),
+        (K::F7, 65),
+        (K::F8, 66),
+        (K::F9, 67),
+        (K::F10, 68),
+        (K::F11, 87),
+        (K::F12, 88),
+        (K::Home, 102),
+        (K::ArrowUp, 103),
+        (K::PageUp, 104),
+        (K::ArrowLeft, 105),
+        (K::ArrowRight, 106),
+        (K::End, 107),
+        (K::ArrowDown, 108),
+        (K::PageDown, 109),
+        (K::Delete, 111),
+        (K::MediaPlayPause, 164),
+    ];
+    letters
+        .iter()
+        .find(|(k, _)| k == code)
+        .map(|&(_, evdev)| evdev)
 }
 
 /// The application's event handler.
@@ -210,6 +308,10 @@ impl<'a> Shell<'a> {
         let Some(open) = &mut self.open else {
             return;
         };
+        // in the background on Android: nothing to draw into
+        if !open.gl.drawable() {
+            return;
+        }
         let Open {
             renderer,
             egui,
@@ -227,6 +329,24 @@ impl<'a> Shell<'a> {
             .entry(egui::ViewportId::ROOT)
             .or_default();
         egui_winit::update_viewport_info(info, &ctx, &gl.window, false);
+        // a phone held upright (Android, D-16): the pages are laid out for at
+        // least NARROWEST points across, drawn smaller rather than cut off
+        #[cfg(target_os = "android")]
+        {
+            const NARROWEST: f32 = 560.0;
+            let across = gl.window.inner_size().width as f32 / gl.window.scale_factor() as f32;
+            let zoom = (across / NARROWEST).min(1.0);
+            if (ctx.zoom_factor() - zoom).abs() > 0.01 {
+                ctx.set_zoom_factor(zoom);
+            }
+            // the system bars over the window: egui keeps the pages out of them
+            if let Some(insets) = crate::platform::android::safe_area(
+                gl.window.inner_size(),
+                ctx.pixels_per_point(),
+            ) {
+                egui.egui_winit.egui_input_mut().safe_area_insets = Some(insets);
+            }
+        }
         // keys of the test harness that the window would have given egui
         egui.egui_winit
             .egui_input_mut()
@@ -234,6 +354,18 @@ impl<'a> Shell<'a> {
             .extend(ui.take_injected());
         egui.run(&gl.window, |root| ui.frame(root));
         if let Some(dialog) = ui.take_file_dialog() {
+            // Android has no file dialog the app can reach: its own chooser, on
+            // the shared storage, which needs "all files access" first (D-16)
+            #[cfg(target_os = "android")]
+            {
+                if !crate::portal::can_read_all_files() {
+                    crate::portal::ask_to_read_all_files();
+                }
+                tracing::info!("file chooser: {}", dialog.title);
+                ui.choose_in_app(dialog, PathBuf::from("/storage/emulated/0"));
+                gl.window.request_redraw();
+            }
+            #[cfg(not(target_os = "android"))]
             crate::portal::open_file(dialog, self.waker.clone());
         }
         for url in ui.take_external() {
@@ -272,7 +404,12 @@ impl<'a> Shell<'a> {
 
 impl ApplicationHandler<UserEvent> for Shell<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.open.is_some() {
+        // back from the background (Android): a new surface for the window
+        if let Some(open) = &mut self.open {
+            if let Err(e) = open.gl.resume() {
+                tracing::error!("{e}");
+            }
+            open.gl.window.request_redraw();
             return;
         }
         let Some(services) = self.services.take() else {
@@ -339,7 +476,7 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                 is_synthetic: false,
                 ..
             } => {
-                if let Some(evdev) = key.physical_key.to_scancode() {
+                if let Some(evdev) = evdev_code(&key.physical_key) {
                     // KEY-004: single keys belong to a text field that has the keyboard
                     let text_focus = open.egui.egui_ctx.egui_wants_keyboard_input();
                     let taken = open.ui.key(
@@ -416,6 +553,13 @@ impl ApplicationHandler<UserEvent> for Shell<'_> {
                     }
                 }
             }
+        }
+    }
+
+    /// To the background (Android): the window's surface goes away.
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(open) = &mut self.open {
+            open.gl.suspend();
         }
     }
 

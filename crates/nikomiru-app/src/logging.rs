@@ -47,6 +47,10 @@ pub fn init(dir: Option<&Path>, debug: bool) -> Option<WorkerGuard> {
     let guard = match appender {
         Some(appender) => {
             let (writer, guard) = tracing_appender::non_blocking(appender);
+            // Android (D-16): stderr goes to logcat, where `adb logcat` reads it
+            #[cfg(target_os = "android")]
+            let writer =
+                tracing_subscriber::fmt::writer::MakeWriterExt::and(writer, std::io::stderr);
             let layer = tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .with_writer(writer);

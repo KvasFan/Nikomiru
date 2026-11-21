@@ -20,6 +20,7 @@ mod chrome;
 mod cloze;
 mod condense;
 mod dict_page;
+pub(crate) mod file_chooser;
 mod hooker_page;
 pub(crate) mod library_page;
 mod line_tools;

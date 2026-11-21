@@ -1811,3 +1811,13 @@ web-none = No web pages yet. Type a page's address above to read it.
 books-open = Read
 books-continue = Continue ({ $percent } %)
 address-hint = https://
+
+## The app's own file chooser (APP-003, Android)
+chooser-up = Parent folder
+chooser-refresh = Refresh
+chooser-unreadable = This folder cannot be read: { $error }
+chooser-empty = Nothing here
+chooser-cancel = Cancel
+chooser-use-folder = Use this folder
+chooser-filter = Show
+chooser-save = Save

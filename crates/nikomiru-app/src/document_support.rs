@@ -217,7 +217,7 @@ fn capture(
     let status = match result {
         Ok(status) => status,
         Err(e) => {
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "android"))]
             crate::platform::kill_process_group(child.id());
             let _ = child.kill();
             let _ = child.wait();
