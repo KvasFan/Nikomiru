@@ -61,6 +61,7 @@ fn set_folders(files: &Path) {
 /// the VM FFmpeg was given (`av_jni_set_java_vm`). libavcodec is loaded with
 /// libmpv; without it, nothing to give.
 fn give_java_vm_to_ffmpeg(vm: *mut std::ffi::c_void) {
+    // SAFETY: only the type of FFmpeg's function, called below.
     type SetJavaVm = unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void) -> i32;
     // SAFETY: a lookup by name in the libraries already loaded.
     let symbol = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"av_jni_set_java_vm".as_ptr()) };
@@ -86,10 +87,10 @@ pub fn with_activity<T>(
     // as long as the process.
     let vm = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr().cast()) };
     vm.attach_current_thread(|env| {
+        let raw = app.activity_as_ptr().cast();
         // SAFETY: a global reference to the activity, kept by
         // android-activity for the life of the app.
-        let activity =
-            unsafe { jni::objects::JObject::from_raw(env, app.activity_as_ptr().cast()) };
+        let activity = unsafe { jni::objects::JObject::from_raw(env, raw) };
         // the reference stays android-activity's: a `JObject` deletes nothing
         act(env, &activity)
     })

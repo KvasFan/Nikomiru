@@ -151,6 +151,7 @@ impl Signals {
 mod libc_iconv {
     pub use libc::*;
     pub type iconv_t = *mut c_void;
+    // SAFETY: bionic's declarations of these three functions (<iconv.h>).
     unsafe extern "C" {
         pub fn iconv_open(to: *const c_char, from: *const c_char) -> iconv_t;
         pub fn iconv(

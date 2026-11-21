@@ -7,4 +7,5 @@
   1. A line's extent along it was the first and last ink within about a character of the detector's mark; the balloon's outline, crossing the column just above its first character, counted as its ink.
   2. Every character had its own cell, digits too.
 - **Fix**: past the mark's ends, the line stops before a stroke whose ink goes on beyond the line on both sides (an outline, a frame); in a column, two digits alone together share a cell, written side by side at half width; the page cache's version goes to 14.
+- **Left open**: これで still starts a little high: there the art beside the balloon reaches into the column from one side only. Stopping at such ink too was tried and dropped: in Nana, where columns stand close, it cut 46 blocks, among them a column of ー read wrong afterwards.
 - **Regression**: `an_outline_across_a_column_ends_it` in `crates/nikomiru-ocr/src/lib.rs`, `two_digits_share_a_cell_of_a_column` in `crates/nikomiru-ui/src/view/books_page.rs`; the four sets measured again (`docs/qa/2.180.0.md`).

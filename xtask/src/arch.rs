@@ -26,14 +26,16 @@ const CPP_EXTENSIONS: [&str; 4] = ["cpp", "h", "hpp", "cc"];
 
 /// Crates in which `unsafe` is allowed, with the path prefixes (relative to the
 /// crate) that may contain it (ARC-011): the player for the mpv FFI and its
-/// render context; the app for system calls (`src/linux`, `src/windows`, ADR
-/// 0009) and the OpenGL context of the window (`src/window.rs`).
-const UNSAFE_ALLOWED: [(&str, &[&str]); 2] = [
+/// render context; the app for system calls (`src/linux`, `src/windows`,
+/// `src/android`, ADR 0009, D-84) and the OpenGL context of the window
+/// (`src/window.rs`); the Android library for its entry point.
+const UNSAFE_ALLOWED: [(&str, &[&str]); 3] = [
     ("nikomiru-player", &["src/"]),
     (
         "nikomiru-app",
-        &["src/linux", "src/windows", "src/window.rs"],
+        &["src/linux", "src/windows", "src/android", "src/window.rs"],
     ),
+    ("nikomiru-android", &["src/lib.rs"]),
 ];
 
 /// Pure-logic crates: they do not depend, not even indirectly, on the UI toolkit
@@ -152,7 +154,7 @@ pub fn check_crate_attributes(root: &Path) -> Result<Vec<String>> {
         // the render context.
         let required = match name.as_str() {
             "nikomiru-player" => None,
-            "nikomiru-app" => Some("#![deny(unsafe_code)]"),
+            "nikomiru-app" | "nikomiru-android" => Some("#![deny(unsafe_code)]"),
             _ => Some("#![forbid(unsafe_code)]"),
         };
         if let Some(attr) = required
