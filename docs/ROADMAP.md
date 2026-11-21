@@ -1557,6 +1557,7 @@ Priority is a proposed order: **P1** extends subtitles/study first, **P2** broad
 | M127 | P1 / M | **Main page shelves, manga lookups and furigana.** Tabs for the collection, videos (history and saved links), books, manga and websites; no overlapping text; one-click lookups on Mokuro pages and a dictionary opened after a dragged box is read; furigana kept on their base in web pages. | D-77, VID-001, VID-002, BOK-015, MNG-010, WEB-004 | done in development |
 | M128 | P1 / S | **Manga pages read ahead, and zoom.** A text detector finds a page's balloons; the page shown and the next are read in the background and clicked like a Mokuro volume. Ctrl and the wheel zoom books' text and manga pages; the text found is written over the balloons; pages read further ahead within a set memory, and a manga dictionary that stays where it is put. | D-78…D-82, MNG-011…MNG-014, RDR-005 | done in development |
 | M129 | P1 / M | **What Fushi 3 has and Nikomiru lacks.** Episodes marked watched or unwatched by hand and the last card undone (2.170.0); editable subtitle lines; automatic backups; encrypted sync; Audiobookshelf and Kavita. What Nikomiru already has, `.apkg` import, HDR/passthrough, the page curl and §1.3's exclusions are left out. | D-83, LIB-014, ANK-054, SUB-063, BAK-011, BAK-012, SRV-017…SRV-022 | done (checked against fake servers; real Anki, Audiobookshelf and Kavita open) |
+| M130 | P1 / L | **An Android preview.** A signed APK built from Linux with the NDK: the desktop app in a NativeActivity with libmpv-android, its own file chooser, the system bars kept out, a zoom for upright phones, the screen kept on; checked on an emulator. A real phone, AnkiDroid, FFmpeg's command line, the keyring and a phone layout stay open in M117. | D-84, PORT-005 | done in development (emulator only) |
 | M126 | P3 / L | **Live device linking.** Host on the local network, QR pairing, phone browser remote with lookups and mining on the host, then hand-off and streaming. | D-76, [ADR 0011](adr/0011-device-linking.md) | proposed, waiting for the maintainer |
 
 Suggested sequence: **M102–M109 first**, retaining the maintainer's subtitle/study priority, then M110–M117 for reading, media and platform delivery, followed by M118–M119 for customization and updates. Dependency readiness can adjust the order. M111's full-library index and M106's sentence index should share source identity/invalidation. Any new persisted data needs migration, backup and WebDAV decisions before its milestone starts. The original M1/M3/M8 and real-collection/manual exit checks remain open alongside this work.
@@ -1834,4 +1835,18 @@ Asked by the maintainer on 2026-11-19 (D-83) after a comparison with Fushi 3.0�
 5. **2.174.0**: Kavita servers (SRV-020…SRV-022), chapters read in the manga reader.
 
 **Exit criteria**: unit, merge-property, fake-AnkiConnect and component tests for each part; the full regression green before each release.
+
+## M130 — An Android preview
+
+**Requirements**: PORT-005.
+
+Asked by the maintainer on 2026-11-21 (D-84) with Windows and Linux installers in the same release. The first step of ADR 0009's Android port:
+
+1. `crates/nikomiru-android`: the library the NativeActivity loads, running the desktop's `main` in the activity's event loop.
+2. The Android layers of `nikomiru-app` (`src/android/`): folders in the app's storage, the Java VM handed to FFmpeg, links and "all files access" through JNI, the screen kept on from Java's main thread, no keyring; the Linux calls (signals, iconv, time) shared.
+3. The window on EGL/GLES 3, its surface dropped and made again when the app goes to the background; Android's keys mapped to the bindings' codes; the system bars as egui's safe area; a zoom so an upright phone shows at least 560 points across.
+4. The app's own file chooser (APP-003) in `nikomiru-ui`.
+5. `cargo xtask android`: the APK with libmpv-android's libraries, the licenses and `SOURCES.txt`, aligned and signed; `cargo xtask ci` checks the Android build with clippy (T-PORT-006).
+
+**Exit criteria**: the chooser's unit and kittest tests; the APK installed on an Android 15 emulator, a folder added to the library, a video with its subtitles played, the app sent to the background and back (T-PORT-007); the full regression green.
 

@@ -1040,6 +1040,8 @@ The CI image contains: Rust stable (the version in `rust-toolchain.toml`), `libm
 |---|---|---|---|
 | T-PORT-004 | Touch gestures | Recognizer: swipe thresholds, direction, timing, vertical drags, second finger and cancel; video seek and reader turns from injected touch events; actual app with injected touches. | L1, L3, L6 |
 | T-PORT-005 | Per-platform tracking | `docs/qa/ports.md` states each platform's evidence and open native checks; Windows cross build still checked by CI (T-PORT-003). | review |
+| T-PORT-006 | Android build | `nikomiru-android` and the crates under it pass clippy for `aarch64-linux-android` with the NDK (a step of `cargo xtask ci`, skipped without the target or the NDK) | CI |
+| T-PORT-007 | Android preview | The APK from `cargo xtask android` installs on an Android 15 emulator; the setup assistant and the library show; the app's chooser lists the shared storage and adds a folder; a video plays with its subtitles and the screen kept on; the app goes to the background and back (L7, by hand with `adb`); the chooser lists folders first, filters by pattern and takes a click (L1, kittest) | L1, L3, L7 |
 
 ## M118 palettes and shaders
 

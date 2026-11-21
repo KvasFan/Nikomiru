@@ -1236,9 +1236,43 @@ fn layout_from_lines(page: &DynamicImage, block: &Block) -> Layout {
                 .min(along_end.max(mark_end))
                 .min(along_limit),
         );
+        // beyond the mark's ends, a stroke whose ink goes on past the line
+        // on both sides crosses it (a balloon's outline, a frame): the line
+        // ends before it (AK-BUG-010)
+        let crosses = |(a0, a1): (u32, u32), g: u32| {
+            a0.checked_sub(3).is_some_and(|a| ink(a, g)) && ink(a1 + 3, g)
+        };
         let extent = |(a0, a1): (u32, u32)| {
             let inked: Vec<u32> = (g0..g1).filter(|g| (a0..=a1).any(|a| ink(a, *g))).collect();
-            let (first, last) = (*inked.first()?, *inked.last()?);
+            // the inked stretches along the line, gaps of a pixel bridged
+            let mut parts: Vec<(u32, u32)> = Vec::new();
+            for &g in &inked {
+                match parts.last_mut() {
+                    Some(part) if g <= part.1 + 2 => part.1 = g,
+                    _ => parts.push((g, g)),
+                }
+            }
+            let crossing = |part: &(u32, u32)| {
+                (part.0..=part.1).filter(|g| crosses((a0, a1), *g)).count() * 2
+                    > (part.1 - part.0 + 1) as usize
+            };
+            // ink beside the mark but not along it (furigana, dots a
+            // little off): all of it, as found
+            let on = |part: &(u32, u32)| part.1 >= mark_start && part.0 < mark_end;
+            let (first, last) = match (parts.iter().position(on), parts.iter().rposition(on)) {
+                (Some(on_mark), Some(last_on_mark)) => (
+                    parts[..on_mark]
+                        .iter()
+                        .rposition(crossing)
+                        .map_or(0, |k| k + 1),
+                    parts[last_on_mark + 1..]
+                        .iter()
+                        .position(crossing)
+                        .map_or(parts.len() - 1, |k| last_on_mark + k),
+                ),
+                _ => (0, parts.len().checked_sub(1)?),
+            };
+            let (first, last) = (parts[first].0, parts[last].1);
             Some(if vertical {
                 [a0, first, a1 + 1, last + 1]
             } else {
@@ -1756,6 +1790,36 @@ mod tests {
         let found = layout(&page, &block, 12);
         assert_eq!(found.lines, vec![[150, 20, 168, 180], [110, 20, 128, 80]]);
         all_ink_covered(&page, &found.covers);
+    }
+
+    // AK-BUG-010: a balloon's outline crossing a column just past its mark
+    // is not part of the column (Kaiji v07 p.44: これで ran up to it)
+    #[test]
+    fn an_outline_across_a_column_ends_it() {
+        let mut page = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        // the column, characters with small gaps
+        for y in [60, 82, 104, 126, 148] {
+            ink(150, y, 168, y + 18);
+        }
+        // the outline across it, a little before its first character
+        ink(100, 48, 199, 50);
+        // a character like 一 past the mark's other end: still the line's
+        ink(152, 172, 166, 175);
+        let page = DynamicImage::ImageLuma8(page);
+        let block = Block {
+            bounds: [140, 40, 180, 190],
+            vertical: true,
+            lines: vec![[155, 66, 164, 160]],
+        };
+        let found = layout(&page, &block, 6);
+        assert_eq!(found.lines, vec![[150, 60, 168, 175]]);
     }
 
     // T-MNG-012: a column the detector left unmarked between two marked

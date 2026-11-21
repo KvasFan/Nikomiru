@@ -22,7 +22,7 @@ use winit::event_loop::EventLoop;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn main() -> ExitCode {
+pub(crate) fn main() -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_default();
     let mut imports = Vec::new();
     let options = match cli::parse(std::env::args_os().skip(1), &cwd) {
@@ -319,7 +319,15 @@ fn run(
 ) -> ExitCode {
     // The event loop first: the player, the instance server, the signal thread
     // and the harness all send to it; on X11 winit sets LC_CTYPE here.
-    let event_loop = match EventLoop::<UserEvent>::with_user_event().build() {
+    #[allow(unused_mut)]
+    let mut builder = EventLoop::<UserEvent>::with_user_event();
+    // Android (D-16): the loop runs in the activity `android_main` was given
+    #[cfg(target_os = "android")]
+    if let Some(app) = platform::android::app() {
+        use winit::platform::android::EventLoopBuilderExtAndroid;
+        builder.with_android_app(app);
+    }
+    let event_loop = match builder.build() {
         Ok(event_loop) => event_loop,
         Err(e) => return fatal(&format!("window system: {e}")),
     };

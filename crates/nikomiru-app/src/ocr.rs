@@ -231,7 +231,7 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
     // 5: the lines the detector marks, measured on the picture (MNG-012)
-    cache.join(format!("{digest}-{models}-13.json"))
+    cache.join(format!("{digest}-{models}-14.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

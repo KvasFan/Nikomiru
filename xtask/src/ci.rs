@@ -57,6 +57,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
         ]))
     })?;
     step("Windows build (ADR 0009)", windows_check)?;
+    step("Android build (D-16)", android_check)?;
     step("architecture and headers", || arch::check_all(root))?;
     step("interface strings", || crate::i18n::check(root))?;
     step("licenses (cargo deny)", || licenses::check(root, true))?;
@@ -165,6 +166,50 @@ fn windows_check() -> Result<()> {
         util::run(cmd.args(["--", "-D", "warnings"]))?;
     }
     Ok(())
+}
+
+/// The Android target of the phones (D-16).
+const ANDROID: &str = "aarch64-linux-android";
+
+// T-PORT-006
+/// The app still builds for Android, with clippy, as for Windows: checked,
+/// not linked, so libmpv for Android is not needed. Skipped without the
+/// target (`rustup target add aarch64-linux-android`) or the NDK
+/// (`ANDROID_HOME`), since OpenSSL is compiled with it.
+fn android_check() -> Result<()> {
+    let sysroot = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .current_dir(util::root())
+        .output()?;
+    let sysroot = String::from_utf8_lossy(&sysroot.stdout).trim().to_string();
+    if !std::path::Path::new(&sysroot)
+        .join("lib/rustlib")
+        .join(ANDROID)
+        .is_dir()
+    {
+        eprintln!("  skipped: the {ANDROID} target is not installed");
+        return Ok(());
+    }
+    let Some(llvm) = crate::android::llvm() else {
+        eprintln!("  skipped: no Android NDK (ANDROID_HOME)");
+        return Ok(());
+    };
+    let mut cmd = cargo();
+    crate::android::toolchain(&mut cmd, &llvm, ANDROID);
+    util::run(cmd.args([
+        "clippy",
+        "-p",
+        "nikomiru-android",
+        "--lib",
+        "--locked",
+        "--target",
+        ANDROID,
+        "--target-dir",
+        "target/android",
+        "--",
+        "-D",
+        "warnings",
+    ]))
 }
 
 /// L6: `tests/e2e/`, a test target of nikomiru-app that exists only with the

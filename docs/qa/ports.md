@@ -23,10 +23,13 @@ Released and checked every block by `cargo xtask ci --full` (Wayland through an 
 | Item | State | Evidence |
 |---|---|---|
 | Input model (tap looks up, swipe turns/seeks) | implemented on the shared code | PORT-003, tested on Linux with injected touches. |
-| Build (winit Android backend, GLES, mpv-android's libmpv) | **open** | Needs the NDK, which the maintainer installs (D-16). |
-| Files through the document picker | **open** | Not started. |
+| Build (winit Android backend, GLES, mpv-android's libmpv) | done (preview, 2.180.0) | `cargo xtask android` builds a signed APK for arm64-v8a and x86_64 with NDK r29 and libmpv-android 1.1.0 (mpv 0.42); `cargo xtask ci` checks it with clippy (T-PORT-006). |
+| Package | published as a preview, emulator only | The APK of 2.180.0 installs, plays a video with its subtitles, keeps the screen on and comes back from the background on an Android 15 emulator (x86_64, SwiftShader GLES 3). |
+| Files | the app's own chooser | The system's document picker needs Java to answer; the chooser lists the shared storage once "all files access" is given in the system settings (asked for on the first file dialog). |
+| Phone layout | **partial** | Upright phones draw the desktop pages smaller (at least 560 points across) and the system bars are kept out, but the player's bar is crowded upright and a few symbols are missing from Android's fonts; landscape is the better way to watch. |
+| Keyring, FFmpeg's command line | **open** | Keys stay in the settings; embedded subtitles and card media need FFmpeg's command line, not in the APK yet. |
 | AnkiDroid cards (its content provider API instead of AnkiConnect) | **open** | Not started; cannot be built or tested without Android. |
-| Native checks on a device | **open** | |
+| Native checks on a real phone | **open** | Only the emulator so far. |
 
 ## macOS
 

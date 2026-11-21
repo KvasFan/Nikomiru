@@ -30,12 +30,14 @@ pub mod graphic;
 pub mod harness;
 pub mod hooker;
 #[cfg_attr(windows, path = "windows/inhibit.rs")]
+#[cfg_attr(target_os = "android", path = "android/inhibit.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod inhibit;
 #[cfg_attr(windows, path = "windows/instance.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod instance;
 #[cfg_attr(windows, path = "windows/keyring.rs")]
+#[cfg_attr(target_os = "android", path = "android/keyring.rs")]
 #[cfg_attr(windows, allow(unsafe_code))]
 pub mod keyring;
 pub mod later;
@@ -43,12 +45,13 @@ pub mod logging;
 pub mod ocr;
 pub mod online;
 #[allow(unsafe_code)]
-#[cfg_attr(target_os = "linux", path = "linux/mod.rs")]
+#[cfg_attr(any(target_os = "linux", target_os = "android"), path = "linux/mod.rs")]
 #[cfg_attr(windows, path = "windows/mod.rs")]
 pub mod platform;
 pub mod poppler_setup;
 #[cfg_attr(windows, path = "windows/portal.rs")]
-#[cfg_attr(windows, allow(unsafe_code))]
+#[cfg_attr(target_os = "android", path = "android/portal.rs")]
+#[cfg_attr(any(windows, target_os = "android"), allow(unsafe_code))]
 pub mod portal;
 pub mod score_subtitles;
 pub mod sentence_bank;

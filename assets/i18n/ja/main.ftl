@@ -1794,3 +1794,13 @@ web-none = まだウェブページがありません。上にページのアド
 books-open = 読む
 books-continue = 続きから（{ $percent } %）
 address-hint = https://
+
+## The app's own file chooser (APP-003, Android)
+chooser-up = 上のフォルダー
+chooser-refresh = 更新
+chooser-unreadable = このフォルダーは読めません: { $error }
+chooser-empty = 何もありません
+chooser-cancel = キャンセル
+chooser-use-folder = このフォルダーを使う
+chooser-filter = 表示
+chooser-save = 保存

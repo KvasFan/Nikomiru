@@ -408,7 +408,16 @@ Settings → General → **Palette** offers Default, **OLED black** (pure black 
 
 ## Touch (M117 development)
 
-On a touchscreen a tap does what a click does: it looks a word up, plays or pauses, and presses buttons. Swipe one finger quickly left or right over the video to seek back or forward by the seek step. In the reader's Pages and Sentence modes, swipe left for the next page or sentence and right for the previous one; in vertical writing and manga, which read from right to left, swipe right to go on. Vertical drags keep scrolling. The Windows, Android and macOS ports are tracked in `docs/qa/ports.md`; only Linux is released for now.
+On a touchscreen a tap does what a click does: it looks a word up, plays or pauses, and presses buttons. Swipe one finger quickly left or right over the video to seek back or forward by the seek step. In the reader's Pages and Sentence modes, swipe left for the next page or sentence and right for the previous one; in vertical writing and manga, which read from right to left, swipe right to go on. Vertical drags keep scrolling. The Windows, Android and macOS ports are tracked in `docs/qa/ports.md`.
+
+### Android (preview)
+
+From 2.180.0 the release has `nikomiru-<version>-android.apk` for Android 9 and later (phones and tablets with arm64, emulators and Chromebooks with x86_64). Allow installing apps from your browser or file manager, open the APK and install it. It is a preview, so far tried only on an emulator.
+
+- The first time you add a folder or open a file, Android's settings open on **All files access**: allow it for Nikomiru and go back. Nikomiru then shows its own chooser of the phone's storage (for example `/storage/emulated/0/Movies`).
+- The pages are the desktop's. Upright, they are drawn smaller to fit; videos are best watched with the phone turned.
+- Not there yet: cards through AnkiDroid (AnkiConnect is a desktop add-on), FFmpeg's command line (embedded subtitles and the media of cards), the system keyring. Keys you enter stay in Nikomiru's settings.
+- To report a problem with a detailed log, create an empty file `debug-log` in Nikomiru's app folder (with `adb shell run-as io.github.kvasfan.nikomiru touch files/debug-log` on a debug build) and read `adb logcat`.
 
 ## Study languages (M115 development)
 

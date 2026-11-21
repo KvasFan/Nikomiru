@@ -2603,8 +2603,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nikomiru-android"
+version = "2.180.0"
+dependencies = [
+ "nikomiru-app",
+ "nikomiru-books",
+ "nikomiru-core",
+ "nikomiru-dict",
+ "nikomiru-library",
+ "nikomiru-media",
+ "nikomiru-online",
+ "nikomiru-player",
+ "nikomiru-ui",
+ "tracing",
+ "winit",
+]
+
+[[package]]
 name = "nikomiru-anki"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "insta",
  "nikomiru-anki",
@@ -2625,7 +2642,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-app"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "egui",
  "egui-winit",
@@ -2635,6 +2652,7 @@ dependencies = [
  "glutin",
  "glutin-winit",
  "image",
+ "jni",
  "libc",
  "lzma-rust2",
  "nikomiru-anki",
@@ -2649,6 +2667,7 @@ dependencies = [
  "nikomiru-subs",
  "nikomiru-text",
  "nikomiru-ui",
+ "openssl",
  "raw-window-handle",
  "secret-service",
  "serde",
@@ -2672,7 +2691,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-books"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "flate2",
  "image",
@@ -2690,7 +2709,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-core"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "serde",
  "tempfile",
@@ -2701,7 +2720,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-dict"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -2722,7 +2741,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-library"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -2746,7 +2765,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-media"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "insta",
  "nikomiru-core",
@@ -2760,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-ocr"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "image",
  "nikomiru-core",
@@ -2772,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-online"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "crc32fast",
  "ed25519-compact",
@@ -2798,7 +2817,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-player"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "libmpv2",
  "libmpv2-sys",
@@ -2811,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-subs"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -2820,7 +2839,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-text"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "icu_normalizer",
  "proptest",
@@ -2831,7 +2850,7 @@ dependencies = [
 
 [[package]]
 name = "nikomiru-ui"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "egui",
  "egui_kittest",
@@ -3329,6 +3348,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "300.6.1+3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3336,6 +3364,7 @@ checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -5878,7 +5907,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "2.174.1"
+version = "2.180.0"
 dependencies = [
  "anyhow",
  "flate2",

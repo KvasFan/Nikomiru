@@ -1073,6 +1073,8 @@ pub struct Ui {
     swipe: f32,
     /// Input for egui from the test harness, as the window would give it.
     injected: Vec<egui::Event>,
+    /// The app's own file chooser, where the system has no dialog (D-16).
+    chooser: Option<crate::view::file_chooser::FileChooser>,
 }
 
 /// A turn of the mouse wheel, in notches, or a swipe, in points: positive
@@ -1113,6 +1115,7 @@ impl Ui {
             waker,
             quit: false,
             injected: Vec::new(),
+            chooser: None,
             external: Vec::new(),
             swipe: 0.0,
         };
@@ -1782,6 +1785,18 @@ impl Ui {
         for command in commands {
             self.apply(command);
         }
+        if let Some(chooser) = &mut self.chooser {
+            use crate::view::file_chooser::Choice;
+            match chooser.show(ui.ctx(), self.session.translator()) {
+                Choice::Open => {}
+                Choice::Cancelled => self.chooser = None,
+                Choice::Chosen(path) => {
+                    let dialog = chooser.dialog.dialog;
+                    self.chooser = None;
+                    self.handle(Inbound::Chosen { dialog, path });
+                }
+            }
+        }
         self.pump();
         // PLY-015: the next frame is drawn for the picture
         if self.session.capture_pending() {
@@ -1826,6 +1841,18 @@ impl Ui {
             .dialog
             .take()
             .map(|d| FileDialog::new(d, &self.session))
+    }
+
+    /// Opens the app's own file chooser for `dialog`, in its folder or else
+    /// `start`, where the system has no file dialog (Android, D-16); the
+    /// choice comes back as [`Inbound::Chosen`] does.
+    pub fn choose_in_app(&mut self, dialog: FileDialog, start: std::path::PathBuf) {
+        self.chooser = Some(crate::view::file_chooser::FileChooser::new(dialog, start));
+    }
+
+    /// Whether the app's own file chooser is open.
+    pub fn choosing(&self) -> bool {
+        self.chooser.is_some()
     }
 
     /// Saves the position; the app then leaves its event loop.
