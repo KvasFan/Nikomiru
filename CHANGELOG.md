@@ -4,7 +4,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.181.1] - 2026-11-21
+
+### Fixed
+
+- Manga: an ellipsis the reader wrote as dots took a cell per dot, so a column such as 錯覚する…… was written ten cells long and its kanji shrunk to fit; the dots now go three to a cell, as "……" does, and the characters keep the picture's size (MNG-012, Kaiji volume 1 p.25).
+- Manga: a line of a balloon the reader reads as nothing is no longer whitened: the picture's own text stays visible there. Pages read before are read again once (MNG-012).
+
 ## [2.181.0] - 2026-11-21
+
+Tagged, not published on its own: its files went out with 2.181.1.
 
 Android without its gaps: AnkiDroid, FFmpeg, the keyring and an upright phone (D-85); manga lines read with their balloon.
 
