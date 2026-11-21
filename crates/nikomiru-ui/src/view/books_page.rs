@@ -501,6 +501,8 @@ fn draw_glyph(
 /// in characters: two half-width digits side by side fill about a cell.
 const PAIR_OFFSET: f32 = 0.24;
 const PAIR_SIZE: f32 = 0.85;
+/// The size a dot of an ellipsis is drawn at, three to a cell.
+const DOT_SIZE: f32 = 0.7;
 
 /// Behind a manga's text written over its balloon: the balloon's white.
 const OVER_BALLOON: Color32 = Color32::from_rgb(250, 250, 250);
@@ -517,6 +519,24 @@ struct Glyph {
     /// Written across with its neighbour in one cell of a column (two
     /// digits, 縦中横): -1 the left one, 1 the right one, 0 alone.
     pair: i8,
+    /// A dot of an ellipsis, three to a cell as "…" writes them.
+    dot: bool,
+}
+
+/// Where a character of a line goes: its cell, its side in a pair, and for
+/// a dot of an ellipsis its place along the cell, in thirds from its middle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Place {
+    cell: usize,
+    pair: i8,
+    /// -1, 0 or 1 third of a cell along the line; `None` for a character
+    /// that is not a dot of an ellipsis.
+    dot: Option<i8>,
+}
+
+/// Whether `ch` is a dot of an ellipsis (manga-ocr writes "…" as dots).
+fn ellipsis_dot(ch: char) -> bool {
+    matches!(ch, '．' | '.' | '…' | '・')
 }
 
 /// Whether `ch` is a digit, half or full width.
@@ -526,26 +546,45 @@ fn digit(ch: char) -> bool {
 
 /// The cell of each character of a line and its side in it: in a column,
 /// two digits alone together share a cell, as the picture writes them
-/// (縦中横: 10 in 都合10人); three or more go one to a cell.
-fn line_cells(text: &str, vertical: bool) -> Vec<(usize, i8)> {
+/// (縦中横: 10 in 都合10人); three or more go one to a cell. Two or more dots
+/// in a row are an ellipsis, three to a cell as "……" writes them, so that
+/// 錯覚する．．．．．． takes the six cells of 錯覚する…… and not ten.
+fn line_cells(text: &str, vertical: bool) -> Vec<Place> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::with_capacity(chars.len());
     let mut cell = 0;
     let mut i = 0;
+    let one = |cell, pair| Place {
+        cell,
+        pair,
+        dot: None,
+    };
     while i < chars.len() {
-        let run = chars[i..].iter().take_while(|c| digit(**c)).count();
-        if vertical && run == 2 {
-            out.push((cell, -1));
-            out.push((cell, 1));
+        let digits = chars[i..].iter().take_while(|c| digit(**c)).count();
+        let dots = chars[i..].iter().take_while(|c| ellipsis_dot(**c)).count();
+        if dots >= 2 {
+            for k in 0..dots {
+                out.push(Place {
+                    cell: cell + k / 3,
+                    pair: 0,
+                    dot: Some((k % 3) as i8 - 1),
+                });
+            }
+            cell += dots.div_ceil(3);
+            i += dots;
+        } else if vertical && digits == 2 {
+            out.push(one(cell, -1));
+            out.push(one(cell, 1));
             cell += 1;
+            i += 2;
         } else {
             // a run of digits of another length, or not a digit: one each
-            for _ in 0..run.max(1) {
-                out.push((cell, 0));
+            for _ in 0..digits.max(1) {
+                out.push(one(cell, 0));
                 cell += 1;
             }
+            i += digits.max(1);
         }
-        i += run.max(1);
     }
     out
 }
@@ -570,7 +609,7 @@ fn region_glyphs(
             let text = region.text.get(range.clone())?;
             let count = line_cells(text, region.vertical)
                 .last()
-                .map_or(0, |(cell, _)| cell + 1);
+                .map_or(0, |place| place.cell + 1);
             let at = egui::Rect::from_min_max(
                 drawn.min + vec2(*l as f32 * sx, *t as f32 * sy),
                 drawn.min + vec2(*r as f32 * sx, *b as f32 * sy),
@@ -624,8 +663,10 @@ fn region_glyphs(
             let cells = line_cells(text, region.vertical);
             text.char_indices()
                 .zip(cells)
-                .map(move |((byte, ch), (cell, pair))| {
-                    let along = (cell as f32 + 0.5) * step;
+                .map(move |((byte, ch), place)| {
+                    let Place { cell, pair, dot } = place;
+                    let shift = f32::from(dot.unwrap_or(0)) / 3.0;
+                    let along = (cell as f32 + 0.5 + shift) * step;
                     let centre = if region.vertical {
                         egui::pos2(
                             at.center().x + f32::from(pair) * size * PAIR_OFFSET,
@@ -639,6 +680,7 @@ fn region_glyphs(
                         ch,
                         centre,
                         pair,
+                        dot: dot.is_some(),
                     }
                 })
         })
@@ -977,6 +1019,19 @@ fn manga_reader(
                             let cell =
                                 egui::Rect::from_center_size(glyph.centre, vec2(*size, *size));
                             painter.rect_filled(cell.expand(1.0), 2.0, MARK);
+                        }
+                        if glyph.dot {
+                            // a dot of an ellipsis: three to a cell, in the
+                            // middle of the line
+                            draw_glyph(
+                                &painter,
+                                glyph.centre,
+                                '・',
+                                Stance::Upright,
+                                *size * DOT_SIZE,
+                                BALLOON_INK,
+                            );
+                            continue;
                         }
                         if glyph.pair != 0 {
                             // a digit of a pair, half width and upright
@@ -3573,13 +3628,19 @@ mod tests {
     // three go one to a cell, and in a row nothing is paired
     #[test]
     fn two_digits_share_a_cell_of_a_column() {
+        let cells = |text: &str, vertical: bool| -> Vec<(usize, i8)> {
+            line_cells(text, vertical)
+                .into_iter()
+                .map(|p| (p.cell, p.pair))
+                .collect()
+        };
         assert_eq!(
-            line_cells("都合１０人", true),
+            cells("都合１０人", true),
             vec![(0, 0), (1, 0), (2, -1), (2, 1), (3, 0)]
         );
-        assert_eq!(line_cells("１００円", true).len(), 4);
-        assert_eq!(line_cells("１００円", true)[3], (3, 0));
-        assert_eq!(line_cells("10人", false), vec![(0, 0), (1, 0), (2, 0)]);
+        assert_eq!(cells("１００円", true).len(), 4);
+        assert_eq!(cells("１００円", true)[3], (3, 0));
+        assert_eq!(cells("10人", false), vec![(0, 0), (1, 0), (2, 0)]);
         let region =
             nikomiru_books::mokuro::Region::guessed([0, 0, 25, 100], "都合１０人".into(), true);
         let drawn = egui::Rect::from_min_size(Pos2::ZERO, vec2(25.0, 100.0));
@@ -3588,6 +3649,38 @@ mod tests {
         assert_eq!(glyphs[2].centre.y, glyphs[3].centre.y);
         assert!(glyphs[2].centre.x < glyphs[3].centre.x);
         assert_eq!(glyphs[4].centre.y, 87.5);
+    }
+
+    // T-MNG-012: an ellipsis read as dots takes a cell per three, so the
+    // characters before it keep the picture's size (錯覚する……, Kaiji 1 p.25)
+    #[test]
+    fn an_ellipsis_takes_a_cell_per_three_dots() {
+        let places = line_cells("錯覚する．．．．．．", true);
+        assert_eq!(places.len(), 10);
+        assert_eq!(places.last().unwrap().cell, 5, "six cells, not ten");
+        assert_eq!(places[4].dot, Some(-1));
+        assert_eq!(places[6].dot, Some(1));
+        assert_eq!(
+            places[7],
+            Place {
+                cell: 5,
+                pair: 0,
+                dot: Some(-1)
+            }
+        );
+        // one dot alone is a character of its own
+        assert_eq!(line_cells("東京・大阪", true)[2].dot, None);
+        assert_eq!(line_cells("あ．．．．", false).last().unwrap().cell, 2);
+        let region = nikomiru_books::mokuro::Region::guessed(
+            [0, 0, 20, 120],
+            "錯覚する．．．．．．".into(),
+            true,
+        );
+        let drawn = egui::Rect::from_min_size(Pos2::ZERO, vec2(20.0, 120.0));
+        let (size, glyphs) = region_glyphs(&region, (20, 120), drawn);
+        assert_eq!(size, 20.0, "six cells of 20, as wide as the column");
+        assert!(glyphs[4].centre.y < glyphs[5].centre.y && glyphs[5].centre.y < glyphs[6].centre.y);
+        assert!(glyphs[4].dot && !glyphs[3].dot);
     }
 
     // T-MNG-012: a click looks up the character written under it; the text

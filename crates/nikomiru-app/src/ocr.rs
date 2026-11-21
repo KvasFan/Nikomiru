@@ -231,7 +231,7 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
     // 5: the lines the detector marks, measured on the picture (MNG-012)
-    cache.join(format!("{digest}-{models}-15.json"))
+    cache.join(format!("{digest}-{models}-16.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -399,17 +399,21 @@ impl Pages {
                             }
                         }
                     };
-                    let read: Vec<(String, [u32; 4])> = texts
+                    let (read, unread): (Vec<_>, Vec<_>) = texts
                         .into_iter()
                         .zip(drawn.lines.iter().copied())
-                        .filter(|(text, _)| !text.is_empty())
-                        .collect();
+                        .partition(|(text, _)| !text.is_empty());
                     if !read.is_empty() {
+                        // a line read as nothing keeps the picture's text
+                        // visible: no white over it (MNG-012)
+                        let unread: Vec<[u32; 4]> = unread.into_iter().map(|(_, at)| at).collect();
+                        let lines: Vec<[u32; 4]> = read.iter().map(|(_, at)| *at).collect();
+                        let covers = covers_of_read(drawn.covers, &lines, &unread);
                         regions.push(Region::from_lines(
                             block.bounds,
                             block.vertical,
                             read,
-                            drawn.covers,
+                            covers,
                         ));
                     }
                 }
@@ -553,12 +557,56 @@ impl OcrService for OcrWorker {
     }
 }
 
+/// The covers of a block's lines (MNG-012) less those of the lines read as
+/// nothing: a cover that lies mostly over an unread line and over none of
+/// the lines read is left out, so the picture's text there stays visible.
+/// The others (the lines read, their furigana) stay.
+fn covers_of_read(covers: Vec<[u32; 4]>, read: &[[u32; 4]], unread: &[[u32; 4]]) -> Vec<[u32; 4]> {
+    if unread.is_empty() {
+        return covers;
+    }
+    let area =
+        |[l, t, r, b]: [u32; 4]| u64::from(r.saturating_sub(l)) * u64::from(b.saturating_sub(t));
+    let overlap = |[al, at, ar, ab]: [u32; 4], [bl, bt, br, bb]: [u32; 4]| {
+        area([al.max(bl), at.max(bt), ar.min(br), ab.min(bb)])
+    };
+    // at least half of the cover, or of the line, under it
+    let mostly = |cover: [u32; 4], line: [u32; 4]| {
+        let both = overlap(cover, line) * 2;
+        both >= area(cover) || both >= area(line)
+    };
+    covers
+        .into_iter()
+        .filter(|cover| {
+            !unread.iter().any(|line| mostly(*cover, *line))
+                || read.iter().any(|line| mostly(*cover, *line))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
     use super::*;
+
+    // T-MNG-012: a line read as nothing is not whitened
+    #[test]
+    fn a_line_read_as_nothing_keeps_the_picture() {
+        let read = [[60, 0, 80, 100]];
+        let unread = [[30, 0, 50, 100]];
+        let covers = vec![
+            [58, 0, 82, 102], // the line read
+            [28, 0, 52, 102], // the line read as nothing
+            [84, 0, 90, 40],  // furigana beside the line read
+        ];
+        assert_eq!(
+            covers_of_read(covers.clone(), &read, &unread),
+            vec![[58, 0, 82, 102], [84, 0, 90, 40]]
+        );
+        assert_eq!(covers_of_read(covers.clone(), &read, &[]), covers);
+    }
 
     /// A server that answers every request with `body`, for `count` requests.
     fn serve(body: Vec<u8>, count: usize) -> String {
