@@ -75,6 +75,13 @@ pub enum AnkiError {
     /// "Create Lapis deck" ended without the note type or the deck in Anki.
     #[error("the Lapis note type or deck is still missing")]
     LapisMissing,
+    /// AnkiDroid, which keeps the collection on Android, is not installed
+    /// (ANK-055).
+    #[error("AnkiDroid is not installed")]
+    AppMissing,
+    /// AnkiDroid has not yet let Nikomiru use its collection (ANK-055).
+    #[error("AnkiDroid has not allowed access yet")]
+    NotAllowed,
     /// Another error from AnkiConnect, in its words.
     #[error("AnkiConnect: {0}")]
     Anki(String),
@@ -104,6 +111,10 @@ impl AnkiError {
             AnkiError::ModelMissing(name.to_string())
         } else if let Some(name) = message.strip_prefix("deck was not found: ") {
             AnkiError::DeckMissing(name.to_string())
+        } else if message == crate::bridge::APP_MISSING {
+            AnkiError::AppMissing
+        } else if message == crate::bridge::NOT_ALLOWED {
+            AnkiError::NotAllowed
         } else {
             AnkiError::Anki(message.to_string())
         }
@@ -138,6 +149,8 @@ impl nikomiru_core::Localized for AnkiError {
             AnkiError::EmptyNote => "error-anki-empty-note",
             AnkiError::CommitUnknown { .. } => "error-anki-commit-unknown",
             AnkiError::LapisMissing => "error-anki-lapis-missing",
+            AnkiError::AppMissing => "error-anki-app-missing",
+            AnkiError::NotAllowed => "error-anki-not-allowed",
             AnkiError::Anki(_) => "error-anki",
         }
     }
@@ -163,7 +176,9 @@ impl nikomiru_core::Localized for AnkiError {
             | AnkiError::EditorOpen
             | AnkiError::Duplicate
             | AnkiError::EmptyNote
-            | AnkiError::LapisMissing => Vec::new(),
+            | AnkiError::LapisMissing
+            | AnkiError::AppMissing
+            | AnkiError::NotAllowed => Vec::new(),
         }
     }
 }

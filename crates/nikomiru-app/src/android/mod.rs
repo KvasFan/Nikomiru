@@ -2,10 +2,12 @@
 
 //! What Android adds to the Linux calls (D-16, ADR 0009): the activity the
 //! app runs in, the folders Android gives it, the Java VM handed to FFmpeg,
-//! and no drag and drop.
+//! FFmpeg's programs, AnkiDroid's collection, and no drag and drop.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+pub mod ankidroid;
 
 pub use winit::platform::android::activity::AndroidApp;
 
@@ -23,6 +25,61 @@ pub fn start(app: AndroidApp) {
     give_java_vm_to_ffmpeg(app.vm_as_ptr());
     if APP.set(app).is_err() {
         tracing::warn!("the Android activity was set twice");
+    }
+    find_ffmpeg(&files);
+    nikomiru_anki::bridge::install(Box::new(nikomiru_anki::bridge::Dispatcher::new(
+        ankidroid::AnkiDroid,
+    )));
+}
+
+/// FFmpeg's programs come in the APK as `libffmpeg.so` and `libffprobe.so`
+/// beside the app's libraries, the one place Android lets an app run its
+/// own programs from (`packaging/android/ffmpeg.sh`). Links named `ffmpeg`
+/// and `ffprobe` in `files/bin` point at them, and `NIKOMIRU_FFMPEG` at that
+/// folder (EXT-001).
+fn find_ffmpeg(files: &Path) {
+    let libraries = match with_activity(|env, activity| {
+        let info = env
+            .call_method(
+                activity,
+                jni::jni_str!("getApplicationInfo"),
+                jni::jni_sig!("()Landroid/content/pm/ApplicationInfo;"),
+                &[],
+            )?
+            .l()?;
+        let dir = env
+            .get_field(
+                &info,
+                jni::jni_str!("nativeLibraryDir"),
+                jni::jni_sig!("Ljava/lang/String;"),
+            )?
+            .l()?;
+        let dir = env.cast_local::<jni::objects::JString>(dir)?;
+        dir.try_to_string(env)
+    }) {
+        Ok(dir) => PathBuf::from(dir),
+        Err(e) => {
+            tracing::warn!("the app's library folder: {e}");
+            return;
+        }
+    };
+    if !libraries.join("libffmpeg.so").is_file() {
+        tracing::info!("this APK has no FFmpeg");
+        return;
+    }
+    let bin = files.join("bin");
+    let linked = std::fs::create_dir_all(&bin).and_then(|()| {
+        for (name, library) in [("ffmpeg", "libffmpeg.so"), ("ffprobe", "libffprobe.so")] {
+            let link = bin.join(name);
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(libraries.join(library), &link)?;
+        }
+        Ok(())
+    });
+    match linked {
+        // SAFETY: still at start, before any other thread of the app exists.
+        Ok(()) => unsafe { std::env::set_var("NIKOMIRU_FFMPEG", &bin) },
+        Err(e) => tracing::warn!("{}: {e}", bin.display()),
     }
 }
 

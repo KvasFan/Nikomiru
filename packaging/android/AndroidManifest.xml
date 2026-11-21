@@ -14,12 +14,19 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+    <!-- cards into AnkiDroid's collection (ANK-055) -->
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+
+    <queries>
+        <package android:name="com.ichi2.anki" />
+        <provider android:authorities="com.ichi2.anki.flashcards" />
+    </queries>
 
     <application
         android:label="Nikomiru"
         android:icon="@mipmap/ic_launcher"
-        android:hasCode="false"
+        android:hasCode="true"
         android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
@@ -35,5 +42,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- the card media AnkiDroid reads (classes.dex, from packaging/android/java) -->
+        <provider
+            android:name="io.github.kvasfan.nikomiru.MediaProvider"
+            android:authorities="io.github.kvasfan.nikomiru.media"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

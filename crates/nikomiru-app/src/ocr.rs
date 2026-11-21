@@ -231,7 +231,7 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
     // 5: the lines the detector marks, measured on the picture (MNG-012)
-    cache.join(format!("{digest}-{models}-14.json"))
+    cache.join(format!("{digest}-{models}-15.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -377,7 +377,27 @@ impl Pages {
                         .collect();
                     let texts = match test_text() {
                         Some(text) => vec![text; crops.len()],
-                        None => engine.get()?.read_many(&crops)?,
+                        None => {
+                            let engine = engine.get()?;
+                            let lines = engine.read_many_scored(&crops)?;
+                            // a line the model was unsure of is set right by
+                            // the balloon read whole (MNG-012); one line is
+                            // the balloon already
+                            let unsure = lines
+                                .iter()
+                                .flat_map(|r| r.sure.iter())
+                                .any(|p| *p < nikomiru_ocr::UNSURE);
+                            if lines.len() > 1 && unsure {
+                                let [l, t, r, b] = block.bounds;
+                                let whole = picture.crop_imm(l, t, r - l, b - t);
+                                let whole = engine
+                                    .read_many_scored(std::slice::from_ref(&whole))?
+                                    .remove(0);
+                                nikomiru_ocr::reconcile(&lines, &whole)
+                            } else {
+                                lines.into_iter().map(|r| r.text).collect()
+                            }
+                        }
                     };
                     let read: Vec<(String, [u32; 4])> = texts
                         .into_iter()

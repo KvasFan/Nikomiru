@@ -4,6 +4,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.181.0] - 2026-11-21
+
+Android without its gaps: AnkiDroid, FFmpeg, the keyring and an upright phone (D-85); manga lines read with their balloon.
+
+### Added
+
+- Android: cards go to **AnkiDroid**, with their sentence audio and picture. Install AnkiDroid and open it once; the Anki settings' address is `ankidroid://`, and Android asks once whether Nikomiru may use AnkiDroid's collection. Mining, duplicates, the Lapis note type and deck, updating and undoing a card work as with Anki on the desktop (ANK-055).
+- Android: FFmpeg comes with the APK, so embedded subtitles, thumbnails and card media work (EXT-001). `packaging/android/ffmpeg.sh` builds it (FFmpeg 8.1.3 with LAME, Opus and libwebp) and `cargo xtask android --ffmpeg` puts it in the APK.
+- Android: "Keep them in the system keyring" seals the keys with the Android Keystore (MET-005).
+- A narrow window, such as an upright phone: the player's bar keeps play, the time and the subtitles and puts the rest in a "⋯" menu; the settings fill the screen with their tabs in a list; the first steps wrap (PLY-024).
+
+### Fixed
+
+- Manga: a balloon whose lines have a character the reading model is unsure of is also read whole, and for each character that differs the one the model is surer of is kept. On the four volumes of Kaiji and Nana this sets right about 25 misreadings (かな read as カムー, 一目惚れ, 偽名, さわやか, 容体, デビュー…) for a handful made worse; reading takes about a third longer. Pages read before are read again once (MNG-012).
+- Android: thumbnails and card pictures from the x86_64 build are no longer striped (FFmpeg built without x86 assembly).
+
 ## [2.180.0] - 2026-11-21
 
 Installers for Linux, Windows and Android (D-84), and manga compared on more pages.

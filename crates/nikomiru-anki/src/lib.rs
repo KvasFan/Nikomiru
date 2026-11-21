@@ -11,6 +11,7 @@
 #![deny(missing_docs)]
 
 pub mod base64;
+pub mod bridge;
 pub mod client;
 pub mod compose;
 pub mod error;

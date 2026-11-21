@@ -796,6 +796,14 @@ pub fn state() -> Result<Value, String> {
             "connected": s.hooker_page.connected,
         });
         state["bar_progress"] = bar_progress;
+        // PLY-024: the narrow bar and its menu
+        let rect = |r: &egui::Rect| json!([r.min.x, r.min.y, r.max.x, r.max.y]);
+        state["bar"] = json!({
+            "compact": ui.view.bar.more.is_some(),
+            "more": ui.view.bar.more.as_ref().map(rect),
+            "menu": ui.view.bar.menu.iter().map(|(name, r)| (name.clone(), rect(r)))
+                .collect::<serde_json::Map<_, _>>(),
+        });
         state["thumbnail"] = thumbnail.unwrap_or(Value::Null);
         state["first_steps"] = json!(s.first_steps());
         state

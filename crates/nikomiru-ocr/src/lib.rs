@@ -221,35 +221,68 @@ fn pixel_values(picture: &DynamicImage) -> Tensor {
 
 /// The text of the tokens: no specials, no spaces, which the model only
 /// makes up.
+#[cfg(test)]
 fn clean(tokens: &[i64], vocabulary: &[String]) -> String {
-    let text = tokens
-        .iter()
-        .filter_map(|t| usize::try_from(*t).ok())
-        .filter(|t| *t >= SPECIAL)
-        .filter_map(|t| vocabulary.get(t))
-        .flat_map(|token| token.chars())
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    full_width(text)
+    let sure = vec![1.0; tokens.len()];
+    clean_scored(tokens, &sure, vocabulary).text
 }
 
-/// What manga-ocr does last to a text: an ellipsis and runs of dots or
-/// middle dots as dots, then ASCII and digits in their full-width forms,
-/// as Japanese text writes them (`!` → `！`).
-fn full_width(text: String) -> String {
-    let text = text.replace('…', "...");
-    let mut out = String::with_capacity(text.len());
-    let chars: Vec<char> = text.chars().collect();
+/// A text read, with how sure the model was of each of its characters
+/// (the probability of the token it came from).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Reading {
+    /// The text.
+    pub text: String,
+    /// One probability per character of `text`.
+    pub sure: Vec<f32>,
+}
+
+/// [`clean`] keeping each character's probability through it.
+fn clean_scored(tokens: &[i64], sure: &[f32], vocabulary: &[String]) -> Reading {
+    let mut raw: Vec<(char, f32)> = Vec::new();
+    for (token, p) in tokens.iter().zip(sure) {
+        let Some(piece) = usize::try_from(*token)
+            .ok()
+            .filter(|t| *t >= SPECIAL)
+            .and_then(|t| vocabulary.get(t))
+        else {
+            continue;
+        };
+        for c in piece.chars().filter(|c| !c.is_whitespace()) {
+            // an ellipsis as three dots
+            if c == '…' {
+                raw.extend([('.', *p); 3]);
+            } else {
+                raw.push((c, *p));
+            }
+        }
+    }
+    let (chars, sure): (Vec<char>, Vec<f32>) = full_width(&raw).into_iter().unzip();
+    Reading {
+        text: chars.into_iter().collect(),
+        sure,
+    }
+}
+
+/// What manga-ocr does last to a text: runs of dots or middle dots as dots,
+/// then ASCII and digits in their full-width forms, as Japanese text writes
+/// them (`!` → `！`); an ellipsis is three dots already.
+fn full_width(chars: &[(char, f32)]) -> Vec<(char, f32)> {
     let dot = |c: char| c == '.' || c == '・';
+    let mut out = Vec::with_capacity(chars.len());
     let mut i = 0;
     while i < chars.len() {
-        let run = chars[i..].iter().take_while(|c| dot(**c)).count();
-        let (c, n) = if run >= 2 { ('.', run) } else { (chars[i], 1) };
-        for _ in 0..n {
-            out.push(match c {
-                '!'..='~' => char::from_u32(c as u32 - 0x21 + 0xff01).unwrap_or(c),
-                _ => c,
-            });
+        let run = chars[i..].iter().take_while(|(c, _)| dot(*c)).count();
+        let n = run.max(1);
+        for &(c, p) in &chars[i..i + n] {
+            let c = if run >= 2 { '.' } else { c };
+            out.push((
+                match c {
+                    '!'..='~' => char::from_u32(c as u32 - 0x21 + 0xff01).unwrap_or(c),
+                    _ => c,
+                },
+                p,
+            ));
         }
         i += n;
     }
@@ -1355,6 +1388,19 @@ pub struct Engine {
 impl Engine {
     /// Loads the model in `dir`.
     pub fn load(dir: &Path) -> Result<Self, OcrError> {
+        Self::load_files(
+            &dir.join("encoder.onnx"),
+            &dir.join("decoder.onnx"),
+            &dir.join("vocab.txt"),
+        )
+    }
+
+    /// Loads the model from its three files.
+    pub fn load_files(
+        encoder_file: &Path,
+        decoder_file: &Path,
+        vocab_file: &Path,
+    ) -> Result<Self, OcrError> {
         // the files' annotations name sizes that tract would hold them to
         let onnx = || {
             tract_onnx::onnx()
@@ -1363,9 +1409,7 @@ impl Engine {
         };
         // pictures read together, as many as given: a batch of a symbolic
         // size, so that the lines of a balloon cost little more than one
-        let encoder = onnx()
-            .model_for_path(dir.join("encoder.onnx"))
-            .map_err(model_err)?;
+        let encoder = onnx().model_for_path(encoder_file).map_err(model_err)?;
         let many = encoder.symbols.sym("N");
         let pixels: TVec<TDim> = tvec!(many.into(), SIDE.into(), SIDE.into(), SIDE.into());
         let pixels: TVec<TDim> = tvec!(pixels[0].clone(), 3.into(), SIDE.into(), SIDE.into());
@@ -1377,9 +1421,7 @@ impl Engine {
         // the tokens so far are a symbolic length: the decoder is typed and
         // optimised once, instead of having its shapes worked out again at
         // every token (MNG-003)
-        let decoder = onnx()
-            .model_for_path(dir.join("decoder.onnx"))
-            .map_err(model_err)?;
+        let decoder = onnx().model_for_path(decoder_file).map_err(model_err)?;
         let length = decoder.symbols.sym("L");
         let many = decoder.symbols.sym("N");
         let tokens: TVec<TDim> = tvec!(many.clone().into(), length.into());
@@ -1390,7 +1432,7 @@ impl Engine {
             .and_then(|m| m.into_optimized())
             .and_then(|m| m.into_runnable())
             .map_err(model_err)?;
-        let vocabulary = std::fs::read_to_string(dir.join("vocab.txt"))
+        let vocabulary = std::fs::read_to_string(vocab_file)
             .map_err(model_err)?
             .lines()
             .map(str::to_string)
@@ -1420,7 +1462,10 @@ impl Engine {
     }
 
     fn read_here(&self, picture: &DynamicImage) -> Result<String, OcrError> {
-        Ok(self.read_together(std::slice::from_ref(picture))?.remove(0))
+        Ok(self
+            .read_together(std::slice::from_ref(picture))?
+            .remove(0)
+            .text)
     }
 
     /// The text in each of `pictures`, the lines of a balloon (MNG-012),
@@ -1428,12 +1473,21 @@ impl Engine {
     /// of the decoder for all of them at once, a text that has ended kept
     /// going with its end, so that they all stay as long.
     pub fn read_many(&self, pictures: &[DynamicImage]) -> Result<Vec<String>, OcrError> {
+        Ok(self
+            .read_many_scored(pictures)?
+            .into_iter()
+            .map(|r| r.text)
+            .collect())
+    }
+
+    /// [`Engine::read_many`] with how sure the model was of each character.
+    pub fn read_many_scored(&self, pictures: &[DynamicImage]) -> Result<Vec<Reading>, OcrError> {
         tract_linalg::multithread::multithread_tract_scope(self.threads.clone(), || {
             self.read_together(pictures)
         })
     }
 
-    fn read_together(&self, pictures: &[DynamicImage]) -> Result<Vec<String>, OcrError> {
+    fn read_together(&self, pictures: &[DynamicImage]) -> Result<Vec<Reading>, OcrError> {
         let n = pictures.len();
         if n == 0 {
             return Ok(Vec::new());
@@ -1451,50 +1505,183 @@ impl Engine {
             .run(tvec!(Tensor::from(pixels).into()))
             .map_err(model_err)?
             .remove(0);
-        let mut tokens: Vec<Vec<i64>> = vec![vec![START]; n];
-        let mut ended = vec![false; n];
-        let mut length = 1;
-        while length < MAX_TOKENS && ended.iter().any(|e| !e) {
-            let flat: Vec<i64> = tokens.iter().flatten().copied().collect();
-            let input: Tensor = tract_ndarray::Array2::from_shape_vec((n, length), flat)
-                .map_err(model_err)?
-                .into();
-            let output = self
-                .decoder
-                .run(tvec!(input.into(), hidden.clone()))
-                .map_err(model_err)?
-                .remove(0);
-            let logits = output.to_plain_array_view::<f32>().map_err(model_err)?;
-            for (i, row) in tokens.iter_mut().enumerate() {
-                let next = if ended[i] {
-                    END
-                } else {
-                    logits
-                        .index_axis(tract_ndarray::Axis(0), i)
-                        .index_axis(tract_ndarray::Axis(0), length - 1)
-                        .iter()
-                        .enumerate()
-                        .max_by(|a, b| a.1.total_cmp(b.1))
-                        .map_or(END, |(token, _)| token as i64)
-                };
-                ended[i] |= next == END;
-                row.push(next);
-            }
-            length += 1;
-        }
-        Ok(tokens
+        let rows = self.greedy(&hidden, n)?;
+        Ok(rows
             .iter()
-            .map(|row| {
+            .map(|(row, sure)| {
                 let end = row.iter().position(|t| *t == END).unwrap_or(row.len());
-                clean(&row[..end], &self.vocabulary)
+                // the first token is START, which has no probability
+                clean_scored(&row[1..end.max(1)], sure, &self.vocabulary)
             })
             .collect())
     }
+
+    /// The decoder's scores for the last token of each row of `tokens`,
+    /// each row reading the encoder's output `pictures[row]`.
+    fn step(
+        &self,
+        hidden: &TValue,
+        pictures: &[usize],
+        tokens: &[Vec<i64>],
+    ) -> Result<Vec<Vec<f32>>, OcrError> {
+        let rows = tokens.len();
+        let length = tokens.first().map_or(0, Vec::len);
+        let flat: Vec<i64> = tokens.iter().flatten().copied().collect();
+        let input: Tensor = tract_ndarray::Array2::from_shape_vec((rows, length), flat)
+            .map_err(model_err)?
+            .into();
+        // the encoder's output of each row's picture
+        let all = hidden.to_plain_array_view::<f32>().map_err(model_err)?;
+        let same = pictures.iter().enumerate().all(|(i, p)| *p == i) && rows == all.shape()[0];
+        let hidden: TValue = if same {
+            hidden.clone()
+        } else {
+            let mut picked = tract_ndarray::Array3::<f32>::zeros((rows, HIDDEN.0, HIDDEN.1));
+            for (row, picture) in pictures.iter().enumerate() {
+                picked
+                    .index_axis_mut(tract_ndarray::Axis(0), row)
+                    .assign(&all.index_axis(tract_ndarray::Axis(0), *picture));
+            }
+            Tensor::from(picked).into()
+        };
+        let output = self
+            .decoder
+            .run(tvec!(input.into(), hidden))
+            .map_err(model_err)?
+            .remove(0);
+        let logits = output.to_plain_array_view::<f32>().map_err(model_err)?;
+        Ok((0..rows)
+            .map(|row| {
+                logits
+                    .index_axis(tract_ndarray::Axis(0), row)
+                    .index_axis(tract_ndarray::Axis(0), length - 1)
+                    .iter()
+                    .copied()
+                    .collect()
+            })
+            .collect())
+    }
+
+    /// The likeliest token at each step: each picture's tokens, ended by
+    /// [`END`] or cut at [`MAX_TOKENS`].
+    fn greedy(&self, hidden: &TValue, n: usize) -> Result<Vec<Tokens>, OcrError> {
+        let pictures: Vec<usize> = (0..n).collect();
+        let mut tokens: Vec<Vec<i64>> = vec![vec![START]; n];
+        let mut sure: Vec<Vec<f32>> = vec![Vec::new(); n];
+        let mut ended = vec![false; n];
+        while tokens[0].len() < MAX_TOKENS && ended.iter().any(|e| !e) {
+            let scores = self.step(hidden, &pictures, &tokens)?;
+            for (i, row) in tokens.iter_mut().enumerate() {
+                let (next, p) = if ended[i] {
+                    (END, 1.0)
+                } else {
+                    best(&scores[i])
+                };
+                ended[i] |= next == END;
+                row.push(next);
+                sure[i].push(p);
+            }
+        }
+        Ok(tokens.into_iter().zip(sure).collect())
+    }
+}
+
+/// Below this probability a character of a line is unsure, and the line's
+/// balloon is read whole to [`reconcile`] it.
+pub const UNSURE: f32 = 0.8;
+
+/// The lines of a balloon, read one by one, set right by the same balloon
+/// read whole (MNG-012): a line alone is sometimes too narrow for the model
+/// to tell its characters apart (かな read as カムー under a long dash),
+/// while the whole balloon gives them their context; but the whole reading
+/// has its own mistakes. Where the two readings align character for
+/// character and differ, the character the model was surer of is kept;
+/// characters only one of them has are left as the lines have them, which
+/// keeps each line's length and place. Readings that differ by more than a
+/// third are not mixed.
+pub fn reconcile(lines: &[Reading], whole: &Reading) -> Vec<String> {
+    let line_chars: Vec<Vec<char>> = lines.iter().map(|l| l.text.chars().collect()).collect();
+    let flat: Vec<char> = line_chars.iter().flatten().copied().collect();
+    let flat_sure: Vec<f32> = lines.iter().flat_map(|l| l.sure.iter().copied()).collect();
+    let other: Vec<char> = whole.text.chars().collect();
+    let unchanged = || lines.iter().map(|l| l.text.clone()).collect();
+    if flat.is_empty()
+        || other.is_empty()
+        || flat == other
+        || flat_sure.len() != flat.len()
+        || whole.sure.len() != other.len()
+    {
+        return unchanged();
+    }
+    // edit distance, then the path back through it
+    let (n, m) = (flat.len(), other.len());
+    let mut cost = vec![vec![0usize; m + 1]; n + 1];
+    for (i, row) in cost.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    for (j, cell) in cost[0].iter_mut().enumerate() {
+        *cell = j;
+    }
+    for i in 1..=n {
+        for j in 1..=m {
+            let same = usize::from(flat[i - 1] != other[j - 1]);
+            cost[i][j] = (cost[i - 1][j - 1] + same)
+                .min(cost[i - 1][j] + 1)
+                .min(cost[i][j - 1] + 1);
+        }
+    }
+    if cost[n][m] * 3 > n.max(m) {
+        return unchanged();
+    }
+    let mut fixed = flat.clone();
+    let (mut i, mut j) = (n, m);
+    while i > 0 && j > 0 {
+        let same = usize::from(flat[i - 1] != other[j - 1]);
+        if cost[i][j] == cost[i - 1][j - 1] + same {
+            if whole.sure[j - 1] > flat_sure[i - 1] {
+                fixed[i - 1] = other[j - 1];
+            }
+            i -= 1;
+            j -= 1;
+        } else if cost[i][j] == cost[i - 1][j] + 1 {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    let mut start = 0;
+    line_chars
+        .iter()
+        .map(|line| {
+            let end = start + line.len();
+            let text = fixed[start..end].iter().collect();
+            start = end;
+            text
+        })
+        .collect()
+}
+
+/// A text's tokens, from START, and the probability of each after START.
+type Tokens = (Vec<i64>, Vec<f32>);
+
+/// The likeliest token and its probability.
+fn best(scores: &[f32]) -> (i64, f32) {
+    let Some((token, max)) = scores.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)) else {
+        return (END, 1.0);
+    };
+    let sum: f32 = scores.iter().map(|s| (s - max).exp()).sum();
+    (token as i64, 1.0 / sum)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// [`full_width`] on a plain text, an ellipsis as three dots.
+    fn fw(text: String) -> String {
+        let chars: Vec<(char, f32)> = text.replace('…', "...").chars().map(|c| (c, 1.0)).collect();
+        full_width(&chars).into_iter().map(|(c, _)| c).collect()
+    }
 
     // T-MNG-003: a selection in shares of the page, kept inside it
     #[test]
@@ -1553,6 +1740,53 @@ mod tests {
         assert!(values.iter().all(|v| (*v - 1.0).abs() < 1e-6));
     }
 
+    // T-MNG-012: the lines set right by the balloon read whole
+    #[test]
+    fn the_surer_reading_of_each_character_is_kept() {
+        let read = |text: &str, sure: &[f32]| Reading {
+            text: text.into(),
+            sure: sure.to_vec(),
+        };
+        // かな under a long dash, read as カムー alone and unsure
+        let lines = [
+            read("くんない", &[0.9, 0.9, 0.9, 0.9]),
+            read("カムー", &[0.4, 0.3, 0.9]),
+        ];
+        let whole = read("くんないかなー", &[0.9, 0.9, 0.9, 0.9, 0.8, 0.9, 0.9]);
+        assert_eq!(reconcile(&lines, &whole), ["くんない", "かなー"]);
+        // the whole reading less sure of a character than the line: kept
+        let lines = [read("プラスト", &[0.9, 0.9, 0.9, 0.9])];
+        let whole = read("ブラスト", &[0.5, 0.9, 0.9, 0.9]);
+        assert_eq!(reconcile(&lines, &whole), ["プラスト"]);
+        // what only the whole reading has stays out
+        let lines = [read("準備", &[0.9; 2]), read("オッケー", &[0.9; 4])];
+        let whole = read("準備オッケーです", &[0.99; 8]);
+        assert_eq!(reconcile(&lines, &whole), ["準備", "オッケー"]);
+        // too different: the lines as they are
+        let lines = [read("ああ．．．", &[0.1; 5])];
+        assert_eq!(
+            reconcile(&lines, &read("．．．．．．", &[0.9; 6])),
+            ["ああ．．．"]
+        );
+        assert_eq!(
+            reconcile(&[], &read("何か", &[0.9; 2])),
+            Vec::<String>::new()
+        );
+    }
+
+    // T-MNG-003: each character keeps its token's probability through the
+    // clean-up
+    #[test]
+    fn the_probabilities_follow_the_characters() {
+        let mut vocabulary: Vec<String> = (0..SPECIAL).map(|i| format!("<{i}>")).collect();
+        vocabulary.extend(["…", "!", " ", "猫"].map(String::from));
+        let tokens = [15, 16, 17, 18].map(|t| t as i64);
+        let r = clean_scored(&tokens, &[0.5, 0.6, 0.7, 0.8], &vocabulary);
+        assert_eq!(r.text, "．．．！猫");
+        assert_eq!(r.sure, [0.5, 0.5, 0.5, 0.6, 0.8]);
+        assert_eq!(best(&[0.0, 0.0]).1, 0.5);
+    }
+
     // T-MNG-003
     #[test]
     fn the_text_of_the_tokens() {
@@ -1565,11 +1799,11 @@ mod tests {
     // T-MNG-003, T-SUB-028: manga-ocr's last step
     #[test]
     fn ascii_takes_its_full_width_form() {
-        assert_eq!(full_width("行くぞ!".into()), "行くぞ！");
-        assert_eq!(full_width("3D?".into()), "３Ｄ？");
-        assert_eq!(full_width("え…".into()), "え．．．");
-        assert_eq!(full_width("あ・・・".into()), "あ．．．");
-        assert_eq!(full_width("東京・大阪".into()), "東京・大阪");
+        assert_eq!(fw("行くぞ!".into()), "行くぞ！");
+        assert_eq!(fw("3D?".into()), "３Ｄ？");
+        assert_eq!(fw("え…".into()), "え．．．");
+        assert_eq!(fw("あ・・・".into()), "あ．．．");
+        assert_eq!(fw("東京・大阪".into()), "東京・大阪");
     }
 
     // T-MNG-004

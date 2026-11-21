@@ -134,6 +134,10 @@ pub(crate) enum Leave {
 /// The width of the column of the tabs.
 const TABS: f32 = 190.0;
 
+/// Below this width (in points: a phone upright) the tabs are a list to
+/// pick from above the page, which takes the whole width (PLY-024).
+const NARROW: f32 = 720.0;
+
 /// The page of the tab `current`: `content` gets the row of the buttons at
 /// the top (laid out from the right, left of Close) and the body, which
 /// scrolls. `status` is the last message, and whether it is good news.
@@ -146,46 +150,60 @@ pub(crate) fn page(
 ) -> Leave {
     let p = palette::current();
     let screen = ctx.content_rect();
-    let size = vec2(
-        1040.0_f32.min(screen.width() - 32.0).max(0.0),
-        760.0_f32.min(screen.height() - 32.0).max(0.0),
-    );
+    let narrow = screen.width() < NARROW;
+    let size = if narrow {
+        vec2(
+            (screen.width() - 8.0).max(0.0),
+            (screen.height() - 8.0).max(0.0),
+        )
+    } else {
+        vec2(
+            1040.0_f32.min(screen.width() - 32.0).max(0.0),
+            760.0_f32.min(screen.height() - 32.0).max(0.0),
+        )
+    };
     let mut leave = Leave::Stay;
     full_screen(ctx, "settings-page", p.backdrop, |ui| {
         let card = Rect::from_center_size(screen.center(), size);
         ui.painter().rect(
             card,
             10.0,
-            p.card,
+            // the whole screen: nothing of the page under it shows through
+            if narrow { p.card.to_opaque() } else { p.card },
             Stroke::new(1.0, p.card_border),
             StrokeKind::Inside,
         );
-        let inner = card.shrink(16.0);
-        let split = (inner.left() + TABS).min(inner.right());
+        let inner = card.shrink(if narrow { 10.0 } else { 16.0 });
+        let split = if narrow {
+            inner.left() - 17.0
+        } else {
+            (inner.left() + TABS).min(inner.right())
+        };
         let side = Rect::from_min_max(inner.min, pos2(split, inner.bottom()));
         let main = Rect::from_min_max(
             pos2((split + 17.0).min(inner.right()), inner.top()),
             inner.max,
         );
-        ui.painter().vline(
-            split + 8.0,
-            inner.y_range(),
-            Stroke::new(1.0, p.card_border),
-        );
-
-        // the tabs
-        let mut tabs = ui.new_child(
-            UiBuilder::new()
-                .max_rect(side)
-                .layout(Layout::top_down_justified(Align::Min)),
-        );
-        tabs.visuals_mut().override_text_color = Some(p.text);
-        tabs.spacing_mut().item_spacing.y = 4.0;
-        tabs.spacing_mut().button_padding = vec2(10.0, 6.0);
-        for tab in SettingsTab::ALL {
-            let text = RichText::new(tr(tab.label())).size(16.0);
-            if tabs.selectable_label(tab == current, text).clicked() && tab != current {
-                leave = Leave::To(tab);
+        // the tabs, in a column beside the page
+        if !narrow {
+            ui.painter().vline(
+                split + 8.0,
+                inner.y_range(),
+                Stroke::new(1.0, p.card_border),
+            );
+            let mut tabs = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(side)
+                    .layout(Layout::top_down_justified(Align::Min)),
+            );
+            tabs.visuals_mut().override_text_color = Some(p.text);
+            tabs.spacing_mut().item_spacing.y = 4.0;
+            tabs.spacing_mut().button_padding = vec2(10.0, 6.0);
+            for tab in SettingsTab::ALL {
+                let text = RichText::new(tr(tab.label())).size(16.0);
+                if tabs.selectable_label(tab == current, text).clicked() && tab != current {
+                    leave = Leave::To(tab);
+                }
             }
         }
 
@@ -199,11 +217,32 @@ pub(crate) fn page(
         ui.spacing_mut().item_spacing.y = 10.0;
         let mut buttons = None;
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(tr(current.label()))
-                    .size(20.0)
-                    .family(theme::bold()),
-            );
+            if narrow {
+                // the tabs, as a list
+                egui::ComboBox::from_id_salt("settings-tabs")
+                    // every tab at once, no scrolling within the list
+                    .height(f32::INFINITY)
+                    .selected_text(
+                        RichText::new(tr(current.label()))
+                            .size(18.0)
+                            .family(theme::bold()),
+                    )
+                    .show_ui(ui, |ui| {
+                        for tab in SettingsTab::ALL {
+                            let text = RichText::new(tr(tab.label())).size(16.0);
+                            if ui.selectable_label(tab == current, text).clicked() && tab != current
+                            {
+                                leave = Leave::To(tab);
+                            }
+                        }
+                    });
+            } else {
+                ui.label(
+                    RichText::new(tr(current.label()))
+                        .size(20.0)
+                        .family(theme::bold()),
+                );
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button(tr("settings-close")).clicked() {
                     leave = Leave::Close;
@@ -224,7 +263,13 @@ pub(crate) fn page(
         let Some(mut buttons) = buttons else {
             return;
         };
-        ScrollArea::vertical()
+        // narrow, a page wider than the screen scrolls sideways too
+        let scroll = if narrow {
+            ScrollArea::both()
+        } else {
+            ScrollArea::vertical()
+        };
+        scroll
             .id_salt(("settings", current.key()))
             .auto_shrink([false, false])
             .show(&mut ui, |ui| content(&mut buttons, ui));
