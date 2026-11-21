@@ -5,7 +5,7 @@
 # with the Rust toolchain of `rust-toolchain.toml` (through rustup).
 
 pkgname=nikomiru
-pkgver=2.174.1
+pkgver=2.180.0
 pkgrel=1
 pkgdesc='Video player for learning Japanese: clickable subtitles, Yomitan dictionaries and Anki cards'
 arch=('x86_64')
@@ -34,7 +34,7 @@ options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # GitHub names the folder in the tarball after the repository, capitalized
 _dir="Nikomiru-$pkgver"
-sha256sums=('443dd1bdb5e5ac49902b6f787180bb4c3e359f8c1c97320ca6ed7e315d270ba3')
+sha256sums=('7eaf13350b81dc079c32a88144deceb5469d876324375ddd0bc968ea8e2ac97b')
 
 prepare() {
   cd "$_dir"
