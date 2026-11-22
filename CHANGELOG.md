@@ -4,7 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.181.3] - 2026-11-22
+
+### Fixed
+
+- Manga: text drawn over the art rather than in a balloon (この男の言うこと当たってる……, Kaiji volume 1 p.49) was not read: the detector found it at 0.34, under the 0.4 it asks. Blocks it finds at 0.25 or more and that touch no surer block are now kept as doubtful, and written over the page only when every letter of them (dots and marks aside) is read at least 90 % sure; on the four volumes of Kaiji and Nana that keeps this one, a chapter's title and two short lines of Nana, and leaves out 29 pieces of art, sound effects and small scrawls. The short columns of 2.181.2 are judged by their letters the same way. Pages read before are read again once (MNG-011, MNG-012).
+
 ## [2.181.2] - 2026-11-22
+
+Tagged, not published on its own: its files went out with 2.181.3.
 
 ### Fixed
 
