@@ -231,7 +231,7 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
     // 5: the lines the detector marks, measured on the picture (MNG-012)
-    cache.join(format!("{digest}-{models}-16.json"))
+    cache.join(format!("{digest}-{models}-17.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -379,7 +379,17 @@ impl Pages {
                         Some(text) => vec![text; crops.len()],
                         None => {
                             let engine = engine.get()?;
-                            let lines = engine.read_many_scored(&crops)?;
+                            let mut lines = engine.read_many_scored(&crops)?;
+                            // a line found only in the ink beside the
+                            // detector's is text when read surely, an
+                            // outline's edge otherwise: then nothing
+                            for (read, at) in lines.iter_mut().zip(&drawn.lines) {
+                                let sure =
+                                    read.sure.iter().all(|p| *p >= nikomiru_ocr::SURE_ENOUGH);
+                                if drawn.doubtful.contains(at) && !sure {
+                                    *read = nikomiru_ocr::Reading::default();
+                                }
+                            }
                             // a line the model was unsure of is set right by
                             // the balloon read whole (MNG-012); one line is
                             // the balloon already

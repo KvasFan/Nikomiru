@@ -582,7 +582,15 @@ pub struct Layout {
     /// the strokes set apart, a pixel wider; the whole block when its lines
     /// are only guessed. Left, top, right and bottom in pixels of the page.
     pub covers: Vec<[u32; 4]>,
+    /// The lines found in the ink beside the detector's from a short strip
+    /// measured again (`widen`): text only if read surely (MNG-012), the
+    /// edge of a balloon's outline otherwise.
+    pub doubtful: Vec<[u32; 4]>,
 }
+
+/// How sure the reading of a line in [`Layout::doubtful`] must be, in each
+/// of its characters, for the line to be kept.
+pub const SURE_ENOUGH: f32 = 0.9;
 
 /// Whether the ink in `m` is a column (or row) of dots: three pieces at
 /// least along it, each no longer than about twice its width but the last
@@ -787,6 +795,30 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
             })
             .filter(|c| c[2] > c[0] && c[3] > c[1])
             .collect();
+        // a short column's strip measured again over its own length; kept
+        // only as dense as text (an outline's curve widened is not) and
+        // not over another strip already widened to it
+        let mut widened: Vec<[u32; 4]> = Vec::new();
+        let found: Vec<[u32; 4]> = found
+            .into_iter()
+            .filter_map(|c| {
+                let w = widen(&grey, below, c, vertical, width, (b0, b1));
+                if w == c {
+                    return Some(c);
+                }
+                let twice = widened
+                    .iter()
+                    .any(|o| overlap(across(o), across(&w)) && overlap(along(o), along(&w)));
+                if twice {
+                    return None;
+                }
+                if density(&w) * 10 < dense * 6 {
+                    return Some(c);
+                }
+                widened.push(w);
+                Some(w)
+            })
+            .collect();
         let missed: Vec<[u32; 4]> = found
             .iter()
             .filter(|m| {
@@ -846,6 +878,9 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
             .collect();
         let (pw, ph) = page.dimensions();
         marked
+            .doubtful
+            .extend(missed.iter().filter(|m| widened.contains(m)).copied());
+        marked
             .covers
             .extend(missed.iter().map(|m| margin(*m, pw, ph)));
         marked.lines.extend(missed);
@@ -904,6 +939,7 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
     let alone = Layout {
         lines: Vec::new(),
         covers: vec![block.bounds],
+        doubtful: Vec::new(),
     };
     if chars == 0 || r <= l || b <= t {
         return alone;
@@ -1043,7 +1079,11 @@ pub fn layout(page: &DynamicImage, block: &Block, chars: usize) -> Layout {
     if block.vertical {
         lines.reverse();
     }
-    Layout { lines, covers }
+    Layout {
+        lines,
+        covers,
+        doubtful: Vec::new(),
+    }
 }
 
 /// The detector's marks, a mark over short columns run together (as wide
@@ -1366,7 +1406,11 @@ fn layout_from_lines(page: &DynamicImage, block: &Block) -> Layout {
             return second;
         }
     }
-    Layout { lines, covers }
+    Layout {
+        lines,
+        covers,
+        doubtful: Vec::new(),
+    }
 }
 
 /// Matrix products on half the processor's cores, as the other readers.
@@ -1589,6 +1633,61 @@ impl Engine {
 /// Below this probability a character of a line is unsure, and the line's
 /// balloon is read whole to [`reconcile`] it.
 pub const UNSURE: f32 = 0.8;
+
+/// A narrow run the ink was measured into (`m`, across `vertical` or not),
+/// measured again over its own length: a short column beside long ones has
+/// little ink beside theirs, and only its densest strip passed the
+/// threshold they set (いた after a column of six, Kaiji 1 p.41). Within a
+/// line's width either way and inside `box_across`, the ink across `m`'s
+/// own length; `m` itself when that is no wider.
+fn widen(
+    grey: &image::GrayImage,
+    below: u8,
+    m: [u32; 4],
+    vertical: bool,
+    width: u32,
+    (box0, box1): (u32, u32),
+) -> [u32; 4] {
+    let (pw, ph) = grey.dimensions();
+    let (a0, a1, g0, g1) = if vertical {
+        (m[0], m[2], m[1], m[3])
+    } else {
+        (m[1], m[3], m[0], m[2])
+    };
+    if (a1 - a0) * 10 >= width * 6 || g1 <= g0 {
+        return m;
+    }
+    let mid = (a0 + a1) / 2;
+    let (s0, s1) = (
+        mid.saturating_sub(width).max(box0),
+        (mid + width).min(box1).min(if vertical { pw } else { ph }),
+    );
+    let ink = |a: u32, g: u32| {
+        let (x, y) = if vertical { (a, g) } else { (g, a) };
+        x < pw && y < ph && grey[(x, y)].0[0] < below
+    };
+    let counts: Vec<(u32, usize)> = (s0..s1)
+        .map(|a| (a, (g0..g1).filter(|g| ink(a, *g)).count()))
+        .collect();
+    let least = (counts.iter().map(|c| c.1).max().unwrap_or(0) * 15 / 100).max(1);
+    // the run of ink across that holds the strip, small gaps bridged
+    let (mut lo, mut hi) = (a0, a1);
+    let inked = |a: u32| counts.iter().any(|&(x, n)| x == a && n >= least);
+    while lo > s0 && (inked(lo - 1) || (lo >= s0 + 2 && inked(lo - 2))) {
+        lo -= 1;
+    }
+    while hi < s1 && (inked(hi) || inked(hi + 1)) {
+        hi += 1;
+    }
+    if hi - lo <= a1 - a0 {
+        return m;
+    }
+    if vertical {
+        [lo, g0, hi, g1]
+    } else {
+        [g0, lo, g1, hi]
+    }
+}
 
 /// The lines of a balloon, read one by one, set right by the same balloon
 /// read whole (MNG-012): a line alone is sometimes too narrow for the model
@@ -1907,7 +2006,8 @@ mod tests {
             layout(&blank, &empty, 3),
             Layout {
                 lines: Vec::new(),
-                covers: vec![[0, 0, 50, 50]]
+                covers: vec![[0, 0, 50, 50]],
+                doubtful: Vec::new(),
             }
         );
     }
@@ -2054,6 +2154,36 @@ mod tests {
         };
         let found = layout(&page, &block, 6);
         assert_eq!(found.lines, vec![[150, 60, 168, 175]]);
+    }
+
+    // T-MNG-012: a short column's strip, all that passed the threshold the
+    // long columns set, is measured again over its own length (いた, Kaiji 1
+    // p.41); a run already as wide as a line is left as it is
+    #[test]
+    fn a_short_columns_strip_is_widened() {
+        let mut page = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        let mut ink = |x0: u32, y0: u32, x1: u32, y1: u32| {
+            for x in x0..x1 {
+                for y in y0..y1 {
+                    page.put_pixel(x, y, image::Luma([0]));
+                }
+            }
+        };
+        // a long stroke down the middle, short strokes across
+        ink(68, 22, 71, 64);
+        ink(60, 30, 78, 34);
+        ink(60, 50, 78, 54);
+        assert_eq!(
+            widen(&page, 128, [68, 22, 71, 64], true, 18, (58, 142)),
+            [60, 22, 78, 64]
+        );
+        // inside the block's box only
+        assert_eq!(
+            widen(&page, 128, [68, 22, 71, 64], true, 18, (66, 142)),
+            [66, 22, 78, 64]
+        );
+        let wide = [60, 22, 78, 64];
+        assert_eq!(widen(&page, 128, wide, true, 18, (58, 142)), wide);
     }
 
     // T-MNG-012: a column the detector left unmarked between two marked
