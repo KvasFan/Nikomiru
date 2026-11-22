@@ -4,6 +4,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.181.2] - 2026-11-22
+
+### Fixed
+
+- Manga: a short last column beside long ones (いた after a column of six, Kaiji volume 1 p.41) was left unread: the detector had not marked it, and measured against the long columns only a thin strip of it counted as ink, taken for furigana. Such a strip is now measured again over its own length; the column it gives is kept when the reader is at least 90 % sure of each of its characters, so that a piece of a balloon's outline is not read as text. On the four volumes of Kaiji and Nana this recovers でも, から, 以上, 時, 場所, 今, 先生 and あと, and adds nothing else. Pages read before are read again once (MNG-012).
+
 ## [2.181.1] - 2026-11-21
 
 ### Fixed
