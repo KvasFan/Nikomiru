@@ -292,7 +292,11 @@ fn full_width(chars: &[(char, f32)]) -> Vec<(char, f32)> {
 /// The side of the square the detector sees.
 const DETECT_SIDE: usize = 1024;
 /// How sure the detector must be of a block.
-const DETECT_CONFIDENCE: f32 = 0.4;
+pub const DETECT_CONFIDENCE: f32 = 0.4;
+/// How sure the detector must be of a block kept as doubtful, apart from
+/// the sure ones (この男の言うこと当たってる…… over the art, Kaiji 1 p.49, at
+/// 0.34).
+const DETECT_DOUBTFUL: f32 = 0.25;
 /// How much two blocks may overlap before the less sure one goes.
 const DETECT_OVERLAP: f32 = 0.35;
 /// The smallest block kept, in pixels of the page.
@@ -309,6 +313,10 @@ pub struct Block {
     /// reading order: columns from the right, or rows from the top. Empty
     /// when it marked none.
     pub lines: Vec<[u32; 4]>,
+    /// Found with less confidence than [`DETECT_CONFIDENCE`] asks (text
+    /// drawn over the art, not in a balloon): its text is kept only when
+    /// read surely ([`SURE_ENOUGH`]), as a doubtful line's (MNG-011).
+    pub doubtful: bool,
 }
 
 /// The detector, loaded.
@@ -480,7 +488,7 @@ fn give_lines(blocks: &mut [Block], lines: &[[u32; 4]]) {
 /// in its square: the sure ones, each once, on the page, in reading order.
 fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) -> Vec<Block> {
     found.retain(|(b, confidence)| {
-        *confidence >= DETECT_CONFIDENCE && b.iter().all(|v| v.is_finite())
+        *confidence >= DETECT_DOUBTFUL && b.iter().all(|v| v.is_finite())
     });
     found.sort_by(|a, b| b.1.total_cmp(&a.1));
     let corners = |[cx, cy, w, h]: [f32; 4]| {
@@ -498,16 +506,27 @@ fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) 
         let union = area(a) + area(b) - w * h;
         if union > 0.0 { w * h / union } else { 0.0 }
     };
-    let mut kept: Vec<[f32; 4]> = Vec::new();
-    for (b, _) in found {
+    // a doubtful box touching a sure one is a piece of its text: never a
+    // block of its own
+    let covered = |a: [f32; 4], b: [f32; 4]| {
+        let w = (a[2].min(b[2]) - a[0].max(b[0])).max(0.0);
+        let h = (a[3].min(b[3]) - a[1].max(b[1])).max(0.0);
+        w * h > 0.0
+    };
+    let mut kept: Vec<([f32; 4], bool)> = Vec::new();
+    for (b, confidence) in found {
         let b = corners(b);
-        if kept.iter().all(|k| overlap(*k, b) <= DETECT_OVERLAP) {
-            kept.push(b);
+        let doubtful = confidence < DETECT_CONFIDENCE;
+        let clear = kept.iter().all(|(k, k_doubtful)| {
+            overlap(*k, b) <= DETECT_OVERLAP && (!doubtful || *k_doubtful || !covered(*k, b))
+        });
+        if clear {
+            kept.push((b, doubtful));
         }
     }
     let mut out: Vec<Block> = kept
         .into_iter()
-        .filter_map(|[l, t, r, b]| {
+        .filter_map(|([l, t, r, b], doubtful)| {
             let clip = |v: f32, max: u32| (v.max(0.0).round() as u32).min(max);
             let bounds = [
                 clip(l, size.0),
@@ -525,6 +544,7 @@ fn blocks(mut found: Vec<([f32; 4], f32)>, scale: (f32, f32), size: (u32, u32)) 
                 bounds,
                 vertical: w <= 2 * h,
                 lines: Vec::new(),
+                doubtful,
             })
         })
         .collect();
@@ -1111,6 +1131,7 @@ fn split_blobs(page: &DynamicImage, block: &Block) -> Vec<[u32; 4]> {
                 ],
                 vertical,
                 lines: Vec::new(),
+                doubtful: false,
             };
             // characters about half as wide as the blob: two columns
             let side = u64::from((w / 2).max(6));
@@ -1689,6 +1710,53 @@ fn widen(
     }
 }
 
+/// Whether `readings` are surely text (MNG-011, MNG-012): at least
+/// `letters` characters that are not punctuation, each read at least
+/// [`SURE_ENOUGH`] sure. Dots, dashes and marks are left out of the count
+/// and of the test: the model is often unsure of how many dots there are,
+/// and an outline read as "！" or "ー" is no text.
+pub fn surely_text(readings: &[Reading], letters: usize) -> bool {
+    let mark = |c: char| {
+        matches!(
+            c,
+            '．' | '.'
+                | '・'
+                | '…'
+                | '、'
+                | '。'
+                | '，'
+                | '！'
+                | '？'
+                | 'ー'
+                | '～'
+                | '〜'
+                | '―'
+                | '－'
+                | '「'
+                | '」'
+                | '『'
+                | '』'
+                | '（'
+                | '）'
+                | '♡'
+                | '♪'
+        )
+    };
+    let mut count = 0;
+    for read in readings {
+        for (c, p) in read.text.chars().zip(&read.sure) {
+            if mark(c) {
+                continue;
+            }
+            if *p < SURE_ENOUGH {
+                return false;
+            }
+            count += 1;
+        }
+    }
+    count >= letters
+}
+
 /// The lines of a balloon, read one by one, set right by the same balloon
 /// read whole (MNG-012): a line alone is sometimes too narrow for the model
 /// to tell its characters apart (かな read as カムー under a long dash),
@@ -1839,6 +1907,32 @@ mod tests {
         assert!(values.iter().all(|v| (*v - 1.0).abs() < 1e-6));
     }
 
+    // T-MNG-011: doubtful text is kept when its letters are read surely,
+    // whatever the dots
+    #[test]
+    fn surely_text_counts_letters_not_marks() {
+        let read = |text: &str, sure: &[f32]| Reading {
+            text: text.into(),
+            sure: sure.to_vec(),
+        };
+        let lines = [
+            read("この男の", &[0.99; 4]),
+            read(
+                "言うこと．．．",
+                &[0.99, 0.99, 0.99, 0.99, 0.56, 0.99, 0.99],
+            ),
+        ];
+        assert!(surely_text(&lines, 2));
+        assert!(!surely_text(
+            &[read("営業スマイツ", &[0.99, 0.99, 0.99, 0.99, 0.99, 0.6])],
+            2
+        ));
+        assert!(!surely_text(&[read("．．．", &[0.99; 3])], 1), "no letter");
+        assert!(!surely_text(&[read("！", &[0.97])], 1));
+        assert!(!surely_text(&[read("２", &[0.99])], 2), "too few");
+        assert!(surely_text(&[read("いた", &[1.0, 1.0])], 1));
+    }
+
     // T-MNG-012: the lines set right by the balloon read whole
     #[test]
     fn the_surer_reading_of_each_character_is_kept() {
@@ -1945,16 +2039,19 @@ mod tests {
                     bounds: [1540, 320, 1660, 920],
                     vertical: true,
                     lines: Vec::new(),
+                    doubtful: false,
                 },
                 Block {
                     bounds: [160, 400, 240, 800],
                     vertical: true,
                     lines: Vec::new(),
+                    doubtful: false,
                 },
                 Block {
                     bounds: [1800, 1750, 2048, 1850],
                     vertical: false,
                     lines: Vec::new(),
+                    doubtful: false,
                 },
             ]
         );
@@ -1984,6 +2081,7 @@ mod tests {
             bounds: [108, 18, 170, 182],
             vertical: true,
             lines: Vec::new(),
+            doubtful: false,
         };
         let found = layout(&page, &block, 12);
         assert_eq!(found.lines, vec![[150, 20, 168, 180], [110, 20, 128, 80]]);
@@ -2001,6 +2099,7 @@ mod tests {
             bounds: [0, 0, 50, 50],
             vertical: true,
             lines: Vec::new(),
+            doubtful: false,
         };
         assert_eq!(
             layout(&blank, &empty, 3),
@@ -2057,16 +2156,19 @@ mod tests {
                 bounds: [0, 0, 12, 14],
                 vertical: false,
                 lines: Vec::new(),
+                doubtful: false,
             },
             Block {
                 bounds: [18, 13, 30, 18],
                 vertical: false,
                 lines: Vec::new(),
+                doubtful: false,
             },
             Block {
                 bounds: [0, 16, 5, 20],
                 vertical: true,
                 lines: Vec::new(),
+                doubtful: false,
             },
         ];
         give_lines(&mut blocks, &found);
@@ -2077,6 +2179,7 @@ mod tests {
             bounds: [0, 0, 12, 14],
             vertical: true,
             lines: Vec::new(),
+            doubtful: false,
         }];
         give_lines(&mut lone, &[[1, 5, 11, 8]]);
         assert!(lone[0].vertical && lone[0].lines.is_empty());
@@ -2085,6 +2188,7 @@ mod tests {
             bounds: [0, 0, 40, 100],
             vertical: true,
             lines: Vec::new(),
+            doubtful: false,
         }];
         give_lines(&mut specked, &[[10, 10, 30, 90], [32, 80, 33, 81]]);
         assert_eq!(specked[0].lines, vec![[10, 10, 30, 90]]);
@@ -2120,6 +2224,7 @@ mod tests {
                 [135, 105, 137, 135],
                 [115, 30, 124, 70],
             ],
+            doubtful: false,
         };
         let found = layout(&page, &block, 12);
         assert_eq!(found.lines, vec![[150, 20, 168, 180], [110, 20, 128, 80]]);
@@ -2151,6 +2256,7 @@ mod tests {
             bounds: [140, 40, 180, 190],
             vertical: true,
             lines: vec![[155, 66, 164, 160]],
+            doubtful: false,
         };
         let found = layout(&page, &block, 6);
         assert_eq!(found.lines, vec![[150, 60, 168, 175]]);
@@ -2208,6 +2314,7 @@ mod tests {
             bounds: [18, 18, 136, 182],
             vertical: true,
             lines: vec![[105, 30, 114, 170], [25, 30, 34, 170]],
+            doubtful: false,
         };
         let found = layout(&page, &block, 24);
         assert_eq!(
@@ -2244,6 +2351,7 @@ mod tests {
             bounds: [28, 18, 162, 182],
             vertical: true,
             lines: vec![[105, 30, 114, 170], [65, 30, 74, 170]],
+            doubtful: false,
         };
         let found = layout(&page, &block, 10);
         assert_eq!(
@@ -2300,6 +2408,7 @@ mod tests {
             bounds: [28, 18, 182, 202],
             vertical: true,
             lines: vec![[120, 30, 172, 190], [75, 30, 85, 190], [35, 30, 45, 190]],
+            doubtful: false,
         };
         let found = layout(&page, &block, 20);
         assert_eq!(

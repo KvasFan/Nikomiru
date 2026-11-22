@@ -231,7 +231,7 @@ fn page_cache(cache: &Path, picture: &[u8]) -> PathBuf {
         .collect();
     let models = format!("{}{}", &DETECTOR.sha256[..8], &MODEL[0].sha256[..8]);
     // 5: the lines the detector marks, measured on the picture (MNG-012)
-    cache.join(format!("{digest}-{models}-17.json"))
+    cache.join(format!("{digest}-{models}-18.json"))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -334,6 +334,7 @@ impl Pages {
                 lines: Vec::new(),
                 bounds: [width / 4, height / 4, width * 3 / 4, height * 3 / 4],
                 vertical: true,
+                doubtful: false,
             }],
             None => self.detector(&engine.dir)?.find(&picture)?,
         };
@@ -353,7 +354,21 @@ impl Pages {
                     let [l, t, r, b] = block.bounds;
                     let text = match test_text() {
                         Some(text) => text,
-                        None => engine.get()?.read(&picture.crop_imm(l, t, r - l, b - t))?,
+                        None => {
+                            let whole = picture.crop_imm(l, t, r - l, b - t);
+                            let read = engine
+                                .get()?
+                                .read_many_scored(std::slice::from_ref(&whole))?
+                                .remove(0);
+                            // a block the detector was unsure of (text over
+                            // the art) is text when read surely (MNG-011)
+                            let sure = nikomiru_ocr::surely_text(std::slice::from_ref(&read), 2);
+                            if block.doubtful && !sure {
+                                String::new()
+                            } else {
+                                read.text
+                            }
+                        }
                     };
                     if !text.is_empty() {
                         regions.push(Region::in_lines(
@@ -384,11 +399,18 @@ impl Pages {
                             // detector's is text when read surely, an
                             // outline's edge otherwise: then nothing
                             for (read, at) in lines.iter_mut().zip(&drawn.lines) {
-                                let sure =
-                                    read.sure.iter().all(|p| *p >= nikomiru_ocr::SURE_ENOUGH);
+                                let sure = nikomiru_ocr::surely_text(std::slice::from_ref(read), 1);
                                 if drawn.doubtful.contains(at) && !sure {
                                     *read = nikomiru_ocr::Reading::default();
                                 }
+                            }
+                            // a block the detector was unsure of (text over
+                            // the art) is text when all of it reads surely
+                            // (MNG-011): otherwise nothing of it
+                            if block.doubtful && !nikomiru_ocr::surely_text(&lines, 2) {
+                                lines
+                                    .iter_mut()
+                                    .for_each(|r| *r = nikomiru_ocr::Reading::default());
                             }
                             // a line the model was unsure of is set right by
                             // the balloon read whole (MNG-012); one line is
