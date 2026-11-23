@@ -28,7 +28,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(palette::current().details),
+            .color(palette::current().accent_text),
     );
 }
 
@@ -222,15 +222,15 @@ pub(crate) fn draw(
                                                     "composer-field-value",
                                                     &[("name", name.clone())],
                                                 ));
-                                                if ui
-                                                    .add(
-                                                        egui::TextEdit::multiline(&mut text)
-                                                            .desired_rows(2)
-                                                            .char_limit(16384)
-                                                            .desired_width(f32::INFINITY),
-                                                    )
-                                                    .labelled_by(label.id)
-                                                    .changed()
+                                                if super::palette::add_boxy(
+                                                    ui,
+                                                    egui::TextEdit::multiline(&mut text)
+                                                        .desired_rows(2)
+                                                        .char_limit(16384)
+                                                        .desired_width(f32::INFINITY),
+                                                )
+                                                .labelled_by(label.id)
+                                                .changed()
                                                 {
                                                     edit(AdvancedEdit::Field(name.clone(), text));
                                                 }
@@ -286,10 +286,7 @@ pub(crate) fn draw(
                     });
                 ui.add_space(8.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .button(RichText::new(t("mining-create")).family(theme::bold()))
-                        .clicked()
-                    {
+                    if ui.add(palette::suggested(t("mining-create"))).clicked() {
                         edit(AdvancedEdit::Create);
                     }
                     if ui.button(t("mining-cancel")).clicked() {

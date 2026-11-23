@@ -9,13 +9,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use egui::{
-    Align, Button, Color32, ComboBox, Frame, Layout, Margin, RichText, Role, ScrollArea, Sense,
-    Stroke, TextEdit, TextureHandle, Ui, UiBuilder, WidgetInfo, vec2,
+    Align, Button, Color32, ComboBox, Frame, Layout, Margin, Rect, RichText, Role, ScrollArea,
+    Sense, Stroke, TextEdit, TextureHandle, Ui, UiBuilder, WidgetInfo, pos2, vec2,
 };
 use nikomiru_library::home::Watched;
 use nikomiru_library::{Grouping, VideoRecord};
 
 use super::dict_page::full_screen;
+use super::icons::{self, Icon};
 use super::popups::Translate;
 use super::{View, palette, theme};
 use crate::catalog::{LibraryEdit, LibraryPage};
@@ -24,8 +25,9 @@ use crate::subtitles::clock;
 use crate::ui::Command;
 
 /// The width of a card of "Continue watching", and of a series.
-const WIDE: f32 = 232.0;
-const NARROW: f32 = 184.0;
+const NARROW: f32 = 200.0;
+/// The width of a card of what is being watched (SET-010).
+const HERO: f32 = 420.0;
 
 /// What the page keeps between frames; dropped when it closes.
 #[derive(Default)]
@@ -123,6 +125,17 @@ impl Shelf {
         match extension.as_deref() {
             None | Some("cbz" | "zip" | "mokuro") => Shelf::Manga,
             _ => Shelf::Books,
+        }
+    }
+
+    /// Its icon in the navigation rail (SET-010).
+    fn icon(self) -> Icon {
+        match self {
+            Shelf::Collection => Icon::Home,
+            Shelf::Videos => Icon::Video,
+            Shelf::Books => Icon::Book,
+            Shelf::Manga => Icon::Manga,
+            Shelf::Web => Icon::Web,
         }
     }
 
@@ -290,12 +303,12 @@ fn tr(s: &Scene<'_>, id: &str) -> String {
 }
 
 fn section(ui: &mut Ui, text: &str) {
-    ui.add_space(8.0);
+    ui.add_space(10.0);
     ui.label(
         RichText::new(text)
-            .size(17.0)
+            .size(18.0)
             .family(theme::bold())
-            .color(palette::current().details),
+            .color(palette::current().text),
     );
 }
 
@@ -319,10 +332,13 @@ fn episode_label(v: &VideoRecord) -> String {
 fn progress(ui: &mut Ui, width: f32, share: f32, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, 4.0), Sense::hover());
     ui.painter()
-        .rect_filled(rect, 2.0, palette::current().track);
+        .rect_filled(rect, palette::PILL, palette::current().track);
     let mut done = rect;
     done.set_width(rect.width() * share.clamp(0.0, 1.0));
-    ui.painter().rect_filled(done, 2.0, color);
+    if done.width() > 0.0 {
+        done.set_width(done.width().max(4.0));
+        ui.painter().rect_filled(done, palette::PILL, color);
+    }
 }
 
 /// Draws the page; returns whether it closes.
@@ -348,8 +364,30 @@ pub(crate) fn draw(
     }
     let screen = ctx.content_rect();
     let mut close = false;
+    // a wide window has the navigation rail at its left (SET-010)
+    let with_rail = screen.width() >= RAIL_MIN_WIDTH;
     full_screen(ctx, "library-page", palette::current().page, |ui| {
-        let area = screen.shrink(24.0);
+        let mut area = screen.shrink(if with_rail { 12.0 } else { 24.0 });
+        if with_rail {
+            // expanded, the names beside the icons, on a window wide enough;
+            // compact, the names under them, on a narrower one
+            let compact = screen.width() < RAIL_EXPANDED_MIN_WIDTH;
+            let width = if compact {
+                RAIL_COMPACT_WIDTH
+            } else {
+                RAIL_WIDTH
+            };
+            let rail = Rect::from_min_size(area.min, vec2(width, area.height()));
+            let mut rail_ui = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(rail)
+                    .layout(Layout::top_down(Align::Min)),
+            );
+            navigation_rail(&mut rail_ui, rail, compact, s, state, out);
+            area.min.x = rail.right() + 24.0;
+            area.min.y += 12.0;
+            area.max.x -= 12.0;
+        }
         let mut ui = ui.new_child(
             UiBuilder::new()
                 .max_rect(area)
@@ -357,7 +395,7 @@ pub(crate) fn draw(
         );
         ui.visuals_mut().override_text_color = Some(palette::current().text);
         ui.spacing_mut().item_spacing.y = 10.0;
-        header(&mut ui, s, state, &mut close, out);
+        header(&mut ui, s, state, with_rail, &mut close, out);
         if let Some((text, ok)) = &s.page.status {
             ui.add(
                 egui::Label::new(RichText::new(text).color(if *ok {
@@ -427,88 +465,43 @@ pub(crate) fn draw(
     close
 }
 
-/// A tab of the page: a pill, bold when chosen; whether it was clicked.
+/// A tab of the page: a pill, on the accent's tonal fill when chosen;
+/// whether it was clicked.
 fn tab(ui: &mut Ui, chosen: bool, text: &str) -> bool {
-    let text = RichText::new(text).size(17.0);
+    let text = RichText::new(text).size(15.0);
     let text = if chosen {
         text.family(theme::bold())
-            .color(palette::current().accent_text)
     } else {
         text
     };
     let button = Button::new(text)
         .selected(chosen)
-        .corner_radius(16)
-        .min_size(vec2(0.0, 32.0));
+        .corner_radius(palette::PILL)
+        .min_size(vec2(0.0, 34.0));
     ui.add(button).clicked()
 }
 
-/// The name, the tools, the settings and the way back; then the tabs, each
-/// on its own row so that nothing overlaps however narrow the window; then
-/// what the tab shown can add.
-fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: &mut Vec<Command>) {
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(tr(s, "app-title"))
-                .size(26.0)
-                .family(theme::bold())
-                .color(palette::current().accent),
-        );
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button(tr(s, "library-close")).clicked() {
-                *close = true;
-            }
-            // SET-008
-            let settings = ui
-                .button(RichText::new("⚙").size(16.0))
-                .on_hover_text(tr(s, "settings-title"));
-            settings
-                .widget_info(|| WidgetInfo::labeled(Role::Button, true, tr(s, "settings-title")));
-            if settings.clicked() {
-                state.open_settings = Some(s.settings_tab);
-            }
-            ui.menu_button(tr(s, "library-tools"), |ui| {
-                if ui.button(tr(s, "hooker-title")).clicked() {
-                    state.open_hooker = true;
-                    ui.close();
-                }
-                if ui.button(tr(s, "phrases-title")).clicked() {
-                    out.push(Command::PhrasesOpen);
-                    ui.close();
-                }
-                if ui.button(tr(s, "recall-history")).clicked() {
-                    out.push(Command::RecallHistoryOpen);
-                    ui.close();
-                }
-                if ui.button(tr(s, "recall-load")).clicked() {
-                    out.push(Command::RecallLoad);
-                    ui.close();
-                }
-                if ui.button(tr(s, "podcasts-title")).clicked() {
-                    out.push(Command::PodcastsOpen);
-                    ui.close();
-                }
-                if ui.button(tr(s, "annotations-title")).clicked() {
-                    out.push(Command::ReaderToolsOpen(
-                        crate::reader_tools::Tab::Annotations,
-                    ));
-                    ui.close();
-                }
-                if ui.button(tr(s, "search-title")).clicked() {
-                    out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button(tr(s, "library-books-page")).clicked() {
-                    state.open_books = true;
-                    ui.close();
-                }
-            });
-            if s.page.busy || (state.shelf.is_reading() && s.books.busy) {
-                ui.spinner();
-            }
-        });
-    });
+/// From this width on the library has its navigation rail (SET-010).
+const RAIL_MIN_WIDTH: f32 = 900.0;
+/// From this width on the rail has the names beside the icons.
+const RAIL_EXPANDED_MIN_WIDTH: f32 = 1400.0;
+/// The rail's width, expanded and compact.
+const RAIL_WIDTH: f32 = 220.0;
+const RAIL_COMPACT_WIDTH: f32 = 88.0;
+
+/// Where the page's tabs lead: a shelf, the statistics, the review, a
+/// media server.
+#[derive(Debug, Clone, PartialEq)]
+enum Destination {
+    Shelf(Shelf),
+    Statistics,
+    Review,
+    Server(String),
+}
+
+/// The tabs of the page, in their order: each with its name, its icon and
+/// whether it is the one shown.
+fn destinations(s: &Scene<'_>, state: &State) -> Vec<(Destination, String, Icon, bool)> {
     // the review's tab once it is used
     let due = s
         .page
@@ -523,30 +516,65 @@ fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: 
             .as_ref()
             .is_some_and(|r| r.queue.total > 0);
     let shelf_shown = state.server.is_none() && !state.statistics && !state.review;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        for shelf in Shelf::ALL {
-            let chosen = shelf_shown && state.shelf == shelf;
-            if tab(ui, chosen, &tr(s, shelf.label())) {
-                state.shelf = shelf;
-                state.statistics = false;
-                state.review = false;
-                state.server = None;
-                if shelf.is_reading() && !chosen {
-                    out.push(Command::BooksOpen);
-                }
-                // a series open stays open on its own shelf only
-                if shelf != Shelf::Collection && s.page.series.is_some() {
-                    out.push(Command::LibrarySeries(None));
-                }
+    let mut all: Vec<_> = Shelf::ALL
+        .into_iter()
+        .map(|shelf| {
+            (
+                Destination::Shelf(shelf),
+                tr(s, shelf.label()),
+                shelf.icon(),
+                shelf_shown && state.shelf == shelf,
+            )
+        })
+        .collect();
+    all.push((
+        Destination::Statistics,
+        tr(s, "stats-title"),
+        Icon::Chart,
+        state.statistics && state.server.is_none(),
+    ));
+    if with_review {
+        let title = if due > 0 {
+            (s.tr)("review-title-due", &[("count", due.to_string())])
+        } else {
+            tr(s, "review-title")
+        };
+        all.push((
+            Destination::Review,
+            title,
+            Icon::Review,
+            state.review && state.server.is_none(),
+        ));
+    }
+    for server in s.servers {
+        all.push((
+            Destination::Server(server.id.clone()),
+            server.name.clone(),
+            Icon::Server,
+            state.server.as_ref() == Some(&server.id),
+        ));
+    }
+    all
+}
+
+/// Shows `to`, chosen from the tabs; `chosen` when it was already shown.
+fn go(to: &Destination, chosen: bool, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    match to {
+        Destination::Shelf(shelf) => {
+            let shelf = *shelf;
+            state.shelf = shelf;
+            state.statistics = false;
+            state.review = false;
+            state.server = None;
+            if shelf.is_reading() && !chosen {
+                out.push(Command::BooksOpen);
+            }
+            // a series open stays open on its own shelf only
+            if shelf != Shelf::Collection && s.page.series.is_some() {
+                out.push(Command::LibrarySeries(None));
             }
         }
-        ui.separator();
-        if tab(
-            ui,
-            state.statistics && state.server.is_none(),
-            &tr(s, "stats-title"),
-        ) {
+        Destination::Statistics => {
             // read again: the review may have answered since (REV-008)
             if !state.statistics {
                 out.push(Command::StatsLoad);
@@ -555,33 +583,221 @@ fn header(ui: &mut Ui, s: &Scene<'_>, state: &mut State, close: &mut bool, out: 
             state.review = false;
             state.server = None;
         }
-        if with_review {
-            let title = if due > 0 {
-                (s.tr)("review-title-due", &[("count", due.to_string())])
-            } else {
-                tr(s, "review-title")
-            };
-            if tab(ui, state.review && state.server.is_none(), &title) {
-                if !state.review {
-                    out.push(Command::Review(crate::review::ReviewJob::Load));
-                }
-                state.review = true;
-                state.statistics = false;
-                state.server = None;
+        Destination::Review => {
+            if !state.review {
+                out.push(Command::Review(crate::review::ReviewJob::Load));
             }
+            state.review = true;
+            state.statistics = false;
+            state.server = None;
         }
-        for server in s.servers {
-            let chosen = state.server.as_ref() == Some(&server.id);
-            if tab(ui, chosen, &server.name) && !chosen {
-                state.server = Some(server.id.clone());
+        Destination::Server(id) => {
+            if !chosen {
+                state.server = Some(id.clone());
                 state.statistics = false;
                 state.review = false;
                 state.server_search.clear();
-                out.push(Command::ServerShow(server.id.clone()));
+                out.push(Command::ServerShow(id.clone()));
             }
         }
-    });
+    }
+}
+
+/// The navigation rail (SET-010): the name, the shelves, the statistics,
+/// the review and the media servers; the tools and the settings at its foot.
+fn navigation_rail(
+    ui: &mut Ui,
+    rect: Rect,
+    compact: bool,
+    s: &Scene<'_>,
+    state: &mut State,
+    out: &mut Vec<Command>,
+) {
+    let p = palette::current();
+    ui.painter().rect_filled(rect, 24.0, p.rail);
+    let inner = rect.shrink2(vec2(if compact { 6.0 } else { 10.0 }, 16.0));
+    let mut ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(inner)
+            .layout(Layout::top_down(Align::Min)),
+    );
+    ui.spacing_mut().item_spacing.y = 2.0;
+    let item = |ui: &mut Ui, icon: Icon, name: &str, chosen: bool| {
+        if compact {
+            icons::rail_item(ui, icon, name, chosen)
+        } else {
+            icons::nav_item(ui, icon, name, chosen)
+        }
+    };
+    if !compact {
+        ui.horizontal(|ui| {
+            ui.add_space(14.0);
+            ui.label(
+                RichText::new(tr(s, "app-title"))
+                    .size(22.0)
+                    .family(theme::bold())
+                    .color(p.accent_text),
+            );
+        });
+    }
+    ui.add_space(14.0);
+    let all = destinations(s, state);
+    let mut chosen_now = None;
+    ScrollArea::vertical()
+        .id_salt("library-rail")
+        .max_height((inner.height() - if compact { 190.0 } else { 160.0 }).max(48.0))
+        .show(&mut ui, |ui| {
+            for (i, (to, name, icon, chosen)) in all.iter().enumerate() {
+                // the shelves, then what is not a shelf
+                if i > 0 && matches!(to, Destination::Statistics) {
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+                }
+                if item(ui, *icon, name, *chosen) {
+                    chosen_now = Some((to.clone(), *chosen));
+                }
+            }
+        });
+    if let Some((to, chosen)) = chosen_now {
+        go(&to, chosen, s, state, out);
+    }
+    // the foot: the tools and the settings
+    let foot_height = if compact { 130.0 } else { 100.0 };
+    let foot = Rect::from_min_max(pos2(inner.left(), inner.bottom() - foot_height), inner.max);
+    let mut foot_ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(foot)
+            .layout(Layout::bottom_up(Align::Min)),
+    );
+    foot_ui.spacing_mut().item_spacing.y = 2.0;
+    // SET-008
+    if item(
+        &mut foot_ui,
+        Icon::Settings,
+        &tr(s, "settings-title"),
+        false,
+    ) {
+        state.open_settings = Some(s.settings_tab);
+    }
+    let tools = item(&mut foot_ui, Icon::Tools, &tr(s, "library-tools"), false);
+    let popup_id = egui::Id::unique("library-rail-tools");
+    if tools {
+        egui::Popup::toggle_id(foot_ui.ctx(), popup_id);
+    }
+    let anchor = foot_ui.min_rect();
+    egui::Popup::new(popup_id, foot_ui.ctx().clone(), anchor, foot_ui.layer_id())
+        .open_memory(None)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| tools_menu(ui, s, state, out));
+}
+
+/// The tools: the texthooker, the phrases, the recall, the podcasts, the
+/// annotations, the search, the books page.
+fn tools_menu(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
+    if ui.button(tr(s, "hooker-title")).clicked() {
+        state.open_hooker = true;
+        ui.close();
+    }
+    if ui.button(tr(s, "phrases-title")).clicked() {
+        out.push(Command::PhrasesOpen);
+        ui.close();
+    }
+    if ui.button(tr(s, "recall-history")).clicked() {
+        out.push(Command::RecallHistoryOpen);
+        ui.close();
+    }
+    if ui.button(tr(s, "recall-load")).clicked() {
+        out.push(Command::RecallLoad);
+        ui.close();
+    }
+    if ui.button(tr(s, "podcasts-title")).clicked() {
+        out.push(Command::PodcastsOpen);
+        ui.close();
+    }
+    if ui.button(tr(s, "annotations-title")).clicked() {
+        out.push(Command::ReaderToolsOpen(
+            crate::reader_tools::Tab::Annotations,
+        ));
+        ui.close();
+    }
+    if ui.button(tr(s, "search-title")).clicked() {
+        out.push(Command::ReaderToolsOpen(crate::reader_tools::Tab::Search));
+        ui.close();
+    }
     ui.separator();
+    if ui.button(tr(s, "library-books-page")).clicked() {
+        state.open_books = true;
+        ui.close();
+    }
+}
+
+/// The title of what is shown, and the way back; without the rail also the
+/// name, the tools, the settings and the tabs, these on rows of their own so
+/// that nothing overlaps however narrow the window; then what the tab shown
+/// can add.
+fn header(
+    ui: &mut Ui,
+    s: &Scene<'_>,
+    state: &mut State,
+    with_rail: bool,
+    close: &mut bool,
+    out: &mut Vec<Command>,
+) {
+    let all = destinations(s, state);
+    let shown = all
+        .iter()
+        .find(|(.., chosen)| *chosen)
+        .map(|(_, name, ..)| name.clone());
+    ui.horizontal(|ui| {
+        let title = match (&shown, with_rail) {
+            (Some(name), true) => name.clone(),
+            _ => tr(s, "app-title"),
+        };
+        ui.label(
+            RichText::new(title)
+                .size(28.0)
+                .family(theme::bold())
+                .color(if with_rail {
+                    palette::current().text
+                } else {
+                    palette::current().accent_text
+                }),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button(tr(s, "library-close")).clicked() {
+                *close = true;
+            }
+            if !with_rail {
+                // SET-008
+                let settings = icons::button(ui, Icon::Settings, &tr(s, "settings-title"));
+                if settings.clicked() {
+                    state.open_settings = Some(s.settings_tab);
+                }
+                ui.menu_button(tr(s, "library-tools"), |ui| tools_menu(ui, s, state, out));
+            }
+            if s.page.busy || (state.shelf.is_reading() && s.books.busy) {
+                ui.spinner();
+            }
+        });
+    });
+    if !with_rail {
+        let mut chosen_now = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            for (to, name, _, chosen) in &all {
+                if matches!(to, Destination::Statistics) {
+                    ui.separator();
+                }
+                if tab(ui, *chosen, name) {
+                    chosen_now = Some((to.clone(), *chosen));
+                }
+            }
+        });
+        if let Some((to, chosen)) = chosen_now {
+            go(&to, chosen, s, state, out);
+        }
+    }
     // what the tab shown can add
     ui.horizontal_wrapped(|ui| {
         if state.server.is_some() || state.review {
@@ -998,10 +1214,8 @@ fn server_tab(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Comma
 /// a frame cannot wrap in a wrapping layout, which does not know its size
 /// before it is drawn.
 fn rows<T>(ui: &mut Ui, width: f32, items: &[T], mut each: impl FnMut(&mut Ui, &T)) {
-    const GAP: f32 = 12.0;
-    // the card's own margins
-    let outer = width + 16.0;
-    let per_row = (((ui.available_width() + GAP) / (outer + GAP)).floor() as usize).max(1);
+    const GAP: f32 = 16.0;
+    let per_row = (((ui.available_width() + GAP) / (width + GAP)).floor() as usize).max(1);
     ui.spacing_mut().item_spacing.y = GAP;
     for row in items.chunks(per_row) {
         ui.horizontal_top(|ui| {
@@ -1013,7 +1227,58 @@ fn rows<T>(ui: &mut Ui, width: f32, items: &[T], mut each: impl FnMut(&mut Ui, &
     }
 }
 
-/// A clickable card with a cover; whether it was clicked.
+/// The corners of a cover (SET-010).
+const COVER_RADIUS: f32 = 16.0;
+
+/// A cover in `rect`: the picture, or a placeholder with a film.
+fn cover(ui: &Ui, rect: Rect, texture: Option<&TextureHandle>) {
+    let p = palette::current();
+    match texture {
+        Some(t) => {
+            egui::Image::new(t)
+                .corner_radius(COVER_RADIUS)
+                .paint_at(ui, rect);
+        }
+        None => {
+            ui.painter().rect_filled(rect, COVER_RADIUS, p.placeholder);
+            let side = (rect.height() * 0.3).clamp(20.0, 48.0);
+            icons::paint(
+                ui.painter(),
+                Rect::from_center_size(rect.center(), vec2(side, side)),
+                Icon::Video,
+                p.details,
+            );
+        }
+    }
+}
+
+/// The card's response: focus asked for, the ring of the keyboard's place
+/// (NFR-A11Y-01) around the cover, the cover lighter under the pointer.
+fn card_response(ui: &mut Ui, whole: Rect, cover: Rect, name: &str, focus: &mut bool) -> bool {
+    let response = ui.interact(
+        whole,
+        egui::Id::unique(("library-card", name)),
+        Sense::click(),
+    );
+    if std::mem::take(focus) {
+        response.request_focus();
+    }
+    let p = palette::current();
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            cover.expand(3.0),
+            COVER_RADIUS + 3.0,
+            Stroke::new(2.0, p.accent_text),
+            egui::StrokeKind::Outside,
+        );
+    } else if response.hovered() {
+        ui.painter().rect_filled(cover, COVER_RADIUS, p.row_hover);
+    }
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
+    response.clicked()
+}
+
+/// A clickable card: the cover, `body` under it; whether it was clicked.
 fn card(
     ui: &mut Ui,
     width: f32,
@@ -1022,61 +1287,124 @@ fn card(
     focus: &mut bool,
     body: impl FnOnce(&mut Ui),
 ) -> bool {
-    let inner = Frame::new()
-        .fill(palette::current().row)
-        .corner_radius(8)
-        .inner_margin(Margin::same(8))
-        .show(ui, |ui| {
-            // a card is a column, also in a wrapped row
-            ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                ui.set_width(width);
-                let size = vec2(width, width * 9.0 / 16.0);
-                match texture {
-                    Some(t) => {
-                        ui.add(egui::Image::new(t).fit_to_exact_size(size).corner_radius(6));
-                    }
-                    None => {
-                        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-                        ui.painter()
-                            .rect_filled(rect, 6.0, palette::current().placeholder);
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "🎞",
-                            egui::FontId::proportional(28.0),
-                            palette::current().details,
-                        );
-                    }
-                }
-                body(ui);
-            });
-        });
-    let response = ui.interact(
-        inner.response.rect,
-        egui::Id::unique(("library-card", name)),
-        Sense::click(),
+    let inner = ui.with_layout(Layout::top_down(Align::Min), |ui| {
+        ui.set_width(width);
+        ui.spacing_mut().item_spacing.y = 4.0;
+        let (rect, _) = ui.allocate_exact_size(vec2(width, width * 9.0 / 16.0), Sense::hover());
+        cover(ui, rect, texture);
+        ui.add_space(2.0);
+        body(ui);
+        rect
+    });
+    card_response(ui, inner.response.rect, inner.inner, name, focus)
+}
+
+/// A large card of what is being watched (SET-010): the title and `detail`
+/// over the cover's foot, on a shade that deepens downwards, and the share
+/// seen as a wavy line; whether it was clicked.
+fn hero_card(
+    ui: &mut Ui,
+    width: f32,
+    texture: Option<&TextureHandle>,
+    (title, detail): (&str, &str),
+    share: f32,
+    name: &str,
+    focus: &mut bool,
+) -> bool {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, width * 9.0 / 16.0), Sense::hover());
+    cover(ui, rect, texture);
+    // the shade: from a third of the way down it deepens to the cover's
+    // foot, which keeps the cover's lower corners
+    let darkest = Color32::from_black_alpha(0xd0);
+    let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - COVER_RADIUS), rect.max);
+    let fade = Rect::from_min_max(
+        pos2(rect.left(), rect.top() + rect.height() * 0.35),
+        pos2(rect.right(), foot.top()),
     );
-    if std::mem::take(focus) {
-        response.request_focus();
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(fade.left_top(), Color32::TRANSPARENT);
+    mesh.colored_vertex(fade.right_top(), Color32::TRANSPARENT);
+    mesh.colored_vertex(fade.left_bottom(), darkest);
+    mesh.colored_vertex(fade.right_bottom(), darkest);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 3, 2);
+    ui.painter().add(egui::Shape::mesh(mesh));
+    let radius = COVER_RADIUS as u8;
+    ui.painter().rect_filled(
+        foot,
+        egui::CornerRadius {
+            nw: 0,
+            ne: 0,
+            sw: radius,
+            se: radius,
+        },
+        darkest,
+    );
+    let margin = 18.0;
+    let white = Color32::WHITE;
+    let line_y = rect.bottom() - margin;
+    let detail_galley = ui.painter().layout(
+        detail.to_string(),
+        egui::FontId::proportional(14.0),
+        Color32::from_gray(0xe0),
+        rect.width() - 2.0 * margin,
+    );
+    let title_galley = ui.painter().layout(
+        title.to_string(),
+        egui::FontId::new(22.0, theme::bold()),
+        white,
+        rect.width() - 2.0 * margin,
+    );
+    let title_y = line_y - 14.0 - title_galley.size().y;
+    let detail_y = title_y - detail_galley.size().y - 2.0;
+    ui.painter()
+        .galley(pos2(rect.left() + margin, detail_y), detail_galley, white);
+    ui.painter()
+        .galley(pos2(rect.left() + margin, title_y), title_galley, white);
+    let p = palette::current();
+    wavy_progress(
+        ui,
+        Rect::from_min_max(
+            pos2(rect.left() + margin, line_y - 4.0),
+            pos2(rect.right() - margin, line_y + 4.0),
+        ),
+        share,
+        palette::primary_colors(p.accent, true).0,
+        Color32::from_white_alpha(0x50),
+    );
+    card_response(ui, rect, rect, name, focus)
+}
+
+/// Material 3 Expressive's progress line in `rect`: the share done as a
+/// wave, a gap, then the rest as a flat track ending in a dot.
+fn wavy_progress(ui: &Ui, rect: Rect, share: f32, done: Color32, rest: Color32) {
+    let share = share.clamp(0.0, 1.0);
+    let y = rect.center().y;
+    let split = rect.left() + rect.width() * share;
+    let stroke = 3.0;
+    if split > rect.left() + 1.0 {
+        let wavelength = 18.0;
+        let amplitude = (rect.height() / 2.0 - stroke / 2.0).max(1.0);
+        let steps = ((split - rect.left()) / 2.0).ceil().max(2.0) as usize;
+        let points: Vec<_> = (0..=steps)
+            .map(|i| {
+                let x = rect.left() + (split - rect.left()) * i as f32 / steps as f32;
+                let phase = (x - rect.left()) / wavelength * std::f32::consts::TAU;
+                pos2(x, y + amplitude * phase.sin())
+            })
+            .collect();
+        ui.painter()
+            .add(egui::Shape::line(points, Stroke::new(stroke, done)));
     }
-    // the keyboard's place is always visible (NFR-A11Y-01)
-    if response.has_focus() {
-        ui.painter().rect_stroke(
-            inner.response.rect,
-            8.0,
-            Stroke::new(2.0, palette::current().accent),
-            egui::StrokeKind::Outside,
-        );
-    } else if response.hovered() {
-        ui.painter().rect_stroke(
-            inner.response.rect,
-            8.0,
-            Stroke::new(1.0, palette::current().row_hover),
-            egui::StrokeKind::Inside,
+    let gap = 6.0;
+    if split + gap < rect.right() {
+        ui.painter().line_segment(
+            [pos2(split + gap, y), pos2(rect.right(), y)],
+            Stroke::new(stroke, rest),
         );
     }
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
-    response.clicked()
+    ui.painter()
+        .circle_filled(pos2(rect.right(), y), stroke / 2.0 + 0.5, done);
 }
 
 /// The first steps (LIB-013): import a dictionary, add a folder, make a
@@ -1089,12 +1417,16 @@ fn first_steps(
     out: &mut Vec<Command>,
 ) {
     use super::settings::SettingsTab;
+    // a banner on the accent's tonal fill, as Fushi's (SET-010)
     Frame::new()
-        .fill(palette::current().row_hover)
-        .corner_radius(8.0)
-        .inner_margin(Margin::same(12))
+        .fill(palette::current().selection)
+        .corner_radius(20.0)
+        .inner_margin(Margin::symmetric(20, 16))
         .show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
+                icons::paint(ui.painter(), rect, Icon::Info, palette::current().text);
                 ui.label(
                     RichText::new(tr(s, "first-steps-title"))
                         .size(17.0)
@@ -1204,7 +1536,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
         .collect();
     if !continuing.is_empty() {
         section(ui, &tr(s, "library-continue"));
-        rows(ui, WIDE, &continuing, |ui, (uid, v)| {
+        rows(ui, HERO, &continuing, |ui, (uid, v)| {
             let series = v.series.and_then(|id| home.series_title(id));
             let title = home
                 .server_titles
@@ -1224,14 +1556,18 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 .join(" · ");
             let texture = v.series.and_then(|id| state.textures.get(&id));
             let name = format!("{title} {}", episode_label(v));
-            let clicked = card(ui, WIDE, texture, &name, &mut state.focus_first, |ui| {
-                ui.add(egui::Label::new(RichText::new(&title).family(theme::bold())).truncate());
-                ui.label(RichText::new(detail).color(palette::current().details));
-                let share = v
-                    .duration_ms
-                    .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32);
-                progress(ui, WIDE, share, palette::current().accent);
-            });
+            let share = v
+                .duration_ms
+                .map_or(0.0, |d| v.last_position_ms as f32 / d.max(1) as f32);
+            let clicked = hero_card(
+                ui,
+                HERO,
+                texture,
+                (&title, &detail),
+                share,
+                &name,
+                &mut state.focus_first,
+            );
             if clicked {
                 tracing::debug!("continue {uid}");
                 out.push(Command::LibraryPlay(PathBuf::from(&v.path)));
@@ -1299,7 +1635,7 @@ fn home(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
                 out.push(Command::LibrarySeries(Some(summary.id)));
             }
             if s.colours {
-                ui.set_width(NARROW + 16.0);
+                ui.set_width(NARROW);
                 ui.push_id(("series-score", summary.id), |ui| {
                     series_score(ui, s, summary.id, &summary.record.title, state, out);
                 });
@@ -1889,8 +2225,12 @@ mod tests {
     }
 
     fn harness(page: LibraryPage) -> Harness<'static, Test> {
+        harness_sized(page, vec2(1280.0, 1000.0))
+    }
+
+    fn harness_sized(page: LibraryPage, size: egui::Vec2) -> Harness<'static, Test> {
         Harness::builder()
-            .with_size(vec2(1280.0, 1000.0))
+            .with_size(size)
             .allow_missing_glyphs()
             .build_ui_state(
                 |ui, t: &mut Test| {
@@ -2481,6 +2821,42 @@ mod tests {
         assert!(h.query_by_label("パンを食べる").is_none());
         click(&mut h, "review-study");
         assert!(!h.state().state.review_state.browse);
+    }
+
+    // T-SET-010: the rail on a wide window, compact or expanded; the tabs on
+    // a narrow one; each leads where the tabs led
+    #[test]
+    fn the_rail_or_the_tabs_lead_to_the_shelves() {
+        let page = || LibraryPage {
+            home: Some(home()),
+            ..LibraryPage::default()
+        };
+        // expanded: the app's name heads the rail, the page has the shelf's
+        let mut h = harness_sized(page(), vec2(1500.0, 900.0));
+        h.run();
+        assert!(h.query_by_label("app-title").is_some());
+        assert_eq!(
+            h.get_all_by_label("tab-collection").count(),
+            2,
+            "the rail and the title"
+        );
+        click(&mut h, "tab-videos");
+        assert_eq!(h.state().state.shelf, Shelf::Videos);
+        // compact: no name of the app, the same items
+        let mut h = harness_sized(page(), vec2(1000.0, 900.0));
+        h.run();
+        assert!(h.query_by_label("app-title").is_none());
+        click(&mut h, "tab-videos");
+        assert_eq!(h.state().state.shelf, Shelf::Videos);
+        click(&mut h, "library-tools");
+        let out = click(&mut h, "phrases-title");
+        assert!(matches!(&out[..], [Command::PhrasesOpen]), "{out:?}");
+        // narrow: the tabs above the page, under the app's name
+        let mut h = harness_sized(page(), vec2(700.0, 900.0));
+        h.run();
+        assert!(h.query_by_label("app-title").is_some());
+        click(&mut h, "tab-videos");
+        assert_eq!(h.state().state.shelf, Shelf::Videos);
     }
 
     // T-SET-008: the settings, from the library too

@@ -542,6 +542,13 @@ impl State {
     }
 }
 
+/// Buttons as small as the 20-point squares a row of the list gives them,
+/// not the pages' larger targets (SET-010).
+fn compact_buttons(ui: &mut egui::Ui) {
+    ui.spacing_mut().button_padding = vec2(2.0, 1.0);
+    ui.spacing_mut().interact_size.y = 20.0;
+}
+
 #[cfg(test)]
 #[derive(Debug, Clone)]
 struct Drawn {
@@ -895,7 +902,8 @@ fn line_editor(ctx: &egui::Context, scene: &Scene<'_>, state: &mut State, out: &
                     }
                 });
             let l = ui.label(&labels.text);
-            ui.add(
+            super::palette::add_boxy(
+                ui,
                 TextEdit::multiline(&mut editing.text)
                     .desired_rows(3)
                     .desired_width(f32::INFINITY),
@@ -2162,13 +2170,18 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
 
                 // SUB-063
                 if let Some(labels) = &scene.edit {
-                    let edit = ui.put(
-                        Rect::from_min_size(
-                            rect.min + vec2(sizes.text_x - 44.0, PAD),
-                            vec2(20.0, 20.0),
-                        ),
-                        egui::Button::new("✎"),
-                    );
+                    let edit = ui
+                        .scope(|ui| {
+                            compact_buttons(ui);
+                            ui.put(
+                                Rect::from_min_size(
+                                    rect.min + vec2(sizes.text_x - 44.0, PAD),
+                                    vec2(20.0, 20.0),
+                                ),
+                                egui::Button::new("✎"),
+                            )
+                        })
+                        .inner;
                     edit.widget_info(|| {
                         WidgetInfo::labeled(
                             Role::Button,
@@ -2191,6 +2204,7 @@ fn rows(ui: &mut egui::Ui, scene: &Scene<'_>, state: &mut State, out: &mut Vec<C
                 let available = translation_key(scene).is_some();
                 let translation = ui
                     .add_enabled_ui(available, |ui| {
+                        compact_buttons(ui);
                         ui.put(
                             Rect::from_min_size(
                                 rect.min + vec2(sizes.text_x - 22.0, PAD),

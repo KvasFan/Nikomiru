@@ -75,7 +75,8 @@ fn draw(
                     )
                     .labelled_by(label.id);
                     let label = ui.label(tr("phrases-definition"));
-                    ui.add(
+                    super::palette::add_boxy(
+                        ui,
                         egui::TextEdit::multiline(&mut p.definition)
                             .id_salt("phrase-definition")
                             .desired_rows(2)
@@ -83,7 +84,8 @@ fn draw(
                     )
                     .labelled_by(label.id);
                     let label = ui.label(tr("phrases-context"));
-                    ui.add(
+                    super::palette::add_boxy(
+                        ui,
                         egui::TextEdit::multiline(&mut p.context)
                             .id_salt("phrase-context")
                             .desired_rows(3)
