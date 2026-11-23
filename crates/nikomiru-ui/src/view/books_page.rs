@@ -2305,7 +2305,8 @@ fn paste_editor(ctx: &egui::Context, s: &Scene<'_>, state: &mut State, out: &mut
             egui::ScrollArea::vertical()
                 .max_height(ctx.content_rect().height() * 0.45)
                 .show(ui, |ui| {
-                    ui.add(
+                    super::palette::add_boxy(
+                        ui,
                         egui::TextEdit::multiline(&mut state.paste_text)
                             .desired_width(f32::INFINITY)
                             .desired_rows(12)

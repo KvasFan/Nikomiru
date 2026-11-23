@@ -68,7 +68,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(palette::current().details),
+            .color(palette::current().accent_text),
     );
 }
 

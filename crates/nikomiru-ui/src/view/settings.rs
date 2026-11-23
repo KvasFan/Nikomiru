@@ -9,6 +9,7 @@ use egui::{
 };
 
 use super::dict_page::full_screen;
+use super::icons::{self, Icon};
 use super::{palette, theme};
 
 /// A tab of the settings.
@@ -100,6 +101,25 @@ impl SettingsTab {
         Self::ALL.into_iter().find(|t| t.key() == key)
     }
 
+    /// Its icon in the column of the tabs (SET-010).
+    fn icon(self) -> Icon {
+        match self {
+            Self::General => Icon::Settings,
+            Self::Player => Icon::Play,
+            Self::Subtitles => Icon::Subtitles,
+            Self::Services => Icon::Cloud,
+            Self::Servers => Icon::Server,
+            Self::Backup => Icon::Backup,
+            Self::Dictionaries => Icon::Dictionary,
+            Self::Lookup => Icon::Search,
+            Self::Audio => Icon::Audio,
+            Self::Anki => Icon::Card,
+            Self::Shortcuts => Icon::Keyboard,
+            Self::Advanced => Icon::Code,
+            Self::About => Icon::Info,
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::General => "settings-general",
@@ -167,13 +187,35 @@ pub(crate) fn page(
         let card = Rect::from_center_size(screen.center(), size);
         ui.painter().rect(
             card,
-            10.0,
+            if narrow {
+                16.0
+            } else {
+                f32::from(palette::DIALOG_RADIUS)
+            },
             // the whole screen: nothing of the page under it shows through
             if narrow { p.card.to_opaque() } else { p.card },
             Stroke::new(1.0, p.card_border),
             StrokeKind::Inside,
         );
         let inner = card.shrink(if narrow { 10.0 } else { 16.0 });
+        if !narrow {
+            // the tabs' column, a step up from the card (SET-010)
+            let column = Rect::from_min_max(
+                card.min,
+                pos2((inner.left() + TABS + 8.0).min(card.right()), card.bottom()),
+            );
+            let radius = palette::DIALOG_RADIUS;
+            ui.painter().rect_filled(
+                column,
+                egui::CornerRadius {
+                    nw: radius,
+                    sw: radius,
+                    ne: 0,
+                    se: 0,
+                },
+                p.rail,
+            );
+        }
         let split = if narrow {
             inner.left() - 17.0
         } else {
@@ -186,25 +228,26 @@ pub(crate) fn page(
         );
         // the tabs, in a column beside the page
         if !narrow {
-            ui.painter().vline(
-                split + 8.0,
-                inner.y_range(),
-                Stroke::new(1.0, p.card_border),
-            );
             let mut tabs = ui.new_child(
                 UiBuilder::new()
                     .max_rect(side)
                     .layout(Layout::top_down_justified(Align::Min)),
             );
             tabs.visuals_mut().override_text_color = Some(p.text);
-            tabs.spacing_mut().item_spacing.y = 4.0;
-            tabs.spacing_mut().button_padding = vec2(10.0, 6.0);
-            for tab in SettingsTab::ALL {
-                let text = RichText::new(tr(tab.label())).size(16.0);
-                if tabs.selectable_label(tab == current, text).clicked() && tab != current {
-                    leave = Leave::To(tab);
-                }
-            }
+            tabs.spacing_mut().item_spacing.y = 2.0;
+            ScrollArea::vertical()
+                .id_salt("settings-tabs-column")
+                .auto_shrink([false, false])
+                .show(&mut tabs, |tabs| {
+                    for tab in SettingsTab::ALL {
+                        let name = tr(tab.label());
+                        if icons::nav_item_sized(tabs, tab.icon(), &name, tab == current, 42.0)
+                            && tab != current
+                        {
+                            leave = Leave::To(tab);
+                        }
+                    }
+                });
         }
 
         // the title, the buttons, the message, the body
@@ -239,7 +282,7 @@ pub(crate) fn page(
             } else {
                 ui.label(
                     RichText::new(tr(current.label()))
-                        .size(20.0)
+                        .size(24.0)
                         .family(theme::bold()),
                 );
             }

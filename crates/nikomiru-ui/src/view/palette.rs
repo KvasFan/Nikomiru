@@ -2,9 +2,11 @@
 
 //! The colors of the interface (SET-003): one set of tokens for the dark
 //! theme, one for the light, with the accent chosen in the settings. Their
-//! look follows GNOME's Adwaita (SET-009): graphite surfaces stepping up from
-//! the page to the card and the dialog, flat buttons on a translucent fill,
-//! rounded corners, GNOME's blue as the accent. The
+//! look follows Fushi 3's Material 3 Expressive (SET-010, D-129): neutral
+//! surfaces tinted by the accent, stepping up from the page to the rail, the
+//! card and the dialog; pill-shaped buttons, fields and tabs; a light filled
+//! main action with dark text in the dark theme; what is chosen on a tonal
+//! fill of the accent; large rounded corners. The
 //! pages and the dictionary popups take them; what is drawn on the video
 //! (the bar, the subtitles, their list, the toasts) stays dark, whatever the
 //! theme, as video players do.
@@ -28,6 +30,9 @@ pub(crate) struct Palette {
     pub backdrop: Color32,
     /// A page that covers the whole window (the library).
     pub page: Color32,
+    /// The navigation rail and the settings' column of tabs: a step up from
+    /// the page (SET-010).
+    pub rail: Color32,
     /// A page's card.
     pub card: Color32,
     /// Its border.
@@ -58,8 +63,12 @@ pub(crate) struct Palette {
     pub accent: Color32,
     /// The accent as text: readable on the card.
     pub accent_text: Color32,
-    /// What is selected: a tab, a list item.
+    /// What is selected: a tab, a list item. The accent's tonal container
+    /// (SET-010); `text` reads on it.
     pub selection: Color32,
+    /// The fill of a page's main action and its text (SET-010).
+    pub primary: Color32,
+    pub on_primary: Color32,
     /// The dictionary popups.
     pub popup: PopupColors,
 }
@@ -176,66 +185,114 @@ const LIGHT_POPUP: PopupColors = PopupColors {
 };
 
 impl Palette {
-    /// The dark theme with the default accent.
+    /// The dark theme before the accent tints it (SET-010): Material 3's
+    /// neutral tones, the page at tone 6 up to the dialog at tone 17.
     pub(crate) const DARK: Palette = Palette {
         dark: true,
         backdrop: rgba(0, 0, 0, 0xb0),
-        page: rgb(0x22, 0x22, 0x26),
-        card: rgba(0x2e, 0x2e, 0x32, 0xf6),
-        card_border: rgba(0xff, 0xff, 0xff, 0x1a),
-        dialog: rgb(0x36, 0x36, 0x3a),
-        row: rgba(0xff, 0xff, 0xff, 0x10),
-        row_hover: rgba(0xff, 0xff, 0xff, 0x20),
+        page: rgb(0x12, 0x13, 0x16),
+        rail: rgb(0x1a, 0x1b, 0x1f),
+        card: rgba(0x1e, 0x1f, 0x23, 0xf6),
+        card_border: rgba(0xff, 0xff, 0xff, 0x14),
+        dialog: rgb(0x27, 0x28, 0x2d),
+        row: rgba(0xff, 0xff, 0xff, 0x0e),
+        row_hover: rgba(0xff, 0xff, 0xff, 0x1c),
         row_off: rgba(0, 0, 0, 0x18),
-        placeholder: rgb(0x3a, 0x3a, 0x3f),
+        placeholder: rgb(0x2c, 0x2d, 0x32),
         track: rgba(0xff, 0xff, 0xff, 0x26),
-        text: Color32::WHITE,
-        details: rgb(0xa8, 0xa8, 0xae),
-        off: rgb(0x96, 0x96, 0x9c),
+        text: rgb(0xe4, 0xe3, 0xe8),
+        details: rgb(0xc2, 0xc4, 0xce),
+        off: rgb(0x98, 0x9a, 0xa3),
         good: rgb(0x8f, 0xf0, 0xa4),
-        bad: rgb(0xff, 0xa3, 0x48),
+        bad: rgb(0xff, 0xb4, 0xab),
         accent: ACCENT,
         accent_text: rgb(0x78, 0xae, 0xed),
-        selection: rgb(0x1c, 0x47, 0x7a),
+        selection: rgb(0x1d, 0x34, 0x52),
+        primary: rgb(0x90, 0xbb, 0xf0),
+        on_primary: rgb(0x0b, 0x1a, 0x2e),
         popup: DARK_POPUP,
     };
 
-    /// The light theme with the default accent.
+    /// The light theme before the accent tints it (SET-010): the page at
+    /// tone 98, the cards a step darker.
     pub(crate) const LIGHT: Palette = Palette {
         dark: false,
         backdrop: rgba(0, 0, 0, 0x80),
-        page: rgb(0xfa, 0xfa, 0xfb),
-        card: rgba(0xff, 0xff, 0xff, 0xfa),
-        card_border: rgba(0, 0, 6, 0x1e),
-        dialog: rgb(0xff, 0xff, 0xff),
-        row: rgba(0, 0, 6, 0x0c),
-        row_hover: rgba(0, 0, 6, 0x18),
+        page: rgb(0xf9, 0xf9, 0xfc),
+        rail: rgb(0xef, 0xef, 0xf4),
+        card: rgba(0xee, 0xee, 0xf3, 0xfa),
+        card_border: rgba(0, 0, 6, 0x1a),
+        dialog: rgb(0xf3, 0xf3, 0xf8),
+        row: rgba(0, 0, 6, 0x0a),
+        row_hover: rgba(0, 0, 6, 0x16),
         row_off: rgba(0, 0, 6, 0x04),
-        placeholder: rgb(0xde, 0xdd, 0xe2),
+        placeholder: rgb(0xdc, 0xdc, 0xe3),
         track: rgba(0, 0, 6, 0x22),
-        text: rgb(0x24, 0x24, 0x28),
-        details: rgb(0x5e, 0x5c, 0x64),
-        off: rgb(0x68, 0x66, 0x6e),
+        text: rgb(0x1a, 0x1b, 0x20),
+        details: rgb(0x44, 0x47, 0x4f),
+        off: rgb(0x55, 0x57, 0x5f),
         good: rgb(0x1b, 0x6c, 0x3a),
-        bad: rgb(0x9c, 0x46, 0x00),
+        bad: rgb(0xba, 0x1a, 0x1a),
         accent: ACCENT,
         accent_text: rgb(0x1a, 0x5f, 0xb4),
-        selection: rgb(0xd5, 0xe6, 0xfa),
+        selection: rgb(0xd6, 0xe5, 0xf9),
+        primary: rgb(0x1a, 0x6d, 0xd0),
+        on_primary: Color32::WHITE,
         popup: LIGHT_POPUP,
     };
 
-    /// The theme `dark` or light, with `accent`.
+    /// The theme `dark` or light, with `accent`: its neutral surfaces take a
+    /// little of the accent, as Material 3 tints them with the seed colour
+    /// (SET-010).
     pub(crate) fn new(dark: bool, accent: Color32) -> Palette {
         let base = if dark { Self::DARK } else { Self::LIGHT };
-        let card = worst_background(base.card, base.backdrop, dark);
+        let accent = Color32::from_rgb(accent.r(), accent.g(), accent.b());
+        // how much of the accent each surface takes
+        let tint = |c: Color32, share: f32| {
+            let mixed = mix(accent, Color32::from_rgb(c.r(), c.g(), c.b()), share);
+            Color32::from_rgba_unmultiplied(mixed.r(), mixed.g(), mixed.b(), c.a())
+        };
+        let unmultiplied = |c: Color32| {
+            let [r, g, b, a] = c.to_srgba_unmultiplied();
+            Color32::from_rgba_unmultiplied(r, g, b, a)
+        };
+        let (page, rail, card, dialog, placeholder) = if dark {
+            (
+                tint(base.page, 0.05),
+                tint(base.rail, 0.07),
+                tint(unmultiplied(base.card), 0.07),
+                tint(base.dialog, 0.08),
+                tint(base.placeholder, 0.10),
+            )
+        } else {
+            (
+                tint(base.page, 0.03),
+                tint(base.rail, 0.06),
+                tint(unmultiplied(base.card), 0.06),
+                tint(base.dialog, 0.04),
+                tint(base.placeholder, 0.08),
+            )
+        };
+        let worst_card = worst_background(card, base.backdrop, dark);
         // the library's cards on its page
-        let tile = over(base.row, base.page);
-        let surface = if dark { Color32::BLACK } else { Color32::WHITE };
+        let tile = over(base.row, page);
+        let (primary, on_primary) = primary_colors(accent, dark);
         Palette {
+            page,
+            rail,
+            card,
+            dialog,
+            placeholder,
             accent,
-            accent_text: readable(accent, &[card, tile], dark),
-            // the accent, faint enough for the text to read on it
-            selection: mix(accent, surface, if dark { 0.45 } else { 0.25 }),
+            accent_text: readable(accent, &[worst_card, tile, rail, dialog], dark),
+            // the accent's tonal container: faint enough for the text to read
+            selection: if dark {
+                mix(accent, page, 0.32)
+            } else {
+                mix(accent, Color32::WHITE, 0.22)
+            },
+            primary,
+            on_primary,
             popup: PopupColors {
                 cursor: accent,
                 ..base.popup
@@ -259,6 +316,7 @@ impl Palette {
                 let black = Color32::BLACK;
                 p.backdrop = rgba(0, 0, 0, 0xe0);
                 p.page = black;
+                p.rail = rgb(0x0e, 0x0e, 0x10);
                 p.card = rgba(0, 0, 0, 0xfa);
                 p.dialog = black;
                 p.placeholder = rgb(0x1c, 0x1c, 0x1f);
@@ -267,7 +325,7 @@ impl Palette {
                 p.popup.header_cell = rgb(0x1c, 0x1c, 0x1f);
                 p.popup.chip = rgb(0x26, 0x26, 0x2a);
                 let tile = over(p.row, p.page);
-                p.accent_text = readable(accent, &[p.card, tile], true);
+                p.accent_text = readable(accent, &[p.card, tile, p.rail, p.dialog], true);
                 p
             }
             "high-contrast" => {
@@ -275,6 +333,7 @@ impl Palette {
                 if dark {
                     p.backdrop = rgba(0, 0, 0, 0xf0);
                     p.page = Color32::BLACK;
+                    p.rail = Color32::BLACK;
                     p.card = rgba(0, 0, 0, 0xfc);
                     p.dialog = Color32::BLACK;
                     p.text = Color32::WHITE;
@@ -294,6 +353,7 @@ impl Palette {
                 } else {
                     p.backdrop = rgba(0, 0, 0, 0xa0);
                     p.page = Color32::WHITE;
+                    p.rail = Color32::WHITE;
                     p.card = rgba(0xff, 0xff, 0xff, 0xfe);
                     p.dialog = Color32::WHITE;
                     p.text = Color32::BLACK;
@@ -314,7 +374,7 @@ impl Palette {
                 }
                 let tile = over(p.row, p.page);
                 let card = worst_background(p.card, p.backdrop, dark);
-                p.accent_text = readable_at(accent, &[card, tile], dark, 7.0);
+                p.accent_text = readable_at(accent, &[card, tile, p.rail, p.dialog], dark, 7.0);
                 p
             }
             _ => Palette::new(dark, accent),
@@ -410,46 +470,54 @@ pub(crate) fn apply_named(ctx: &egui::Context, name: &str, dark: bool, accent: C
         egui::Theme::Light
     };
     ctx.set_theme(theme);
-    ctx.style_mut_of(theme, |style| adwaita(style, &palette));
+    ctx.style_mut_of(theme, |style| material(style, &palette));
 }
 
-/// egui's widgets in the manner of Adwaita (SET-009): flat buttons on a
-/// translucent fill that brightens under the pointer, no borders but a
-/// faint one on text fields, rounded corners, soft shadows.
-fn adwaita(style: &mut egui::Style, p: &Palette) {
+/// A pill: the corners as round as the shape allows (epaint clamps the
+/// radius to half the shorter side).
+pub(crate) const PILL: u8 = 255;
+
+/// The corners of a dialog and of a menu (SET-010).
+pub(crate) const DIALOG_RADIUS: u8 = 28;
+const MENU_RADIUS: u8 = 16;
+
+/// The corners of a box of text over several lines: a pill would round
+/// them away.
+const BOX_RADIUS: u8 = 12;
+
+/// egui's widgets in the manner of Fushi 3's Material 3 Expressive
+/// (SET-010): pill-shaped buttons, fields and tabs on a tonal fill that
+/// brightens under the pointer; what is chosen on the accent's tonal
+/// container; menus and dialogs with large round corners; taller targets.
+fn material(style: &mut egui::Style, p: &Palette) {
     use egui::{CornerRadius, Shadow, Stroke};
-    let (ink, alpha) = if p.dark { (0xff, 1.0) } else { (6, 0.8) };
-    let fill = |a: u8| {
-        let a = (f32::from(a) * alpha).round() as u8;
-        if p.dark {
-            rgba(ink, ink, ink, a)
-        } else {
-            rgba(0, 0, ink, a)
-        }
-    };
+    // the fills: the text's colour, faint, so that they read on any surface
+    let ink = Color32::from_rgb(p.text.r(), p.text.g(), p.text.b());
+    let fill = |a: u8| Color32::from_rgba_unmultiplied(ink.r(), ink.g(), ink.b(), a);
     let v = &mut style.visuals;
     v.panel_fill = p.page;
     v.window_fill = p.dialog;
     v.window_stroke = Stroke::new(1.0, p.card_border);
-    v.window_corner_radius = CornerRadius::same(12);
-    v.menu_corner_radius = CornerRadius::same(10);
+    v.window_corner_radius = CornerRadius::same(DIALOG_RADIUS);
+    v.menu_corner_radius = CornerRadius::same(MENU_RADIUS);
     v.window_shadow = Shadow {
-        offset: [0, 4],
-        blur: 18,
+        offset: [0, 6],
+        blur: 24,
         spread: 0,
-        color: rgba(0, 0, 0, if p.dark { 0x70 } else { 0x30 }),
+        color: rgba(0, 0, 0, if p.dark { 0x78 } else { 0x30 }),
     };
     v.popup_shadow = Shadow {
-        offset: [0, 2],
-        blur: 10,
+        offset: [0, 3],
+        blur: 12,
         spread: 0,
         color: rgba(0, 0, 0, if p.dark { 0x60 } else { 0x28 }),
     };
     // text fields and the inside of sliders: a step up from the page
-    v.extreme_bg_color = over(fill(0x14), p.page);
-    v.text_edit_bg_color = Some(over(fill(0x14), p.page));
+    let field = over(fill(if p.dark { 0x14 } else { 0x0c }), p.page);
+    v.extreme_bg_color = field;
+    v.text_edit_bg_color = Some(field);
     v.faint_bg_color = over(fill(0x08), p.page);
-    v.code_bg_color = over(fill(0x14), p.page);
+    v.code_bg_color = field;
     v.selection.bg_fill = p.selection;
     v.selection.stroke = Stroke::new(1.0, p.text);
     v.hyperlink_color = p.accent_text;
@@ -457,44 +525,80 @@ fn adwaita(style: &mut egui::Style, p: &Palette) {
     v.warn_fg_color = p.bad;
     v.error_fg_color = p.bad;
     v.window_highlight_topmost = false;
-    let radius = CornerRadius::same(6);
+    // sliders as Material 3's: a filled track up to a narrow upright handle
+    v.slider_trailing_fill = true;
+    v.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.4 };
+    let pill = CornerRadius::same(PILL);
     let w = &mut v.widgets;
     w.noninteractive.bg_fill = p.page;
     w.noninteractive.weak_bg_fill = p.page;
     w.noninteractive.bg_stroke = Stroke::new(1.0, fill(0x18));
     w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
-    w.noninteractive.corner_radius = radius;
+    w.noninteractive.corner_radius = CornerRadius::same(BOX_RADIUS);
     for (state, a) in [
-        (&mut w.inactive, 0x1a),
-        (&mut w.hovered, 0x26),
-        (&mut w.active, 0x40),
-        (&mut w.open, 0x26),
+        (&mut w.inactive, 0x16),
+        (&mut w.hovered, 0x24),
+        (&mut w.active, 0x38),
+        (&mut w.open, 0x24),
     ] {
         state.weak_bg_fill = fill(a);
         state.bg_fill = fill(a);
         state.bg_stroke = Stroke::NONE;
         state.fg_stroke = Stroke::new(1.0, p.text);
-        state.corner_radius = radius;
+        state.corner_radius = pill;
         state.expansion = 0.0;
     }
     // a text field's outline, and the focus in the accent
-    w.inactive.bg_stroke = Stroke::new(1.0, fill(0x10));
-    w.hovered.bg_stroke = Stroke::new(1.0, fill(0x30));
-    w.active.bg_stroke = Stroke::new(2.0, p.accent);
+    w.inactive.bg_stroke = Stroke::new(1.0, fill(0x14));
+    w.hovered.bg_stroke = Stroke::new(1.0, fill(0x38));
+    w.active.bg_stroke = Stroke::new(2.0, p.accent_text);
     // checkboxes and sliders: the accent when on
     w.active.bg_fill = p.accent;
     let s = &mut style.spacing;
-    s.button_padding = egui::vec2(10.0, 5.0);
+    s.button_padding = egui::vec2(14.0, 6.0);
+    s.interact_size.y = 30.0;
     s.item_spacing = egui::vec2(8.0, 6.0);
     s.menu_margin = egui::Margin::same(8);
-    s.window_margin = egui::Margin::same(12);
+    s.window_margin = egui::Margin::same(20);
+    s.icon_width = 16.0;
+    s.icon_width_inner = 10.0;
 }
 
-/// The fill and the text of a page's main action, from `accent` (SET-009):
-/// white on the accent, the accent darkened until white reads on it at
-/// 4.5:1, or black on a light accent that black reads on.
-pub(crate) fn suggested_colors(accent: Color32) -> (Color32, Color32) {
+/// Adds `widget`, a box of text over several lines, with the corners of a
+/// box rather than a pill's, which would round it away (SET-010).
+pub(crate) fn add_boxy(ui: &mut egui::Ui, widget: impl egui::Widget) -> egui::Response {
+    ui.scope(|ui| {
+        boxy(ui);
+        ui.add(widget)
+    })
+    .inner
+}
+
+/// Gives `ui` the corners of a box of text over several lines.
+fn boxy(ui: &mut egui::Ui) {
+    let radius = egui::CornerRadius::same(BOX_RADIUS);
+    let w = &mut ui.visuals_mut().widgets;
+    for state in [&mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+        state.corner_radius = radius;
+    }
+}
+
+/// The fill of a page's main action and its text, from `accent` (SET-010):
+/// in the dark theme the accent made light with a dark text, as Material 3's
+/// primary at tone 80; in the light one the accent darkened until white
+/// reads on it at 4.5:1, or black on an accent too light for white.
+pub(crate) fn primary_colors(accent: Color32, dark: bool) -> (Color32, Color32) {
     let accent = Color32::from_rgb(accent.r(), accent.g(), accent.b());
+    if dark {
+        let ink = mix(accent, Color32::BLACK, 0.2);
+        let mut t = 0.55;
+        let mut fill = mix(accent, Color32::WHITE, t);
+        while contrast(fill, ink) < 4.5 && t > 0.0 {
+            t -= 0.05;
+            fill = mix(accent, Color32::WHITE, t);
+        }
+        return (fill, ink);
+    }
     if contrast(Color32::WHITE, accent) >= 4.5 {
         return (accent, Color32::WHITE);
     }
@@ -510,11 +614,10 @@ pub(crate) fn suggested_colors(accent: Color32) -> (Color32, Color32) {
     (fill, Color32::WHITE)
 }
 
-/// A page's main action, filled with the accent: Adwaita's suggested action
-/// (SET-009).
+/// A page's main action, filled with the primary colour (SET-010).
 pub(crate) fn suggested(text: impl Into<String>) -> egui::Button<'static> {
-    let (fill, ink) = suggested_colors(current().accent);
-    egui::Button::new(egui::RichText::new(text.into()).color(ink)).fill(fill)
+    let p = current();
+    egui::Button::new(egui::RichText::new(text.into()).color(p.on_primary)).fill(p.primary)
 }
 
 /// The style of what is drawn on the video: dark, whatever the theme.
@@ -590,6 +693,11 @@ mod tests {
                     ("text/page", p.text, vec![p.page]),
                     ("details/page", p.details, vec![p.page, p.row_hover]),
                     ("accent/page", p.accent_text, vec![p.page, p.row]),
+                    ("accent/dialog", p.accent_text, vec![p.dialog]),
+                    ("text/rail", p.text, vec![p.rail]),
+                    ("details/rail", p.details, vec![p.rail]),
+                    ("accent/rail", p.accent_text, vec![p.rail]),
+                    ("primary", p.on_primary, vec![p.primary]),
                 ];
                 let q = p.popup;
                 let panel = |chip: Color32| vec![q.panel, chip];
@@ -639,7 +747,7 @@ mod tests {
         }
     }
 
-    // T-SET-009: the main action reads on its accent, whatever the accent
+    // T-SET-009, T-SET-010: the main action reads on its fill, whatever the accent
     #[test]
     fn the_main_action_reads_on_its_fill() {
         for accent in [
@@ -650,11 +758,19 @@ mod tests {
             rgb(0x80, 0x80, 0x80),
             rgb(0x8f, 0xf0, 0xa4),
         ] {
-            let (fill, ink) = suggested_colors(accent);
-            assert!(contrast(fill, ink) >= 4.5, "{accent:?}: {fill:?} {ink:?}");
+            for dark in [true, false] {
+                let (fill, ink) = primary_colors(accent, dark);
+                assert!(
+                    contrast(fill, ink) >= 4.5,
+                    "{accent:?}, dark {dark}: {fill:?} {ink:?}"
+                );
+            }
         }
-        // GNOME's blue is darkened a little for white text
-        assert_ne!(suggested_colors(ACCENT).0, ACCENT);
+        // GNOME's blue is darkened a little for white text in the light
+        // theme, made light under dark text in the dark one
+        assert_ne!(primary_colors(ACCENT, false).0, ACCENT);
+        let (fill, ink) = primary_colors(ACCENT, true);
+        assert!(luminance(fill) > luminance(ink));
     }
 
     #[test]

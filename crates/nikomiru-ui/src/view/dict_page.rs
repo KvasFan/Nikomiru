@@ -731,7 +731,8 @@ fn css_panel(
         .id_salt(("dict-css", id))
         .max_height(180.0)
         .show(ui, |ui| {
-            let field = ui.add(
+            let field = super::palette::add_boxy(
+                ui,
                 TextEdit::multiline(&mut editor.text)
                     .code_editor()
                     .desired_rows(5)

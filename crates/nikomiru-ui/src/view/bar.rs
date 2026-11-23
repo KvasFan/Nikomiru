@@ -32,6 +32,9 @@ pub(crate) struct State {
     pub progress: Option<egui::Rect>,
     /// Where the "more" button of a narrow bar was drawn last (PLY-024).
     pub more: Option<egui::Rect>,
+    /// How wide the controls at the bar's right were last drawn: the
+    /// chapter's name takes only the room left of them.
+    pub right_width: f32,
     /// The entries of its menu, by name, while it is open.
     pub menu: Vec<(String, egui::Rect)>,
     /// The position while the progress slider is dragged: the slider does not
@@ -655,6 +658,9 @@ pub(crate) fn show(
                 .show(ui, |ui| {
                     ui.set_width(screen.width() - 20.0);
                     ui.spacing_mut().item_spacing.y = 4.0;
+                    // the bar's many controls keep the room they had before
+                    // the pages' larger targets (SET-010)
+                    ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
                     ui.visuals_mut().override_text_color = Some(Color32::WHITE);
 
                     // progress: does not fight mpv while dragged
@@ -726,45 +732,60 @@ pub(crate) fn show(
                             out.push(Command::TimeClicked);
                         }
                         if !compact && let Some(index) = chapter_at(&v.chapters, v.time_pos) {
-                            ui.add(
-                                egui::Label::new(chapter_name(s, &v.chapters, index)).truncate(),
-                            );
+                            let room = ui.available_width()
+                                - view.bar.right_width
+                                - 2.0 * ui.spacing().item_spacing.x;
+                            if room > 24.0 {
+                                ui.allocate_ui(egui::vec2(room, ui.available_height()), |ui| {
+                                    ui.add(
+                                        egui::Label::new(chapter_name(s, &v.chapters, index))
+                                            .truncate(),
+                                    );
+                                });
+                            }
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if compact {
-                                // PLY-024: a narrow screen (a phone upright)
-                                // keeps the subtitles at hand and puts the
-                                // rest in one menu
-                                let more = ui.menu_button(RichText::new("⋯").size(18.0), |ui| {
-                                    more_menu(ui, s, view, out);
-                                });
-                                more.response.clone().on_hover_text(tr("player-more"));
-                                named(&more.response, true, &tr("player-more"));
-                                view.bar.more = Some(more.response.rect);
-                                subtitle_buttons(ui, s, view, out);
-                                return;
-                            }
-                            for tool in TOOLS {
-                                let (glyph, name) = tool.label(s, view);
-                                if icon(ui, true, glyph, &name) {
-                                    tool.run(view, out);
-                                }
-                            }
-                            if !v.chapters.is_empty() {
-                                let menu = ui.menu_button(tr("chapters"), |ui| {
-                                    egui::ScrollArea::vertical()
-                                        .max_height(320.0)
-                                        .show(ui, |ui| {
-                                            chapter_menu(ui, s, out);
+                        let right = ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if compact {
+                                    // PLY-024: a narrow screen (a phone upright)
+                                    // keeps the subtitles at hand and puts the
+                                    // rest in one menu
+                                    let more =
+                                        ui.menu_button(RichText::new("⋯").size(18.0), |ui| {
+                                            more_menu(ui, s, view, out);
                                         });
-                                });
-                                named(&menu.response, true, &tr("chapters"));
-                            }
-                            subtitle_buttons(ui, s, view, out);
-                            audio_combo(ui, s, out);
-                            speed_buttons(ui, s, out, true);
-                            volume_controls(ui, s, view, out, true);
-                        });
+                                    more.response.clone().on_hover_text(tr("player-more"));
+                                    named(&more.response, true, &tr("player-more"));
+                                    view.bar.more = Some(more.response.rect);
+                                    subtitle_buttons(ui, s, view, out);
+                                    return ui.min_rect().width();
+                                }
+                                for tool in TOOLS {
+                                    let (glyph, name) = tool.label(s, view);
+                                    if icon(ui, true, glyph, &name) {
+                                        tool.run(view, out);
+                                    }
+                                }
+                                if !v.chapters.is_empty() {
+                                    let menu = ui.menu_button(tr("chapters"), |ui| {
+                                        egui::ScrollArea::vertical().max_height(320.0).show(
+                                            ui,
+                                            |ui| {
+                                                chapter_menu(ui, s, out);
+                                            },
+                                        );
+                                    });
+                                    named(&menu.response, true, &tr("chapters"));
+                                }
+                                subtitle_buttons(ui, s, view, out);
+                                audio_combo(ui, s, out);
+                                speed_buttons(ui, s, out, true);
+                                volume_controls(ui, s, view, out, true);
+                                ui.min_rect().width()
+                            },
+                        );
+                        view.bar.right_width = right.inner;
                     });
                 });
         });

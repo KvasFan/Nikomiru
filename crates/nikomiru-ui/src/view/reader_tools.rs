@@ -257,7 +257,8 @@ fn editor(ui: &mut egui::Ui, scene: &Scene<'_>, original: &Annotation, out: &mut
     )
     .labelled_by(label.id);
     let label = ui.label(tr("annotations-note"));
-    ui.add(
+    super::palette::add_boxy(
+        ui,
         egui::TextEdit::multiline(&mut a.note)
             .id_salt("annotation-note")
             .desired_rows(4)

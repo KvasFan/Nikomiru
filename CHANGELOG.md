@@ -4,6 +4,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.182.0] - 2026-11-23
+
+The look of Fushi 3 (D-86).
+
+### Changed
+
+- The interface takes after Fushi 3.3's Material 3 Expressive instead of Adwaita (SET-010): surfaces tinted by the accent, buttons, fields, tabs and menus shaped as pills, larger targets, what is chosen on a tonal fill of the accent, the main action light with dark text in the dark theme, dialogs and the settings with large round corners, sliders with a filled track. The accent, the light and dark themes and the named palettes stay as they were.
+- The library has a navigation rail at its left on a wide window, with an icon for each shelf, the statistics, the review and the media servers, and the tools and the settings at its foot: compact under 1400 points, with the names beside the icons from there; a narrower window keeps the tabs.
+- The library's cards: covers with round corners and the title under them; what is being watched on a larger card with its title over the picture and a wavy line for the share seen. The first steps are a banner.
+- The settings' tabs have icons, in a column of their own; the sections' names are in the accent.
+
+### Fixed
+
+- The player's bar: a long chapter name no longer runs under the volume; it takes only the room left.
+
+### Security
+
+- `url` 2.5.9: a `blob:` address nested many times no longer overflows the stack when its origin is taken (RUSTSEC-2026-0592).
+
 ## [2.181.3] - 2026-11-22
 
 ### Fixed

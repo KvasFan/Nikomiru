@@ -217,12 +217,13 @@ fn section_shortcuts() -> nikomiru_core::config::Section {
 }
 
 fn section(ui: &mut Ui, text: &str) {
-    ui.add_space(6.0);
+    ui.add_space(8.0);
+    // in the accent, as Fushi's section labels (SET-010)
     ui.label(
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(palette::current().details),
+            .color(palette::current().accent_text),
     );
 }
 

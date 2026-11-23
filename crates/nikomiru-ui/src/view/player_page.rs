@@ -71,7 +71,7 @@ fn section(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(15.0)
             .family(theme::bold())
-            .color(palette::current().details),
+            .color(palette::current().accent_text),
     );
 }
 
@@ -211,14 +211,14 @@ fn body(ui: &mut Ui, s: &Scene<'_>, state: &mut State, out: &mut Vec<Command>) {
 fn conf_text(ui: &mut Ui, s: &Scene<'_>, state: &mut State) {
     section(ui, &tr(s, "player-conf"));
     let label = ui.label(tr(s, "player-conf-hint"));
-    let edit = ui
-        .add(
-            TextEdit::multiline(&mut state.text)
-                .font(egui::TextStyle::Monospace)
-                .desired_rows(8)
-                .desired_width(f32::INFINITY),
-        )
-        .labelled_by(label.id);
+    let edit = super::palette::add_boxy(
+        ui,
+        TextEdit::multiline(&mut state.text)
+            .font(egui::TextStyle::Monospace)
+            .desired_rows(8)
+            .desired_width(f32::INFINITY),
+    )
+    .labelled_by(label.id);
     state.text_focus = edit.has_focus();
     if edit.changed() {
         let (set, _) = OptionSet::from_mpv_conf(&state.text);

@@ -211,7 +211,8 @@ fn draw(
                             for (name, value) in &p.fields {
                                 ui.collapsing(name, |ui| {
                                     let mut text = value.clone();
-                                    ui.add(
+                                    super::palette::add_boxy(
+                                        ui,
                                         egui::TextEdit::multiline(&mut text)
                                             .desired_rows(4)
                                             .desired_width(f32::INFINITY)
